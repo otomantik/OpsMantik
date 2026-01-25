@@ -5,9 +5,41 @@
 (function() {
   'use strict';
 
+  // Prevent duplicate initialization
+  if (window.opmantik && window.opmantik._initialized) {
+    console.warn('[OPSMANTIK] Tracker already initialized, skipping...');
+    return;
+  }
+
+  // Get site ID and API URL from script tag
+  const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
+  const siteId = scriptTag?.getAttribute('data-site-id') || '';
+  
+  // Determine API endpoint with priority:
+  // A) data-api attribute (if present)
+  // B) localhost/127.0.0.1 -> window.location.origin + "/api/sync"
+  // C) production default -> "https://console.opsmantik.com/api/sync"
+  let apiUrl;
+  let apiSource;
+  
+  const dataApi = scriptTag?.getAttribute('data-api');
+  const hostname = window.location.hostname;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('127.0.0.1:') || hostname.startsWith('localhost:');
+  
+  if (dataApi) {
+    apiUrl = dataApi;
+    apiSource = 'data-api';
+  } else if (isLocalhost) {
+    apiUrl = window.location.origin + '/api/sync';
+    apiSource = 'local';
+  } else {
+    apiUrl = 'https://console.opsmantik.com/api/sync';
+    apiSource = 'prod-default';
+  }
+
   // Configuration
   const CONFIG = {
-    apiUrl: window.location.origin + '/api/sync',
+    apiUrl: apiUrl,
     sessionKey: 'opmantik_session_sid',
     fingerprintKey: 'opmantik_session_fp',
     contextKey: 'opmantik_session_context',
@@ -15,20 +47,10 @@
     sessionTimeout: 1800000, // 30 minutes
   };
 
-  // Check if API URL is accessible (for debugging)
+  // Log chosen API URL with source
   if (typeof window !== 'undefined') {
-    console.log('[OPSMANTIK] API URL:', CONFIG.apiUrl);
+    console.log('[OPSMANTIK] API URL (' + apiSource + '):', CONFIG.apiUrl);
   }
-
-  // Prevent duplicate initialization
-  if (window.opmantik && window.opmantik._initialized) {
-    console.warn('[OPSMANTIK] Tracker already initialized, skipping...');
-    return;
-  }
-
-  // Get site ID from script tag
-  const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
-  const siteId = scriptTag?.getAttribute('data-site-id') || '';
 
   if (!siteId) {
     console.warn('[OPSMANTIK] ❌ Site ID not found');

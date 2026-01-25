@@ -325,9 +325,19 @@ curl -X OPTIONS http://localhost:3000/api/sync \
 
 ### Snippet Template
 
+**Basic (uses production default API)**:
 ```html
 <script defer src="https://assets.<YOUR_DOMAIN>/assets/core.js" data-site-id="<YOUR_SITE_ID>"></script>
 ```
+
+**With custom API endpoint (optional)**:
+```html
+<script defer src="https://assets.<YOUR_DOMAIN>/assets/core.js" data-site-id="<YOUR_SITE_ID>" data-api="https://console.opsmantik.com/api/sync"></script>
+```
+
+**Note**: The `data-api` attribute is optional. If not provided, the tracker uses:
+- `https://console.opsmantik.com/api/sync` for production sites
+- `http://localhost:3000/api/sync` for localhost development
 
 ### Environment Variable Template
 
