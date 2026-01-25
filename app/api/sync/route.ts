@@ -504,6 +504,67 @@ export async function POST(req: NextRequest) {
                   partition: session.created_month
                 });
 
+                // Step D: Create Call Intent if phone/whatsapp click
+                if (finalCategory === 'conversion' && fingerprint) {
+                    const phoneActions = ['phone_call', 'whatsapp', 'phone_click', 'call_click'];
+                    const isPhoneAction = phoneActions.some(action => 
+                        event_action?.toLowerCase().includes(action) || 
+                        event_label?.toLowerCase().includes('phone') ||
+                        event_label?.toLowerCase().includes('whatsapp')
+                    );
+
+                    if (isPhoneAction) {
+                        // Extract phone number from label or metadata
+                        const phoneNumber = event_label || meta?.phone_number || 'Unknown';
+                        
+                        // Dedupe: Check if intent exists in last 60 seconds for same session+source
+                        const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
+                        const { data: existingIntent } = await adminClient
+                            .from('calls')
+                            .select('id')
+                            .eq('site_id', site.id)
+                            .eq('matched_session_id', session.id)
+                            .eq('source', 'click')
+                            .eq('status', 'intent')
+                            .gte('created_at', sixtySecondsAgo)
+                            .maybeSingle();
+
+                        if (!existingIntent) {
+                            // Create soft intent call
+                            const { error: callError } = await adminClient
+                                .from('calls')
+                                .insert({
+                                    site_id: site.id,
+                                    phone_number: phoneNumber,
+                                    matched_session_id: session.id,
+                                    matched_fingerprint: fingerprint,
+                                    lead_score: leadScore,
+                                    lead_score_at_match: leadScore,
+                                    status: 'intent',
+                                    source: 'click',
+                                    // Note: We don't set matched_at for intents (only for real calls)
+                                });
+
+                            if (callError) {
+                                // Log but don't fail the event insert
+                                console.warn('[SYNC_API] Failed to create call intent:', {
+                                    message: callError.message,
+                                    code: callError.code,
+                                    session_id: session.id.slice(0, 8) + '...',
+                                });
+                            } else {
+                                console.log('[SYNC_API] ✅ Call intent created:', {
+                                    phone_number: phoneNumber,
+                                    session_id: session.id.slice(0, 8) + '...',
+                                    lead_score: leadScore,
+                                });
+                            }
+                        } else {
+                            console.log('[SYNC_API] Call intent dedupe: skipping duplicate intent within 60s');
+                        }
+                    }
+                }
+
                 // Update session metadata (duration, exit page, event count)
                 if (event_action === 'heartbeat' || event_action === 'session_end') {
                     const updates: Record<string, unknown> = {};

@@ -24,7 +24,10 @@ interface Call {
   matched_at?: string | null;
   created_at: string;
   site_id: string;
-  status?: string | null;
+  status?: string | null; // intent, confirmed, qualified, junk, real, null
+  source?: string | null; // click, api, manual
+  confirmed_at?: string | null;
+  confirmed_by?: string | null;
 }
 
 interface CallAlertWrapperProps {
@@ -67,8 +70,9 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
           .from('calls')
           .select('*')
           .eq('site_id', siteId)
+          .in('status', ['intent', 'confirmed', 'qualified', 'real', null])
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(20);
 
         if (recentCalls) {
           setCalls(recentCalls as Call[]);
@@ -90,8 +94,9 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
           .from('calls')
           .select('*')
           .in('site_id', siteIds)
+          .in('status', ['intent', 'confirmed', 'qualified', 'real', null])
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(20);
 
         if (recentCalls) {
           setCalls(recentCalls as Call[]);

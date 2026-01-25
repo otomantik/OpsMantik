@@ -34,7 +34,10 @@ interface CallAlert {
   } | null;
   matched_at?: string | null;
   created_at: string;
-  status?: string | null; // qualified, junk, null
+  status?: string | null; // intent, confirmed, qualified, junk, real, null
+  source?: string | null; // click, api, manual
+  confirmed_at?: string | null;
+  confirmed_by?: string | null;
 }
 
 interface CallAlertProps {
@@ -125,6 +128,28 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
     }
   };
 
+  const handleConfirm = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    const { error } = await supabase
+      .from('calls')
+      .update({ 
+        status: 'confirmed',
+        confirmed_at: new Date().toISOString(),
+        confirmed_by: user?.id || null,
+      })
+      .eq('id', call.id);
+
+    if (!error) {
+      setStatus('confirmed');
+      // Optionally create a conversion event (can be done server-side or here)
+      console.log('[CALL_ALERT] Intent confirmed, conversion should be tracked');
+    } else {
+      console.error('[CALL_ALERT] Failed to confirm intent:', error);
+    }
+  };
+
   const handleJunk = async () => {
     const supabase = createClient();
     const { error } = await supabase
@@ -145,6 +170,9 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
 
   const isQualified = status === 'qualified';
   const isJunk = status === 'junk';
+  const isIntent = status === 'intent';
+  const isConfirmed = status === 'confirmed';
+  const isReal = status === 'real' || (!isIntent && !isConfirmed && call.matched_at); // Real call has matched_at
   const confidence = getConfidence(call.lead_score);
 
   return (
@@ -173,23 +201,36 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 <span className={`font-mono text-xs px-2 py-1 rounded font-bold ${getScoreBadge(call.lead_score)}`}>
                   Score: {call.lead_score}
                 </span>
-                {call.matched_session_id ? (
-                  <>
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      ✓ MATCH
-                    </span>
-                    <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 ${confidence.color} border border-slate-600/50`}>
-                      {confidence.label}
-                    </span>
-                  </>
-                ) : (
+                {isIntent && (
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold">
+                    INTENT
+                  </span>
+                )}
+                {isReal && call.matched_session_id && (
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    ✓ MATCH
+                  </span>
+                )}
+                {isConfirmed && (
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 font-semibold">
+                    CONFIRMED
+                  </span>
+                )}
+                {call.matched_session_id && !isIntent && (
+                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 ${confidence.color} border border-slate-600/50`}>
+                    {confidence.label}
+                  </span>
+                )}
+                {!call.matched_session_id && !isIntent && (
                   <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
                     NO MATCH
                   </span>
                 )}
-                <span className="font-mono text-[10px] text-slate-500">
-                  Window: 30m
-                </span>
+                {isReal && (
+                  <span className="font-mono text-[10px] text-slate-500">
+                    Window: 30m
+                  </span>
+                )}
               </div>
             </div>
 
@@ -220,34 +261,53 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     View Session
                   </Button>
                 )}
+                {isIntent && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleConfirm}
+                    disabled={isConfirmed}
+                    className={`h-7 px-2 text-xs font-mono ${
+                      isConfirmed
+                        ? 'text-blue-400 bg-blue-500/20 border border-blue-500/30'
+                        : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30'
+                    }`}
+                    title="Confirm Intent"
+                  >
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Confirm
+                  </Button>
+                )}
+                {!isIntent && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleQualify}
+                    disabled={isQualified || isJunk}
+                    className={`h-7 w-7 p-0 ${
+                      isQualified 
+                        ? 'text-emerald-400 bg-emerald-500/20' 
+                        : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10'
+                    }`}
+                    title="Mark as Qualified"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={handleQualify}
-                disabled={isQualified || isJunk}
-                className={`h-7 w-7 p-0 ${
-                  isQualified 
-                    ? 'text-emerald-400 bg-emerald-500/20' 
-                    : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10'
-                }`}
-                title="Mark as Qualified"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleJunk}
-                disabled={isJunk || isQualified}
-                className={`h-7 w-7 p-0 ${
-                  isJunk 
-                    ? 'text-slate-500 bg-slate-700/30' 
-                    : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
-                }`}
-                title="Mark as Junk"
-              >
-                <XCircle className="w-4 h-4" />
-              </Button>
+                  onClick={handleJunk}
+                  disabled={isJunk || isQualified || isConfirmed}
+                  className={`h-7 w-7 p-0 ${
+                    isJunk 
+                      ? 'text-slate-500 bg-slate-700/30' 
+                      : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
+                  }`}
+                  title="Mark as Junk"
+                >
+                  <XCircle className="w-4 h-4" />
+                </Button>
               <Button
                 variant="ghost"
                 size="icon"
