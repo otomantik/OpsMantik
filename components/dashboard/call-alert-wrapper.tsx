@@ -159,7 +159,7 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
             });
           }
           
-          // Quick check: if site_id is not in our list, skip verification
+          // Quick check: if site_id is not in our list, skip (client-side filter)
           if (!siteIds.includes(newCall.site_id)) {
             if (isDebugEnabled()) {
               console.log('[CALL_ALERT] ⏭️ Call from different site, skipping:', newCall.site_id);
@@ -167,70 +167,56 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
             return;
           }
           
-          // Verify call belongs to user's sites (RLS check)
-          const { data: verifiedCall, error } = await supabase
-            .from('calls')
-            .select('*')
-            .eq('id', newCall.id)
-            .single();
+          // Trust RLS subscription filter - no redundant verification query
+          // The subscription already filters by site_id via RLS policies
+          // All calls received through the subscription are valid for the user's sites
+          const call = newCall as Call;
           
-          if (error) {
-            console.warn('[CALL_ALERT] ⚠️ Verification failed (RLS block?):', {
-              error: error.message,
-              callId: newCall.id,
-              siteId: newCall.site_id
-            });
+          // Guard against unmount before setState
+          if (!isMountedRef.current) {
+            if (isDebugEnabled()) {
+              console.log('[CALL_ALERT] ⏭️ Component unmounted, skipping call update');
+            }
             return;
           }
           
-          if (verifiedCall) {
-            const call = verifiedCall as Call;
-            
-            // Guard against unmount before setState
-            if (!isMountedRef.current) {
-              if (isDebugEnabled()) {
-                console.log('[CALL_ALERT] ⏭️ Component unmounted, skipping call update');
-              }
-              return;
-            }
-            
-            const isNewCall = !previousCallIdsRef.current.has(call.id);
-            
-            if (isDebugEnabled() && isNewCall) {
-              console.log('[CALL_ALERT] ✅ New call added to feed:', {
-                callId: call.id,
-                phone: call.phone_number,
-                matched: call.matched_session_id ? 'YES' : 'NO'
-              });
-            }
-            
-            if (isNewCall && call.matched_session_id) {
-              setNewMatchIds(prev => {
-                if (!isMountedRef.current) return prev;
-                return new Set(prev).add(call.id);
-              });
-              const timeoutId = setTimeout(() => {
-                // Guard against unmount in setTimeout
-                if (!isMountedRef.current) return;
-                setNewMatchIds(prev => {
-                  if (!isMountedRef.current) return prev;
-                  const next = new Set(prev);
-                  next.delete(call.id);
-                  return next;
-                });
-                timeoutRefsRef.current.delete(timeoutId);
-              }, 1500);
-              timeoutRefsRef.current.add(timeoutId);
-            }
-            
-            setCalls((prev) => {
-              // Double-check mount status inside setState callback
-              if (!isMountedRef.current) return prev;
-              const updated = [call, ...prev].slice(0, 10);
-              previousCallIdsRef.current = new Set(updated.map(c => c.id));
-              return updated;
+          const isNewCall = !previousCallIdsRef.current.has(call.id);
+          
+          if (isDebugEnabled() && isNewCall) {
+            console.log('[CALL_ALERT] ✅ New call added to feed:', {
+              callId: call.id,
+              phone: call.phone_number,
+              matched: call.matched_session_id ? 'YES' : 'NO'
             });
           }
+          
+          if (isNewCall && call.matched_session_id) {
+            setNewMatchIds(prev => {
+              if (!isMountedRef.current) return prev;
+              return new Set(prev).add(call.id);
+            });
+            const timeoutId = setTimeout(() => {
+              // Guard against unmount in setTimeout
+              if (!isMountedRef.current) return;
+              setNewMatchIds(prev => {
+                if (!isMountedRef.current) return prev;
+                const next = new Set(prev);
+                next.delete(call.id);
+                return next;
+              });
+              timeoutRefsRef.current.delete(timeoutId);
+            }, 1500);
+            timeoutRefsRef.current.add(timeoutId);
+          }
+          
+          // Maintain PR1 deterministic order: prepend new call, keep id DESC tie-breaker
+          setCalls((prev) => {
+            // Double-check mount status inside setState callback
+            if (!isMountedRef.current) return prev;
+            const updated = [call, ...prev].slice(0, 20);
+            previousCallIdsRef.current = new Set(updated.map(c => c.id));
+            return updated;
+          });
         }
       )
       .subscribe((status, err) => {
