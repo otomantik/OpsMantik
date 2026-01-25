@@ -1,26 +1,146 @@
 @import "tailwindcss";
 
+@theme {
+  /* Cyber-Dark Theme Colors */
+  --color-background: #020617; /* Slate 950 */
+  --color-foreground: #f1f5f9; /* Slate 100 */
+  --color-card: rgba(30, 41, 59, 0.5); /* Slate 800 with opacity for glassmorphism */
+  --color-card-foreground: #f1f5f9;
+  --color-popover: #1e293b; /* Slate 800 */
+  --color-popover-foreground: #f1f5f9;
+  --color-primary: #0ea5e9; /* Sky 500 */
+  --color-primary-foreground: #020617;
+  --color-secondary: #1e293b; /* Slate 800 */
+  --color-secondary-foreground: #f1f5f9;
+  --color-muted: #334155; /* Slate 700 */
+  --color-muted-foreground: #94a3b8; /* Slate 400 */
+  --color-accent: #1e293b; /* Slate 800 */
+  --color-accent-foreground: #f1f5f9;
+  --color-destructive: #ef4444; /* Red 500 */
+  --color-destructive-foreground: #f1f5f9;
+  --color-border: #1e293b; /* Slate 800 */
+  --color-input: #1e293b;
+  --color-ring: #0ea5e9; /* Sky 500 */
+  
+  /* Neon Accent Colors */
+  --color-neon-emerald: #10b981; /* Emerald 500 */
+  --color-neon-blue: #3b82f6; /* Blue 500 */
+  --color-neon-rose: #f43f5e; /* Rose 500 */
+  
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-inter: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Courier New", Consolas, "Liberation Mono", Menlo, Monaco, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-inter);
+}
+
+/* Monospaced font for IDs and timestamps */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Glassmorphism effect - Improved with better isolation */
+.glass {
+  background: rgba(30, 41, 59, 0.5);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  isolation: isolate;
+}
+
+/* Prevent glassmorphism from affecting child elements */
+.glass > * {
+  isolation: isolate;
+  position: relative;
+  z-index: 1;
+}
+
+/* Neon glow effects */
+.neon-emerald {
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3), 0 0 20px rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.neon-blue {
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3), 0 0 20px rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.neon-rose {
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.3), 0 0 20px rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.5);
+}
+
+/* Radar pulse animation */
+@keyframes radar-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.radar-pulse {
+  animation: radar-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Neon orange pulse for hot leads */
+@keyframes neon-orange-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(249, 115, 22, 0.4), 0 0 20px rgba(249, 115, 22, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.6), 0 0 30px rgba(249, 115, 22, 0.4);
+  }
+}
+
+.neon-orange-pulse {
+  animation: neon-orange-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Emerald flash animation for call matches */
+@keyframes emerald-flash {
+  0%, 100% {
+    border-color: rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+  50% {
+    border-color: rgba(16, 185, 129, 1);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(16, 185, 129, 0.4);
+  }
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #020617;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
 }

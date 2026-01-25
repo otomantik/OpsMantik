@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎯 OPSMANTIK - Google Ads Attribution & Lead Intelligence Platform
 
-## Getting Started
+Real-time tracking ve multi-touch attribution platformu. Google Ads kampanyalarınızın ROI'sini takip edin, lead'leri skorlayın ve canlı dashboard ile marketing ekibinizi güçlendirin.
 
-First, run the development server:
+## 🚀 Hızlı Başlangıç
+
+### 1. Dependencies Kurulumu
+
+```bash
+npm install
+```
+
+### 2. Environment Variables
+
+`.env.local.example` dosyasını `.env.local` olarak kopyalayın ve Supabase bilgilerinizi ekleyin:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Gerekli değişkenler:
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase proje URL'iniz
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
+- `GOOGLE_CLIENT_ID` - Google OAuth client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
+- `ALLOWED_ORIGINS` - CORS için izin verilen origin'ler (varsayılan: `*`)
+
+### 3. Supabase Migration
+
+Supabase CLI ile migration'ları uygulayın:
+
+```bash
+# Supabase CLI kurulumu (eğer yoksa)
+npm i -g supabase
+
+# Proje bağlantısı
+supabase link --project-ref YOUR_PROJECT_REF
+
+# Migration'ları uygula
+supabase db push
+```
+
+### 4. Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Uygulama `http://localhost:3000` adresinde çalışacak.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📁 Proje Yapısı
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+opsmantik-v1/
+├── app/
+│   ├── api/
+│   │   ├── sync/          # Event tracking endpoint
+│   │   └── call-event/    # Phone call matching endpoint
+│   ├── auth/
+│   │   └── callback/      # OAuth callback handler
+│   ├── dashboard/         # Main dashboard
+│   ├── login/            # Auth page
+│   └── layout.tsx
+│
+├── components/
+│   └── ui/                # shadcn/ui components
+│
+├── lib/
+│   ├── supabase/          # Supabase clients (browser, server, admin)
+│   ├── rate-limit.ts      # Rate limiting utility
+│   └── utils.ts           # Utility functions
+│
+├── public/
+│   ├── assets/
+│   │   └── core.js       # Tracking script (neutral path, ad-blocker friendly)
+│   └── ux-core.js         # Legacy tracking script (backwards compatibility)
+│
+└── supabase/
+    └── migrations/         # Database migrations
+```
 
-## Learn More
+## 🔧 Özellikler
 
-To learn more about Next.js, take a look at the following resources:
+- ✅ Multi-Touch Attribution
+- ✅ Browser Fingerprinting
+- ✅ GCLID Persistence
+- ✅ Lead Scoring (0-100)
+- ✅ Real-time Event Tracking
+- ✅ Phone Call Matching
+- ✅ Partitioned Database (monthly)
+- ✅ Row Level Security (RLS)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📊 Database Schema
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **sites** - Site ownership (multi-tenant)
+- **sessions** - Traffic pool (partitioned by month)
+- **events** - Action log (partitioned by month)
+- **calls** - Phone call records
+- **user_credentials** - OAuth tokens
 
-## Deploy on Vercel
+## 🧪 Test
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Tracker script'i test etmek için:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```html
+<!-- Recommended: Neutral path for ad-blocker avoidance -->
+<script 
+    src="https://assets.<YOUR_DOMAIN>/assets/core.js" 
+    data-site-id="test_site_123"
+></script>
+
+<!-- Legacy path (backwards compatible) -->
+<script 
+    src="http://localhost:3000/ux-core.js" 
+    data-site-id="test_site_123"
+></script>
+```
+
+## 📝 Notlar
+
+- Migration'lar otomatik olarak mevcut ay için partition oluşturur
+- RLS (Row Level Security) aktif - kullanıcılar sadece kendi sitelerini görebilir
+- Rate limiting: 100 req/min (sync), 50 req/min (call-event)
