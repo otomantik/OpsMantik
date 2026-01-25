@@ -13,10 +13,33 @@ export default async function LoginPage() {
   const signIn = async () => {
     'use server';
     const supabase = await createClient();
+    
+    // Compute redirectTo using NEXT_PUBLIC_PRIMARY_DOMAIN
+    const primaryDomain = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN;
+    let redirectTo: string;
+    
+    if (primaryDomain) {
+      redirectTo = `https://console.${primaryDomain}/auth/callback`;
+    } else {
+      // Fallback to current origin (development only)
+      const fallbackOrigin = typeof window !== 'undefined' 
+        ? window.location.origin 
+        : 'http://localhost:3000';
+      redirectTo = `${fallbackOrigin}/auth/callback`;
+      
+      if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
+        console.warn('[AUTH] ⚠️ NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectTo);
+      }
+    }
+    
+    if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
+      console.log('[AUTH] Google OAuth redirectTo:', redirectTo);
+    }
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
+        redirectTo,
       },
     });
     if (error) {
