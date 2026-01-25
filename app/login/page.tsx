@@ -1,18 +1,35 @@
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { createClient } from '@/lib/supabase/client';
 
-export default async function LoginPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+export default function LoginPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
 
-  if (user) {
-    redirect('/dashboard');
-  }
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkUser = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        router.push('/dashboard');
+      } else {
+        setIsChecking(false);
+      }
+    };
+    
+    checkUser();
+  }, [router]);
 
-  const signIn = async () => {
-    'use server';
-    const supabase = await createClient();
+  const handleSignIn = async () => {
+    setIsLoading(true);
+    
+    const supabase = createClient();
     
     // Compute redirectTo using NEXT_PUBLIC_PRIMARY_DOMAIN
     const primaryDomain = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN;
@@ -22,10 +39,7 @@ export default async function LoginPage() {
       redirectTo = `https://console.${primaryDomain}/auth/callback`;
     } else {
       // Fallback to current origin (development only)
-      const fallbackOrigin = typeof window !== 'undefined' 
-        ? window.location.origin 
-        : 'http://localhost:3000';
-      redirectTo = `${fallbackOrigin}/auth/callback`;
+      redirectTo = `${window.location.origin}/auth/callback`;
       
       if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
         console.warn('[AUTH] ⚠️ NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectTo);
@@ -42,14 +56,30 @@ export default async function LoginPage() {
         redirectTo,
       },
     });
+    
     if (error) {
       console.error('Auth error:', error);
+      setIsLoading(false);
       return;
     }
+    
     if (data.url) {
-      redirect(data.url);
+      // Redirect to OAuth provider
+      window.location.href = data.url;
+    } else {
+      setIsLoading(false);
     }
   };
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -58,11 +88,14 @@ export default async function LoginPage() {
           <h1 className="text-3xl font-bold">OPSMANTIK</h1>
           <p className="mt-2 text-gray-600">Google Ads Attribution & Lead Intelligence</p>
         </div>
-        <form action={signIn}>
-          <Button type="submit" className="w-full" size="lg">
-            Sign in with Google
-          </Button>
-        </form>
+        <Button 
+          onClick={handleSignIn} 
+          disabled={isLoading}
+          className="w-full" 
+          size="lg"
+        >
+          {isLoading ? 'Redirecting...' : 'Sign in with Google'}
+        </Button>
       </div>
     </div>
   );
