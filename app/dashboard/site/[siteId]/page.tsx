@@ -76,12 +76,17 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
       {/* Month Boundary Banner */}
       <MonthBoundaryBanner />
       
-      {/* Fixed Call Monitor - Top Right */}
-      <div className="fixed top-6 right-6 z-50 w-72">
+      {/* Fixed Call Monitor - Top Right (Desktop) */}
+      <div className="hidden lg:block fixed top-6 right-6 z-50 w-72">
         <CallAlertWrapper siteId={siteId} />
       </div>
 
-      <div className="max-w-[1920px] mx-auto pr-80">
+      {/* Mobile Call Monitor - Bottom Sheet */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 max-h-[50vh] overflow-y-auto bg-slate-900/95 backdrop-blur-sm border-t border-slate-800/50 pb-safe">
+        <CallAlertWrapper siteId={siteId} />
+      </div>
+
+      <div className="max-w-[1920px] mx-auto pr-0 lg:pr-80">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -127,7 +132,7 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
         </div>
         
         {/* Main Grid Layout */}
-        <div className="grid grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Top Row: Stats Cards */}
           <div className="col-span-12">
             <StatsCards siteId={siteId} />

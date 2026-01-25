@@ -139,6 +139,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
         .in('site_id', activeSiteIds)
         .eq('created_month', currentMonth)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(50);
 
       if (!sessions || sessions.length === 0 || !mounted) {
@@ -158,6 +159,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
         .select('*, sessions!inner(site_id), url')
         .eq('session_month', currentMonth)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(100);
 
       if (recentEvents && mounted) {
@@ -463,7 +465,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
       <CardContent>
         {/* Ultra-light filters */}
         {(filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
-          <div className="mb-4 pb-3 border-b border-slate-800/50">
+          <div className="sticky top-0 z-10 bg-slate-900 mb-4 pb-3 border-b border-slate-800/50 -mx-6 px-6 pt-4">
             <div className="flex items-center gap-2 flex-wrap">
               {filterOptions.cities.length > 0 && (
                 <select

@@ -60,6 +60,7 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
 
       const { data: events } = await eventsQuery
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(50);
 
       if (events) {

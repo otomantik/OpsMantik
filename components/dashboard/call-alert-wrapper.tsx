@@ -72,6 +72,7 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
           .eq('site_id', siteId)
           .in('status', ['intent', 'confirmed', 'qualified', 'real', null])
           .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
           .limit(20);
 
         if (recentCalls) {
@@ -96,6 +97,7 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
           .in('site_id', siteIds)
           .in('status', ['intent', 'confirmed', 'qualified', 'real', null])
           .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
           .limit(20);
 
         if (recentCalls) {

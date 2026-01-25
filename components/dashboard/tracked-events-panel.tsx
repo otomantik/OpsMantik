@@ -56,6 +56,7 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
 
       const { data: events } = await eventsQuery
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(1000);
 
       if (events) {
@@ -81,7 +82,12 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
         });
 
         const sorted = Object.values(grouped)
-          .sort((a, b) => b.count - a.count)
+          .sort((a, b) => {
+            const countDiff = b.count - a.count;
+            if (countDiff !== 0) return countDiff;
+            // Tie-breaker: use lastSeen for deterministic order
+            return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+          })
           .slice(0, 20);
 
         setEventTypes(sorted);
@@ -127,7 +133,7 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
             {eventTypes.map((eventType, index) => (
               <div
                 key={`${eventType.category}-${eventType.action}`}
-                className="flex items-center justify-between p-2 rounded bg-slate-800/30 border border-slate-700/30"
+                className="flex items-center justify-between p-3 lg:p-2 rounded bg-slate-800/30 border border-slate-700/30"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

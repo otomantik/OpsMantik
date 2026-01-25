@@ -51,6 +51,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
   const [status, setStatus] = useState(call.status);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showSessionNotFound, setShowSessionNotFound] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -129,9 +130,37 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
   };
 
   const handleConfirm = async () => {
+    // Idempotency guard: if already confirmed, do nothing
+    if (status === 'confirmed' || isUpdating) {
+      return;
+    }
+
+    setIsUpdating(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     
+    // Atomic update: only update if status is 'intent' (or null/undefined for legacy)
+    // This prevents race conditions where status changed between check and update
+    const { data: currentCall, error: fetchError } = await supabase
+      .from('calls')
+      .select('status')
+      .eq('id', call.id)
+      .single();
+
+    if (fetchError || !currentCall) {
+      console.error('[CALL_ALERT] Failed to fetch current status:', fetchError);
+      setIsUpdating(false);
+      return;
+    }
+
+    // Guard: if already confirmed or junk, skip update
+    if (currentCall.status === 'confirmed' || currentCall.status === 'junk') {
+      setStatus(currentCall.status);
+      setIsUpdating(false);
+      return;
+    }
+
+    // Update only if status is 'intent' or null/undefined (legacy)
     const { error } = await supabase
       .from('calls')
       .update({ 
@@ -139,7 +168,8 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
         confirmed_at: new Date().toISOString(),
         confirmed_by: user?.id || null,
       })
-      .eq('id', call.id);
+      .eq('id', call.id)
+      .in('status', ['intent', null]); // Atomic: only update if status is intent or null
 
     if (!error) {
       setStatus('confirmed');
@@ -148,14 +178,45 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
     } else {
       console.error('[CALL_ALERT] Failed to confirm intent:', error);
     }
+    setIsUpdating(false);
   };
 
   const handleJunk = async () => {
+    // Idempotency guard: if already junk, do nothing
+    if (status === 'junk' || isUpdating) {
+      return;
+    }
+
+    setIsUpdating(true);
     const supabase = createClient();
+    
+    // Atomic update: check current status first
+    const { data: currentCall, error: fetchError } = await supabase
+      .from('calls')
+      .select('status')
+      .eq('id', call.id)
+      .single();
+
+    if (fetchError || !currentCall) {
+      console.error('[CALL_ALERT] Failed to fetch current status:', fetchError);
+      setIsUpdating(false);
+      return;
+    }
+
+    // Guard: if already junk or confirmed, skip update
+    if (currentCall.status === 'junk' || currentCall.status === 'confirmed') {
+      setStatus(currentCall.status);
+      setIsUpdating(false);
+      return;
+    }
+
+    // Update only if status is not already junk/confirmed
     const { error } = await supabase
       .from('calls')
       .update({ status: 'junk' })
-      .eq('id', call.id);
+      .eq('id', call.id)
+      .not('status', 'eq', 'junk') // Atomic: only update if not already junk
+      .not('status', 'eq', 'confirmed'); // Also prevent updating confirmed calls
 
     if (!error) {
       setStatus('junk');
@@ -166,6 +227,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
     } else {
       console.error('[CALL_ALERT] Failed to mark call as junk:', error);
     }
+    setIsUpdating(false);
   };
 
   const isQualified = status === 'qualified';
@@ -188,7 +250,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
       <CardContent className="p-0">
         {/* Main Card Content */}
         <div className="p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col lg:flex-row items-start justify-between gap-3">
             {/* Left: Phone & Score */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
@@ -235,14 +297,14 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
             </div>
 
             {/* Right: Actions */}
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col lg:items-end gap-1 w-full lg:w-auto">
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {call.matched_session_id && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleViewSession}
-                    className="h-7 px-2 text-xs font-mono text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30"
+                    className="h-10 px-3 lg:h-7 lg:px-2 text-xs font-mono text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30"
                     title="Jump to Session"
                   >
                     <ExternalLink className="w-3 h-3 mr-1" />
@@ -254,7 +316,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     variant="ghost"
                     size="sm"
                     disabled
-                    className="h-7 px-2 text-xs font-mono text-slate-500 border border-slate-700/30"
+                    className="h-10 px-3 lg:h-7 lg:px-2 text-xs font-mono text-slate-500 border border-slate-700/30"
                     title="No session matched"
                   >
                     <ExternalLink className="w-3 h-3 mr-1" />
@@ -266,8 +328,8 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     variant="ghost"
                     size="sm"
                     onClick={handleConfirm}
-                    disabled={isConfirmed}
-                    className={`h-7 px-2 text-xs font-mono ${
+                    disabled={isConfirmed || isUpdating}
+                    className={`h-10 px-3 lg:h-7 lg:px-2 text-xs font-mono ${
                       isConfirmed
                         ? 'text-blue-400 bg-blue-500/20 border border-blue-500/30'
                         : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30'
@@ -284,7 +346,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     size="icon"
                     onClick={handleQualify}
                     disabled={isQualified || isJunk}
-                    className={`h-7 w-7 p-0 ${
+                    className={`h-10 w-10 lg:h-7 lg:w-7 p-0 ${
                       isQualified 
                         ? 'text-emerald-400 bg-emerald-500/20' 
                         : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10'
@@ -298,8 +360,8 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   variant="ghost"
                   size="icon"
                   onClick={handleJunk}
-                  disabled={isJunk || isQualified || isConfirmed}
-                  className={`h-7 w-7 p-0 ${
+                  disabled={isJunk || isQualified || isConfirmed || isUpdating}
+                  className={`h-10 w-10 lg:h-7 lg:w-7 p-0 ${
                     isJunk 
                       ? 'text-slate-500 bg-slate-700/30' 
                       : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
@@ -312,7 +374,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="h-7 w-7 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                className="h-10 w-10 lg:h-7 lg:w-7 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                 title="View Details"
               >
                 {isExpanded ? (
@@ -325,7 +387,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 variant="ghost"
                 size="icon"
                 onClick={() => onDismiss(call.id)}
-                className="h-7 w-7 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                className="h-10 w-10 lg:h-7 lg:w-7 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                 title="Dismiss"
               >
                 <X className="w-4 h-4" />

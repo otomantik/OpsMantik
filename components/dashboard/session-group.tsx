@@ -86,6 +86,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
       .select('*, sites!inner(user_id)')
       .eq('matched_fingerprint', currentFingerprint)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -135,10 +136,13 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
     return {};
   };
 
-  // Sort events by time (oldest to newest)
-  const sortedEvents = [...events].sort((a, b) => 
-    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  // Sort events by time (oldest to newest) with id tie-breaker for determinism
+  const sortedEvents = [...events].sort((a, b) => {
+    const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    // Tie-breaker: use id for deterministic order
+    return a.id.localeCompare(b.id);
+  });
 
   // Calculate session duration
   const sessionDuration = sortedEvents.length > 1
@@ -184,7 +188,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
-                <p className="font-mono text-sm font-semibold text-slate-200">
+                <p className="font-mono text-sm font-semibold text-slate-200 truncate">
                   SESSION: <span className="text-emerald-400">{sessionId.slice(0, 8)}...</span>
                 </p>
                 <Button
@@ -280,23 +284,23 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
 
           {/* Context Chips Row - Always show, use "—" for missing values */}
           <div className="mt-2 pt-2 border-t border-slate-800/30">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 min-w-0 truncate">
                 CITY: <span className="text-indigo-300 font-semibold">{city && city !== 'Unknown' ? city : '—'}</span>
               </span>
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30 min-w-0 truncate">
                 DISTRICT: <span className="text-violet-300 font-semibold">{district || '—'}</span>
               </span>
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 min-w-0 truncate">
                 DEVICE: <span className="text-amber-300 font-semibold">{device || '—'}</span>
               </span>
               {os && os !== 'Unknown' && (
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 border border-teal-500/30 min-w-0 truncate">
                   OS: <span className="text-teal-300 font-semibold">{os}</span>
                 </span>
               )}
               {browser && browser !== 'Unknown' && (
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30 min-w-0 truncate">
                   BROWSER: <span className="text-sky-300 font-semibold">{browser}</span>
                 </span>
               )}
