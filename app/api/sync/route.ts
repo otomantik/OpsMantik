@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { UAParser } from 'ua-parser-js';
 import { rateLimit, getClientId } from '@/lib/rate-limit';
 import { computeAttribution, extractUTM } from '@/lib/attribution';
+import { extractGeoInfo } from '@/lib/geo';
+import { computeLeadScore } from '@/lib/scoring';
 
 // UUID v4 generator (RFC 4122 compliant)
 function generateUUID(): string {
@@ -212,58 +213,9 @@ export async function POST(req: NextRequest) {
         const currentGclid = params.get('gclid') || meta?.gclid;
         const fingerprint = meta?.fp || null;
 
-        // Device & Geo Enrichment
-        const parser = new UAParser(userAgent);
-        
-        // Normalize device_type to desktop/mobile/tablet
-        const rawDeviceType = parser.getDevice().type;
-        let deviceType = 'desktop'; // default
-        if (rawDeviceType === 'mobile') {
-            deviceType = 'mobile';
-        } else if (rawDeviceType === 'tablet') {
-            deviceType = 'tablet';
-        } else {
-            // Fallback: check user agent for mobile/tablet patterns
-            const uaLower = userAgent.toLowerCase();
-            if (uaLower.includes('mobile') || uaLower.includes('android') || uaLower.includes('iphone')) {
-                deviceType = 'mobile';
-            } else if (uaLower.includes('tablet') || uaLower.includes('ipad')) {
-                deviceType = 'tablet';
-            }
-        }
-        
-        const deviceInfo = {
-            device_type: deviceType,
-            os: parser.getOS().name || 'Unknown',
-            browser: parser.getBrowser().name || 'Unknown',
-            browser_version: parser.getBrowser().version,
-        };
-
-        // Geo extraction from headers (Edge Runtime compatible)
-        // Priority: CF-IPCity (Cloudflare) > X-City > fallback
-        const cityFromHeader = req.headers.get('cf-ipcity') || 
-                               req.headers.get('x-city') || 
-                               req.headers.get('x-forwarded-city') ||
-                               null;
-        
-        const districtFromHeader = req.headers.get('cf-ipdistrict') ||
-                                  req.headers.get('x-district') ||
-                                  null;
-        
-        // Priority: Metadata override > Server headers > Unknown
-        const city = meta?.city || cityFromHeader || null;
-        const district = meta?.district || districtFromHeader || null;
-        
-        const geoInfo = {
-            city: city || 'Unknown',
-            district: district,
-            country: req.headers.get('cf-ipcountry') || 
-                     req.headers.get('x-country') || 
-                     'Unknown',
-            timezone: req.headers.get('cf-timezone') || 
-                     req.headers.get('x-timezone') || 
-                     'Unknown',
-        };
+        // Device & Geo Enrichment (extracted to lib/geo.ts)
+        const { geoInfo, deviceInfo } = extractGeoInfo(req, userAgent, meta);
+        const deviceType = deviceInfo.device_type;
 
         // 3. Attribution Computation (using truth table rules)
         // Extract UTM parameters
@@ -318,28 +270,16 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        // 4. Lead Scoring Engine (The "Math")
-        let leadScore = 0;
-
-        // A. Category Scoring
-        if (event_category === 'conversion') leadScore += 50;
-        if (event_category === 'interaction') leadScore += 10;
-
-        // B. Deep Engagement Scoring
-        if (event_action === 'scroll_depth') {
-            const depth = Number(event_value);
-            if (depth >= 50) leadScore += 10;
-            if (depth >= 90) leadScore += 20;
-        }
-
-        if (event_action === 'hover_intent') leadScore += 15;
-
-        // C. Context Scoring
-        if (referrer?.includes('google')) leadScore += 5;
-        if (isReturningAdUser) leadScore += 25; // Returning ad users are high intent
-
-        // Cap Score
-        leadScore = Math.min(leadScore, 100);
+        // 4. Lead Scoring Engine (extracted to lib/scoring.ts)
+        const leadScore = computeLeadScore(
+            {
+                event_category,
+                event_action,
+                event_value,
+            },
+            referrer || null,
+            isReturningAdUser
+        );
 
         // 5. Intelligence Summary
         let summary = 'Standard Traffic';

@@ -59,7 +59,8 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   }, [sessionId]);
   
   // Use session data first, fallback to event metadata
-  const attributionSource = sessionData?.attribution_source || metadata.attribution_source || 'Organic';
+  // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant
+  const attributionSource = sessionData?.attribution_source || metadata.attribution_source;
   const intelligenceSummary = metadata.intelligence_summary || 'Standard Traffic';
   const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
   const gclid = sessionData?.gclid || metadata.gclid || null;
