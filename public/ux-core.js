@@ -131,13 +131,35 @@
       },
     };
 
-    console.log('[OPSMANTIK] Sending event:', {
-      category,
-      action,
-      label,
-      value,
-      sessionId: sessionId.slice(0, 8) + '...',
-    });
+    // Debug logging (only if NEXT_PUBLIC_WARROOM_DEBUG is enabled)
+    const isDebug = typeof window !== 'undefined' && 
+                    (window as any).NEXT_PUBLIC_WARROOM_DEBUG === 'true' ||
+                    localStorage.getItem('WARROOM_DEBUG') === 'true';
+    
+    if (isDebug) {
+      console.log('[OPSMANTIK] Sending event payload:', {
+        category,
+        action,
+        label,
+        value,
+        sessionId: sessionId.slice(0, 8) + '...',
+        url,
+        referrer,
+        meta: {
+          fp: fingerprint,
+          gclid: context,
+          ...metadata,
+        },
+      });
+    } else {
+      console.log('[OPSMANTIK] Sending event:', {
+        category,
+        action,
+        label,
+        value,
+        sessionId: sessionId.slice(0, 8) + '...',
+      });
+    }
 
     // Send via fetch (fire and forget)
     fetch(CONFIG.apiUrl, {

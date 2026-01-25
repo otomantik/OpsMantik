@@ -238,6 +238,70 @@ export default function TestPage() {
     });
   };
 
+  // Attribution scenario buttons (new scenarios for source/context testing)
+  const simulatePaidClickScenario = () => {
+    // Set GCLID in URL and metadata
+    const url = new URL(window.location.href);
+    url.searchParams.set('gclid', 'EAIaIQobChMI_test_paid_click');
+    url.searchParams.set('utm_medium', 'cpc');
+    url.searchParams.set('utm_source', 'google');
+    window.history.replaceState({}, '', url.toString());
+    
+    sendEvent('acquisition', 'paid_click', 'test_paid_scenario', undefined, {
+      gclid: 'EAIaIQobChMI_test_paid_click',
+      utm_medium: 'cpc',
+      utm_source: 'google',
+    });
+    
+    addToEventLog('Paid Click (GCLID + UTM)', '✅');
+  };
+
+  const simulatePaidSocialScenario = () => {
+    // Simulate Facebook referrer
+    sendEvent('acquisition', 'social_click', 'test_social_scenario', undefined, {
+      ref: 'https://www.facebook.com/test',
+      utm_source: 'facebook',
+    });
+    
+    // Note: Referrer is sent in payload, but we can't set document.referrer
+    // The server will see it from the request
+    addToEventLog('Paid Social (Facebook referrer)', '✅');
+  };
+
+  const simulateOrganicScenario = () => {
+    // Clear GCLID and UTM, empty referrer
+    const url = new URL(window.location.href);
+    url.searchParams.delete('gclid');
+    url.searchParams.delete('utm_medium');
+    url.searchParams.delete('utm_source');
+    window.history.replaceState({}, '', url.toString());
+    
+    sendEvent('interaction', 'organic_visit', 'test_organic_scenario', undefined, {
+      // No gclid, no utm
+    });
+    
+    addToEventLog('Organic (no GCLID/UTM)', '✅');
+  };
+
+  const simulateGeoOverrideScenario = () => {
+    // Send event with city/district override in metadata
+    sendEvent('interaction', 'geo_test', 'test_geo_override', undefined, {
+      city: 'Istanbul',
+      district: 'Kadikoy',
+      device_type: 'mobile',
+    });
+    
+    addToEventLog('Geo Override (Istanbul, Kadikoy)', '✅');
+  };
+
+  const addToEventLog = (event: string, status: string) => {
+    setEventLog(prev => [{
+      time: new Date().toLocaleTimeString(),
+      event,
+      status
+    }, ...prev].slice(0, 10));
+  };
+
   return (
     <div className="min-h-screen bg-[#020617] p-8">
       <div className="max-w-6xl mx-auto">
@@ -328,6 +392,60 @@ export default function TestPage() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Attribution Scenarios */}
+        <Card className="glass border-slate-800/50 mb-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-mono text-slate-200">ATTRIBUTION SCENARIOS</CardTitle>
+            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+              Test source classification and context extraction. Check /dashboard/site/&lt;id&gt; after each scenario.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Button
+                onClick={simulatePaidClickScenario}
+                className="bg-emerald-600 hover:bg-emerald-700 font-mono text-xs"
+                disabled={!trackerLoaded}
+              >
+                💰 Simulate Paid Click
+              </Button>
+              <Button
+                onClick={simulatePaidSocialScenario}
+                className="bg-blue-600 hover:bg-blue-700 font-mono text-xs"
+                disabled={!trackerLoaded}
+              >
+                📱 Simulate Paid Social
+              </Button>
+              <Button
+                onClick={simulateOrganicScenario}
+                className="bg-slate-600 hover:bg-slate-700 font-mono text-xs"
+                disabled={!trackerLoaded}
+              >
+                🌱 Simulate Organic
+              </Button>
+              <Button
+                onClick={simulateGeoOverrideScenario}
+                className="bg-purple-600 hover:bg-purple-700 font-mono text-xs"
+                disabled={!trackerLoaded}
+              >
+                📍 Simulate Geo Override
+              </Button>
+            </div>
+            {eventLog.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-slate-800/50">
+                <p className="font-mono text-xs text-slate-400 mb-2">Recent Scenarios:</p>
+                <div className="space-y-1">
+                  {eventLog.map((log, idx) => (
+                    <div key={idx} className="font-mono text-xs text-slate-300">
+                      <span className="text-slate-500">{log.time}</span> - {log.event} ({log.status})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

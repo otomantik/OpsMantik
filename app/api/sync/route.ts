@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { UAParser } from 'ua-parser-js';
 import { rateLimit, getClientId } from '@/lib/rate-limit';
+import { computeAttribution, extractUTM } from '@/lib/attribution';
 
 // UUID v4 generator (RFC 4122 compliant)
 function generateUUID(): string {
@@ -157,7 +158,21 @@ export async function POST(req: NextRequest) {
             );
         }
         
-        console.log('[SYNC_IN] Incoming payload from site:', rawBody.s, 'month:', rawBody.sm);
+        // Debug logging (only in dev mode) - declare once at top of function
+        const isDebugMode = process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true';
+        if (isDebugMode) {
+          console.log('[SYNC_IN] Incoming payload:', {
+            site_id: rawBody.s,
+            month: rawBody.sm,
+            url: rawBody.u,
+            referrer: rawBody.r,
+            meta: rawBody.meta,
+            event_category: rawBody.ec,
+            event_action: rawBody.ea,
+          });
+        } else {
+          console.log('[SYNC_IN] Incoming payload from site:', rawBody.s, 'month:', rawBody.sm);
+        }
         // atomic payload mapping
         const {
             s: site_id, u: url,
@@ -235,9 +250,13 @@ export async function POST(req: NextRequest) {
                                   req.headers.get('x-district') ||
                                   null;
         
+        // Priority: Metadata override > Server headers > Unknown
+        const city = meta?.city || cityFromHeader || null;
+        const district = meta?.district || districtFromHeader || null;
+        
         const geoInfo = {
-            city: cityFromHeader || 'Unknown',
-            district: districtFromHeader || null, // nullable district_hint
+            city: city || 'Unknown',
+            district: district,
             country: req.headers.get('cf-ipcountry') || 
                      req.headers.get('x-country') || 
                      'Unknown',
@@ -246,31 +265,57 @@ export async function POST(req: NextRequest) {
                      'Unknown',
         };
 
-        // 3. Multi-Touch Attribution Check (The "Memory")
-        let attributionSource = currentGclid ? 'First Click (Paid)' : 'Organic';
-        let isReturningAdUser = false;
-
-        // Check if returning ad user (multi-touch attribution)
+        // 3. Attribution Computation (using truth table rules)
+        // Extract UTM parameters
+        const utm = extractUTM(url);
+        
+        // Get dbMonth early for past GCLID query
+        const dbMonth = session_month || new Date().toISOString().slice(0, 7) + '-01';
+        
+        // Check for past GCLID (multi-touch attribution)
+        let hasPastGclid = false;
         if (!currentGclid && fingerprint) {
-            // Query past sessions with ads params, matched by fingerprint
+            // Query past events with GCLID, matched by fingerprint
+            // Check across all months (not just current month)
             const { data: pastEvents } = await adminClient
                 .from('events')
-                .select('metadata, created_at')
-                .eq('session_id', fingerprint)  // We'll store fingerprint in metadata
-                .or(`metadata->>'gclid' != null`)
+                .select('metadata, created_at, session_month')
+                .not('metadata->gclid', 'is', null)
                 .order('created_at', { ascending: false })
-                .limit(1);
-
+                .limit(50);
+            
+            // Check if any past event has matching fingerprint and GCLID
             if (pastEvents && pastEvents.length > 0) {
-                attributionSource = 'Return Visitor (Ads Assisted)';
-                isReturningAdUser = true;
+                hasPastGclid = pastEvents.some((e: any) => 
+                    e.metadata?.fp === fingerprint && e.metadata?.gclid
+                );
             }
         }
         
-        // Fallback: Check client-side persisted GCLID
-        if (!currentGclid && meta?.gclid) {
-            attributionSource = 'Return Visitor (Ads Assisted)';
-            isReturningAdUser = true;
+        // Compute attribution using truth table rules
+        const attribution = computeAttribution({
+            gclid: currentGclid,
+            utm,
+            referrer: referrer || null,
+            fingerprint,
+            hasPastGclid,
+        });
+        
+        const attributionSource = attribution.source;
+        const isReturningAdUser = attribution.isPaid && !currentGclid;
+        
+        // Debug logging (only in dev mode) - use isDebugMode from above
+        if (isDebugMode) {
+            console.log('[SYNC_API] Attribution computed:', {
+                gclid: currentGclid ? 'present' : 'missing',
+                utm_medium: utm?.medium || 'none',
+                referrer: referrer ? (referrer.includes('http') ? new URL(referrer).hostname : referrer) : 'none',
+                hasPastGclid,
+                attributionSource,
+                device_type: deviceType,
+                city: geoInfo.city,
+                district: geoInfo.district,
+            });
         }
 
         // 4. Lead Scoring Engine (The "Math")
@@ -303,7 +348,7 @@ export async function POST(req: NextRequest) {
         if (attributionSource.includes('Ads')) summary += ' (Ads Origin)';
 
         // 6. Partitioned Persistence Strategy
-        const dbMonth = session_month || new Date().toISOString().slice(0, 7) + '-01';
+        // dbMonth already defined above for attribution computation
 
         try {
             let session;
@@ -318,7 +363,7 @@ export async function POST(req: NextRequest) {
                 // Lookup existing session in the correct partition
                 const { data: existingSession, error: lookupError } = await adminClient
                     .from('sessions')
-                    .select('id, created_month')
+                    .select('id, created_month, attribution_source, gclid')
                     .eq('id', client_sid)
                     .eq('created_month', dbMonth)
                     .maybeSingle();
@@ -328,6 +373,22 @@ export async function POST(req: NextRequest) {
                 } else if (existingSession) {
                     console.log('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                     session = existingSession;
+                    
+                    // Update existing session with attribution/context if missing
+                    if (!existingSession.attribution_source) {
+                        await adminClient
+                            .from('sessions')
+                            .update({
+                                attribution_source: attributionSource,
+                                device_type: deviceType,
+                                city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
+                                district: geoInfo.district,
+                                fingerprint: fingerprint,
+                                gclid: currentGclid || existingSession.gclid,
+                            })
+                            .eq('id', client_sid)
+                            .eq('created_month', dbMonth);
+                    }
                 } else {
                     console.log('[SYNC_API] No existing session found for UUID:', client_sid, 'in partition:', dbMonth);
                 }
@@ -355,7 +416,13 @@ export async function POST(req: NextRequest) {
                     gclid: currentGclid,
                     wbraid: params.get('wbraid') || meta?.wbraid,
                     gbraid: params.get('gbraid') || meta?.gbraid,
-                    created_month: dbMonth
+                    created_month: dbMonth,
+                    // Attribution and context fields
+                    attribution_source: attributionSource,
+                    device_type: deviceType,
+                    city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
+                    district: geoInfo.district,
+                    fingerprint: fingerprint,
                 };
 
                 const { data: newSession, error: sError } = await adminClient

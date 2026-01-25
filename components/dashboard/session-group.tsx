@@ -26,25 +26,56 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   const [isExpanded, setIsExpanded] = useState(false);
   const [matchedCall, setMatchedCall] = useState<any>(null);
   const [isLoadingCall, setIsLoadingCall] = useState(false);
+  const [sessionData, setSessionData] = useState<{
+    attribution_source?: string | null;
+    device_type?: string | null;
+    city?: string | null;
+    district?: string | null;
+    fingerprint?: string | null;
+    gclid?: string | null;
+  } | null>(null);
   
   const firstEvent = events[events.length - 1]; // Oldest event
   const lastEvent = events[0]; // Newest event
   const metadata = firstEvent.metadata || {};
   const leadScore = metadata.lead_score || 0;
-  const attributionSource = metadata.attribution_source || 'Unknown';
+  
+  // Fetch session data (normalized fields) - fallback to event metadata
+  useEffect(() => {
+    const fetchSessionData = async () => {
+      const supabase = createClient();
+      const { data: session } = await supabase
+        .from('sessions')
+        .select('attribution_source, device_type, city, district, fingerprint, gclid')
+        .eq('id', sessionId)
+        .maybeSingle();
+      
+      if (session) {
+        setSessionData(session);
+      }
+    };
+    
+    fetchSessionData();
+  }, [sessionId]);
+  
+  // Use session data first, fallback to event metadata
+  const attributionSource = sessionData?.attribution_source || metadata.attribution_source || 'Organic';
   const intelligenceSummary = metadata.intelligence_summary || 'Standard Traffic';
-  const fingerprint = metadata.fingerprint || null;
-  const gclid = metadata.gclid || null;
-  // Context chips data
-  const city = metadata.city || null;
-  const district = metadata.district || null;
-  const device = metadata.device_type || null;
+  const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
+  const gclid = sessionData?.gclid || metadata.gclid || null;
+  
+  // Context chips data - prefer session, fallback to metadata
+  const city = sessionData?.city || metadata.city || null;
+  const district = sessionData?.district || metadata.district || null;
+  const device = sessionData?.device_type || metadata.device_type || null;
   const os = metadata.os || null;
   const browser = metadata.browser || null;
 
   // Check for matched call when component mounts or session changes
   useEffect(() => {
-    if (!fingerprint) return;
+    // Use fingerprint from sessionData or metadata
+    const currentFingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp;
+    if (!currentFingerprint) return;
 
     setIsLoadingCall(true);
     const supabase = createClient();
@@ -53,7 +84,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
     supabase
       .from('calls')
       .select('*, sites!inner(user_id)')
-      .eq('matched_fingerprint', fingerprint)
+      .eq('matched_fingerprint', currentFingerprint)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -69,7 +100,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
         }
         setIsLoadingCall(false);
       });
-  }, [fingerprint]);
+  }, [sessionData, metadata]);
 
   // Get icon for event action
   const getEventIcon = (action: string) => {
@@ -247,38 +278,30 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
             </div>
           </div>
 
-          {/* Context Chips Row */}
-          {(city || district || device || os || browser) && (
-            <div className="mt-2 pt-2 border-t border-slate-800/30">
-              <div className="flex items-center gap-2 flex-wrap">
-                {city && city !== 'Unknown' && (
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                    CITY: <span className="text-indigo-300">{city}</span>
-                  </span>
-                )}
-                {district && (
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">
-                    DISTRICT: <span className="text-violet-300">{district}</span>
-                  </span>
-                )}
-                {device && (
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    DEVICE: <span className="text-amber-300">{device}</span>
-                  </span>
-                )}
-                {os && os !== 'Unknown' && (
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 border border-teal-500/30">
-                    OS: <span className="text-teal-300">{os}</span>
-                  </span>
-                )}
-                {browser && browser !== 'Unknown' && (
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                    BROWSER: <span className="text-sky-300">{browser}</span>
-                  </span>
-                )}
-              </div>
+          {/* Context Chips Row - Always show, use "—" for missing values */}
+          <div className="mt-2 pt-2 border-t border-slate-800/30">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                CITY: <span className="text-indigo-300 font-semibold">{city && city !== 'Unknown' ? city : '—'}</span>
+              </span>
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">
+                DISTRICT: <span className="text-violet-300 font-semibold">{district || '—'}</span>
+              </span>
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                DEVICE: <span className="text-amber-300 font-semibold">{device || '—'}</span>
+              </span>
+              {os && os !== 'Unknown' && (
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                  OS: <span className="text-teal-300 font-semibold">{os}</span>
+                </span>
+              )}
+              {browser && browser !== 'Unknown' && (
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                  BROWSER: <span className="text-sky-300 font-semibold">{browser}</span>
+                </span>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Expanded Content - Event Timeline & Time Table */}
