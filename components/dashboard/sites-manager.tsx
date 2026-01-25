@@ -58,7 +58,21 @@ export function SitesManager() {
 
       if (sitesError) {
         console.error('[SITES_MANAGER] Error fetching sites:', sitesError);
-        setError('Failed to load sites');
+        
+        // Check for PostgreSQL error code 42703 (undefined_column)
+        // This indicates a schema mismatch - required columns are missing
+        const isSchemaMismatch = sitesError.code === '42703' || 
+                                 sitesError.code === 'PGRST116' ||
+                                 (sitesError.message && (
+                                   sitesError.message.includes('column') && 
+                                   sitesError.message.includes('does not exist')
+                                 ));
+        
+        if (isSchemaMismatch) {
+          setError('Database schema mismatch: required columns missing on sites table (name/domain/public_id). Run migration.');
+        } else {
+          setError('Failed to load sites');
+        }
       } else {
         setSites(sitesData || []);
       }
@@ -243,6 +257,35 @@ export function SitesManager() {
       <Card className="glass border-slate-800/50">
         <CardContent className="p-6">
           <p className="font-mono text-sm text-slate-400">Loading sites...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show schema mismatch error prominently if present
+  if (error && error.includes('Database schema mismatch')) {
+    return (
+      <Card className="glass border-slate-800/50">
+        <CardHeader>
+          <CardTitle className="text-lg font-mono text-slate-200">Sites</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="bg-red-900/20 border border-red-700/50 p-4 rounded space-y-3">
+            <p className="font-mono text-sm text-red-400 font-semibold">
+              ⚠️ Database Schema Mismatch
+            </p>
+            <p className="font-mono text-xs text-red-300">
+              {error}
+            </p>
+            <div className="mt-3 pt-3 border-t border-red-700/30">
+              <p className="font-mono text-xs text-slate-400 mb-2">To fix this:</p>
+              <ol className="font-mono text-xs text-slate-300 space-y-1 list-decimal list-inside">
+                <li>Check your Supabase migrations are applied</li>
+                <li>Verify the <code className="text-slate-200">sites</code> table has columns: <code className="text-slate-200">name</code>, <code className="text-slate-200">domain</code>, <code className="text-slate-200">public_id</code></li>
+                <li>Run: <code className="text-slate-200">supabase db push</code> or apply migrations manually</li>
+              </ol>
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
