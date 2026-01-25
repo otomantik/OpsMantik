@@ -72,6 +72,50 @@ grep -E "GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET" .env.local.example
 # Expected: OAuth variables found (if applicable)
 ```
 
+### 5. Multi-Tenant & Membership Verification
+
+```bash
+# Check site_members table usage
+rg -n "site_members" app components lib supabase
+# Expected: Multiple matches in migrations, API routes, and components
+
+# Check profiles table and admin helper
+rg -n "profiles|isAdmin" app lib
+# Expected: isAdmin helper found in lib/auth/isAdmin.ts, profiles queries in routes
+
+# Check site-scoped routes
+rg -n "/dashboard/site|/admin/sites" app
+# Expected: Site-scoped dashboard route and admin sites route found
+
+# Check RLS membership patterns in migrations
+rg -n "site_members.*user_id.*auth.uid|profiles.*role.*admin" supabase/migrations
+# Expected: RLS policy patterns for multi-tenant access found
+
+# Verify customer invite endpoint
+rg -n "/api/customers/invite|site_members.*insert" app/api
+# Expected: Invite endpoint creates site_members entries
+
+# Check admin access guards
+rg -n "isAdmin|redirect.*dashboard" app/admin
+# Expected: Admin routes check isAdmin before rendering
+```
+
+### 6. Database Schema Verification (Optional)
+
+```bash
+# If connected to Supabase, verify tables exist
+# Run in Supabase SQL Editor:
+SELECT * FROM site_members LIMIT 5;
+SELECT * FROM profiles LIMIT 5;
+# Expected: Tables exist and have correct structure
+
+# Verify RLS is enabled
+SELECT tablename, rowsecurity FROM pg_tables 
+WHERE schemaname = 'public' 
+  AND tablename IN ('profiles', 'site_members', 'sites');
+# Expected: rowsecurity = true for all tables
+```
+
 ---
 
 ## 🔧 Vercel Environment Variables
@@ -297,6 +341,43 @@ The snippet will look like:
 - [ ] Lead scores calculate correctly (0-100)
 - [ ] Realtime updates work (no page refresh needed)
 
+### Step 6: Multi-Tenant Features (Admin & Customer Access)
+
+#### Admin Access
+1. **Admin Dashboard**: Navigate to `https://console.example.com/admin/sites`
+2. **Expected**: 
+   - Admin sees all sites in system
+   - Can click "Open Dashboard" to drill down to any site
+   - Site list shows status ("Receiving events" / "No traffic yet")
+3. **Site Drill-Down**: Click "Open Dashboard" for any site
+4. **Expected**: Redirects to `/dashboard/site/<siteId>` with site-scoped data
+
+#### Customer Access (Member)
+1. **Invite Customer**: 
+   - Site owner clicks "Invite Customer" in Sites Manager
+   - Enters customer email
+   - Clicks "📧 Invite"
+2. **Expected**: 
+   - Success message with magic link
+   - Customer receives email (if email service configured)
+   - `site_members` entry created with `role: 'viewer'` (default)
+3. **Customer Login**:
+   - Customer clicks magic link or logs in via email
+   - Redirects to `/dashboard`
+4. **Expected**:
+   - If 1 site: Auto-redirects to `/dashboard/site/<siteId>`
+   - If multiple sites: Shows Site Switcher
+   - Customer sees ONLY their assigned site(s)
+   - Cannot access other sites (403/404)
+
+**Verification Checklist**:
+- [ ] Admin can access `/admin/sites`
+- [ ] Admin can drill down to any site via "Open Dashboard"
+- [ ] Customer invite creates `site_members` entry
+- [ ] Invited customer can log in and see only their site
+- [ ] Customer cannot access sites they're not a member of
+- [ ] Site owner can invite multiple customers to same site
+
 ---
 
 ## ✅ Post-Deployment Evidence Commands
@@ -392,6 +473,17 @@ curl -X POST https://console.example.com/api/sync \
 | No service role in client | `rg -n "SUPABASE_SERVICE_ROLE_KEY" app components --exclude "lib/supabase/admin.ts"` | Empty | ✅ PASS |
 | CORS logic present | `rg -n "ALLOWED_ORIGINS\|isOriginAllowed" app/api/sync/route.ts` | Found | ✅ PASS |
 | RLS policies | `rg -n "sites.user_id.*auth.uid" supabase/migrations` | Found | ✅ PASS |
+| Multi-tenant RLS | `rg -n "site_members.*user_id.*auth.uid|profiles.*role.*admin" supabase/migrations` | Found | ✅ PASS |
+| Admin guards | `rg -n "isAdmin|redirect.*dashboard" app/admin` | Found | ✅ PASS |
+
+### Multi-Tenant Features ✅
+
+| Check | Command | Expected | Status |
+|-------|---------|----------|--------|
+| site_members usage | `rg -n "site_members" app components lib supabase` | Multiple matches | ✅ PASS |
+| profiles/isAdmin | `rg -n "profiles|isAdmin" app lib` | Found | ✅ PASS |
+| Site-scoped routes | `rg -n "/dashboard/site|/admin/sites" app` | Found | ✅ PASS |
+| Customer invite | `rg -n "/api/customers/invite" app/api` | Found | ✅ PASS |
 
 ### Snippet Paths ✅
 
@@ -430,6 +522,8 @@ curl -X POST https://console.example.com/api/sync \
 - [ ] `npm run build` → Exit 0
 - [ ] `npm run check:warroom` → Exit 0
 - [ ] `rg -n "SUPABASE_SERVICE_ROLE_KEY" app components --exclude "lib/supabase/admin.ts"` → Empty
+- [ ] `rg -n "site_members|profiles|/dashboard/site" app components lib supabase` → Multiple matches
+- [ ] `rg -n "isAdmin" app/admin app/dashboard/site` → Admin guards found
 
 ### Vercel Configuration
 - [ ] Repository imported to Vercel
@@ -469,6 +563,14 @@ curl -X POST https://console.example.com/api/sync \
 - [ ] Live Feed shows events
 - [ ] CORS verification passes
 - [ ] Assets load correctly (`https://assets.example.com/assets/core.js`)
+- [ ] **Multi-Tenant Tests**:
+  - [ ] Admin can access `/admin/sites` (sees all sites)
+  - [ ] Admin can drill down to `/dashboard/site/<anySiteId>`
+  - [ ] Customer (member) can access `/dashboard/site/<assignedSiteId>`
+  - [ ] Customer cannot access `/dashboard/site/<otherSiteId>` (403/404)
+  - [ ] Site owner can invite customer via "Invite Customer" form
+  - [ ] Invited customer receives magic link and can log in
+  - [ ] Invited customer sees only their assigned site in dashboard
 
 ---
 

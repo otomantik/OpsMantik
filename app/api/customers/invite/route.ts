@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { isAdmin } from '@/lib/auth/isAdmin';
 
 export async function POST(req: NextRequest) {
   try {
-    // Validate current user is logged in (owner)
+    // Validate current user is logged in
     const supabase = await createClient();
-    const { data: { user: ownerUser } } = await supabase.auth.getUser();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-    if (!ownerUser) {
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Parse request body
     const body = await req.json();
-    const { email, site_id } = body;
+    const { email, site_id, role = 'viewer' } = body;
 
     // Validate required fields
     if (!email || !site_id) {
@@ -33,17 +34,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify site belongs to current owner (security check)
-    const { data: site, error: siteError } = await adminClient
+    // Validate role
+    const validRoles = ['viewer', 'editor', 'owner'];
+    if (!validRoles.includes(role)) {
+      return NextResponse.json(
+        { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // Check if user is admin
+    const userIsAdmin = await isAdmin();
+
+    // Verify site access: user must be site owner OR admin
+    const { data: site, error: siteError } = await supabase
       .from('sites')
       .select('id, user_id, name, domain')
       .eq('id', site_id)
-      .eq('user_id', ownerUser.id) // Must belong to current owner
       .single();
 
     if (siteError || !site) {
       return NextResponse.json(
         { error: 'Site not found or access denied' },
+        { status: 403 }
+      );
+    }
+
+    // If not admin, verify user owns the site
+    if (!userIsAdmin && site.user_id !== currentUser.id) {
+      return NextResponse.json(
+        { error: 'You must be the site owner or an admin to invite customers' },
         { status: 403 }
       );
     }
@@ -58,7 +78,7 @@ export async function POST(req: NextRequest) {
         email: email,
         email_confirm: true, // Auto-confirm email
         user_metadata: {
-          invited_by: ownerUser.id,
+          invited_by: currentUser.id,
           invited_at: new Date().toISOString(),
         },
       });
@@ -74,27 +94,79 @@ export async function POST(req: NextRequest) {
       customerUser = newUser.user;
     }
 
-    // Transfer site ownership to customer (MINIMAL approach: update sites.user_id)
-    const { error: updateError } = await adminClient
-      .from('sites')
-      .update({ user_id: customerUser.id })
-      .eq('id', site_id);
+    // Check if membership already exists
+    const { data: existingMembership } = await adminClient
+      .from('site_members')
+      .select('id, role')
+      .eq('site_id', site_id)
+      .eq('user_id', customerUser.id)
+      .maybeSingle();
 
-    if (updateError) {
-      console.error('[CUSTOMERS_INVITE] Error updating site:', updateError);
+    if (existingMembership) {
+      // Update existing membership role if different
+      if (existingMembership.role !== role) {
+        const { error: updateError } = await adminClient
+          .from('site_members')
+          .update({ role })
+          .eq('id', existingMembership.id);
+
+        if (updateError) {
+          console.error('[CUSTOMERS_INVITE] Error updating membership:', updateError);
+          return NextResponse.json(
+            { error: 'Failed to update membership', details: updateError.message },
+            { status: 500 }
+          );
+        }
+      }
+
+      // Return success - membership already exists
+      const { data: linkData } = await adminClient.auth.admin.generateLink({
+        type: 'magiclink',
+        email: email,
+        options: {
+          redirectTo: `${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}` : 'http://localhost:3000'}/dashboard`,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Customer already has access. Membership updated to ${role}.`,
+        customer_email: email,
+        site_name: site.name,
+        login_url: linkData?.properties?.action_link || null,
+        role: role,
+      });
+    }
+
+    // Insert into site_members table
+    const { data: membership, error: insertError } = await adminClient
+      .from('site_members')
+      .insert({
+        site_id: site_id,
+        user_id: customerUser.id,
+        role: role,
+      })
+      .select()
+      .single();
+
+    if (insertError || !membership) {
+      console.error('[CUSTOMERS_INVITE] Error creating membership:', insertError);
       return NextResponse.json(
-        { error: 'Failed to assign site to customer', details: updateError.message },
+        { error: 'Failed to create membership', details: insertError?.message },
         { status: 500 }
       );
     }
 
     // Generate magic link for customer login
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const redirectUrl = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
+      ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}/dashboard`
+      : 'http://localhost:3000/dashboard';
+
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: 'magiclink',
       email: email,
       options: {
-        redirectTo: `${siteUrl}/dashboard`,
+        redirectTo: redirectUrl,
       },
     });
 
@@ -103,20 +175,22 @@ export async function POST(req: NextRequest) {
       // Still return success - user can use password reset or email login
       return NextResponse.json({
         success: true,
-        message: 'Customer invited successfully. Site ownership transferred.',
+        message: `Customer invited successfully with ${role} role.`,
         customer_email: email,
         site_name: site.name,
         login_url: null, // Link generation failed, but invite succeeded
+        role: role,
         note: 'Customer can log in via email/password or use password reset',
       });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Customer invited successfully. Site ownership transferred.',
+      message: `Customer invited successfully with ${role} role.`,
       customer_email: email,
       site_name: site.name,
       login_url: linkData.properties.action_link,
+      role: role,
       note: 'Share this login URL with the customer',
     });
   } catch (error: any) {

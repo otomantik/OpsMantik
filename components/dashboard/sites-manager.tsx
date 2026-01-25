@@ -232,7 +232,8 @@ export function SitesManager() {
     if (!newSite) return;
 
     const domain = getPrimaryDomain();
-    const snippet = `<script defer src="https://assets.${domain}/assets/core.js" data-site-id="${newSite.public_id}"></script>`;
+    const apiUrl = `https://console.${domain}/api/sync`;
+    const snippet = `<script defer src="https://assets.${domain}/assets/core.js" data-site-id="${newSite.public_id}" data-api="${apiUrl}"></script>`;
     
     try {
       await navigator.clipboard.writeText(snippet);
@@ -380,7 +381,7 @@ export function SitesManager() {
               </label>
               <div className="flex gap-2">
                 <code className="flex-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-200 font-mono text-xs break-all">
-                  {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${newSite.public_id}"></script>`}
+                  {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${newSite.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                 </code>
                 <Button
                   onClick={copySnippet}
@@ -443,19 +444,26 @@ export function SitesManager() {
                         <span className={`font-mono text-xs ${
                           siteStatus[site.id].status === 'Receiving events' 
                             ? 'text-emerald-400' 
-                            : 'text-amber-400'
+                            : 'text-slate-400'
                         }`}>
                           {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status}
                         </span>
                       </div>
                       
-                      {siteStatus[site.id].last_event_at && (
+                      {siteStatus[site.id].last_event_at ? (
                         <div className="text-xs space-y-1">
                           <p className="font-mono text-slate-400">
                             Last event: <span className="text-slate-300">
                               {new Date(siteStatus[site.id].last_event_at!).toLocaleString()}
                             </span>
                           </p>
+                          {siteStatus[site.id].last_session_id && (
+                            <p className="font-mono text-slate-400">
+                              Session: <span className="text-slate-300 font-mono text-xs">
+                                {siteStatus[site.id].last_session_id?.slice(0, 8)}...
+                              </span>
+                            </p>
+                          )}
                           {siteStatus[site.id].last_source && (
                             <p className="font-mono text-slate-400">
                               Source: <span className="text-slate-300">{siteStatus[site.id].last_source}</span>
@@ -467,6 +475,10 @@ export function SitesManager() {
                             </p>
                           )}
                         </div>
+                      ) : (
+                        <p className="font-mono text-xs text-slate-500">
+                          No events recorded yet
+                        </p>
                       )}
                     </div>
                   )}
@@ -475,7 +487,7 @@ export function SitesManager() {
                   <div className="mt-3 pt-3 border-t border-slate-700/30">
                     <p className="font-mono text-xs text-slate-400 mb-2">Install Snippet:</p>
                     <code className="block px-2 py-1 bg-slate-900/50 border border-slate-700 rounded text-slate-200 font-mono text-xs break-all">
-                      {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${site.public_id}"></script>`}
+                      {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${site.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
                     <p className="font-mono text-xs text-slate-500 mt-2">
                       📋 Copy this snippet and paste it in your WordPress header (Theme → Theme Editor → header.php) or use a plugin like "Insert Headers and Footers"

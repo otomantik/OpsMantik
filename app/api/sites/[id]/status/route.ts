@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { isAdmin } from '@/lib/auth/isAdmin';
 
 export async function GET(
   req: NextRequest,
@@ -24,12 +25,14 @@ export async function GET(
       );
     }
 
-    // Verify site belongs to current user (ownership check)
+    // Check if user is admin
+    const userIsAdmin = await isAdmin();
+
+    // Verify site access: user must be owner OR member OR admin
     const { data: site, error: siteError } = await supabase
       .from('sites')
       .select('id, user_id')
       .eq('id', siteId)
-      .eq('user_id', user.id) // Must belong to current user
       .single();
 
     if (siteError || !site) {
@@ -37,6 +40,24 @@ export async function GET(
         { error: 'Site not found or access denied' },
         { status: 403 }
       );
+    }
+
+    // If not admin, verify user has access (owner or member)
+    if (!userIsAdmin && site.user_id !== user.id) {
+      // Check if user is a member
+      const { data: membership } = await supabase
+        .from('site_members')
+        .select('site_id')
+        .eq('site_id', siteId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!membership) {
+        return NextResponse.json(
+          { error: 'Site not found or access denied' },
+          { status: 403 }
+        );
+      }
     }
 
     // Get current month for partition query
@@ -118,14 +139,13 @@ export async function GET(
       .limit(1)
       .maybeSingle();
 
-    // Determine status
+    // Determine status based on last_event_at recency
     let status = 'No traffic yet';
     let lastEventAt: string | null = null;
     let lastSessionId: string | null = null;
     let lastSource: string | null = null;
 
     if (mostRecentEvent) {
-      status = 'Receiving events';
       lastEventAt = mostRecentEvent.created_at;
       lastSessionId = mostRecentEvent.session_id;
       
@@ -135,9 +155,22 @@ export async function GET(
       } else if (mostRecentEvent.event_action) {
         lastSource = mostRecentEvent.event_action;
       }
+
+      // Check if event is within last 10 minutes
+      if (lastEventAt) {
+        const eventTime = new Date(lastEventAt);
+        const now = new Date();
+        const minutesAgo = (now.getTime() - eventTime.getTime()) / (1000 * 60);
+
+        if (minutesAgo <= 10) {
+          status = 'Receiving events';
+        } else {
+          status = 'No traffic yet';
+        }
+      }
     } else if (lastSession) {
       // Has sessions but no events (unlikely but possible)
-      status = 'Sessions created, no events yet';
+      status = 'No traffic yet';
       lastSessionId = lastSession.id;
     }
 

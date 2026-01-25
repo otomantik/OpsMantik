@@ -15,7 +15,11 @@ interface Conversion {
   phone_number: string | null;
 }
 
-export function ConversionTracker() {
+interface ConversionTrackerProps {
+  siteId?: string;
+}
+
+export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
   const [conversions, setConversions] = useState<Conversion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -26,26 +30,35 @@ export function ConversionTracker() {
       
       if (!user) return;
 
-      // Get user's sites
-      const { data: sites } = await supabase
-        .from('sites')
-        .select('id')
-        .eq('user_id', user.id);
-
-      if (!sites || sites.length === 0) {
-        setIsLoading(false);
-        return;
-      }
-
-      const siteIds = sites.map(s => s.id);
       const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
 
-      // Get conversion events
-      const { data: events } = await supabase
+      // If siteId is provided, filter by it directly (RLS will enforce access)
+      let eventsQuery = supabase
         .from('events')
         .select('session_id, event_action, event_label, created_at, metadata, sessions!inner(site_id)')
         .eq('session_month', currentMonth)
-        .eq('event_category', 'conversion')
+        .eq('event_category', 'conversion');
+
+      if (siteId) {
+        // Filter by specific site
+        eventsQuery = eventsQuery.eq('sessions.site_id', siteId);
+      } else {
+        // Get user's sites and filter
+        const { data: sites } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('user_id', user.id);
+
+        if (!sites || sites.length === 0) {
+          setIsLoading(false);
+          return;
+        }
+
+        const siteIds = sites.map(s => s.id);
+        eventsQuery = eventsQuery.in('sessions.site_id', siteIds);
+      }
+
+      const { data: events } = await eventsQuery
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -80,7 +93,7 @@ export function ConversionTracker() {
     fetchConversions();
     const interval = setInterval(fetchConversions, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, []);
+  }, [siteId]);
 
   return (
     <Card className="glass border-slate-800/50">

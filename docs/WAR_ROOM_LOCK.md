@@ -32,6 +32,21 @@
 - **Reason**: Service role key bypasses RLS - security critical
 - **Files to Check**: `app/**/*.tsx`, `components/**/*.tsx`
 
+### 5. Multi-Tenant Access Rules (site_members)
+- **Rule**: Site access MUST be validated via ownership OR membership OR admin role
+- **Pattern**: 
+  - Owner: `sites.user_id = auth.uid()`
+  - Member: `EXISTS (SELECT 1 FROM site_members WHERE site_id = sites.id AND user_id = auth.uid())`
+  - Admin: `profiles.role = 'admin'` (via `isAdmin()` helper)
+- **Reason**: Multi-tenant security requires explicit access checks
+- **Files to Check**: `app/api/**/*.ts`, `app/dashboard/**/*.tsx`, `app/admin/**/*.tsx`
+
+### 6. Admin Routes Must Guard Access
+- **Rule**: Admin-only routes MUST check `isAdmin()` before rendering
+- **Pattern**: `const userIsAdmin = await isAdmin(); if (!userIsAdmin) redirect('/dashboard');`
+- **Reason**: Admin routes expose sensitive data - must enforce access
+- **Files to Check**: `app/admin/**/*.tsx`
+
 ---
 
 ## ✅ Acceptance Checklist
@@ -143,6 +158,36 @@ npm run build
 # Expected: Build succeeds (may fail in sandbox due to EPERM, but TS should pass)
 ```
 
+### Verify Multi-Tenant Implementation
+```bash
+# Check site_members table usage
+rg -n "site_members" app components lib supabase
+# Expected: Multiple matches in migrations, API routes, and site-scoped pages
+
+# Check profiles table usage
+rg -n "profiles|isAdmin" app lib
+# Expected: isAdmin helper and profiles queries found
+
+# Check site-scoped routes
+rg -n "/dashboard/site|/admin/sites" app
+# Expected: Site-scoped dashboard route and admin sites route found
+
+# Check RLS membership patterns
+rg -n "site_members.*user_id.*auth.uid" supabase/migrations
+# Expected: RLS policy patterns for site_members found
+```
+
+### Verify Admin Access Guards
+```bash
+# Check admin routes have isAdmin guard
+rg -n "isAdmin|redirect.*dashboard" app/admin
+# Expected: Admin routes check isAdmin before rendering
+
+# Check site-scoped routes validate access
+rg -n "site_members|isAdmin|notFound" app/dashboard/site
+# Expected: Access validation found in site-scoped routes
+```
+
 ---
 
 ## 🛡️ Automated Checks
@@ -167,9 +212,12 @@ Before committing OPS Console changes:
 2. [ ] Run `npx tsc --noEmit` (must pass)
 3. [ ] Verify partition month filters in new queries
 4. [ ] Verify RLS JOIN patterns in new queries
-5. [ ] Test "View Session" jump/highlight if Call Monitor changed
-6. [ ] Test GCLID flow if test page changed
-7. [ ] Verify Source/Context chips still render correctly
+5. [ ] Verify multi-tenant access checks (owner OR member OR admin)
+6. [ ] Verify admin routes have `isAdmin()` guard
+7. [ ] Test "View Session" jump/highlight if Call Monitor changed
+8. [ ] Test GCLID flow if test page changed
+9. [ ] Verify Source/Context chips still render correctly
+10. [ ] Test customer invite flow if membership features changed
 
 ---
 
@@ -179,6 +227,13 @@ Before committing OPS Console changes:
 - Established non-negotiables
 - Added acceptance checklist
 - Created automated check script
+
+### 2026-01-24: Multi-Tenant Support
+- Added `profiles` and `site_members` tables
+- Updated RLS policies for owner/member/admin access
+- Added admin drill-down routes (`/admin/sites`, `/dashboard/site/[siteId]`)
+- Added customer invite flow with membership assignment
+- Updated access validation patterns
 
 ---
 

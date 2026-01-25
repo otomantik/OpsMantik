@@ -27,7 +27,11 @@ interface Call {
   status?: string | null;
 }
 
-export function CallAlertWrapper() {
+interface CallAlertWrapperProps {
+  siteId?: string;
+}
+
+export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
   const [calls, setCalls] = useState<Call[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [userSites, setUserSites] = useState<string[]>([]);
@@ -46,31 +50,58 @@ export function CallAlertWrapper() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: sites } = await supabase
-        .from('sites')
-        .select('id')
-        .eq('user_id', user.id);
+      // If siteId is provided, use it directly (RLS will enforce access)
+      if (siteId) {
+        // Verify site access via RLS
+        const { data: site } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('id', siteId)
+          .single();
 
-      if (!sites || sites.length === 0) return;
+        if (!site) return;
 
-      const siteIds = sites.map(s => s.id);
-      setUserSites(siteIds);
+        setUserSites([siteId]);
 
-      const { data: recentCalls } = await supabase
-        .from('calls')
-        .select('*')
-        .in('site_id', siteIds)
-        .order('created_at', { ascending: false })
-        .limit(10);
+        const { data: recentCalls } = await supabase
+          .from('calls')
+          .select('*')
+          .eq('site_id', siteId)
+          .order('created_at', { ascending: false })
+          .limit(10);
 
-      if (recentCalls) {
-        setCalls(recentCalls as Call[]);
-        previousCallIdsRef.current = new Set(recentCalls.map(c => c.id));
+        if (recentCalls) {
+          setCalls(recentCalls as Call[]);
+          previousCallIdsRef.current = new Set(recentCalls.map((c: Call) => c.id));
+        }
+      } else {
+        // Get all user's sites (default behavior)
+        const { data: sites } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('user_id', user.id);
+
+        if (!sites || sites.length === 0) return;
+
+        const siteIds = sites.map(s => s.id);
+        setUserSites(siteIds);
+
+        const { data: recentCalls } = await supabase
+          .from('calls')
+          .select('*')
+          .in('site_id', siteIds)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (recentCalls) {
+          setCalls(recentCalls as Call[]);
+          previousCallIdsRef.current = new Set(recentCalls.map((c: Call) => c.id));
+        }
       }
     };
 
     fetchRecentCalls();
-  }, []);
+  }, [siteId]);
 
   // Realtime subscription - only after userSites is populated
   useEffect(() => {
@@ -79,7 +110,7 @@ export function CallAlertWrapper() {
     }
 
     const supabase = createClient();
-    const siteIds = [...userSites];
+    const siteIds = siteId ? [siteId] : [...userSites]; // Use siteId if provided, otherwise all user sites
 
     // Runtime assertion: detect duplicate subscriptions
     if (subscriptionRef.current) {

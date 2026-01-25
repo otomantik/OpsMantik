@@ -30,7 +30,11 @@ interface Event {
   url?: string;
 }
 
-export function LiveFeed() {
+interface LiveFeedProps {
+  siteId?: string;
+}
+
+export function LiveFeed({ siteId }: LiveFeedProps = {}) {
   const [events, setEvents] = useState<Event[]>([]);
   const [groupedSessions, setGroupedSessions] = useState<Record<string, Event[]>>({});
   const [userSites, setUserSites] = useState<string[]>([]);
@@ -73,37 +77,66 @@ export function LiveFeed() {
       if (!user || !mounted) return;
 
       if (isDebugEnabled()) {
-        console.log('[LIVE_FEED] Initializing for user:', user.id);
+        console.log('[LIVE_FEED] Initializing for user:', user.id, siteId ? `(site: ${siteId})` : '');
       }
 
-      // Get user's sites
-      const { data: sites } = await supabase
-        .from('sites')
-        .select('id')
-        .eq('user_id', user.id);
+      // If siteId is provided, use it directly (RLS will enforce access)
+      if (siteId) {
+        // Verify site access via RLS (query will fail if user doesn't have access)
+        const { data: site } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('id', siteId)
+          .single();
 
-      if (!sites || sites.length === 0 || !mounted) {
-        console.warn('[LIVE_FEED] No sites found for user');
-        setIsInitialized(false);
-        setUserSites([]); // Set empty array to show proper message
-        return;
-      }
+        if (!site || !mounted) {
+          console.warn('[LIVE_FEED] Site not found or access denied:', siteId);
+          setIsInitialized(false);
+          setUserSites([]);
+          return;
+        }
 
-      const siteIds = sites.map((s) => s.id);
-      setUserSites(siteIds);
-      setIsInitialized(true);
+        setUserSites([siteId]);
+        setIsInitialized(true);
 
-      if (isDebugEnabled()) {
-        console.log('[LIVE_FEED] Found sites:', siteIds.length);
+        if (isDebugEnabled()) {
+          console.log('[LIVE_FEED] Using single site:', siteId);
+        }
+      } else {
+        // Get all user's sites (default behavior)
+        const { data: sites } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('user_id', user.id);
+
+        if (!sites || sites.length === 0 || !mounted) {
+          console.warn('[LIVE_FEED] No sites found for user');
+          setIsInitialized(false);
+          setUserSites([]); // Set empty array to show proper message
+          return;
+        }
+
+        const siteIds = sites.map((s) => s.id);
+        setUserSites(siteIds);
+        setIsInitialized(true);
+
+        if (isDebugEnabled()) {
+          console.log('[LIVE_FEED] Found sites:', siteIds.length);
+        }
       }
 
       const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
+      const activeSiteIds = siteId ? [siteId] : userSites.length > 0 ? userSites : [];
+
+      if (activeSiteIds.length === 0) {
+        return;
+      }
 
       // Get recent sessions - RLS compliant (sessions -> sites -> user_id)
       const { data: sessions } = await supabase
         .from('sessions')
         .select('id')
-        .in('site_id', siteIds)
+        .in('site_id', activeSiteIds)
         .eq('created_month', currentMonth)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -155,7 +188,7 @@ export function LiveFeed() {
     return () => {
       mounted = false;
     };
-  }, []); // Remove groupEventsBySession - using ref instead
+  }, [siteId]); // Re-initialize when siteId changes
 
   // Realtime subscription - only after userSites is populated
   useEffect(() => {
@@ -167,7 +200,7 @@ export function LiveFeed() {
     // Calculate current month inside effect to ensure it's fresh
     const getCurrentMonth = () => new Date().toISOString().slice(0, 7) + '-01';
     const currentMonth = getCurrentMonth();
-    const siteIds = [...userSites]; // Capture current value
+    const siteIds = siteId ? [siteId] : [...userSites]; // Use siteId if provided, otherwise all user sites
     
     // Runtime assertion: detect duplicate subscriptions
     if (subscriptionRef.current) {

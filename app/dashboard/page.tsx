@@ -7,9 +7,11 @@ import { TrackedEventsPanel } from '@/components/dashboard/tracked-events-panel'
 import { ConversionTracker } from '@/components/dashboard/conversion-tracker';
 import { SiteSetup } from '@/components/dashboard/site-setup';
 import { SitesManager } from '@/components/dashboard/sites-manager';
+import { SiteSwitcher } from '@/components/dashboard/site-switcher';
 import { MonthBoundaryBanner } from '@/components/dashboard/month-boundary-banner';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { isAdmin } from '@/lib/auth/isAdmin';
 
 async function signOut() {
   'use server';
@@ -26,14 +28,22 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  // Check if user has any sites
+  // Check if user is admin
+  const userIsAdmin = await isAdmin();
+
+  // Fetch sites: admin sees all, normal users see only their sites (RLS enforces)
   const { data: sites } = await supabase
     .from('sites')
     .select('id, name, domain, public_id')
-    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   const hasSites = sites && sites.length > 0;
+  const siteCount = sites?.length || 0;
+
+  // Auto-redirect if user has exactly 1 site
+  if (siteCount === 1 && sites && sites[0]) {
+    redirect(`/dashboard/site/${sites[0].id}`);
+  }
 
   return (
     <div className="min-h-screen bg-[#020617] p-6 relative">
@@ -81,8 +91,15 @@ export default async function DashboardPage() {
         
                     {/* Main Grid Layout */}
                     <div className="grid grid-cols-12 gap-4">
-                      {/* Sites Manager - Always show */}
-                      <div className="col-span-12">
+                      {/* Site Switcher - Show if multiple sites */}
+                      {siteCount > 1 && (
+                        <div className="col-span-12 lg:col-span-4">
+                          <SiteSwitcher isAdmin={userIsAdmin} />
+                        </div>
+                      )}
+
+                      {/* Sites Manager - Always show (for creating sites) */}
+                      <div className={`col-span-12 ${siteCount > 1 ? 'lg:col-span-8' : ''}`}>
                         <SitesManager />
                       </div>
 

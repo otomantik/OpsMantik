@@ -4,7 +4,11 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-export function StatsCards() {
+interface StatsCardsProps {
+  siteId?: string;
+}
+
+export function StatsCards({ siteId }: StatsCardsProps = {}) {
   const [stats, setStats] = useState({
     sessions: 0,
     events: 0,
@@ -18,26 +22,50 @@ export function StatsCards() {
       
       if (!user) return;
 
-      // Get user's sites
-      const { data: sites } = await supabase
-        .from('sites')
-        .select('id')
-        .eq('user_id', user.id);
-
-      if (!sites || sites.length === 0) return;
-
-      const siteIds = sites.map(s => s.id);
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
 
+      // If siteId is provided, use it directly (RLS will enforce access)
+      let siteIds: string[];
+      if (siteId) {
+        // Verify site access via RLS
+        const { data: site } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('id', siteId)
+          .single();
+
+        if (!site) return;
+
+        siteIds = [siteId];
+      } else {
+        // Get all user's sites (default behavior)
+        const { data: sites } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('user_id', user.id);
+
+        if (!sites || sites.length === 0) return;
+
+        siteIds = sites.map(s => s.id);
+      }
+
       // Get sessions count - RLS compliant
       // Count unique sessions from events (if event exists, session exists)
       // This ensures RLS compliance through the JOIN pattern
-      const { data: eventsData } = await supabase
+      let eventsQuery = supabase
         .from('events')
         .select('session_id, sessions!inner(site_id)')
         .gte('created_at', thirtyDaysAgo.toISOString());
+
+      if (siteId) {
+        eventsQuery = eventsQuery.eq('sessions.site_id', siteId);
+      } else {
+        eventsQuery = eventsQuery.in('sessions.site_id', siteIds);
+      }
+
+      const { data: eventsData } = await eventsQuery;
 
       // Count unique sessions that belong to user's sites
       const uniqueSessionIds = new Set<string>();
@@ -51,18 +79,34 @@ export function StatsCards() {
       const sessionsCount = uniqueSessionIds.size;
 
       // Get events count - RLS compliant using JOIN pattern
-      const { count: eventsCount } = await supabase
+      let eventsCountQuery = supabase
         .from('events')
         .select('*, sessions!inner(site_id)', { count: 'exact', head: true })
         .eq('session_month', currentMonth)
         .gte('created_at', thirtyDaysAgo.toISOString());
 
+      if (siteId) {
+        eventsCountQuery = eventsCountQuery.eq('sessions.site_id', siteId);
+      } else {
+        eventsCountQuery = eventsCountQuery.in('sessions.site_id', siteIds);
+      }
+
+      const { count: eventsCount } = await eventsCountQuery;
+
       // Get average lead score - RLS compliant using JOIN pattern
-      const { data: events } = await supabase
+      let eventsScoreQuery = supabase
         .from('events')
         .select('metadata, sessions!inner(site_id)')
         .eq('session_month', currentMonth)
         .gte('created_at', thirtyDaysAgo.toISOString());
+
+      if (siteId) {
+        eventsScoreQuery = eventsScoreQuery.eq('sessions.site_id', siteId);
+      } else {
+        eventsScoreQuery = eventsScoreQuery.in('sessions.site_id', siteIds);
+      }
+
+      const { data: events } = await eventsScoreQuery;
 
       const scores = events?.map(e => (e.metadata as any)?.lead_score || 0).filter(s => s > 0) || [];
       const avgScore = scores.length > 0 
@@ -79,7 +123,7 @@ export function StatsCards() {
     fetchStats();
     const interval = setInterval(fetchStats, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, []);
+  }, [siteId]);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
