@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, memo } from 'react';
+import { useState, memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock, Copy } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { useSessionData } from '@/lib/hooks/use-session-data';
 
 interface Event {
   id: string;
@@ -24,39 +24,14 @@ interface SessionGroupProps {
 
 export const SessionGroup = memo(function SessionGroup({ sessionId, events }: SessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [matchedCall, setMatchedCall] = useState<any>(null);
-  const [isLoadingCall, setIsLoadingCall] = useState(false);
-  const [sessionData, setSessionData] = useState<{
-    attribution_source?: string | null;
-    device_type?: string | null;
-    city?: string | null;
-    district?: string | null;
-    fingerprint?: string | null;
-    gclid?: string | null;
-  } | null>(null);
   
   const firstEvent = events[events.length - 1]; // Oldest event
   const lastEvent = events[0]; // Newest event
   const metadata = firstEvent.metadata || {};
   const leadScore = metadata.lead_score || 0;
   
-  // Fetch session data (normalized fields) - fallback to event metadata
-  useEffect(() => {
-    const fetchSessionData = async () => {
-      const supabase = createClient();
-      const { data: session } = await supabase
-        .from('sessions')
-        .select('attribution_source, device_type, city, district, fingerprint, gclid')
-        .eq('id', sessionId)
-        .maybeSingle();
-      
-      if (session) {
-        setSessionData(session);
-      }
-    };
-    
-    fetchSessionData();
-  }, [sessionId]);
+  // Use extracted hook for session data fetching and call matching
+  const { sessionData, matchedCall, isLoading: isLoadingCall } = useSessionData(sessionId, metadata);
   
   // Use session data first, fallback to event metadata
   // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant
@@ -71,38 +46,6 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   const device = sessionData?.device_type || metadata.device_type || null;
   const os = metadata.os || null;
   const browser = metadata.browser || null;
-
-  // Check for matched call when component mounts or session changes
-  useEffect(() => {
-    // Use fingerprint from sessionData or metadata
-    const currentFingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp;
-    if (!currentFingerprint) return;
-
-    setIsLoadingCall(true);
-    const supabase = createClient();
-    
-    // Use JOIN pattern for RLS compliance - calls -> sites -> user_id
-    supabase
-      .from('calls')
-      .select('*, sites!inner(user_id)')
-      .eq('matched_fingerprint', currentFingerprint)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error) {
-          // Silently ignore RLS errors (call might belong to another user)
-          console.log('[SESSION_GROUP] Call lookup error (RLS?):', error.message);
-          setIsLoadingCall(false);
-          return;
-        }
-        if (data) {
-          setMatchedCall(data);
-        }
-        setIsLoadingCall(false);
-      });
-  }, [sessionData, metadata]);
 
   // Get icon for event action
   const getEventIcon = (action: string) => {

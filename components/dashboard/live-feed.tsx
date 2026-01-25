@@ -11,337 +11,25 @@
  * 
  * Security: Uses anon key only (createClient), no service role leakage
  */
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SessionGroup } from './session-group';
-import { isDebugEnabled } from '@/lib/utils';
-
-interface Event {
-  id: string;
-  session_id: string;
-  session_month: string;
-  event_category: string;
-  event_action: string;
-  event_label: string | null;
-  event_value: number | null;
-  metadata: any;
-  created_at: string;
-  url?: string;
-}
+import { useLiveFeedData } from '@/lib/hooks/use-live-feed-data';
+import { Event } from '@/lib/events';
 
 interface LiveFeedProps {
   siteId?: string;
 }
 
 export function LiveFeed({ siteId }: LiveFeedProps = {}) {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [groupedSessions, setGroupedSessions] = useState<Record<string, Event[]>>({});
-  const [userSites, setUserSites] = useState<string[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const subscriptionRef = useRef<any>(null);
-  const isMountedRef = useRef<boolean>(true);
-  const duplicateWarningRef = useRef<boolean>(false);
+  // Use extracted hook for data fetching and realtime subscriptions
+  const { events, groupedSessions, userSites, isInitialized, isLoading, error } = useLiveFeedData(siteId);
   
   // Filter state
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
 
-  // Memoized grouping: compute groupedSessions from events only when events change
-  // This avoids expensive recalculations on every render
-  useEffect(() => {
-    if (events.length === 0) {
-      setGroupedSessions({});
-      return;
-    }
-
-    // Group events by session (only called when events array changes, not on every render)
-    const grouped: Record<string, Event[]> = {};
-    events.forEach((event) => {
-      if (!grouped[event.session_id]) {
-        grouped[event.session_id] = [];
-      }
-      grouped[event.session_id].push(event);
-    });
-    
-    // Sort events within each session (PR1: maintain deterministic order)
-    Object.keys(grouped).forEach((sessionId) => {
-      grouped[sessionId].sort((a, b) => {
-        const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        if (timeDiff !== 0) return timeDiff;
-        return a.id.localeCompare(b.id); // PR1 tie-breaker
-      });
-    });
-
-    setGroupedSessions(grouped);
-  }, [events]); // Only recalculate when events array changes
-
-  useEffect(() => {
-    const supabase = createClient();
-    let mounted = true;
-
-    const initialize = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !mounted) return;
-
-      if (isDebugEnabled()) {
-        console.log('[LIVE_FEED] Initializing for user:', user.id, siteId ? `(site: ${siteId})` : '');
-      }
-
-      // If siteId is provided, use it directly (RLS will enforce access)
-      if (siteId) {
-        // Verify site access via RLS (query will fail if user doesn't have access)
-        const { data: site } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('id', siteId)
-          .single();
-
-        if (!site || !mounted) {
-          console.warn('[LIVE_FEED] Site not found or access denied:', siteId);
-          setIsInitialized(false);
-          setUserSites([]);
-          return;
-        }
-
-        setUserSites([siteId]);
-        setIsInitialized(true);
-
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Using single site:', siteId);
-        }
-      } else {
-        // Get all user's sites (default behavior)
-        const { data: sites } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('user_id', user.id);
-
-        if (!sites || sites.length === 0 || !mounted) {
-          console.warn('[LIVE_FEED] No sites found for user');
-          setIsInitialized(false);
-          setUserSites([]); // Set empty array to show proper message
-          return;
-        }
-
-        const siteIds = sites.map((s) => s.id);
-        setUserSites(siteIds);
-        setIsInitialized(true);
-
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Found sites:', siteIds.length);
-        }
-      }
-
-      const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-      const activeSiteIds = siteId ? [siteId] : userSites.length > 0 ? userSites : [];
-
-      if (activeSiteIds.length === 0) {
-        return;
-      }
-
-      // Get recent sessions - RLS compliant (sessions -> sites -> user_id)
-      const { data: sessions } = await supabase
-        .from('sessions')
-        .select('id')
-        .in('site_id', activeSiteIds)
-        .eq('created_month', currentMonth)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(50);
-
-      if (!sessions || sessions.length === 0 || !mounted) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] No sessions found');
-        }
-        return;
-      }
-
-      if (isDebugEnabled()) {
-        console.log('[LIVE_FEED] Found sessions:', sessions.length);
-      }
-
-      // Get recent events - RLS compliant using JOIN pattern
-      const { data: recentEvents } = await supabase
-        .from('events')
-        .select('*, sessions!inner(site_id), url')
-        .eq('session_month', currentMonth)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(100);
-
-      if (recentEvents && mounted) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Loaded events:', recentEvents.length);
-        }
-        // Extract event data (JOIN returns nested structure)
-        const eventsData = recentEvents.map((item: any) => ({
-          id: item.id,
-          session_id: item.session_id,
-          session_month: item.session_month,
-          event_category: item.event_category,
-          event_action: item.event_action,
-          event_label: item.event_label,
-          event_value: item.event_value,
-          metadata: item.metadata,
-          created_at: item.created_at,
-          url: item.url,
-        })) as Event[];
-        
-        setEvents(eventsData);
-        // groupedSessions will be computed automatically via useEffect when events change
-      }
-    };
-
-    initialize();
-
-    return () => {
-      mounted = false;
-    };
-  }, [siteId]); // Re-initialize when siteId changes
-
-  // Realtime subscription - only after userSites is populated
-  useEffect(() => {
-    if (!isInitialized || userSites.length === 0) {
-      return;
-    }
-
-    const supabase = createClient();
-    // Calculate current month inside effect to ensure it's fresh
-    const getCurrentMonth = () => new Date().toISOString().slice(0, 7) + '-01';
-    const currentMonth = getCurrentMonth();
-    const siteIds = siteId ? [siteId] : [...userSites]; // Use siteId if provided, otherwise all user sites
-    
-    // Runtime assertion: detect duplicate subscriptions
-    if (subscriptionRef.current) {
-      if (!duplicateWarningRef.current) {
-        console.warn('[LIVE_FEED] ⚠️ Duplicate subscription detected! Cleaning up existing subscription before creating new one.');
-        duplicateWarningRef.current = true;
-      }
-      // Clean up existing subscription
-      supabase.removeChannel(subscriptionRef.current);
-      subscriptionRef.current = null;
-    } else {
-      // Reset warning flag when subscription is properly cleaned up
-      duplicateWarningRef.current = false;
-    }
-    
-    if (isDebugEnabled()) {
-      console.log('[LIVE_FEED] Setting up realtime subscription for', siteIds.length, 'sites');
-    }
-
-    // Realtime subscription for events
-    const eventsChannel = supabase
-      .channel('events-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'events',
-        },
-        async (payload) => {
-          const newEvent = payload.new as Event;
-          
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] 🔔 New event received:', {
-              id: newEvent.id.slice(0, 8),
-              action: newEvent.event_action,
-              session_month: newEvent.session_month,
-              current_month: currentMonth,
-            });
-          }
-          
-          // Filter by session_month (partition check) - use fresh current month
-          const eventMonth = newEvent.session_month;
-          const freshCurrentMonth = getCurrentMonth();
-          if (eventMonth !== freshCurrentMonth) {
-            if (isDebugEnabled()) {
-              console.log('[LIVE_FEED] ⏭️ Ignoring event from different partition:', eventMonth, 'vs', freshCurrentMonth);
-            }
-            return; // Ignore events from other partitions
-          }
-
-          // Trust RLS subscription filter - no redundant verification query
-          // The subscription already filters by site_id via RLS policies
-          // Quick client-side check: if siteId is provided, verify event belongs to that site
-          // Otherwise, trust the subscription (it only receives events from user's sites)
-          if (siteId) {
-            // For single-site view, we can do a lightweight check via metadata if available
-            // But since RLS already enforces this, we can skip verification
-            // The subscription channel is site-scoped, so all events are valid
-          }
-
-          // Guard against unmount before setState
-          if (!isMountedRef.current) {
-            if (isDebugEnabled()) {
-              console.log('[LIVE_FEED] ⏭️ Component unmounted, skipping event update');
-            }
-            return;
-          }
-
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] ✅ Adding event to feed:', newEvent.event_action);
-          }
-
-          // Incremental update: add event to events list and update only the affected session group
-          setEvents((prev) => {
-            // Double-check mount status inside setState callback
-            if (!isMountedRef.current) return prev;
-            // Maintain PR1 deterministic order: prepend new event, keep id DESC tie-breaker
-            const updated = [newEvent, ...prev].slice(0, 100);
-            return updated;
-          });
-
-          // Incremental grouping: update only the affected session group instead of full regroup
-          setGroupedSessions((prev) => {
-            if (!isMountedRef.current) return prev;
-            const sessionId = newEvent.session_id;
-            const updated = { ...prev };
-            if (!updated[sessionId]) {
-              updated[sessionId] = [];
-            }
-            // Add new event to session group, maintaining PR1 deterministic order
-            updated[sessionId] = [newEvent, ...updated[sessionId]].slice(0, 100);
-            return updated;
-          });
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] ✅ Realtime subscription ACTIVE for', siteIds.length, 'sites');
-          }
-        } else if (status === 'CHANNEL_ERROR') {
-          // Connection errors are often transient - Supabase will auto-reconnect
-          // Only log as warning unless it's a persistent issue
-          console.warn('[LIVE_FEED] ⚠️ Realtime subscription error (will auto-reconnect):', err?.message || 'Connection issue');
-        } else if (status === 'CLOSED') {
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] Realtime subscription closed (normal - will reconnect)');
-          }
-        } else {
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] Subscription status:', status);
-          }
-        }
-      });
-
-    subscriptionRef.current = eventsChannel;
-
-    return () => {
-      // Mark as unmounted before cleanup
-      isMountedRef.current = false;
-      if (subscriptionRef.current) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Cleaning up subscription on unmount');
-        }
-        supabase.removeChannel(subscriptionRef.current);
-        subscriptionRef.current = null;
-      }
-    };
-  }, [isInitialized, userSites]); // Subscription setup - grouping handled by useEffect on events
 
   // Extract unique filter values from sessions (client-side only)
   const filterOptions = useMemo(() => {
@@ -393,6 +81,20 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
     setSelectedDevice(null);
   };
 
+  // Show error if data fetch failed
+  if (error) {
+    return (
+      <Card className="glass border-slate-800/50 border-2 border-red-800/50">
+        <CardHeader>
+          <CardTitle className="text-lg font-mono text-red-400">⚠️ ERROR LOADING FEED</CardTitle>
+          <CardDescription className="font-mono text-xs text-slate-400 mt-2">
+            {error.message}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
   // Show message if no sites
   if (isInitialized && userSites.length === 0) {
     return (
@@ -434,13 +136,13 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
     );
   }
 
-  if (!isInitialized) {
+  if (!isInitialized || isLoading) {
     return (
       <Card className="glass border-slate-800/50">
         <CardHeader>
           <CardTitle className="text-lg font-mono text-slate-200">LIVE EVENT FEED</CardTitle>
           <CardDescription className="font-mono text-xs text-slate-400">
-            Initializing...
+            {isLoading ? 'Loading...' : 'Initializing...'}
           </CardDescription>
         </CardHeader>
         <CardContent>

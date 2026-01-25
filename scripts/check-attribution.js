@@ -19,27 +19,36 @@ if (!fs.existsSync(sessionGroupPath)) {
   process.exit(1);
 }
 
-const content = fs.readFileSync(sessionGroupPath, 'utf8');
+const sessionGroupContent = fs.readFileSync(sessionGroupPath, 'utf8');
 
-// Must fetch session data
-if (!content.includes("from('sessions')") || !content.includes('attribution_source')) {
-  console.error('❌ UI does not read attribution_source from sessions table');
+// Check use-session-data hook (PR4: extracted to hook)
+const useSessionDataPath = path.join(__dirname, '../lib/hooks/use-session-data.ts');
+if (!fs.existsSync(useSessionDataPath)) {
+  console.error('❌ lib/hooks/use-session-data.ts not found');
   hasErrors = true;
+} else {
+  const hookContent = fs.readFileSync(useSessionDataPath, 'utf8');
+  
+  // Must fetch session data from hook
+  if (!hookContent.includes("from('sessions')") || !hookContent.includes('attribution_source')) {
+    console.error('❌ Hook does not read attribution_source from sessions table');
+    hasErrors = true;
+  }
 }
 
-// Must use sessionData first, fallback to metadata
-if (!content.includes('sessionData?.attribution_source') && !content.includes('sessionData.attribution_source')) {
+// Must use sessionData first, fallback to metadata (in component or hook)
+if (!sessionGroupContent.includes('sessionData?.attribution_source') && !sessionGroupContent.includes('sessionData.attribution_source')) {
   console.error('❌ UI does not use sessionData first for attribution_source');
   hasErrors = true;
 }
 
-if (!content.includes('metadata.attribution_source')) {
+if (!sessionGroupContent.includes('metadata.attribution_source')) {
   console.error('❌ UI does not have fallback to metadata.attribution_source');
   hasErrors = true;
 }
 
 // Check context chips always render
-if (!content.includes('CITY:') || !content.includes('DISTRICT:') || !content.includes('DEVICE:')) {
+if (!sessionGroupContent.includes('CITY:') || !sessionGroupContent.includes('DISTRICT:') || !sessionGroupContent.includes('DEVICE:')) {
   console.error('❌ Context chips not found in UI');
   hasErrors = true;
 }

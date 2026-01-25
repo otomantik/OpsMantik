@@ -45,31 +45,8 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
     notFound();
   }
 
-  // If not admin, verify user has access (owner or member)
-  if (!userIsAdmin) {
-    // Check if user owns the site
-    const { data: ownedSite } = await supabase
-      .from('sites')
-      .select('id')
-      .eq('id', siteId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!ownedSite) {
-      // Check if user is a member
-      const { data: membership } = await supabase
-        .from('site_members')
-        .select('site_id')
-        .eq('site_id', siteId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) {
-        // User has no access to this site
-        notFound();
-      }
-    }
-  }
+  // Trust RLS: Components will enforce access via RLS policies
+  // If user doesn't have access, RLS will prevent data fetching and components will show appropriate state
 
   return (
     <div className="min-h-screen bg-[#020617] p-6 relative">
