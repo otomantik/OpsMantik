@@ -83,7 +83,7 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
                     {site.public_id}
                   </td>
                   <td className="p-3 font-mono text-xs text-slate-500">
-                    {site.user_id.slice(0, 8)}...
+                    {site.owner_email || `${site.user_id.slice(0, 8)}...`}
                   </td>
                   <td className="p-3 font-mono text-xs text-slate-400">
                     {site.last_event_at 

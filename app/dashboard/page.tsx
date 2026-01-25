@@ -31,16 +31,19 @@ export default async function DashboardPage() {
   // Check if user is admin
   const userIsAdmin = await isAdmin();
 
-  // Fetch sites: admin sees all, normal users see only their sites (RLS enforces)
+  // Fetch accessible sites: owner OR member OR admin (RLS enforces)
   const { data: sites } = await supabase
     .from('sites')
     .select('id, name, domain, public_id')
     .order('created_at', { ascending: false });
 
-  const hasSites = sites && sites.length > 0;
   const siteCount = sites?.length || 0;
 
-  // Auto-redirect if user has exactly 1 site
+  // Router logic:
+  // 0 sites => show CTA + create site UI
+  // 1 site => redirect to /dashboard/site/<id>
+  // many => show Site Switcher + recent sites list
+
   if (siteCount === 1 && sites && sites[0]) {
     redirect(`/dashboard/site/${sites[0].id}`);
   }
@@ -49,15 +52,8 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-[#020617] p-6 relative">
       {/* Month Boundary Banner */}
       <MonthBoundaryBanner />
-      
-      {/* Fixed Call Monitor - Top Right (only if user has sites) */}
-      {hasSites && (
-        <div className="fixed top-6 right-6 z-50 w-72">
-          <CallAlertWrapper />
-        </div>
-      )}
 
-      <div className={`max-w-[1920px] mx-auto ${hasSites ? 'pr-80' : ''}`}>
+      <div className="max-w-[1920px] mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -69,14 +65,16 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Link href="/test-page">
-              <Button 
-                variant="outline" 
-                className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
-              >
-                🧪 TEST PAGE
-              </Button>
-            </Link>
+            {process.env.NODE_ENV === 'development' && (
+              <Link href="/test-page">
+                <Button 
+                  variant="outline" 
+                  className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
+                >
+                  🧪 TEST PAGE
+                </Button>
+              </Link>
+            )}
             <form action={signOut}>
               <Button 
                 type="submit" 
@@ -89,55 +87,30 @@ export default async function DashboardPage() {
           </div>
         </div>
         
-                    {/* Main Grid Layout */}
-                    <div className="grid grid-cols-12 gap-4">
-                      {/* Site Switcher - Show if multiple sites */}
-                      {siteCount > 1 && (
-                        <div className="col-span-12 lg:col-span-4">
-                          <SiteSwitcher isAdmin={userIsAdmin} />
-                        </div>
-                      )}
-
-                      {/* Sites Manager - Always show (for creating sites) */}
-                      <div className={`col-span-12 ${siteCount > 1 ? 'lg:col-span-8' : ''}`}>
-                        <SitesManager />
-                      </div>
-
-                      {/* Site Setup - Show if no sites (legacy) */}
-                      {!hasSites && (
-                        <div className="col-span-12">
-                          <SiteSetup />
-                        </div>
-                      )}
-
-                      {/* Top Row: Stats Cards */}
-                      {hasSites && (
-                        <div className="col-span-12">
-                          <StatsCards />
-                        </div>
-                      )}
-                      
-                      {/* Left Column: Live Feed */}
-                      {hasSites && (
-                        <div className="col-span-12 lg:col-span-8">
-                          <LiveFeed />
-                        </div>
-                      )}
-                      
-                      {/* Right Column: Tracked Events */}
-                      {hasSites && (
-                        <div className="col-span-12 lg:col-span-4">
-                          <TrackedEventsPanel />
-                        </div>
-                      )}
-                      
-                      {/* Bottom: Conversions (Full Width) */}
-                      {hasSites && (
-                        <div className="col-span-12">
-                          <ConversionTracker />
-                        </div>
-                      )}
-        </div>
+        {/* Router Content */}
+        {siteCount === 0 ? (
+          // 0 sites: Show CTA + create site UI
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12">
+              <SitesManager />
+            </div>
+            {process.env.NODE_ENV === 'development' && (
+              <div className="col-span-12">
+                <SiteSetup />
+              </div>
+            )}
+          </div>
+        ) : (
+          // Many sites: Show Site Switcher + recent sites list
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 lg:col-span-4">
+              <SiteSwitcher isAdmin={userIsAdmin} />
+            </div>
+            <div className="col-span-12 lg:col-span-8">
+              <SitesManager />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

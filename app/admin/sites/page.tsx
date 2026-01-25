@@ -17,96 +17,66 @@ interface SiteWithStatus {
   status: 'Receiving events' | 'No traffic';
 }
 
-async function getSitesWithStatus(): Promise<SiteWithStatus[]> {
+interface RpcSiteResult {
+  site_id: string;
+  name: string | null;
+  domain: string | null;
+  public_id: string;
+  owner_user_id: string;
+  owner_email: string | null;
+  last_event_at: string | null;
+  last_category: string | null;
+  last_label: string | null;
+  minutes_ago: number | null;
+  status: 'RECEIVING' | 'NO_TRAFFIC';
+}
+
+interface GetSitesResult {
+  sites: SiteWithStatus[];
+  error: string | null;
+}
+
+async function getSitesWithStatus(search?: string): Promise<GetSitesResult> {
   const supabase = await createClient();
   
-  // Get all sites (RLS allows admin to see all)
-  const { data: sites, error: sitesError } = await supabase
-    .from('sites')
-    .select('id, name, domain, public_id, user_id')
-    .order('created_at', { ascending: false });
+  // Call RPC function - single query eliminates N+1
+  const { data: rpcResults, error: rpcError } = await supabase
+    .rpc('admin_sites_list', {
+      search: search || null,
+      limit_count: 1000, // High limit for admin view
+      offset_count: 0
+    });
 
-  if (sitesError || !sites) {
-    return [];
+  if (rpcError) {
+    return {
+      sites: [],
+      error: rpcError.message || 'Failed to load sites. Check profiles role + RPC.'
+    };
   }
 
-  // Get current month for partition queries
-  const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-  const currentMonthDate = new Date(currentMonth);
-  const prevMonth = new Date(currentMonthDate);
-  prevMonth.setMonth(prevMonth.getMonth() - 1);
-  const prevMonthStr = prevMonth.toISOString().slice(0, 7) + '-01';
+  if (!rpcResults) {
+    return {
+      sites: [],
+      error: null
+    };
+  }
 
-  // For each site, get last event (simplified - can be optimized with batch queries later)
-  const sitesWithStatus: SiteWithStatus[] = await Promise.all(
-    sites.map(async (site) => {
-      // Try current month first
-      const { data: sessions } = await supabase
-        .from('sessions')
-        .select('id')
-        .eq('site_id', site.id)
-        .eq('created_month', currentMonth)
-        .limit(1);
+  // Transform RPC results to match component interface
+  const sites: SiteWithStatus[] = (rpcResults as RpcSiteResult[]).map((rpc) => ({
+    id: rpc.site_id,
+    name: rpc.name,
+    domain: rpc.domain,
+    public_id: rpc.public_id,
+    user_id: rpc.owner_user_id,
+    owner_email: rpc.owner_email,
+    last_event_at: rpc.last_event_at,
+    status: rpc.status === 'RECEIVING' ? 'Receiving events' : 'No traffic'
+  }));
 
-      let lastEventAt: string | null = null;
-      let status: 'Receiving events' | 'No traffic' = 'No traffic';
-
-      if (sessions && sessions.length > 0) {
-        const { data: event } = await supabase
-          .from('events')
-          .select('created_at')
-          .eq('session_id', sessions[0].id)
-          .eq('session_month', currentMonth)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (event) {
-          lastEventAt = event.created_at;
-          status = 'Receiving events';
-        }
-      }
-
-      // If no event in current month, try previous month
-      if (!lastEventAt) {
-        const { data: prevSessions } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('site_id', site.id)
-          .eq('created_month', prevMonthStr)
-          .limit(1);
-
-        if (prevSessions && prevSessions.length > 0) {
-          const { data: prevEvent } = await supabase
-            .from('events')
-            .select('created_at')
-            .eq('session_id', prevSessions[0].id)
-            .eq('session_month', prevMonthStr)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (prevEvent) {
-            lastEventAt = prevEvent.created_at;
-            status = 'Receiving events';
-          }
-        }
-      }
-
-      return {
-        id: site.id,
-        name: site.name,
-        domain: site.domain,
-        public_id: site.public_id,
-        user_id: site.user_id,
-        owner_email: null, // Can be enhanced later with proper email lookup
-        last_event_at: lastEventAt,
-        status,
-      };
-    })
-  );
-
-  return sitesWithStatus;
+  return {
+    sites,
+    error: null
+  };
 }
 
 export default async function AdminSitesPage() {
@@ -123,7 +93,7 @@ export default async function AdminSitesPage() {
     redirect('/dashboard');
   }
 
-  const sites = await getSitesWithStatus();
+  const { sites, error } = await getSitesWithStatus();
 
   return (
     <div className="min-h-screen bg-[#020617] p-6">
@@ -149,6 +119,25 @@ export default async function AdminSitesPage() {
             </Link>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <Card className="glass border-red-800/50 mb-6">
+            <CardContent className="pt-6">
+              <div className="bg-red-900/20 border border-red-700/50 rounded p-4">
+                <p className="font-mono text-sm text-red-400 font-semibold mb-1">
+                  Error loading sites
+                </p>
+                <p className="font-mono text-xs text-red-300">
+                  {error}
+                </p>
+                <p className="font-mono text-xs text-red-400/70 mt-2">
+                  Check profiles role + RPC function permissions
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sites List */}
         <Card className="glass border-slate-800/50">

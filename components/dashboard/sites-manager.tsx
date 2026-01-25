@@ -232,6 +232,7 @@ export function SitesManager() {
     if (!newSite) return;
 
     const domain = getPrimaryDomain();
+    // Always include data-api with console domain
     const apiUrl = `https://console.${domain}/api/sync`;
     const snippet = `<script defer src="https://assets.${domain}/assets/core.js" data-site-id="${newSite.public_id}" data-api="${apiUrl}"></script>`;
     

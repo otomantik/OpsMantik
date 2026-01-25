@@ -104,14 +104,16 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
             </p>
           </div>
           <div className="flex gap-2">
-            <Link href="/test-page">
-              <Button 
-                variant="outline" 
-                className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
-              >
-                🧪 TEST PAGE
-              </Button>
-            </Link>
+            {process.env.NODE_ENV === 'development' && (
+              <Link href="/test-page">
+                <Button 
+                  variant="outline" 
+                  className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
+                >
+                  🧪 TEST PAGE
+                </Button>
+              </Link>
+            )}
             <form action={signOut}>
               <Button 
                 type="submit" 

@@ -66,7 +66,9 @@ export function SiteSetup() {
             </p>
             <ul className="font-mono text-xs text-slate-400 space-y-1 ml-4 list-disc">
               <li>Public ID: <code className="text-slate-300">test_site_123</code></li>
-              <li>Domain: <code className="text-slate-300">localhost:3000</code></li>
+              {process.env.NODE_ENV === 'development' && (
+                <li>Domain: <code className="text-slate-300">localhost:3000</code></li>
+              )}
               <li>Use this in your tracker script: <code className="text-slate-300">data-site-id="test_site_123"</code></li>
             </ul>
           </div>
