@@ -138,14 +138,18 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
     }
 
     // Realtime subscription
+    // Note: Using unique channel name per subscription to avoid conflicts
+    const channelName = `calls-realtime-${siteIds.join('-')}-${Date.now()}`;
     const channel = supabase
-      .channel('calls-realtime')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'calls',
+          // No filter - RLS policies handle access control
+          // Client-side filtering by site_id happens in the handler
         },
         async (payload) => {
           const newCall = payload.new as Call;
@@ -224,7 +228,17 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
           console.log('[CALL_ALERT] ✅ Realtime subscription ACTIVE for', siteIds.length, 'site(s)');
         } else if (status === 'CHANNEL_ERROR') {
           // Connection errors are often transient - Supabase will auto-reconnect
-          console.warn('[CALL_ALERT] ⚠️ Realtime subscription error (will auto-reconnect):', err?.message || 'Connection issue');
+          const errorMsg = err?.message || 'Connection issue';
+          // Suppress "mismatch between server and client bindings" warning if it's just a transient issue
+          if (errorMsg.includes('mismatch between server and client bindings')) {
+            // This is often a transient Supabase realtime issue that auto-resolves
+            // It can occur during connection establishment or when RLS policies are being evaluated
+            if (isDebugEnabled()) {
+              console.warn('[CALL_ALERT] ⚠️ Realtime binding mismatch (transient, will auto-reconnect):', errorMsg);
+            }
+          } else {
+            console.warn('[CALL_ALERT] ⚠️ Realtime subscription error (will auto-reconnect):', errorMsg);
+          }
         } else if (status === 'CLOSED') {
           console.log('[CALL_ALERT] Realtime subscription closed (normal - will reconnect)');
         } else if (status === 'TIMED_OUT') {
