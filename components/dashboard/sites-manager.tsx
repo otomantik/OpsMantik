@@ -57,7 +57,14 @@ export function SitesManager() {
         .order('created_at', { ascending: false });
 
       if (sitesError) {
-        console.error('[SITES_MANAGER] Error fetching sites:', sitesError);
+        // Detailed error logging
+        console.error('[SITES_MANAGER] Error fetching sites:', {
+          message: sitesError?.message,
+          code: sitesError?.code,
+          details: sitesError?.details,
+          hint: sitesError?.hint,
+          raw: sitesError
+        });
         
         // Check for PostgreSQL error code 42703 (undefined_column)
         // This indicates a schema mismatch - required columns are missing
@@ -71,7 +78,18 @@ export function SitesManager() {
         if (isSchemaMismatch) {
           setError('Database schema mismatch: required columns missing on sites table (name/domain/public_id). Run migration.');
         } else {
-          setError('Failed to load sites');
+          // Build human-readable error message
+          let errorMessage = 'Failed to load sites';
+          if (sitesError.message) {
+            errorMessage = sitesError.message;
+          }
+          if (sitesError.code) {
+            errorMessage += ` (Code: ${sitesError.code})`;
+          }
+          if (sitesError.details) {
+            errorMessage += ` - ${sitesError.details}`;
+          }
+          setError(errorMessage);
         }
       } else {
         setSites(sitesData || []);
@@ -313,6 +331,20 @@ export function SitesManager() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Error Display - Visible error box for fetch errors */}
+        {error && !error.includes('Database schema mismatch') && (
+          <div className="bg-red-900/20 border border-red-700/50 p-4 rounded space-y-2">
+            <p className="font-mono text-sm text-red-400 font-semibold">
+              ⚠️ Error Loading Sites
+            </p>
+            <p className="font-mono text-xs text-red-300 break-words">
+              {error}
+            </p>
+            <p className="font-mono text-xs text-red-400/70 mt-2">
+              Check browser console for detailed error information.
+            </p>
+          </div>
+        )}
         {/* Add Site Form */}
         {showAddForm && (
           <form onSubmit={handleSubmit} className="bg-slate-900/50 p-4 rounded border border-slate-700/50 space-y-3">
