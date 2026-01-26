@@ -133,6 +133,38 @@ export async function POST(req: NextRequest) {
 
         if (!site_id || !url) return NextResponse.json({ status: 'synced' });
 
+        // PR-HARD-5: Input validation
+        // 1. Validate site_id format (UUID v4)
+        const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (typeof site_id !== 'string' || !uuidV4Regex.test(site_id)) {
+            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+            return NextResponse.json(
+                { status: 'error', message: 'Invalid site_id format' },
+                {
+                    status: 400,
+                    headers: {
+                        'Access-Control-Allow-Origin': allowedOrigin,
+                    },
+                }
+            );
+        }
+
+        // 2. Validate url format
+        try {
+            new URL(url);
+        } catch {
+            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+            return NextResponse.json(
+                { status: 'error', message: 'Invalid url format' },
+                {
+                    status: 400,
+                    headers: {
+                        'Access-Control-Allow-Origin': allowedOrigin,
+                    },
+                }
+            );
+        }
+
         // 1. Validate Site
         const { data: site, error: siteError } = await adminClient
             .from('sites')
