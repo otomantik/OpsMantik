@@ -15,6 +15,26 @@ function generateUUID(): string {
     });
 }
 
+/**
+ * Get recent months for partition filtering
+ * Returns array of month strings in format 'YYYY-MM-01' for last N months
+ * 
+ * @param months - Number of months to include (default: 6)
+ * @returns Array of month strings, e.g., ['2026-01-01', '2025-12-01', ...]
+ */
+function getRecentMonths(months: number = 6): string[] {
+    const result: string[] = [];
+    const now = new Date();
+    
+    for (let i = 0; i < months; i++) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthStr = date.toISOString().slice(0, 7) + '-01';
+        result.push(monthStr);
+    }
+    
+    return result;
+}
+
 // GeoIP - optional, disabled for Edge Runtime compatibility
 // Note: geoip-lite requires Node.js runtime and is not compatible with Edge Runtime
 // For production, consider using a GeoIP API service instead
@@ -157,11 +177,13 @@ export async function POST(req: NextRequest) {
         let hasPastGclid = false;
         if (!currentGclid && fingerprint) {
             // Query past events with GCLID, matched by fingerprint
-            // Check across all months (not just current month)
+            // Search in last 6 months (realistic window for attribution)
+            const recentMonths = getRecentMonths(6);
             const { data: pastEvents } = await adminClient
                 .from('events')
                 .select('metadata, created_at, session_month')
                 .not('metadata->gclid', 'is', null)
+                .in('session_month', recentMonths) // Partition filter: only search last 6 months
                 .order('created_at', { ascending: false })
                 .limit(50);
             
