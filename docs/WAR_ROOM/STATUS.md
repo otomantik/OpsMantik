@@ -244,4 +244,4 @@ Before committing OPS Console changes:
 
 ### 🟢 Status (2026-01-27)
 - [x] **POLISH-2A Done**: Backend stats RPC implemented and verified.
-- Commit ID: `6e92fb2f2276e9620de939a81fbab8468e770de4`
+- Commit ID: `d17ade55075b21cbc4138a95ca62cf5c34afa211`
