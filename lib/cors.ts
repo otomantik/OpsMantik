@@ -59,49 +59,47 @@ export function parseAllowedOrigins(): string[] {
  * - Wildcard '*' allows all (security warning handled in parseAllowedOrigins)
  * - Exact full origin match: "https://example.com" === "https://example.com"
  * - Subdomain match: "https://www.example.com" matches allowed "https://example.com"
- * - Rejects: "https://example.com.evil.com"
+ * - Protocol + Slash agnostic version
  * 
  * @param origin - Origin header value (e.g., "https://example.com")
  * @param allowedOrigins - Array of allowed origins from parseAllowedOrigins()
- * @returns true if origin is allowed
+ * @returns { isAllowed: boolean, reason?: string }
  */
-export function isOriginAllowed(origin: string | null, allowedOrigins: string[]): boolean {
-  if (!origin) return false;
+export function isOriginAllowed(origin: string | null, allowedOrigins: string[]): { isAllowed: boolean, reason?: string } {
+  if (!origin) return { isAllowed: false, reason: 'missing_origin' };
+  if (allowedOrigins.includes('*')) return { isAllowed: true };
 
-  // Wildcard allows all (security warning handled in parseAllowedOrigins)
-  if (allowedOrigins.includes('*')) return true;
+  const normalizedOrigin = origin.toLowerCase().trim().replace(/\/+$/, '');
 
-  const normalizedOrigin = origin.toLowerCase().trim().replace(/\/$/, '');
+  for (const allowed of allowedOrigins) {
+    const normalizedAllowed = allowed.toLowerCase().trim().replace(/\/+$/, '');
 
-  return allowedOrigins.some(allowed => {
-    const normalizedAllowed = allowed.toLowerCase().trim().replace(/\/$/, '');
+    // 1. Exact match (shorthand or full)
+    if (normalizedOrigin === normalizedAllowed) return { isAllowed: true };
 
-    // 1. Exact match (scheme + host + port)
-    if (normalizedOrigin === normalizedAllowed) return true;
-
-    // 2. Subdomain check (scheme + host suffix)
-    try {
-      const originUrl = new URL(normalizedOrigin);
-      const allowedUrl = new URL(normalizedAllowed);
-
-      // Protocols must match
-      if (originUrl.protocol !== allowedUrl.protocol) return false;
-
-      // Origin hostname must end with "." + allowed hostname
-      // e.g. "www.example.com" ends with ".example.com"
-      if (originUrl.hostname.endsWith('.' + allowedUrl.hostname)) {
-        return true;
-      }
-    } catch {
-      // If either is not a valid URL, fallback to string match (if allowed doesn't have protocol)
-      if (!normalizedAllowed.includes('://')) {
-        const originHost = normalizedOrigin.replace(/^https?:\/\//, '').split('/')[0];
-        if (originHost === normalizedAllowed || originHost.endsWith('.' + normalizedAllowed)) {
-          return true;
-        }
+    // 2. Protocol-less match fallback
+    if (!normalizedAllowed.includes('://')) {
+      const originHost = normalizedOrigin.replace(/^https?:\/\//, '').split('/')[0];
+      if (originHost === normalizedAllowed || originHost.endsWith('.' + normalizedAllowed)) {
+        return { isAllowed: true };
       }
     }
 
-    return false;
-  });
+    // 3. Robust URL comparison
+    try {
+      const oUrl = new URL(normalizedOrigin);
+      const aUrl = new URL(normalizedAllowed.includes('://') ? normalizedAllowed : `https://${normalizedAllowed}`);
+
+      // Match if same host or subdomain
+      if (oUrl.hostname === aUrl.hostname) return { isAllowed: true };
+      if (oUrl.hostname.endsWith('.' + aUrl.hostname)) return { isAllowed: true };
+    } catch (e) {
+      // Continue to next check
+    }
+  }
+
+  return {
+    isAllowed: false,
+    reason: `origin_mismatch: received=${normalizedOrigin}, allowed_count=${allowedOrigins.length}`
+  };
 }

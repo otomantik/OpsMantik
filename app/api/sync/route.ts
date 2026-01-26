@@ -78,7 +78,7 @@ function createSyncResponse(
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
+    const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
     const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
 
     // Preflight MUST include exact response headers
@@ -91,6 +91,9 @@ export async function OPTIONS(req: NextRequest) {
             'Access-Control-Max-Age': '86400',
             'Vary': 'Origin',
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
+            'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
+            'X-CORS-Reason': reason || 'ok',
+            'X-CORS-Received': origin || 'none',
         },
     });
 }
@@ -99,7 +102,7 @@ export async function POST(req: NextRequest) {
     try {
         // CORS check
         const origin = req.headers.get('origin');
-        const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
+        const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
 
         // Use origin if allowed, otherwise fall back to first allowed origin or wildcard
         const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
@@ -109,14 +112,17 @@ export async function POST(req: NextRequest) {
             'Access-Control-Allow-Origin': allowedHeader,
             'Vary': 'Origin',
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
+            'X-CORS-Reason': reason || 'ok',
+            'X-CORS-Received': origin || 'none',
         };
 
         if (!isAllowed) {
-            console.warn('[CORS] Origin not allowed:', origin, 'Allowed list:', ALLOWED_ORIGINS);
+            console.warn('[CORS] Origin not allowed:', origin, 'Reason:', reason, 'Allowed list:', ALLOWED_ORIGINS);
             return NextResponse.json(
                 createSyncResponse(false, null, {
                     error: 'Origin not allowed',
                     receivedOrigin: origin,
+                    reason,
                     configStatus: ALLOWED_ORIGINS.length > 0 ? 'configured' : 'missing_or_invalid'
                 }),
                 {
