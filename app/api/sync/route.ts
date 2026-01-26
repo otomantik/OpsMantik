@@ -162,15 +162,11 @@ export async function POST(req: NextRequest) {
             rawBody = await req.json();
         } catch (parseError) {
             console.error('[SYNC_API] JSON parse error:', parseError);
-            const origin = req.headers.get('origin');
-            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 createSyncResponse(false, null, { message: 'Invalid JSON payload' }),
                 {
                     status: 400,
-                    headers: {
-                        'Access-Control-Allow-Origin': allowedOrigin,
-                    },
+                    headers: baseHeaders,
                 }
             );
         }
@@ -199,7 +195,10 @@ export async function POST(req: NextRequest) {
         } = rawBody;
 
         if (!site_id || !url) {
-            return NextResponse.json(createSyncResponse(true, 0, { status: 'synced' }));
+            return NextResponse.json(
+                createSyncResponse(true, 0, { status: 'synced_skipped_missing_id' }),
+                { headers: baseHeaders }
+            );
         }
 
         // PR-HARD-5: Input validation
@@ -225,14 +224,11 @@ export async function POST(req: NextRequest) {
         // Now validate the normalized UUID v4 format
         const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         if (typeof normalizedSiteId !== 'string' || !uuidV4Regex.test(normalizedSiteId)) {
-            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 createSyncResponse(false, null, { message: 'Invalid site_id format' }),
                 {
                     status: 400,
-                    headers: {
-                        'Access-Control-Allow-Origin': allowedOrigin,
-                    },
+                    headers: baseHeaders,
                 }
             );
         }
@@ -244,14 +240,11 @@ export async function POST(req: NextRequest) {
         try {
             new URL(url);
         } catch {
-            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 createSyncResponse(false, null, { message: 'Invalid url format' }),
                 {
                     status: 400,
-                    headers: {
-                        'Access-Control-Allow-Origin': allowedOrigin,
-                    },
+                    headers: baseHeaders,
                 }
             );
         }
@@ -265,12 +258,18 @@ export async function POST(req: NextRequest) {
 
         if (siteError) {
             console.error('[SYNC_ERROR] Site query error:', site_id, siteError?.message, siteError?.code);
-            return NextResponse.json(createSyncResponse(true, 0, { status: 'synced' }));
+            return NextResponse.json(
+                createSyncResponse(false, 0, { message: 'Site validation failed' }),
+                { headers: baseHeaders }
+            );
         }
 
         if (!site) {
             console.error('[SYNC_ERROR] Site not found:', site_id);
-            return NextResponse.json(createSyncResponse(true, 0, { status: 'synced' }));
+            return NextResponse.json(
+                createSyncResponse(false, 0, { message: 'Site not found' }),
+                { status: 404, headers: baseHeaders }
+            );
         }
 
         console.log('[SYNC_VALID] Site verified. Internal ID:', site.id);
@@ -387,7 +386,6 @@ export async function POST(req: NextRequest) {
                     console.error('[SYNC_API] Session lookup error:', lookupError.message);
 
                     // Fail-fast: return 500 error instead of silently creating new session
-                    const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
                     return NextResponse.json(
                         createSyncResponse(false, null, {
                             message: 'Session lookup failed',
@@ -395,9 +393,7 @@ export async function POST(req: NextRequest) {
                         }),
                         {
                             status: 500,
-                            headers: {
-                                'Access-Control-Allow-Origin': allowedOrigin,
-                            },
+                            headers: baseHeaders
                         }
                     );
                 } else if (existingSession) {
