@@ -81,13 +81,15 @@ export async function OPTIONS(req: NextRequest) {
     const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
     const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
 
+    // Preflight MUST include exact response headers
     return new NextResponse(null, {
-        status: 200,
+        status: 204, // No content for preflight success
         headers: {
             'Access-Control-Allow-Origin': allowedHeader,
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-OpsMantik-Version',
             'Access-Control-Max-Age': '86400',
+            'Vary': 'Origin',
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
         },
     });
@@ -105,6 +107,7 @@ export async function POST(req: NextRequest) {
         // Base headers for all responses
         const baseHeaders = {
             'Access-Control-Allow-Origin': allowedHeader,
+            'Vary': 'Origin',
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
         };
 
@@ -674,12 +677,16 @@ export async function POST(req: NextRequest) {
             url: req.url
         });
 
+        const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
+        const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
+
         return NextResponse.json(
             createSyncResponse(false, null, { message: errorMessage }),
             {
                 status: 500,
                 headers: {
-                    'Access-Control-Allow-Origin': isOriginAllowed(origin, ALLOWED_ORIGINS) ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*'),
+                    'Access-Control-Allow-Origin': allowedHeader,
+                    'Vary': 'Origin',
                     'X-OpsMantik-Version': OPSMANTIK_VERSION,
                 },
             }

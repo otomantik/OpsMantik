@@ -50,43 +50,16 @@ export function parseAllowedOrigins(): string[] {
   return origins;
 }
 
-/**
- * Normalize origin/host to hostname only (strip protocol, port, path, lowercase)
- * 
- * @param origin - Full origin URL (e.g., "https://example.com:443/path")
- * @returns Normalized hostname (e.g., "example.com")
- */
-function normalizeHost(origin: string): string {
-  try {
-    // If already a hostname (no protocol), use as-is
-    if (!origin.includes('://')) {
-      return origin.toLowerCase().split('/')[0].split(':')[0];
-    }
 
-    const urlObj = new URL(origin);
-    // Return hostname only (no port, no path)
-    return urlObj.hostname.toLowerCase();
-  } catch {
-    // If URL parsing fails, try to extract hostname manually
-    // Remove protocol, port, path
-    return origin
-      .replace(/^https?:\/\//, '')
-      .replace(/^\/\//, '')
-      .split('/')[0]
-      .split(':')[0]
-      .toLowerCase();
-  }
-}
 
 /**
  * Check if origin is allowed using safe domain matching
  * 
  * Rules:
- * - Wildcard '*' allows all (with warning in production)
- * - Exact host match: "example.com" === "example.com"
- * - Subdomain match: "www.example.com" ends with ".example.com"
- * - Rejects: "example.com.evil.com" (does not end with ".example.com")
- * - Rejects: "malicious-example.com" (not exact, not subdomain)
+ * - Wildcard '*' allows all (security warning handled in parseAllowedOrigins)
+ * - Exact full origin match: "https://example.com" === "https://example.com"
+ * - Subdomain match: "https://www.example.com" matches allowed "https://example.com"
+ * - Rejects: "https://example.com.evil.com"
  * 
  * @param origin - Origin header value (e.g., "https://example.com")
  * @param allowedOrigins - Array of allowed origins from parseAllowedOrigins()
@@ -95,36 +68,40 @@ function normalizeHost(origin: string): string {
 export function isOriginAllowed(origin: string | null, allowedOrigins: string[]): boolean {
   if (!origin) return false;
 
-  // Wildcard allows all (with warning in production - already warned in parseAllowedOrigins)
+  // Wildcard allows all (security warning handled in parseAllowedOrigins)
   if (allowedOrigins.includes('*')) return true;
 
-  const normalizedOrigin = normalizeHost(origin);
+  const normalizedOrigin = origin.toLowerCase().trim().replace(/\/$/, '');
 
-  // Check against allowed origins
   return allowedOrigins.some(allowed => {
-    // Normalize allowed origin
-    let normalizedAllowed: string;
+    const normalizedAllowed = allowed.toLowerCase().trim().replace(/\/$/, '');
 
-    if (allowed.startsWith('http://') || allowed.startsWith('https://')) {
-      normalizedAllowed = normalizeHost(allowed);
-    } else {
-      // If no protocol, assume it's already a hostname
-      normalizedAllowed = normalizeHost(allowed);
+    // 1. Exact match (scheme + host + port)
+    if (normalizedOrigin === normalizedAllowed) return true;
+
+    // 2. Subdomain check (scheme + host suffix)
+    try {
+      const originUrl = new URL(normalizedOrigin);
+      const allowedUrl = new URL(normalizedAllowed);
+
+      // Protocols must match
+      if (originUrl.protocol !== allowedUrl.protocol) return false;
+
+      // Origin hostname must end with "." + allowed hostname
+      // e.g. "www.example.com" ends with ".example.com"
+      if (originUrl.hostname.endsWith('.' + allowedUrl.hostname)) {
+        return true;
+      }
+    } catch {
+      // If either is not a valid URL, fallback to string match (if allowed doesn't have protocol)
+      if (!normalizedAllowed.includes('://')) {
+        const originHost = normalizedOrigin.replace(/^https?:\/\//, '').split('/')[0];
+        if (originHost === normalizedAllowed || originHost.endsWith('.' + normalizedAllowed)) {
+          return true;
+        }
+      }
     }
 
-    // Exact match
-    if (normalizedOrigin === normalizedAllowed) {
-      return true;
-    }
-
-    // Subdomain match: origin must end with "." + allowed host
-    // Example: "www.example.com" ends with ".example.com"
-    // This rejects "example.com.evil.com" because it doesn't end with ".example.com"
-    if (normalizedOrigin.endsWith('.' + normalizedAllowed)) {
-      return true;
-    }
-
-    // No match
     return false;
   });
 }
