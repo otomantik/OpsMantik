@@ -2,7 +2,7 @@
 // Neutral path for ad-blocker avoidance: /assets/core.js
 // Legacy path: /ux-core.js (kept for backwards compatibility)
 
-(function() {
+(function () {
   'use strict';
 
   // Prevent duplicate initialization
@@ -14,18 +14,18 @@
   // Get site ID and API URL from script tag
   const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
   const siteId = scriptTag?.getAttribute('data-site-id') || '';
-  
+
   // Determine API endpoint with priority:
   // A) data-api attribute (if present)
   // B) localhost/127.0.0.1 -> window.location.origin + "/api/sync"
   // C) production default -> "https://console.opsmantik.com/api/sync"
   let apiUrl;
   let apiSource;
-  
+
   const dataApi = scriptTag?.getAttribute('data-api');
   const hostname = window.location.hostname;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('127.0.0.1:') || hostname.startsWith('localhost:');
-  
+
   if (dataApi) {
     apiUrl = dataApi;
     apiSource = 'data-api';
@@ -66,7 +66,7 @@
     ctx.textBaseline = 'top';
     ctx.font = '14px Arial';
     ctx.fillText('Fingerprint', 2, 2);
-    
+
     const fingerprint = [
       navigator.userAgent,
       navigator.language,
@@ -74,7 +74,7 @@
       new Date().getTimezoneOffset(),
       canvas.toDataURL(),
     ].join('|');
-    
+
     // Simple hash
     let hash = 0;
     for (let i = 0; i < fingerprint.length; i++) {
@@ -87,7 +87,7 @@
 
   // UUID v4 generator (RFC 4122 compliant)
   function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
       const r = Math.random() * 16 | 0;
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
@@ -166,7 +166,11 @@
     });
 
     // Send via fetch (fire and forget)
-    fetch(CONFIG.apiUrl, {
+    // Add cache busting param to avoid intermediate proxy/cache issues
+    const syncUrl = new URL(CONFIG.apiUrl);
+    syncUrl.searchParams.set('_ts', Date.now().toString());
+
+    fetch(syncUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -175,34 +179,34 @@
       mode: 'cors',
       credentials: 'omit',
     })
-    .then(response => {
-      if (response.ok) {
-        console.log('[OPSMANTIK] ✅ Event sent successfully:', action);
-        return response.json().catch(() => ({})); // Ignore JSON parse errors
-      } else {
-        console.warn('[OPSMANTIK] ⚠️ Event send failed:', response.status, response.statusText);
-        return response.json().then(data => {
-          console.warn('[OPSMANTIK] Error details:', data);
-        }).catch(() => {
-          console.warn('[OPSMANTIK] Error response (no JSON):', response.statusText);
-        });
-      }
-    })
-    .catch(err => {
-      // Only log if it's not a network error (which is expected in some cases)
-      if (err.name !== 'TypeError' || !err.message.includes('fetch')) {
-        console.error('[OPSMANTIK] ❌ Event send error:', err);
-      } else {
-        // Network error - silently fail (fire and forget)
-        console.log('[OPSMANTIK] Network error (expected in some cases):', err.message);
-      }
-    });
+      .then(response => {
+        if (response.ok) {
+          console.log('[OPSMANTIK] ✅ Event sent successfully:', action);
+          return response.json().catch(() => ({})); // Ignore JSON parse errors
+        } else {
+          console.warn('[OPSMANTIK] ⚠️ Event send failed:', response.status, response.statusText);
+          return response.json().then(data => {
+            console.warn('[OPSMANTIK] Error details:', data);
+          }).catch(() => {
+            console.warn('[OPSMANTIK] Error response (no JSON):', response.statusText);
+          });
+        }
+      })
+      .catch(err => {
+        // Only log if it's not a network error (which is expected in some cases)
+        if (err.name !== 'TypeError' || !err.message.includes('fetch')) {
+          console.error('[OPSMANTIK] ❌ Event send error:', err);
+        } else {
+          // Network error - silently fail (fire and forget)
+          console.log('[OPSMANTIK] Network error (expected in some cases):', err.message);
+        }
+      });
   }
 
   // Auto-tracking
   function initAutoTracking() {
     console.log('[OPSMANTIK] Auto-tracking initialized');
-    
+
     // Page view
     sendEvent('interaction', 'view', document.title);
 
