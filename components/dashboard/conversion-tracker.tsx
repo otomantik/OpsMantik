@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle2, Phone, TrendingUp } from 'lucide-react';
+import { formatTimestamp } from '@/lib/utils';
 
 interface Conversion {
   session_id: string;
@@ -155,7 +156,7 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
                 )}
                 
                 <p className="font-mono text-[10px] text-slate-600 mt-2">
-                  {new Date(conv.created_at).toLocaleString('tr-TR')}
+                  {formatTimestamp(conv.created_at)}
                 </p>
               </div>
             ))}

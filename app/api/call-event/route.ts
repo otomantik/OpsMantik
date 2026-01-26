@@ -148,54 +148,93 @@ export async function POST(req: NextRequest) {
         let matchedSessionId: string | null = null;
         let leadScore = 0;
         let scoreBreakdown: any = null;
+        let callStatus: string | null = null;
         const matchedAt = new Date().toISOString();
 
         if (recentEvents && recentEvents.length > 0) {
             matchedSessionId = recentEvents[0].session_id;
+            const sessionMonth = recentEvents[0].session_month;
             console.log('[CALL_MATCH] Found matching session:', matchedSessionId);
 
-            // 3. Calculate lead score from session events
-            const { data: sessionEvents, error: sessionEventsError } = await adminClient
-                .from('events')
-                .select('event_category, event_action, metadata')
-                .eq('session_id', matchedSessionId)
-                .eq('session_month', recentEvents[0].session_month);
+            // Validate: Check session exists and was created before match
+            const { data: session, error: sessionError } = await adminClient
+                .from('sessions')
+                .select('id, created_at, created_month')
+                .eq('id', matchedSessionId)
+                .eq('created_month', sessionMonth)
+                .single();
 
-            if (sessionEventsError) {
-                console.error('[CALL_MATCH] Session events query error:', {
-                    message: sessionEventsError.message,
-                    code: sessionEventsError.code,
+            if (sessionError || !session) {
+                // Session doesn't exist - invalid match
+                console.warn('[CALL_MATCH] Session not found for match:', {
+                    call_id: 'pending',
                     session_id: matchedSessionId,
-                    timestamp: new Date().toISOString()
+                    error: sessionError?.message
                 });
+                matchedSessionId = null;
+            } else {
+                // Check if match is suspicious (session created after match by > 2 minutes)
+                const sessionCreatedAt = new Date(session.created_at);
+                const matchTime = new Date(matchedAt);
+                const timeDiffMinutes = (sessionCreatedAt.getTime() - matchTime.getTime()) / (1000 * 60);
 
-                return NextResponse.json(
-                    { error: 'Failed to query session events', details: sessionEventsError.message },
-                    { status: 500, headers: baseHeaders }
-                );
-            }
+                if (timeDiffMinutes > 2) {
+                    // Suspicious: session created more than 2 minutes after match
+                    console.warn('[CALL_MATCH] Suspicious match detected:', {
+                        call_id: 'pending',
+                        session_id: matchedSessionId,
+                        session_created_at: session.created_at,
+                        matched_at: matchedAt,
+                        time_diff_minutes: timeDiffMinutes.toFixed(2)
+                    });
+                    callStatus = 'suspicious';
+                } else {
+                    callStatus = 'intent'; // Normal match
+                }
 
-            if (sessionEvents && sessionEvents.length > 0) {
-                const conversionCount = sessionEvents.filter(e => e.event_category === 'conversion').length;
-                const interactionCount = sessionEvents.filter(e => e.event_category === 'interaction').length;
-                const scores = sessionEvents.map(e => Number((e.metadata as any)?.lead_score) || 0);
-                const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+                // 3. Calculate lead score from session events (only if match is valid)
+                const { data: sessionEvents, error: sessionEventsError } = await adminClient
+                    .from('events')
+                    .select('event_category, event_action, metadata')
+                    .eq('session_id', matchedSessionId)
+                    .eq('session_month', sessionMonth);
 
-                const conversionPoints = conversionCount * 20;
-                const interactionPoints = interactionCount * 5;
-                const bonuses = maxScore;
-                const rawScore = conversionPoints + interactionPoints + bonuses;
-                const cappedAt100 = rawScore > 100;
+                if (sessionEventsError) {
+                    console.error('[CALL_MATCH] Session events query error:', {
+                        message: sessionEventsError.message,
+                        code: sessionEventsError.code,
+                        session_id: matchedSessionId,
+                        timestamp: new Date().toISOString()
+                    });
 
-                leadScore = Math.min(rawScore, 100);
-                scoreBreakdown = {
-                    conversionPoints,
-                    interactionPoints,
-                    bonuses,
-                    cappedAt100,
-                    rawScore,
-                    finalScore: leadScore
-                };
+                    return NextResponse.json(
+                        { error: 'Failed to query session events', details: sessionEventsError.message },
+                        { status: 500, headers: baseHeaders }
+                    );
+                }
+
+                if (sessionEvents && sessionEvents.length > 0) {
+                    const conversionCount = sessionEvents.filter(e => e.event_category === 'conversion').length;
+                    const interactionCount = sessionEvents.filter(e => e.event_category === 'interaction').length;
+                    const scores = sessionEvents.map(e => Number((e.metadata as any)?.lead_score) || 0);
+                    const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+
+                    const conversionPoints = conversionCount * 20;
+                    const interactionPoints = interactionCount * 5;
+                    const bonuses = maxScore;
+                    const rawScore = conversionPoints + interactionPoints + bonuses;
+                    const cappedAt100 = rawScore > 100;
+
+                    leadScore = Math.min(rawScore, 100);
+                    scoreBreakdown = {
+                        conversionPoints,
+                        interactionPoints,
+                        bonuses,
+                        cappedAt100,
+                        rawScore,
+                        finalScore: leadScore
+                    };
+                }
             }
         }
 
@@ -211,6 +250,7 @@ export async function POST(req: NextRequest) {
                 lead_score_at_match: matchedSessionId ? leadScore : null,
                 score_breakdown: scoreBreakdown,
                 matched_at: matchedSessionId ? matchedAt : null,
+                status: callStatus, // 'intent', 'suspicious', or null
             })
             .select()
             .single();

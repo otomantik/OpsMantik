@@ -23,8 +23,18 @@ export interface VisitorSession {
   lead_score?: number | null;
 }
 
+export interface VisitorCall {
+  id: string;
+  phone_number: string;
+  matched_session_id: string | null;
+  created_at: string;
+  lead_score: number;
+  status: string | null;
+}
+
 export interface UseVisitorHistoryResult {
   sessions: VisitorSession[];
+  calls: VisitorCall[];
   sessionCount24h: number;
   isReturning: boolean;
   isLoading: boolean;
@@ -43,6 +53,7 @@ export function useVisitorHistory(
   fingerprint: string | null
 ): UseVisitorHistoryResult {
   const [sessions, setSessions] = useState<VisitorSession[]>([]);
+  const [calls, setCalls] = useState<VisitorCall[]>([]);
   const [sessionCount24h, setSessionCount24h] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -50,6 +61,7 @@ export function useVisitorHistory(
   useEffect(() => {
     if (!siteId || !fingerprint) {
       setSessions([]);
+      setCalls([]);
       setSessionCount24h(0);
       setIsLoading(false);
       return;
@@ -79,6 +91,7 @@ export function useVisitorHistory(
 
         if (!allSessions) {
           setSessions([]);
+          setCalls([]);
           setSessionCount24h(0);
           setIsLoading(false);
           return;
@@ -104,7 +117,31 @@ export function useVisitorHistory(
           lead_score: session.lead_score || null,
         }));
 
+        // Fetch calls with same fingerprint but different matched_session_id
+        // Filter out calls already matched to fetched sessions
+        const sessionIds = new Set(allSessions.map(s => s.id));
+        const { data: fingerprintCalls } = await supabase
+          .from('calls')
+          .select('id, phone_number, matched_session_id, created_at, lead_score, status')
+          .eq('matched_fingerprint', fingerprint)
+          .eq('site_id', siteId)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(20);
+
+        const otherCalls: VisitorCall[] = (fingerprintCalls || [])
+          .filter(c => !c.matched_session_id || !sessionIds.has(c.matched_session_id))
+          .map(c => ({
+            id: c.id,
+            phone_number: c.phone_number,
+            matched_session_id: c.matched_session_id,
+            created_at: c.created_at,
+            lead_score: c.lead_score,
+            status: c.status
+          }));
+
         setSessions(sessionsWithCounts);
+        setCalls(otherCalls);
         setSessionCount24h(count24h);
         setIsLoading(false);
       } catch (err) {
@@ -121,6 +158,7 @@ export function useVisitorHistory(
 
   return {
     sessions,
+    calls,
     sessionCount24h,
     isReturning,
     isLoading,

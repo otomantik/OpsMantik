@@ -92,6 +92,43 @@ export function getConfidence(score: number): { label: 'HIGH' | 'MEDIUM' | 'LOW'
   return { label: 'LOW', color: 'text-slate-400' };
 }
 
+/**
+ * Format timestamp with Europe/Istanbul timezone
+ * 
+ * Rule: Store UTC, display Europe/Istanbul consistently
+ * 
+ * @param ts - ISO timestamp string or null
+ * @param options - Intl.DateTimeFormatOptions
+ * @returns Formatted timestamp string or "—" for null
+ */
+export function formatTimestamp(
+  ts: string | null | undefined,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!ts) return '—';
+  const date = new Date(ts);
+  return date.toLocaleString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    ...options
+  });
+}
+
+/**
+ * Format timestamp with Europe/Istanbul timezone and TRT indicator
+ * 
+ * @param ts - ISO timestamp string or null
+ * @param options - Intl.DateTimeFormatOptions
+ * @returns Formatted timestamp with "(TRT)" suffix or "—" for null
+ */
+export function formatTimestampWithTZ(
+  ts: string | null | undefined,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!ts) return '—';
+  const formatted = formatTimestamp(ts, options);
+  return `${formatted} (TRT)`;
+}
+
 // Expose globally for external calls
 if (typeof window !== 'undefined') {
   (window as any).jumpToSession = jumpToSession;

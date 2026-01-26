@@ -6,6 +6,7 @@ import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock,
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
+import { formatTimestamp } from '@/lib/utils';
 
 interface Event {
   id: string;
@@ -74,7 +75,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   const siteId = (sessionData as any)?.site_id || null;
   
   // Fetch visitor history if fingerprint and siteId are available
-  const { sessions: visitorSessions, sessionCount24h, isReturning, isLoading: isLoadingHistory } = useVisitorHistory(
+  const { sessions: visitorSessions, calls: visitorCalls, sessionCount24h, isReturning, isLoading: isLoadingHistory } = useVisitorHistory(
     siteId || '',
     fingerprint
   );
@@ -87,19 +88,19 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   const browser = metadata.browser || null;
 
   // Check for matched call when component mounts or session changes
+  // FIX: Use matched_session_id instead of fingerprint to prevent fingerprint leakage
   useEffect(() => {
-    // Use fingerprint from sessionData or metadata
-    const currentFingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp;
-    if (!currentFingerprint) return;
+    if (!sessionId) return;
 
     setIsLoadingCall(true);
     const supabase = createClient();
     
     // Use JOIN pattern for RLS compliance - calls -> sites -> user_id
+    // Contract: MATCHED badge shows ONLY when call.matched_session_id === session.id
     supabase
       .from('calls')
       .select('*, sites!inner(user_id)')
-      .eq('matched_fingerprint', currentFingerprint)
+      .eq('matched_session_id', sessionId)
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .limit(1)
@@ -116,7 +117,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
         }
         setIsLoadingCall(false);
       });
-  }, [sessionData, metadata]);
+  }, [sessionId]);
 
   // Get icon for event action
   const getEventIcon = (action: string) => {
@@ -337,7 +338,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3 text-slate-500" />
                   <p className="font-mono text-xs text-slate-500">
-                    {new Date(firstEvent.created_at).toLocaleString('tr-TR', {
+                    {formatTimestamp(firstEvent.created_at, {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',
@@ -548,7 +549,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                             }`}
                           >
                             <td className="py-2 px-3 text-slate-300">
-                              {new Date(event.created_at).toLocaleTimeString('tr-TR', {
+                              {formatTimestamp(event.created_at, {
                                 hour: '2-digit',
                                 minute: '2-digit',
                                 second: '2-digit',
@@ -600,7 +601,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                               onClick={() => toggleGroup(item.id)}
                             >
                               <td className="py-2 px-3 text-slate-300">
-                                {new Date(item.firstTime).toLocaleTimeString('tr-TR', {
+                                {formatTimestamp(item.firstTime, {
                                   hour: '2-digit',
                                   minute: '2-digit',
                                   second: '2-digit',
@@ -608,7 +609,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                                 })}
                                 {item.events.length > 1 && (
                                   <span className="text-slate-500 ml-1">
-                                    - {new Date(item.lastTime).toLocaleTimeString('tr-TR', {
+                                    - {formatTimestamp(item.lastTime, {
                                       hour: '2-digit',
                                       minute: '2-digit',
                                       second: '2-digit',
@@ -659,7 +660,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                                 }`}
                               >
                                 <td className="py-1.5 px-3 pl-8 text-slate-400 text-[10px]">
-                                  {new Date(event.created_at).toLocaleTimeString('tr-TR', {
+                                  {formatTimestamp(event.created_at, {
                                     hour: '2-digit',
                                     minute: '2-digit',
                                     second: '2-digit',
@@ -712,7 +713,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                 </p>
                 <div className="flex items-center gap-4 text-[10px] text-slate-400">
                   <span>Score: {matchedCall.lead_score}</span>
-                  <span>Match Time: {new Date(matchedCall.created_at).toLocaleString('tr-TR')}</span>
+                  <span>Match Time: {formatTimestamp(matchedCall.created_at)}</span>
                 </div>
               </div>
             )}
@@ -768,7 +769,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-2">
                               <span className="font-mono text-xs text-slate-300">
-                                {new Date(session.created_at).toLocaleString('tr-TR', {
+                                {formatTimestamp(session.created_at, {
                                   day: '2-digit',
                                   month: '2-digit',
                                   year: 'numeric',
@@ -819,12 +820,53 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                     ))}
                   </div>
                 )}
+
+                {/* Other Calls Section - Fingerprint-only calls */}
+                {visitorCalls.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-slate-800/50">
+                    <h4 className="font-mono text-sm text-slate-300 mb-3">Other Calls (Same Fingerprint)</h4>
+                    <div className="space-y-2">
+                      {visitorCalls.map((call) => (
+                        <div
+                          key={call.id}
+                          className="p-3 rounded bg-slate-800/30 border border-slate-700/30 hover:bg-slate-800/50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-2">
+                                <span className="font-mono text-xs text-slate-300">{call.phone_number}</span>
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                                  Score: {call.lead_score}
+                                </span>
+                                {call.matched_session_id && (
+                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
+                                    Matched to: {call.matched_session_id.slice(0, 8)}...
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono text-[10px] text-slate-500">
+                                {formatTimestamp(call.created_at, {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               
               {/* Footer */}
               <div className="p-4 border-t border-slate-800/50 bg-slate-900/50">
                 <p className="font-mono text-xs text-slate-400 text-center">
                   Showing {visitorSessions.length} session{visitorSessions.length !== 1 ? 's' : ''} 
+                  {visitorCalls.length > 0 && `, ${visitorCalls.length} other call${visitorCalls.length !== 1 ? 's' : ''}`}
                   {sessionCount24h > 0 && ` • ${sessionCount24h} in last 24h`}
                 </p>
               </div>

@@ -12,7 +12,8 @@
     "create-test-site": "node scripts/create-test-site.js",
     "check:warroom": "node scripts/check-warroom.js",
     "check:attribution": "node scripts/check-attribution.js",
-    "smoke:api": "node scripts/smoke/api.prod.mjs"
+    "smoke:api": "node scripts/smoke/api.prod.mjs",
+    "diagnostics": "node scripts/run-diagnostics.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

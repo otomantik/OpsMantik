@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { formatTimestamp } from '@/lib/utils';
 
 interface Site {
   id: string;
@@ -487,7 +488,7 @@ export function SitesManager() {
                         <div className="text-xs space-y-1">
                           <p className="font-mono text-slate-400">
                             Last event: <span className="text-slate-300">
-                              {new Date(siteStatus[site.id].last_event_at!).toLocaleString()}
+                              {formatTimestamp(siteStatus[site.id].last_event_at!)}
                             </span>
                           </p>
                           {siteStatus[site.id].last_session_id && (

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatTimestamp } from '@/lib/utils';
 
 interface EventType {
   category: string;
@@ -145,7 +146,7 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
                     </span>
                   </div>
                   <p className="font-mono text-[10px] text-slate-500 mt-0.5">
-                    Last: {new Date(eventType.lastSeen).toLocaleString('en-US', {
+                    Last: {formatTimestamp(eventType.lastSeen, {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',

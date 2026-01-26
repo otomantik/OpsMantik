@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Phone, X, CheckCircle2, XCircle, ChevronDown, ChevronUp, ExternalLink, Info } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { jumpToSession, maskFingerprint, getConfidence } from '@/lib/utils';
+import { jumpToSession, maskFingerprint, getConfidence, formatTimestamp } from '@/lib/utils';
 
 interface CallAlert {
   id: string;
@@ -234,6 +234,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
   const isJunk = status === 'junk';
   const isIntent = status === 'intent';
   const isConfirmed = status === 'confirmed';
+  const isSuspicious = status === 'suspicious';
   const isReal = status === 'real' || (!isIntent && !isConfirmed && call.matched_at); // Real call has matched_at
   const confidence = getConfidence(call.lead_score);
 
@@ -286,6 +287,11 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 {!call.matched_session_id && !isIntent && (
                   <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
                     NO MATCH
+                  </span>
+                )}
+                {isSuspicious && (
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-semibold">
+                    ⚠️ SUSPICIOUS
                   </span>
                 )}
                 {isReal && (
@@ -432,7 +438,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Matched At:</span>
                     <span className="text-slate-300 text-[10px]">
-                      {new Date(call.matched_at).toLocaleString('en-US', {
+                      {formatTimestamp(call.matched_at, {
                         month: 'short',
                         day: 'numeric',
                         hour: '2-digit',
@@ -447,6 +453,20 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 </div>
               </div>
             </div>
+
+            {/* Suspicious Match Warning */}
+            {isSuspicious && (
+              <div className="pt-2 border-t border-yellow-500/30 bg-yellow-500/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Info className="w-3.5 h-3.5 text-yellow-400" />
+                  <p className="font-mono text-xs font-semibold text-yellow-400">SUSPICIOUS MATCH</p>
+                </div>
+                <p className="text-[10px] text-yellow-300 font-mono">
+                  This match may be invalid. Session was created after call match time. 
+                  Please review manually before confirming.
+                </p>
+              </div>
+            )}
 
             {/* Score Breakdown */}
             <div className="pt-2 border-t border-slate-800/30">

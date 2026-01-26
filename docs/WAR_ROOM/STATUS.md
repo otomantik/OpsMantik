@@ -254,4 +254,21 @@ Before committing OPS Console changes:
   - `components/dashboard/live-feed.tsx`: Polished empty state with consistent styling
   - Layout hierarchy verified: KPI Row → Call Monitor → Live Feed
 - [x] **HARD-8 Done**: Fixed call-event route to include session_month partition filter, preventing full partition scans.
+- [x] **REPORT PACK Complete**: Generated 4 analysis reports + 1 diagnosis document for call match integrity investigation.
+- [x] **CALL_MATCH_INTEGRITY v1.1 Done**: Fixed UI binding, timezone standardization, backend validation, and visitor history. All tests passed.
+  - UI: Session cards now use `matched_session_id` instead of fingerprint (prevents leakage)
+  - Timezone: All timestamps standardized to Europe/Istanbul with `formatTimestamp()` utility
+  - Backend: Added session validation and "2 min skew rule" with suspicious status flagging
+  - Visitor History: Fingerprint-only calls shown separately, not as MATCHED on cards
+  - Tests: TypeScript ✅, WAR ROOM lock ✅, Attribution check ✅
+  - SQL: Diagnostics executed via migration push ✅
+    - Query 1: 0 impossible matches (excellent data integrity)
+    - Query 2: 100% by_session_id matches (perfect matching)
+    - Query 3: 6 fingerprint leakage instances (UI fix prevents display)
+  - Migration: `20260126234844_call_match_diagnostics.sql` pushed to remote
+  - `REPORTS/CALL_MATCH_INTEGRITY.md` - DB reality checks, fingerprint leakage analysis
+  - `REPORTS/TIMEZONE_AUDIT.md` - Timestamp formatting audit (15+ locations)
+  - `REPORTS/CALL_MONITOR_SOURCE_FIELDS.md` - Source/channel enrichment plan
+  - `REPORTS/FIX_PLAN_CALL_MATCH_V1_1.md` - Implementation steps
+  - `REPORTS/DIAGNOSIS_CALL_MATCH.md` - Root cause analysis & decision tree
 
