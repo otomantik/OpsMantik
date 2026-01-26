@@ -244,4 +244,7 @@ Before committing OPS Console changes:
 
 ### 🟢 Status (2026-01-27)
 - [x] **POLISH-2A Done**: Backend stats RPC implemented and verified.
-- Commit ID: `6e92fb2f2276e9620de939a81fbab8468e770de4`
+- [x] **POLISH-2B Done**: Dashboard stats cards migrated to use RPC only. Client-side aggregation removed.
+- Commit ID: `d17ade55075b21cbc4138a95ca62cf5c34afa211` (POLISH-2A)
+- Commit ID: `3531f8bc63914a59f51833878b27387cc8728271` (POLISH-2B)
+
