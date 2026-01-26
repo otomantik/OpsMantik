@@ -38,7 +38,7 @@ function getRecentMonths(months: number = 6): string[] {
 // GeoIP - optional, disabled for Edge Runtime compatibility
 // Note: geoip-lite requires Node.js runtime and is not compatible with Edge Runtime
 // For production, consider using a GeoIP API service instead
-const geoip: any = null;
+// Removed: const geoip = null; (unused variable)
 
 export const dynamic = 'force-dynamic';
 
@@ -57,8 +57,8 @@ const ALLOWED_ORIGINS = parseAllowedOrigins();
 function createSyncResponse(
     ok: boolean,
     score: number | null,
-    data: Record<string, any> = {}
-): Record<string, any> {
+    data: Record<string, unknown> = {}
+): Record<string, unknown> {
     return {
         ok,
         score,
@@ -267,9 +267,10 @@ export async function POST(req: NextRequest) {
 
             // Check if any past event has matching fingerprint and GCLID
             if (pastEvents && pastEvents.length > 0) {
-                hasPastGclid = pastEvents.some((e: any) =>
-                    e.metadata?.fp === fingerprint && e.metadata?.gclid
-                );
+                hasPastGclid = pastEvents.some((e: unknown) => {
+                    const event = e as { metadata?: { fp?: string; gclid?: string } };
+                    return event.metadata?.fp === fingerprint && event.metadata?.gclid;
+                });
             }
         }
 
@@ -586,8 +587,8 @@ export async function POST(req: NextRequest) {
         } catch (dbError) {
             const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
             const errorStack = dbError instanceof Error ? dbError.stack : undefined;
-            const errorCode = (dbError as any)?.code;
-            const errorDetails = (dbError as any)?.details;
+            const errorCode = (dbError as unknown as { code?: string })?.code;
+            const errorDetails = (dbError as unknown as { details?: string })?.details;
 
             // Enhanced error logging
             console.error('[PARTITION_FAULT] DB Write Failed:', {
