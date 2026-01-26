@@ -85,10 +85,24 @@ export async function POST(req: NextRequest) {
     try {
         // CORS check
         const origin = req.headers.get('origin');
-        if (!isOriginAllowed(origin, ALLOWED_ORIGINS)) {
+        const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
+
+        // Use origin if allowed, otherwise fall back to first allowed origin or wildcard
+        const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
+
+        if (!isAllowed) {
+            console.warn('[CORS] Origin not allowed:', origin, 'Allowed list:', ALLOWED_ORIGINS);
             return NextResponse.json(
-                createSyncResponse(false, null, { error: 'Origin not allowed' }),
-                { status: 403 }
+                createSyncResponse(false, null, {
+                    error: 'Origin not allowed',
+                    receivedOrigin: origin
+                }),
+                {
+                    status: 403,
+                    headers: {
+                        'Access-Control-Allow-Origin': allowedHeader
+                    }
+                }
             );
         }
 
@@ -105,6 +119,7 @@ export async function POST(req: NextRequest) {
                 {
                     status: 429,
                     headers: {
+                        'Access-Control-Allow-Origin': allowedHeader,
                         'X-RateLimit-Limit': '100',
                         'X-RateLimit-Remaining': '0',
                         'X-RateLimit-Reset': rateLimitResult.resetAt.toString(),
