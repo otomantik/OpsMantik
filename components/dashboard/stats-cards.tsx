@@ -1,202 +1,114 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useDashboardStats } from '@/lib/hooks/use-dashboard-stats';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 interface StatsCardsProps {
   siteId?: string;
 }
 
-export function StatsCards({ siteId }: StatsCardsProps = {}) {
-  const [stats, setStats] = useState({
-    sessions: 0,
-    events: 0,
-    avgLeadScore: 0,
-  });
+export function StatsCards({ siteId }: StatsCardsProps) {
+  const { stats, loading, error, refetch } = useDashboardStats(siteId, 7);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return;
+  if (error) {
+    return (
+      <Card className="glass border-rose-500/50 bg-rose-500/5">
+        <CardContent className="flex flex-col items-center justify-center py-6 text-center">
+          <AlertCircle className="w-8 h-8 text-rose-400 mb-2" />
+          <p className="text-rose-200 font-mono text-sm mb-4">Error loading stats: {error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60"
+          >
+            <RefreshCw className="w-3 h-3 mr-2" />
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-
-      // If siteId is provided, use it directly (RLS will enforce access)
-      let siteIds: string[];
-      if (siteId) {
-        // Verify site access via RLS
-        const { data: site } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('id', siteId)
-          .single();
-
-        if (!site) return;
-
-        siteIds = [siteId];
-      } else {
-        // Get all user's sites (default behavior)
-        const { data: sites } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('user_id', user.id);
-
-        if (!sites || sites.length === 0) return;
-
-        siteIds = sites.map(s => s.id);
-      }
-
-      // Get sessions count - RLS compliant
-      // Count unique sessions from events (if event exists, session exists)
-      // This ensures RLS compliance through the JOIN pattern
-      let eventsQuery = supabase
-        .from('events')
-        .select('session_id, sessions!inner(site_id)')
-        .gte('created_at', thirtyDaysAgo.toISOString());
-
-      if (siteId) {
-        eventsQuery = eventsQuery.eq('sessions.site_id', siteId);
-      } else {
-        eventsQuery = eventsQuery.in('sessions.site_id', siteIds);
-      }
-
-      const { data: eventsData } = await eventsQuery;
-
-      // Count unique sessions that belong to user's sites
-      const uniqueSessionIds = new Set<string>();
-      if (eventsData) {
-        eventsData.forEach((item: any) => {
-          if (item.session_id && item.sessions?.site_id && siteIds.includes(item.sessions.site_id)) {
-            uniqueSessionIds.add(item.session_id);
-          }
-        });
-      }
-      const sessionsCount = uniqueSessionIds.size;
-
-      // Get events count - RLS compliant using JOIN pattern
-      let eventsCountQuery = supabase
-        .from('events')
-        .select('*, sessions!inner(site_id)', { count: 'exact', head: true })
-        .eq('session_month', currentMonth)
-        .gte('created_at', thirtyDaysAgo.toISOString());
-
-      if (siteId) {
-        eventsCountQuery = eventsCountQuery.eq('sessions.site_id', siteId);
-      } else {
-        eventsCountQuery = eventsCountQuery.in('sessions.site_id', siteIds);
-      }
-
-      const { count: eventsCount } = await eventsCountQuery;
-
-      // Get average lead score - RLS compliant using JOIN pattern
-      let eventsScoreQuery = supabase
-        .from('events')
-        .select('metadata, sessions!inner(site_id)')
-        .eq('session_month', currentMonth)
-        .gte('created_at', thirtyDaysAgo.toISOString());
-
-      if (siteId) {
-        eventsScoreQuery = eventsScoreQuery.eq('sessions.site_id', siteId);
-      } else {
-        eventsScoreQuery = eventsScoreQuery.in('sessions.site_id', siteIds);
-      }
-
-      const { data: events } = await eventsScoreQuery;
-
-      const scores = events?.map(e => (e.metadata as any)?.lead_score || 0).filter(s => s > 0) || [];
-      const avgScore = scores.length > 0 
-        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-        : 0;
-
-      setStats({
-        sessions: sessionsCount || 0,
-        events: eventsCount || 0,
-        avgLeadScore: avgScore,
-      });
-    };
-
-    fetchStats();
-    const interval = setInterval(fetchStats, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
-  }, [siteId]);
+  // Skeleton / Loading states
+  const displayVisitors = loading ? '...' : (stats?.unique_visitors || 0).toLocaleString();
+  const displayEvents = loading ? '...' : (stats?.total_events || 0).toLocaleString();
+  const displayCalls = loading ? '...' : (stats?.total_calls || 0).toLocaleString();
+  const displayConvRate = loading ? '...' : `${((stats?.conversion_rate || 0) * 100).toFixed(1)}%`;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* Sessions - Emerald Neon */}
+      {/* Total Visitors - Emerald Neon */}
       <Card className="glass border-slate-800/50 neon-emerald">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-mono text-slate-300 uppercase tracking-wider">
-            Sessions
+            Total Visitors
           </CardTitle>
           <CardDescription className="text-xs font-mono text-slate-500 mt-1">
-            Last 30 days
+            Last 7 days
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0 pb-4">
           <p className="text-4xl font-bold font-mono text-emerald-400 mb-1">
-            {stats.sessions.toLocaleString()}
+            {displayVisitors}
           </p>
-          <p className="text-xs font-mono text-slate-500">Unique visitors</p>
+          <p className="text-xs font-mono text-slate-500">Unique fingerprint base</p>
         </CardContent>
       </Card>
 
-      {/* Events - Blue Neon */}
+      {/* Total Events - Blue Neon */}
       <Card className="glass border-slate-800/50 neon-blue">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-mono text-slate-300 uppercase tracking-wider">
-            Events
+            Total Events
           </CardTitle>
           <CardDescription className="text-xs font-mono text-slate-500 mt-1">
-            Last 30 days
+            Last 7 days
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0 pb-4">
           <p className="text-4xl font-bold font-mono text-blue-400 mb-1">
-            {stats.events.toLocaleString()}
+            {displayEvents}
           </p>
-          <p className="text-xs font-mono text-slate-500">Total tracked</p>
+          <p className="text-xs font-mono text-slate-500">Tracked interactions</p>
         </CardContent>
       </Card>
 
-      {/* Lead Score - Rose Neon */}
+      {/* Total Calls - Rose Neon */}
       <Card className="glass border-slate-800/50 neon-rose">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-mono text-slate-300 uppercase tracking-wider">
-            Lead Score
+            Total Calls
           </CardTitle>
           <CardDescription className="text-xs font-mono text-slate-500 mt-1">
-            Average
+            Last 7 days
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0 pb-4">
           <p className="text-4xl font-bold font-mono text-rose-400 mb-1">
-            {stats.avgLeadScore}
+            {displayCalls}
           </p>
-          <p className="text-xs font-mono text-slate-500">Out of 100</p>
+          <p className="text-xs font-mono text-slate-500">Phone matches</p>
         </CardContent>
       </Card>
 
-      {/* Status Indicator */}
-      <Card className="glass border-slate-800/50">
+      {/* Conversion Rate - Indigo Neon */}
+      <Card className="glass border-slate-800/50 neon-indigo">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-mono text-slate-300 uppercase tracking-wider">
-            Status
+            Conv. Rate
           </CardTitle>
           <CardDescription className="text-xs font-mono text-slate-500 mt-1">
-            System
+            Visitors to Calls
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0 pb-4">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
-            <p className="text-lg font-mono font-bold text-emerald-400">ONLINE</p>
-          </div>
-          <p className="text-xs font-mono text-slate-500">Real-time active</p>
+          <p className="text-4xl font-bold font-mono text-indigo-400 mb-1">
+            {displayConvRate}
+          </p>
+          <p className="text-xs font-mono text-slate-500">Confirmed match base</p>
         </CardContent>
       </Card>
     </div>
