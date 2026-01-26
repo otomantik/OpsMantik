@@ -170,10 +170,12 @@ export async function POST(req: NextRequest) {
             // Check if it's 32 hex characters (UUID without hyphens)
             if (/^[0-9a-f]{32}$/i.test(stripped)) {
                 // Re-add hyphens in UUID v4 format: 8-4-4-4-12
-                normalizedSiteId = stripped.replace(
-                    /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/i,
-                    '$1-$2-$3-$4-$5'
-                );
+                normalizedSiteId =
+                    stripped.substring(0, 8) + '-' +
+                    stripped.substring(8, 12) + '-' +
+                    stripped.substring(12, 16) + '-' +
+                    stripped.substring(16, 20) + '-' +
+                    stripped.substring(20, 32);
             }
         }
 
