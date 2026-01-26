@@ -68,12 +68,13 @@ function createSyncResponse(
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+    const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
+    const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
 
     return new NextResponse(null, {
         status: 200,
         headers: {
-            'Access-Control-Allow-Origin': allowedOrigin,
+            'Access-Control-Allow-Origin': allowedHeader,
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
             'Access-Control-Max-Age': '86400', // 24 hours
