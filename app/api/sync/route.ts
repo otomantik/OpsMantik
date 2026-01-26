@@ -79,23 +79,27 @@ function createSyncResponse(
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
     const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-    const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
+
+    const headers: Record<string, string> = {
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-OpsMantik-Version, X-CORS-Reason',
+        'Access-Control-Expose-Headers': 'X-OpsMantik-Version, X-CORS-Reason, X-CORS-Status',
+        'Access-Control-Max-Age': '86400',
+        'Vary': 'Origin',
+        'X-OpsMantik-Version': OPSMANTIK_VERSION,
+        'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
+        'X-CORS-Reason': reason || 'ok',
+        'X-CORS-Received': origin || 'none',
+    };
+
+    if (isAllowed && origin) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    }
 
     // Preflight response
     return new NextResponse(null, {
-        status: 200, // Using 200 instead of 204 for maximum compatibility with all proxy layers
-        headers: {
-            'Access-Control-Allow-Origin': allowedHeader,
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-OpsMantik-Version, X-CORS-Reason',
-            'Access-Control-Expose-Headers': 'X-OpsMantik-Version, X-CORS-Reason, X-CORS-Status',
-            'Access-Control-Max-Age': '86400',
-            'Vary': 'Origin',
-            'X-OpsMantik-Version': OPSMANTIK_VERSION,
-            'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
-            'X-CORS-Reason': reason || 'ok',
-            'X-CORS-Received': origin || 'none',
-        },
+        status: isAllowed ? 200 : 403,
+        headers,
     });
 }
 
@@ -105,18 +109,18 @@ export async function POST(req: NextRequest) {
         const origin = req.headers.get('origin');
         const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
 
-        // Use origin if allowed, otherwise fall back to first allowed origin or wildcard
-        const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
-
         // Base headers for all responses
-        const baseHeaders = {
-            'Access-Control-Allow-Origin': allowedHeader,
+        const baseHeaders: Record<string, string> = {
             'Access-Control-Expose-Headers': 'X-OpsMantik-Version, X-CORS-Reason, X-CORS-Status',
             'Vary': 'Origin',
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
             'X-CORS-Reason': reason || 'ok',
             'X-CORS-Received': origin || 'none',
         };
+
+        if (isAllowed && origin) {
+            baseHeaders['Access-Control-Allow-Origin'] = origin;
+        }
 
         if (!isAllowed) {
             console.warn('[CORS] Origin not allowed:', origin, 'Reason:', reason, 'Allowed list:', ALLOWED_ORIGINS);
@@ -147,7 +151,7 @@ export async function POST(req: NextRequest) {
                 {
                     status: 429,
                     headers: {
-                        'Access-Control-Allow-Origin': allowedHeader,
+                        ...baseHeaders,
                         'X-RateLimit-Limit': '100',
                         'X-RateLimit-Remaining': '0',
                         'X-RateLimit-Reset': rateLimitResult.resetAt.toString(),
@@ -661,8 +665,6 @@ export async function POST(req: NextRequest) {
         }
 
         // Use baseHeaders for the success response
-
-
         return NextResponse.json(
             createSyncResponse(true, leadScore, { status: 'synced' }),
             {
@@ -680,7 +682,6 @@ export async function POST(req: NextRequest) {
         const origin = req.headers.get('origin');
 
         // Enhanced error logging
-
         console.error('[SYNC_API] Tracking Error:', {
             message: errorMessage,
             stack: errorStack,
@@ -688,18 +689,23 @@ export async function POST(req: NextRequest) {
             url: req.url
         });
 
-        const isAllowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
-        const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
+        const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+
+        const errorHeaders: Record<string, string> = {
+            'Vary': 'Origin',
+            'X-OpsMantik-Version': OPSMANTIK_VERSION,
+            'X-CORS-Reason': reason || 'unknown_error',
+        };
+
+        if (isAllowed && origin) {
+            errorHeaders['Access-Control-Allow-Origin'] = origin;
+        }
 
         return NextResponse.json(
             createSyncResponse(false, null, { message: errorMessage }),
             {
                 status: 500,
-                headers: {
-                    'Access-Control-Allow-Origin': allowedHeader,
-                    'Vary': 'Origin',
-                    'X-OpsMantik-Version': OPSMANTIK_VERSION,
-                },
+                headers: errorHeaders,
             }
         );
     }

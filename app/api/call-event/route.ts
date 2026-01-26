@@ -5,21 +5,33 @@ import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 
 export const dynamic = 'force-dynamic';
 
+// Global version for debug verification
+const OPSMANTIK_VERSION = '1.0.2-bulletproof';
+
 // Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 export async function OPTIONS(req: NextRequest) {
-    const requestOrigin = req.headers.get('origin');
-    const allowedOrigin = isOriginAllowed(requestOrigin, ALLOWED_ORIGINS) ? requestOrigin || '*' : ALLOWED_ORIGINS[0];
-    
+    const origin = req.headers.get('origin');
+    const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+
+    const headers: Record<string, string> = {
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400',
+        'Vary': 'Origin',
+        'X-OpsMantik-Version': OPSMANTIK_VERSION,
+        'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
+        'X-CORS-Reason': reason || 'ok',
+    };
+
+    if (isAllowed && origin) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    }
+
     return new NextResponse(null, {
-        status: 200,
-        headers: {
-            'Access-Control-Allow-Origin': allowedOrigin,
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Max-Age': '86400',
-        },
+        status: isAllowed ? 200 : 403,
+        headers,
     });
 }
 
@@ -27,23 +39,37 @@ export async function POST(req: NextRequest) {
     try {
         // CORS check
         const origin = req.headers.get('origin');
-        if (!isOriginAllowed(origin, ALLOWED_ORIGINS)) {
+        const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+
+        const baseHeaders: Record<string, string> = {
+            'Vary': 'Origin',
+            'X-OpsMantik-Version': OPSMANTIK_VERSION,
+            'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
+            'X-CORS-Reason': reason || 'ok',
+        };
+
+        if (isAllowed && origin) {
+            baseHeaders['Access-Control-Allow-Origin'] = origin;
+        }
+
+        if (!isAllowed) {
             return NextResponse.json(
-                { error: 'Origin not allowed' },
-                { status: 403 }
+                { error: 'Origin not allowed', reason },
+                { status: 403, headers: baseHeaders }
             );
         }
 
         // Rate limiting: 50 requests per minute per IP (calls are less frequent)
         const clientId = getClientId(req);
         const rateLimitResult = rateLimit(clientId, 50, 60 * 1000);
-        
+
         if (!rateLimitResult.allowed) {
             return NextResponse.json(
                 { error: 'Rate limit exceeded', retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000) },
                 {
                     status: 429,
                     headers: {
+                        ...baseHeaders,
                         'X-RateLimit-Limit': '50',
                         'X-RateLimit-Remaining': '0',
                         'X-RateLimit-Reset': rateLimitResult.resetAt.toString(),
@@ -57,7 +83,10 @@ export async function POST(req: NextRequest) {
         const { site_id, phone_number, fingerprint } = body;
 
         if (!site_id || !phone_number || !fingerprint) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+            return NextResponse.json(
+                { error: 'Missing required fields' },
+                { status: 400, headers: baseHeaders }
+            );
         }
 
         // 1. Validate Site
@@ -69,13 +98,15 @@ export async function POST(req: NextRequest) {
 
         if (siteError || !site) {
             console.error('[CALL_MATCH] Site not found:', site_id);
-            return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+            return NextResponse.json(
+                { error: 'Site not found' },
+                { status: 404, headers: baseHeaders }
+            );
         }
 
         // 2. Find most recent session for this fingerprint (within last 30 minutes)
-        // Search in events metadata for fingerprint
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-        
+
         const { data: recentEvents, error: eventsError } = await adminClient
             .from('events')
             .select('session_id, session_month, metadata, created_at')
@@ -92,17 +123,10 @@ export async function POST(req: NextRequest) {
                 fingerprint,
                 timestamp: new Date().toISOString()
             });
-            
-            // Fail-fast: return 500 error instead of continuing
-            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+
             return NextResponse.json(
                 { error: 'Failed to query events', details: eventsError.message },
-                {
-                    status: 500,
-                    headers: {
-                        'Access-Control-Allow-Origin': allowedOrigin,
-                    },
-                }
+                { status: 500, headers: baseHeaders }
             );
         }
 
@@ -129,30 +153,19 @@ export async function POST(req: NextRequest) {
                     session_id: matchedSessionId,
                     timestamp: new Date().toISOString()
                 });
-                
-                // Fail-fast: return 500 error instead of continuing with incomplete data
-                const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+
                 return NextResponse.json(
                     { error: 'Failed to query session events', details: sessionEventsError.message },
-                    {
-                        status: 500,
-                        headers: {
-                            'Access-Control-Allow-Origin': allowedOrigin,
-                        },
-                    }
+                    { status: 500, headers: baseHeaders }
                 );
             }
 
             if (sessionEvents && sessionEvents.length > 0) {
-                // Count conversion events
                 const conversionCount = sessionEvents.filter(e => e.event_category === 'conversion').length;
                 const interactionCount = sessionEvents.filter(e => e.event_category === 'interaction').length;
-                
-                // Get max lead score from metadata
                 const scores = sessionEvents.map(e => Number((e.metadata as any)?.lead_score) || 0);
                 const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
 
-                // Calculate score breakdown
                 const conversionPoints = conversionCount * 20;
                 const interactionPoints = interactionCount * 5;
                 const bonuses = maxScore;
@@ -160,8 +173,6 @@ export async function POST(req: NextRequest) {
                 const cappedAt100 = rawScore > 100;
 
                 leadScore = Math.min(rawScore, 100);
-                
-                // Store score breakdown for evidence
                 scoreBreakdown = {
                     conversionPoints,
                     interactionPoints,
@@ -170,16 +181,10 @@ export async function POST(req: NextRequest) {
                     rawScore,
                     finalScore: leadScore
                 };
-                
-                console.log('[CALL_MATCH] Calculated lead score:', leadScore, scoreBreakdown);
-            } else {
-                console.log('[CALL_MATCH] No events found for session, using default score');
             }
-        } else {
-            console.log('[CALL_MATCH] No matching session found for fingerprint:', fingerprint);
         }
 
-        // 4. Insert call record with enriched matching evidence
+        // 4. Insert call record
         const { data: callRecord, error: insertError } = await adminClient
             .from('calls')
             .insert({
@@ -196,25 +201,13 @@ export async function POST(req: NextRequest) {
             .single();
 
         if (insertError) {
-            console.error('[CALL_MATCH] Insert failed:', {
-                message: insertError.message,
-                code: insertError.code,
-                details: insertError.details,
-                phone_number,
-                session_id: matchedSessionId,
-                timestamp: new Date().toISOString()
-            });
-            return NextResponse.json({ error: 'Failed to record call' }, { status: 500 });
+            console.error('[CALL_MATCH] Insert failed:', insertError.message);
+            return NextResponse.json(
+                { error: 'Failed to record call' },
+                { status: 500, headers: baseHeaders }
+            );
         }
 
-        console.log('[CALL_MATCH] Success:', {
-            call_id: callRecord.id,
-            session_id: matchedSessionId,
-            lead_score: leadScore,
-        });
-
-        const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
-        
         return NextResponse.json(
             {
                 status: 'matched',
@@ -224,7 +217,7 @@ export async function POST(req: NextRequest) {
             },
             {
                 headers: {
-                    'Access-Control-Allow-Origin': allowedOrigin,
+                    ...baseHeaders,
                     'X-RateLimit-Limit': '50',
                     'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
                 },
@@ -233,15 +226,15 @@ export async function POST(req: NextRequest) {
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
-        
         console.error('[CALL_MATCH] Error:', {
             message: errorMessage,
-            stack: errorStack,
             timestamp: new Date().toISOString(),
             url: req.url
         });
-        
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+
+        return NextResponse.json(
+            { error: 'Internal server error' },
+            { status: 500, headers: { 'Vary': 'Origin' } }
+        );
     }
 }

@@ -40,7 +40,7 @@ function assert(condition, message) {
 
 async function testCORSAllow() {
   log('\n📋 Test 1: CORS Allow (Allowed Origin)', 'blue');
-  
+
   const response = await fetch(`${BASE_URL}/api/sync`, {
     method: 'OPTIONS',
     headers: {
@@ -48,18 +48,18 @@ async function testCORSAllow() {
       'Access-Control-Request-Method': 'POST',
     },
   });
-  
+
   assert(response.status === 200, `OPTIONS request should return 200 (got ${response.status})`);
-  
+
   const acao = response.headers.get('Access-Control-Allow-Origin');
   assert(acao === ORIGIN_ALLOWED, `ACAO should be ${ORIGIN_ALLOWED} (got ${acao})`);
-  
+
   log(`   Response: ${response.status} OK, ACAO: ${acao}`, 'reset');
 }
 
 async function testCORSDeny() {
   log('\n📋 Test 2: CORS Deny (Blocked Origin)', 'blue');
-  
+
   const response = await fetch(`${BASE_URL}/api/sync`, {
     method: 'OPTIONS',
     headers: {
@@ -67,18 +67,18 @@ async function testCORSDeny() {
       'Access-Control-Request-Method': 'POST',
     },
   });
-  
-  assert(response.status === 200, `OPTIONS request should return 200 (got ${response.status})`);
-  
+
+  assert(response.status === 403, `OPTIONS request should return 403 when denied (got ${response.status})`);
+
   const acao = response.headers.get('Access-Control-Allow-Origin');
-  assert(acao !== ORIGIN_DENIED, `ACAO should NOT be ${ORIGIN_DENIED} (got ${acao})`);
-  
-  log(`   Response: ${response.status} OK, ACAO: ${acao} (not ${ORIGIN_DENIED})`, 'reset');
+  assert(!acao, `ACAO should be ABSENT on denial (got ${acao})`);
+
+  log(`   Response: ${response.status} Forbidden (Expected), ACAO: ${acao || 'Absent (Good)'}`, 'reset');
 }
 
 async function testInputValidationSiteId() {
   log('\n📋 Test 3: Input Validation - Invalid site_id', 'blue');
-  
+
   const response = await fetch(`${BASE_URL}/api/sync`, {
     method: 'POST',
     headers: {
@@ -94,25 +94,25 @@ async function testInputValidationSiteId() {
       ea: 'view',
     }),
   });
-  
+
   assert(response.status === 400, `Should return 400 for invalid site_id (got ${response.status})`);
-  
+
   const data = await response.json();
   assert(data.ok === false, `Response should have ok: false (got ${data.ok})`);
   assert(data.score === null, `Response should have score: null on error (got ${data.score})`);
   assert(data.message === 'Invalid site_id format', `Message should be 'Invalid site_id format' (got ${data.message})`);
-  
+
   log(`   Response: ${response.status} ${JSON.stringify(data)}`, 'reset');
 }
 
 async function testInputValidationUrl() {
   log('\n📋 Test 4: Input Validation - Invalid URL', 'blue');
-  
+
   if (!SITE_ID) {
     log('⚠️  SKIP: SMOKE_SITE_ID not set, skipping URL validation test', 'yellow');
     return;
   }
-  
+
   const response = await fetch(`${BASE_URL}/api/sync`, {
     method: 'POST',
     headers: {
@@ -128,25 +128,25 @@ async function testInputValidationUrl() {
       ea: 'view',
     }),
   });
-  
+
   assert(response.status === 400, `Should return 400 for invalid URL (got ${response.status})`);
-  
+
   const data = await response.json();
   assert(data.ok === false, `Response should have ok: false (got ${data.ok})`);
   assert(data.score === null, `Response should have score: null on error (got ${data.score})`);
   assert(data.message === 'Invalid url format', `Message should be 'Invalid url format' (got ${data.message})`);
-  
+
   log(`   Response: ${response.status} ${JSON.stringify(data)}`, 'reset');
 }
 
 async function testHappyPath() {
   log('\n📋 Test 5: Happy Path (Valid Request)', 'blue');
-  
+
   if (!SITE_ID) {
     log('⚠️  SKIP: SMOKE_SITE_ID not set, skipping happy path test', 'yellow');
     return;
   }
-  
+
   const response = await fetch(`${BASE_URL}/api/sync`, {
     method: 'POST',
     headers: {
@@ -168,9 +168,9 @@ async function testHappyPath() {
       },
     }),
   });
-  
+
   assert(response.status === 200, `Should return 200 for valid request (got ${response.status})`);
-  
+
   // Robust JSON parsing with raw response capture
   const rawText = await response.text();
   let data;
@@ -181,14 +181,14 @@ async function testHappyPath() {
     log(`   Raw response: ${rawText.substring(0, 500)}`, 'red');
     throw new Error(`Failed to parse JSON response: ${parseError.message}`);
   }
-  
+
   // Assert contract: ok and score must always be present
   assert('ok' in data, `Response must include 'ok' key (got keys: ${Object.keys(data).join(', ')})`);
   assert('score' in data, `Response must include 'score' key (got keys: ${Object.keys(data).join(', ')})`);
   assert(data.ok === true, `Response should have ok: true on success (got ${data.ok})`);
   assert(typeof data.score === 'number', `Response should have score (number) (got ${typeof data.score}, value: ${data.score})`);
   assert(data.score >= 0 && data.score <= 100, `Score should be between 0-100 (got ${data.score})`);
-  
+
   log(`   Response: ${response.status} ${JSON.stringify(data)}`, 'reset');
 }
 
@@ -198,14 +198,14 @@ async function runTests() {
   log(`   Allowed Origin: ${ORIGIN_ALLOWED}`, 'reset');
   log(`   Denied Origin: ${ORIGIN_DENIED}`, 'reset');
   log(`   Site ID: ${SITE_ID || 'NOT SET (some tests will be skipped)'}`, SITE_ID ? 'reset' : 'yellow');
-  
+
   try {
     await testCORSAllow();
     await testCORSDeny();
     await testInputValidationSiteId();
     await testInputValidationUrl();
     await testHappyPath();
-    
+
     log('\n✅ All smoke tests passed!', 'green');
     process.exit(0);
   } catch (error) {
