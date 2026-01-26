@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
         const origin = req.headers.get('origin');
         if (!isOriginAllowed(origin, ALLOWED_ORIGINS)) {
             return NextResponse.json(
-                { error: 'Origin not allowed' },
+                { error: 'Origin not allowed', score: 0 },
                 { status: 403 }
             );
         }
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
         
         if (!rateLimitResult.allowed) {
             return NextResponse.json(
-                { error: 'Rate limit exceeded', retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000) },
+                { error: 'Rate limit exceeded', retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000), score: 0 },
                 {
                     status: 429,
                     headers: {
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
             const origin = req.headers.get('origin');
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Invalid JSON payload' },
+                { status: 'error', message: 'Invalid JSON payload', score: 0 },
                 {
                     status: 400,
                     headers: {
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
             meta, r: referrer
         } = rawBody;
 
-        if (!site_id || !url) return NextResponse.json({ status: 'synced' });
+        if (!site_id || !url) return NextResponse.json({ status: 'synced', score: 0 });
 
         // PR-HARD-5: Input validation
         // 1. Validate site_id format (UUID v4)
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         if (typeof site_id !== 'string' || !uuidV4Regex.test(site_id)) {
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Invalid site_id format' },
+                { status: 'error', message: 'Invalid site_id format', score: 0 },
                 {
                     status: 400,
                     headers: {
@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
         } catch {
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Invalid url format' },
+                { status: 'error', message: 'Invalid url format', score: 0 },
                 {
                     status: 400,
                     headers: {
@@ -174,12 +174,12 @@ export async function POST(req: NextRequest) {
 
         if (siteError) {
             console.error('[SYNC_ERROR] Site query error:', site_id, siteError?.message, siteError?.code);
-            return NextResponse.json({ status: 'synced' });
+            return NextResponse.json({ status: 'synced', score: 0 });
         }
 
         if (!site) {
             console.error('[SYNC_ERROR] Site not found:', site_id);
-            return NextResponse.json({ status: 'synced' });
+            return NextResponse.json({ status: 'synced', score: 0 });
         }
 
         console.log('[SYNC_VALID] Site verified. Internal ID:', site.id);
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
                     // Fail-fast: return 500 error instead of silently creating new session
                     const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
                     return NextResponse.json(
-                        { status: 'error', message: 'Session lookup failed', details: lookupError.message },
+                        { status: 'error', message: 'Session lookup failed', details: lookupError.message, score: 0 },
                         {
                             status: 500,
                             headers: {
@@ -555,7 +555,7 @@ export async function POST(req: NextRequest) {
             // This prevents retry loops in tracker while logging the failure
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Database write failed' },
+                { status: 'error', message: 'Database write failed', score: 0 },
                 {
                     status: 500,
                     headers: {
@@ -594,7 +594,7 @@ export async function POST(req: NextRequest) {
         });
         
         return NextResponse.json(
-            { status: 'error', message: errorMessage },
+            { status: 'error', message: errorMessage, score: 0 },
             {
                 status: 500,
                 headers: {
