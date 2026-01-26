@@ -249,11 +249,18 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 1. Validate Site (use normalized site_id)
+        // 1. Validate Site (Search for multiple formats: original, stripped, or hyphenated)
+        const strippedId = typeof site_id === 'string' ? site_id.replace(/-/g, '') : site_id;
+        const searchIds = Array.from(new Set([site_id, finalSiteId, strippedId]));
+
+        if (isDebugMode) {
+            console.log('[SYNC_DB] Searching site with IDs:', searchIds);
+        }
+
         const { data: site, error: siteError } = await adminClient
             .from('sites')
             .select('id')
-            .eq('public_id', finalSiteId)
+            .in('public_id', searchIds)
             .maybeSingle();
 
         if (siteError) {
