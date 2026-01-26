@@ -1,0 +1,35 @@
+name: API Smoke Tests
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  smoke-api:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run API smoke tests
+        env:
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL || 'https://console.opsmantik.com' }}
+          SMOKE_SITE_ID: ${{ secrets.SMOKE_SITE_ID }}
+          SMOKE_ORIGIN_ALLOWED: ${{ secrets.SMOKE_ORIGIN_ALLOWED || 'https://www.sosreklam.com' }}
+        run: npm run smoke:api
