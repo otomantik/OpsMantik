@@ -241,3 +241,7 @@ Before committing OPS Console changes:
 **Note**: This lock is lightweight and focused on critical regressions. For full feature checklist, see `docs/_archive/2026-01-27/DEV_CHECKLIST.md`.
 
 **Note**: Script name `check:warroom` is kept for backward compatibility. References in docs use "OPS Console".
+
+### 🟢 Status (2026-01-27)
+- [x] **POLISH-2A Done**: Backend stats RPC implemented and verified.
+- Commit ID: `6e92fb2f2276e9620de939a81fbab8468e770de4`
