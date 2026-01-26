@@ -4,6 +4,7 @@ import { rateLimit, getClientId } from '@/lib/rate-limit';
 import { computeAttribution, extractUTM } from '@/lib/attribution';
 import { extractGeoInfo } from '@/lib/geo';
 import { computeLeadScore } from '@/lib/scoring';
+import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 
 // UUID v4 generator (RFC 4122 compliant)
 function generateUUID(): string {
@@ -21,84 +22,12 @@ const geoip: any = null;
 
 export const dynamic = 'force-dynamic';
 
-// CORS whitelist - add your domains here
-// Parse and normalize ALLOWED_ORIGINS: trim spaces, support http/https for localhost
-const parseAllowedOrigins = (): string[] => {
-    const raw = process.env.ALLOWED_ORIGINS;
-    if (!raw) return ['*'];
-    
-    // Split by comma, trim each entry, filter empty strings
-    const origins = raw.split(',')
-        .map(o => o.trim())
-        .filter(o => o.length > 0);
-    
-    if (origins.length === 0) return ['*'];
-    
-    // Warn if wildcard found in production
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
-    if (isProduction && origins.includes('*')) {
-        console.warn('[CORS] ⚠️ WARNING: Wildcard (*) found in ALLOWED_ORIGINS in production. This allows all origins and is a security risk.');
-    }
-    
-    return origins;
-};
-
+// Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
-
-const isOriginAllowed = (origin: string | null): boolean => {
-    if (!origin) return false;
-    
-    // Wildcard allows all (with warning in production)
-    if (ALLOWED_ORIGINS.includes('*')) return true;
-    
-    // Normalize origin URL for comparison
-    const normalizeOrigin = (url: string): string => {
-        try {
-            const urlObj = new URL(url);
-            // Return full origin (protocol + hostname + port)
-            return urlObj.origin;
-        } catch {
-            // If URL parsing fails, return as-is
-            return url;
-        }
-    };
-    
-    const normalizedOrigin = normalizeOrigin(origin);
-    
-    // Check against allowed origins
-    return ALLOWED_ORIGINS.some(allowed => {
-        // Normalize allowed origin (add protocol if missing)
-        let normalizedAllowed: string;
-        if (allowed.startsWith('http://') || allowed.startsWith('https://')) {
-            normalizedAllowed = normalizeOrigin(allowed);
-        } else {
-            // If no protocol, assume https for non-localhost, http for localhost
-            if (allowed.includes('localhost') || allowed.includes('127.0.0.1')) {
-                normalizedAllowed = normalizeOrigin(`http://${allowed}`);
-            } else {
-                normalizedAllowed = normalizeOrigin(`https://${allowed}`);
-            }
-        }
-        
-        // Exact match
-        if (normalizedOrigin === normalizedAllowed) return true;
-        
-        // For localhost: support both http and https (dev flexibility)
-        if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
-            const httpVersion = normalizedOrigin.replace('https://', 'http://');
-            const httpsVersion = normalizedOrigin.replace('http://', 'https://');
-            return normalizedAllowed === httpVersion || normalizedAllowed === httpsVersion;
-        }
-        
-        // Substring match for domain variations (e.g., www.example.com matches example.com)
-        return normalizedOrigin.includes(normalizedAllowed.replace(/^https?:\/\//, '')) ||
-               normalizedAllowed.includes(normalizedOrigin.replace(/^https?:\/\//, ''));
-    });
-};
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const allowedOrigin = isOriginAllowed(origin) ? origin || '*' : ALLOWED_ORIGINS[0];
+    const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
     
     return new NextResponse(null, {
         status: 200,
@@ -115,7 +44,7 @@ export async function POST(req: NextRequest) {
     try {
         // CORS check
         const origin = req.headers.get('origin');
-        if (!isOriginAllowed(origin)) {
+        if (!isOriginAllowed(origin, ALLOWED_ORIGINS)) {
             return NextResponse.json(
                 { error: 'Origin not allowed' },
                 { status: 403 }
@@ -147,7 +76,7 @@ export async function POST(req: NextRequest) {
         } catch (parseError) {
             console.error('[SYNC_API] JSON parse error:', parseError);
             const origin = req.headers.get('origin');
-            const allowedOrigin = isOriginAllowed(origin) ? origin || '*' : ALLOWED_ORIGINS[0];
+            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 { status: 'error', message: 'Invalid JSON payload' },
                 {
@@ -310,6 +239,18 @@ export async function POST(req: NextRequest) {
 
                 if (lookupError) {
                     console.error('[SYNC_API] Session lookup error:', lookupError.message);
+                    
+                    // Fail-fast: return 500 error instead of silently creating new session
+                    const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+                    return NextResponse.json(
+                        { status: 'error', message: 'Session lookup failed', details: lookupError.message },
+                        {
+                            status: 500,
+                            headers: {
+                                'Access-Control-Allow-Origin': allowedOrigin,
+                            },
+                        }
+                    );
                 } else if (existingSession) {
                     console.log('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                     session = existingSession;
@@ -558,7 +499,7 @@ export async function POST(req: NextRequest) {
             
             // Return error response but don't break the client
             // This prevents retry loops in tracker while logging the failure
-            const allowedOrigin = isOriginAllowed(origin) ? origin || '*' : ALLOWED_ORIGINS[0];
+            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 { status: 'error', message: 'Database write failed' },
                 {
@@ -571,7 +512,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Use origin from the beginning of the function (line 42)
-        const allowedOrigin = isOriginAllowed(origin) ? origin || '*' : ALLOWED_ORIGINS[0];
+        const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
         
         return NextResponse.json(
             { status: 'synced', score: leadScore },
@@ -588,7 +529,7 @@ export async function POST(req: NextRequest) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
         const origin = req.headers.get('origin');
-        const allowedOrigin = isOriginAllowed(origin) ? origin || '*' : ALLOWED_ORIGINS[0];
+        const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
         
         // Enhanced error logging
         console.error('[SYNC_API] Tracking Error:', {
