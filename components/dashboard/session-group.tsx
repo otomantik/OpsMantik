@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, memo, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock, Copy, ChevronRight } from 'lucide-react';
+import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock, Copy, ChevronRight, History, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
 
 interface Event {
   id: string;
@@ -24,6 +25,7 @@ interface SessionGroupProps {
 
 export const SessionGroup = memo(function SessionGroup({ sessionId, events }: SessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showVisitorHistory, setShowVisitorHistory] = useState(false);
   const [matchedCall, setMatchedCall] = useState<any>(null);
   const [isLoadingCall, setIsLoadingCall] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -34,6 +36,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
     district?: string | null;
     fingerprint?: string | null;
     gclid?: string | null;
+    site_id?: string | null;
   } | null>(null);
   
   const firstEvent = events[events.length - 1]; // Oldest event
@@ -42,12 +45,13 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   const leadScore = metadata.lead_score || 0;
   
   // Fetch session data (normalized fields) - fallback to event metadata
+  // Also fetch site_id for visitor history
   useEffect(() => {
     const fetchSessionData = async () => {
       const supabase = createClient();
       const { data: session } = await supabase
         .from('sessions')
-        .select('attribution_source, device_type, city, district, fingerprint, gclid')
+        .select('attribution_source, device_type, city, district, fingerprint, gclid, site_id')
         .eq('id', sessionId)
         .maybeSingle();
       
@@ -63,8 +67,17 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant
   const attributionSource = sessionData?.attribution_source || metadata.attribution_source;
   const intelligenceSummary = metadata.intelligence_summary || 'Standard Traffic';
-  const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
   const gclid = sessionData?.gclid || metadata.gclid || null;
+  
+  // Get fingerprint and site_id for visitor history
+  const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
+  const siteId = (sessionData as any)?.site_id || null;
+  
+  // Fetch visitor history if fingerprint and siteId are available
+  const { sessions: visitorSessions, sessionCount24h, isReturning, isLoading: isLoadingHistory } = useVisitorHistory(
+    siteId || '',
+    fingerprint
+  );
   
   // Context chips data - prefer session, fallback to metadata
   const city = sessionData?.city || metadata.city || null;
@@ -173,6 +186,20 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
     } catch (err) {
       console.error('[SESSION_GROUP] Failed to copy session ID:', err);
     }
+  };
+
+  const handleCopyFingerprint = async (e: React.MouseEvent, fullFingerprint: string) => {
+    e.stopPropagation(); // Prevent accordion toggle
+    try {
+      await navigator.clipboard.writeText(fullFingerprint);
+    } catch (err) {
+      console.error('[SESSION_GROUP] Failed to copy fingerprint:', err);
+    }
+  };
+
+  const handleToggleVisitorHistory = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent accordion toggle
+    setShowVisitorHistory(!showVisitorHistory);
   };
 
   // Event compression: Group consecutive identical events within 2 seconds
@@ -375,9 +402,36 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                 </span>
               )}
               {fingerprint && (
-                <span className="font-mono text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                  FP: <span className="text-cyan-300">{fingerprint.length > 12 ? `${fingerprint.slice(0, 8)}...${fingerprint.slice(-4)}` : fingerprint}</span>
+                <span 
+                  className="font-mono text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 cursor-pointer hover:bg-cyan-500/30 transition-colors"
+                  title={`Fingerprint: ${fingerprint}\nClick to copy full fingerprint`}
+                  onClick={(e) => handleCopyFingerprint(e, fingerprint)}
+                >
+                  FP: <span className="text-cyan-300">{fingerprint.slice(0, 10)}...</span>
+                  <Copy className="w-3 h-3 opacity-60" />
                 </span>
+              )}
+              {isReturning && (
+                <span className="font-mono text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 border border-green-500/30 font-semibold">
+                  🔄 RETURNING
+                </span>
+              )}
+              {sessionCount24h > 0 && (
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                  Sessions 24h: {sessionCount24h}
+                </span>
+              )}
+              {fingerprint && siteId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs font-mono text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
+                  onClick={handleToggleVisitorHistory}
+                  title="View visitor history"
+                >
+                  <History className="w-3 h-3 mr-1" />
+                  History
+                </Button>
               )}
             </div>
           </div>
@@ -665,6 +719,119 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
           </div>
         )}
       </CardContent>
+      
+      {/* Visitor History Drawer */}
+      {showVisitorHistory && fingerprint && siteId && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end lg:items-center justify-center p-4">
+          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col glass border-slate-800/50">
+            <CardContent className="p-0 flex flex-col h-full">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-800/50">
+                <div>
+                  <h3 className="font-mono text-lg font-semibold text-slate-200">Visitor History</h3>
+                  <p className="font-mono text-xs text-slate-400 mt-1">
+                    Fingerprint: <span className="text-cyan-400">{fingerprint.slice(0, 10)}...</span>
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-200"
+                  onClick={() => setShowVisitorHistory(false)}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {isLoadingHistory ? (
+                  <div className="text-center py-8">
+                    <p className="font-mono text-sm text-slate-400">Loading visitor history...</p>
+                  </div>
+                ) : visitorSessions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="font-mono text-sm text-slate-400">No previous sessions found for this visitor</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {visitorSessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className={`p-3 rounded border ${
+                          session.id === sessionId
+                            ? 'bg-emerald-500/10 border-emerald-500/30'
+                            : 'bg-slate-800/30 border-slate-700/30'
+                        } hover:bg-slate-800/50 transition-colors`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-2">
+                              <span className="font-mono text-xs text-slate-300">
+                                {new Date(session.created_at).toLocaleString('tr-TR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                              {session.id === sessionId && (
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                  CURRENT
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {session.attribution_source && (
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                                  {session.attribution_source}
+                                </span>
+                              )}
+                              {session.device_type && (
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                                  {session.device_type}
+                                </span>
+                              )}
+                              {session.city && session.city !== 'Unknown' && (
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400">
+                                  {session.city}
+                                </span>
+                              )}
+                              {session.lead_score !== null && session.lead_score !== undefined && (
+                                <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                                  session.lead_score >= 71 ? 'bg-orange-500/20 text-orange-400' :
+                                  session.lead_score >= 31 ? 'bg-blue-500/20 text-blue-400' :
+                                  'bg-slate-700/50 text-slate-300'
+                                }`}>
+                                  Score: {session.lead_score}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-mono text-xs text-slate-500">
+                              {session.id.slice(0, 8)}...
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Footer */}
+              <div className="p-4 border-t border-slate-800/50 bg-slate-900/50">
+                <p className="font-mono text-xs text-slate-400 text-center">
+                  Showing {visitorSessions.length} session{visitorSessions.length !== 1 ? 's' : ''} 
+                  {sessionCount24h > 0 && ` • ${sessionCount24h} in last 24h`}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </Card>
   );
 }, (prevProps, nextProps) => {
