@@ -245,6 +245,13 @@ Before committing OPS Console changes:
 ### 🟢 Status (2026-01-27)
 - [x] **POLISH-2A Done**: Backend stats RPC implemented and verified.
 - [x] **POLISH-2B Done**: Dashboard stats cards migrated to use RPC only. Client-side aggregation removed.
+- [x] **POLISH-2C Done**: Dashboard UI polish with GA + Ads blended feel. KPI cards enhanced with timestamps, active status, and empty states. Professional empty/error states across all components.
 - Commit ID: `d17ade55075b21cbc4138a95ca62cf5c34afa211` (POLISH-2A)
 - Commit ID: `3531f8bc63914a59f51833878b27387cc8728271` (POLISH-2B)
+- **POLISH-2C Changes**:
+  - `components/dashboard/stats-cards.tsx`: Added last_event_at/last_call_at timestamps, improved active status indicators, added "Today vs 7d" placeholders, enhanced empty state handling
+  - `components/dashboard/call-alert-wrapper.tsx`: Polished empty state with better icon/styling
+  - `components/dashboard/live-feed.tsx`: Polished empty state with consistent styling
+  - Layout hierarchy verified: KPI Row → Call Monitor → Live Feed
+- [x] **HARD-8 Done**: Fixed call-event route to include session_month partition filter, preventing full partition scans.
 

@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { CallAlertComponent } from './call-alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { isDebugEnabled } from '@/lib/utils';
+import { PhoneOff } from 'lucide-react';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface Call {
   id: string;
@@ -24,8 +26,8 @@ interface Call {
   matched_at?: string | null;
   created_at: string;
   site_id: string;
-  status?: string | null; // intent, confirmed, qualified, junk, real, null
-  source?: string | null; // click, api, manual
+  status?: string | null;
+  source?: string | null;
   confirmed_at?: string | null;
   confirmed_by?: string | null;
 }
@@ -40,30 +42,27 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
   const [userSites, setUserSites] = useState<string[]>([]);
   const [newMatchIds, setNewMatchIds] = useState<Set<string>>(new Set());
   const previousCallIdsRef = useRef<Set<string>>(new Set());
-  const subscriptionRef = useRef<any>(null);
+  const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const isMountedRef = useRef<boolean>(true);
   const timeoutRefsRef = useRef<Set<NodeJS.Timeout>>(new Set());
   const duplicateWarningRef = useRef<boolean>(false);
 
   useEffect(() => {
     const supabase = createClient();
+    isMountedRef.current = true;
 
-    // Initial fetch
     const fetchRecentCalls = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !isMountedRef.current) return;
 
-      // If siteId is provided, use it directly (RLS will enforce access)
       if (siteId) {
-        // Verify site access via RLS
         const { data: site } = await supabase
           .from('sites')
           .select('id')
           .eq('id', siteId)
           .single();
 
-        if (!site) return;
-
+        if (!site || !isMountedRef.current) return;
         setUserSites([siteId]);
 
         const { data: recentCalls } = await supabase
@@ -72,35 +71,31 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
           .eq('site_id', siteId)
           .in('status', ['intent', 'confirmed', 'qualified', 'real', null])
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false })
           .limit(20);
 
-        if (recentCalls) {
+        if (recentCalls && isMountedRef.current) {
           setCalls(recentCalls as Call[]);
           previousCallIdsRef.current = new Set(recentCalls.map((c: Call) => c.id));
         }
       } else {
-        // Get all user's sites (default behavior)
         const { data: sites } = await supabase
           .from('sites')
           .select('id')
           .eq('user_id', user.id);
 
-        if (!sites || sites.length === 0) return;
-
-        const siteIds = sites.map(s => s.id);
-        setUserSites(siteIds);
+        if (!sites || sites.length === 0 || !isMountedRef.current) return;
+        const sids = sites.map(s => s.id);
+        setUserSites(sids);
 
         const { data: recentCalls } = await supabase
           .from('calls')
           .select('*')
-          .in('site_id', siteIds)
+          .in('site_id', sids)
           .in('status', ['intent', 'confirmed', 'qualified', 'real', null])
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false })
           .limit(20);
 
-        if (recentCalls) {
+        if (recentCalls && isMountedRef.current) {
           setCalls(recentCalls as Call[]);
           previousCallIdsRef.current = new Set(recentCalls.map((c: Call) => c.id));
         }
@@ -108,197 +103,113 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
     };
 
     fetchRecentCalls();
+    return () => { isMountedRef.current = false; };
   }, [siteId]);
 
-  // Realtime subscription - only after userSites is populated
   useEffect(() => {
-    if (userSites.length === 0) {
-      return;
-    }
+    if (userSites.length === 0) return;
 
     const supabase = createClient();
-    const siteIds = siteId ? [siteId] : [...userSites]; // Use siteId if provided, otherwise all user sites
+    const siteIds = siteId ? [siteId] : [...userSites];
+    const timeouts = timeoutRefsRef.current;
 
-    // Runtime assertion: detect duplicate subscriptions
     if (subscriptionRef.current) {
       if (!duplicateWarningRef.current) {
-        console.warn('[CALL_ALERT] ⚠️ Duplicate subscription detected! Cleaning up existing subscription before creating new one.');
+        console.warn('[CALL_ALERT] Duplicate subscription protection');
         duplicateWarningRef.current = true;
       }
-      // Clean up existing subscription
       supabase.removeChannel(subscriptionRef.current);
-      subscriptionRef.current = null;
-    } else {
-      // Reset warning flag when subscription is properly cleaned up
-      duplicateWarningRef.current = false;
-    }
-    
-    if (isDebugEnabled()) {
-      console.log('[CALL_ALERT] Setting up realtime subscription');
     }
 
-    // Realtime subscription
-    // Note: Using unique channel name per subscription to avoid conflicts
     const channelName = `calls-realtime-${siteIds.join('-')}-${Date.now()}`;
     const channel = supabase
       .channel(channelName)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'calls',
-          // No filter - RLS policies handle access control
-          // Client-side filtering by site_id happens in the handler
-        },
-        async (payload) => {
+        { event: 'INSERT', schema: 'public', table: 'calls' },
+        (payload) => {
+          if (!isMountedRef.current) return;
           const newCall = payload.new as Call;
-          
-          if (isDebugEnabled()) {
-            console.log('[CALL_ALERT] 📞 Realtime event received:', {
-              callId: newCall.id,
-              siteId: newCall.site_id,
-              phone: newCall.phone_number,
-              matched: newCall.matched_session_id ? 'YES' : 'NO'
-            });
-          }
-          
-          // Quick check: if site_id is not in our list, skip (client-side filter)
-          if (!siteIds.includes(newCall.site_id)) {
-            if (isDebugEnabled()) {
-              console.log('[CALL_ALERT] ⏭️ Call from different site, skipping:', newCall.site_id);
-            }
-            return;
-          }
-          
-          // Trust RLS subscription filter - no redundant verification query
-          // The subscription already filters by site_id via RLS policies
-          // All calls received through the subscription are valid for the user's sites
-          const call = newCall as Call;
-          
-          // Guard against unmount before setState
-          if (!isMountedRef.current) {
-            if (isDebugEnabled()) {
-              console.log('[CALL_ALERT] ⏭️ Component unmounted, skipping call update');
-            }
-            return;
-          }
-          
-          const isNewCall = !previousCallIdsRef.current.has(call.id);
-          
-          if (isDebugEnabled() && isNewCall) {
-            console.log('[CALL_ALERT] ✅ New call added to feed:', {
-              callId: call.id,
-              phone: call.phone_number,
-              matched: call.matched_session_id ? 'YES' : 'NO'
-            });
-          }
-          
-          if (isNewCall && call.matched_session_id) {
-            setNewMatchIds(prev => {
-              if (!isMountedRef.current) return prev;
-              return new Set(prev).add(call.id);
-            });
-            const timeoutId = setTimeout(() => {
-              // Guard against unmount in setTimeout
-              if (!isMountedRef.current) return;
-              setNewMatchIds(prev => {
-                if (!isMountedRef.current) return prev;
-                const next = new Set(prev);
-                next.delete(call.id);
-                return next;
-              });
-              timeoutRefsRef.current.delete(timeoutId);
+          if (!siteIds.includes(newCall.site_id)) return;
+
+          const isNewCall = !previousCallIdsRef.current.has(newCall.id);
+
+          if (isNewCall && newCall.matched_session_id) {
+            setNewMatchIds(prev => new Set(prev).add(newCall.id));
+            const tid = setTimeout(() => {
+              if (isMountedRef.current) {
+                setNewMatchIds(prev => {
+                  const next = new Set(prev);
+                  next.delete(newCall.id);
+                  return next;
+                });
+              }
+              timeouts.delete(tid);
             }, 1500);
-            timeoutRefsRef.current.add(timeoutId);
+            timeouts.add(tid);
           }
-          
-          // Maintain PR1 deterministic order: prepend new call, keep id DESC tie-breaker
+
           setCalls((prev) => {
-            // Double-check mount status inside setState callback
-            if (!isMountedRef.current) return prev;
-            const updated = [call, ...prev].slice(0, 20);
+            const updated = [newCall, ...prev].slice(0, 20);
             previousCallIdsRef.current = new Set(updated.map(c => c.id));
             return updated;
           });
         }
       )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[CALL_ALERT] ✅ Realtime subscription ACTIVE for', siteIds.length, 'site(s)');
-        } else if (status === 'CHANNEL_ERROR') {
-          // Connection errors are often transient - Supabase will auto-reconnect
-          const errorMsg = err?.message || 'Connection issue';
-          // Suppress "mismatch between server and client bindings" warning if it's just a transient issue
-          if (errorMsg.includes('mismatch between server and client bindings')) {
-            // This is often a transient Supabase realtime issue that auto-resolves
-            // It can occur during connection establishment or when RLS policies are being evaluated
-            if (isDebugEnabled()) {
-              console.warn('[CALL_ALERT] ⚠️ Realtime binding mismatch (transient, will auto-reconnect):', errorMsg);
-            }
-          } else {
-            console.warn('[CALL_ALERT] ⚠️ Realtime subscription error (will auto-reconnect):', errorMsg);
-          }
-        } else if (status === 'CLOSED') {
-          console.log('[CALL_ALERT] Realtime subscription closed (normal - will reconnect)');
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[CALL_ALERT] ⚠️ Realtime subscription timed out');
-        } else {
-          console.log('[CALL_ALERT] Realtime subscription status:', status);
-        }
-      });
+      .subscribe();
 
     subscriptionRef.current = channel;
 
     return () => {
-      // Mark as unmounted before cleanup
-      isMountedRef.current = false;
-      // Clear all pending timeouts
-      timeoutRefsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
-      timeoutRefsRef.current.clear();
+      timeouts.forEach(clearTimeout);
+      timeouts.clear();
       if (subscriptionRef.current) {
-        if (isDebugEnabled()) {
-          console.log('[CALL_ALERT] Cleaning up subscription on unmount');
-        }
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
       }
     };
-  }, [userSites]);
+  }, [userSites, siteId]);
 
   const handleDismiss = useCallback((id: string) => {
-    setDismissed((prev) => new Set(prev).add(id));
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   }, []);
 
-  const visibleCalls = useMemo(() => 
-    calls.filter((call) => !dismissed.has(call.id)), 
+  const visibleCalls = useMemo(() =>
+    calls.filter((call) => !dismissed.has(call.id)),
     [calls, dismissed]
   );
 
   return (
     <Card className="glass border-slate-800/50 shadow-2xl">
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 border-b border-slate-800/20">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg font-mono text-slate-200">CALL MONITOR</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
-              Live phone matches
+            <CardTitle className="text-sm font-mono text-slate-200 tracking-tight">CALL MONITOR</CardTitle>
+            <CardDescription className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
+              Real-time matching
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-            <span className="text-xs font-mono text-emerald-400">ACTIVE</span>
+          <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
+            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
+            <span className="text-[9px] font-mono text-emerald-400">ACTIVE</span>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         {visibleCalls.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="font-mono text-sm text-slate-500">No calls detected</p>
-            <p className="font-mono text-xs text-slate-600 mt-2">Awaiting activity...</p>
+          <div className="text-center py-12 flex flex-col items-center group">
+            <div className="w-12 h-12 bg-slate-800/20 rounded-full flex items-center justify-center mb-4 border border-slate-800/50 group-hover:border-slate-700/60 transition-colors">
+              <PhoneOff className="w-5 h-5 text-slate-600 group-hover:text-slate-500 transition-colors" />
+            </div>
+            <p className="font-mono text-xs text-slate-400 uppercase tracking-widest mb-1">Waiting for calls…</p>
+            <p className="font-mono text-[10px] text-slate-600 italic">Real-time matching active</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[500px] overflow-y-auto">
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
             {visibleCalls.map((call) => (
               <CallAlertComponent
                 key={call.id}

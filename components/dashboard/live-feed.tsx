@@ -3,7 +3,7 @@
 /**
  * LiveFeed - Real-time event stream with month partition filtering
  * 
- * Acceptance Criteria (see docs/DEV_CHECKLIST.md):
+ * Acceptance Criteria:
  * - Realtime feed streams without double subscriptions
  * - Month partition filter enforced (session_month check)
  * - RLS compliance via JOIN patterns
@@ -11,11 +11,13 @@
  * 
  * Security: Uses anon key only (createClient), no service role leakage
  */
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SessionGroup } from './session-group';
 import { isDebugEnabled } from '@/lib/utils';
+import { Activity } from 'lucide-react';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface Event {
   id: string;
@@ -25,7 +27,7 @@ interface Event {
   event_action: string;
   event_label: string | null;
   event_value: number | null;
-  metadata: any;
+  metadata: Record<string, unknown>;
   created_at: string;
   url?: string;
 }
@@ -36,29 +38,23 @@ interface LiveFeedProps {
 
 export function LiveFeed({ siteId }: LiveFeedProps = {}) {
   const [events, setEvents] = useState<Event[]>([]);
-  const [groupedSessions, setGroupedSessions] = useState<Record<string, Event[]>>({});
   const [userSites, setUserSites] = useState<string[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const subscriptionRef = useRef<any>(null);
+  const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const isMountedRef = useRef<boolean>(true);
   const duplicateWarningRef = useRef<boolean>(false);
-  
+
   // Filter state
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
 
   // Memoized grouping: compute groupedSessions from events only when events change
-  // This avoids expensive recalculations on every render
-  useEffect(() => {
-    if (events.length === 0) {
-      setGroupedSessions({});
-      return;
-    }
+  const groupedSessions = useMemo(() => {
+    if (events.length === 0) return {};
 
-    // Group events by session (only called when events array changes, not on every render)
     const grouped: Record<string, Event[]> = {};
     events.forEach((event) => {
       if (!grouped[event.session_id]) {
@@ -66,337 +62,164 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
       }
       grouped[event.session_id].push(event);
     });
-    
-    // Sort events within each session (PR1: maintain deterministic order)
-    Object.keys(grouped).forEach((sessionId) => {
-      grouped[sessionId].sort((a, b) => {
+
+    Object.keys(grouped).forEach((sid) => {
+      grouped[sid].sort((a, b) => {
         const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         if (timeDiff !== 0) return timeDiff;
-        return a.id.localeCompare(b.id); // PR1 tie-breaker
+        return a.id.localeCompare(b.id);
       });
     });
 
-    setGroupedSessions(grouped);
-  }, [events]); // Only recalculate when events array changes
+    return grouped;
+  }, [events]);
 
   useEffect(() => {
     const supabase = createClient();
-    let mounted = true;
-    setIsLoading(true);
-    setError(null);
+    isMountedRef.current = true;
 
     const initialize = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !mounted) {
-        setIsLoading(false);
-        return;
-      }
+      if (!user || !isMountedRef.current) return;
 
-      if (isDebugEnabled()) {
-        console.log('[LIVE_FEED] Initializing for user:', user.id, siteId ? `(site: ${siteId})` : '');
-      }
+      try {
+        let activeSiteIds: string[] = [];
 
-      // If siteId is provided, use it directly (RLS will enforce access)
-      if (siteId) {
-        // Verify site access via RLS (query will fail if user doesn't have access)
-        const { data: site } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('id', siteId)
-          .single();
+        if (siteId) {
+          const { data: site } = await supabase
+            .from('sites')
+            .select('id')
+            .eq('id', siteId)
+            .single();
 
-        if (!site || !mounted) {
-          console.warn('[LIVE_FEED] Site not found or access denied:', siteId);
-          setIsInitialized(false);
-          setUserSites([]);
-          setError('Site not found or access denied');
-          setIsLoading(false);
-          return;
+          if (!site || !isMountedRef.current) {
+            setError('Site access denied');
+            setIsLoading(false);
+            return;
+          }
+          activeSiteIds = [siteId];
+        } else {
+          const { data: sites } = await supabase
+            .from('sites')
+            .select('id')
+            .eq('user_id', user.id);
+
+          if (!sites || sites.length === 0) {
+            setIsInitialized(true);
+            setIsLoading(false);
+            return;
+          }
+          activeSiteIds = sites.map((s) => s.id);
         }
 
-        setUserSites([siteId]);
+        if (!isMountedRef.current) return;
+        setUserSites(activeSiteIds);
         setIsInitialized(true);
 
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Using single site:', siteId);
+        const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
+
+        const { data: recentEvents, error: eventsError } = await supabase
+          .from('events')
+          .select('*, sessions!inner(site_id), url')
+          .eq('session_month', currentMonth)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(100);
+
+        if (!isMountedRef.current) return;
+
+        if (eventsError) throw eventsError;
+
+        if (recentEvents) {
+          const eventsData = recentEvents.map((item: any) => ({
+            id: item.id,
+            session_id: item.session_id,
+            session_month: item.session_month,
+            event_category: item.event_category,
+            event_action: item.event_action,
+            event_label: item.event_label,
+            event_value: item.event_value,
+            metadata: item.metadata || {},
+            created_at: item.created_at,
+            url: item.url,
+          })) as Event[];
+
+          setEvents(eventsData);
         }
-      } else {
-        // Get all user's sites (default behavior)
-        const { data: sites } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('user_id', user.id);
-
-        if (!sites || sites.length === 0 || !mounted) {
-          console.warn('[LIVE_FEED] No sites found for user');
-          setIsInitialized(false);
-          setUserSites([]); // Set empty array to show proper message
-          return;
-        }
-
-        const siteIds = sites.map((s) => s.id);
-        setUserSites(siteIds);
-        setIsInitialized(true);
-
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Found sites:', siteIds.length);
-        }
-      }
-
-      const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-      const activeSiteIds = siteId ? [siteId] : userSites.length > 0 ? userSites : [];
-
-      if (activeSiteIds.length === 0) {
-        return;
-      }
-
-      // Get recent sessions - RLS compliant (sessions -> sites -> user_id)
-      const { data: sessions, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('id')
-        .in('site_id', activeSiteIds)
-        .eq('created_month', currentMonth)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(50);
-
-      if (!mounted) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (sessionsError) {
-        console.error('[LIVE_FEED] Error fetching sessions:', sessionsError.message);
-        // Sessions error is non-critical (events query is more important)
-        // Log but don't block events loading
-      }
-
-      if (!sessions || sessions.length === 0) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] No sessions found');
-        }
-      } else if (isDebugEnabled()) {
-        console.log('[LIVE_FEED] Found sessions:', sessions.length);
-      }
-
-      // Get recent events - RLS compliant using JOIN pattern
-      const { data: recentEvents, error: eventsError } = await supabase
-        .from('events')
-        .select('*, sessions!inner(site_id), url')
-        .eq('session_month', currentMonth)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(100);
-
-      if (!mounted) return;
-
-      if (eventsError) {
-        console.error('[LIVE_FEED] Error loading events:', eventsError.message);
-        setError(eventsError.message);
-        setIsLoading(false);
-        return; // Fail-fast: do not proceed with empty/incomplete data
-      }
-
-      if (recentEvents) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Loaded events:', recentEvents.length);
-        }
-        // Extract event data (JOIN returns nested structure)
-        const eventsData = recentEvents.map((item: any) => ({
-          id: item.id,
-          session_id: item.session_id,
-          session_month: item.session_month,
-          event_category: item.event_category,
-          event_action: item.event_action,
-          event_label: item.event_label,
-          event_value: item.event_value,
-          metadata: item.metadata,
-          created_at: item.created_at,
-          url: item.url,
-        })) as Event[];
-        
-        setEvents(eventsData);
-        setError(null); // Clear any previous errors
-        setIsLoading(false);
-        // groupedSessions will be computed automatically via useEffect when events change
-      } else {
-        // No events found (not an error, just empty state)
-        setEvents([]);
-        setError(null);
-        setIsLoading(false);
+      } catch (err: unknown) {
+        console.error('[LIVE_FEED] Init error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load feed';
+        setError(errorMessage);
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
       }
     };
 
     initialize();
 
     return () => {
-      mounted = false;
+      isMountedRef.current = false;
     };
-  }, [siteId]); // Re-initialize when siteId changes
+  }, [siteId]);
 
-  // Realtime subscription - only after userSites is populated
+  // Realtime subscription
   useEffect(() => {
-    if (!isInitialized || userSites.length === 0) {
-      return;
-    }
+    if (!isInitialized || userSites.length === 0) return;
 
     const supabase = createClient();
-    // Calculate current month inside effect to ensure it's fresh
-    const getCurrentMonth = () => new Date().toISOString().slice(0, 7) + '-01';
-    const currentMonth = getCurrentMonth();
-    const siteIds = siteId ? [siteId] : [...userSites]; // Use siteId if provided, otherwise all user sites
-    
-    // BUG-5: Subscription cleanup race protection
-    // Clean up existing subscription BEFORE creating new one
+    const siteIds = siteId ? [siteId] : [...userSites];
+
     if (subscriptionRef.current) {
       if (!duplicateWarningRef.current) {
-        console.warn('[LIVE_FEED] ⚠️ Duplicate subscription detected! Cleaning up existing subscription before creating new one.');
+        console.warn('[LIVE_FEED] Duplicate subscription protection');
         duplicateWarningRef.current = true;
       }
-      // Remove existing channel
       supabase.removeChannel(subscriptionRef.current);
-      subscriptionRef.current = null;
-    } else {
-      // Reset warning flag when subscription is properly cleaned up
-      duplicateWarningRef.current = false;
-    }
-    
-    if (isDebugEnabled()) {
-      console.log('[LIVE_FEED] Setting up realtime subscription for', siteIds.length, 'sites');
     }
 
-    // BUG-5: Use unique channel name to prevent conflicts
     const channelName = `events-realtime-${siteIds.join('-')}-${Date.now()}`;
-
-    // Realtime subscription for events
-    const eventsChannel = supabase
+    const channel = supabase
       .channel(channelName)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'events',
-        },
-        async (payload) => {
+        { event: 'INSERT', schema: 'public', table: 'events' },
+        (payload) => {
+          if (!isMountedRef.current) return;
           const newEvent = payload.new as Event;
-          
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] 🔔 New event received:', {
-              id: newEvent.id.slice(0, 8),
-              action: newEvent.event_action,
-              session_month: newEvent.session_month,
-              current_month: currentMonth,
-            });
-          }
-          
-          // Filter by session_month (partition check) - use fresh current month
-          const eventMonth = newEvent.session_month;
-          const freshCurrentMonth = getCurrentMonth();
-          if (eventMonth !== freshCurrentMonth) {
-            if (isDebugEnabled()) {
-              console.log('[LIVE_FEED] ⏭️ Ignoring event from different partition:', eventMonth, 'vs', freshCurrentMonth);
-            }
-            return; // Ignore events from other partitions
-          }
+          const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
 
-          // Trust RLS subscription filter - no redundant verification query
-          // The subscription already filters by site_id via RLS policies
-          // Quick client-side check: if siteId is provided, verify event belongs to that site
-          // Otherwise, trust the subscription (it only receives events from user's sites)
-          if (siteId) {
-            // For single-site view, we can do a lightweight check via metadata if available
-            // But since RLS already enforces this, we can skip verification
-            // The subscription channel is site-scoped, so all events are valid
-          }
+          if (newEvent.session_month !== currentMonth) return;
 
-          // Guard against unmount before setState
-          if (!isMountedRef.current) {
-            if (isDebugEnabled()) {
-              console.log('[LIVE_FEED] ⏭️ Component unmounted, skipping event update');
-            }
-            return;
-          }
-
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] ✅ Adding event to feed:', newEvent.event_action);
-          }
-
-          // Incremental update: add event to events list and update only the affected session group
-          setEvents((prev) => {
-            // Double-check mount status inside setState callback
-            if (!isMountedRef.current) return prev;
-            // Maintain PR1 deterministic order: prepend new event, keep id DESC tie-breaker
-            const updated = [newEvent, ...prev].slice(0, 100);
-            return updated;
-          });
-
-          // Incremental grouping: update only the affected session group instead of full regroup
-          setGroupedSessions((prev) => {
-            if (!isMountedRef.current) return prev;
-            const sessionId = newEvent.session_id;
-            const updated = { ...prev };
-            if (!updated[sessionId]) {
-              updated[sessionId] = [];
-            }
-            // Add new event to session group, maintaining PR1 deterministic order
-            updated[sessionId] = [newEvent, ...updated[sessionId]].slice(0, 100);
-            return updated;
-          });
+          setEvents((prev) => [newEvent, ...prev].slice(0, 100));
         }
       )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] ✅ Realtime subscription ACTIVE for', siteIds.length, 'sites');
-          }
-        } else if (status === 'CHANNEL_ERROR') {
-          // Connection errors are often transient - Supabase will auto-reconnect
-          // Only log as warning unless it's a persistent issue
-          console.warn('[LIVE_FEED] ⚠️ Realtime subscription error (will auto-reconnect):', err?.message || 'Connection issue');
-        } else if (status === 'CLOSED') {
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] Realtime subscription closed (normal - will reconnect)');
-          }
-        } else {
-          if (isDebugEnabled()) {
-            console.log('[LIVE_FEED] Subscription status:', status);
-          }
-        }
-      });
+      .subscribe();
 
-    subscriptionRef.current = eventsChannel;
+    subscriptionRef.current = channel;
 
     return () => {
-      // BUG-5: Cleanup subscription on unmount or dependency change
-      // Mark as unmounted before cleanup
-      isMountedRef.current = false;
       if (subscriptionRef.current) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] Cleaning up subscription on unmount');
-        }
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
-        duplicateWarningRef.current = false; // Reset warning flag
       }
     };
-  }, [isInitialized, userSites]); // Subscription setup - grouping handled by useEffect on events
+  }, [isInitialized, userSites, siteId]);
 
-  // Extract unique filter values from sessions (client-side only)
+  // Extract unique filter values from sessions
   const filterOptions = useMemo(() => {
     const cities = new Set<string>();
     const districts = new Set<string>();
     const devices = new Set<string>();
-    
+
     Object.values(groupedSessions).forEach((sessionEvents) => {
       if (sessionEvents.length > 0) {
-        const metadata = sessionEvents[sessionEvents.length - 1]?.metadata || {};
+        const metadata = (sessionEvents[sessionEvents.length - 1]?.metadata || {}) as any;
         if (metadata.city && metadata.city !== 'Unknown') cities.add(metadata.city);
         if (metadata.district) districts.add(metadata.district);
         if (metadata.device_type) devices.add(metadata.device_type);
       }
     });
-    
+
     return {
       cities: Array.from(cities).sort(),
       districts: Array.from(districts).sort(),
@@ -404,86 +227,74 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
     };
   }, [groupedSessions]);
 
-  // Memoize filtered session list (must be before early returns)
+  // Memoize filtered session list
   const displayedSessions = useMemo(() => {
     let filtered = Object.entries(groupedSessions);
-    
-    // Apply filters client-side
+
     if (selectedCity || selectedDistrict || selectedDevice) {
-      filtered = filtered.filter(([sessionId, sessionEvents]) => {
+      filtered = filtered.filter(([, sessionEvents]) => {
         if (sessionEvents.length === 0) return false;
-        const metadata = sessionEvents[sessionEvents.length - 1]?.metadata || {};
-        
+        const metadata = (sessionEvents[sessionEvents.length - 1]?.metadata || {}) as any;
+
         if (selectedCity && metadata.city !== selectedCity) return false;
         if (selectedDistrict && metadata.district !== selectedDistrict) return false;
         if (selectedDevice && metadata.device_type !== selectedDevice) return false;
-        
+
         return true;
       });
     }
-    
+
     return filtered.slice(0, 10);
   }, [groupedSessions, selectedCity, selectedDistrict, selectedDevice]);
-  
-  const hasActiveFilters = selectedCity || selectedDistrict || selectedDevice;
+
+  const hasActiveFilters = !!(selectedCity || selectedDistrict || selectedDevice);
   const clearFilters = () => {
     setSelectedCity(null);
     setSelectedDistrict(null);
     setSelectedDevice(null);
   };
 
-  // Show message if no sites
   if (isInitialized && userSites.length === 0) {
     return (
       <Card className="glass border-slate-800/50 border-2 border-dashed">
         <CardHeader>
-          <CardTitle className="text-lg font-mono text-slate-200">⚠️ NO SITES CONFIGURED</CardTitle>
-          <CardDescription className="font-mono text-xs text-slate-400 mt-2">
-            You need to create a site first to track events.
+          <CardTitle className="text-sm font-mono text-slate-200">⚠️ NO SITES CONFIGURED</CardTitle>
+          <CardDescription className="text-[10px] font-mono text-slate-500 mt-2 uppercase">
+            Onboarding required
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-slate-400 font-mono text-sm mb-4">
-            Go to the dashboard and click "Create Test Site" to get started.
+          <p className="text-slate-400 font-mono text-xs mb-4">
+            You need to create a site first to track events.
           </p>
-          <a href="/dashboard" className="text-emerald-400 hover:text-emerald-300 font-mono text-xs underline">
-            → Go to Dashboard
+          <a href="/dashboard" className="text-emerald-400 hover:text-emerald-300 font-mono text-[10px] underline uppercase tracking-tighter">
+            &rarr; Go to Dashboard
           </a>
         </CardContent>
       </Card>
     );
   }
 
-  if (events.length === 0 && isInitialized) {
+  if (events.length === 0 && isInitialized && !isLoading) {
     return (
       <Card className="glass border-slate-800/50">
-        <CardHeader>
-          <CardTitle className="text-lg font-mono text-slate-200">LIVE EVENT FEED</CardTitle>
-          <CardDescription className="font-mono text-xs text-slate-400">
-            Real-time updates • ACTIVE
-          </CardDescription>
+        <CardHeader className="pb-3 border-b border-slate-800/20">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-mono text-slate-200">LIVE EVENT FEED</CardTitle>
+            <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.4)]"></div>
+              <span className="text-[9px] font-mono text-emerald-400 uppercase">Listening</span>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <p className="text-slate-500 font-mono text-sm">No events detected. Awaiting activity...</p>
-          <p className="text-slate-600 font-mono text-xs mt-2">
-            Send events from test page to see them here
+        <CardContent className="py-12 flex flex-col items-center group">
+          <div className="w-12 h-12 bg-slate-800/20 rounded-full flex items-center justify-center mb-4 border border-slate-800/50 group-hover:border-slate-700/60 transition-colors">
+            <Activity className="w-5 h-5 text-slate-600 group-hover:text-slate-500 transition-colors" />
+          </div>
+          <p className="text-slate-400 font-mono text-xs uppercase tracking-widest mb-1">No sessions yet</p>
+          <p className="text-slate-600 font-mono text-[10px] italic">
+            Real-time stream active • Events will appear here
           </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!isInitialized) {
-    return (
-      <Card className="glass border-slate-800/50">
-        <CardHeader>
-          <CardTitle className="text-lg font-mono text-slate-200">LIVE EVENT FEED</CardTitle>
-          <CardDescription className="font-mono text-xs text-slate-400">
-            Initializing...
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-slate-500 font-mono text-sm">Loading sites...</p>
         </CardContent>
       </Card>
     );
@@ -491,106 +302,103 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
 
   return (
     <Card className="glass border-slate-800/50">
-      <CardHeader>
+      <CardHeader className="pb-3 border-b border-slate-800/20">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg font-mono text-slate-200">LIVE EVENT FEED</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
-              {events.length} events • {Object.keys(groupedSessions).length} sessions • Real-time active
+            <CardTitle className="text-sm font-mono text-slate-200 tracking-tight">LIVE EVENT FEED</CardTitle>
+            <CardDescription className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
+              {events.length} events &bull; {Object.keys(groupedSessions).length} sessions
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-            <span className="text-xs font-mono text-emerald-400">LIVE</span>
+          <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
+            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.4)]"></div>
+            <span className="text-[9px] font-mono text-emerald-400">LIVE</span>
           </div>
         </div>
       </CardHeader>
-      
-      {/* BUG-4: Error banner (non-blocking) */}
-      {error && (
-        <div className="px-6 pb-3">
-          <div className="bg-red-500/10 border border-red-500/30 rounded px-3 py-2 text-sm text-red-400 font-mono">
-            ⚠️ Error: {error}
+
+      {error && !isLoading && (
+        <div className="px-6 py-2 border-b border-rose-500/20 bg-rose-500/5">
+          <div className="text-[10px] text-rose-400 font-mono flex items-center gap-2">
+            <span className="uppercase font-bold">Error:</span> {error}
           </div>
         </div>
       )}
-      
-      {/* Loading state */}
-      {isLoading && !error && (
-        <div className="px-6 pb-3">
-          <div className="text-sm text-slate-400 font-mono">
-            Loading events...
+
+      <CardContent className="pt-4">
+        {isLoading ? (
+          <div className="py-10 text-center font-mono text-[10px] text-slate-600 uppercase animate-pulse">
+            Synchronizing stream...
           </div>
-        </div>
-      )}
-      
-      <CardContent>
-        {/* Ultra-light filters */}
-        {(filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
-          <div className="sticky top-0 z-10 bg-slate-900 mb-4 pb-3 border-b border-slate-800/50 -mx-6 px-6 pt-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              {filterOptions.cities.length > 0 && (
-                <select
-                  value={selectedCity || ''}
-                  onChange={(e) => setSelectedCity(e.target.value || null)}
-                  className="px-2 py-1 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                >
-                  <option value="">All Cities</option>
-                  {filterOptions.cities.map((city) => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
-              )}
-              {filterOptions.districts.length > 0 && (
-                <select
-                  value={selectedDistrict || ''}
-                  onChange={(e) => setSelectedDistrict(e.target.value || null)}
-                  className="px-2 py-1 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                >
-                  <option value="">All Districts</option>
-                  {filterOptions.districts.map((district) => (
-                    <option key={district} value={district}>{district}</option>
-                  ))}
-                </select>
-              )}
-              {filterOptions.devices.length > 0 && (
-                <select
-                  value={selectedDevice || ''}
-                  onChange={(e) => setSelectedDevice(e.target.value || null)}
-                  className="px-2 py-1 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                >
-                  <option value="">All Devices</option>
-                  {filterOptions.devices.map((device) => (
-                    <option key={device} value={device}>{device}</option>
-                  ))}
-                </select>
-              )}
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="px-2 py-1 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 rounded text-slate-300 font-mono text-xs transition-colors"
-                >
-                  Clear
-                </button>
+        ) : (
+          <>
+            {(filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
+              <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-md mb-4 pb-3 border-b border-slate-800/30 -mx-6 px-6 pt-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {filterOptions.cities.length > 0 && (
+                    <select
+                      value={selectedCity || ''}
+                      onChange={(e) => setSelectedCity(e.target.value || null)}
+                      className="px-2 py-1 bg-slate-800/50 border border-slate-700/50 rounded text-slate-300 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                    >
+                      <option value="">All Cities</option>
+                      {filterOptions.cities.map((city) => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                  )}
+                  {filterOptions.districts.length > 0 && (
+                    <select
+                      value={selectedDistrict || ''}
+                      onChange={(e) => setSelectedDistrict(e.target.value || null)}
+                      className="px-2 py-1 bg-slate-800/50 border border-slate-700/50 rounded text-slate-300 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                    >
+                      <option value="">All Districts</option>
+                      {filterOptions.districts.map((district) => (
+                        <option key={district} value={district}>{district}</option>
+                      ))}
+                    </select>
+                  )}
+                  {filterOptions.devices.length > 0 && (
+                    <select
+                      value={selectedDevice || ''}
+                      onChange={(e) => setSelectedDevice(e.target.value || null)}
+                      className="px-2 py-1 bg-slate-800/50 border border-slate-700/50 rounded text-slate-300 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                    >
+                      <option value="">All Devices</option>
+                      {filterOptions.devices.map((device) => (
+                        <option key={device} value={device}>{device}</option>
+                      ))}
+                    </select>
+                  )}
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="px-2 py-1 bg-slate-700/30 hover:bg-slate-700/60 border border-slate-600/50 rounded text-slate-400 font-mono text-[9px] transition-colors uppercase"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="space-y-4 max-h-[600px] overflow-y-auto relative pr-1 custom-scrollbar">
+              {displayedSessions.length === 0 ? (
+                <p className="text-slate-500 font-mono text-[11px] text-center py-10 uppercase tracking-widest opacity-50">
+                  {hasActiveFilters ? 'No matches found' : 'No sessions found'}
+                </p>
+              ) : (
+                displayedSessions.map(([sid, sessionEvents]) => (
+                  <SessionGroup
+                    key={sid}
+                    sessionId={sid}
+                    events={sessionEvents}
+                  />
+                ))
               )}
             </div>
-          </div>
+          </>
         )}
-        <div className="space-y-3 max-h-[600px] overflow-y-auto relative">
-          {displayedSessions.length === 0 ? (
-            <p className="text-slate-500 font-mono text-sm text-center py-4">
-              {hasActiveFilters ? 'No sessions match filters' : 'No sessions found'}
-            </p>
-          ) : (
-            displayedSessions.map(([sessionId, sessionEvents]) => (
-              <SessionGroup
-                key={sessionId}
-                sessionId={sessionId}
-                events={sessionEvents}
-              />
-            ))
-          )}
-        </div>
       </CardContent>
     </Card>
   );

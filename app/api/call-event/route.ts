@@ -8,6 +8,18 @@ export const dynamic = 'force-dynamic';
 // Global version for debug verification
 const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 
+// Helper: Get recent months for partition filtering
+function getRecentMonths(months: number = 2): string[] {
+    const result: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < months; i++) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthStr = date.toISOString().slice(0, 7) + '-01';
+        result.push(monthStr);
+    }
+    return result;
+}
+
 // Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
@@ -106,13 +118,16 @@ export async function POST(req: NextRequest) {
 
         // 2. Find most recent session for this fingerprint (within last 30 minutes)
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const recentMonths = getRecentMonths(2);
 
         const { data: recentEvents, error: eventsError } = await adminClient
             .from('events')
             .select('session_id, session_month, metadata, created_at')
             .eq('metadata->>fingerprint', fingerprint)
+            .in('session_month', recentMonths)
             .gte('created_at', thirtyMinutesAgo)
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .limit(1);
 
         if (eventsError) {

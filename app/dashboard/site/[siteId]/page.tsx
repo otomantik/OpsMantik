@@ -9,6 +9,7 @@ import { MonthBoundaryBanner } from '@/components/dashboard/month-boundary-banne
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { isAdmin } from '@/lib/auth/isAdmin';
+import { ChevronLeft } from 'lucide-react';
 
 async function signOut() {
   'use server';
@@ -30,10 +31,8 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
     redirect('/login');
   }
 
-  // Check if user is admin
   const userIsAdmin = await isAdmin();
 
-  // Verify site access: user must own site, be a member, or be admin
   const { data: site, error: siteError } = await supabase
     .from('sites')
     .select('id, name, domain, public_id')
@@ -41,13 +40,10 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
     .single();
 
   if (siteError || !site) {
-    // Site doesn't exist or RLS blocked access
     notFound();
   }
 
-  // If not admin, verify user has access (owner or member)
   if (!userIsAdmin) {
-    // Check if user owns the site
     const { data: ownedSite } = await supabase
       .from('sites')
       .select('id')
@@ -56,7 +52,6 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
       .single();
 
     if (!ownedSite) {
-      // Check if user is a member
       const { data: membership } = await supabase
         .from('site_members')
         .select('site_id')
@@ -65,95 +60,90 @@ export default async function SiteDashboardPage({ params }: SitePageProps) {
         .single();
 
       if (!membership) {
-        // User has no access to this site
         notFound();
       }
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] p-6 relative">
-      {/* Month Boundary Banner */}
+    <div className="min-h-screen bg-[#020617] relative">
       <MonthBoundaryBanner />
-      
-      {/* Fixed Call Monitor - Top Right (Desktop) */}
-      <div className="hidden lg:block fixed top-6 right-6 z-50 w-72">
-        <CallAlertWrapper siteId={siteId} />
-      </div>
 
-      {/* Mobile Call Monitor - Bottom Sheet */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 max-h-[50vh] overflow-y-auto bg-slate-900/95 backdrop-blur-sm border-t border-slate-800/50 pb-safe">
-        <CallAlertWrapper siteId={siteId} />
-      </div>
-
-      <div className="max-w-[1920px] mx-auto pr-0 lg:pr-80">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <Link href="/dashboard">
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="text-slate-400 hover:text-slate-200 font-mono text-xs"
-                >
-                  ← Back to Dashboard
-                </Button>
-              </Link>
-              <h1 className="text-3xl font-bold text-slate-100 font-mono tracking-tight">
-                {site.name || site.domain || 'Site Dashboard'}
+      {/* Top Navigation Bar (Ads-like navigation) */}
+      <div className="border-b border-slate-800/60 bg-slate-900/40 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-[1920px] mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="text-slate-500 hover:text-slate-300 transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
+            <div className="h-6 w-[1px] bg-slate-800 mx-1"></div>
+            <div>
+              <h1 className="text-sm font-mono font-bold text-slate-100 uppercase tracking-tighter">
+                {site.name || site.domain}
               </h1>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none">
+                Site Insights &bull; {site.public_id.slice(0, 8)}
+              </p>
             </div>
-            <p className="text-sm text-slate-400 font-mono mt-1">
-              {site.domain || site.public_id} • Real-time Intelligence
-            </p>
           </div>
-          <div className="flex gap-2">
+
+          <div className="flex items-center gap-3">
             {process.env.NODE_ENV === 'development' && (
               <Link href="/test-page">
-                <Button 
-                  variant="outline" 
-                  className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
-                >
-                  🧪 TEST PAGE
+                <Button variant="ghost" size="sm" className="text-[10px] font-mono text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 uppercase tracking-wider h-8">
+                  🧪 Simulator
                 </Button>
               </Link>
             )}
             <form action={signOut}>
-              <Button 
-                type="submit" 
-                variant="outline"
-                className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
-              >
-                🚪 SIGN OUT
+              <Button type="submit" variant="ghost" size="sm" className="text-[10px] font-mono text-slate-400 hover:text-slate-200 uppercase tracking-wider h-8 border border-slate-800/50">
+                Sign Out
               </Button>
             </form>
           </div>
         </div>
-        
-        {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Top Row: Stats Cards */}
-          <div className="col-span-12">
-            <StatsCards siteId={siteId} />
+      </div>
+
+      <div className="max-w-[1920px] mx-auto p-6 space-y-6">
+        {/* KPI Row - Top Scan */}
+        <section>
+          <StatsCards siteId={siteId} />
+        </section>
+
+        {/* Dynamic Activity Layout (Google Analytics / Ads mix) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+          {/* Main Stream (Middle Focus) */}
+          <div className="lg:col-span-8 flex flex-col gap-6">
+            {/* Call Monitor - High Intent Stream */}
+            <div id="call-monitor">
+              <CallAlertWrapper siteId={siteId} />
+            </div>
+
+            {/* Live Activity Feed - Engagement Volume */}
+            <div id="live-feed">
+              <LiveFeed siteId={siteId} />
+            </div>
           </div>
-          
-          {/* Left Column: Live Feed */}
-          <div className="col-span-12 lg:col-span-8">
-            <LiveFeed siteId={siteId} />
-          </div>
-          
-          {/* Right Column: Tracked Events */}
-          <div className="col-span-12 lg:col-span-4">
+
+          {/* Side Panels (Context & Configuration) */}
+          <div className="lg:col-span-4 flex flex-col gap-6 sticky top-20">
             <TrackedEventsPanel siteId={siteId} />
-          </div>
-          
-          {/* Bottom: Conversions (Full Width) */}
-          <div className="col-span-12">
             <ConversionTracker siteId={siteId} />
+
+            {/* Info Chip */}
+            <div className="p-4 rounded-lg bg-slate-900/20 border border-slate-800/50">
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1 italic">Optimization Tip</p>
+              <p className="text-[11px] font-mono text-slate-400">
+                Real-time fingerprint matching is active. Calls are matched to web sessions via browser tokens.
+              </p>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Mobile Sticky Monitor Hook (Optional if needed by previous design, keeping UI clean) */}
+      <div className="lg:hidden h-20"></div>
     </div>
   );
 }
