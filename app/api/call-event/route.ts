@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { rateLimit, getClientId } from '@/lib/rate-limit';
+import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 
 export const dynamic = 'force-dynamic';
 
-// CORS whitelist
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['*'];
-const isOriginAllowed = (origin: string | null): boolean => {
-    if (ALLOWED_ORIGINS.includes('*')) return true;
-    if (!origin) return false;
-    return ALLOWED_ORIGINS.some(allowed => origin.includes(allowed));
-};
+// Parse allowed origins (fail-closed in production)
+const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 export async function OPTIONS(req: NextRequest) {
     const requestOrigin = req.headers.get('origin');
-    const allowedOrigin = isOriginAllowed(requestOrigin) ? requestOrigin || '*' : ALLOWED_ORIGINS[0];
+    const allowedOrigin = isOriginAllowed(requestOrigin, ALLOWED_ORIGINS) ? requestOrigin || '*' : ALLOWED_ORIGINS[0];
     
     return new NextResponse(null, {
         status: 200,
@@ -31,7 +27,7 @@ export async function POST(req: NextRequest) {
     try {
         // CORS check
         const origin = req.headers.get('origin');
-        if (!isOriginAllowed(origin)) {
+        if (!isOriginAllowed(origin, ALLOWED_ORIGINS)) {
             return NextResponse.json(
                 { error: 'Origin not allowed' },
                 { status: 403 }
@@ -96,6 +92,18 @@ export async function POST(req: NextRequest) {
                 fingerprint,
                 timestamp: new Date().toISOString()
             });
+            
+            // Fail-fast: return 500 error instead of continuing
+            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+            return NextResponse.json(
+                { error: 'Failed to query events', details: eventsError.message },
+                {
+                    status: 500,
+                    headers: {
+                        'Access-Control-Allow-Origin': allowedOrigin,
+                    },
+                }
+            );
         }
 
         let matchedSessionId: string | null = null;
@@ -121,6 +129,18 @@ export async function POST(req: NextRequest) {
                     session_id: matchedSessionId,
                     timestamp: new Date().toISOString()
                 });
+                
+                // Fail-fast: return 500 error instead of continuing with incomplete data
+                const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+                return NextResponse.json(
+                    { error: 'Failed to query session events', details: sessionEventsError.message },
+                    {
+                        status: 500,
+                        headers: {
+                            'Access-Control-Allow-Origin': allowedOrigin,
+                        },
+                    }
+                );
             }
 
             if (sessionEvents && sessionEvents.length > 0) {
@@ -193,7 +213,7 @@ export async function POST(req: NextRequest) {
             lead_score: leadScore,
         });
 
-        const allowedOrigin = isOriginAllowed(origin) ? origin || '*' : ALLOWED_ORIGINS[0];
+        const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
         
         return NextResponse.json(
             {
