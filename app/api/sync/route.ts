@@ -38,12 +38,22 @@ function getRecentMonths(months: number = 6): string[] {
 // GeoIP - optional, disabled for Edge Runtime compatibility
 // Note: geoip-lite requires Node.js runtime and is not compatible with Edge Runtime
 // For production, consider using a GeoIP API service instead
-// Removed: const geoip = null; (unused variable)
+// Safe initialization helper
+function getOriginsSafe(): string[] {
+    try {
+        return parseAllowedOrigins();
+    } catch (err) {
+        console.error('[CORS_INIT_FATAL]', err);
+        // Fallback to empty to trigger the 'Origin not allowed' path instead of crashing the route
+        return [];
+    }
+}
 
-export const dynamic = 'force-dynamic';
+// Global version for debug verification
+const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 
-// Parse allowed origins (fail-closed in production)
-const ALLOWED_ORIGINS = parseAllowedOrigins();
+// Parse allowed origins (init safely to prevent route crash)
+const ALLOWED_ORIGINS = getOriginsSafe();
 
 /**
  * Response helper to guarantee { ok, score } contract
@@ -77,7 +87,8 @@ export async function OPTIONS(req: NextRequest) {
             'Access-Control-Allow-Origin': allowedHeader,
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Max-Age': '86400', // 24 hours
+            'Access-Control-Max-Age': '86400',
+            'X-OpsMantik-Version': OPSMANTIK_VERSION,
         },
     });
 }
@@ -91,18 +102,23 @@ export async function POST(req: NextRequest) {
         // Use origin if allowed, otherwise fall back to first allowed origin or wildcard
         const allowedHeader = isAllowed ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*');
 
+        // Base headers for all responses
+        const baseHeaders = {
+            'Access-Control-Allow-Origin': allowedHeader,
+            'X-OpsMantik-Version': OPSMANTIK_VERSION,
+        };
+
         if (!isAllowed) {
             console.warn('[CORS] Origin not allowed:', origin, 'Allowed list:', ALLOWED_ORIGINS);
             return NextResponse.json(
                 createSyncResponse(false, null, {
                     error: 'Origin not allowed',
-                    receivedOrigin: origin
+                    receivedOrigin: origin,
+                    configStatus: ALLOWED_ORIGINS.length > 0 ? 'configured' : 'missing_or_invalid'
                 }),
                 {
                     status: 403,
-                    headers: {
-                        'Access-Control-Allow-Origin': allowedHeader
-                    }
+                    headers: baseHeaders
                 }
             );
         }
@@ -621,26 +637,23 @@ export async function POST(req: NextRequest) {
 
             // Return error response but don't break the client
             // This prevents retry loops in tracker while logging the failure
-            const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 createSyncResponse(false, null, { message: 'Database write failed' }),
                 {
                     status: 500,
-                    headers: {
-                        'Access-Control-Allow-Origin': allowedOrigin,
-                    },
+                    headers: baseHeaders
                 }
             );
         }
 
-        // Use origin from the beginning of the function (line 42)
-        const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
+        // Use baseHeaders for the success response
+
 
         return NextResponse.json(
             createSyncResponse(true, leadScore, { status: 'synced' }),
             {
                 headers: {
-                    'Access-Control-Allow-Origin': allowedOrigin,
+                    ...baseHeaders,
                     'X-RateLimit-Limit': '100',
                     'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
                 },
@@ -651,9 +664,9 @@ export async function POST(req: NextRequest) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
         const origin = req.headers.get('origin');
-        const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
 
         // Enhanced error logging
+
         console.error('[SYNC_API] Tracking Error:', {
             message: errorMessage,
             stack: errorStack,
@@ -666,7 +679,8 @@ export async function POST(req: NextRequest) {
             {
                 status: 500,
                 headers: {
-                    'Access-Control-Allow-Origin': allowedOrigin,
+                    'Access-Control-Allow-Origin': isOriginAllowed(origin, ALLOWED_ORIGINS) ? (origin || '*') : (ALLOWED_ORIGINS[0] || '*'),
+                    'X-OpsMantik-Version': OPSMANTIK_VERSION,
                 },
             }
         );
