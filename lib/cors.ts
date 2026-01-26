@@ -93,7 +93,7 @@ export function isOriginAllowed(origin: string | null, allowedOrigins: string[])
       // Match if same host or subdomain
       if (oUrl.hostname === aUrl.hostname) return { isAllowed: true };
       if (oUrl.hostname.endsWith('.' + aUrl.hostname)) return { isAllowed: true };
-    } catch (e) {
+    } catch {
       // Continue to next check
     }
   }

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sites (
 
 -- Sessions table (partitioned by month)
 CREATE TABLE IF NOT EXISTS sessions (
-    id UUID PRIMARY KEY,
+    id UUID NOT NULL,
     site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     ip_address INET,
     entry_page TEXT,
@@ -25,12 +25,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     total_duration_sec INTEGER DEFAULT 0,
     event_count INTEGER DEFAULT 0,
     created_month DATE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (id, created_month)
 ) PARTITION BY RANGE (created_month);
 
 -- Events table (partitioned by month)
 CREATE TABLE IF NOT EXISTS events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID NOT NULL DEFAULT uuid_generate_v4(),
     session_id UUID NOT NULL,
     session_month DATE NOT NULL,
     url TEXT NOT NULL,
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS events (
     event_value NUMERIC,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (id, session_month),
     FOREIGN KEY (session_id, session_month) REFERENCES sessions(id, created_month) ON DELETE CASCADE
 ) PARTITION BY RANGE (session_month);
 
