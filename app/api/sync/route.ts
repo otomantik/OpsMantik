@@ -45,6 +45,27 @@ export const dynamic = 'force-dynamic';
 // Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
+/**
+ * Response helper to guarantee { ok, score } contract
+ * All responses MUST include both 'ok' and 'score' keys
+ * 
+ * @param ok - Success status (true = success, false = error)
+ * @param score - Lead score (number on success, null on error)
+ * @param data - Additional response data
+ * @returns Response object with guaranteed contract
+ */
+function createSyncResponse(
+    ok: boolean,
+    score: number | null,
+    data: Record<string, any> = {}
+): Record<string, any> {
+    return {
+        ok,
+        score,
+        ...data,
+    };
+}
+
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
     const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
@@ -66,7 +87,7 @@ export async function POST(req: NextRequest) {
         const origin = req.headers.get('origin');
         if (!isOriginAllowed(origin, ALLOWED_ORIGINS)) {
             return NextResponse.json(
-                { error: 'Origin not allowed', score: 0 },
+                createSyncResponse(false, null, { error: 'Origin not allowed' }),
                 { status: 403 }
             );
         }
@@ -77,7 +98,10 @@ export async function POST(req: NextRequest) {
         
         if (!rateLimitResult.allowed) {
             return NextResponse.json(
-                { error: 'Rate limit exceeded', retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000), score: 0 },
+                createSyncResponse(false, null, {
+                    error: 'Rate limit exceeded',
+                    retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+                }),
                 {
                     status: 429,
                     headers: {
@@ -98,7 +122,7 @@ export async function POST(req: NextRequest) {
             const origin = req.headers.get('origin');
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Invalid JSON payload', score: 0 },
+                createSyncResponse(false, null, { message: 'Invalid JSON payload' }),
                 {
                     status: 400,
                     headers: {
@@ -131,7 +155,9 @@ export async function POST(req: NextRequest) {
             meta, r: referrer
         } = rawBody;
 
-        if (!site_id || !url) return NextResponse.json({ status: 'synced', score: 0 });
+        if (!site_id || !url) {
+            return NextResponse.json(createSyncResponse(true, 0, { status: 'synced' }));
+        }
 
         // PR-HARD-5: Input validation
         // 1. Validate site_id format (UUID v4)
@@ -139,7 +165,7 @@ export async function POST(req: NextRequest) {
         if (typeof site_id !== 'string' || !uuidV4Regex.test(site_id)) {
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Invalid site_id format', score: 0 },
+                createSyncResponse(false, null, { message: 'Invalid site_id format' }),
                 {
                     status: 400,
                     headers: {
@@ -155,7 +181,7 @@ export async function POST(req: NextRequest) {
         } catch {
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Invalid url format', score: 0 },
+                createSyncResponse(false, null, { message: 'Invalid url format' }),
                 {
                     status: 400,
                     headers: {
@@ -174,12 +200,12 @@ export async function POST(req: NextRequest) {
 
         if (siteError) {
             console.error('[SYNC_ERROR] Site query error:', site_id, siteError?.message, siteError?.code);
-            return NextResponse.json({ status: 'synced', score: 0 });
+            return NextResponse.json(createSyncResponse(true, 0, { status: 'synced' }));
         }
 
         if (!site) {
             console.error('[SYNC_ERROR] Site not found:', site_id);
-            return NextResponse.json({ status: 'synced', score: 0 });
+            return NextResponse.json(createSyncResponse(true, 0, { status: 'synced' }));
         }
 
         console.log('[SYNC_VALID] Site verified. Internal ID:', site.id);
@@ -297,7 +323,10 @@ export async function POST(req: NextRequest) {
                     // Fail-fast: return 500 error instead of silently creating new session
                     const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
                     return NextResponse.json(
-                        { status: 'error', message: 'Session lookup failed', details: lookupError.message, score: 0 },
+                        createSyncResponse(false, null, {
+                            message: 'Session lookup failed',
+                            details: lookupError.message,
+                        }),
                         {
                             status: 500,
                             headers: {
@@ -555,7 +584,7 @@ export async function POST(req: NextRequest) {
             // This prevents retry loops in tracker while logging the failure
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
-                { status: 'error', message: 'Database write failed', score: 0 },
+                createSyncResponse(false, null, { message: 'Database write failed' }),
                 {
                     status: 500,
                     headers: {
@@ -569,7 +598,7 @@ export async function POST(req: NextRequest) {
         const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
         
         return NextResponse.json(
-            { status: 'synced', score: leadScore },
+            createSyncResponse(true, leadScore, { status: 'synced' }),
             {
                 headers: {
                     'Access-Control-Allow-Origin': allowedOrigin,
@@ -594,7 +623,7 @@ export async function POST(req: NextRequest) {
         });
         
         return NextResponse.json(
-            { status: 'error', message: errorMessage, score: 0 },
+            createSyncResponse(false, null, { message: errorMessage }),
             {
                 status: 500,
                 headers: {

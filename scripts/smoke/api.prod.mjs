@@ -98,7 +98,8 @@ async function testInputValidationSiteId() {
   assert(response.status === 400, `Should return 400 for invalid site_id (got ${response.status})`);
   
   const data = await response.json();
-  assert(data.status === 'error', `Response should have status: 'error' (got ${data.status})`);
+  assert(data.ok === false, `Response should have ok: false (got ${data.ok})`);
+  assert(data.score === null, `Response should have score: null on error (got ${data.score})`);
   assert(data.message === 'Invalid site_id format', `Message should be 'Invalid site_id format' (got ${data.message})`);
   
   log(`   Response: ${response.status} ${JSON.stringify(data)}`, 'reset');
@@ -131,7 +132,8 @@ async function testInputValidationUrl() {
   assert(response.status === 400, `Should return 400 for invalid URL (got ${response.status})`);
   
   const data = await response.json();
-  assert(data.status === 'error', `Response should have status: 'error' (got ${data.status})`);
+  assert(data.ok === false, `Response should have ok: false (got ${data.ok})`);
+  assert(data.score === null, `Response should have score: null on error (got ${data.score})`);
   assert(data.message === 'Invalid url format', `Message should be 'Invalid url format' (got ${data.message})`);
   
   log(`   Response: ${response.status} ${JSON.stringify(data)}`, 'reset');
@@ -169,9 +171,23 @@ async function testHappyPath() {
   
   assert(response.status === 200, `Should return 200 for valid request (got ${response.status})`);
   
-  const data = await response.json();
-  assert(data.status === 'synced', `Response should have status: 'synced' (got ${data.status})`);
-  assert(typeof data.score === 'number', `Response should have score (number) (got ${typeof data.score})`);
+  // Robust JSON parsing with raw response capture
+  const rawText = await response.text();
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch (parseError) {
+    log(`   ❌ FAIL: JSON parse error: ${parseError.message}`, 'red');
+    log(`   Raw response: ${rawText.substring(0, 500)}`, 'red');
+    throw new Error(`Failed to parse JSON response: ${parseError.message}`);
+  }
+  
+  // Assert contract: ok and score must always be present
+  assert('ok' in data, `Response must include 'ok' key (got keys: ${Object.keys(data).join(', ')})`);
+  assert('score' in data, `Response must include 'score' key (got keys: ${Object.keys(data).join(', ')})`);
+  assert(data.ok === true, `Response should have ok: true on success (got ${data.ok})`);
+  assert(typeof data.score === 'number', `Response should have score (number) (got ${typeof data.score}, value: ${data.score})`);
+  assert(data.score >= 0 && data.score <= 100, `Score should be between 0-100 (got ${data.score})`);
   
   log(`   Response: ${response.status} ${JSON.stringify(data)}`, 'reset');
 }
