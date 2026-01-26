@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, memo, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock, Copy } from 'lucide-react';
+import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock, Copy, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 
@@ -26,6 +26,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   const [isExpanded, setIsExpanded] = useState(false);
   const [matchedCall, setMatchedCall] = useState<any>(null);
   const [isLoadingCall, setIsLoadingCall] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [sessionData, setSessionData] = useState<{
     attribution_source?: string | null;
     device_type?: string | null;
@@ -172,6 +173,104 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
     } catch (err) {
       console.error('[SESSION_GROUP] Failed to copy session ID:', err);
     }
+  };
+
+  // Event compression: Group consecutive identical events within 2 seconds
+  // Preserves deterministic ordering (PR1)
+  interface CompressedEvent {
+    type: 'single' | 'group';
+    id: string; // For single events, use event.id; for groups, use composite key
+    event?: typeof eventsWithTimeDiff[0]; // Single event
+    events?: typeof eventsWithTimeDiff; // Grouped events
+    count?: number; // Count for groups
+    firstTime: string; // First event time in group
+    lastTime: string; // Last event time in group
+    timeDiff: number; // Time diff from previous item
+  }
+
+  const compressedEvents = useMemo(() => {
+    const COMPRESSION_WINDOW_MS = 2000; // 2 seconds
+    const result: CompressedEvent[] = [];
+    
+    if (eventsWithTimeDiff.length === 0) return result;
+
+    let i = 0;
+    while (i < eventsWithTimeDiff.length) {
+      const currentEvent = eventsWithTimeDiff[i];
+      const currentTime = new Date(currentEvent.created_at).getTime();
+      
+      // Check if we can group with following events
+      const group: typeof eventsWithTimeDiff = [currentEvent];
+      let j = i + 1;
+      
+      while (j < eventsWithTimeDiff.length) {
+        const nextEvent = eventsWithTimeDiff[j];
+        const nextTime = new Date(nextEvent.created_at).getTime();
+        const timeDiff = nextTime - currentTime;
+        
+        // Check if within compression window and identical
+        if (timeDiff <= COMPRESSION_WINDOW_MS) {
+          const isIdentical = 
+            currentEvent.event_category === nextEvent.event_category &&
+            currentEvent.event_action === nextEvent.event_action &&
+            currentEvent.event_label === nextEvent.event_label;
+          
+          if (isIdentical) {
+            group.push(nextEvent);
+            j++;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      
+      // Create compressed item
+      if (group.length > 1) {
+        // Group: create composite key for expand/collapse
+        const groupKey = `group-${currentEvent.id}-${group[group.length - 1].id}`;
+        result.push({
+          type: 'group',
+          id: groupKey,
+          events: group,
+          count: group.length,
+          firstTime: group[0].created_at,
+          lastTime: group[group.length - 1].created_at,
+          timeDiff: result.length > 0 
+            ? Math.round((new Date(group[0].created_at).getTime() - new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) / 1000)
+            : 0,
+        });
+      } else {
+        // Single event
+        result.push({
+          type: 'single',
+          id: currentEvent.id,
+          event: currentEvent,
+          firstTime: currentEvent.created_at,
+          lastTime: currentEvent.created_at,
+          timeDiff: result.length > 0
+            ? Math.round((new Date(currentEvent.created_at).getTime() - new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) / 1000)
+            : 0,
+        });
+      }
+      
+      i = j;
+    }
+    
+    return result;
+  }, [eventsWithTimeDiff]);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
   };
 
   return (
@@ -380,53 +479,171 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                     </tr>
                   </thead>
                   <tbody>
-                    {eventsWithTimeDiff.map((event, index) => {
-                      const Icon = getEventIcon(event.event_action);
-                      const isConversion = event.event_category === 'conversion';
-                      
-                      return (
-                        <tr 
-                          key={event.id} 
-                          className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors ${
-                            isConversion ? 'bg-emerald-500/5' : ''
-                          }`}
-                        >
-                          <td className="py-2 px-3 text-slate-300">
-                            {new Date(event.created_at).toLocaleTimeString('tr-TR', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              fractionalSecondDigits: 3
-                            })}
-                          </td>
-                          <td className="py-2 px-3 text-slate-500">
-                            {event.timeDiff > 0 ? `+${event.timeDiff}s` : '—'}
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                              event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
-                              event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
-                              event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
-                              'bg-slate-700/50 text-slate-300'
-                            }`}>
-                              {event.event_category.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-slate-200 flex items-center gap-2">
-                            <Icon className="w-3 h-3" />
-                            {event.event_action}
-                          </td>
-                          <td className="py-2 px-3 text-slate-400">
-                            {event.event_label || '—'}
-                          </td>
-                          <td className="py-2 px-3 text-slate-400">
-                            {event.event_value !== null ? event.event_value : '—'}
-                          </td>
-                          <td className="py-2 px-3 text-slate-500 text-[10px] max-w-xs truncate" title={event.url}>
-                            {event.url || '—'}
-                          </td>
-                        </tr>
-                      );
+                    {compressedEvents.map((item) => {
+                      if (item.type === 'single' && item.event) {
+                        // Single event (no compression)
+                        const event = item.event;
+                        const Icon = getEventIcon(event.event_action);
+                        const isConversion = event.event_category === 'conversion';
+                        
+                        return (
+                          <tr 
+                            key={item.id} 
+                            className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors ${
+                              isConversion ? 'bg-emerald-500/5' : ''
+                            }`}
+                          >
+                            <td className="py-2 px-3 text-slate-300">
+                              {new Date(event.created_at).toLocaleTimeString('tr-TR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                fractionalSecondDigits: 3
+                              })}
+                            </td>
+                            <td className="py-2 px-3 text-slate-500">
+                              {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
+                                event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
+                                event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
+                                'bg-slate-700/50 text-slate-300'
+                              }`}>
+                                {event.event_category.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-200 flex items-center gap-2">
+                              <Icon className="w-3 h-3" />
+                              {event.event_action}
+                            </td>
+                            <td className="py-2 px-3 text-slate-400">
+                              {event.event_label || '—'}
+                            </td>
+                            <td className="py-2 px-3 text-slate-400">
+                              {event.event_value !== null ? event.event_value : '—'}
+                            </td>
+                            <td className="py-2 px-3 text-slate-500 text-[10px] max-w-xs truncate" title={event.url}>
+                              {event.url || '—'}
+                            </td>
+                          </tr>
+                        );
+                      } else if (item.type === 'group' && item.events) {
+                        // Compressed group
+                        const firstEvent = item.events[0];
+                        const Icon = getEventIcon(firstEvent.event_action);
+                        const isConversion = firstEvent.event_category === 'conversion';
+                        const isExpanded = expandedGroups.has(item.id);
+                        
+                        return (
+                          <React.Fragment key={item.id}>
+                            {/* Compressed row */}
+                            <tr 
+                              className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors cursor-pointer ${
+                                isConversion ? 'bg-emerald-500/5' : ''
+                              }`}
+                              onClick={() => toggleGroup(item.id)}
+                            >
+                              <td className="py-2 px-3 text-slate-300">
+                                {new Date(item.firstTime).toLocaleTimeString('tr-TR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                  fractionalSecondDigits: 3
+                                })}
+                                {item.events.length > 1 && (
+                                  <span className="text-slate-500 ml-1">
+                                    - {new Date(item.lastTime).toLocaleTimeString('tr-TR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      fractionalSecondDigits: 3
+                                    })}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-slate-500">
+                                {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
+                              </td>
+                              <td className="py-2 px-3">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                  firstEvent.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
+                                  firstEvent.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
+                                  firstEvent.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
+                                  'bg-slate-700/50 text-slate-300'
+                                }`}>
+                                  {firstEvent.event_category.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-slate-200 flex items-center gap-2">
+                                <ChevronRight 
+                                  className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                />
+                                <Icon className="w-3 h-3" />
+                                {firstEvent.event_action}
+                                <span className="ml-2 px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-semibold">
+                                  ×{item.count}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-slate-400">
+                                {firstEvent.event_label || '—'}
+                              </td>
+                              <td className="py-2 px-3 text-slate-400">
+                                {firstEvent.event_value !== null ? firstEvent.event_value : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-slate-500 text-[10px] max-w-xs truncate" title={firstEvent.url}>
+                                {firstEvent.url || '—'}
+                              </td>
+                            </tr>
+                            {/* Expanded rows (if toggled) */}
+                            {isExpanded && item.events.map((event, idx) => (
+                              <tr 
+                                key={`${item.id}-${event.id}`}
+                                className={`border-b border-slate-800/20 hover:bg-slate-800/10 transition-colors ${
+                                  isConversion ? 'bg-emerald-500/3' : ''
+                                }`}
+                              >
+                                <td className="py-1.5 px-3 pl-8 text-slate-400 text-[10px]">
+                                  {new Date(event.created_at).toLocaleTimeString('tr-TR', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    fractionalSecondDigits: 3
+                                  })}
+                                </td>
+                                <td className="py-1.5 px-3 text-slate-500 text-[10px]">
+                                  {event.timeDiff > 0 ? `+${event.timeDiff}s` : '—'}
+                                </td>
+                                <td className="py-1.5 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                                    event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
+                                    event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
+                                    event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
+                                    'bg-slate-700/50 text-slate-300'
+                                  }`}>
+                                    {event.event_category.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-3 text-slate-300 text-[10px] flex items-center gap-2">
+                                  <Icon className="w-2.5 h-2.5" />
+                                  {event.event_action}
+                                </td>
+                                <td className="py-1.5 px-3 text-slate-500 text-[10px]">
+                                  {event.event_label || '—'}
+                                </td>
+                                <td className="py-1.5 px-3 text-slate-500 text-[10px]">
+                                  {event.event_value !== null ? event.event_value : '—'}
+                                </td>
+                                <td className="py-1.5 px-3 text-slate-600 text-[9px] max-w-xs truncate" title={event.url}>
+                                  {event.url || '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      }
+                      return null;
                     })}
                   </tbody>
                 </table>
