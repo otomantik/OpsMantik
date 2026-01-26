@@ -237,6 +237,6 @@ Before committing OPS Console changes:
 
 ---
 
-**Note**: This lock is lightweight and focused on critical regressions. For full feature checklist, see `docs/DEV_CHECKLIST.md`.
+**Note**: This lock is lightweight and focused on critical regressions. For full feature checklist, see `docs/_archive/2026-01-27/DEV_CHECKLIST.md`.
 
 **Note**: Script name `check:warroom` is kept for backward compatibility. References in docs use "OPS Console".
