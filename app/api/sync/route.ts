@@ -8,7 +8,7 @@ import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 
 // UUID v4 generator (RFC 4122 compliant)
 function generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         const r = Math.random() * 16 | 0;
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
@@ -25,13 +25,13 @@ function generateUUID(): string {
 function getRecentMonths(months: number = 6): string[] {
     const result: string[] = [];
     const now = new Date();
-    
+
     for (let i = 0; i < months; i++) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const monthStr = date.toISOString().slice(0, 7) + '-01';
         result.push(monthStr);
     }
-    
+
     return result;
 }
 
@@ -69,7 +69,7 @@ function createSyncResponse(
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
     const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
-    
+
     return new NextResponse(null, {
         status: 200,
         headers: {
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         // Rate limiting: 100 requests per minute per IP
         const clientId = getClientId(req);
         const rateLimitResult = rateLimit(clientId, 100, 60 * 1000);
-        
+
         if (!rateLimitResult.allowed) {
             return NextResponse.json(
                 createSyncResponse(false, null, {
@@ -131,21 +131,21 @@ export async function POST(req: NextRequest) {
                 }
             );
         }
-        
+
         // Debug logging (only in dev mode) - declare once at top of function
         const isDebugMode = process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true';
         if (isDebugMode) {
-          console.log('[SYNC_IN] Incoming payload:', {
-            site_id: rawBody.s,
-            month: rawBody.sm,
-            url: rawBody.u,
-            referrer: rawBody.r,
-            meta: rawBody.meta,
-            event_category: rawBody.ec,
-            event_action: rawBody.ea,
-          });
+            console.log('[SYNC_IN] Incoming payload:', {
+                site_id: rawBody.s,
+                month: rawBody.sm,
+                url: rawBody.u,
+                referrer: rawBody.r,
+                meta: rawBody.meta,
+                event_category: rawBody.ec,
+                event_action: rawBody.ea,
+            });
         } else {
-          console.log('[SYNC_IN] Incoming payload from site:', rawBody.s, 'month:', rawBody.sm);
+            console.log('[SYNC_IN] Incoming payload from site:', rawBody.s, 'month:', rawBody.sm);
         }
         // atomic payload mapping
         const {
@@ -160,9 +160,26 @@ export async function POST(req: NextRequest) {
         }
 
         // PR-HARD-5: Input validation
-        // 1. Validate site_id format (UUID v4)
+        // 1. Validate site_id format (UUID v4 - accept both hyphenated and non-hyphenated)
+        // Normalize: remove hyphens, then validate as 32 hex chars, then re-add hyphens
+        let normalizedSiteId = site_id;
+        if (typeof site_id === 'string') {
+            // Remove existing hyphens
+            const stripped = site_id.replace(/-/g, '');
+
+            // Check if it's 32 hex characters (UUID without hyphens)
+            if (/^[0-9a-f]{32}$/i.test(stripped)) {
+                // Re-add hyphens in UUID v4 format: 8-4-4-4-12
+                normalizedSiteId = stripped.replace(
+                    /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/i,
+                    '$1-$2-$3-$4-$5'
+                );
+            }
+        }
+
+        // Now validate the normalized UUID v4 format
         const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        if (typeof site_id !== 'string' || !uuidV4Regex.test(site_id)) {
+        if (typeof normalizedSiteId !== 'string' || !uuidV4Regex.test(normalizedSiteId)) {
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
             return NextResponse.json(
                 createSyncResponse(false, null, { message: 'Invalid site_id format' }),
@@ -174,6 +191,9 @@ export async function POST(req: NextRequest) {
                 }
             );
         }
+
+        // Use normalized site_id for database query
+        const finalSiteId = normalizedSiteId;
 
         // 2. Validate url format
         try {
@@ -191,11 +211,11 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 1. Validate Site
+        // 1. Validate Site (use normalized site_id)
         const { data: site, error: siteError } = await adminClient
             .from('sites')
             .select('id')
-            .eq('public_id', site_id)
+            .eq('public_id', finalSiteId)
             .maybeSingle();
 
         if (siteError) {
@@ -227,10 +247,10 @@ export async function POST(req: NextRequest) {
         // 3. Attribution Computation (using truth table rules)
         // Extract UTM parameters
         const utm = extractUTM(url);
-        
+
         // Get dbMonth early for past GCLID query
         const dbMonth = session_month || new Date().toISOString().slice(0, 7) + '-01';
-        
+
         // Check for past GCLID (multi-touch attribution)
         let hasPastGclid = false;
         if (!currentGclid && fingerprint) {
@@ -244,15 +264,15 @@ export async function POST(req: NextRequest) {
                 .in('session_month', recentMonths) // Partition filter: only search last 6 months
                 .order('created_at', { ascending: false })
                 .limit(50);
-            
+
             // Check if any past event has matching fingerprint and GCLID
             if (pastEvents && pastEvents.length > 0) {
-                hasPastGclid = pastEvents.some((e: any) => 
+                hasPastGclid = pastEvents.some((e: any) =>
                     e.metadata?.fp === fingerprint && e.metadata?.gclid
                 );
             }
         }
-        
+
         // Compute attribution using truth table rules
         const attribution = computeAttribution({
             gclid: currentGclid,
@@ -261,10 +281,10 @@ export async function POST(req: NextRequest) {
             fingerprint,
             hasPastGclid,
         });
-        
+
         const attributionSource = attribution.source;
         const isReturningAdUser = attribution.isPaid && !currentGclid;
-        
+
         // Debug logging (only in dev mode) - use isDebugMode from above
         if (isDebugMode) {
             console.log('[SYNC_API] Attribution computed:', {
@@ -319,7 +339,7 @@ export async function POST(req: NextRequest) {
 
                 if (lookupError) {
                     console.error('[SYNC_API] Session lookup error:', lookupError.message);
-                    
+
                     // Fail-fast: return 500 error instead of silently creating new session
                     const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
                     return NextResponse.json(
@@ -337,7 +357,7 @@ export async function POST(req: NextRequest) {
                 } else if (existingSession) {
                     console.log('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                     session = existingSession;
-                    
+
                     // Update existing session with attribution/context if missing
                     if (!existingSession.attribution_source) {
                         await adminClient
@@ -364,14 +384,14 @@ export async function POST(req: NextRequest) {
             if (!session) {
                 // Generate UUID if client_sid is not valid UUID
                 const finalSessionId = isUuid ? client_sid : generateUUID();
-                
+
                 console.log('[SYNC_API] Creating NEW session:', {
                     provided_id: client_sid,
                     final_id: finalSessionId,
                     is_uuid: isUuid,
                     partition: dbMonth
                 });
-                
+
                 const sessionPayload: Record<string, unknown> = {
                     id: finalSessionId, // Always set ID (UUID or generated)
                     site_id: site.id,
@@ -411,10 +431,10 @@ export async function POST(req: NextRequest) {
             // Step C: Insert Event (Atomic)
             if (session) {
                 console.log('[SYNC_API] Inserting event for session:', session.id);
-                
+
                 // Determine category: GCLID affects only user interactions, not system events
                 let finalCategory = event_category || 'interaction';
-                
+
                 // Override to acquisition only for non-system events with GCLID
                 if (currentGclid && event_category !== 'system') {
                     finalCategory = 'acquisition';
@@ -461,18 +481,18 @@ export async function POST(req: NextRequest) {
                     throw eError;
                 }
                 console.log('[SYNC_API] ✅ SUCCESS: Event inserted to DB:', {
-                  event_id: session.id.slice(0, 8) + '...',
-                  action: event_action,
-                  category: finalCategory,
-                  session_id: session.id.slice(0, 8) + '...',
-                  partition: session.created_month
+                    event_id: session.id.slice(0, 8) + '...',
+                    action: event_action,
+                    category: finalCategory,
+                    session_id: session.id.slice(0, 8) + '...',
+                    partition: session.created_month
                 });
 
                 // Step D: Create Call Intent if phone/whatsapp click
                 if (finalCategory === 'conversion' && fingerprint) {
                     const phoneActions = ['phone_call', 'whatsapp', 'phone_click', 'call_click'];
-                    const isPhoneAction = phoneActions.some(action => 
-                        event_action?.toLowerCase().includes(action) || 
+                    const isPhoneAction = phoneActions.some(action =>
+                        event_action?.toLowerCase().includes(action) ||
                         event_label?.toLowerCase().includes('phone') ||
                         event_label?.toLowerCase().includes('whatsapp')
                     );
@@ -480,7 +500,7 @@ export async function POST(req: NextRequest) {
                     if (isPhoneAction) {
                         // Extract phone number from label or metadata
                         const phoneNumber = event_label || meta?.phone_number || 'Unknown';
-                        
+
                         // Dedupe: Check if intent exists in last 60 seconds for same session+source
                         const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
                         const { data: existingIntent } = await adminClient
@@ -532,11 +552,11 @@ export async function POST(req: NextRequest) {
                 // Update session metadata (duration, exit page, event count)
                 if (event_action === 'heartbeat' || event_action === 'session_end') {
                     const updates: Record<string, unknown> = {};
-                    
+
                     if (meta?.duration_sec) {
                         updates.total_duration_sec = meta.duration_sec;
                     }
-                    
+
                     if (event_action === 'session_end' && meta?.exit_page) {
                         updates.exit_page = meta.exit_page;
                     }
@@ -568,7 +588,7 @@ export async function POST(req: NextRequest) {
             const errorStack = dbError instanceof Error ? dbError.stack : undefined;
             const errorCode = (dbError as any)?.code;
             const errorDetails = (dbError as any)?.details;
-            
+
             // Enhanced error logging
             console.error('[PARTITION_FAULT] DB Write Failed:', {
                 message: errorMessage,
@@ -579,7 +599,7 @@ export async function POST(req: NextRequest) {
                 session_id: client_sid,
                 timestamp: new Date().toISOString()
             });
-            
+
             // Return error response but don't break the client
             // This prevents retry loops in tracker while logging the failure
             const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
@@ -596,7 +616,7 @@ export async function POST(req: NextRequest) {
 
         // Use origin from the beginning of the function (line 42)
         const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
-        
+
         return NextResponse.json(
             createSyncResponse(true, leadScore, { status: 'synced' }),
             {
@@ -613,7 +633,7 @@ export async function POST(req: NextRequest) {
         const errorStack = error instanceof Error ? error.stack : undefined;
         const origin = req.headers.get('origin');
         const allowedOrigin = isOriginAllowed(origin, ALLOWED_ORIGINS) ? origin || '*' : ALLOWED_ORIGINS[0];
-        
+
         // Enhanced error logging
         console.error('[SYNC_API] Tracking Error:', {
             message: errorMessage,
@@ -621,7 +641,7 @@ export async function POST(req: NextRequest) {
             timestamp: new Date().toISOString(),
             url: req.url
         });
-        
+
         return NextResponse.json(
             createSyncResponse(false, null, { message: errorMessage }),
             {
