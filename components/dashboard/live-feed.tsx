@@ -39,6 +39,8 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
   const [groupedSessions, setGroupedSessions] = useState<Record<string, Event[]>>({});
   const [userSites, setUserSites] = useState<string[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const subscriptionRef = useRef<any>(null);
   const isMountedRef = useRef<boolean>(true);
   const duplicateWarningRef = useRef<boolean>(false);
@@ -80,10 +82,15 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
   useEffect(() => {
     const supabase = createClient();
     let mounted = true;
+    setIsLoading(true);
+    setError(null);
 
     const initialize = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !mounted) return;
+      if (!user || !mounted) {
+        setIsLoading(false);
+        return;
+      }
 
       if (isDebugEnabled()) {
         console.log('[LIVE_FEED] Initializing for user:', user.id, siteId ? `(site: ${siteId})` : '');
@@ -102,6 +109,8 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
           console.warn('[LIVE_FEED] Site not found or access denied:', siteId);
           setIsInitialized(false);
           setUserSites([]);
+          setError('Site not found or access denied');
+          setIsLoading(false);
           return;
         }
 
@@ -142,7 +151,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
       }
 
       // Get recent sessions - RLS compliant (sessions -> sites -> user_id)
-      const { data: sessions } = await supabase
+      const { data: sessions, error: sessionsError } = await supabase
         .from('sessions')
         .select('id')
         .in('site_id', activeSiteIds)
@@ -151,19 +160,27 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
         .order('id', { ascending: false })
         .limit(50);
 
-      if (!sessions || sessions.length === 0 || !mounted) {
-        if (isDebugEnabled()) {
-          console.log('[LIVE_FEED] No sessions found');
-        }
+      if (!mounted) {
+        setIsLoading(false);
         return;
       }
 
-      if (isDebugEnabled()) {
+      if (sessionsError) {
+        console.error('[LIVE_FEED] Error fetching sessions:', sessionsError.message);
+        // Sessions error is non-critical (events query is more important)
+        // Log but don't block events loading
+      }
+
+      if (!sessions || sessions.length === 0) {
+        if (isDebugEnabled()) {
+          console.log('[LIVE_FEED] No sessions found');
+        }
+      } else if (isDebugEnabled()) {
         console.log('[LIVE_FEED] Found sessions:', sessions.length);
       }
 
       // Get recent events - RLS compliant using JOIN pattern
-      const { data: recentEvents } = await supabase
+      const { data: recentEvents, error: eventsError } = await supabase
         .from('events')
         .select('*, sessions!inner(site_id), url')
         .eq('session_month', currentMonth)
@@ -171,7 +188,16 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
         .order('id', { ascending: false })
         .limit(100);
 
-      if (recentEvents && mounted) {
+      if (!mounted) return;
+
+      if (eventsError) {
+        console.error('[LIVE_FEED] Error loading events:', eventsError.message);
+        setError(eventsError.message);
+        setIsLoading(false);
+        return; // Fail-fast: do not proceed with empty/incomplete data
+      }
+
+      if (recentEvents) {
         if (isDebugEnabled()) {
           console.log('[LIVE_FEED] Loaded events:', recentEvents.length);
         }
@@ -190,7 +216,14 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
         })) as Event[];
         
         setEvents(eventsData);
+        setError(null); // Clear any previous errors
+        setIsLoading(false);
         // groupedSessions will be computed automatically via useEffect when events change
+      } else {
+        // No events found (not an error, just empty state)
+        setEvents([]);
+        setError(null);
+        setIsLoading(false);
       }
     };
 
@@ -213,13 +246,14 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
     const currentMonth = getCurrentMonth();
     const siteIds = siteId ? [siteId] : [...userSites]; // Use siteId if provided, otherwise all user sites
     
-    // Runtime assertion: detect duplicate subscriptions
+    // BUG-5: Subscription cleanup race protection
+    // Clean up existing subscription BEFORE creating new one
     if (subscriptionRef.current) {
       if (!duplicateWarningRef.current) {
         console.warn('[LIVE_FEED] ⚠️ Duplicate subscription detected! Cleaning up existing subscription before creating new one.');
         duplicateWarningRef.current = true;
       }
-      // Clean up existing subscription
+      // Remove existing channel
       supabase.removeChannel(subscriptionRef.current);
       subscriptionRef.current = null;
     } else {
@@ -231,9 +265,12 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
       console.log('[LIVE_FEED] Setting up realtime subscription for', siteIds.length, 'sites');
     }
 
+    // BUG-5: Use unique channel name to prevent conflicts
+    const channelName = `events-realtime-${siteIds.join('-')}-${Date.now()}`;
+
     // Realtime subscription for events
     const eventsChannel = supabase
-      .channel('events-realtime')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -331,6 +368,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
     subscriptionRef.current = eventsChannel;
 
     return () => {
+      // BUG-5: Cleanup subscription on unmount or dependency change
       // Mark as unmounted before cleanup
       isMountedRef.current = false;
       if (subscriptionRef.current) {
@@ -339,6 +377,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
         }
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
+        duplicateWarningRef.current = false; // Reset warning flag
       }
     };
   }, [isInitialized, userSites]); // Subscription setup - grouping handled by useEffect on events
@@ -466,6 +505,25 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
           </div>
         </div>
       </CardHeader>
+      
+      {/* BUG-4: Error banner (non-blocking) */}
+      {error && (
+        <div className="px-6 pb-3">
+          <div className="bg-red-500/10 border border-red-500/30 rounded px-3 py-2 text-sm text-red-400 font-mono">
+            ⚠️ Error: {error}
+          </div>
+        </div>
+      )}
+      
+      {/* Loading state */}
+      {isLoading && !error && (
+        <div className="px-6 pb-3">
+          <div className="text-sm text-slate-400 font-mono">
+            Loading events...
+          </div>
+        </div>
+      )}
+      
       <CardContent>
         {/* Ultra-light filters */}
         {(filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
