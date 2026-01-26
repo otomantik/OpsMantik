@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# smoke test artifacts (CI-generated, should not be committed)
+smoke-artifacts/

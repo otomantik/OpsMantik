@@ -9,6 +9,12 @@ on:
     # Run nightly at 2 AM UTC
     - cron: '0 2 * * *'
   workflow_dispatch: # Allow manual trigger
+    inputs:
+      force_fail:
+        description: "Force smoke failure to validate artifact upload"
+        required: false
+        default: "false"
+        type: boolean
 
 jobs:
   smoke-api:
@@ -28,8 +34,20 @@ jobs:
         run: npm ci
       
       - name: Run API smoke tests
+        id: smoke-test
         env:
           SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL || 'https://console.opsmantik.com' }}
           SMOKE_SITE_ID: ${{ secrets.SMOKE_SITE_ID }}
           SMOKE_ORIGIN_ALLOWED: ${{ secrets.SMOKE_ORIGIN_ALLOWED || 'https://www.sosreklam.com' }}
+          SMOKE_FORCE_FAIL: ${{ inputs.force_fail == 'true' && 'true' || '' }}
         run: npm run smoke:api
+        # Fail the job on non-zero exit (default behavior, but explicit for clarity)
+      
+      - name: Upload smoke test artifacts
+        if: always() # Run even if smoke test fails or succeeds
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-failures
+          path: smoke-artifacts/** # Match all files in smoke-artifacts directory
+          retention-days: 7
+          if-no-files-found: ignore # Don't fail if no artifacts found
