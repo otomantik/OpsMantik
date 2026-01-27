@@ -94,6 +94,28 @@
     });
   }
 
+  // Intent stamp helpers (Phase 1)
+  function rand4() {
+    return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+  }
+
+  function hash6(str) {
+    const s = (str || '').toString();
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h) + s.charCodeAt(i);
+      h |= 0;
+    }
+    const out = Math.abs(h).toString(36);
+    return out.slice(0, 6).padEnd(6, '0');
+  }
+
+  function makeIntentStamp(actionShort, target) {
+    const ts = Date.now();
+    const tHash = hash6((target || '').toString().toLowerCase());
+    return `${ts}-${rand4()}-${actionShort}-${tHash}`;
+  }
+
   // Session management
   function getOrCreateSession() {
     let sessionId = sessionStorage.getItem(CONFIG.sessionKey);
@@ -300,7 +322,11 @@
     document.addEventListener('click', (e) => {
       const target = e.target.closest('a[href^="tel:"]');
       if (target) {
-        sendEvent('conversion', 'phone_call', target.href);
+        const intent_stamp = makeIntentStamp('tel', target.href);
+        sendEvent('conversion', 'phone_call', target.href, null, {
+          intent_stamp,
+          intent_action: 'phone_call',
+        });
       }
     });
 
@@ -308,7 +334,11 @@
     document.addEventListener('click', (e) => {
       const target = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"]');
       if (target) {
-        sendEvent('conversion', 'whatsapp', target.href);
+        const intent_stamp = makeIntentStamp('wa', target.href);
+        sendEvent('conversion', 'whatsapp', target.href, null, {
+          intent_stamp,
+          intent_action: 'whatsapp',
+        });
       }
     });
 

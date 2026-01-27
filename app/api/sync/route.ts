@@ -548,63 +548,218 @@ export async function POST(req: NextRequest) {
                     partition: session.created_month
                 });
 
-                // Step D: Create Call Intent if phone/whatsapp click
-                if (finalCategory === 'conversion' && fingerprint) {
-                    const phoneActions = ['phone_call', 'whatsapp', 'phone_click', 'call_click'];
-                    const isPhoneAction = phoneActions.some(action =>
-                        event_action?.toLowerCase().includes(action) ||
-                        event_label?.toLowerCase().includes('phone') ||
-                        event_label?.toLowerCase().includes('whatsapp')
-                    );
+                // Step D (Phase 1): Click-intent creation (decoupled from event_category)
+                // Goal: tel/wa clicks MUST create call intents regardless of acquisition/conversion rewrites.
+                const PHONE_ACTIONS = new Set(['phone_call', 'phone_click', 'call_click', 'tel_click']);
+                const WHATSAPP_ACTIONS = new Set(['whatsapp', 'whatsapp_click', 'wa_click']);
 
-                    if (isPhoneAction) {
-                        // Extract phone number from label or metadata
-                        const phoneNumber = event_label || meta?.phone_number || 'Unknown';
+                const rawAction = (meta?.intent_action || event_action || '').toString().trim().toLowerCase();
+                const action = rawAction;
+                const isPhone = PHONE_ACTIONS.has(action);
+                const isWa = WHATSAPP_ACTIONS.has(action);
 
-                        // Dedupe: Check if intent exists in last 60 seconds for same session+source
-                        const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
+                // Back-compat: treat legacy actions/labels as phone/wa signals
+                const labelLc = (event_label || '').toString().toLowerCase();
+                const legacyPhoneSignal =
+                    ['phone_call', 'phone_click', 'call_click'].includes((event_action || '').toString().toLowerCase()) ||
+                    labelLc.startsWith('tel:');
+                const legacyWaSignal =
+                    ((event_action || '').toString().toLowerCase() === 'whatsapp') ||
+                    labelLc.includes('wa.me') ||
+                    labelLc.includes('whatsapp.com');
+
+                const shouldCreateIntent = !!session && (!!fingerprint || !!session.id) && (isPhone || isWa || legacyPhoneSignal || legacyWaSignal);
+
+                if (shouldCreateIntent) {
+                    // Normalize target for dedupe
+                    const rand4 = (): string => Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+                    const hash6 = (v: string): string => {
+                        const s = (v || '').toString();
+                        let h = 0;
+                        for (let i = 0; i < s.length; i++) {
+                            h = ((h << 5) - h) + s.charCodeAt(i);
+                            h |= 0;
+                        }
+                        const out = Math.abs(h).toString(36);
+                        return out.slice(0, 6).padEnd(6, '0');
+                    };
+
+                    const canonicalizePhoneDigits = (raw: string): string | null => {
+                        const s = (raw || '').toString().trim();
+                        if (!s) return null;
+                        // Allow leading '+' and digits only
+                        let cleaned = s.replace(/[^\d+]/g, '');
+                        if (!cleaned) return null;
+
+                        // Convert 00CC... => +CC...
+                        if (cleaned.startsWith('00')) cleaned = '+' + cleaned.slice(2);
+
+                        // Extract digits only for heuristics
+                        const digits = cleaned.replace(/[^\d]/g, '');
+                        const hasPlus = cleaned.startsWith('+');
+
+                        // TR heuristics: prefer +90 if no explicit CC
+                        if (!hasPlus) {
+                            if (digits.length === 10) return `+90${digits}`;
+                            if (digits.length === 11 && digits.startsWith('0')) return `+90${digits.slice(1)}`;
+                            if (digits.length >= 11 && digits.startsWith('90')) return `+${digits}`;
+                            return `+${digits}`;
+                        }
+
+                        // Has plus already
+                        if (digits.length >= 11 && digits.startsWith('90')) return `+${digits}`;
+                        return `+${digits}`;
+                    };
+
+                    const normalizeTelTarget = (v: string): string => {
+                        const s = (v || '').toString().trim();
+                        const noScheme = s.toLowerCase().startsWith('tel:') ? s.slice(4) : s;
+                        const phone = canonicalizePhoneDigits(noScheme);
+                        return phone ? `tel:${phone}` : 'tel:unknown';
+                    };
+
+                    const normalizeWaTarget = (v: string): string => {
+                        const raw = (v || '').toString().trim();
+                        if (!raw) return 'wa:unknown';
+                        const candidate = raw.replace(/^https?:\/\//i, '');
+
+                        // Try parse as URL when possible
+                        let url: URL | null = null;
+                        try {
+                            url = new URL(raw.match(/^https?:\/\//i) ? raw : `https://${candidate}`);
+                        } catch {
+                            url = null;
+                        }
+
+                        // 1) phone= query param (web.whatsapp.com/send?phone=..., whatsapp.com/send?phone=...)
+                        const phoneParam = url?.searchParams?.get('phone') || url?.searchParams?.get('p');
+                        if (phoneParam) {
+                            const phone = canonicalizePhoneDigits(phoneParam);
+                            if (phone) return `wa:${phone}`;
+                        }
+
+                        // 2) wa.me/<digits>
+                        if (url?.hostname?.toLowerCase() === 'wa.me') {
+                            const seg = (url.pathname || '').split('/').filter(Boolean)[0] || '';
+                            const phone = canonicalizePhoneDigits(seg);
+                            if (phone) return `wa:${phone}`;
+                        }
+
+                        // 3) whatsapp.com/send?phone= already handled; attempt extract from path if any digits
+                        const pathDigits = (url?.pathname || '').replace(/[^\d]/g, '');
+                        if (pathDigits && pathDigits.length >= 10) {
+                            const phone = canonicalizePhoneDigits(pathDigits);
+                            if (phone) return `wa:${phone}`;
+                        }
+
+                        // Fallback: deterministic host/path key
+                        const host = url?.hostname ? url.hostname.toLowerCase() : candidate.split('/')[0].toLowerCase();
+                        const path = url?.pathname ? url.pathname : ('/' + candidate.split('/').slice(1).join('/'));
+                        const safe = `${host}${path}`.replace(/\/+$/, '');
+                        return `wa:${safe || 'unknown'}`;
+                    };
+
+                    // Canonical storage intent_action (Phase 1.1)
+                    const canonicalAction: 'phone' | 'whatsapp' = (isPhone || legacyPhoneSignal) ? 'phone' : 'whatsapp';
+                    const canonicalTarget = canonicalAction === 'phone'
+                        ? normalizeTelTarget(event_label || meta?.phone_number || '')
+                        : normalizeWaTarget(event_label || '');
+
+                    // Server fallback stamp: every click-intent must have one
+                    const intentStampRaw = meta?.intent_stamp;
+                    let intentStamp = (typeof intentStampRaw === 'string' && intentStampRaw.trim().length > 0)
+                        ? intentStampRaw.trim()
+                        : '';
+                    if (!intentStamp) {
+                        intentStamp = `${Date.now()}-${rand4()}-${canonicalAction}-${hash6(canonicalTarget)}`;
+                    }
+                    intentStamp = intentStamp.slice(0, 128);
+
+                    // Preferred idempotency: (site_id, intent_stamp) unique
+                    let stampEnsured = false;
+                    if (intentStamp) {
+                        const { error: upsertErr } = await adminClient
+                            .from('calls')
+                            .upsert({
+                                site_id: site.id,
+                                phone_number: canonicalTarget || 'Unknown',
+                                matched_session_id: session.id,
+                                matched_fingerprint: fingerprint,
+                                lead_score: leadScore,
+                                lead_score_at_match: leadScore,
+                                status: 'intent',
+                                source: 'click',
+                                intent_stamp: intentStamp,
+                                intent_action: canonicalAction,
+                                intent_target: canonicalTarget,
+                            }, { onConflict: 'site_id,intent_stamp', ignoreDuplicates: true });
+
+                        if (upsertErr) {
+                            console.warn('[SYNC_API] intent_stamp upsert failed (falling back to 10s dedupe):', {
+                                message: upsertErr.message,
+                                code: upsertErr.code,
+                            });
+                        } else {
+                            stampEnsured = true;
+                            console.log('[SYNC_API] ✅ Call intent ensured (stamp):', {
+                                intent_stamp: intentStamp,
+                                intent_action: canonicalAction,
+                            });
+                        }
+                    }
+
+                    if (!stampEnsured) {
+                        // Fallback dedupe (10s): site_id + matched_session_id + action + target
+                        const tenSecondsAgo = new Date(Date.now() - 10 * 1000).toISOString();
                         const { data: existingIntent } = await adminClient
                             .from('calls')
                             .select('id')
                             .eq('site_id', site.id)
                             .eq('matched_session_id', session.id)
                             .eq('source', 'click')
-                            .eq('status', 'intent')
-                            .gte('created_at', sixtySecondsAgo)
+                            .or('status.eq.intent,status.is.null')
+                            .eq('intent_action', canonicalAction)
+                            .eq('intent_target', canonicalTarget)
+                            .gte('created_at', tenSecondsAgo)
                             .maybeSingle();
 
                         if (!existingIntent) {
-                            // Create soft intent call
                             const { error: callError } = await adminClient
                                 .from('calls')
                                 .insert({
                                     site_id: site.id,
-                                    phone_number: phoneNumber,
+                                    phone_number: canonicalTarget || 'Unknown',
                                     matched_session_id: session.id,
                                     matched_fingerprint: fingerprint,
                                     lead_score: leadScore,
                                     lead_score_at_match: leadScore,
                                     status: 'intent',
                                     source: 'click',
-                                    // Note: We don't set matched_at for intents (only for real calls)
+                                    intent_stamp: intentStamp,
+                                    intent_action: canonicalAction,
+                                    intent_target: canonicalTarget,
                                 });
 
                             if (callError) {
-                                // Log but don't fail the event insert
-                                console.warn('[SYNC_API] Failed to create call intent:', {
-                                    message: callError.message,
-                                    code: callError.code,
-                                    session_id: session.id.slice(0, 8) + '...',
-                                });
+                                // Unique conflict can happen if stamp exists but upsert path failed earlier.
+                                if (callError.code === '23505') {
+                                    console.log('[SYNC_API] Call intent dedupe (unique): skipping duplicate');
+                                } else {
+                                    console.warn('[SYNC_API] Failed to create call intent (fallback):', {
+                                        message: callError.message,
+                                        code: callError.code,
+                                        session_id: session.id.slice(0, 8) + '...',
+                                    });
+                                }
                             } else {
-                                console.log('[SYNC_API] ✅ Call intent created:', {
-                                    phone_number: phoneNumber,
+                                console.log('[SYNC_API] ✅ Call intent created (fallback):', {
+                                    intent_action: canonicalAction,
+                                    intent_target: canonicalTarget,
                                     session_id: session.id.slice(0, 8) + '...',
-                                    lead_score: leadScore,
                                 });
                             }
                         } else {
-                            console.log('[SYNC_API] Call intent dedupe: skipping duplicate intent within 60s');
+                            console.log('[SYNC_API] Call intent fallback dedupe: skipping duplicate within 10s');
                         }
                     }
                 }
