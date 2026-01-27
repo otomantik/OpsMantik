@@ -20,6 +20,7 @@ import { LiveFeed } from './live-feed';
 import { MonthBoundaryBanner } from './month-boundary-banner';
 import { TimelineChart } from './timeline-chart';
 import { IntentLedger } from './intent-ledger';
+import { LiveInbox } from './live-inbox';
 import { RealtimePulse } from './realtime-pulse';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { formatTimestamp } from '@/lib/utils';
@@ -172,6 +173,11 @@ export function DashboardLayout({
         {/* Ads Command Center: KPI Row (Ads-only) */}
         <section>
           <StatsCards siteId={siteId} dateRange={range} adsOnly />
+        </section>
+
+        {/* Phase A: Live Inbox (fast, last 60m) */}
+        <section>
+          <LiveInbox siteId={siteId} />
         </section>
 
         {/* Optional: Timeline (Ads-only) */}

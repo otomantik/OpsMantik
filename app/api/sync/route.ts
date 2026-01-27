@@ -665,6 +665,14 @@ export async function POST(req: NextRequest) {
                         ? normalizeTelTarget(event_label || meta?.phone_number || '')
                         : normalizeWaTarget(event_label || '');
 
+                    // Live Inbox: lightweight display fields (no heavy joins)
+                    const intentPageUrl = (typeof url === 'string' && url.length > 0) ? url.slice(0, 2048) : null;
+                    const clickId =
+                        currentGclid
+                        || params.get('wbraid') || meta?.wbraid
+                        || params.get('gbraid') || meta?.gbraid
+                        || null;
+
                     // Server fallback stamp: every click-intent must have one
                     const intentStampRaw = meta?.intent_stamp;
                     let intentStamp = (typeof intentStampRaw === 'string' && intentStampRaw.trim().length > 0)
@@ -692,6 +700,8 @@ export async function POST(req: NextRequest) {
                                 intent_stamp: intentStamp,
                                 intent_action: canonicalAction,
                                 intent_target: canonicalTarget,
+                                intent_page_url: intentPageUrl,
+                                click_id: clickId,
                             }, { onConflict: 'site_id,intent_stamp', ignoreDuplicates: true });
 
                         if (upsertErr) {
@@ -738,6 +748,8 @@ export async function POST(req: NextRequest) {
                                     intent_stamp: intentStamp,
                                     intent_action: canonicalAction,
                                     intent_target: canonicalTarget,
+                                    intent_page_url: intentPageUrl,
+                                    click_id: clickId,
                                 });
 
                             if (callError) {
