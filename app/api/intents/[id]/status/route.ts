@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -30,7 +30,7 @@ export async function POST(
 
     const body = await req.json();
     const { status } = body;
-    const callId = params.id;
+    const { id: callId } = await params;
 
     // Validate status
     const validStatuses = ['confirmed', 'qualified', 'real', 'junk', 'suspicious', 'intent'];
