@@ -94,6 +94,9 @@ export async function OPTIONS(req: NextRequest) {
 
     if (isAllowed && origin) {
         headers['Access-Control-Allow-Origin'] = origin;
+        // sendBeacon behaves like credentials: 'include' in many browsers
+        // If the browser sends credentials, preflight requires this to be explicitly true.
+        headers['Access-Control-Allow-Credentials'] = 'true';
     }
 
     // Preflight response
@@ -120,6 +123,8 @@ export async function POST(req: NextRequest) {
 
         if (isAllowed && origin) {
             baseHeaders['Access-Control-Allow-Origin'] = origin;
+            // Required for credentialed CORS requests (e.g. sendBeacon in some browsers)
+            baseHeaders['Access-Control-Allow-Credentials'] = 'true';
         }
 
         if (!isAllowed) {
@@ -699,6 +704,7 @@ export async function POST(req: NextRequest) {
 
         if (isAllowed && origin) {
             errorHeaders['Access-Control-Allow-Origin'] = origin;
+            errorHeaders['Access-Control-Allow-Credentials'] = 'true';
         }
 
         return NextResponse.json(
