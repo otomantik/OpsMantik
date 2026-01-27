@@ -25,9 +25,15 @@ if (!SITE_ID) {
 async function testStatsRpc() {
     console.log(`🚀 Testing get_dashboard_stats RPC for Site: ${SITE_ID}, Days: ${DAYS}...`);
 
+    // v2.2: Use date_from/date_to instead of p_days
+    const dateTo = new Date();
+    const dateFrom = new Date();
+    dateFrom.setDate(dateFrom.getDate() - DAYS);
+    
     const { data, error } = await supabase.rpc('get_dashboard_stats', {
         p_site_id: SITE_ID,
-        p_days: DAYS
+        p_date_from: dateFrom.toISOString(),
+        p_date_to: dateTo.toISOString()
     });
 
     if (error) {

@@ -67,10 +67,26 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
       if (events) {
         // Get matched calls for these sessions
         const sessionIds = [...new Set(events.map((e: any) => e.session_id))];
-        const { data: calls } = await supabase
+        // Iron Dome: Add explicit site_id scope for defense in depth
+        let callsQuery = supabase
           .from('calls')
           .select('matched_session_id, phone_number')
           .in('matched_session_id', sessionIds);
+        
+        if (siteId) {
+          callsQuery = callsQuery.eq('site_id', siteId);
+        } else {
+          // Get user's sites for filtering
+          const { data: sites } = await supabase
+            .from('sites')
+            .select('id')
+            .eq('user_id', user.id);
+          if (sites && sites.length > 0) {
+            callsQuery = callsQuery.in('site_id', sites.map(s => s.id));
+          }
+        }
+        
+        const { data: calls } = await callsQuery;
 
         const callsMap = new Map(
           calls?.map(c => [c.matched_session_id, c.phone_number]) || []

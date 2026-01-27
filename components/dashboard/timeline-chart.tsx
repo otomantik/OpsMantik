@@ -54,27 +54,14 @@ export function TimelineChart({
     return isCurrentDay ? '5m' : '30m';
   }, [dateRange]);
 
-  // Auto-refresh based on interval
-  useEffect(() => {
-    const intervalMs = {
-      '1m': 60000,
-      '5m': 300000,
-      '30m': 1800000,
-    }[effectiveInterval];
-
-    const interval = setInterval(() => {
-      // Only refresh if tab is visible
-      if (document.visibilityState === 'visible') {
-        handleRefresh(true); // Silent refresh
-      }
-    }, intervalMs);
-
-    return () => clearInterval(interval);
-  }, [effectiveInterval]);
-
   const handleRefresh = useCallback(async (silent = false) => {
     if (!silent) {
       setIsRefreshing(true);
+    }
+    
+    // Log refresh in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TimelineChart] Refreshing chart', { silent, timestamp: new Date().toISOString() });
     }
     
     try {
@@ -89,6 +76,29 @@ export function TimelineChart({
       }
     }
   }, [refetch]);
+
+  // Auto-refresh based on interval
+  useEffect(() => {
+    const intervalMs = {
+      '1m': 60000,
+      '5m': 300000,
+      '30m': 1800000,
+    }[effectiveInterval];
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TimelineChart] Auto-refresh interval set:', effectiveInterval, `(${intervalMs}ms)`);
+    }
+
+    const interval = setInterval(() => {
+      // Only refresh if tab is visible
+      if (document.visibilityState === 'visible') {
+        handleRefresh(true); // Silent refresh
+      }
+    }, intervalMs);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveInterval]);
 
   // Simple SVG-based chart (no external dependencies)
   // TODO: Install recharts for better chart visualization

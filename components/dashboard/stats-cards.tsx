@@ -16,7 +16,7 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ siteId, dateRange }: StatsCardsProps) {
-  const { stats, loading, error, refetch } = useDashboardStats(siteId, undefined, dateRange);
+  const { stats, loading, error, refetch } = useDashboardStats(siteId, dateRange);
 
   // Realtime updates for optimistic KPI refresh
   useRealtimeDashboard(siteId, {

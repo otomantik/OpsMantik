@@ -97,10 +97,17 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
     
     // Use JOIN pattern for RLS compliance - calls -> sites -> user_id
     // Contract: MATCHED badge shows ONLY when call.matched_session_id === session.id
+    // Iron Dome: Add explicit site_id scope for defense in depth
+    const siteIdForQuery = (sessionData as any)?.site_id;
+    if (!siteIdForQuery) {
+      setIsLoadingCall(false);
+      return;
+    }
     supabase
       .from('calls')
       .select('*, sites!inner(user_id)')
       .eq('matched_session_id', sessionId)
+      .eq('site_id', siteIdForQuery) // Iron Dome: explicit site_id scope
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .limit(1)

@@ -66,9 +66,18 @@ export function useRealtimeDashboard(
   // Deduplication check
   const isDuplicate = useCallback((eventId: string): boolean => {
     if (processedEventsRef.current.has(eventId)) {
+      // Log deduplication in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[REALTIME] Duplicate event ignored:', eventId);
+      }
       return true;
     }
     processedEventsRef.current.add(eventId);
+    
+    // Log new event in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[REALTIME] New event processed:', eventId);
+    }
     
     // Cleanup old events (keep last 1000)
     if (processedEventsRef.current.size > 1000) {
@@ -97,6 +106,13 @@ export function useRealtimeDashboard(
 
     // Create site-specific channel
     const channelName = `dashboard_updates:${siteId}`;
+    
+    // Log site scoping in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[REALTIME] Subscribing to site-specific channel:', channelName);
+      console.log('[REALTIME] Site filter applied: site_id=eq.' + siteId);
+    }
+    
     const channel = supabase
       .channel(channelName)
       .on(
@@ -105,12 +121,21 @@ export function useRealtimeDashboard(
           event: 'INSERT',
           schema: 'public',
           table: 'calls',
-          filter: `site_id=eq.${siteId}`,
+          filter: `site_id=eq.${siteId}`, // Site-scoped filter
         },
         (payload) => {
           if (!isMountedRef.current) return;
 
           const newCall = payload.new as any;
+          
+          // Verify site_id matches (defense in depth)
+          if (newCall.site_id !== siteId) {
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[REALTIME] Cross-site event blocked:', newCall.site_id, '!==', siteId);
+            }
+            return;
+          }
+          
           const eventId = generateEventId('calls', newCall.id, payload.commit_timestamp || new Date().toISOString());
 
           // Deduplication
@@ -136,12 +161,21 @@ export function useRealtimeDashboard(
           event: 'UPDATE',
           schema: 'public',
           table: 'calls',
-          filter: `site_id=eq.${siteId}`,
+          filter: `site_id=eq.${siteId}`, // Site-scoped filter
         },
         (payload) => {
           if (!isMountedRef.current) return;
 
           const updatedCall = payload.new as any;
+          
+          // Verify site_id matches (defense in depth)
+          if (updatedCall.site_id !== siteId) {
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[REALTIME] Cross-site event blocked:', updatedCall.site_id, '!==', siteId);
+            }
+            return;
+          }
+          
           const eventId = generateEventId('calls', updatedCall.id, payload.commit_timestamp || new Date().toISOString());
 
           // Deduplication

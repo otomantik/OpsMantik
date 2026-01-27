@@ -17,7 +17,6 @@ export interface DashboardStats {
 
 export function useDashboardStats(
     siteId: string | undefined, 
-    days?: number,
     dateRange?: { from: Date; to: Date }
 ) {
     const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -33,7 +32,7 @@ export function useDashboardStats(
         try {
             const supabase = createClient();
             
-            // Calculate date range
+            // Calculate date range (default: last 7 days)
             let dateFrom: Date;
             let dateTo: Date = new Date();
             
@@ -41,10 +40,9 @@ export function useDashboardStats(
                 dateFrom = dateRange.from;
                 dateTo = dateRange.to;
             } else {
-                // Fall back to days
-                const daysToUse = days || 7;
+                // Default: last 7 days
                 dateFrom = new Date();
-                dateFrom.setDate(dateFrom.getDate() - daysToUse);
+                dateFrom.setDate(dateFrom.getDate() - 7);
             }
             
             const { data, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
@@ -70,7 +68,7 @@ export function useDashboardStats(
         } finally {
             setLoading(false);
         }
-    }, [siteId, days, dateRange]);
+    }, [siteId, dateRange]);
 
     useEffect(() => {
         fetchStats();

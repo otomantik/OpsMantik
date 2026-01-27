@@ -1,0 +1,256 @@
+{
+  "timestamp": "2026-01-27T01:29:44.759Z",
+  "site_id": "9772b10d-bd03-49f8-8ee2-54f9cc65d7c0",
+  "date_range": {
+    "from": "2026-01-20T01:29:44.759Z",
+    "to": "2026-01-27T01:29:44.759Z"
+  },
+  "rpc_results": {
+    "get_dashboard_stats": {
+      "success": true,
+      "data": {
+        "date_to": "2026-01-27T01:29:44.759+00:00",
+        "site_id": "9772b10d-bd03-49f8-8ee2-54f9cc65d7c0",
+        "date_from": "2026-01-20T01:29:44.759+00:00",
+        "total_calls": 5,
+        "last_call_at": "2026-01-24T22:01:11.584247+00:00",
+        "total_events": 169,
+        "last_event_at": "2026-01-24T22:33:05.131783+00:00",
+        "total_sessions": 13,
+        "confirmed_calls": 0,
+        "conversion_rate": 0,
+        "unique_visitors": 0
+      },
+      "keys": [
+        "date_to",
+        "site_id",
+        "date_from",
+        "total_calls",
+        "last_call_at",
+        "total_events",
+        "last_event_at",
+        "total_sessions",
+        "confirmed_calls",
+        "conversion_rate",
+        "unique_visitors"
+      ]
+    },
+    "get_dashboard_timeline": {
+      "success": true,
+      "count": 5,
+      "sample": {
+        "date": "2026-01-24 16:00:00+00",
+        "calls": 0,
+        "label": "16:00",
+        "events": 1,
+        "intents": 0,
+        "visitors": 0,
+        "conversions": 1
+      },
+      "first_5": [
+        {
+          "date": "2026-01-24 16:00:00+00",
+          "calls": 0,
+          "label": "16:00",
+          "events": 1,
+          "intents": 0,
+          "visitors": 0,
+          "conversions": 1
+        },
+        {
+          "date": "2026-01-24 19:00:00+00",
+          "calls": 0,
+          "label": "19:00",
+          "events": 5,
+          "intents": 0,
+          "visitors": 0,
+          "conversions": 0
+        },
+        {
+          "date": "2026-01-24 20:00:00+00",
+          "calls": 0,
+          "label": "20:00",
+          "events": 91,
+          "intents": 0,
+          "visitors": 0,
+          "conversions": 0
+        },
+        {
+          "date": "2026-01-24 21:00:00+00",
+          "calls": 4,
+          "label": "21:00",
+          "events": 32,
+          "intents": 0,
+          "visitors": 0,
+          "conversions": 3
+        },
+        {
+          "date": "2026-01-24 22:00:00+00",
+          "calls": 1,
+          "label": "22:00",
+          "events": 40,
+          "intents": 0,
+          "visitors": 0,
+          "conversions": 1
+        }
+      ]
+    },
+    "get_dashboard_intents": {
+      "success": true,
+      "count": 10,
+      "sample": {
+        "id": "conv-fbdf2b01-4661-4ab2-ab7b-6163ea074096",
+        "city": null,
+        "type": "conversion",
+        "status": "confirmed",
+        "district": null,
+        "page_url": "http://localhost:3000/test-page",
+        "sealed_at": "2026-01-24T22:16:53.493501+00:00",
+        "timestamp": "2026-01-24T22:16:53.493501+00:00",
+        "device_type": null,
+        "event_action": "whatsapp_click",
+        "phone_number": null,
+        "event_category": "conversion",
+        "confidence_score": 0,
+        "matched_session_id": "6106b294-1256-452d-8846-f68b99ec9a9c"
+      },
+      "first_5": [
+        {
+          "id": "conv-fbdf2b01-4661-4ab2-ab7b-6163ea074096",
+          "city": null,
+          "type": "conversion",
+          "status": "confirmed",
+          "district": null,
+          "page_url": "http://localhost:3000/test-page",
+          "sealed_at": "2026-01-24T22:16:53.493501+00:00",
+          "timestamp": "2026-01-24T22:16:53.493501+00:00",
+          "device_type": null,
+          "event_action": "whatsapp_click",
+          "phone_number": null,
+          "event_category": "conversion",
+          "confidence_score": 0,
+          "matched_session_id": "6106b294-1256-452d-8846-f68b99ec9a9c"
+        },
+        {
+          "id": "596fd5b5-3170-40ed-917a-895ef96fc5c6",
+          "city": null,
+          "type": "call",
+          "status": null,
+          "district": null,
+          "page_url": "http://localhost:3000/test-page",
+          "sealed_at": null,
+          "timestamp": "2026-01-24T22:01:11.584247+00:00",
+          "device_type": null,
+          "event_action": null,
+          "phone_number": "+905551234567",
+          "event_category": null,
+          "confidence_score": 50,
+          "matched_session_id": "13ad9209-d606-4f86-8574-f4f0acf86f08"
+        },
+        {
+          "id": "4edb0d61-ab3c-41be-aefc-a3f7a09d864c",
+          "city": null,
+          "type": "call",
+          "status": null,
+          "district": null,
+          "page_url": "http://localhost:3000/test-page",
+          "sealed_at": null,
+          "timestamp": "2026-01-24T21:54:23.594246+00:00",
+          "device_type": null,
+          "event_action": null,
+          "phone_number": "+905551234567",
+          "event_category": null,
+          "confidence_score": 100,
+          "matched_session_id": "17b907a9-a292-4f0f-a853-f90ea29fa30d"
+        },
+        {
+          "id": "8e2f457c-94f3-461f-a142-1ce68649a0b2",
+          "city": null,
+          "type": "call",
+          "status": null,
+          "district": null,
+          "page_url": "http://localhost:3000/test-page",
+          "sealed_at": null,
+          "timestamp": "2026-01-24T21:53:50.059247+00:00",
+          "device_type": null,
+          "event_action": null,
+          "phone_number": "+905551234567",
+          "event_category": null,
+          "confidence_score": 100,
+          "matched_session_id": "17b907a9-a292-4f0f-a853-f90ea29fa30d"
+        },
+        {
+          "id": "conv-6be78008-455a-454a-b73c-88fc19ca7b45",
+          "city": null,
+          "type": "conversion",
+          "status": "confirmed",
+          "district": null,
+          "page_url": "http://localhost:3000/test-page",
+          "sealed_at": "2026-01-24T21:53:50.04084+00:00",
+          "timestamp": "2026-01-24T21:53:50.04084+00:00",
+          "device_type": null,
+          "event_action": "phone_call_initiated",
+          "phone_number": null,
+          "event_category": "conversion",
+          "confidence_score": 0,
+          "matched_session_id": "17b907a9-a292-4f0f-a853-f90ea29fa30d"
+        }
+      ]
+    },
+    "get_dashboard_breakdown_source": {
+      "success": true,
+      "count": 1,
+      "sample": {
+        "count": 13,
+        "percentage": 100,
+        "dimension_value": "Unknown"
+      },
+      "all": [
+        {
+          "count": 13,
+          "percentage": 100,
+          "dimension_value": "Unknown"
+        }
+      ]
+    },
+    "get_dashboard_breakdown_device": {
+      "success": true,
+      "count": 1,
+      "sample": {
+        "count": 13,
+        "percentage": 100,
+        "dimension_value": "Unknown"
+      },
+      "all": [
+        {
+          "count": 13,
+          "percentage": 100,
+          "dimension_value": "Unknown"
+        }
+      ]
+    },
+    "get_dashboard_breakdown_city": {
+      "success": true,
+      "count": 1,
+      "sample": {
+        "count": 13,
+        "percentage": 100,
+        "dimension_value": "Unknown"
+      },
+      "all": [
+        {
+          "count": 13,
+          "percentage": 100,
+          "dimension_value": "Unknown"
+        }
+      ]
+    },
+    "range_validation": {
+      "test": "6-month max range enforcement",
+      "invalid_range_days": 200,
+      "expected_error": true,
+      "got_error": true,
+      "error_message": "Date range exceeds maximum of 180 days (6 months)"
+    }
+  }
+}

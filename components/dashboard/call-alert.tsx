@@ -34,6 +34,7 @@ interface CallAlert {
   } | null;
   matched_at?: string | null;
   created_at: string;
+  site_id: string; // Iron Dome: required for site_id scope
   status?: string | null; // intent, confirmed, qualified, junk, real, null
   source?: string | null; // click, api, manual
   confirmed_at?: string | null;
@@ -120,7 +121,8 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
     const { error } = await supabase
       .from('calls')
       .update({ status: 'qualified' })
-      .eq('id', call.id);
+      .eq('id', call.id)
+      .eq('site_id', call.site_id); // Iron Dome: explicit site_id scope
 
     if (!error) {
       setStatus('qualified');
@@ -145,6 +147,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
       .from('calls')
       .select('status')
       .eq('id', call.id)
+      .eq('site_id', call.site_id) // Iron Dome: explicit site_id scope
       .single();
 
     if (fetchError || !currentCall) {
@@ -169,6 +172,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
         confirmed_by: user?.id || null,
       })
       .eq('id', call.id)
+      .eq('site_id', call.site_id) // Iron Dome: explicit site_id scope
       .in('status', ['intent', null]); // Atomic: only update if status is intent or null
 
     if (!error) {
@@ -195,6 +199,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
       .from('calls')
       .select('status')
       .eq('id', call.id)
+      .eq('site_id', call.site_id) // Iron Dome: explicit site_id scope
       .single();
 
     if (fetchError || !currentCall) {
@@ -215,6 +220,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
       .from('calls')
       .update({ status: 'junk' })
       .eq('id', call.id)
+      .eq('site_id', call.site_id) // Iron Dome: explicit site_id scope
       .not('status', 'eq', 'junk') // Atomic: only update if not already junk
       .not('status', 'eq', 'confirmed'); // Also prevent updating confirmed calls
 
