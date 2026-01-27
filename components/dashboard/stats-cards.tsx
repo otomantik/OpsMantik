@@ -8,10 +8,6 @@ import { RefreshCw, AlertCircle } from 'lucide-react';
 
 interface StatsCardsProps {
   siteId?: string;
-}
-
-interface StatsCardsProps {
-  siteId?: string;
   dateRange?: { from: Date; to: Date };
 }
 
