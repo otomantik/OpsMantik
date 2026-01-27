@@ -271,4 +271,53 @@ Before committing OPS Console changes:
   - `REPORTS/CALL_MONITOR_SOURCE_FIELDS.md` - Source/channel enrichment plan
   - `REPORTS/FIX_PLAN_CALL_MATCH_V1_1.md` - Implementation steps
   - `REPORTS/DIAGNOSIS_CALL_MATCH.md` - Root cause analysis & decision tree
+  - `REPORTS/PHASE0_AUDIT_REPORT.md` - PRO Dashboard Migration v2.1 Phase 0 audit
+  - `REPORTS/IRON_DOME_V2_1.md` - Triple-layer isolation implementation guide
+- [x] **PRO DASHBOARD MIGRATION v2.1 - Phase 0 Complete**: Comprehensive database audit completed.
+  - Migration: `20260128000000_phase0_audit.sql` - Diagnostic queries for table sizes, indexes, partitions, RLS, and column usage
+  - Report: `REPORTS/PHASE0_AUDIT_REPORT.md` - Full audit analysis with recommendations
+  - Findings: ✅ Excellent index coverage, ✅ Proper partition strategy, ✅ Strong RLS policies, ⚠️ Verify INSERT/UPDATE/DELETE are API-only
+  - Next: Phase 1 - RPC Contract Design (split monolithic `get_dashboard_stats` into specialized RPCs)
+- [x] **IRON DOME v2.1 - Phase 2 Complete**: Triple-layer tenant isolation implemented.
+  - Layer 1 (RLS): `20260128010000_iron_dome_rls_layer1.sql` - Enhanced RLS policies with explicit site_id validation
+  - Layer 2 (Server Gate): `lib/security/validate-site-access.ts` - Site access validation with role checking
+  - Layer 3 (Scrubber): `lib/security/scrub-data.ts` - Data scrubbing utilities for defense in depth
+  - Report: `REPORTS/IRON_DOME_V2_1.md` - Complete implementation guide
+  - Security: ✅ Fail-closed design, ✅ Defense in depth, ✅ Security logging
+  - Next: Integrate Layer 2 & 3 into API routes and dashboard components
+- [x] **COMMAND CENTER v2.1 - Phase 3 Complete**: URL-state management and dashboard layout skeleton implemented.
+  - Hook: `lib/hooks/use-dashboard-date-range.ts` - URL-state managed date range with UTC normalization
+  - Layout: `components/dashboard/dashboard-layout.tsx` - Command center layout with date picker and health indicator
+  - Components: `date-range-picker.tsx`, `health-indicator.tsx` - Supporting UI components
+  - Features: ✅ URL params for date range, ✅ TRT display, ✅ Max 6 months enforced, ✅ Presets (Bugün, Dün, 7d, 30d, Bu Ay)
+  - Integration: `app/dashboard/site/[siteId]/page.tsx` - Updated to use DashboardLayout
+  - Next: Phase 4 - RPC Contract Design (split monolithic stats into specialized RPCs)
+- [x] **TIMELINE CHART v2.1 - Phase 5 Complete**: Bounded refresh strategy implemented.
+  - Hook: `lib/hooks/use-timeline-data.ts` - Timeline data fetching with auto-granularity
+  - Component: `components/dashboard/timeline-chart.tsx` - SVG-based chart with refresh strategy
+  - Features: ✅ Auto-granularity (hour/day/week), ✅ Bounded refresh (5m/30m), ✅ Manual refresh, ✅ Visibility check
+  - Integration: Added to DashboardLayout between KPI cards and main activity
+  - Report: `REPORTS/TIMELINE_CHART_V2_1.md` - Complete implementation guide
+  - Note: SVG-based chart (no dependencies). Recharts recommended for production.
+  - Next: Install recharts for better visualization, create RPC function for server-side aggregation
+- [x] **INTENT LEDGER v2.1 - Phase 6 Complete**: Lead Inbox with Session Drawer implemented.
+  - Hook: `lib/hooks/use-intents.ts` - Fetches calls and conversion events as intents
+  - Component: `components/dashboard/intent-ledger.tsx` - Table view with filters, search, and drawer
+  - Components: IntentTypeBadge, IntentStatusBadge, ConfidenceScore, SessionDrawer
+  - API: `app/api/intents/[id]/status/route.ts` - Update intent status endpoint
+  - Features: ✅ Status filtering (pending/sealed/junk/suspicious), ✅ Search by page URL, ✅ Session drawer with timeline, ✅ Status update via API
+  - Integration: Added to DashboardLayout as Row 3 (after Timeline Chart)
+  - Next: Add bulk actions, export functionality, advanced filtering
+- [x] **REALTIME PULSE v2.1 - Phase 7 Complete**: Strict scope + idempotent optimistic updates implemented.
+  - Hook: `lib/hooks/use-realtime-dashboard.ts` - Centralized realtime hook with deduplication
+  - Component: `components/dashboard/realtime-pulse.tsx` - Connection status indicator
+  - Features: ✅ Site-specific subscriptions, ✅ Event deduplication, ✅ Connection status tracking, ✅ Optimistic KPI updates, ✅ Typed event callbacks
+  - Integration: DashboardLayout (RealtimePulse), StatsCards (optimistic refresh), IntentLedger (optimistic refresh)
+  - Strategy: KPIs refresh optimistically, Charts use bounded refresh (Phase 5), Intent Ledger refreshes on call changes
+  - Report: `REPORTS/REALTIME_PULSE_V2_1.md` - Complete implementation guide
+  - Next: Add event batching, offline queue, event history, metrics tracking
+  - Migration: `20260128000000_phase0_audit.sql` - Diagnostic queries for table sizes, indexes, partitions, RLS, and column usage
+  - Report: `REPORTS/PHASE0_AUDIT_REPORT.md` - Full audit analysis with recommendations
+  - Findings: ✅ Excellent index coverage, ✅ Proper partition strategy, ✅ Strong RLS policies, ⚠️ Verify INSERT/UPDATE/DELETE are API-only
+  - Next: Phase 1 - RPC Contract Design (split monolithic `get_dashboard_stats` into specialized RPCs)
 

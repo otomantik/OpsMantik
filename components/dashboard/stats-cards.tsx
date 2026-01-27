@@ -1,6 +1,7 @@
 'use client';
 
 import { useDashboardStats } from '@/lib/hooks/use-dashboard-stats';
+import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, AlertCircle } from 'lucide-react';
@@ -11,6 +12,23 @@ interface StatsCardsProps {
 
 export function StatsCards({ siteId }: StatsCardsProps) {
   const { stats, loading, error, refetch } = useDashboardStats(siteId, 7);
+
+  // Realtime updates for optimistic KPI refresh
+  useRealtimeDashboard(siteId, {
+    onEventCreated: () => {
+      // Optimistically refresh stats when new events arrive
+      // Note: Only for KPIs, not for charts (per Phase 5 bounded refresh strategy)
+      refetch();
+    },
+    onCallCreated: () => {
+      // Optimistically refresh stats when new calls arrive
+      refetch();
+    },
+    onDataFreshness: () => {
+      // Update last_event_at optimistically
+      refetch();
+    },
+  });
 
   if (error) {
     return (

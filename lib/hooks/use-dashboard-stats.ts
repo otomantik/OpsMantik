@@ -15,7 +15,11 @@ export interface DashboardStats {
     last_call_at: string | null;
 }
 
-export function useDashboardStats(siteId: string | undefined, days: number = 7) {
+export function useDashboardStats(
+    siteId: string | undefined, 
+    days?: number,
+    dateRange?: { from: Date; to: Date }
+) {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -28,9 +32,18 @@ export function useDashboardStats(siteId: string | undefined, days: number = 7) 
 
         try {
             const supabase = createClient();
+            
+            // Use dateRange if provided, otherwise fall back to days
+            let p_days = days || 7;
+            if (dateRange) {
+                // Calculate days from date range
+                const diffMs = dateRange.to.getTime() - dateRange.from.getTime();
+                p_days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            }
+            
             const { data, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
                 p_site_id: siteId,
-                p_days: days
+                p_days: p_days
             });
 
             if (rpcError) throw rpcError;
@@ -42,7 +55,7 @@ export function useDashboardStats(siteId: string | undefined, days: number = 7) 
         } finally {
             setLoading(false);
         }
-    }, [siteId, days]);
+    }, [siteId, days, dateRange]);
 
     useEffect(() => {
         fetchStats();

@@ -1,0 +1,76 @@
+/**
+ * Health Indicator Component
+ * 
+ * Displays dashboard health status (data latency, completeness).
+ */
+
+'use client';
+
+import { Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { formatTimestamp } from '@/lib/utils';
+
+export interface DashboardHealth {
+  data_latency: string; // ISO timestamp
+  completeness: number; // 0-1
+  last_sync: string | null; // ISO timestamp
+  status: 'healthy' | 'degraded' | 'critical';
+}
+
+interface HealthIndicatorProps {
+  health: DashboardHealth;
+}
+
+export function HealthIndicator({ health }: HealthIndicatorProps) {
+  const getStatusColor = () => {
+    switch (health.status) {
+      case 'healthy':
+        return 'text-emerald-400';
+      case 'degraded':
+        return 'text-yellow-400';
+      case 'critical':
+        return 'text-rose-400';
+      default:
+        return 'text-slate-400';
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (health.status) {
+      case 'healthy':
+        return <CheckCircle2 className="w-4 h-4" />;
+      case 'degraded':
+        return <Activity className="w-4 h-4" />;
+      case 'critical':
+        return <AlertCircle className="w-4 h-4" />;
+      default:
+        return <Activity className="w-4 h-4" />;
+    }
+  };
+
+  const formatLatency = (timestamp: string): string => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Şimdi';
+    if (diffMins < 60) return `${diffMins} dk önce`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} sa önce`;
+    return formatTimestamp(timestamp, { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/50 rounded-lg">
+      {getStatusIcon()}
+      <div className="flex flex-col">
+        <span className={`text-[10px] font-mono uppercase tracking-wider ${getStatusColor()}`}>
+          {health.status === 'healthy' ? 'Sağlıklı' : health.status === 'degraded' ? 'Düşük' : 'Kritik'}
+        </span>
+        <span className="text-[9px] font-mono text-slate-500">
+          {formatLatency(health.data_latency)} TRT
+        </span>
+      </div>
+    </div>
+  );
+}
