@@ -57,6 +57,12 @@ export function useRealtimeDashboard(
   const processedEventsRef = useRef<Set<string>>(new Set());
   const isMountedRef = useRef<boolean>(true);
   const supabaseRef = useRef(createClient());
+  const callbacksRef = useRef<RealtimeDashboardCallbacks | undefined>(callbacks);
+  
+  // Update callbacks ref when callbacks change
+  useEffect(() => {
+    callbacksRef.current = callbacks;
+  }, [callbacks]);
 
   // Generate unique event ID for deduplication
   const generateEventId = useCallback((table: string, id: string, timestamp: string): string => {
@@ -144,8 +150,8 @@ export function useRealtimeDashboard(
           }
 
           // Transform to IntentRow if needed
-          if (callbacks?.onCallCreated) {
-            callbacks.onCallCreated(newCall);
+          if (callbacksRef.current?.onCallCreated) {
+            callbacksRef.current.onCallCreated(newCall);
           }
 
           setState(prev => ({
@@ -183,8 +189,8 @@ export function useRealtimeDashboard(
             return;
           }
 
-          if (callbacks?.onCallUpdated) {
-            callbacks.onCallUpdated(updatedCall);
+          if (callbacksRef.current?.onCallUpdated) {
+            callbacksRef.current.onCallUpdated(updatedCall);
           }
 
           setState(prev => ({
@@ -228,13 +234,13 @@ export function useRealtimeDashboard(
             return;
           }
 
-          if (callbacks?.onEventCreated) {
-            callbacks.onEventCreated(newEvent);
+          if (callbacksRef.current?.onEventCreated) {
+            callbacksRef.current.onEventCreated(newEvent);
           }
 
           // Update data freshness
-          if (callbacks?.onDataFreshness) {
-            callbacks.onDataFreshness(new Date());
+          if (callbacksRef.current?.onDataFreshness) {
+            callbacksRef.current.onDataFreshness(new Date());
           }
 
           setState(prev => ({
@@ -276,7 +282,7 @@ export function useRealtimeDashboard(
         subscriptionRef.current = null;
       }
     };
-  }, [siteId, generateEventId, isDuplicate, callbacks]);
+  }, [siteId, generateEventId, isDuplicate]);
 
   // Cleanup on unmount
   useEffect(() => {
