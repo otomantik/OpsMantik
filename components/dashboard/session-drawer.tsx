@@ -11,6 +11,24 @@ import { IntentRow } from '@/lib/hooks/use-intents';
 import { formatTimestamp } from '@/lib/utils';
 import { SessionGroup } from './session-group';
 
+/**
+ * TEMP DEBUG (gated, 1 run only)
+ * Enable by running in browser console:
+ *   localStorage.setItem('opsmantik_debug_sessions_errors_once', '1'); location.reload();
+ * Logs will self-disable after the first page load that consumes the flag.
+ */
+function shouldLogSessionsErrorsThisRun(): boolean {
+  if (typeof window === 'undefined') return false;
+  const key = 'opsmantik_debug_sessions_errors_once';
+  const anyWindow = window as any;
+  if (anyWindow.__opsmantikDebugSessionsErrorsThisRun === true) return true;
+  const enabled = window.localStorage.getItem(key) === '1';
+  if (!enabled) return false;
+  window.localStorage.removeItem(key);
+  anyWindow.__opsmantikDebugSessionsErrorsThisRun = true;
+  return true;
+}
+
 interface SessionDrawerProps {
   intent: IntentRow;
   siteId: string;
@@ -24,9 +42,8 @@ interface SessionData {
   city: string | null;
   district: string | null;
   device_type: string | null;
-  ip: string | null;
-  user_agent: string | null;
   fingerprint: string | null;
+  created_month: string;
   events: Array<{
     id: string;
     event_category: string;
@@ -43,6 +60,8 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
   const [session, setSession] = useState<SessionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLimitedView, setIsLimitedView] = useState(false);
+  const [limitedReason, setLimitedReason] = useState<string | null>(null);
 
   useEffect(() => {
     if (!intent.matched_session_id) {
@@ -53,45 +72,89 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
     const fetchSession = async () => {
       setIsLoading(true);
       setError(null);
+      setIsLimitedView(false);
+      setLimitedReason(null);
 
       try {
         const supabase = createClient();
 
         // Fetch session
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('sessions')
-          .select('id, created_at, city, district, device_type, ip, user_agent, fingerprint, created_month')
-          .eq('id', intent.matched_session_id)
-          .eq('site_id', siteId)
-          .single();
+        const { data: sessionData, error: sessionError } = await supabase.rpc('get_session_details', {
+          p_site_id: siteId,
+          p_session_id: intent.matched_session_id,
+        });
 
-        if (sessionError) throw sessionError;
+        // Graceful limited view: session might be missing, denied, or not authenticated.
+        // Do NOT surface as a red error unless it's unexpected.
+        if (sessionError) {
+          const msg = (sessionError as any)?.message;
+          const details = (sessionError as any)?.details;
+          const expected = msg === 'access_denied' || msg === 'not_authenticated';
+          setSession(null);
+          setIsLimitedView(true);
+          setLimitedReason(expected ? msg : (details || msg || 'unavailable'));
+          return;
+        }
+        if (!sessionData || !Array.isArray(sessionData) || sessionData.length === 0) {
+          setSession(null);
+          setIsLimitedView(true);
+          setLimitedReason('unavailable');
+          return;
+        }
+        const sessionRow = sessionData[0];
 
         // Fetch events
         const { data: eventsData, error: eventsError } = await supabase
           .from('events')
           .select('id, event_category, event_action, event_label, event_value, metadata, created_at, url, session_month')
           .eq('session_id', intent.matched_session_id)
-          .eq('session_month', sessionData.created_month)
+          .eq('session_month', sessionRow.created_month)
           .order('created_at', { ascending: true });
 
         if (eventsError) throw eventsError;
 
         setSession({
-          id: sessionData.id,
-          created_at: sessionData.created_at,
-          city: sessionData.city,
-          district: sessionData.district,
-          device_type: sessionData.device_type,
-          ip: sessionData.ip,
-          user_agent: sessionData.user_agent,
-          fingerprint: sessionData.fingerprint,
+          id: sessionRow.id,
+          created_at: sessionRow.created_at,
+          city: sessionRow.city,
+          district: sessionRow.district,
+          device_type: sessionRow.device_type,
+          fingerprint: sessionRow.fingerprint,
+          created_month: sessionRow.created_month,
           events: eventsData || [],
         });
       } catch (err: unknown) {
-        console.error('[SessionDrawer] Error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch session';
-        setError(errorMessage);
+        if (shouldLogSessionsErrorsThisRun()) {
+          const e = err as any;
+          const payload = {
+            code: e?.code,
+            message: e?.message,
+            details: e?.details,
+            hint: e?.hint,
+            status: e?.status,
+            name: e?.name,
+          };
+          console.log('[DEBUG][sessions][SessionDrawer] failing query context', {
+            table: 'sessions',
+            select: 'id, created_at, city, district, device_type, ip, user_agent, fingerprint, created_month',
+            filters: { id: intent.matched_session_id, site_id: siteId },
+            method: 'single()',
+          });
+          console.log('[DEBUG][sessions][SessionDrawer] error payload', payload);
+          try {
+            console.log('[DEBUG][sessions][SessionDrawer] error JSON', JSON.stringify(e));
+          } catch {
+            // ignore
+          }
+        }
+        // Avoid red console spam; show limited view for unknown failures too.
+        // Still keep a human-readable UI state.
+        setSession(null);
+        setIsLimitedView(true);
+        setLimitedReason('unavailable');
+        if (shouldLogSessionsErrorsThisRun()) {
+          console.log('[DEBUG][sessions][SessionDrawer] unexpected error', err);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -136,6 +199,61 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 text-slate-600 animate-spin" />
             </div>
+          ) : isLimitedView ? (
+            <div className="py-8">
+              <div className="mb-4 p-3 rounded border border-slate-800 bg-slate-800/20">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                      Limited view
+                    </p>
+                    <p className="text-[11px] font-mono text-slate-300 mt-1">
+                      Session details unavailable (permission/expired/missing).
+                    </p>
+                  </div>
+                  <div className="text-[9px] font-mono text-slate-600 text-right">
+                    Site scope: <span className="text-slate-500">{siteId.slice(0, 8)}…</span>
+                  </div>
+                </div>
+                {limitedReason && (
+                  <p className="mt-2 text-[10px] font-mono text-slate-600">
+                    Reason: <span className="text-slate-500">{limitedReason}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Keep UX: show intent-level info even if session fetch fails */}
+              <div className="space-y-2">
+                <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Intent</p>
+                  <div className="mt-1 text-[11px] font-mono text-slate-200 break-all">
+                    {intent.id}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
+                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Type</p>
+                    <p className="mt-1 text-[11px] font-mono text-slate-200">{intent.type}</p>
+                  </div>
+                  <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
+                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Time</p>
+                    <p className="mt-1 text-[11px] font-mono text-slate-200" suppressHydrationWarning>
+                      {formatTimestamp(intent.timestamp, { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+
+                {intent.matched_session_id && (
+                  <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
+                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Matched session</p>
+                    <div className="mt-1 text-[11px] font-mono text-slate-200 break-all">
+                      {intent.matched_session_id}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : error ? (
             <div className="text-center py-12">
               <p className="text-rose-400 font-mono text-sm mb-2">Hata: {error}</p>
@@ -151,7 +269,7 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                 <h4 className="text-xs font-mono text-slate-300 uppercase tracking-wider mb-3">
                   Oturum Zaman Çizelgesi
                 </h4>
-                <SessionGroup sessionId={session.id} events={session.events.filter(e => e.event_category !== 'heartbeat')} />
+                <SessionGroup siteId={siteId} sessionId={session.id} events={session.events.filter(e => e.event_category !== 'heartbeat')} />
               </div>
 
               {/* Technical Details */}
@@ -166,11 +284,11 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                   </div>
                   <div>
                     <span className="text-slate-500">IP:</span>
-                    <span className="ml-2 text-slate-400">{session.ip || 'N/A'}</span>
+                    <span className="ml-2 text-slate-400">{'—'}</span>
                   </div>
                   <div>
                     <span className="text-slate-500">User Agent:</span>
-                    <span className="ml-2 text-slate-400 truncate block">{session.user_agent || 'N/A'}</span>
+                    <span className="ml-2 text-slate-400 truncate block">{'—'}</span>
                   </div>
                   <div>
                     <span className="text-slate-500">Süre:</span>

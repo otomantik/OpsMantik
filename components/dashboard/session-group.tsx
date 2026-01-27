@@ -8,6 +8,24 @@ import { Button } from '@/components/ui/button';
 import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
 import { formatTimestamp } from '@/lib/utils';
 
+/**
+ * TEMP DEBUG (gated, 1 run only)
+ * Enable by running in browser console:
+ *   localStorage.setItem('opsmantik_debug_sessions_errors_once', '1'); location.reload();
+ * Logs will self-disable after the first page load that consumes the flag.
+ */
+function shouldLogSessionsErrorsThisRun(): boolean {
+  if (typeof window === 'undefined') return false;
+  const key = 'opsmantik_debug_sessions_errors_once';
+  const anyWindow = window as any;
+  if (anyWindow.__opsmantikDebugSessionsErrorsThisRun === true) return true;
+  const enabled = window.localStorage.getItem(key) === '1';
+  if (!enabled) return false;
+  window.localStorage.removeItem(key);
+  anyWindow.__opsmantikDebugSessionsErrorsThisRun = true;
+  return true;
+}
+
 interface Event {
   id: string;
   event_category: string;
@@ -20,11 +38,12 @@ interface Event {
 }
 
 interface SessionGroupProps {
+  siteId?: string;
   sessionId: string;
   events: Event[];
 }
 
-export const SessionGroup = memo(function SessionGroup({ sessionId, events }: SessionGroupProps) {
+export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, events }: SessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVisitorHistory, setShowVisitorHistory] = useState(false);
   const [matchedCall, setMatchedCall] = useState<any>(null);
@@ -49,20 +68,51 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   // Also fetch site_id for visitor history
   useEffect(() => {
     const fetchSessionData = async () => {
+      if (!siteId) return;
       const supabase = createClient();
-      const { data: session } = await supabase
-        .from('sessions')
-        .select('attribution_source, device_type, city, district, fingerprint, gclid, site_id')
-        .eq('id', sessionId)
-        .maybeSingle();
-      
-      if (session) {
-        setSessionData(session);
+      const { data: sessionRows, error } = await supabase.rpc('get_session_details', {
+        p_site_id: siteId,
+        p_session_id: sessionId,
+      });
+
+      if (error && shouldLogSessionsErrorsThisRun()) {
+        const e = error as any;
+        const payload = {
+          code: e?.code,
+          message: e?.message,
+          details: e?.details,
+          hint: e?.hint,
+          status: e?.status,
+          name: e?.name,
+        };
+        console.log('[DEBUG][sessions][SessionGroup] failing query context', {
+          rpc: 'get_session_details',
+          args: { p_site_id: siteId, p_session_id: sessionId },
+        });
+        console.log('[DEBUG][sessions][SessionGroup] error payload', payload);
+        try {
+          console.log('[DEBUG][sessions][SessionGroup] error JSON', JSON.stringify(e));
+        } catch {
+          // ignore
+        }
+      }
+
+      if (sessionRows && Array.isArray(sessionRows) && sessionRows[0]) {
+        const session = sessionRows[0] as any;
+        setSessionData({
+          attribution_source: session.attribution_source ?? null,
+          device_type: session.device_type ?? null,
+          city: session.city ?? null,
+          district: session.district ?? null,
+          fingerprint: session.fingerprint ?? null,
+          gclid: session.gclid ?? null,
+          site_id: session.site_id ?? null,
+        });
       }
     };
     
     fetchSessionData();
-  }, [sessionId]);
+  }, [siteId, sessionId]);
   
   // Use session data first, fallback to event metadata
   // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant
@@ -72,11 +122,11 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   
   // Get fingerprint and site_id for visitor history
   const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
-  const siteId = (sessionData as any)?.site_id || null;
+  const effectiveSiteId = (sessionData as any)?.site_id || siteId || null;
   
   // Fetch visitor history if fingerprint and siteId are available
   const { sessions: visitorSessions, calls: visitorCalls, sessionCount24h, isReturning, isLoading: isLoadingHistory } = useVisitorHistory(
-    siteId || '',
+    effectiveSiteId || '',
     fingerprint
   );
   

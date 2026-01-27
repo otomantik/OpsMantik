@@ -14,6 +14,24 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
+/**
+ * TEMP DEBUG (gated, 1 run only)
+ * Enable by running in browser console:
+ *   localStorage.setItem('opsmantik_debug_sessions_errors_once', '1'); location.reload();
+ * Logs will self-disable after the first page load that consumes the flag.
+ */
+function shouldLogSessionsErrorsThisRun(): boolean {
+  if (typeof window === 'undefined') return false;
+  const key = 'opsmantik_debug_sessions_errors_once';
+  const anyWindow = window as any;
+  if (anyWindow.__opsmantikDebugSessionsErrorsThisRun === true) return true;
+  const enabled = window.localStorage.getItem(key) === '1';
+  if (!enabled) return false;
+  window.localStorage.removeItem(key);
+  anyWindow.__opsmantikDebugSessionsErrorsThisRun = true;
+  return true;
+}
+
 export interface VisitorSession {
   id: string;
   created_at: string;
@@ -74,22 +92,16 @@ export function useVisitorHistory(
 
         const supabase = createClient();
         
-        // Fetch sessions for this fingerprint within site (RLS compliant)
-        // PR1: Deterministic order (created_at DESC, id DESC)
-        const { data: allSessions, error: sessionsError } = await supabase
-          .from('sessions')
-          .select('id, created_at, attribution_source, device_type, city, lead_score')
-          .eq('site_id', siteId)
-          .eq('fingerprint', fingerprint)
-          .order('created_at', { ascending: false })
-          .order('id', { ascending: false })
-          .limit(20);
+        // Fetch sessions via RPC (no direct client reads from public.sessions)
+        const { data: allSessions, error: sessionsError } = await supabase.rpc('get_sessions_by_fingerprint', {
+          p_site_id: siteId,
+          p_fingerprint: fingerprint,
+          p_limit: 20,
+        });
 
-        if (sessionsError) {
-          throw sessionsError;
-        }
+        if (sessionsError) throw sessionsError;
 
-        if (!allSessions) {
+        if (!allSessions || !Array.isArray(allSessions) || allSessions.length === 0) {
           setSessions([]);
           setCalls([]);
           setSessionCount24h(0);
@@ -145,6 +157,30 @@ export function useVisitorHistory(
         setSessionCount24h(count24h);
         setIsLoading(false);
       } catch (err) {
+        if (shouldLogSessionsErrorsThisRun()) {
+          const e = err as any;
+          const payload = {
+            code: e?.code,
+            message: e?.message,
+            details: e?.details,
+            hint: e?.hint,
+            status: e?.status,
+            name: e?.name,
+          };
+          console.log('[DEBUG][sessions][useVisitorHistory] failing query context', {
+            table: 'sessions',
+            select: 'id, created_at, attribution_source, device_type, city, lead_score',
+            filters: { site_id: siteId, fingerprint },
+            order: ['created_at.desc', 'id.desc'],
+            limit: 20,
+          });
+          console.log('[DEBUG][sessions][useVisitorHistory] error payload', payload);
+          try {
+            console.log('[DEBUG][sessions][useVisitorHistory] error JSON', JSON.stringify(e));
+          } catch {
+            // ignore
+          }
+        }
         setError(err instanceof Error ? err : new Error('Failed to fetch visitor history'));
         setIsLoading(false);
       }

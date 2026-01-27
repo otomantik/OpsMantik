@@ -391,6 +391,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
                 displayedSessions.map(([sid, sessionEvents]) => (
                   <SessionGroup
                     key={sid}
+                    siteId={siteId}
                     sessionId={sid}
                     events={sessionEvents}
                   />

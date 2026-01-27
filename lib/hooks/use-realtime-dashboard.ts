@@ -214,14 +214,14 @@ export function useRealtimeDashboard(
           
           // Verify event belongs to site (need to check session)
           try {
-            const { data: session } = await supabase
-              .from('sessions')
-              .select('site_id')
-              .eq('id', newEvent.session_id)
-              .single();
+            const { data: rows, error } = await supabase.rpc('get_session_details', {
+              p_site_id: siteId,
+              p_session_id: newEvent.session_id,
+            });
 
-            if (!session || session.site_id !== siteId) {
-              return; // Event not for this site
+            // If RPC errors or returns no row, treat as not-for-this-site (fail-closed)
+            if (error || !rows || !Array.isArray(rows) || rows.length === 0) {
+              return;
             }
           } catch {
             return; // Session not found or error

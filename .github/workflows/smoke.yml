@@ -26,6 +26,9 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
+
+      - name: Regression lock - no direct sessions access
+        run: node scripts/check-no-direct-sessions-access.mjs
       
       - name: Run API smoke tests
         env:
