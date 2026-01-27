@@ -45,12 +45,12 @@ export function useBreakdownData(
 
       if (rpcError) throw rpcError;
 
-      // Transform RPC response
+      // FIX 2: Transform RPC response with defensive parsing
       if (breakdownData && Array.isArray(breakdownData)) {
         const transformed = breakdownData.map((item: any) => ({
-          dimension_value: item.dimension_value || 'Unknown',
-          count: item.count || 0,
-          percentage: item.percentage || 0,
+          dimension_value: typeof item.dimension_value === 'string' ? item.dimension_value : 'Unknown',
+          count: typeof item.count === 'number' ? item.count : 0,
+          percentage: typeof item.percentage === 'number' ? item.percentage : 0,
         }));
         setData(transformed);
       } else {

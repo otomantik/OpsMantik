@@ -127,7 +127,8 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
   }, [sessionId]);
 
   // Get icon for event action
-  const getEventIcon = (action: string) => {
+  const getEventIcon = (action: string | null | undefined) => {
+    if (!action) return TrendingUp;
     const actionLower = action.toLowerCase();
     if (actionLower.includes('phone') || actionLower.includes('call') || actionLower.includes('whatsapp')) {
       return Phone;
@@ -479,8 +480,8 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                 Event Timeline
               </p>
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                {sortedEvents.slice(0, 15).map((event, index) => {
-                  const Icon = getEventIcon(event.event_action);
+                {(sortedEvents || []).slice(0, 15).map((event, index) => {
+                  const Icon = getEventIcon(event?.event_action);
                   const isLast = index === sortedEvents.slice(0, 15).length - 1;
                   const isConversion = event.event_category === 'conversion';
                   
@@ -541,7 +542,7 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                     </tr>
                   </thead>
                   <tbody>
-                    {compressedEvents.map((item) => {
+                    {(compressedEvents || []).map((item) => {
                       if (item.type === 'single' && item.event) {
                         // Single event (no compression)
                         const event = item.event;
@@ -757,13 +758,13 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                   <div className="text-center py-8">
                     <p className="font-mono text-sm text-slate-400">Loading visitor history...</p>
                   </div>
-                ) : visitorSessions.length === 0 ? (
+                ) : !visitorSessions || visitorSessions.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="font-mono text-sm text-slate-400">No previous sessions found for this visitor</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {visitorSessions.map((session) => (
+                    {(visitorSessions || []).map((session) => (
                       <div
                         key={session.id}
                         className={`p-3 rounded border ${
@@ -829,11 +830,11 @@ export const SessionGroup = memo(function SessionGroup({ sessionId, events }: Se
                 )}
 
                 {/* Other Calls Section - Fingerprint-only calls */}
-                {visitorCalls.length > 0 && (
+                {visitorCalls && visitorCalls.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-slate-800/50">
                     <h4 className="font-mono text-sm text-slate-300 mb-3">Other Calls (Same Fingerprint)</h4>
                     <div className="space-y-2">
-                      {visitorCalls.map((call) => (
+                      {(visitorCalls || []).map((call) => (
                         <div
                           key={call.id}
                           className="p-3 rounded bg-slate-800/30 border border-slate-700/30 hover:bg-slate-800/50 transition-colors"

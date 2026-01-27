@@ -29,8 +29,9 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
             <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider">
               Live
             </span>
+            {/* FIX 1: Suppress hydration warning for timestamp */}
             {lastEventAt && (
-              <span className="text-[8px] font-mono text-slate-500">
+              <span className="text-[8px] font-mono text-slate-500" suppressHydrationWarning>
                 {formatTimestamp(lastEventAt.toISOString(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}

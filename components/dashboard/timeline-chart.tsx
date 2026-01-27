@@ -103,7 +103,8 @@ export function TimelineChart({
   // Simple SVG-based chart (no external dependencies)
   // TODO: Install recharts for better chart visualization
   const renderChart = () => {
-    if (data.length === 0) {
+    // FIX 3: Defensive rendering - ensure data is array
+    if (!Array.isArray(data) || data.length === 0) {
       return (
         <div className="h-[400px] flex items-center justify-center">
           <div className="text-center">
@@ -119,10 +120,18 @@ export function TimelineChart({
       );
     }
 
+    // FIX 2: Ensure all values are numbers (defensive parsing)
+    const safeData = data.map(d => ({
+      ...d,
+      visitors: typeof d.visitors === 'number' ? d.visitors : 0,
+      events: typeof d.events === 'number' ? d.events : 0,
+      calls: typeof d.calls === 'number' ? d.calls : 0,
+    }));
+
     // Calculate max values for scaling
-    const maxVisitors = Math.max(...data.map(d => d.visitors), 1);
-    const maxEvents = Math.max(...data.map(d => d.events), 1);
-    const maxCalls = Math.max(...data.map(d => d.calls), 1);
+    const maxVisitors = Math.max(...safeData.map(d => d.visitors), 1);
+    const maxEvents = Math.max(...safeData.map(d => d.events), 1);
+    const maxCalls = Math.max(...safeData.map(d => d.calls), 1);
     const maxValue = Math.max(maxVisitors, maxEvents, maxCalls, 1);
 
     const chartHeight = 400;
@@ -154,8 +163,8 @@ export function TimelineChart({
           })}
 
           {/* Data lines */}
-          {data.map((point, index) => {
-            const x = padding.left + (index / (data.length - 1 || 1)) * (chartWidth - padding.left - padding.right);
+          {safeData.map((point, index) => {
+            const x = padding.left + (index / (safeData.length - 1 || 1)) * (chartWidth - padding.left - padding.right);
             const visitorsY = padding.top + (chartHeight - padding.top - padding.bottom) * (1 - point.visitors / maxValue);
             const eventsY = padding.top + (chartHeight - padding.top - padding.bottom) * (1 - point.events / maxValue);
             const callsY = padding.top + (chartHeight - padding.top - padding.bottom) * (1 - point.calls / maxValue);
@@ -191,12 +200,12 @@ export function TimelineChart({
           })}
 
           {/* Connect points with lines */}
-          {data.length > 1 && (
+          {safeData.length > 1 && (
             <>
               {/* Visitors line */}
               <polyline
-                points={data.map((point, index) => {
-                  const x = padding.left + (index / (data.length - 1)) * (chartWidth - padding.left - padding.right);
+                points={safeData.map((point, index) => {
+                  const x = padding.left + (index / (safeData.length - 1)) * (chartWidth - padding.left - padding.right);
                   const y = padding.top + (chartHeight - padding.top - padding.bottom) * (1 - point.visitors / maxValue);
                   return `${x},${y}`;
                 }).join(' ')}
@@ -207,8 +216,8 @@ export function TimelineChart({
               />
               {/* Events line */}
               <polyline
-                points={data.map((point, index) => {
-                  const x = padding.left + (index / (data.length - 1)) * (chartWidth - padding.left - padding.right);
+                points={safeData.map((point, index) => {
+                  const x = padding.left + (index / (safeData.length - 1)) * (chartWidth - padding.left - padding.right);
                   const y = padding.top + (chartHeight - padding.top - padding.bottom) * (1 - point.events / maxValue);
                   return `${x},${y}`;
                 }).join(' ')}
@@ -219,8 +228,8 @@ export function TimelineChart({
               />
               {/* Calls line */}
               <polyline
-                points={data.map((point, index) => {
-                  const x = padding.left + (index / (data.length - 1)) * (chartWidth - padding.left - padding.right);
+                points={safeData.map((point, index) => {
+                  const x = padding.left + (index / (safeData.length - 1)) * (chartWidth - padding.left - padding.right);
                   const y = padding.top + (chartHeight - padding.top - padding.bottom) * (1 - point.calls / maxValue);
                   return `${x},${y}`;
                 }).join(' ')}
@@ -233,8 +242,8 @@ export function TimelineChart({
           )}
 
           {/* X-axis labels */}
-          {data.filter((_, i) => i % Math.ceil(data.length / 10) === 0 || i === data.length - 1).map((point, index) => {
-            const x = padding.left + (data.indexOf(point) / (data.length - 1 || 1)) * (chartWidth - padding.left - padding.right);
+          {safeData.filter((_, i) => i % Math.ceil(safeData.length / 10) === 0 || i === safeData.length - 1).map((point, index) => {
+            const x = padding.left + (safeData.indexOf(point) / (safeData.length - 1 || 1)) * (chartWidth - padding.left - padding.right);
             return (
               <text
                 key={point.date}
@@ -320,8 +329,9 @@ export function TimelineChart({
             {renderChart()}
             
             {/* Last Updated */}
+            {/* FIX 1: Suppress hydration warning for timestamp */}
             <div className="mt-4 flex items-center justify-between">
-              <div className="text-[10px] font-mono text-slate-500">
+              <div className="text-[10px] font-mono text-slate-500" suppressHydrationWarning>
                 Son güncelleme: {formatTimestamp(lastUpdated.toISOString(), { 
                   hour: '2-digit', 
                   minute: '2-digit',

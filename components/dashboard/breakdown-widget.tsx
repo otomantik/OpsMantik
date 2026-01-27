@@ -94,29 +94,41 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
           </div>
         ) : (
           <div className="space-y-2">
-            {data.slice(0, 10).map((item, index) => (
-              <div
-                key={`${item.dimension_value}-${index}`}
-                className="flex items-center justify-between p-2 rounded bg-slate-800/20 border border-slate-700/30"
-              >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <div className={`flex-shrink-0 ${getDimensionColor(dimension)}`}>
-                    {getDimensionIcon(dimension)({ className: 'h-3.5 w-3.5' })}
+            {/* FIX 3: Defensive rendering - ensure data is array */}
+            {Array.isArray(data) && data.slice(0, 10).map((item, index) => {
+              // FIX 2: Ensure all values are properly typed
+              const safeItem = {
+                dimension_value: typeof item.dimension_value === 'string' ? item.dimension_value : 'Unknown',
+                count: typeof item.count === 'number' ? item.count : 0,
+                percentage: typeof item.percentage === 'number' ? item.percentage : 0,
+              };
+              return (
+                <div
+                  key={`${safeItem.dimension_value}-${index}`}
+                  className="flex items-center justify-between p-2 rounded bg-slate-800/20 border border-slate-700/30"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className={`flex-shrink-0 ${getDimensionColor(dimension)}`}>
+                      {(() => {
+                        const Icon = getDimensionIcon(dimension);
+                        return <Icon className="h-3.5 w-3.5" />;
+                      })()}
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-300 truncate">
+                      {safeItem.dimension_value}
+                    </span>
                   </div>
-                  <span className="text-[11px] font-mono text-slate-300 truncate">
-                    {item.dimension_value}
-                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {safeItem.count.toLocaleString()}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-600">
+                      ({safeItem.percentage.toFixed(1)}%)
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {item.count.toLocaleString()}
-                  </span>
-                  <span className="text-[9px] font-mono text-slate-600">
-                    ({item.percentage.toFixed(1)}%)
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {data.length > 10 && (
               <p className="text-[9px] font-mono text-slate-600 text-center mt-2">
                 +{data.length - 10} daha

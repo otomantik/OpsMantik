@@ -44,7 +44,9 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
   });
 
   // Filter intents
+  // FIX 3: Defensive rendering - ensure intents is array
   const filteredIntents = useMemo(() => {
+    if (!Array.isArray(intents)) return [];
     return intents.filter(intent => {
       // Status filter
       if (filter !== 'all') {
@@ -72,7 +74,11 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
   }, [intents, filter, search]);
 
   // Status counts
+  // FIX 3: Defensive rendering - ensure intents is array
   const statusCounts = useMemo(() => {
+    if (!Array.isArray(intents)) {
+      return { pending: 0, sealed: 0, junk: 0, suspicious: 0 };
+    }
     return {
       pending: intents.filter(i => i.status === 'intent' || i.status === null).length,
       sealed: intents.filter(i => ['confirmed', 'qualified', 'real'].includes(i.status || '')).length,
@@ -204,11 +210,12 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
                     onClick={() => setSelectedIntent(intent)}
                   >
                     <td className="p-3">
-                      <div className="text-[11px] font-mono text-slate-200">
-                        {formatTimestamp(intent.timestamp, { hour: '2-digit', minute: '2-digit' })}
+                      {/* FIX 2: Ensure timestamp is string before formatting */}
+                      <div className="text-[11px] font-mono text-slate-200" suppressHydrationWarning>
+                        {formatTimestamp(intent?.timestamp || null, { hour: '2-digit', minute: '2-digit' })}
                       </div>
-                      <div className="text-[9px] font-mono text-slate-500 mt-0.5">
-                        {formatTimestamp(intent.timestamp, { day: '2-digit', month: 'short' })}
+                      <div className="text-[9px] font-mono text-slate-500 mt-0.5" suppressHydrationWarning>
+                        {formatTimestamp(intent?.timestamp || null, { day: '2-digit', month: 'short' })}
                       </div>
                     </td>
                     <td className="p-3">

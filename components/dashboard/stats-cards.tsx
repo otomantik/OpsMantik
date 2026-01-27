@@ -52,7 +52,16 @@ export function StatsCards({ siteId, dateRange }: StatsCardsProps) {
   }
 
   // Active status logic: within last 2 minutes
-  const isActive = stats?.last_event_at && (new Date().getTime() - new Date(stats.last_event_at).getTime() < 120000);
+  // FIX 2: Defensive date parsing
+  const isActive = stats?.last_event_at && (() => {
+    try {
+      const lastEventDate = new Date(stats.last_event_at);
+      if (isNaN(lastEventDate.getTime())) return false;
+      return new Date().getTime() - lastEventDate.getTime() < 120000;
+    } catch {
+      return false;
+    }
+  })();
   const hasNoActivity = !loading && stats && stats.unique_visitors === 0 && stats.total_calls === 0 && stats.total_events === 0;
 
   const displayVisitors = loading ? '...' : (stats?.unique_visitors || 0).toLocaleString();
@@ -60,18 +69,24 @@ export function StatsCards({ siteId, dateRange }: StatsCardsProps) {
   const displayCalls = loading ? '...' : (stats?.total_calls || 0).toLocaleString();
   const displayConvRate = loading ? '...' : `${((stats?.conversion_rate || 0) * 100).toFixed(1)}%`;
 
+  // FIX 2: Defensive date parsing with error handling
   const formatLastSeen = (ts: string | null) => {
     if (!ts) return 'No activity';
-    const date = new Date(ts);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    try {
+      const date = new Date(ts);
+      if (isNaN(date.getTime())) return 'Invalid date';
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return 'Invalid date';
+    }
   };
 
   return (
@@ -129,7 +144,8 @@ export function StatsCards({ siteId, dateRange }: StatsCardsProps) {
               </span>
             </div>
             <div className="mt-2 space-y-1">
-              <p className="text-[10px] font-mono text-slate-500">Last call: {formatLastSeen(stats?.last_call_at || null)}</p>
+              {/* FIX 1: Suppress hydration warning for timestamp */}
+              <p className="text-[10px] font-mono text-slate-500" suppressHydrationWarning>Last call: {formatLastSeen(stats?.last_call_at || null)}</p>
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-mono text-slate-500">Matched via Fingerprint</p>
                 <p className="text-[9px] font-mono text-slate-600 italic">Today vs 7d: Coming next</p>

@@ -117,7 +117,8 @@ export function DashboardLayout({
               <h1 className="text-sm font-mono font-bold text-slate-100 uppercase tracking-tighter">
                 {siteName || siteDomain || 'Site Analytics'}
               </h1>
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none">
+              {/* FIX 1: Suppress hydration warning for timestamp */}
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none" suppressHydrationWarning>
                 Son güncelleme: {formatTimestamp(health.data_latency, { hour: '2-digit', minute: '2-digit' })} TRT
               </p>
             </div>

@@ -105,12 +105,23 @@ export function formatTimestamp(
   ts: string | null | undefined,
   options?: Intl.DateTimeFormatOptions
 ): string {
+  // FIX 2: Defensive parsing - handle invalid dates
   if (!ts) return '—';
-  const date = new Date(ts);
-  return date.toLocaleString('tr-TR', {
-    timeZone: 'Europe/Istanbul',
-    ...options
-  });
+  try {
+    const date = new Date(ts);
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('[formatTimestamp] Invalid date:', ts);
+      return '—';
+    }
+    return date.toLocaleString('tr-TR', {
+      timeZone: 'Europe/Istanbul',
+      ...options
+    });
+  } catch (err) {
+    console.warn('[formatTimestamp] Error formatting:', ts, err);
+    return '—';
+  }
 }
 
 /**

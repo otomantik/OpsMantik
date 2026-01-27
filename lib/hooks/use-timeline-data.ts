@@ -51,16 +51,16 @@ export function useTimelineData(
 
       if (rpcError) throw rpcError;
 
-      // Transform RPC response to TimelinePoint[]
+      // FIX 2: Transform RPC response to TimelinePoint[] with defensive parsing
       if (timelineData && Array.isArray(timelineData)) {
         const transformed = timelineData.map((point: any) => ({
-          date: point.date,
-          label: point.label,
-          visitors: point.visitors || 0,
-          events: point.events || 0,
-          calls: point.calls || 0,
-          intents: point.intents || 0,
-          conversions: point.conversions || 0,
+          date: typeof point.date === 'string' ? point.date : new Date().toISOString(),
+          label: typeof point.label === 'string' ? point.label : '',
+          visitors: typeof point.visitors === 'number' ? point.visitors : 0,
+          events: typeof point.events === 'number' ? point.events : 0,
+          calls: typeof point.calls === 'number' ? point.calls : 0,
+          intents: typeof point.intents === 'number' ? point.intents : 0,
+          conversions: typeof point.conversions === 'number' ? point.conversions : 0,
         }));
         setData(transformed);
       } else {

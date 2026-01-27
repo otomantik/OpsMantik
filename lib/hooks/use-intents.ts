@@ -60,23 +60,23 @@ export function useIntents(
 
       if (rpcError) throw rpcError;
 
-      // Transform RPC response to IntentRow[]
+      // FIX 2: Transform RPC response to IntentRow[] with defensive parsing
       if (intentsData && Array.isArray(intentsData)) {
         const transformed = intentsData.map((intent: any) => ({
-          id: intent.id,
-          type: intent.type as 'call' | 'conversion',
-          timestamp: intent.timestamp,
+          id: typeof intent.id === 'string' ? intent.id : '',
+          type: (intent.type === 'call' || intent.type === 'conversion') ? intent.type : 'call',
+          timestamp: typeof intent.timestamp === 'string' ? intent.timestamp : new Date().toISOString(),
           status: intent.status as IntentStatus,
-          sealed_at: intent.sealed_at,
-          page_url: intent.page_url || '',
-          city: intent.city || null,
-          district: intent.district || null,
-          device_type: intent.device_type || null,
-          matched_session_id: intent.matched_session_id,
-          confidence_score: intent.confidence_score || 0,
-          phone_number: intent.phone_number || null,
-          event_category: intent.event_category,
-          event_action: intent.event_action,
+          sealed_at: typeof intent.sealed_at === 'string' ? intent.sealed_at : null,
+          page_url: typeof intent.page_url === 'string' ? intent.page_url : '',
+          city: typeof intent.city === 'string' ? intent.city : null,
+          district: typeof intent.district === 'string' ? intent.district : null,
+          device_type: typeof intent.device_type === 'string' ? intent.device_type : null,
+          matched_session_id: typeof intent.matched_session_id === 'string' ? intent.matched_session_id : null,
+          confidence_score: typeof intent.confidence_score === 'number' ? intent.confidence_score : 0,
+          phone_number: typeof intent.phone_number === 'string' ? intent.phone_number : null,
+          event_category: typeof intent.event_category === 'string' ? intent.event_category : undefined,
+          event_action: typeof intent.event_action === 'string' ? intent.event_action : undefined,
         }));
         setIntents(transformed);
       } else {
