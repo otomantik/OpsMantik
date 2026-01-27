@@ -41,7 +41,11 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
       // Optimistically refresh intents when call status changes
       refetch();
     },
-  });
+    onDataFreshness: () => {
+      // Ads-only mode: if realtime payload can't be classified, hook triggers refetch-only via onDataFreshness
+      refetch();
+    },
+  }, { adsOnly: true });
 
   // Filter intents
   // FIX 3: Defensive rendering - ensure intents is array

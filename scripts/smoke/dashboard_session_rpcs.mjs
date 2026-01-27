@@ -62,23 +62,29 @@ async function main() {
   if (intentsError) throw intentsError;
   if (!Array.isArray(intents)) throw new Error('get_dashboard_intents: expected array');
 
-  const withSession = intents.find((i) => i && typeof i === 'object' && i.matched_session_id);
-  if (!withSession?.matched_session_id) {
-    throw new Error('No intent with matched_session_id found in last 7 days');
+  // Find the first intent whose matched_session_id resolves via get_session_details
+  let sessionId = null;
+  let sessionRows = null;
+  for (const i of intents) {
+    if (!i || typeof i !== 'object' || !i.matched_session_id) continue;
+    const candidate = i.matched_session_id;
+    const { data: rows, error } = await supabase.rpc('get_session_details', {
+      p_site_id: siteId,
+      p_session_id: candidate,
+    });
+    if (error) continue;
+    if (Array.isArray(rows) && rows.length === 1) {
+      sessionId = candidate;
+      sessionRows = rows;
+      break;
+    }
   }
 
-  const sessionId = withSession.matched_session_id;
+  if (!sessionId || !sessionRows) {
+    throw new Error('No Ads-origin matched_session_id found (get_session_details returned empty for all candidates)');
+  }
+
   console.log('📌 matched_session_id:', sessionId);
-
-  const { data: sessionRows, error: sessionError } = await supabase.rpc('get_session_details', {
-    p_site_id: siteId,
-    p_session_id: sessionId,
-  });
-
-  if (sessionError) throw sessionError;
-  if (!Array.isArray(sessionRows) || sessionRows.length !== 1) {
-    throw new Error('get_session_details: expected single-row array');
-  }
 
   const s = sessionRows[0];
   const required = ['id', 'site_id', 'created_at', 'created_month'];

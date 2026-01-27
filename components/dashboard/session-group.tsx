@@ -41,14 +41,17 @@ interface SessionGroupProps {
   siteId?: string;
   sessionId: string;
   events: Event[];
+  adsOnly?: boolean;
 }
 
-export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, events }: SessionGroupProps) {
+export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, events, adsOnly = false }: SessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVisitorHistory, setShowVisitorHistory] = useState(false);
   const [matchedCall, setMatchedCall] = useState<any>(null);
   const [isLoadingCall, setIsLoadingCall] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [adsGateChecked, setAdsGateChecked] = useState(false);
+  const [isExcludedByAdsOnly, setIsExcludedByAdsOnly] = useState(false);
   const [sessionData, setSessionData] = useState<{
     attribution_source?: string | null;
     device_type?: string | null;
@@ -108,11 +111,25 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
           gclid: session.gclid ?? null,
           site_id: session.site_id ?? null,
         });
+        setIsExcludedByAdsOnly(false);
+      } else if (adsOnly) {
+        // In Ads-only mode, session details RPC is the gate:
+        // it returns rows ONLY for Ads-origin sessions. If empty/denied => exclude from UI.
+        setIsExcludedByAdsOnly(true);
       }
+      setAdsGateChecked(true);
     };
     
     fetchSessionData();
-  }, [siteId, sessionId]);
+  }, [siteId, sessionId, adsOnly]);
+
+  // Ads-only mode: don't render anything until gate check completes (prevents non-ads flash)
+  if (adsOnly && !adsGateChecked) {
+    return null;
+  }
+  if (adsOnly && isExcludedByAdsOnly) {
+    return null;
+  }
   
   // Use session data first, fallback to event metadata
   // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant

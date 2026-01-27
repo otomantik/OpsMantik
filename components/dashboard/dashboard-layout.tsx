@@ -17,13 +17,9 @@ import { DateRangePicker } from './date-range-picker';
 import { HealthIndicator, DashboardHealth } from './health-indicator';
 import { StatsCards } from './stats-cards';
 import { LiveFeed } from './live-feed';
-import { CallAlertWrapper } from './call-alert-wrapper';
-import { TrackedEventsPanel } from './tracked-events-panel';
-import { ConversionTracker } from './conversion-tracker';
 import { MonthBoundaryBanner } from './month-boundary-banner';
 import { TimelineChart } from './timeline-chart';
 import { IntentLedger } from './intent-ledger';
-import { BreakdownWidget } from './breakdown-widget';
 import { RealtimePulse } from './realtime-pulse';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { formatTimestamp } from '@/lib/utils';
@@ -91,7 +87,7 @@ export function DashboardLayout({
       // Update health data latency when new events arrive
       // This is handled optimistically - actual health check is separate
     },
-  });
+  }, { adsOnly: true });
 
   // Default health if not provided
   const health: DashboardHealth = initialHealth || {
@@ -122,6 +118,9 @@ export function DashboardLayout({
                 Son güncelleme: {formatTimestamp(health.data_latency, { hour: '2-digit', minute: '2-digit' })} TRT
               </p>
             </div>
+            <span className="ml-2 inline-flex items-center px-2.5 py-1 rounded border border-amber-500/30 bg-amber-500/10 text-[10px] font-mono text-amber-300 uppercase tracking-[0.22em]">
+              ADS-ONLY MODE
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -170,53 +169,25 @@ export function DashboardLayout({
 
       {/* Main Grid */}
       <main className="max-w-[1920px] mx-auto p-6 space-y-6">
-        {/* Row 1: KPI Cards */}
+        {/* Ads Command Center: KPI Row (Ads-only) */}
         <section>
-          <StatsCards siteId={siteId} dateRange={range} />
+          <StatsCards siteId={siteId} dateRange={range} adsOnly />
         </section>
 
-        {/* Row 2: Timeline Chart */}
+        {/* Optional: Timeline (Ads-only) */}
         <section>
           <TimelineChart siteId={siteId} dateRange={range} />
         </section>
 
-        {/* Row 3: Intent Ledger */}
+        {/* Intent Ledger (Ads-only) */}
         <section>
           <IntentLedger siteId={siteId} dateRange={range} />
         </section>
 
-        {/* Row 4: Main Activity Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Main Stream (Middle Focus) */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
-            {/* Call Monitor - High Intent Stream */}
-            <div id="call-monitor">
-              <CallAlertWrapper siteId={siteId} />
-            </div>
-
-            {/* Live Activity Feed - Engagement Volume */}
-            <div id="live-feed">
-              <LiveFeed siteId={siteId} />
-            </div>
-          </div>
-
-          {/* Side Panels (Context & Configuration) */}
-          <div className="lg:col-span-4 flex flex-col gap-6 sticky top-20">
-            <BreakdownWidget siteId={siteId} dateRange={range} />
-            <TrackedEventsPanel siteId={siteId} />
-            <ConversionTracker siteId={siteId} />
-
-            {/* Info Chip */}
-            <div className="p-4 rounded-lg bg-slate-900/20 border border-slate-800/50">
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1 italic">
-                Optimization Tip
-              </p>
-              <p className="text-[11px] font-mono text-slate-400">
-                Real-time fingerprint matching is active. Calls are matched to web sessions via browser tokens.
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* Live Stream (Ads-only) */}
+        <section id="live-stream">
+          <LiveFeed siteId={siteId} adsOnly />
+        </section>
       </main>
     </div>
   );

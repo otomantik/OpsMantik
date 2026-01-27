@@ -55,7 +55,9 @@ export function useIntents(
         p_date_from: dateRange.from.toISOString(),
         p_date_to: dateRange.to.toISOString(),
         p_status: null,
-        p_search: null
+        p_search: null,
+        // ADS Command Center: enforce Ads-only server-side filter
+        p_ads_only: true,
       });
 
       if (rpcError) throw rpcError;

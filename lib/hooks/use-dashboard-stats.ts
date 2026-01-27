@@ -5,12 +5,18 @@ import { createClient } from '@/lib/supabase/client';
 export interface DashboardStats {
     site_id: string;
     range_days: number;
-    total_calls: number;
     total_events: number;
-    total_sessions: number;
-    unique_visitors: number;
-    confirmed_calls: number;
-    conversion_rate: number;
+    // Ads Command Center KPIs (authoritative)
+    ads_sessions: number;
+    high_intent: number;
+    sealed: number;
+    cvr: number;
+    // Backward-compat (deprecated; kept for safety)
+    total_calls?: number;
+    total_sessions?: number;
+    unique_visitors?: number;
+    confirmed_calls?: number;
+    conversion_rate?: number;
     last_event_at: string | null;
     last_call_at: string | null;
 }
@@ -48,7 +54,9 @@ export function useDashboardStats(
             const { data, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
                 p_site_id: siteId,
                 p_date_from: dateFrom.toISOString(),
-                p_date_to: dateTo.toISOString()
+                p_date_to: dateTo.toISOString(),
+                // ADS Command Center: enforce Ads-only server-side filter
+                p_ads_only: true,
             });
 
             if (rpcError) throw rpcError;

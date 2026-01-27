@@ -34,9 +34,10 @@ interface Event {
 
 interface LiveFeedProps {
   siteId?: string;
+  adsOnly?: boolean;
 }
 
-export function LiveFeed({ siteId }: LiveFeedProps = {}) {
+export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
   const [events, setEvents] = useState<Event[]>([]);
   const [userSites, setUserSites] = useState<string[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -122,6 +123,8 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
           .from('events')
           .select('*, sessions!inner(site_id), url')
           .eq('session_month', currentMonth)
+          // Strict site scope for /dashboard/site/[siteId]
+          .eq('sessions.site_id', siteId || '')
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
           .limit(100);
@@ -231,7 +234,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
   const displayedSessions = useMemo(() => {
     let filtered = Object.entries(groupedSessions);
 
-    if (selectedCity || selectedDistrict || selectedDevice) {
+    if (!adsOnly && (selectedCity || selectedDistrict || selectedDevice)) {
       filtered = filtered.filter(([, sessionEvents]) => {
         if (sessionEvents.length === 0) return false;
         const metadata = (sessionEvents[sessionEvents.length - 1]?.metadata || {}) as any;
@@ -245,7 +248,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
     }
 
     return filtered.slice(0, 10);
-  }, [groupedSessions, selectedCity, selectedDistrict, selectedDevice]);
+  }, [groupedSessions, selectedCity, selectedDistrict, selectedDevice, adsOnly]);
 
   const hasActiveFilters = !!(selectedCity || selectedDistrict || selectedDevice);
   const clearFilters = () => {
@@ -280,7 +283,14 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
       <Card className="glass border-slate-800/50">
         <CardHeader className="pb-3 border-b border-slate-800/20">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-mono text-slate-200">LIVE EVENT FEED</CardTitle>
+            <CardTitle className="text-sm font-mono text-slate-200">
+              LIVE STREAM
+              {adsOnly && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[9px] font-mono text-amber-300 uppercase tracking-widest">
+                  ADS-ONLY
+                </span>
+              )}
+            </CardTitle>
             <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
               <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.4)]"></div>
               <span className="text-[9px] font-mono text-emerald-400 uppercase">Listening</span>
@@ -305,7 +315,14 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
       <CardHeader className="pb-3 border-b border-slate-800/20">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-sm font-mono text-slate-200 tracking-tight">LIVE EVENT FEED</CardTitle>
+            <CardTitle className="text-sm font-mono text-slate-200 tracking-tight">
+              LIVE STREAM
+              {adsOnly && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[9px] font-mono text-amber-300 uppercase tracking-widest">
+                  ADS-ONLY
+                </span>
+              )}
+            </CardTitle>
             <CardDescription className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
               {events.length} events &bull; {Object.keys(groupedSessions).length} sessions
             </CardDescription>
@@ -332,7 +349,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
           </div>
         ) : (
           <>
-            {(filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
+            {!adsOnly && (filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
               <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-md mb-4 pb-3 border-b border-slate-800/30 -mx-6 px-6 pt-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   {filterOptions.cities.length > 0 && (
@@ -392,6 +409,7 @@ export function LiveFeed({ siteId }: LiveFeedProps = {}) {
                   <SessionGroup
                     key={sid}
                     siteId={siteId}
+                    adsOnly={adsOnly}
                     sessionId={sid}
                     events={sessionEvents}
                   />

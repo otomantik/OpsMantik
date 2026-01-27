@@ -46,7 +46,9 @@ export function useTimelineData(
         p_site_id: siteId,
         p_date_from: dateRange.from.toISOString(),
         p_date_to: dateRange.to.toISOString(),
-        p_granularity: 'auto'
+        p_granularity: 'auto',
+        // ADS Command Center: enforce Ads-only server-side filter
+        p_ads_only: true,
       });
 
       if (rpcError) throw rpcError;
