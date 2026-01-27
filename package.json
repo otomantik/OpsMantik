@@ -13,6 +13,7 @@
     "check:warroom": "node scripts/check-warroom.js",
     "check:attribution": "node scripts/check-attribution.js",
     "smoke:api": "node scripts/smoke/api.prod.mjs",
+    "smoke:v2_2": "node scripts/smoke/v2_2_rpc_contract.mjs",
     "diagnostics": "node scripts/run-diagnostics.mjs"
   },
   "dependencies": {

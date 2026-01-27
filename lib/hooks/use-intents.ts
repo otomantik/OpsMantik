@@ -49,104 +49,39 @@ export function useIntents(
     try {
       const supabase = createClient();
 
-      // Calculate month boundaries for partition filtering
-      const startMonth = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), 1).toISOString().slice(0, 7) + '-01';
-      const endMonth = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth() + 1, 1).toISOString().slice(0, 7) + '-01';
-
-      // Fetch calls (intents)
-      const { data: callsData, error: callsError } = await supabase
-        .from('calls')
-        .select(`
-          id,
-          created_at,
-          status,
-          confirmed_at,
-          phone_number,
-          matched_session_id,
-          lead_score,
-          sessions!inner(
-            site_id,
-            city,
-            district,
-            device_type,
-            first_event_url
-          )
-        `)
-        .eq('sessions.site_id', siteId)
-        .gte('created_at', dateRange.from.toISOString())
-        .lte('created_at', dateRange.to.toISOString())
-        .order('created_at', { ascending: false });
-
-      if (callsError) throw callsError;
-
-      // Fetch conversion events
-      const { data: conversionsData, error: conversionsError } = await supabase
-        .from('events')
-        .select(`
-          id,
-          created_at,
-          event_category,
-          event_action,
-          event_value,
-          url,
-          session_id,
-          session_month,
-          sessions!inner(
-            site_id,
-            city,
-            district,
-            device_type
-          )
-        `)
-        .eq('sessions.site_id', siteId)
-        .eq('event_category', 'conversion')
-        .gte('session_month', startMonth)
-        .lt('session_month', endMonth)
-        .gte('created_at', dateRange.from.toISOString())
-        .lte('created_at', dateRange.to.toISOString())
-        .order('created_at', { ascending: false });
-
-      if (conversionsError) throw conversionsError;
-
-      // Transform calls to IntentRow
-      const callIntents: IntentRow[] = (callsData || []).map(call => ({
-        id: call.id,
-        type: 'call' as const,
-        timestamp: call.created_at,
-        status: call.status as IntentStatus,
-        sealed_at: call.confirmed_at,
-        page_url: (call.sessions as any)?.first_event_url || '',
-        city: (call.sessions as any)?.city || null,
-        district: (call.sessions as any)?.district || null,
-        device_type: (call.sessions as any)?.device_type || null,
-        matched_session_id: call.matched_session_id,
-        confidence_score: call.lead_score || 0,
-        phone_number: call.phone_number,
-      }));
-
-      // Transform conversions to IntentRow
-      const conversionIntents: IntentRow[] = (conversionsData || []).map(conv => ({
-        id: `conv-${conv.id}`,
-        type: 'conversion' as const,
-        timestamp: conv.created_at,
-        status: 'confirmed' as IntentStatus, // Conversions are always confirmed
-        sealed_at: conv.created_at,
-        page_url: conv.url || '',
-        city: (conv.sessions as any)?.city || null,
-        district: (conv.sessions as any)?.district || null,
-        device_type: (conv.sessions as any)?.device_type || null,
-        matched_session_id: conv.session_id,
-        confidence_score: conv.event_value || 0,
-        event_category: conv.event_category,
-        event_action: conv.event_action,
-      }));
-
-      // Combine and sort by timestamp
-      const allIntents = [...callIntents, ...conversionIntents].sort((a, b) => {
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      // Use RPC function for server-side aggregation (v2.2 contract)
+      const { data: intentsData, error: rpcError } = await supabase.rpc('get_dashboard_intents', {
+        p_site_id: siteId,
+        p_date_from: dateRange.from.toISOString(),
+        p_date_to: dateRange.to.toISOString(),
+        p_status: null,
+        p_search: null
       });
 
-      setIntents(allIntents);
+      if (rpcError) throw rpcError;
+
+      // Transform RPC response to IntentRow[]
+      if (intentsData && Array.isArray(intentsData)) {
+        const transformed = intentsData.map((intent: any) => ({
+          id: intent.id,
+          type: intent.type as 'call' | 'conversion',
+          timestamp: intent.timestamp,
+          status: intent.status as IntentStatus,
+          sealed_at: intent.sealed_at,
+          page_url: intent.page_url || '',
+          city: intent.city || null,
+          district: intent.district || null,
+          device_type: intent.device_type || null,
+          matched_session_id: intent.matched_session_id,
+          confidence_score: intent.confidence_score || 0,
+          phone_number: intent.phone_number || null,
+          event_category: intent.event_category,
+          event_action: intent.event_action,
+        }));
+        setIntents(transformed);
+      } else {
+        setIntents([]);
+      }
     } catch (err: unknown) {
       console.error('[useIntents] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch intents';

@@ -316,7 +316,18 @@ Before committing OPS Console changes:
   - Strategy: KPIs refresh optimistically, Charts use bounded refresh (Phase 5), Intent Ledger refreshes on call changes
   - Report: `REPORTS/REALTIME_PULSE_V2_1.md` - Complete implementation guide
   - Next: Add event batching, offline queue, event history, metrics tracking
-  - Migration: `20260128000000_phase0_audit.sql` - Diagnostic queries for table sizes, indexes, partitions, RLS, and column usage
+- [x] **PRO DASHBOARD MIGRATION v2.2 - Phase 1 & 4 Complete**: RPC Contract Set + Breakdown Widget implemented.
+  - Migration: `20260128020000_rpc_contract_v2_2.sql` - Complete RPC contract with date_from/date_to
+  - RPC Functions: ✅ validate_date_range (helper), ✅ get_dashboard_stats (migrated), ✅ get_dashboard_timeline (NEW), ✅ get_dashboard_intents (NEW), ✅ get_dashboard_breakdown (NEW - Phase 4)
+  - Hooks Updated: useDashboardStats (date_from/date_to), useTimelineData (RPC only, removed 150+ lines client-side), useIntents (RPC only, removed client-side queries)
+  - New Hook: useBreakdownData - Breakdown data fetching
+  - New Component: BreakdownWidget - Source/Device/City breakdown with dimension selector
+  - Integration: BreakdownWidget added to DashboardLayout side panel, StatsCards now accepts dateRange prop
+  - Hard Rules: ✅ No cross-site leakage, ✅ date_from/date_to required, ✅ Max 6 months enforced, ✅ Heartbeat excluded, ✅ No client-side aggregation, ✅ Realtime not redraw chart
+  - Tests: Smoke test script created (`scripts/smoke/v2_2_rpc_contract.mjs`), Manual test checklist created
+  - Proof: `REPORTS/V2_2_IMPLEMENTATION_PROOF.md` - Complete implementation proof with git diff, SQL deployed, test evidence
+  - Git Diff: 6 files changed, 89 insertions(+), 282 deletions(-) - Net -193 lines (client-side → server-side)
+  - Next: Deploy migration, run smoke tests, execute manual test checklist
   - Report: `REPORTS/PHASE0_AUDIT_REPORT.md` - Full audit analysis with recommendations
   - Findings: ✅ Excellent index coverage, ✅ Proper partition strategy, ✅ Strong RLS policies, ⚠️ Verify INSERT/UPDATE/DELETE are API-only
   - Next: Phase 1 - RPC Contract Design (split monolithic `get_dashboard_stats` into specialized RPCs)

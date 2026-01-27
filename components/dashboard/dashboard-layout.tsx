@@ -23,6 +23,7 @@ import { ConversionTracker } from './conversion-tracker';
 import { MonthBoundaryBanner } from './month-boundary-banner';
 import { TimelineChart } from './timeline-chart';
 import { IntentLedger } from './intent-ledger';
+import { BreakdownWidget } from './breakdown-widget';
 import { RealtimePulse } from './realtime-pulse';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { formatTimestamp } from '@/lib/utils';
@@ -170,7 +171,7 @@ export function DashboardLayout({
       <main className="max-w-[1920px] mx-auto p-6 space-y-6">
         {/* Row 1: KPI Cards */}
         <section>
-          <StatsCards siteId={siteId} />
+          <StatsCards siteId={siteId} dateRange={range} />
         </section>
 
         {/* Row 2: Timeline Chart */}
@@ -200,6 +201,7 @@ export function DashboardLayout({
 
           {/* Side Panels (Context & Configuration) */}
           <div className="lg:col-span-4 flex flex-col gap-6 sticky top-20">
+            <BreakdownWidget siteId={siteId} dateRange={range} />
             <TrackedEventsPanel siteId={siteId} />
             <ConversionTracker siteId={siteId} />
 

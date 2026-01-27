@@ -33,21 +33,36 @@ export function useDashboardStats(
         try {
             const supabase = createClient();
             
-            // Use dateRange if provided, otherwise fall back to days
-            let p_days = days || 7;
+            // Calculate date range
+            let dateFrom: Date;
+            let dateTo: Date = new Date();
+            
             if (dateRange) {
-                // Calculate days from date range
-                const diffMs = dateRange.to.getTime() - dateRange.from.getTime();
-                p_days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                dateFrom = dateRange.from;
+                dateTo = dateRange.to;
+            } else {
+                // Fall back to days
+                const daysToUse = days || 7;
+                dateFrom = new Date();
+                dateFrom.setDate(dateFrom.getDate() - daysToUse);
             }
             
             const { data, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
                 p_site_id: siteId,
-                p_days: p_days
+                p_date_from: dateFrom.toISOString(),
+                p_date_to: dateTo.toISOString()
             });
 
             if (rpcError) throw rpcError;
-            setStats(data);
+            
+            // Transform response to match interface (backward compatibility)
+            if (data) {
+                const rangeDays = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24));
+                setStats({
+                    ...data,
+                    range_days: rangeDays
+                } as DashboardStats);
+            }
         } catch (err: unknown) {
             console.error('[useDashboardStats] Error:', err);
             const errorMessage = err instanceof Error ? err.message : 'Failed to fetch dashboard stats';
