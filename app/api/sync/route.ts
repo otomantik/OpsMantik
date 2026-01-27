@@ -493,8 +493,10 @@ export async function POST(req: NextRequest) {
                 // Determine category: GCLID affects only user interactions, not system events
                 let finalCategory = event_category || 'interaction';
 
-                // Override to acquisition only for non-system events with GCLID
-                if (currentGclid && event_category !== 'system') {
+                // Override to acquisition only for non-system, non-conversion events with GCLID
+                // P0: Ads phone/wa clicks are sent as conversion events; do NOT rewrite them,
+                // otherwise call-intent creation (which gates on finalCategory==='conversion') is skipped.
+                if (currentGclid && event_category !== 'system' && event_category !== 'conversion') {
                     finalCategory = 'acquisition';
                 }
 
