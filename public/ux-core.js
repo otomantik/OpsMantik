@@ -107,7 +107,58 @@
     return { sessionId, fingerprint, context };
   }
 
-  // Send event to API
+  // Offline queue helpers (localStorage, max 10 items, TTL 1h)
+  function queueEvent(payload) {
+    try {
+      const queueKey = 'opsmantik_evtq_v1';
+      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+      const now = Date.now();
+      
+      // Add timestamp and limit to 10 items
+      queue.push({ payload, ts: now });
+      const trimmed = queue.slice(-10);
+      
+      localStorage.setItem(queueKey, JSON.stringify(trimmed));
+      if (localStorage.getItem('opsmantik_debug') === '1') {
+        console.log('[track] queued:', payload.ec + '/' + payload.ea, payload.sid.slice(0, 8), payload.u);
+      }
+    } catch (err) {
+      // Silent fail - never block UI
+    }
+  }
+
+  function drainQueue() {
+    try {
+      const queueKey = 'opsmantik_evtq_v1';
+      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+      const now = Date.now();
+      const TTL = 60 * 60 * 1000; // 1 hour
+      
+      const remaining = [];
+      queue.forEach(item => {
+        if (now - item.ts < TTL) {
+          const sent = navigator.sendBeacon && navigator.sendBeacon(
+            CONFIG.apiUrl,
+            new Blob([JSON.stringify(item.payload)], { type: 'application/json' })
+          );
+          if (!sent) {
+            remaining.push(item); // Keep for next attempt
+          }
+        }
+        // Items older than TTL are dropped
+      });
+      
+      if (remaining.length > 0) {
+        localStorage.setItem(queueKey, JSON.stringify(remaining));
+      } else {
+        localStorage.removeItem(queueKey);
+      }
+    } catch (err) {
+      // Silent fail
+    }
+  }
+
+  // Send event to API with guaranteed delivery (sendBeacon + keepalive fallback)
   function sendEvent(category, action, label, value, metadata = {}) {
     const { sessionId, fingerprint, context } = getOrCreateSession();
     const url = window.location.href;
@@ -131,10 +182,10 @@
       },
     };
 
-    // Debug logging (only if NEXT_PUBLIC_WARROOM_DEBUG is enabled)
+    // Debug logging (conditional)
     const isDebug = typeof window !== 'undefined' && 
-                    (window as any).NEXT_PUBLIC_WARROOM_DEBUG === 'true' ||
-                    localStorage.getItem('WARROOM_DEBUG') === 'true';
+                    (localStorage.getItem('opsmantik_debug') === '1' ||
+                     localStorage.getItem('WARROOM_DEBUG') === 'true');
     
     if (isDebug) {
       console.log('[OPSMANTIK] Sending event payload:', {
@@ -161,38 +212,53 @@
       });
     }
 
-    // Send via fetch (fire and forget)
-    fetch(CONFIG.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      mode: 'cors',
-      credentials: 'omit',
-    })
-    .then(response => {
-      if (response.ok) {
-        console.log('[OPSMANTIK] ✅ Event sent successfully:', action);
-        return response.json().catch(() => ({})); // Ignore JSON parse errors
-      } else {
-        console.warn('[OPSMANTIK] ⚠️ Event send failed:', response.status, response.statusText);
-        return response.json().then(data => {
-          console.warn('[OPSMANTIK] Error details:', data);
-        }).catch(() => {
-          console.warn('[OPSMANTIK] Error response (no JSON):', response.statusText);
-        });
+    // P0 FIX: Use sendBeacon for guaranteed delivery (especially for tel:/wa.me navigation)
+    let sent = false;
+    let method = '';
+
+    // Attempt 1: sendBeacon (guaranteed delivery even on navigation)
+    if (navigator.sendBeacon) {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      sent = navigator.sendBeacon(CONFIG.apiUrl, blob);
+      if (sent) {
+        method = 'beacon';
       }
-    })
-    .catch(err => {
-      // Only log if it's not a network error (which is expected in some cases)
-      if (err.name !== 'TypeError' || !err.message.includes('fetch')) {
-        console.error('[OPSMANTIK] ❌ Event send error:', err);
-      } else {
-        // Network error - silently fail (fire and forget)
-        console.log('[OPSMANTIK] Network error (expected in some cases):', err.message);
-      }
-    });
+    }
+
+    // Attempt 2: fetch with keepalive (fallback if beacon fails)
+    if (!sent) {
+      fetch(CONFIG.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        mode: 'cors',
+        credentials: 'omit',
+        keepalive: true, // ✅ Ensures completion after navigation
+      })
+      .then(response => {
+        if (response.ok) {
+          method = 'fallback';
+          if (localStorage.getItem('opsmantik_debug') === '1') {
+            console.log('[track] fallback:', category + '/' + action, sessionId.slice(0, 8), url);
+          }
+        } else {
+          // Server rejected - queue for retry
+          queueEvent(payload);
+        }
+      })
+      .catch(err => {
+        // Network error - queue for retry
+        queueEvent(payload);
+      });
+      method = 'fallback'; // Optimistic
+    }
+
+    // Debug transport proof
+    if (localStorage.getItem('opsmantik_debug') === '1' && method === 'beacon') {
+      console.log('[track] sent:', category + '/' + action, sessionId.slice(0, 8), url);
+    }
   }
 
   // Auto-tracking
@@ -261,6 +327,9 @@
     session: getOrCreateSession,
     _initialized: true, // Prevent duplicate initialization
   };
+
+  // Drain offline queue on load
+  drainQueue();
 
   // Initialize
   if (document.readyState === 'loading') {
