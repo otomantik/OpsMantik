@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { DateRangePicker } from './date-range-picker';
 import { StatsCards } from './stats-cards';
 import { TimelineChart } from './timeline-chart';
