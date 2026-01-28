@@ -275,9 +275,9 @@ export function SitesManager() {
 
   if (isLoading) {
     return (
-      <Card className="glass border-slate-800/50">
+      <Card>
         <CardContent className="p-6">
-          <p className="font-mono text-sm text-slate-400">Loading sites...</p>
+          <p className="text-sm text-muted-foreground">Loading sites...</p>
         </CardContent>
       </Card>
     );
@@ -286,24 +286,24 @@ export function SitesManager() {
   // Show schema mismatch error prominently if present
   if (error && error.includes('Database schema mismatch')) {
     return (
-      <Card className="glass border-slate-800/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-mono text-slate-200">Sites</CardTitle>
+          <CardTitle className="text-base font-semibold">Sites</CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="bg-red-900/20 border border-red-700/50 p-4 rounded space-y-3">
-            <p className="font-mono text-sm text-red-400 font-semibold">
+          <div className="bg-destructive/10 border border-destructive/20 p-4 rounded space-y-3">
+            <p className="text-sm text-destructive font-semibold">
               ⚠️ Database Schema Mismatch
             </p>
-            <p className="font-mono text-xs text-red-300">
+            <p className="text-sm text-destructive">
               {error}
             </p>
-            <div className="mt-3 pt-3 border-t border-red-700/30">
-              <p className="font-mono text-xs text-slate-400 mb-2">To fix this:</p>
-              <ol className="font-mono text-xs text-slate-300 space-y-1 list-decimal list-inside">
+            <div className="mt-3 pt-3 border-t border-destructive/20">
+              <p className="text-sm text-muted-foreground mb-2">To fix this:</p>
+              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
                 <li>Check your Supabase migrations are applied</li>
-                <li>Verify the <code className="text-slate-200">sites</code> table has columns: <code className="text-slate-200">name</code>, <code className="text-slate-200">domain</code>, <code className="text-slate-200">public_id</code></li>
-                <li>Run: <code className="text-slate-200">supabase db push</code> or apply migrations manually</li>
+                <li>Verify the <code className="text-foreground">sites</code> table has columns: <code className="text-foreground">name</code>, <code className="text-foreground">domain</code>, <code className="text-foreground">public_id</code></li>
+                <li>Run: <code className="text-foreground">supabase db push</code> or apply migrations manually</li>
               </ol>
             </div>
           </div>
@@ -313,18 +313,17 @@ export function SitesManager() {
   }
 
   return (
-    <Card className="glass border-slate-800/50">
+    <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle className="text-lg font-mono text-slate-200">Sites</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+            <CardTitle className="text-base font-semibold">Sites</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1">
               Manage your tracking sites
             </CardDescription>
           </div>
           <Button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="bg-emerald-600 hover:bg-emerald-700 font-mono text-xs"
             size="sm"
           >
             {showAddForm ? '✕ Cancel' : '+ Add Site'}

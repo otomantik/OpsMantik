@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export default function AdminSitesLoading() {
   return (
-    <div className="min-h-screen bg-[#020617] p-6">
+    <div className="min-h-screen bg-background text-foreground p-6">
       <div className="max-w-[1920px] mx-auto">
         {/* Header Skeleton */}
         <div className="flex justify-between items-center mb-6">
@@ -14,7 +14,7 @@ export default function AdminSitesLoading() {
         </div>
 
         {/* Card Skeleton */}
-        <Card className="glass border-slate-800/50">
+        <Card>
           <CardHeader>
             <div className="h-6 w-32 bg-slate-800/40 rounded animate-pulse mb-2"></div>
             <div className="h-4 w-64 bg-slate-800/30 rounded animate-pulse"></div>

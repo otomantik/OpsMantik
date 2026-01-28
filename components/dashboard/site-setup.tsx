@@ -51,47 +51,47 @@ export function SiteSetup() {
   };
 
   return (
-    <Card className="glass border-slate-800/50 border-2 border-dashed">
+    <Card className="border-2 border-dashed">
       <CardHeader>
-        <CardTitle className="text-lg font-mono text-slate-200">⚠️ NO SITES FOUND</CardTitle>
-        <CardDescription className="font-mono text-xs text-slate-400 mt-2">
+        <CardTitle className="text-base font-semibold">No sites found</CardTitle>
+        <CardDescription className="text-sm text-muted-foreground mt-2">
           You need at least one site to track events. Create a test site to get started.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="bg-slate-900/50 p-4 rounded border border-slate-700/50">
-            <p className="font-mono text-xs text-slate-300 mb-2">
-              <strong className="text-emerald-400">Test Site Details:</strong>
+          <div className="bg-muted p-4 rounded border border-border">
+            <p className="text-sm text-foreground mb-2">
+              <strong className="text-emerald-700">Test Site Details:</strong>
             </p>
-            <ul className="font-mono text-xs text-slate-400 space-y-1 ml-4 list-disc">
-              <li>Public ID: <code className="text-slate-300">test_site_123</code></li>
+            <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
+              <li>Public ID: <code className="text-foreground">test_site_123</code></li>
               {process.env.NODE_ENV === 'development' && (
-                <li>Domain: <code className="text-slate-300">localhost:3000</code></li>
+                <li>Domain: <code className="text-foreground">localhost:3000</code></li>
               )}
-              <li>Use this in your tracker script: <code className="text-slate-300">data-site-id="test_site_123"</code></li>
+              <li>Use this in your tracker script: <code className="text-foreground">data-site-id="test_site_123"</code></li>
             </ul>
           </div>
 
           {error && (
-            <div className="bg-red-900/20 border border-red-700/50 p-3 rounded">
-              <p className="font-mono text-xs text-red-400 mb-2">❌ {error}</p>
-              <p className="font-mono text-xs text-red-500/70">
+            <div className="bg-destructive/10 border border-destructive/20 p-3 rounded">
+              <p className="text-sm text-destructive mb-2">Error: {error}</p>
+              <p className="text-sm text-muted-foreground">
                 Check console for details. If site already exists, try refreshing the page.
               </p>
             </div>
           )}
 
           {success && (
-            <div className="bg-emerald-900/20 border border-emerald-700/50 p-3 rounded">
-              <p className="font-mono text-xs text-emerald-400">✅ Test site created! Reloading...</p>
+            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded">
+              <p className="text-sm text-emerald-700">Test site created! Reloading...</p>
             </div>
           )}
 
           <Button
             onClick={createTestSite}
             disabled={isCreating || success}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 font-mono text-sm"
+            className="w-full"
           >
             {isCreating ? '⏳ Creating...' : success ? '✅ Created!' : '🚀 Create Test Site'}
           </Button>

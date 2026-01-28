@@ -96,7 +96,7 @@ export default async function AdminSitesPage() {
   const { sites, error } = await getSitesWithStatus();
 
   return (
-    <div className="min-h-screen bg-[#020617] p-6">
+    <div className="min-h-screen bg-background text-foreground p-6">
       <div className="max-w-[1920px] mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
@@ -112,7 +112,7 @@ export default async function AdminSitesPage() {
             <Link href="/dashboard">
               <Button 
                 variant="outline" 
-                className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
+                className="text-sm"
               >
                 ← Dashboard
               </Button>
@@ -122,16 +122,16 @@ export default async function AdminSitesPage() {
 
         {/* Error Display */}
         {error && (
-          <Card className="glass border-red-800/50 mb-6">
+          <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="bg-red-900/20 border border-red-700/50 rounded p-4">
-                <p className="font-mono text-sm text-red-400 font-semibold mb-1">
+              <div className="bg-destructive/10 border border-destructive/20 rounded p-4">
+                <p className="text-sm text-destructive font-semibold mb-1">
                   Error loading sites
                 </p>
-                <p className="font-mono text-xs text-red-300">
+                <p className="text-sm text-destructive">
                   {error}
                 </p>
-                <p className="font-mono text-xs text-red-400/70 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Check profiles role + RPC function permissions
                 </p>
               </div>
@@ -140,10 +140,10 @@ export default async function AdminSitesPage() {
         )}
 
         {/* Sites List */}
-        <Card className="glass border-slate-800/50">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg font-mono text-slate-200">All Sites</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400">
+            <CardTitle className="text-base font-semibold">All Sites</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground">
               Click "Open Dashboard" to view site details
             </CardDescription>
           </CardHeader>

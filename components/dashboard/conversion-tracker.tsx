@@ -114,35 +114,35 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
   }, [siteId]);
 
   return (
-    <Card className="glass border-slate-800/50">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-mono text-slate-200">DÖNÜŞÜMLER</CardTitle>
-        <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+        <CardTitle className="text-base font-semibold">Dönüşümler</CardTitle>
+        <CardDescription className="text-sm text-muted-foreground mt-1">
           {conversions.length} conversion{conversions.length !== 1 ? 's' : ''} • Phone matches
         </CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p className="text-slate-500 font-mono text-sm">Loading...</p>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         ) : conversions.length === 0 ? (
-          <p className="text-slate-500 font-mono text-sm">No conversions yet</p>
+          <p className="text-sm text-muted-foreground">No conversions yet</p>
         ) : (
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {conversions.map((conv, index) => (
               <div
                 key={`${conv.session_id}-${index}`}
-                className="p-3 rounded bg-slate-800/30 border border-slate-700/30"
+                className="p-3 rounded bg-muted/50 border border-border"
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span className="font-mono text-sm text-slate-200 font-semibold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span className="text-sm text-foreground font-semibold">
                         {conv.event_action}
                       </span>
                     </div>
                     {conv.event_label && (
-                      <p className="font-mono text-xs text-slate-400 mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         {conv.event_label}
                       </p>
                     )}

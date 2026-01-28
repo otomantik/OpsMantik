@@ -1,180 +1,77 @@
-@import "tailwindcss";
+@config "../tailwind.config.ts";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@theme {
-  /* Cyber-Dark Theme Colors */
-  --color-background: #020617; /* Slate 950 */
-  --color-foreground: #f1f5f9; /* Slate 100 */
-  --color-card: rgba(30, 41, 59, 0.5); /* Slate 800 with opacity for glassmorphism */
-  --color-card-foreground: #f1f5f9;
-  --color-popover: #1e293b; /* Slate 800 */
-  --color-popover-foreground: #f1f5f9;
-  --color-primary: #0ea5e9; /* Sky 500 */
-  --color-primary-foreground: #020617;
-  --color-secondary: #1e293b; /* Slate 800 */
-  --color-secondary-foreground: #f1f5f9;
-  --color-muted: #334155; /* Slate 700 */
-  --color-muted-foreground: #94a3b8; /* Slate 400 */
-  --color-accent: #1e293b; /* Slate 800 */
-  --color-accent-foreground: #f1f5f9;
-  --color-destructive: #ef4444; /* Red 500 */
-  --color-destructive-foreground: #f1f5f9;
-  --color-border: #1e293b; /* Slate 800 */
-  --color-input: #1e293b;
-  --color-ring: #0ea5e9; /* Sky 500 */
-  
-  /* Neon Accent Colors */
-  --color-neon-emerald: #10b981; /* Emerald 500 */
-  --color-neon-blue: #3b82f6; /* Blue 500 */
-  --color-neon-rose: #f43f5e; /* Rose 500 */
-  
-  --radius: 0.5rem;
-}
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
 
-* {
-  border-color: var(--color-border);
-}
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
 
-:root {
-  --font-inter: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Courier New", Consolas, "Liberation Mono", Menlo, Monaco, monospace;
-}
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-inter);
-}
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
 
-/* Monospaced font for IDs and timestamps */
-.font-mono {
-  font-family: var(--font-mono);
-}
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
 
-/* Glassmorphism effect - Improved with better isolation */
-.glass {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(12px) saturate(180%);
-  -webkit-backdrop-filter: blur(12px) saturate(180%);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  isolation: isolate;
-}
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
 
-/* Prevent glassmorphism from affecting child elements */
-.glass > * {
-  isolation: isolate;
-  position: relative;
-  z-index: 1;
-}
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
 
-/* Neon glow effects */
-.neon-emerald {
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3), 0 0 20px rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.5);
-}
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
 
-.neon-blue {
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3), 0 0 20px rgba(59, 130, 246, 0.2);
-  border-color: rgba(59, 130, 246, 0.5);
-}
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
 
-.neon-rose {
-  box-shadow: 0 0 10px rgba(244, 63, 94, 0.3), 0 0 20px rgba(244, 63, 94, 0.2);
-  border-color: rgba(244, 63, 94, 0.5);
-}
-
-/* Radar pulse animation */
-@keyframes radar-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    --radius: 0.5rem;
   }
-  70% {
-    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 }
 
-.radar-pulse {
-  animation: radar-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Neon orange pulse for hot leads */
-@keyframes neon-orange-pulse {
-  0%, 100% {
-    box-shadow: 0 0 10px rgba(249, 115, 22, 0.4), 0 0 20px rgba(249, 115, 22, 0.2);
+@layer base {
+  * {
+    @apply border-border;
   }
-  50% {
-    box-shadow: 0 0 20px rgba(249, 115, 22, 0.6), 0 0 30px rgba(249, 115, 22, 0.4);
+  body {
+    @apply bg-background text-foreground;
   }
-}
-
-.neon-orange-pulse {
-  animation: neon-orange-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Emerald flash animation for call matches */
-@keyframes emerald-flash {
-  0%, 100% {
-    border-color: rgba(16, 185, 129, 0);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-  }
-  50% {
-    border-color: rgba(16, 185, 129, 1);
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(16, 185, 129, 0.4);
-  }
-}
-
-/* Scrollbar styling for dark theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #020617;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-/* ---------------------------------------------------------------------------
-   Phase C1: Dashboard Light Pro theme
-   - Use in dashboard only: light background, shadcn-style tokens.
-   - Typography: KPI 36–44px (tabular-nums), table 14–15px, meta 12–13px min.
-   --------------------------------------------------------------------------- */
-[data-dashboard="light"] {
-  /* Override shadcn tokens to LIGHT within dashboard only */
-  --color-background: #ffffff;
-  --color-foreground: #0f172a; /* slate-900 */
-  --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #0f172a;
-  --color-primary: #0f172a;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9; /* slate-100 */
-  --color-secondary-foreground: #0f172a;
-  --color-muted: #f1f5f9; /* slate-100 */
-  --color-muted-foreground: #475569; /* slate-600 */
-  --color-accent: #f1f5f9; /* slate-100 */
-  --color-accent-foreground: #0f172a;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
-  --color-border: #e2e8f0; /* slate-200 */
-  --color-input: #e2e8f0;
-  --color-ring: #94a3b8; /* slate-400 */
-
-  --dashboard-kpi: 2.25rem;   /* 36px - use text-[length] or text-4xl */
-  --dashboard-kpi-lg: 2.75rem; /* 44px */
-  --dashboard-table: 0.875rem; /* 14px - text-sm */
-  --dashboard-meta: 0.75rem;  /* 12px - text-xs */
-  --dashboard-meta-min: 0.8125rem; /* 13px */
 }

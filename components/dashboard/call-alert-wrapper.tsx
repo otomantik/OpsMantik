@@ -209,7 +209,7 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
             <p className="text-sm text-muted-foreground italic">Real-time matching active</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
             {visibleCalls.map((call) => (
               <CallAlertComponent
                 key={call.id}

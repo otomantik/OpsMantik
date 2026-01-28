@@ -318,21 +318,16 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   // Get border color based on lead score
   const getBorderColor = (score: number) => {
     if (score >= 71) {
-      return 'border-orange-500/70 neon-orange-pulse';
+      return 'border-amber-300';
     }
     if (score >= 31) {
-      return 'border-blue-500/50';
+      return 'border-blue-200';
     }
-    return 'border-slate-600/50';
+    return 'border-border';
   };
 
   // Get border glow for hot leads
   const getBorderGlow = (score: number) => {
-    if (score >= 71) {
-      return {
-        boxShadow: '0 0 10px rgba(249, 115, 22, 0.4), 0 0 20px rgba(249, 115, 22, 0.2)',
-      };
-    }
     return {};
   };
 
@@ -401,21 +396,21 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
   return (
     <Card 
-      className={`glass ${getBorderColor(leadScore)} transition-all duration-300`}
+      className={`${getBorderColor(leadScore)} transition-all duration-300`}
       style={getBorderGlow(leadScore)}
       data-session-id={sessionId}
     >
       <CardContent className="p-0">
         {/* Clickable Header */}
         <div 
-          className="p-4 cursor-pointer hover:bg-slate-800/30 transition-colors"
+          className="p-4 cursor-pointer hover:bg-muted transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
-                <p className="font-mono text-sm font-semibold text-slate-200 truncate">
-                  SESSION: <span className="text-emerald-400">{sessionId.slice(0, 8)}...</span>
+                <p className="text-sm font-semibold text-foreground truncate">
+                  Session: <span className="text-emerald-700">{sessionId.slice(0, 8)}…</span>
                 </p>
                 <Button
                   variant="ghost"
@@ -822,20 +817,20 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
       {/* Visitor History Drawer */}
       {showVisitorHistory && fingerprint && siteId && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end lg:items-center justify-center p-4">
-          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col glass border-slate-800/50">
+          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
             <CardContent className="p-0 flex flex-col h-full">
               {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-slate-800/50">
+              <div className="flex items-center justify-between p-4 border-b border-border">
                 <div>
-                  <h3 className="font-mono text-lg font-semibold text-slate-200">Visitor History</h3>
-                  <p className="font-mono text-xs text-slate-400 mt-1">
-                    Fingerprint: <span className="text-cyan-400">{fingerprint.slice(0, 10)}...</span>
+                  <h3 className="text-lg font-semibold text-foreground">Visitor History</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Fingerprint: <span className="text-foreground tabular-nums">{fingerprint.slice(0, 10)}…</span>
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-400 hover:text-slate-200"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
                   onClick={() => setShowVisitorHistory(false)}
                 >
                   <X className="w-4 h-4" />
@@ -846,11 +841,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               <div className="flex-1 overflow-y-auto p-4">
                 {isLoadingHistory ? (
                   <div className="text-center py-8">
-                    <p className="font-mono text-sm text-slate-400">Loading visitor history...</p>
+                    <p className="text-sm text-muted-foreground">Loading visitor history...</p>
                   </div>
                 ) : !visitorSessions || visitorSessions.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="font-mono text-sm text-slate-400">No previous sessions found for this visitor</p>
+                    <p className="text-sm text-muted-foreground">No previous sessions found for this visitor</p>
                   </div>
                 ) : (
                   <div className="space-y-2">

@@ -94,10 +94,23 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
     }
   }, [isNewMatch]);
 
-  const getScoreBadge = (score: number) => {
-    if (score >= 80) return 'bg-rose-500/20 text-rose-400 border border-rose-500/50';
-    if (score >= 60) return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50';
-    return 'bg-slate-700/50 text-slate-300 border border-slate-600/50';
+  const getScoreStyle = (score: number) => {
+    if (score >= 80) {
+      return {
+        badgeClass: 'bg-rose-50 text-rose-700 border border-rose-200',
+        borderClass: 'border-rose-200',
+      };
+    }
+    if (score >= 60) {
+      return {
+        badgeClass: 'bg-amber-50 text-amber-800 border border-amber-200',
+        borderClass: 'border-amber-200',
+      };
+    }
+    return {
+      badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
+      borderClass: 'border-border',
+    };
   };
 
 
@@ -244,15 +257,17 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
   const isReal = status === 'real' || (!isIntent && !isConfirmed && call.matched_at); // Real call has matched_at
   const confidence = getConfidence(call.lead_score);
 
+  const scoreStyle = getScoreStyle(call.lead_score);
+
   return (
-    <Card 
+    <Card
       ref={cardRef}
-      className={`
-        glass border transition-all duration-200
-        ${isFlashing ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.6)]' : getScoreBadge(call.lead_score).split(' ')[1]}
-        ${isQualified ? 'border-emerald-500/50' : ''}
-        ${isJunk ? 'border-slate-600/30 opacity-60' : ''}
-      `}
+      className={[
+        'transition-all duration-200',
+        isFlashing ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.25)]' : scoreStyle.borderClass,
+        isQualified ? 'border-emerald-200' : '',
+        isJunk ? 'opacity-60' : '',
+      ].join(' ')}
     >
       <CardContent className="p-0">
         {/* Main Card Content */}
@@ -261,13 +276,13 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
             {/* Left: Phone & Score */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <Phone className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                <p className="font-mono font-bold text-lg text-slate-100 truncate">
+                <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <p className="font-bold text-lg text-foreground truncate">
                   {call.phone_number}
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-2">
-                <span className={`font-mono text-xs px-2 py-1 rounded font-bold ${getScoreBadge(call.lead_score)}`}>
+                <span className={`text-xs px-2 py-1 rounded font-semibold ${scoreStyle.badgeClass}`}>
                   Score: {call.lead_score}
                 </span>
                 {isIntent && (
@@ -361,7 +376,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     className={`h-10 w-10 lg:h-7 lg:w-7 p-0 ${
                       isQualified 
                         ? 'text-emerald-400 bg-emerald-500/20' 
-                        : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10'
+                        : 'text-muted-foreground hover:text-emerald-700 hover:bg-emerald-50'
                     }`}
                     title="Mark as Qualified"
                   >
@@ -375,8 +390,8 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   disabled={isJunk || isQualified || isConfirmed || isUpdating}
                   className={`h-10 w-10 lg:h-7 lg:w-7 p-0 ${
                     isJunk 
-                      ? 'text-slate-500 bg-slate-700/30' 
-                      : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
+                      ? 'text-muted-foreground bg-muted' 
+                      : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
                   }`}
                   title="Mark as Junk"
                 >
@@ -386,7 +401,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="h-10 w-10 lg:h-7 lg:w-7 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                className="h-10 w-10 lg:h-7 lg:w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
                 title="View Details"
               >
                 {isExpanded ? (
@@ -399,7 +414,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 variant="ghost"
                 size="icon"
                 onClick={() => onDismiss(call.id)}
-                className="h-10 w-10 lg:h-7 lg:w-7 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                className="h-10 w-10 lg:h-7 lg:w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
                 title="Dismiss"
               >
                 <X className="w-4 h-4" />
@@ -417,33 +432,33 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
 
         {/* Expanded Details Section */}
         {isExpanded && (
-          <div className="border-t border-slate-800/50 p-3 space-y-3 bg-slate-900/30">
+          <div className="border-t border-border p-3 space-y-3 bg-muted/40">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Info className="w-3.5 h-3.5 text-slate-400" />
-                <p className="font-mono text-xs font-semibold text-slate-300">MATCHING DETAILS</p>
+                <Info className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground">MATCHING DETAILS</p>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Fingerprint:</span>
-                  <span className="text-slate-300 tabular-nums">{maskFingerprint(call.matched_fingerprint)}</span>
+                  <span className="text-muted-foreground">Fingerprint:</span>
+                  <span className="text-foreground tabular-nums">{maskFingerprint(call.matched_fingerprint)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Session ID:</span>
-                  <span className="text-slate-300 tabular-nums">
+                  <span className="text-muted-foreground">Session ID:</span>
+                  <span className="text-foreground tabular-nums">
                     {call.matched_session_id ? `${call.matched_session_id.slice(0, 8)}...` : '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Score:</span>
-                  <span className="text-slate-300">
+                  <span className="text-muted-foreground">Score:</span>
+                  <span className="text-foreground">
                     {call.lead_score_at_match ?? call.lead_score}
                   </span>
                 </div>
                 {call.matched_at && (
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Matched At:</span>
-                    <span className="text-slate-300 tabular-nums">
+                    <span className="text-muted-foreground">Matched At:</span>
+                    <span className="text-foreground tabular-nums">
                       {formatTimestamp(call.matched_at, {
                         month: 'short',
                         day: 'numeric',
@@ -454,7 +469,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Confidence:</span>
+                  <span className="text-muted-foreground">Confidence:</span>
                   <span className={confidence.color}>{confidence.label}</span>
                 </div>
               </div>
@@ -475,41 +490,41 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
             )}
 
             {/* Score Breakdown */}
-            <div className="pt-2 border-t border-slate-800/30">
-              <p className="font-mono text-xs text-slate-400 mb-2">SCORE BREAKDOWN</p>
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-2">SCORE BREAKDOWN</p>
               {call.score_breakdown ? (
-                <div className="space-y-1 text-xs font-mono">
+                <div className="space-y-1 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Conversion Points:</span>
-                    <span className="text-slate-300">{call.score_breakdown.conversionPoints}</span>
+                    <span className="text-muted-foreground">Conversion Points:</span>
+                    <span className="text-foreground">{call.score_breakdown.conversionPoints}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Interaction Points:</span>
-                    <span className="text-slate-300">{call.score_breakdown.interactionPoints}</span>
+                    <span className="text-muted-foreground">Interaction Points:</span>
+                    <span className="text-foreground">{call.score_breakdown.interactionPoints}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Bonuses:</span>
-                    <span className="text-slate-300">{call.score_breakdown.bonuses}</span>
+                    <span className="text-muted-foreground">Bonuses:</span>
+                    <span className="text-foreground">{call.score_breakdown.bonuses}</span>
                   </div>
                   {call.score_breakdown.rawScore !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Raw Score:</span>
-                      <span className="text-slate-300">{call.score_breakdown.rawScore}</span>
+                      <span className="text-muted-foreground">Raw Score:</span>
+                      <span className="text-foreground">{call.score_breakdown.rawScore}</span>
                     </div>
                   )}
                   {call.score_breakdown.cappedAt100 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Capped:</span>
-                      <span className="text-yellow-400">Yes (at 100)</span>
+                      <span className="text-muted-foreground">Capped:</span>
+                      <span className="text-amber-700">Yes (at 100)</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-800/30">
-                    <span className="text-slate-400 font-semibold">Final Score:</span>
-                    <span className="text-emerald-400 font-bold">{call.score_breakdown.finalScore ?? call.lead_score}</span>
+                  <div className="flex items-center justify-between pt-1 border-t border-border">
+                    <span className="text-muted-foreground font-semibold">Final Score:</span>
+                    <span className="text-emerald-700 font-semibold">{call.score_breakdown.finalScore ?? call.lead_score}</span>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-slate-500">
+                <div className="text-sm text-muted-foreground">
                   Score breakdown not available
                 </div>
               )}

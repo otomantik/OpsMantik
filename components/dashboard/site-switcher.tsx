@@ -67,12 +67,12 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
 
   if (isLoading) {
     return (
-      <Card className="glass border-slate-800/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-mono text-slate-200">Sites</CardTitle>
+          <CardTitle className="text-base font-semibold">Sites</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="font-mono text-sm text-slate-500">Loading sites...</p>
+          <p className="text-sm text-muted-foreground">Loading sites...</p>
         </CardContent>
       </Card>
     );
@@ -80,17 +80,17 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
 
   if (sites.length === 0) {
     return (
-      <Card className="glass border-slate-800/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-mono text-slate-200">Sites</CardTitle>
-          <CardDescription className="font-mono text-xs text-slate-400">
+          <CardTitle className="text-base font-semibold">Sites</CardTitle>
+          <CardDescription className="text-sm text-muted-foreground">
             {isAdmin ? 'No sites found' : 'Create your first site to get started'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Button
             onClick={() => router.push('/dashboard')}
-            className="w-full font-mono text-xs"
+            className="w-full"
           >
             + Create Site
           </Button>
@@ -100,12 +100,12 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
   }
 
   return (
-    <Card className="glass border-slate-800/50">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-mono text-slate-200">
+        <CardTitle className="text-base font-semibold">
           {isAdmin ? 'All Sites' : 'Your Sites'}
         </CardTitle>
-        <CardDescription className="font-mono text-xs text-slate-400">
+        <CardDescription className="text-sm text-muted-foreground">
           {sites.length} site{sites.length !== 1 ? 's' : ''} available
         </CardDescription>
       </CardHeader>
@@ -118,17 +118,13 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
                 key={site.id}
                 onClick={() => handleSiteSelect(site.id)}
                 variant={isSelected ? 'default' : 'outline'}
-                className={`w-full justify-start font-mono text-xs ${
-                  isSelected
-                    ? 'bg-slate-700 text-slate-100'
-                    : 'bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700/60'
-                }`}
+                className="w-full justify-start"
               >
                 <span className="truncate">
                   {site.name || site.domain || site.public_id}
                 </span>
                 {isSelected && (
-                  <span className="ml-auto text-emerald-400">✓</span>
+                  <span className="ml-auto text-emerald-600">✓</span>
                 )}
               </Button>
             );

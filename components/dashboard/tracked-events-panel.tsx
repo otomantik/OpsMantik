@@ -117,31 +117,31 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
   };
 
   return (
-    <Card className="glass border-slate-800/50">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-mono text-slate-200">TRACKED EVENTS</CardTitle>
-        <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+        <CardTitle className="text-base font-semibold">Tracked events</CardTitle>
+        <CardDescription className="text-sm text-muted-foreground mt-1">
           {totalEvents} total events • {eventTypes.length} unique types
         </CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p className="text-slate-500 font-mono text-sm">Loading...</p>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         ) : eventTypes.length === 0 ? (
-          <p className="text-slate-500 font-mono text-sm">No events tracked yet</p>
+          <p className="text-sm text-muted-foreground">No events tracked yet</p>
         ) : (
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {eventTypes.map((eventType, index) => (
               <div
                 key={`${eventType.category}-${eventType.action}`}
-                className="flex items-center justify-between p-3 lg:p-2 rounded bg-slate-800/30 border border-slate-700/30"
+                className="flex items-center justify-between p-3 lg:p-2 rounded bg-muted/50 border border-border"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className={`font-mono text-xs font-semibold ${getCategoryColor(eventType.category)}`}>
+                    <span className={`text-xs font-semibold ${getCategoryColor(eventType.category)}`}>
                       {eventType.category.toUpperCase()}
                     </span>
-                    <span className="font-mono text-xs text-slate-300">
+                    <span className="text-xs text-muted-foreground">
                       {eventType.action}
                     </span>
                   </div>
@@ -155,7 +155,7 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0 ml-4">
-                  <p className="font-mono text-lg font-bold text-slate-200">
+                  <p className="text-lg font-semibold text-foreground tabular-nums">
                     {eventType.count}
                   </p>
                   <p className="text-sm text-muted-foreground">

@@ -330,7 +330,7 @@ export default function TestPage() {
         </div>
 
         {/* Status Card */}
-        <Card className="glass border-slate-800/50 mb-4">
+        <Card className="mb-4">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-mono text-slate-200">TRACKER STATUS</CardTitle>
@@ -396,7 +396,7 @@ export default function TestPage() {
         </Card>
 
         {/* Attribution Scenarios */}
-        <Card className="glass border-slate-800/50 mb-4">
+        <Card className="mb-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-mono text-slate-200">ATTRIBUTION SCENARIOS</CardTitle>
             <CardDescription className="font-mono text-xs text-slate-400 mt-1">
@@ -450,7 +450,7 @@ export default function TestPage() {
         </Card>
 
         {/* Event Trigger Status */}
-        <Card className="glass border-slate-800/50 mb-4">
+        <Card className="mb-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-mono text-slate-200">EVENT TRIGGER STATUS</CardTitle>
             <CardDescription className="font-mono text-xs text-slate-400 mt-1">
@@ -488,7 +488,7 @@ export default function TestPage() {
         </Card>
 
         {/* Event Log */}
-        <Card className="glass border-slate-800/50 mb-6">
+        <Card className="mb-6">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -569,7 +569,7 @@ export default function TestPage() {
         </div>
 
         {/* Google Ads Test Module */}
-        <Card className="glass border-slate-800/50 mb-6 border-2 border-blue-500/30">
+        <Card className="mb-6 border-2 border-blue-200">
           <CardHeader>
             <CardTitle className="text-lg font-mono text-slate-200">🎯 Google Ads Test (GCLID)</CardTitle>
             <CardDescription className="font-mono text-xs text-slate-400 mt-1">
@@ -662,7 +662,7 @@ export default function TestPage() {
         {/* Detailed Test Events */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Phone Call */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">📞 Phone Call</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">Tel link tıklama</CardDescription>
@@ -676,7 +676,7 @@ export default function TestPage() {
           </Card>
 
           {/* WhatsApp */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">💬 WhatsApp</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">WhatsApp link</CardDescription>
@@ -690,7 +690,7 @@ export default function TestPage() {
           </Card>
 
           {/* Form Submit */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">📋 Form Submit</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">Form gönderimi</CardDescription>
@@ -715,7 +715,7 @@ export default function TestPage() {
           </Card>
 
           {/* CTA Button */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">🎯 CTA Button</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">Call-to-action</CardDescription>
@@ -732,7 +732,7 @@ export default function TestPage() {
           </Card>
 
           {/* Download */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">📥 Download</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">Dosya indirme</CardDescription>
@@ -749,7 +749,7 @@ export default function TestPage() {
           </Card>
 
           {/* Pricing Hover */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">🖱️ Pricing Hover</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">2 saniye hover</CardDescription>
@@ -769,7 +769,7 @@ export default function TestPage() {
           </Card>
 
           {/* Video Watch */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">🎥 Video Watch</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">Video izleme</CardDescription>
@@ -786,7 +786,7 @@ export default function TestPage() {
           </Card>
 
           {/* Newsletter Signup */}
-          <Card className="glass border-slate-800/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-sm font-mono text-slate-200">📧 Newsletter</CardTitle>
               <CardDescription className="font-mono text-xs text-slate-400">Newsletter kaydı</CardDescription>
