@@ -21,9 +21,6 @@ export interface IntentForQualification {
   lead_score: number | null;
   status: string | null;
   click_id: string | null;
-  gclid?: string | null;
-  wbraid?: string | null;
-  gbraid?: string | null;
 }
 
 interface IntentQualificationCardProps {
@@ -109,11 +106,21 @@ export function IntentQualificationCard({
   };
 
   const formatClickId = (intent: IntentForQualification) => {
-    const gclid = intent.gclid || intent.click_id;
-    if (gclid) return `GCLID: ${gclid.slice(0, 12)}...`;
-    if (intent.wbraid) return `WBRAID: ${intent.wbraid.slice(0, 12)}...`;
-    if (intent.gbraid) return `GBRAID: ${intent.gbraid.slice(0, 12)}...`;
-    return null;
+    // calls table stores best-effort click id in click_id (could be gclid/wbraid/gbraid)
+    const v = intent.click_id;
+    if (!v) return null;
+
+    // Light heuristics for display label (avoid relying on non-existent calls.* columns)
+    const lower = v.toLowerCase();
+    const label =
+      lower.startsWith('gclid') ? 'GCLID' :
+      lower.startsWith('wbraid') ? 'WBRAID' :
+      lower.startsWith('gbraid') ? 'GBRAID' :
+      'Click ID';
+
+    const cleaned = v.replace(/^(gclid|wbraid|gbraid)\s*[:=]?\s*/i, '');
+    const short = cleaned.length <= 14 ? cleaned : `${cleaned.slice(0, 12)}…`;
+    return `${label}: ${short}`;
   };
 
   const clickIdDisplay = formatClickId(intent);

@@ -32,7 +32,9 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
       // Order by created_at DESC (most recent first)
       const { data, error: fetchError } = await supabase
         .from('calls')
-        .select('id, created_at, intent_action, intent_target, intent_page_url, matched_session_id, lead_score, status, click_id, gclid, wbraid, gbraid')
+        // NOTE: calls table does NOT have gclid/wbraid/gbraid columns (those live on sessions + RPC payloads)
+        // calls has click_id (best-effort gclid/wbraid/gbraid captured at intent time)
+        .select('id, created_at, intent_action, intent_target, intent_page_url, matched_session_id, lead_score, status, click_id')
         .eq('site_id', siteId)
         .eq('status', 'intent')
         .eq('lead_score', 0)
