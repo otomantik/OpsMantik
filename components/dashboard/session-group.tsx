@@ -185,6 +185,114 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
       });
   }, [sessionId, sessionData]);
 
+  // Event compression (hook) MUST be before any early return (React 310).
+  // Compute from raw `events` to avoid depending on later variables.
+  type EventWithTimeDiff = Event & { timeDiff: number };
+  interface CompressedEvent {
+    type: 'single' | 'group';
+    id: string; // For single events, use event.id; for groups, use composite key
+    event?: EventWithTimeDiff; // Single event
+    events?: EventWithTimeDiff[]; // Grouped events
+    count?: number; // Count for groups
+    firstTime: string; // First event time in group
+    lastTime: string; // Last event time in group
+    timeDiff: number; // Time diff from previous item
+  }
+
+  const compressedEvents = useMemo<CompressedEvent[]>(() => {
+    const COMPRESSION_WINDOW_MS = 2000; // 2 seconds
+    const sorted = [...events].sort((a, b) => {
+      const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return a.id.localeCompare(b.id);
+    });
+
+    const eventsWithTimeDiff: EventWithTimeDiff[] = sorted.map((event, index) => {
+      const timeDiff =
+        index > 0
+          ? Math.round((new Date(event.created_at).getTime() - new Date(sorted[index - 1].created_at).getTime()) / 1000)
+          : 0;
+      return { ...event, timeDiff };
+    });
+
+    const result: CompressedEvent[] = [];
+    if (eventsWithTimeDiff.length === 0) return result;
+
+    let i = 0;
+    while (i < eventsWithTimeDiff.length) {
+      const currentEvent = eventsWithTimeDiff[i];
+      const currentTime = new Date(currentEvent.created_at).getTime();
+
+      // Check if we can group with following events
+      const group: EventWithTimeDiff[] = [currentEvent];
+      let j = i + 1;
+
+      while (j < eventsWithTimeDiff.length) {
+        const nextEvent = eventsWithTimeDiff[j];
+        const nextTime = new Date(nextEvent.created_at).getTime();
+        const timeDiff = nextTime - currentTime;
+
+        // Check if within compression window and identical
+        if (timeDiff <= COMPRESSION_WINDOW_MS) {
+          const isIdentical =
+            currentEvent.event_category === nextEvent.event_category &&
+            currentEvent.event_action === nextEvent.event_action &&
+            currentEvent.event_label === nextEvent.event_label;
+
+          if (isIdentical) {
+            group.push(nextEvent);
+            j++;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+
+      // Create compressed item
+      if (group.length > 1) {
+        const groupKey = `group-${currentEvent.id}-${group[group.length - 1].id}`;
+        result.push({
+          type: 'group',
+          id: groupKey,
+          events: group,
+          count: group.length,
+          firstTime: group[0].created_at,
+          lastTime: group[group.length - 1].created_at,
+          timeDiff:
+            result.length > 0
+              ? Math.round(
+                  (new Date(group[0].created_at).getTime() -
+                    new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) /
+                    1000
+                )
+              : 0,
+        });
+      } else {
+        result.push({
+          type: 'single',
+          id: currentEvent.id,
+          event: currentEvent,
+          firstTime: currentEvent.created_at,
+          lastTime: currentEvent.created_at,
+          timeDiff:
+            result.length > 0
+              ? Math.round(
+                  (new Date(currentEvent.created_at).getTime() -
+                    new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) /
+                    1000
+                )
+              : 0,
+        });
+      }
+
+      i = j;
+    }
+
+    return result;
+  }, [events]);
+
   // Ads-only mode: don't render anything until gate check completes (prevents non-ads flash)
   // MUST be after ALL hooks to avoid React "Rendered more hooks than during the previous render" (310)
   if (adsOnly && !adsGateChecked) {
@@ -278,92 +386,6 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     e.stopPropagation(); // Prevent accordion toggle
     setShowVisitorHistory(!showVisitorHistory);
   };
-
-  // Event compression: Group consecutive identical events within 2 seconds
-  // Preserves deterministic ordering (PR1)
-  interface CompressedEvent {
-    type: 'single' | 'group';
-    id: string; // For single events, use event.id; for groups, use composite key
-    event?: typeof eventsWithTimeDiff[0]; // Single event
-    events?: typeof eventsWithTimeDiff; // Grouped events
-    count?: number; // Count for groups
-    firstTime: string; // First event time in group
-    lastTime: string; // Last event time in group
-    timeDiff: number; // Time diff from previous item
-  }
-
-  const compressedEvents = useMemo(() => {
-    const COMPRESSION_WINDOW_MS = 2000; // 2 seconds
-    const result: CompressedEvent[] = [];
-    
-    if (eventsWithTimeDiff.length === 0) return result;
-
-    let i = 0;
-    while (i < eventsWithTimeDiff.length) {
-      const currentEvent = eventsWithTimeDiff[i];
-      const currentTime = new Date(currentEvent.created_at).getTime();
-      
-      // Check if we can group with following events
-      const group: typeof eventsWithTimeDiff = [currentEvent];
-      let j = i + 1;
-      
-      while (j < eventsWithTimeDiff.length) {
-        const nextEvent = eventsWithTimeDiff[j];
-        const nextTime = new Date(nextEvent.created_at).getTime();
-        const timeDiff = nextTime - currentTime;
-        
-        // Check if within compression window and identical
-        if (timeDiff <= COMPRESSION_WINDOW_MS) {
-          const isIdentical = 
-            currentEvent.event_category === nextEvent.event_category &&
-            currentEvent.event_action === nextEvent.event_action &&
-            currentEvent.event_label === nextEvent.event_label;
-          
-          if (isIdentical) {
-            group.push(nextEvent);
-            j++;
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
-      }
-      
-      // Create compressed item
-      if (group.length > 1) {
-        // Group: create composite key for expand/collapse
-        const groupKey = `group-${currentEvent.id}-${group[group.length - 1].id}`;
-        result.push({
-          type: 'group',
-          id: groupKey,
-          events: group,
-          count: group.length,
-          firstTime: group[0].created_at,
-          lastTime: group[group.length - 1].created_at,
-          timeDiff: result.length > 0 
-            ? Math.round((new Date(group[0].created_at).getTime() - new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) / 1000)
-            : 0,
-        });
-      } else {
-        // Single event
-        result.push({
-          type: 'single',
-          id: currentEvent.id,
-          event: currentEvent,
-          firstTime: currentEvent.created_at,
-          lastTime: currentEvent.created_at,
-          timeDiff: result.length > 0
-            ? Math.round((new Date(currentEvent.created_at).getTime() - new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) / 1000)
-            : 0,
-        });
-      }
-      
-      i = j;
-    }
-    
-    return result;
-  }, [eventsWithTimeDiff]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => {
