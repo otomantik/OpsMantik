@@ -1,11 +1,13 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { ChevronLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DashboardHeaderV2 } from './DashboardHeaderV2';
+import { KPICardsV2 } from './KPICardsV2';
+import { QualificationQueue } from './QualificationQueue';
 import { LiveInbox } from '@/components/dashboard/live-inbox';
+import { Card, CardContent } from '@/components/ui/card';
+import { Icons } from '@/components/icons';
 import './reset.css';
 
 interface DashboardShellProps {
@@ -15,47 +17,58 @@ interface DashboardShellProps {
 }
 
 export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellProps) {
+  const [activeTab, setActiveTab] = useState('queue');
+
   return (
     <div className="om-dashboard-reset min-h-screen bg-background">
-      {/* Minimal Header */}
-      <header className="border-b border-border bg-background sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 min-w-0">
-              <Link href="/dashboard">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              </Link>
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold truncate">
-                  {siteName || siteDomain || 'Site Dashboard'}
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Ads Command Center
-                </p>
-              </div>
-              <Badge className="bg-amber-100 text-amber-800 border-amber-200 shrink-0">
-                ADS ONLY
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header with Realtime Pulse */}
+      <DashboardHeaderV2 siteId={siteId} siteName={siteName} siteDomain={siteDomain} />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Reuse existing LiveInbox component (proven, stable) */}
-        <LiveInbox siteId={siteId} />
+        {/* KPI Cards (Always Visible - Today's Data) */}
+        <KPICardsV2 siteId={siteId} />
 
-        {/* Today/Stats section (placeholder for now) */}
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground text-center">
-              📊 Today's KPIs and Timeline coming soon...
-            </p>
-          </CardContent>
-        </Card>
+        {/* Tab Navigation */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto">
+            <TabsTrigger value="queue" className="text-sm flex items-center gap-2">
+              <Icons.circleDot className="w-4 h-4" />
+              Qualification Queue
+            </TabsTrigger>
+            <TabsTrigger value="stream" className="text-sm flex items-center gap-2">
+              <Icons.trendingUp className="w-4 h-4" />
+              Live Stream
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="text-sm flex items-center gap-2">
+              <Icons.barChart className="w-4 h-4" />
+              Analytics
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tab 1: Qualification Queue */}
+          <TabsContent value="queue" className="space-y-4">
+            <QualificationQueue siteId={siteId} />
+          </TabsContent>
+
+          {/* Tab 2: Live Stream */}
+          <TabsContent value="stream" className="space-y-4">
+            <LiveInbox siteId={siteId} />
+          </TabsContent>
+
+          {/* Tab 3: Analytics (Placeholder) */}
+          <TabsContent value="analytics" className="space-y-4">
+            <Card className="border-2 border-dashed border-border bg-muted/20">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <Icons.barChart className="w-16 h-16 text-muted-foreground mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Analytics Coming Soon</h3>
+                <p className="text-muted-foreground max-w-md">
+                  Timeline charts, breakdown widgets, and trend analysis will appear here.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
