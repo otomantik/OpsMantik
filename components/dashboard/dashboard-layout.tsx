@@ -12,6 +12,7 @@
 
 'use client';
 
+import { useMemo } from 'react';
 import { HealthIndicator, DashboardHealth } from './health-indicator';
 import { MonthBoundaryBanner } from './month-boundary-banner';
 import { RealtimePulse } from './realtime-pulse';
@@ -84,13 +85,21 @@ export function DashboardLayout({
     },
   }, { adsOnly: true });
 
-  // Default health if not provided
-  const health: DashboardHealth = initialHealth || {
-    data_latency: new Date().toISOString(),
-    completeness: 1.0,
-    last_sync: new Date().toISOString(),
-    status: 'healthy',
-  };
+  const health: DashboardHealth = useMemo(() => {
+    if (initialHealth) return initialHealth;
+    const last = realtime.lastEventAt ? realtime.lastEventAt.toISOString() : '';
+    const status: DashboardHealth['status'] = realtime.isConnected
+      ? 'healthy'
+      : realtime.error
+        ? 'critical'
+        : 'degraded';
+    return {
+      data_latency: last,
+      completeness: 1.0,
+      last_sync: last || null,
+      status,
+    };
+  }, [initialHealth, realtime.error, realtime.isConnected, realtime.lastEventAt]);
 
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden" data-dashboard="light">

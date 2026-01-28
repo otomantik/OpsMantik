@@ -76,20 +76,11 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     }
   }
 
-  // Calculate default health (can be enhanced with actual health check)
-  const defaultHealth = {
-    data_latency: new Date().toISOString(),
-    completeness: 1.0,
-    last_sync: new Date().toISOString(),
-    status: 'healthy' as const,
-  };
-
   return (
     <DashboardLayout
       siteId={siteId}
       siteName={site.name || undefined}
       siteDomain={site.domain || undefined}
-      initialHealth={defaultHealth}
     />
   );
 }
