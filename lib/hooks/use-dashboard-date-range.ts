@@ -35,34 +35,19 @@ export function useDashboardDateRange(siteId: string) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Default: Last 7 days (in TRT, but stored as UTC)
-  const defaultRange = useMemo(() => {
-    const now = new Date();
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    // Start of day (00:00:00) in TRT
-    const from = new Date(sevenDaysAgo);
-    from.setHours(0, 0, 0, 0);
-    
-    // End of day (23:59:59) in TRT
-    const to = new Date(now);
-    to.setHours(23, 59, 59, 999);
-    
-    return { from, to };
-  }, []);
-
   // Parse URL params (expects ISO strings in UTC)
   const fromParam = searchParams.get('from');
   const toParam = searchParams.get('to');
 
   const dateRange = useMemo<DateRange>(() => {
-    const from = fromParam ? new Date(fromParam) : defaultRange.from;
-    const to = toParam ? new Date(toParam) : defaultRange.to;
+    // Phase B1 guarantees URL always contains from/to after first open (server redirect).
+    // Keep a defensive fallback (never writes URL here) to avoid runtime crashes.
+    const from = fromParam ? new Date(fromParam) : new Date(0);
+    const to = toParam ? new Date(toParam) : new Date(0);
 
     // Validate dates
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-      return defaultRange;
+      return { from: new Date(0), to: new Date(0) };
     }
 
     // Enforce max 6 months range
@@ -82,7 +67,7 @@ export function useDashboardDateRange(siteId: string) {
     }
 
     return { from, to };
-  }, [fromParam, toParam, defaultRange]);
+  }, [fromParam, toParam]);
 
   // Presets (Turkish labels)
   const presets: DateRangePreset[] = useMemo(() => [

@@ -9,6 +9,10 @@ export interface DashboardStats {
     // Ads Command Center KPIs (authoritative)
     ads_sessions: number;
     high_intent: number;
+    phone_click_intents?: number;
+    whatsapp_click_intents?: number;
+    forms?: number;
+    forms_enabled?: boolean;
     sealed: number;
     cvr: number;
     // Backward-compat (deprecated; kept for safety)

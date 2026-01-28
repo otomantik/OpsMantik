@@ -14,9 +14,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { formatTimestamp } from '@/lib/utils';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { LazySessionDrawer } from './lazy-session-drawer';
+import { Copy } from 'lucide-react';
 
 export type LiveInboxIntent = {
   id: string;
@@ -67,6 +72,49 @@ function parseRpcJsonbArray(data: unknown): LiveInboxIntent[] {
 
 function keyOf(i: LiveInboxIntent): string {
   return (i.intent_stamp && i.intent_stamp.length > 0) ? `s:${i.intent_stamp}` : `id:${i.id}`;
+}
+
+function shortId(s: string | null | undefined, take = 8): string {
+  if (!s) return '—';
+  if (s.length <= take) return s;
+  return `${s.slice(0, take)}…`;
+}
+
+function maskTarget(s: string | null | undefined): string {
+  if (!s) return '—';
+  const digits = s.replace(/[^\d+]/g, '');
+  // phone-like: +905xxxxxxxxx
+  if (digits.length >= 8) {
+    const head = digits.slice(0, 3);
+    const tail = digits.slice(-2);
+    return `${head}…${tail}`;
+  }
+  if (s.length <= 8) return s;
+  return `${s.slice(0, 4)}…${s.slice(-2)}`;
+}
+
+async function copyToClipboard(text: string) {
+  if (typeof navigator === 'undefined') return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // ignore
+  }
+}
+
+function statusBadgeVariant(status: string | null): { label: string; variant: 'secondary' | 'muted' | 'destructive' } {
+  const s = (status || 'intent').toLowerCase();
+  if (s === 'junk' || s === 'suspicious') return { label: 'Junk', variant: 'destructive' };
+  if (s === 'confirmed' || s === 'qualified' || s === 'real') return { label: 'Sealed', variant: 'secondary' };
+  return { label: 'Pending', variant: 'muted' };
+}
+
+function typeBadgeVariant(action: string | null): { label: string; variant: 'secondary' | 'muted' } {
+  const a = (action || '').toLowerCase();
+  if (a === 'phone') return { label: 'Phone', variant: 'secondary' };
+  if (a === 'whatsapp') return { label: 'WhatsApp', variant: 'secondary' };
+  if (a === 'form') return { label: 'Form', variant: 'secondary' };
+  return { label: action || 'Unknown', variant: 'muted' };
 }
 
 export function LiveInbox({ siteId }: { siteId: string }) {
@@ -262,111 +310,162 @@ export function LiveInbox({ siteId }: { siteId: string }) {
 
   return (
     <>
-      <Card className="glass border-slate-800/50">
-        <CardHeader className="pb-3 border-b border-slate-800/20">
+      <TooltipProvider>
+      <Card className="bg-background text-foreground border border-border">
+        <CardHeader className="pb-3 border-b border-border">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm font-mono text-slate-200 uppercase tracking-tighter">
-                Live Inbox
+              <CardTitle className="text-base font-mono uppercase tracking-tight">
+                Intent Inbox
               </CardTitle>
-              <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
-                Last 60 minutes{isMounted ? ` • ${rows.length} items` : ''}
-              </p>
+              <div className="text-sm text-muted-foreground mt-1">
+                Last 60 minutes{isMounted ? ` • ${rows.length} rows` : ''}
+              </div>
             </div>
-            <button
-              onClick={fetchInitial}
-              className="text-[10px] font-mono text-slate-400 hover:text-slate-200 border border-slate-800/60 px-2 py-1 rounded"
-            >
+            <Button variant="outline" onClick={fetchInitial}>
               Refresh
-            </button>
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           {error && (
-            <div className="px-4 py-2 border-b border-rose-500/20 bg-rose-500/5">
-              <div className="text-[10px] text-rose-400 font-mono">
+            <div className="px-4 py-3 border-b border-border bg-muted">
+              <div className="text-sm text-foreground">
                 Error: {error}
               </div>
             </div>
           )}
           {loading ? (
-            <div className="p-8 text-center text-[10px] font-mono text-slate-500 uppercase tracking-widest">
-              Loading inbox...
-            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
           ) : rows.length === 0 ? (
-            <div className="p-10 text-center text-[10px] font-mono text-slate-600 uppercase tracking-widest">
-              No recent intents
-            </div>
+            <div className="p-10 text-center text-sm text-muted-foreground">No recent intents.</div>
           ) : (
             <div className="max-h-[520px] overflow-y-auto">
-              <table className="w-full">
-                <thead className="bg-slate-900/50 border-b border-slate-800/30 sticky top-0">
-                  <tr>
-                    <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Time</th>
-                    <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Type</th>
-                    <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Target</th>
-                    <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Page</th>
-                    <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Score</th>
-                    <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/30">
-                  {rows.map((it) => (
-                    <tr
-                      key={keyOf(it)}
-                      className="hover:bg-slate-800/20 cursor-pointer transition-colors"
-                      onClick={() => setSelected(it)}
-                    >
-                      <td className="p-3">
-                        <div className="text-[11px] font-mono text-slate-200" suppressHydrationWarning>
-                          {typeof window !== 'undefined' ? formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' }) : '—'}
-                        </div>
-                        <div className="text-[9px] font-mono text-slate-600" suppressHydrationWarning>
-                          {typeof window !== 'undefined' ? formatTimestamp(it.created_at, { day: '2-digit', month: 'short' }) : '—'}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded border border-slate-700/50 bg-slate-800/30 text-[10px] font-mono text-slate-200 uppercase">
-                          {it.intent_action || 'unknown'}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <div className="text-[11px] font-mono text-slate-300 truncate max-w-[240px]">
-                          {it.intent_target || '—'}
-                        </div>
-                        <div className="text-[9px] font-mono text-slate-600 truncate max-w-[240px]">
-                          {it.click_id || it.gclid || it.wbraid || it.gbraid || ''}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div className="text-[11px] font-mono text-slate-300 truncate max-w-[360px]" suppressHydrationWarning>
-                          {it.intent_page_url ? (() => {
-                            if (typeof window === 'undefined') return it.intent_page_url;
-                            try { return new URL(it.intent_page_url).pathname; } catch { return it.intent_page_url; }
-                          })() : '—'}
-                        </div>
-                        <div className="text-[9px] font-mono text-slate-600 truncate max-w-[360px]" suppressHydrationWarning>
-                          {it.intent_page_url || ''}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div className="text-[11px] font-mono text-slate-200">
-                          {typeof it.lead_score === 'number' ? it.lead_score : '—'}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <span className="text-[10px] font-mono text-slate-400 uppercase">
-                          {it.status ?? 'pending'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader className="sticky top-0 bg-background">
+                  <TableRow>
+                    <TableHead className="text-sm">Time (TRT)</TableHead>
+                    <TableHead className="text-sm">Type</TableHead>
+                    <TableHead className="text-sm">Target</TableHead>
+                    <TableHead className="text-sm">Page</TableHead>
+                    <TableHead className="text-sm">Click ID</TableHead>
+                    <TableHead className="text-sm">Stamp</TableHead>
+                    <TableHead className="text-sm">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((it) => {
+                    const t = typeBadgeVariant(it.intent_action);
+                    const s = statusBadgeVariant(it.status);
+                    const clickIds = [
+                      it.gclid ? { k: 'GCLID', v: it.gclid } : null,
+                      it.wbraid ? { k: 'WBRAID', v: it.wbraid } : null,
+                      it.gbraid ? { k: 'GBRAID', v: it.gbraid } : null,
+                    ].filter(Boolean) as Array<{ k: string; v: string }>;
+                    const pagePath = it.intent_page_url
+                      ? (() => {
+                          try {
+                            return new URL(it.intent_page_url).pathname || '/';
+                          } catch {
+                            return it.intent_page_url;
+                          }
+                        })()
+                      : '—';
+
+                    return (
+                      <TableRow
+                        key={keyOf(it)}
+                        className="cursor-pointer"
+                        onClick={() => setSelected(it)}
+                      >
+                        <TableCell className="text-sm tabular-nums font-mono" suppressHydrationWarning>
+                          {typeof window !== 'undefined'
+                            ? formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <Badge variant={t.variant}>{t.label}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm font-mono">
+                          <div className="flex items-center gap-2">
+                            <span className="tabular-nums">{maskTarget(it.intent_target)}</span>
+                            {it.intent_target && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  copyToClipboard(it.intent_target || '');
+                                }}
+                                title="Copy target"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {it.intent_page_url ? (
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <span className="block max-w-[360px] truncate">{pagePath}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="font-mono text-sm">{it.intent_page_url}</div>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm font-mono">
+                          <div className="flex flex-wrap gap-1">
+                            {clickIds.length === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              clickIds.map((c) => (
+                                <Badge key={c.k} variant="outline" className="tabular-nums">
+                                  {c.k}
+                                </Badge>
+                              ))
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm font-mono tabular-nums">
+                          <div className="flex items-center gap-2">
+                            <span>{shortId(it.intent_stamp, 10)}</span>
+                            {it.intent_stamp && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  copyToClipboard(it.intent_stamp || '');
+                                }}
+                                title="Copy stamp"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <Badge variant={s.variant}>{s.label}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
       </Card>
+      </TooltipProvider>
 
       {selected && (
         <LazySessionDrawer

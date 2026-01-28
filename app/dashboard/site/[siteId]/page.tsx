@@ -2,13 +2,39 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import { DashboardLayout } from '@/components/dashboard/dashboard-layout';
 import { isAdmin } from '@/lib/auth/isAdmin';
+import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 
 interface SitePageProps {
   params: Promise<{ siteId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function SiteDashboardPage({ params }: SitePageProps) {
+export default async function SiteDashboardPage({ params, searchParams }: SitePageProps) {
   const { siteId } = await params;
+  const sp = (await searchParams) || {};
+  const from = Array.isArray(sp.from) ? sp.from[0] : sp.from;
+  const to = Array.isArray(sp.to) ? sp.to[0] : sp.to;
+
+  // Phase B1: If URL doesn't contain from/to, redirect to TODAY (TRT) range in UTC.
+  // This happens at the server boundary to avoid hydration mismatch.
+  if (!from || !to) {
+    const { fromIso, toIso } = getTodayTrtUtcRange();
+    const qp = new URLSearchParams();
+    // Preserve any other params if present
+    for (const [k, v] of Object.entries(sp)) {
+      if (v == null) continue;
+      if (k === 'from' || k === 'to') continue;
+      if (Array.isArray(v)) {
+        for (const vv of v) qp.append(k, vv);
+      } else {
+        qp.set(k, v);
+      }
+    }
+    qp.set('from', from ?? fromIso);
+    qp.set('to', to ?? toIso);
+    redirect(`/dashboard/site/${siteId}?${qp.toString()}`);
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 

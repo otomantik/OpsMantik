@@ -151,6 +151,27 @@ body {
    - Typography: KPI 36–44px (tabular-nums), table 14–15px, meta 12–13px min.
    --------------------------------------------------------------------------- */
 [data-dashboard="light"] {
+  /* Override shadcn tokens to LIGHT within dashboard only */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a; /* slate-900 */
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  --color-primary: #0f172a;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9; /* slate-100 */
+  --color-secondary-foreground: #0f172a;
+  --color-muted: #f1f5f9; /* slate-100 */
+  --color-muted-foreground: #475569; /* slate-600 */
+  --color-accent: #f1f5f9; /* slate-100 */
+  --color-accent-foreground: #0f172a;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #e2e8f0; /* slate-200 */
+  --color-input: #e2e8f0;
+  --color-ring: #94a3b8; /* slate-400 */
+
   --dashboard-kpi: 2.25rem;   /* 36px - use text-[length] or text-4xl */
   --dashboard-kpi-lg: 2.75rem; /* 44px */
   --dashboard-table: 0.875rem; /* 14px - text-sm */

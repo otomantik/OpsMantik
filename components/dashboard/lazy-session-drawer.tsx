@@ -97,20 +97,20 @@ export function LazySessionDrawer({
   return (
     <div className="fixed inset-0 z-50">
       {/* backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       {/* sheet */}
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[620px] bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[620px] bg-white border-l border-slate-200 shadow-2xl flex flex-col">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <div className="text-sm font-mono text-slate-200 uppercase tracking-tighter">{title}</div>
-            <div className="text-[10px] font-mono text-slate-500 mt-1">
-              Intent: <span className="text-slate-400">{intent.id.slice(0, 8)}…</span>
+            <div className="text-base font-mono text-slate-900 uppercase tracking-tighter">{title}</div>
+            <div className="text-sm font-mono text-slate-600 mt-1">
+              Intent: <span className="text-slate-900">{intent.id.slice(0, 8)}…</span>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-[10px] font-mono text-slate-400 hover:text-slate-200 border border-slate-800/60 px-2 py-1 rounded"
+            className="text-sm font-mono text-slate-700 hover:text-slate-900 border border-slate-200 px-3 py-2 rounded"
           >
             Close
           </button>
@@ -118,64 +118,64 @@ export function LazySessionDrawer({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {loading ? (
-            <div className="p-6 text-center text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+            <div className="p-6 text-center text-sm font-mono text-slate-700 uppercase tracking-widest">
               Loading session…
             </div>
           ) : error ? (
-            <div className="p-4 border border-rose-500/20 bg-rose-500/5 text-[10px] font-mono text-rose-300">
+            <div className="p-4 border border-rose-200 bg-rose-50 text-sm font-mono text-rose-800">
               {error}
             </div>
           ) : (
             <>
-              <div className="p-3 rounded border border-slate-800 bg-slate-800/20">
+              <div className="p-4 rounded border border-slate-200 bg-slate-50">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Created</div>
-                    <div className="text-[11px] font-mono text-slate-200" suppressHydrationWarning>
+                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">Created</div>
+                    <div className="text-sm font-mono text-slate-900" suppressHydrationWarning>
                       {details?.created_at ? formatTimestamp(details.created_at, { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Device</div>
-                    <div className="text-[11px] font-mono text-slate-200">
+                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">Device</div>
+                    <div className="text-sm font-mono text-slate-900">
                       {details?.device_type || '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">City</div>
-                    <div className="text-[11px] font-mono text-slate-200">
+                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">City</div>
+                    <div className="text-sm font-mono text-slate-900">
                       {details?.city || '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Attribution</div>
-                    <div className="text-[11px] font-mono text-slate-200 truncate">
+                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">Attribution</div>
+                    <div className="text-sm font-mono text-slate-900 truncate">
                       {details?.attribution_source || '—'}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="p-3 rounded border border-slate-800 bg-slate-800/10">
-                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2">
+              <div className="p-4 rounded border border-slate-200 bg-white">
+                <div className="text-sm font-mono text-slate-700 uppercase tracking-wider mb-2">
                   Timeline ({events.length})
                 </div>
                 {events.length === 0 ? (
-                  <div className="text-[10px] font-mono text-slate-600">No events</div>
+                  <div className="text-sm font-mono text-slate-600">No events</div>
                 ) : (
                   <div className="space-y-2">
                     {events.slice(0, 100).map((e) => (
-                      <div key={e.id} className="p-2 rounded border border-slate-800/60 bg-slate-900/30">
+                      <div key={e.id} className="p-3 rounded border border-slate-200 bg-slate-50">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-[11px] font-mono text-slate-200 truncate">
+                          <div className="text-sm font-mono text-slate-900 truncate">
                             {e.event_category}/{e.event_action}
                           </div>
-                          <div className="text-[9px] font-mono text-slate-600" suppressHydrationWarning>
+                          <div className="text-sm font-mono text-slate-600" suppressHydrationWarning>
                             {formatTimestamp(e.created_at, { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </div>
                         {(e.event_label || e.url) && (
-                          <div className="text-[10px] font-mono text-slate-500 truncate mt-1">
+                          <div className="text-sm font-mono text-slate-700 truncate mt-1">
                             {e.event_label || e.url}
                           </div>
                         )}
@@ -188,7 +188,7 @@ export function LazySessionDrawer({
           )}
 
           {!sessionId && (
-            <div className="p-4 border border-slate-800 bg-slate-800/10 text-[10px] font-mono text-slate-500">
+            <div className="p-4 border border-slate-200 bg-slate-50 text-sm font-mono text-slate-700">
               No matched session for this intent.
             </div>
           )}
