@@ -796,7 +796,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
             {matchedCall && (
               <div className="mt-4 p-3 rounded bg-rose-50 border border-rose-200">
                 <p className="text-sm text-rose-700 mb-1">
-                  📞 TELEFON EŞLEŞTİ: {matchedCall.phone_number}
+                  TELEFON EŞLEŞTİ: {matchedCall.phone_number}
                 </p>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground tabular-nums">
                   <span>Score: {matchedCall.lead_score}</span>

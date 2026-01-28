@@ -22,7 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatTimestamp } from '@/lib/utils';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { LazySessionDrawer } from './lazy-session-drawer';
-import { Copy } from 'lucide-react';
+import { Icons } from '@/components/icons';
 
 export type LiveInboxIntent = {
   id: string;
@@ -122,12 +122,31 @@ function typeBadgeVariant(action: string | null): { label: string; className: st
   return { label: action || 'Unknown', className: 'bg-muted text-foreground border border-border' };
 }
 
+function matchesQuery(it: LiveInboxIntent, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  const hay = [
+    it.intent_target,
+    it.intent_page_url,
+    it.click_id,
+    it.intent_stamp,
+    it.matched_session_id,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return hay.includes(s);
+}
+
 export function LiveInbox({ siteId }: { siteId: string }) {
   const [items, setItems] = useState<LiveInboxIntent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<LiveInboxIntent | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'phone' | 'whatsapp' | 'form'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'sealed' | 'junk'>('all');
+  const [query, setQuery] = useState('');
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const mountedRef = useRef(true);
@@ -313,12 +332,37 @@ export function LiveInbox({ siteId }: { siteId: string }) {
 
   const rows = items.slice(0, 200);
 
+  const phoneAdsRows = useMemo(() => {
+    // Google Ads heuristic: click id present (gclid/wbraid/gbraid are normalized into click_id by backend)
+    return rows
+      .filter((r) => (r.intent_action || '').toLowerCase() === 'phone' && !!r.click_id)
+      .slice(0, 50);
+  }, [rows]);
+
   const whatsappAdsRows = useMemo(() => {
     // Google Ads heuristic: click id present (gclid/wbraid/gbraid are normalized into click_id by backend)
     return rows
       .filter((r) => (r.intent_action || '').toLowerCase() === 'whatsapp' && !!r.click_id)
       .slice(0, 50);
   }, [rows]);
+
+  const filteredInboxRows = useMemo(() => {
+    const byType =
+      typeFilter === 'all'
+        ? rows
+        : rows.filter((r) => (r.intent_action || '').toLowerCase() === typeFilter);
+
+    const byStatus =
+      statusFilter === 'all'
+        ? byType
+        : statusFilter === 'pending'
+          ? byType.filter((r) => statusBadgeClass(r.status).label === 'Pending')
+          : statusFilter === 'sealed'
+            ? byType.filter((r) => statusBadgeClass(r.status).label === 'Sealed')
+            : byType.filter((r) => statusBadgeClass(r.status).label === 'Junk');
+
+    return byStatus.filter((r) => matchesQuery(r, query));
+  }, [query, rows, statusFilter, typeFilter]);
 
   const toPagePath = useCallback((u: string | null | undefined): string => {
     if (!u) return '—';
@@ -333,142 +377,317 @@ export function LiveInbox({ siteId }: { siteId: string }) {
   return (
     <>
       <TooltipProvider>
-      <Card className="bg-background text-foreground border border-border">
-        <CardHeader className="pb-3 border-b border-border">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <CardTitle className="text-base font-semibold tracking-tight truncate">
-                WhatsApp (Google Ads)
-              </CardTitle>
-              <div className="text-sm text-muted-foreground mt-1">
-                Last 60 minutes • {whatsappAdsRows.length} clicks
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Phone (Google Ads) */}
+        <Card className="bg-background text-foreground border border-border">
+          <CardHeader className="pb-3 border-b border-border">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold tracking-tight truncate">
+                  Phone (Google Ads)
+                </CardTitle>
+                <div className="text-sm text-muted-foreground mt-1">
+                  Last 60 minutes • {phoneAdsRows.length} clicks
+                </div>
               </div>
+              <Button variant="outline" onClick={fetchInitial} className="shrink-0 h-9">
+                <Icons.refresh className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
             </div>
-            <Button variant="outline" onClick={fetchInitial} className="shrink-0">
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-4">
-              <div className="space-y-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
               </div>
-            </div>
-          ) : whatsappAdsRows.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">
-              No WhatsApp clicks (Ads) in the last 60 minutes.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background">
-                  <TableRow>
-                    <TableHead className="text-sm">Time</TableHead>
-                    <TableHead className="text-sm">Page</TableHead>
-                    <TableHead className="text-sm">Target</TableHead>
-                    <TableHead className="text-sm">Click ID</TableHead>
-                    <TableHead className="text-sm">Session</TableHead>
-                    <TableHead className="text-sm text-right">Score</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {whatsappAdsRows.slice(0, 15).map((it) => (
-                    <TableRow
-                      key={keyOf(it)}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelected(it)}
-                    >
-                      <TableCell className="text-sm tabular-nums">
-                        {formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' })}
-                      </TableCell>
-                      <TableCell className="text-sm min-w-[220px]">
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <div className="truncate">{toPagePath(it.intent_page_url)}</div>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-[360px]">
-                            <div className="text-sm break-all">{it.intent_page_url || '—'}</div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="tabular-nums">{maskTarget(it.intent_target)}</span>
-                          {it.intent_target && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(it.intent_target!);
-                              }}
-                              title="Copy target"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="tabular-nums">
-                            {shortId(it.click_id, 14)}
-                          </Badge>
-                          {it.click_id && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(it.click_id!);
-                              }}
-                              title="Copy click id"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums">
-                        {it.matched_session_id ? shortId(it.matched_session_id, 10) : '—'}
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums text-right">
-                        {typeof it.lead_score === 'number' ? Math.round(it.lead_score) : '—'}
-                      </TableCell>
+            ) : phoneAdsRows.length === 0 ? (
+              <div className="p-6 text-sm text-muted-foreground">
+                No phone clicks (Ads) in the last 60 minutes.
+              </div>
+            ) : (
+              <div className="max-h-[420px] overflow-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-background">
+                    <TableRow>
+                      <TableHead className="text-sm">Time</TableHead>
+                      <TableHead className="text-sm">Page</TableHead>
+                      <TableHead className="text-sm">Target</TableHead>
+                      <TableHead className="text-sm">Click ID</TableHead>
+                      <TableHead className="text-sm">Session</TableHead>
+                      <TableHead className="text-sm text-right">Score</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {phoneAdsRows.slice(0, 25).map((it) => (
+                      <TableRow
+                        key={keyOf(it)}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelected(it)}
+                      >
+                        <TableCell className="text-sm tabular-nums whitespace-nowrap">
+                          {formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' })}
+                        </TableCell>
+                        <TableCell className="text-sm min-w-[220px]">
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className="truncate">{toPagePath(it.intent_page_url)}</div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[360px]">
+                              <div className="text-sm break-all">{it.intent_page_url || '—'}</div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="tabular-nums">{maskTarget(it.intent_target)}</span>
+                            {it.intent_target && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(it.intent_target!);
+                                }}
+                                title="Copy target"
+                              >
+                                <Icons.copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="tabular-nums">
+                              {shortId(it.click_id, 14)}
+                            </Badge>
+                            {it.click_id && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(it.click_id!);
+                                }}
+                                title="Copy click id"
+                              >
+                                <Icons.copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums">
+                          {it.matched_session_id ? shortId(it.matched_session_id, 10) : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums text-right">
+                          {typeof it.lead_score === 'number' ? Math.round(it.lead_score) : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* WhatsApp (Google Ads) */}
+        <Card className="bg-background text-foreground border border-border">
+          <CardHeader className="pb-3 border-b border-border">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold tracking-tight truncate">
+                  WhatsApp (Google Ads)
+                </CardTitle>
+                <div className="text-sm text-muted-foreground mt-1">
+                  Last 60 minutes • {whatsappAdsRows.length} clicks
+                </div>
+              </div>
+              <Button variant="outline" onClick={fetchInitial} className="shrink-0 h-9">
+                <Icons.refresh className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
             </div>
-          )}
-          <div className="px-4 py-2 border-t border-border text-sm text-muted-foreground">
-            Tip: Click a row to open the Session Drawer (device/city/fingerprint) for matching and UTM work.
-          </div>
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              </div>
+            ) : whatsappAdsRows.length === 0 ? (
+              <div className="p-6 text-sm text-muted-foreground">
+                No WhatsApp clicks (Ads) in the last 60 minutes.
+              </div>
+            ) : (
+              <div className="max-h-[420px] overflow-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-background">
+                    <TableRow>
+                      <TableHead className="text-sm">Time</TableHead>
+                      <TableHead className="text-sm">Page</TableHead>
+                      <TableHead className="text-sm">Target</TableHead>
+                      <TableHead className="text-sm">Click ID</TableHead>
+                      <TableHead className="text-sm">Session</TableHead>
+                      <TableHead className="text-sm text-right">Score</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {whatsappAdsRows.slice(0, 25).map((it) => (
+                      <TableRow
+                        key={keyOf(it)}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelected(it)}
+                      >
+                        <TableCell className="text-sm tabular-nums whitespace-nowrap">
+                          {formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' })}
+                        </TableCell>
+                        <TableCell className="text-sm min-w-[220px]">
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className="truncate">{toPagePath(it.intent_page_url)}</div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[360px]">
+                              <div className="text-sm break-all">{it.intent_page_url || '—'}</div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="tabular-nums">{maskTarget(it.intent_target)}</span>
+                            {it.intent_target && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(it.intent_target!);
+                                }}
+                                title="Copy target"
+                              >
+                                <Icons.copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="tabular-nums">
+                              {shortId(it.click_id, 14)}
+                            </Badge>
+                            {it.click_id && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(it.click_id!);
+                                }}
+                                title="Copy click id"
+                              >
+                                <Icons.copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums">
+                          {it.matched_session_id ? shortId(it.matched_session_id, 10) : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums text-right">
+                          {typeof it.lead_score === 'number' ? Math.round(it.lead_score) : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="px-4 py-2 text-sm text-muted-foreground">
+        Tip: Click a row to open the Session Drawer (device/city/fingerprint) for matching and UTM work.
+      </div>
 
       <Card className="bg-background text-foreground border border-border">
         <CardHeader className="pb-3 border-b border-border">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <CardTitle className="text-base font-semibold tracking-tight">
                 Intent Inbox
               </CardTitle>
               <div className="text-sm text-muted-foreground mt-1">
-                Last 60 minutes{isMounted ? ` • ${rows.length} rows` : ''}
+                Last 60 minutes{isMounted ? ` • ${filteredInboxRows.length} rows` : ''}
               </div>
             </div>
-            <Button variant="outline" onClick={fetchInitial}>
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
+              <div className="inline-flex items-center rounded-md border border-border bg-background">
+                {(['all', 'phone', 'whatsapp', 'form'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setTypeFilter(k)}
+                    className={[
+                      'px-3 py-1.5 text-sm',
+                      'first:rounded-l-md last:rounded-r-md',
+                      typeFilter === k ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                    ].join(' ')}
+                    aria-pressed={typeFilter === k}
+                  >
+                    {k === 'all' ? 'All' : k[0].toUpperCase() + k.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inline-flex items-center rounded-md border border-border bg-background">
+                {(['all', 'pending', 'sealed', 'junk'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setStatusFilter(k)}
+                    className={[
+                      'px-3 py-1.5 text-sm',
+                      'first:rounded-l-md last:rounded-r-md',
+                      statusFilter === k ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                    ].join(' ')}
+                    aria-pressed={statusFilter === k}
+                  >
+                    {k === 'all' ? 'All' : k[0].toUpperCase() + k.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative">
+                <Icons.search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search target/page/click id…"
+                  className="h-9 w-[220px] rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+
+              <Button variant="outline" onClick={fetchInitial} className="h-9">
+                <Icons.refresh className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -510,7 +729,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                 </TableBody>
               </Table>
             </div>
-          ) : rows.length === 0 ? (
+          ) : filteredInboxRows.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted-foreground">No recent intents.</div>
           ) : (
             <div className="max-h-[520px] overflow-y-auto">
@@ -528,7 +747,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((it) => {
+                  {filteredInboxRows.map((it) => {
                     const t = typeBadgeVariant(it.intent_action);
                     const s = statusBadgeClass(it.status);
                     const clickIds = [
@@ -575,7 +794,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                                 }}
                                 title="Copy target"
                               >
-                                <Copy className="h-4 w-4" />
+                                <Icons.copy className="h-4 w-4" />
                               </Button>
                             )}
                           </div>
@@ -625,7 +844,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                                 }}
                                 title="Copy stamp"
                               >
-                                <Copy className="h-4 w-4" />
+                                <Icons.copy className="h-4 w-4" />
                               </Button>
                             )}
                           </div>

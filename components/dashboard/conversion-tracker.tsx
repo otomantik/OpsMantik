@@ -160,7 +160,7 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
                     <Phone className="w-4 h-4 text-rose-700" />
                     <div>
                       <p className="text-sm text-rose-800 font-semibold">
-                        📞 TELEFON EŞLEŞTİ
+                        TELEFON EŞLEŞTİ
                       </p>
                       <p className="text-sm text-rose-900 tabular-nums">
                         {conv.phone_number}
