@@ -126,8 +126,8 @@ export function IntentQualificationCard({
   const clickIdDisplay = formatClickId(intent);
 
   return (
-    <Card className="border-l-4 border-l-amber-400 hover:shadow-md transition-shadow">
-      <CardHeader className="pb-3">
+    <Card className="border border-border bg-background shadow-sm hover:shadow transition-shadow">
+      <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -144,7 +144,7 @@ export function IntentQualificationCard({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {/* Intent Details */}
         <div className="space-y-2 text-sm">
           {intent.intent_page_url && (
@@ -187,11 +187,14 @@ export function IntentQualificationCard({
           )}
         </div>
 
-        <div className="border-t border-border pt-4 space-y-4">
+        <div className="border-t border-border pt-3 space-y-3">
           {/* Score Selection */}
           <div>
             <label className="text-sm font-medium mb-2 block">
-              ⭐ Lead Quality (1-5):
+              <span className="inline-flex items-center gap-2">
+                <Icons.star className="w-4 h-4 text-amber-600" />
+                Lead Quality (1–5)
+              </span>
             </label>
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map((score) => (
@@ -200,7 +203,7 @@ export function IntentQualificationCard({
                   variant={selectedScore === score ? 'default' : 'outline'}
                   size="sm"
                   className={cn(
-                    'w-12 h-12 text-lg font-bold',
+                    'w-11 h-11 text-base font-semibold tabular-nums',
                     selectedScore === score && 'bg-amber-500 hover:bg-amber-600 text-white'
                   )}
                   onClick={() => setSelectedScore(score as 1 | 2 | 3 | 4 | 5)}
@@ -218,7 +221,10 @@ export function IntentQualificationCard({
           {/* Status Selection */}
           <div>
             <label className="text-sm font-medium mb-2 block">
-              🏷️ Status:
+              <span className="inline-flex items-center gap-2">
+                <Icons.tag className="w-4 h-4 text-muted-foreground" />
+                Status
+              </span>
             </label>
             <div className="flex gap-2">
               <Button
@@ -254,7 +260,10 @@ export function IntentQualificationCard({
           {showNoteInput ? (
             <div>
               <label className="text-sm font-medium mb-2 block">
-                📝 Note (optional):
+                <span className="inline-flex items-center gap-2">
+                  <Icons.clipboard className="w-4 h-4 text-muted-foreground" />
+                  Note (optional)
+                </span>
               </label>
               <Textarea
                 placeholder="e.g., Gerçek müşteri, antika saat sordu..."

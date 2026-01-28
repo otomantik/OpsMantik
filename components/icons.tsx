@@ -11,6 +11,8 @@ import {
   MessageCircle,
   FileText,
   ClipboardList,
+  Star,
+  Tag,
   User,
   Users,
   CheckCircle2,
@@ -51,6 +53,8 @@ export const Icons = {
   whatsapp: MessageCircle, // Fallback, prefer brand icon below
   form: FileText,
   clipboard: ClipboardList,
+  star: Star,
+  tag: Tag,
 
   // User & People
   user: User,

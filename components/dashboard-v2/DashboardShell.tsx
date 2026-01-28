@@ -20,56 +20,116 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
   const [activeTab, setActiveTab] = useState('queue');
 
   return (
-    <div className="om-dashboard-reset min-h-screen bg-background">
-      {/* Header with Realtime Pulse */}
-      <DashboardHeaderV2 siteId={siteId} siteName={siteName} siteDomain={siteDomain} />
+    <div className="om-dashboard-reset min-h-screen bg-muted/40">
+      <div className="flex min-h-screen">
+        {/* Desktop Sidebar (shadcn-style) */}
+        <aside className="hidden md:flex w-64 flex-col border-r border-border bg-background">
+          <div className="px-4 py-4 border-b border-border">
+            <div className="text-sm font-semibold truncate">{siteName || siteDomain || 'Ads Command Center'}</div>
+            <div className="text-xs text-muted-foreground truncate">Qualification workflow</div>
+          </div>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* KPI Cards (Always Visible - Today's Data) */}
-        <KPICardsV2 siteId={siteId} />
-
-        {/* Tab Navigation */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto">
-            <TabsTrigger value="queue" className="text-sm flex items-center gap-2">
+          <nav className="p-3 space-y-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('queue')}
+              className={[
+                'w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm',
+                activeTab === 'queue'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              ].join(' ')}
+            >
               <Icons.circleDot className="w-4 h-4" />
               Qualification Queue
-            </TabsTrigger>
-            <TabsTrigger value="stream" className="text-sm flex items-center gap-2">
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('stream')}
+              className={[
+                'w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm',
+                activeTab === 'stream'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              ].join(' ')}
+            >
               <Icons.trendingUp className="w-4 h-4" />
               Live Stream
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="text-sm flex items-center gap-2">
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('analytics')}
+              className={[
+                'w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm',
+                activeTab === 'analytics'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              ].join(' ')}
+            >
               <Icons.barChart className="w-4 h-4" />
               Analytics
-            </TabsTrigger>
-          </TabsList>
+            </button>
+          </nav>
+        </aside>
 
-          {/* Tab 1: Qualification Queue */}
-          <TabsContent value="queue" className="space-y-4">
-            <QualificationQueue siteId={siteId} />
-          </TabsContent>
+        {/* Main Area */}
+        <div className="flex-1 min-w-0">
+          {/* Header with Realtime Pulse */}
+          <DashboardHeaderV2 siteId={siteId} siteName={siteName} siteDomain={siteDomain} />
 
-          {/* Tab 2: Live Stream */}
-          <TabsContent value="stream" className="space-y-4">
-            <LiveInbox siteId={siteId} />
-          </TabsContent>
+          <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 space-y-6">
+            {/* KPI Cards (Always Visible - Today's Data) */}
+            <KPICardsV2 siteId={siteId} />
 
-          {/* Tab 3: Analytics (Placeholder) */}
-          <TabsContent value="analytics" className="space-y-4">
-            <Card className="border-2 border-dashed border-border bg-muted/20">
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <Icons.barChart className="w-16 h-16 text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Analytics Coming Soon</h3>
-                <p className="text-muted-foreground max-w-md">
-                  Timeline charts, breakdown widgets, and trend analysis will appear here.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
+            {/* Mobile Tabs (keep for small screens) */}
+            <div className="md:hidden">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="queue" className="text-sm flex items-center gap-2">
+                    <Icons.circleDot className="w-4 h-4" />
+                    Queue
+                  </TabsTrigger>
+                  <TabsTrigger value="stream" className="text-sm flex items-center gap-2">
+                    <Icons.trendingUp className="w-4 h-4" />
+                    Stream
+                  </TabsTrigger>
+                  <TabsTrigger value="analytics" className="text-sm flex items-center gap-2">
+                    <Icons.barChart className="w-4 h-4" />
+                    Analytics
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* Content Panels */}
+            {activeTab === 'queue' && (
+              <div className="space-y-4">
+                <QualificationQueue siteId={siteId} />
+              </div>
+            )}
+
+            {activeTab === 'stream' && (
+              <div className="space-y-4">
+                <LiveInbox siteId={siteId} />
+              </div>
+            )}
+
+            {activeTab === 'analytics' && (
+              <div className="space-y-4">
+                <Card className="border-2 border-dashed border-border bg-background">
+                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                    <Icons.barChart className="w-12 h-12 text-muted-foreground mb-3" />
+                    <h3 className="text-lg font-semibold mb-1">Analytics Coming Soon</h3>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      Timeline charts, breakdown widgets, and trend analysis will appear here.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
     </div>
   );
 }
