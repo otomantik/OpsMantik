@@ -35,7 +35,7 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
         .select('id, created_at, intent_action, intent_target, intent_page_url, matched_session_id, lead_score, status, click_id, gclid, wbraid, gbraid')
         .eq('site_id', siteId)
         .eq('status', 'intent')
-        .or('lead_score.eq.0,lead_score.is.null')
+        .filter('lead_score', 'in', '(0)')
         .order('created_at', { ascending: false })
         .limit(20); // Show first 20 unscored intents
 
