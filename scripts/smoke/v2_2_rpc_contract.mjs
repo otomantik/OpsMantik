@@ -91,7 +91,8 @@ async function main() {
     const { data, error } = await supabase.rpc('get_dashboard_stats', {
       p_site_id: siteId,
       p_date_from: dateFrom.toISOString(),
-      p_date_to: dateTo.toISOString()
+      p_date_to: dateTo.toISOString(),
+      p_ads_only: true
     });
 
     if (error) throw error;
@@ -109,7 +110,8 @@ async function main() {
       p_site_id: siteId,
       p_date_from: dateFrom.toISOString(),
       p_date_to: dateTo.toISOString(),
-      p_granularity: 'auto'
+      p_granularity: 'auto',
+      p_ads_only: true
     });
 
     if (error) throw error;
@@ -125,7 +127,8 @@ async function main() {
       p_date_from: dateFrom.toISOString(),
       p_date_to: dateTo.toISOString(),
       p_status: null,
-      p_search: null
+      p_search: null,
+      p_ads_only: true
     });
 
     if (error) throw error;
@@ -140,7 +143,8 @@ async function main() {
       p_site_id: siteId,
       p_date_from: dateFrom.toISOString(),
       p_date_to: dateTo.toISOString(),
-      p_dimension: 'source'
+      p_dimension: 'source',
+      p_ads_only: true
     });
 
     if (error) throw error;
@@ -155,7 +159,8 @@ async function main() {
       p_site_id: siteId,
       p_date_from: dateFrom.toISOString(),
       p_date_to: dateTo.toISOString(),
-      p_dimension: 'device'
+      p_dimension: 'device',
+      p_ads_only: true
     });
 
     if (error) throw error;
@@ -170,7 +175,8 @@ async function main() {
       p_site_id: siteId,
       p_date_from: dateFrom.toISOString(),
       p_date_to: dateTo.toISOString(),
-      p_dimension: 'city'
+      p_dimension: 'city',
+      p_ads_only: true
     });
 
     if (error) throw error;
@@ -187,7 +193,8 @@ async function main() {
     const { error } = await supabase.rpc('get_dashboard_stats', {
       p_site_id: siteId,
       p_date_from: invalidDateFrom.toISOString(),
-      p_date_to: dateTo.toISOString()
+      p_date_to: dateTo.toISOString(),
+      p_ads_only: true
     });
 
     if (!error) throw new Error('Expected error for range > 6 months');

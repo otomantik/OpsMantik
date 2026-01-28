@@ -74,6 +74,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<LiveInboxIntent | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const mountedRef = useRef(true);
@@ -181,6 +182,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
   }, [enqueueUpsert, isDebug, lastSeenCreatedAt, siteId]);
 
   useEffect(() => {
+    setIsMounted(true);
     mountedRef.current = true;
     fetchInitial();
     return () => {
@@ -268,7 +270,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                 Live Inbox
               </CardTitle>
               <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
-                Last 60 minutes • {rows.length} items
+                Last 60 minutes{isMounted ? ` • ${rows.length} items` : ''}
               </p>
             </div>
             <button
@@ -317,10 +319,10 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                     >
                       <td className="p-3">
                         <div className="text-[11px] font-mono text-slate-200" suppressHydrationWarning>
-                          {formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' })}
+                          {typeof window !== 'undefined' ? formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' }) : '—'}
                         </div>
                         <div className="text-[9px] font-mono text-slate-600" suppressHydrationWarning>
-                          {formatTimestamp(it.created_at, { day: '2-digit', month: 'short' })}
+                          {typeof window !== 'undefined' ? formatTimestamp(it.created_at, { day: '2-digit', month: 'short' }) : '—'}
                         </div>
                       </td>
                       <td className="p-3">
@@ -337,12 +339,13 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                         </div>
                       </td>
                       <td className="p-3">
-                        <div className="text-[11px] font-mono text-slate-300 truncate max-w-[360px]">
+                        <div className="text-[11px] font-mono text-slate-300 truncate max-w-[360px]" suppressHydrationWarning>
                           {it.intent_page_url ? (() => {
+                            if (typeof window === 'undefined') return it.intent_page_url;
                             try { return new URL(it.intent_page_url).pathname; } catch { return it.intent_page_url; }
                           })() : '—'}
                         </div>
-                        <div className="text-[9px] font-mono text-slate-600 truncate max-w-[360px]">
+                        <div className="text-[9px] font-mono text-slate-600 truncate max-w-[360px]" suppressHydrationWarning>
                           {it.intent_page_url || ''}
                         </div>
                       </td>
