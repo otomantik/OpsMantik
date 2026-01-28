@@ -103,19 +103,23 @@ async function copyToClipboard(text: string) {
   }
 }
 
-function statusBadgeVariant(status: string | null): { label: string; variant: 'secondary' | 'muted' | 'destructive' } {
+function statusBadgeClass(status: string | null): { label: string; className: string } {
   const s = (status || 'intent').toLowerCase();
-  if (s === 'junk' || s === 'suspicious') return { label: 'Junk', variant: 'destructive' };
-  if (s === 'confirmed' || s === 'qualified' || s === 'real') return { label: 'Sealed', variant: 'secondary' };
-  return { label: 'Pending', variant: 'muted' };
+  if (s === 'junk' || s === 'suspicious') {
+    return { label: 'Junk', className: 'bg-red-100 text-red-700 border border-red-200' };
+  }
+  if (s === 'confirmed' || s === 'qualified' || s === 'real') {
+    return { label: 'Sealed', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
+  }
+  return { label: 'Pending', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
 }
 
-function typeBadgeVariant(action: string | null): { label: string; variant: 'secondary' | 'muted' } {
+function typeBadgeVariant(action: string | null): { label: string; className: string } {
   const a = (action || '').toLowerCase();
-  if (a === 'phone') return { label: 'Phone', variant: 'secondary' };
-  if (a === 'whatsapp') return { label: 'WhatsApp', variant: 'secondary' };
-  if (a === 'form') return { label: 'Form', variant: 'secondary' };
-  return { label: action || 'Unknown', variant: 'muted' };
+  if (a === 'phone') return { label: 'Phone', className: 'bg-blue-100 text-blue-700 border border-blue-200' };
+  if (a === 'whatsapp') return { label: 'WhatsApp', className: 'bg-green-100 text-green-700 border border-green-200' };
+  if (a === 'form') return { label: 'Form', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
+  return { label: action || 'Unknown', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
 }
 
 export function LiveInbox({ siteId }: { siteId: string }) {
@@ -345,6 +349,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                     <TableHead className="text-sm">Type</TableHead>
                     <TableHead className="text-sm">Target</TableHead>
                     <TableHead className="text-sm">Page</TableHead>
+                    <TableHead className="text-sm">Source/Campaign</TableHead>
                     <TableHead className="text-sm">Click ID</TableHead>
                     <TableHead className="text-sm">Stamp</TableHead>
                     <TableHead className="text-sm">Status</TableHead>
@@ -357,6 +362,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                       <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-20" /></TableCell>
@@ -376,6 +382,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                     <TableHead className="text-sm">Type</TableHead>
                     <TableHead className="text-sm">Target</TableHead>
                     <TableHead className="text-sm">Page</TableHead>
+                    <TableHead className="text-sm">Source/Campaign</TableHead>
                     <TableHead className="text-sm">Click ID</TableHead>
                     <TableHead className="text-sm">Stamp</TableHead>
                     <TableHead className="text-sm">Status</TableHead>
@@ -384,7 +391,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                 <TableBody>
                   {rows.map((it) => {
                     const t = typeBadgeVariant(it.intent_action);
-                    const s = statusBadgeVariant(it.status);
+                    const s = statusBadgeClass(it.status);
                     const clickIds = [
                       it.gclid ? { k: 'GCLID', v: it.gclid } : null,
                       it.wbraid ? { k: 'WBRAID', v: it.wbraid } : null,
@@ -412,7 +419,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                             : '—'}
                         </TableCell>
                         <TableCell className="text-sm">
-                          <Badge variant={t.variant}>{t.label}</Badge>
+                          <Badge className={t.className}>{t.label}</Badge>
                         </TableCell>
                         <TableCell className="text-sm">
                           <div className="flex items-center gap-2">
@@ -448,6 +455,9 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                             '—'
                           )}
                         </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          —
+                        </TableCell>
                         <TableCell className="text-sm">
                           <div className="flex flex-wrap gap-1">
                             {clickIds.length === 0 ? (
@@ -482,7 +492,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
-                          <Badge variant={s.variant}>{s.label}</Badge>
+                          <Badge className={s.className}>{s.label}</Badge>
                         </TableCell>
                       </TableRow>
                     );

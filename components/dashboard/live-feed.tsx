@@ -14,9 +14,11 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { SessionGroup } from './session-group';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { isDebugEnabled } from '@/lib/utils';
-import { Activity } from 'lucide-react';
+import { Activity, FileText, MessageCircle, MousePointerClick, Phone } from 'lucide-react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface Event {
@@ -47,10 +49,77 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
   const isMountedRef = useRef<boolean>(true);
   const duplicateWarningRef = useRef<boolean>(false);
 
-  // Filter state
+  // Filter state (optional; hidden in adsOnly)
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+
+  const activityRows = useMemo(() => {
+    const sorted = [...events].sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      if (tb !== ta) return tb - ta;
+      return b.id.localeCompare(a.id);
+    });
+    return sorted.slice(0, 15);
+  }, [events]);
+
+  function classify(e: Event): { label: string; Icon: any; badgeClass: string; iconBg: string; iconColor: string } {
+    const action = (e.event_action || '').toLowerCase();
+    const category = (e.event_category || '').toLowerCase();
+
+    // WhatsApp (green, WA-like)
+    if (action.includes('whatsapp')) {
+      return {
+        label: 'WhatsApp',
+        Icon: MessageCircle,
+        badgeClass: 'bg-green-100 text-green-700 border border-green-200',
+        iconBg: 'bg-green-100',
+        iconColor: 'text-green-700',
+      };
+    }
+
+    // Phone (blue)
+    if (action.includes('phone') || action.includes('call')) {
+      return {
+        label: 'Phone',
+        Icon: Phone,
+        badgeClass: 'bg-blue-100 text-blue-700 border border-blue-200',
+        iconBg: 'bg-blue-100',
+        iconColor: 'text-blue-700',
+      };
+    }
+
+    // Forms / conversion
+    if (category === 'conversion' && action === 'form_submit') {
+      return {
+        label: 'Form',
+        Icon: FileText,
+        badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
+        iconBg: 'bg-slate-100',
+        iconColor: 'text-slate-700',
+      };
+    }
+
+    // Ads clicks / acquisition (subtle yellow)
+    if (category === 'acquisition') {
+      return {
+        label: 'Ads',
+        Icon: MousePointerClick,
+        badgeClass: 'bg-yellow-50 text-yellow-800 border border-yellow-200',
+        iconBg: 'bg-yellow-50',
+        iconColor: 'text-yellow-800',
+      };
+    }
+
+    return {
+      label: 'Event',
+      Icon: Activity,
+      badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
+      iconBg: 'bg-slate-100',
+      iconColor: 'text-slate-700',
+    };
+  }
 
   // Memoized grouping: compute groupedSessions from events only when events change
   const groupedSessions = useMemo(() => {
@@ -230,25 +299,19 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
     };
   }, [groupedSessions]);
 
-  // Memoize filtered session list
-  const displayedSessions = useMemo(() => {
-    let filtered = Object.entries(groupedSessions);
-
+  const displayedRows = useMemo(() => {
+    let rows = activityRows;
     if (!adsOnly && (selectedCity || selectedDistrict || selectedDevice)) {
-      filtered = filtered.filter(([, sessionEvents]) => {
-        if (sessionEvents.length === 0) return false;
-        const metadata = (sessionEvents[sessionEvents.length - 1]?.metadata || {}) as any;
-
-        if (selectedCity && metadata.city !== selectedCity) return false;
-        if (selectedDistrict && metadata.district !== selectedDistrict) return false;
-        if (selectedDevice && metadata.device_type !== selectedDevice) return false;
-
+      rows = rows.filter((e) => {
+        const md = (e.metadata || {}) as any;
+        if (selectedCity && md.city !== selectedCity) return false;
+        if (selectedDistrict && md.district !== selectedDistrict) return false;
+        if (selectedDevice && md.device_type !== selectedDevice) return false;
         return true;
       });
     }
-
-    return filtered.slice(0, 10);
-  }, [groupedSessions, selectedCity, selectedDistrict, selectedDevice, adsOnly]);
+    return rows;
+  }, [activityRows, adsOnly, selectedCity, selectedDistrict, selectedDevice]);
 
   const hasActiveFilters = !!(selectedCity || selectedDistrict || selectedDevice);
   const clearFilters = () => {
@@ -311,7 +374,8 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
   }
 
   return (
-    <Card className="bg-white border border-slate-200 shadow-sm">
+    <TooltipProvider>
+    <Card className="bg-background text-foreground border border-border shadow-sm">
       <CardHeader className="pb-3 border-b border-slate-200">
         <div className="flex items-center justify-between">
           <div>
@@ -323,8 +387,8 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                 </span>
               )}
             </CardTitle>
-            <CardDescription className="text-xs font-mono text-slate-600 mt-1 uppercase tracking-wider">
-              {events.length} events &bull; {Object.keys(groupedSessions).length} sessions
+            <CardDescription className="text-sm text-muted-foreground mt-1 uppercase tracking-wider">
+              {events.length} events
             </CardDescription>
           </div>
           <div className="flex items-center gap-1.5">
@@ -399,26 +463,75 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                 </div>
               </div>
             )}
-            <div className="space-y-4 max-h-[600px] overflow-y-auto relative pr-1 custom-scrollbar">
-              {displayedSessions.length === 0 ? (
-                <p className="text-slate-600 font-mono text-sm text-center py-10 uppercase tracking-widest opacity-70">
-                  {hasActiveFilters ? 'No matches found' : 'No sessions found'}
-                </p>
+            <div className="max-h-[520px] overflow-y-auto">
+              {displayedRows.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  {hasActiveFilters ? 'No matches found' : 'No events yet.'}
+                </div>
               ) : (
-                displayedSessions.map(([sid, sessionEvents]) => (
-                  <SessionGroup
-                    key={sid}
-                    siteId={siteId}
-                    adsOnly={adsOnly}
-                    sessionId={sid}
-                    events={sessionEvents}
-                  />
-                ))
+                <ol className="divide-y divide-border">
+                  {displayedRows.map((e) => {
+                    const md = (e.metadata || {}) as any;
+                    const c = classify(e);
+                    const Icon = c.Icon;
+                    const time = new Date(e.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                    const city = md?.city ? String(md.city) : null;
+                    const device = md?.device_type ? String(md.device_type) : null;
+                    const urlPath = e.url
+                      ? (() => { try { return new URL(e.url).pathname || '/'; } catch { return e.url; } })()
+                      : null;
+                    const headline =
+                      c.label === 'Phone'
+                        ? `Phone activity${city ? ` • ${city}` : ''}`
+                        : c.label === 'WhatsApp'
+                          ? `WhatsApp activity${city ? ` • ${city}` : ''}`
+                          : c.label === 'Form'
+                            ? `Form submit${city ? ` • ${city}` : ''}`
+                            : c.label === 'Ads'
+                              ? `Ad click / acquisition${city ? ` • ${city}` : ''}`
+                              : `${e.event_category}: ${e.event_action}`;
+
+                    return (
+                      <li key={e.id} className="px-4 py-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-14 text-sm tabular-nums text-muted-foreground">{time}</div>
+                          <div className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full ${c.iconBg}`}>
+                            <Icon className={`${c.iconColor} h-4 w-4`} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="text-sm font-medium truncate">{headline}</div>
+                              <Badge className={`${c.badgeClass} shrink-0`}>{c.label}</Badge>
+                            </div>
+                            <div className="mt-1 text-sm text-muted-foreground truncate">
+                              {urlPath || (device ? `Device: ${device}` : '—')}
+                            </div>
+                          </div>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Button variant="outline" size="sm" className="h-9">
+                                Details
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[320px]">
+                              <div className="text-sm space-y-1">
+                                <div className="tabular-nums">Session: {e.session_id.slice(0, 8)}…</div>
+                                {device && <div>Device: {device}</div>}
+                                {city && <div>City: {city}</div>}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
               )}
             </div>
           </>
         )}
       </CardContent>
     </Card>
+    </TooltipProvider>
   );
 }
