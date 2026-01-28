@@ -118,6 +118,8 @@ export function WhatsAppIcon({ className, ...props }: React.SVGProps<SVGSVGEleme
     <svg
       viewBox="0 0 24 24"
       fill="currentColor"
+      width="16"
+      height="16"
       className={cn('w-4 h-4', className)}
       {...props}
     >
@@ -134,6 +136,8 @@ export function GoogleIcon({ className, ...props }: React.SVGProps<SVGSVGElement
   return (
     <svg
       viewBox="0 0 24 24"
+      width="16"
+      height="16"
       className={cn('w-4 h-4', className)}
       {...props}
     >

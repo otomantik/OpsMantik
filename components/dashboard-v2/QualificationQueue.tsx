@@ -18,6 +18,29 @@ interface QualificationQueueProps {
   siteId: string;
 }
 
+function parseRpcJsonbArray<T>(data: unknown): T[] {
+  if (!data) return [];
+  if (Array.isArray(data)) {
+    if (data.length === 0) return [];
+    if (typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
+      return data as T[];
+    }
+    if (typeof data[0] === 'string') {
+      const out: T[] = [];
+      for (const item of data as string[]) {
+        try {
+          const parsed = JSON.parse(item);
+          if (parsed && typeof parsed === 'object') out.push(parsed as T);
+        } catch {
+          // ignore
+        }
+      }
+      return out;
+    }
+  }
+  return [];
+}
+
 export function QualificationQueue({ siteId }: QualificationQueueProps) {
   const [intents, setIntents] = useState<IntentForQualification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,24 +55,42 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
 
       const supabase = createClient();
 
-      // Fetch unscored intents: lead_score = 0 AND status = 'intent'
-      // Order by created_at DESC (most recent first)
-      const { data, error: fetchError } = await supabase
-        .from('calls')
-        // NOTE: calls table does NOT have gclid/wbraid/gbraid columns (those live on sessions + RPC payloads)
-        // calls has click_id (best-effort gclid/wbraid/gbraid captured at intent time)
-        .select('id, created_at, intent_action, intent_target, intent_page_url, matched_session_id, lead_score, status, click_id')
-        .eq('site_id', siteId)
-        .eq('status', 'intent')
-        .eq('lead_score', 0)
-        .order('created_at', { ascending: false })
-        .limit(20); // Show first 20 unscored intents
+      // Source of truth: use the same RPC pipeline as LiveInbox to avoid schema/RLS drift.
+      // Pull "today-like" window (up to 24h) then filter client-side to unscored.
+      const { data, error: fetchError } = await supabase.rpc('get_recent_intents_v1', {
+        p_site_id: siteId,
+        p_since: null,
+        p_minutes_lookback: 24 * 60,
+        p_limit: 500,
+        p_ads_only: true,
+      });
 
       if (fetchError) {
         throw fetchError;
       }
 
-      setIntents((data || []) as IntentForQualification[]);
+      const rows = parseRpcJsonbArray<any>(data);
+      const unscored = rows.filter((r) => {
+        const status = (r?.status ?? null) as string | null;
+        const leadScore = (r?.lead_score ?? null) as number | null;
+        const statusOk = status === null || String(status).toLowerCase() === 'intent';
+        const scoreOk = leadScore === null || Number(leadScore) === 0;
+        return statusOk && scoreOk;
+      });
+
+      setIntents(
+        unscored.map((r) => ({
+          id: r.id,
+          created_at: r.created_at,
+          intent_action: r.intent_action,
+          intent_target: r.intent_target,
+          intent_page_url: r.intent_page_url,
+          matched_session_id: r.matched_session_id,
+          lead_score: r.lead_score ?? null,
+          status: r.status ?? null,
+          click_id: r.click_id ?? null,
+        })) as IntentForQualification[]
+      );
     } catch (err: any) {
       setError(err?.message || 'Failed to load intents');
     } finally {
