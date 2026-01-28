@@ -57,6 +57,9 @@ export function useIntentQualification(siteId: string, intentId: string) {
             qualified_by: 'user',
             timestamp: new Date().toISOString(),
           },
+          // OCI feedback loop (P0): mark internal sealing decision
+          oci_status: params.status === 'confirmed' ? 'sealed' : 'skipped',
+          oci_status_updated_at: new Date().toISOString(),
         };
 
         // Atomic update: only if status is still 'intent' (prevent race conditions)

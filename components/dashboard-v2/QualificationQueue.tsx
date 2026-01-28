@@ -89,6 +89,10 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
           lead_score: r.lead_score ?? null,
           status: r.status ?? null,
           click_id: r.click_id ?? null,
+          risk_level: r.risk_level ?? null,
+          risk_reasons: Array.isArray(r.risk_reasons) ? r.risk_reasons : null,
+          oci_stage: r.oci_stage ?? null,
+          oci_status: r.oci_status ?? null,
         })) as IntentForQualification[]
       );
     } catch (err: any) {

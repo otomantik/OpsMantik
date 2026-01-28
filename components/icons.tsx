@@ -20,6 +20,10 @@ import {
   AlertCircle,
   Info,
   RefreshCw,
+  Download,
+  Upload,
+  Sparkles,
+  BadgeCheck,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -69,6 +73,10 @@ export const Icons = {
 
   // Actions
   refresh: RefreshCw,
+  download: Download,
+  upload: Upload,
+  sparkles: Sparkles,
+  seal: BadgeCheck,
   copy: Copy,
   externalLink: ExternalLink,
   search: Search,

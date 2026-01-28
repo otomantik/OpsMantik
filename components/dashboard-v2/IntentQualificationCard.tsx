@@ -21,6 +21,11 @@ export interface IntentForQualification {
   lead_score: number | null;
   status: string | null;
   click_id: string | null;
+  // P0: explainability + OCI feedback loop
+  risk_level?: 'low' | 'high' | string | null;
+  risk_reasons?: string[] | null;
+  oci_stage?: 'pending' | 'sealed' | 'uploaded' | 'matched' | string | null;
+  oci_status?: string | null;
 }
 
 interface IntentQualificationCardProps {
@@ -124,6 +129,8 @@ export function IntentQualificationCard({
   };
 
   const clickIdDisplay = formatClickId(intent);
+  const riskLevel = (intent.risk_level || '').toString().toLowerCase();
+  const riskReasons = Array.isArray(intent.risk_reasons) ? intent.risk_reasons : [];
 
   return (
     <Card className="border border-border bg-background shadow-sm hover:shadow transition-shadow">
@@ -184,6 +191,39 @@ export function IntentQualificationCard({
               <Icons.externalLink className="w-3 h-3 mr-2" />
               View Session Details
             </Button>
+          )}
+        </div>
+
+        {/* High-Risk Explainability (P0) */}
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-medium">
+              Risk:{' '}
+              {riskLevel === 'high' ? (
+                <span className="text-red-700">High</span>
+              ) : (
+                <span className="text-emerald-700">Low</span>
+              )}
+            </div>
+            {riskLevel === 'high' ? (
+              <Badge className="bg-red-100 text-red-700 border border-red-200">High Risk</Badge>
+            ) : (
+              <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">Low Risk</Badge>
+            )}
+          </div>
+          {riskReasons.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-muted-foreground">
+              {riskReasons.slice(0, 4).map((r, idx) => (
+                <li key={idx} className="flex gap-2">
+                  <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                  <span className="min-w-0">{r}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-2 text-muted-foreground">
+              Low-risk heuristics: click-id present + non-bounce session.
+            </div>
           )}
         </div>
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardHeaderV2 } from './DashboardHeaderV2';
 import { KPICardsV2 } from './KPICardsV2';
+import { CommandCenterP0Panel } from './CommandCenterP0Panel';
 import { QualificationQueue } from './QualificationQueue';
 import { LiveInbox } from '@/components/dashboard/live-inbox';
 import { Card, CardContent } from '@/components/ui/card';
@@ -80,6 +81,9 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
           <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 space-y-6">
             {/* KPI Cards (Always Visible - Today's Data) */}
             <KPICardsV2 siteId={siteId} />
+
+            {/* P0: OCI feedback loop + auto-approve + gamification */}
+            <CommandCenterP0Panel siteId={siteId} />
 
             {/* Mobile Tabs (keep for small screens) */}
             <div className="md:hidden">
