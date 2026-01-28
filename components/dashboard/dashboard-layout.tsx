@@ -20,7 +20,7 @@ import { formatTimestamp } from '@/lib/utils';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
-import { DashboardTabs } from './dashboard-tabs';
+import { DashboardTabs } from '@/components/dashboard/dashboard-tabs';
 
 export interface DashboardStats {
   site_id: string;
