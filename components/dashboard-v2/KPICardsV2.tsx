@@ -2,7 +2,7 @@
 
 import { useDashboardStats } from '@/lib/hooks/use-dashboard-stats';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -98,8 +98,6 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
   const adsSessions = loading ? null : (stats?.ads_sessions ?? 0);
   const phoneIntents = loading ? null : (stats?.phone_click_intents ?? 0);
   const whatsappIntents = loading ? null : (stats?.whatsapp_click_intents ?? 0);
-  const sealed = loading ? null : (stats?.sealed ?? 0);
-
   const formsEnabled = Boolean(stats?.forms_enabled);
   const forms = loading ? null : (stats?.forms ?? 0);
 
@@ -109,7 +107,6 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
     (adsSessions ?? 0) === 0 &&
     (phoneIntents ?? 0) === 0 &&
     (whatsappIntents ?? 0) === 0 &&
-    (sealed ?? 0) === 0 &&
     (stats.total_events || 0) === 0;
 
   const fmt = (n: number | null) => (n === null ? '…' : n.toLocaleString());
@@ -125,106 +122,87 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Ads Sessions */}
-        <Card className="bg-background text-foreground border border-border shadow-sm">
-          <CardContent className="p-4">
-            <KpiLabel
-              label="Ads Sessions"
-              tooltip="Unique Ads-attributed sessions today (TRT timezone). Ads-only filter applied."
-              rightSlot={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  onClick={() => refetch()}
-                  title="Refresh KPIs"
-                >
-                  <Icons.refresh className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
-              }
-            />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
-              {loading ? <Skeleton className="h-10 w-24" /> : fmt(adsSessions)}
+        <Card className="bg-background">
+          <CardHeader className="p-4 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
+                Ads Sessions
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={() => refetch()}
+                title="Refresh KPIs"
+              >
+                <Icons.refresh className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
-            <div className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
-              Sessions
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-3xl font-semibold tabular-nums">
+              {loading ? <Skeleton className="h-9 w-20" /> : fmt(adsSessions)}
             </div>
+            <div className="mt-1 text-sm text-muted-foreground">Today (TRT)</div>
           </CardContent>
         </Card>
 
-        {/* Phone Click Intents */}
-        <Card className="bg-background text-foreground border border-border shadow-sm">
-          <CardContent className="p-4">
-            <KpiLabel
-              label="Phone Intents"
-              tooltip="Phone click intents matched to Ads sessions today."
-            />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
-              {loading ? <Skeleton className="h-10 w-24" /> : fmt(phoneIntents)}
+        {/* Phone Intents */}
+        <Card className="bg-background">
+          <CardHeader className="p-4 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
+                Phone Intents
+              </CardTitle>
+              <Icons.phone className="h-4 w-4 text-blue-600" />
             </div>
-            <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
-              <Icons.phone className="w-3 h-3" />
-              Click
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-3xl font-semibold tabular-nums">
+              {loading ? <Skeleton className="h-9 w-20" /> : fmt(phoneIntents)}
             </div>
+            <div className="mt-1 text-sm text-muted-foreground">Clicks</div>
           </CardContent>
         </Card>
 
-        {/* WhatsApp Click Intents */}
-        <Card className="bg-background text-foreground border border-border shadow-sm">
-          <CardContent className="p-4">
-            <KpiLabel
-              label="WhatsApp Intents"
-              tooltip="WhatsApp click intents matched to Ads sessions today."
-            />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
-              {loading ? <Skeleton className="h-10 w-24" /> : fmt(whatsappIntents)}
+        {/* WhatsApp Intents */}
+        <Card className="bg-background">
+          <CardHeader className="p-4 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
+                WhatsApp Intents
+              </CardTitle>
+              <Icons.whatsappBrand className="h-4 w-4 text-green-600" />
             </div>
-            <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700">
-              <Icons.whatsappBrand className="w-3 h-3" />
-              Click
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-3xl font-semibold tabular-nums">
+              {loading ? <Skeleton className="h-9 w-20" /> : fmt(whatsappIntents)}
             </div>
+            <div className="mt-1 text-sm text-muted-foreground">Clicks</div>
           </CardContent>
         </Card>
 
-        {/* Sealed */}
-        <Card className="bg-background text-foreground border border-border shadow-sm">
-          <CardContent className="p-4">
-            <KpiLabel
-              label="Sealed"
-              tooltip="Confirmed/qualified intents matched to Ads sessions today."
-            />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
-              {loading ? <Skeleton className="h-10 w-24" /> : fmt(sealed)}
+        {/* Forms (Hidden if not enabled) */}
+        <Card className={formsEnabled ? "bg-background" : "bg-muted/40 border-dashed"}>
+          <CardHeader className="p-4 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
+                Forms
+              </CardTitle>
+              <Icons.form className="h-4 w-4 text-muted-foreground" />
             </div>
-            <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
-              <Icons.check className="w-3 h-3" />
-              Sealed
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-3xl font-semibold tabular-nums">
+              {loading ? <Skeleton className="h-9 w-20" /> : (formsEnabled ? fmt(forms) : 'Hidden')}
             </div>
+            <div className="mt-1 text-sm text-muted-foreground">Conversions</div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Forms row (conditional) */}
-      {formsEnabled && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-background text-foreground border border-border shadow-sm">
-            <CardContent className="p-4">
-              <KpiLabel
-                label="Forms"
-                tooltip="Form conversions (form_submit events) matched to Ads sessions today."
-              />
-              <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
-                {loading ? <Skeleton className="h-10 w-24" /> : fmt(forms)}
-              </div>
-              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
-                <Icons.form className="w-3 h-3" />
-                Form
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }
