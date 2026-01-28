@@ -114,15 +114,15 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                         return <Icon className="h-3.5 w-3.5" />;
                       })()}
                     </div>
-                    <span className="text-[11px] font-mono text-slate-300 truncate">
+                    <span className="text-sm text-foreground truncate">
                       {safeItem.dimension_value}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[10px] font-mono text-slate-400">
+                    <span className="text-sm text-muted-foreground tabular-nums">
                       {safeItem.count.toLocaleString()}
                     </span>
-                    <span className="text-[9px] font-mono text-slate-600">
+                    <span className="text-sm text-muted-foreground tabular-nums">
                       ({safeItem.percentage.toFixed(1)}%)
                     </span>
                   </div>
@@ -130,7 +130,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
               );
             })}
             {data.length > 10 && (
-              <p className="text-[9px] font-mono text-slate-600 text-center mt-2">
+              <p className="text-sm text-muted-foreground text-center mt-2">
                 +{data.length - 10} daha
               </p>
             )}

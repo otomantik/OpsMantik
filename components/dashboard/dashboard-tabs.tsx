@@ -257,7 +257,7 @@ export function DashboardTabs({ siteId }: { siteId: string }) {
           {/* Live tab: source-of-truth is calls (LiveInbox) */}
           <TabsContent value="live">
             <div className="space-y-6">
-              <div className="text-sm text-slate-700">
+              <div className="text-sm text-muted-foreground">
                 Live view shows the last 60 minutes. Session details load lazily from the drawer.
               </div>
               <LiveInbox siteId={siteId} />
@@ -273,12 +273,12 @@ export function DashboardTabs({ siteId }: { siteId: string }) {
                   <TimelineChart siteId={siteId} dateRange={effectiveTodayRange} />
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-mono text-slate-700">Today filter:</div>
+                      <div className="text-sm text-muted-foreground">Today filter:</div>
                       <Button
                         type="button"
                         variant={todayQuick === 'all' ? 'default' : 'outline'}
                         size="sm"
-                        className="h-9 text-sm font-mono"
+                        className="h-9 text-sm"
                         onClick={() => setTodayQuick('all')}
                       >
                         All today
@@ -287,13 +287,13 @@ export function DashboardTabs({ siteId }: { siteId: string }) {
                         type="button"
                         variant={todayQuick === '60m' ? 'default' : 'outline'}
                         size="sm"
-                        className="h-9 text-sm font-mono"
+                        className="h-9 text-sm"
                         onClick={() => setTodayQuick('60m')}
                       >
                         Last 60m
                       </Button>
                       {todayQuick === '60m' && todayMinIso && (
-                        <div className="text-sm font-mono text-slate-600">
+                        <div className="text-sm text-muted-foreground tabular-nums">
                           Showing intents since {new Date(todayMinIso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       )}

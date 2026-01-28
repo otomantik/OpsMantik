@@ -184,29 +184,29 @@ export function CallAlertWrapper({ siteId }: CallAlertWrapperProps = {}) {
   );
 
   return (
-    <Card className="glass border-slate-800/50 shadow-2xl">
-      <CardHeader className="pb-3 border-b border-slate-800/20">
+    <Card className="bg-background text-foreground border border-border shadow-sm">
+      <CardHeader className="pb-3 border-b border-border">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-sm font-mono text-slate-200 tracking-tight">CALL MONITOR</CardTitle>
-            <CardDescription className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
+            <CardTitle className="text-base font-semibold tracking-tight">Call Monitor</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1 uppercase tracking-wider">
               Real-time matching
             </CardDescription>
           </div>
-          <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
-            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
-            <span className="text-[9px] font-mono text-emerald-400">ACTIVE</span>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-sm text-emerald-600">Active</span>
           </div>
         </div>
       </CardHeader>
       <CardContent className="pt-4">
         {visibleCalls.length === 0 ? (
           <div className="text-center py-12 flex flex-col items-center group">
-            <div className="w-12 h-12 bg-slate-800/20 rounded-full flex items-center justify-center mb-4 border border-slate-800/50 group-hover:border-slate-700/60 transition-colors">
-              <PhoneOff className="w-5 h-5 text-slate-600 group-hover:text-slate-500 transition-colors" />
+            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4 border border-border transition-colors">
+              <PhoneOff className="w-5 h-5 text-muted-foreground transition-colors" />
             </div>
-            <p className="font-mono text-xs text-slate-400 uppercase tracking-widest mb-1">Waiting for calls…</p>
-            <p className="font-mono text-[10px] text-slate-600 italic">Real-time matching active</p>
+            <p className="text-sm text-muted-foreground uppercase tracking-widest mb-1">Waiting for calls…</p>
+            <p className="text-sm text-muted-foreground italic">Real-time matching active</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">

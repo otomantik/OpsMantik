@@ -447,11 +447,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                   </p>
                 </div>
                 {sessionDuration > 0 && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                  <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
                     {sessionDuration}s
                   </span>
                 )}
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
                   {events.length} events
                 </span>
                 {conversionCount > 0 && (
@@ -460,12 +460,12 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                   </span>
                 )}
                 {hasPhoneCall && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                  <span className="font-mono text-sm px-2 py-1 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
                     📞 CALL
                   </span>
                 )}
                 {matchedCall && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                  <span className="font-mono text-sm px-2 py-1 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
                     MATCHED: {matchedCall.phone_number}
                   </span>
@@ -483,7 +483,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               {leadScore >= 71 && (
                 <p className="font-mono text-xs text-orange-400 animate-pulse font-semibold mt-1">HOT LEAD</p>
               )}
-              <p className="font-mono text-[10px] text-slate-600 uppercase tracking-wider mt-2 opacity-60">
+              <p className="font-mono text-sm text-slate-600 uppercase tracking-wider mt-2 opacity-60">
                 {intelligenceSummary}
               </p>
             </div>
@@ -516,7 +516,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 </span>
               )}
               {sessionCount24h > 0 && (
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
                   Sessions 24h: {sessionCount24h}
                 </span>
               )}
@@ -524,7 +524,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-2 text-xs font-mono text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
+                  className="h-9 px-3 text-sm font-mono text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
                   onClick={handleToggleVisitorHistory}
                   title="View visitor history"
                 >
@@ -605,7 +605,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 {events.length > 15 && (
                   <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                     <TrendingUp className="w-3 h-3 text-slate-600" />
-                    <span className="font-mono text-[10px] px-2 py-1 rounded bg-slate-800/50 text-slate-400 border border-slate-700/30">
+                    <span className="font-mono text-sm px-2 py-1 rounded bg-slate-800/50 text-slate-400 border border-slate-700/30">
                       +{events.length - 15}
                     </span>
                   </div>
@@ -658,7 +658,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                               {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
                             </td>
                             <td className="py-2 px-3">
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                              <span className={`px-2 py-1 rounded text-sm ${
                                 event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
                                 event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
                                 event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
@@ -677,7 +677,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                             <td className="py-2 px-3 text-slate-400">
                               {event.event_value !== null ? event.event_value : '—'}
                             </td>
-                            <td className="py-2 px-3 text-slate-500 text-[10px] max-w-xs truncate" title={event.url}>
+                            <td className="py-2 px-3 text-slate-500 text-sm max-w-xs truncate" title={event.url}>
                               {event.url || '—'}
                             </td>
                           </tr>
@@ -720,7 +720,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
                               </td>
                               <td className="py-2 px-3">
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                <span className={`px-2 py-1 rounded text-sm ${
                                   firstEvent.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
                                   firstEvent.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
                                   firstEvent.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
@@ -735,7 +735,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 />
                                 <Icon className="w-3 h-3" />
                                 {firstEvent.event_action}
-                                <span className="ml-2 px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-semibold">
+                                <span className="ml-2 px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-sm font-semibold">
                                   ×{item.count}
                                 </span>
                               </td>
@@ -745,7 +745,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                               <td className="py-2 px-3 text-slate-400">
                                 {firstEvent.event_value !== null ? firstEvent.event_value : '—'}
                               </td>
-                              <td className="py-2 px-3 text-slate-500 text-[10px] max-w-xs truncate" title={firstEvent.url}>
+                              <td className="py-2 px-3 text-slate-500 text-sm max-w-xs truncate" title={firstEvent.url}>
                                 {firstEvent.url || '—'}
                               </td>
                             </tr>
@@ -757,7 +757,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                   isConversion ? 'bg-emerald-500/3' : ''
                                 }`}
                               >
-                                <td className="py-1.5 px-3 pl-8 text-slate-400 text-[10px]">
+                                <td className="py-1.5 px-3 pl-8 text-slate-400 text-sm">
                                   {formatTimestamp(event.created_at, {
                                     hour: '2-digit',
                                     minute: '2-digit',
@@ -765,11 +765,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                     fractionalSecondDigits: 3
                                   })}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-500 text-[10px]">
+                                <td className="py-1.5 px-3 text-slate-500 text-sm">
                                   {event.timeDiff > 0 ? `+${event.timeDiff}s` : '—'}
                                 </td>
                                 <td className="py-1.5 px-3">
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                                  <span className={`px-2 py-1 rounded text-sm ${
                                     event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
                                     event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
                                     event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
@@ -778,17 +778,17 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                     {event.event_category.toUpperCase()}
                                   </span>
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-300 text-[10px] flex items-center gap-2">
+                                <td className="py-1.5 px-3 text-slate-300 text-sm flex items-center gap-2">
                                   <Icon className="w-2.5 h-2.5" />
                                   {event.event_action}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-500 text-[10px]">
+                                <td className="py-1.5 px-3 text-slate-500 text-sm">
                                   {event.event_label || '—'}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-500 text-[10px]">
+                                <td className="py-1.5 px-3 text-slate-500 text-sm">
                                   {event.event_value !== null ? event.event_value : '—'}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-600 text-[9px] max-w-xs truncate" title={event.url}>
+                                <td className="py-1.5 px-3 text-slate-600 text-sm max-w-xs truncate" title={event.url}>
                                   {event.url || '—'}
                                 </td>
                               </tr>
@@ -809,7 +809,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 <p className="font-mono text-xs text-rose-400 mb-1">
                   📞 TELEFON EŞLEŞTİ: {matchedCall.phone_number}
                 </p>
-                <div className="flex items-center gap-4 text-[10px] text-slate-400">
+                <div className="flex items-center gap-4 text-sm text-slate-400">
                   <span>Score: {matchedCall.lead_score}</span>
                   <span>Match Time: {formatTimestamp(matchedCall.created_at)}</span>
                 </div>
@@ -876,29 +876,29 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 })}
                               </span>
                               {session.id === sessionId && (
-                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                <span className="font-mono text-sm px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                                   CURRENT
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
                               {session.attribution_source && (
-                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
                                   {session.attribution_source}
                                 </span>
                               )}
                               {session.device_type && (
-                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                                <span className="font-mono text-sm px-2 py-1 rounded bg-amber-500/20 text-amber-400">
                                   {session.device_type}
                                 </span>
                               )}
                               {session.city && session.city !== 'Unknown' && (
-                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400">
+                                <span className="font-mono text-sm px-2 py-1 rounded bg-indigo-500/20 text-indigo-400">
                                   {session.city}
                                 </span>
                               )}
                               {session.lead_score !== null && session.lead_score !== undefined && (
-                                <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                                <span className={`font-mono text-sm px-2 py-1 rounded ${
                                   session.lead_score >= 71 ? 'bg-orange-500/20 text-orange-400' :
                                   session.lead_score >= 31 ? 'bg-blue-500/20 text-blue-400' :
                                   'bg-slate-700/50 text-slate-300'
@@ -933,16 +933,16 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-2">
                                 <span className="font-mono text-xs text-slate-300">{call.phone_number}</span>
-                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
                                   Score: {call.lead_score}
                                 </span>
                                 {call.matched_session_id && (
-                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
+                                  <span className="font-mono text-sm px-2 py-1 rounded bg-cyan-500/20 text-cyan-400">
                                     Matched to: {call.matched_session_id.slice(0, 8)}...
                                   </span>
                                 )}
                               </div>
-                              <span className="font-mono text-[10px] text-slate-500">
+                              <span className="font-mono text-sm text-slate-500">
                                 {formatTimestamp(call.created_at, {
                                   day: '2-digit',
                                   month: '2-digit',

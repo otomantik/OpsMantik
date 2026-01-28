@@ -19,7 +19,9 @@ import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { formatTimestamp } from '@/lib/utils';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { ChevronLeft, Menu } from 'lucide-react';
 import { DashboardTabs } from '@/components/dashboard/dashboard-tabs';
 
 export interface DashboardStats {
@@ -91,67 +93,102 @@ export function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 relative" data-dashboard="light">
+    <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden" data-dashboard="light">
       <MonthBoundaryBanner />
 
       {/* Top Bar - Command Center Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md">
-        <div className="max-w-[1920px] mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-slate-700 hover:text-slate-900 transition-colors">
-              <ChevronLeft className="w-5 h-5" />
-            </Link>
-            <div className="h-6 w-[1px] bg-slate-200 mx-1"></div>
-            <div>
-              <h1 className="text-base font-mono font-bold text-slate-900 uppercase tracking-tighter">
-                {siteName || siteDomain || 'Site Analytics'}
-              </h1>
-              {/* FIX 1: Suppress hydration warning for timestamp */}
-              <p className="text-sm font-mono text-slate-600 uppercase tracking-wider leading-none" suppressHydrationWarning>
-                Son güncelleme: {formatTimestamp(health.data_latency, { hour: '2-digit', minute: '2-digit' })} TRT
-              </p>
-            </div>
-            <span className="ml-2 inline-flex items-center px-3 py-1 rounded border border-amber-400 bg-amber-50 text-sm font-mono text-amber-800 uppercase tracking-wider">
-              ADS-ONLY MODE
-            </span>
-          </div>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Row 1 (mobile): back + title + badge */}
+            <div className="flex items-start gap-2 min-w-0">
+              {/* Mobile sidebar */}
+              <div className="sm:hidden mt-0.5">
+                <Sheet>
+                  <SheetTrigger>
+                    <Button variant="outline" size="icon" className="h-9 w-9">
+                      <Menu className="h-5 w-5" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left">
+                    <div className="space-y-4">
+                      <div className="text-base font-semibold">Dashboard</div>
+                      <div className="space-y-2">
+                        <Link href="/dashboard" className="block text-sm text-muted-foreground hover:text-foreground">
+                          ← Back to Dashboard
+                        </Link>
+                        <div className="text-sm text-muted-foreground">
+                          {siteName || siteDomain || 'Site Analytics'}
+                        </div>
+                      </div>
+                      <div className="border-t border-border pt-4 space-y-2">
+                        {onSignOut && (
+                          <Button type="button" variant="outline" size="sm" onClick={onSignOut} className="w-full h-9">
+                            Sign Out
+                          </Button>
+                        )}
+                        {process.env.NODE_ENV === 'development' && (
+                          <Link href="/test-page">
+                            <Button variant="outline" size="sm" className="w-full h-9">Simulator</Button>
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              </div>
 
-          <div className="flex items-center gap-3">
-            {/* Health Badge */}
-            <HealthIndicator health={health} />
-
-            {/* Realtime Pulse */}
-            <RealtimePulse
-              isConnected={realtime.isConnected}
-              lastEventAt={realtime.lastEventAt}
-              eventCount={realtime.eventCount}
-              error={realtime.error}
-            />
-
-            {process.env.NODE_ENV === 'development' && (
-              <Link href="/test-page">
-                <Button variant="ghost" size="sm" className="text-sm font-mono text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 uppercase tracking-wider h-9">
-                  🧪 Simulator
-                </Button>
+              {/* Breadcrumb / back */}
+              <Link href="/dashboard" className="mt-1 text-muted-foreground hover:text-foreground transition-colors hidden sm:inline-flex">
+                <ChevronLeft className="w-5 h-5" />
               </Link>
-            )}
-            {onSignOut && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onSignOut}
-                className="text-sm font-mono text-slate-700 hover:text-slate-900 uppercase tracking-wider h-9 border border-slate-200"
-              >
-                Sign Out
-              </Button>
-            )}
+
+              <div className="min-w-0 flex-1">
+                <h1 className="text-base font-semibold truncate">
+                  {siteName || siteDomain || 'Site Analytics'}
+                </h1>
+                <p className="text-sm text-muted-foreground truncate" suppressHydrationWarning>
+                  Son güncelleme: {formatTimestamp(health.data_latency, { hour: '2-digit', minute: '2-digit' })} TRT
+                </p>
+              </div>
+
+              <Badge className="shrink-0" variant="outline">
+                ADS-ONLY
+              </Badge>
+            </div>
+
+            {/* Row 2 (mobile): health + realtime + actions */}
+            <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
+              <HealthIndicator health={health} />
+              <RealtimePulse
+                isConnected={realtime.isConnected}
+                lastEventAt={realtime.lastEventAt}
+                eventCount={realtime.eventCount}
+                error={realtime.error}
+              />
+
+              {/* Desktop actions (mobile actions live in Sheet) */}
+              <div className="hidden sm:flex items-center gap-2">
+                {process.env.NODE_ENV === 'development' && (
+                  <Link href="/test-page">
+                    <Button variant="outline" size="sm" className="h-9">
+                      Simulator
+                    </Button>
+                  </Link>
+                )}
+                {onSignOut && (
+                  <Button type="button" variant="outline" size="sm" onClick={onSignOut} className="h-9">
+                    Sign Out
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Grid */}
-      <main className="max-w-[1920px] mx-auto p-6 space-y-6">
+      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 py-6 space-y-6">
         <DashboardTabs siteId={siteId} />
       </main>
     </div>

@@ -145,7 +145,7 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
                       {eventType.action}
                     </span>
                   </div>
-                  <p className="font-mono text-[10px] text-slate-500 mt-0.5">
+                  <p className="text-sm text-muted-foreground mt-0.5 tabular-nums">
                     Last: {formatTimestamp(eventType.lastSeen, {
                       month: 'short',
                       day: 'numeric',
@@ -158,7 +158,7 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
                   <p className="font-mono text-lg font-bold text-slate-200">
                     {eventType.count}
                   </p>
-                  <p className="font-mono text-[10px] text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     times
                   </p>
                 </div>

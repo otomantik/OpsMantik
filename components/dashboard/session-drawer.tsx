@@ -179,15 +179,15 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
       />
 
       {/* Drawer Panel */}
-      <div className="relative w-full sm:w-[600px] sm:max-w-full h-[90vh] sm:h-auto sm:max-h-[90vh] bg-slate-900 border-t sm:border border-slate-800 rounded-t-lg sm:rounded-lg shadow-xl flex flex-col">
+      <div className="relative w-full sm:w-[600px] sm:max-w-full h-[90vh] sm:h-auto sm:max-h-[90vh] bg-background text-foreground border-t sm:border border-border rounded-t-lg sm:rounded-lg shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
-          <h3 className="text-sm font-mono text-slate-200 uppercase tracking-tighter">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h3 className="text-base font-semibold tracking-tight">
             Oturum Detayları
           </h3>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -201,53 +201,53 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
             </div>
           ) : isLimitedView ? (
             <div className="py-8">
-              <div className="mb-4 p-3 rounded border border-slate-800 bg-slate-800/20">
+              <div className="mb-4 p-3 rounded border border-border bg-muted">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                    <p className="text-sm text-muted-foreground uppercase tracking-widest">
                       Limited view
                     </p>
-                    <p className="text-[11px] font-mono text-slate-300 mt-1">
+                    <p className="text-sm text-foreground mt-1">
                       Session details unavailable (permission/expired/missing).
                     </p>
                   </div>
-                  <div className="text-[9px] font-mono text-slate-600 text-right">
-                    Site scope: <span className="text-slate-500">{siteId.slice(0, 8)}…</span>
+                  <div className="text-sm text-muted-foreground text-right tabular-nums">
+                    Site scope: <span className="text-muted-foreground">{siteId.slice(0, 8)}…</span>
                   </div>
                 </div>
                 {limitedReason && (
-                  <p className="mt-2 text-[10px] font-mono text-slate-600">
-                    Reason: <span className="text-slate-500">{limitedReason}</span>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Reason: <span className="text-muted-foreground">{limitedReason}</span>
                   </p>
                 )}
               </div>
 
               {/* Keep UX: show intent-level info even if session fetch fails */}
               <div className="space-y-2">
-                <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
-                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Intent</p>
-                  <div className="mt-1 text-[11px] font-mono text-slate-200 break-all">
+                <div className="p-3 rounded bg-muted border border-border">
+                  <p className="text-sm text-muted-foreground uppercase tracking-wider">Intent</p>
+                  <div className="mt-1 text-sm break-all tabular-nums">
                     {intent.id}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
-                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Type</p>
-                    <p className="mt-1 text-[11px] font-mono text-slate-200">{intent.type}</p>
+                  <div className="p-3 rounded bg-muted border border-border">
+                    <p className="text-sm text-muted-foreground uppercase tracking-wider">Type</p>
+                    <p className="mt-1 text-sm">{intent.type}</p>
                   </div>
-                  <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
-                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Time</p>
-                    <p className="mt-1 text-[11px] font-mono text-slate-200" suppressHydrationWarning>
+                  <div className="p-3 rounded bg-muted border border-border">
+                    <p className="text-sm text-muted-foreground uppercase tracking-wider">Time</p>
+                    <p className="mt-1 text-sm tabular-nums" suppressHydrationWarning>
                       {formatTimestamp(intent.timestamp, { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                 </div>
 
                 {intent.matched_session_id && (
-                  <div className="p-3 rounded bg-slate-800/20 border border-slate-700/30">
-                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Matched session</p>
-                    <div className="mt-1 text-[11px] font-mono text-slate-200 break-all">
+                  <div className="p-3 rounded bg-muted border border-border">
+                    <p className="text-sm text-muted-foreground uppercase tracking-wider">Matched session</p>
+                    <div className="mt-1 text-sm break-all tabular-nums">
                       {intent.matched_session_id}
                     </div>
                   </div>
@@ -266,33 +266,33 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
             <>
               {/* Session Timeline */}
               <div className="mb-6">
-                <h4 className="text-xs font-mono text-slate-300 uppercase tracking-wider mb-3">
+                <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">
                   Oturum Zaman Çizelgesi
                 </h4>
                 <SessionGroup siteId={siteId} sessionId={session.id} events={session.events.filter(e => e.event_category !== 'heartbeat')} />
               </div>
 
               {/* Technical Details */}
-              <div className="border-t border-slate-800 pt-6">
-                <h4 className="text-xs font-mono text-slate-300 uppercase tracking-wider mb-3">
+              <div className="border-t border-border pt-6">
+                <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">
                   Teknik Detaylar
                 </h4>
-                <div className="grid grid-cols-2 gap-4 text-[11px] font-mono">
+                <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-slate-500">Session ID:</span>
-                    <code className="ml-2 text-slate-400 text-[10px] break-all">{session.id}</code>
+                    <span className="text-muted-foreground">Session ID:</span>
+                    <code className="ml-2 text-muted-foreground break-all tabular-nums">{session.id}</code>
                   </div>
                   <div>
-                    <span className="text-slate-500">IP:</span>
-                    <span className="ml-2 text-slate-400">{'—'}</span>
+                    <span className="text-muted-foreground">IP:</span>
+                    <span className="ml-2 text-muted-foreground">{'—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500">User Agent:</span>
-                    <span className="ml-2 text-slate-400 truncate block">{'—'}</span>
+                    <span className="text-muted-foreground">User Agent:</span>
+                    <span className="ml-2 text-muted-foreground truncate block">{'—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Süre:</span>
-                    <span className="ml-2 text-slate-400">
+                    <span className="text-muted-foreground">Süre:</span>
+                    <span className="ml-2 text-muted-foreground tabular-nums">
                       {session.events.length > 1
                         ? formatDuration(
                             Math.floor(
@@ -305,8 +305,8 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Oluşturulma:</span>
-                    <span className="ml-2 text-slate-400">
+                    <span className="text-muted-foreground">Oluşturulma:</span>
+                    <span className="ml-2 text-muted-foreground tabular-nums">
                       {formatTimestamp(session.created_at, {
                         day: '2-digit',
                         month: '2-digit',

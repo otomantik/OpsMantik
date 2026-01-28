@@ -1,6 +1,7 @@
 'use client';
 
 import { Phone, TrendingUp } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface IntentTypeBadgeProps {
   type: 'call' | 'conversion';
@@ -9,17 +10,17 @@ interface IntentTypeBadgeProps {
 export function IntentTypeBadge({ type }: IntentTypeBadgeProps) {
   if (type === 'call') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-500/30 bg-blue-500/10 text-[10px] font-mono text-blue-400">
-        <Phone className="h-3 w-3" />
+      <Badge variant="secondary" className="gap-1">
+        <Phone className="h-4 w-4" />
         Çağrı
-      </span>
+      </Badge>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-mono text-emerald-400">
-      <TrendingUp className="h-3 w-3" />
+    <Badge variant="secondary" className="gap-1">
+      <TrendingUp className="h-4 w-4" />
       Dönüşüm
-    </span>
+    </Badge>
   );
 }

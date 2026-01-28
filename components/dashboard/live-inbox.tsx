@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { formatTimestamp } from '@/lib/utils';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { LazySessionDrawer } from './lazy-session-drawer';
@@ -315,7 +316,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
         <CardHeader className="pb-3 border-b border-border">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-base font-mono uppercase tracking-tight">
+              <CardTitle className="text-base font-semibold tracking-tight">
                 Intent Inbox
               </CardTitle>
               <div className="text-sm text-muted-foreground mt-1">
@@ -336,7 +337,34 @@ export function LiveInbox({ siteId }: { siteId: string }) {
             </div>
           )}
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
+            <div className="p-4">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow>
+                    <TableHead className="text-sm">Time (TRT)</TableHead>
+                    <TableHead className="text-sm">Type</TableHead>
+                    <TableHead className="text-sm">Target</TableHead>
+                    <TableHead className="text-sm">Page</TableHead>
+                    <TableHead className="text-sm">Click ID</TableHead>
+                    <TableHead className="text-sm">Stamp</TableHead>
+                    <TableHead className="text-sm">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : rows.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted-foreground">No recent intents.</div>
           ) : (
@@ -378,7 +406,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                         className="cursor-pointer"
                         onClick={() => setSelected(it)}
                       >
-                        <TableCell className="text-sm tabular-nums font-mono" suppressHydrationWarning>
+                        <TableCell className="text-sm tabular-nums" suppressHydrationWarning>
                           {typeof window !== 'undefined'
                             ? formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                             : '—'}
@@ -386,7 +414,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                         <TableCell className="text-sm">
                           <Badge variant={t.variant}>{t.label}</Badge>
                         </TableCell>
-                        <TableCell className="text-sm font-mono">
+                        <TableCell className="text-sm">
                           <div className="flex items-center gap-2">
                             <span className="tabular-nums">{maskTarget(it.intent_target)}</span>
                             {it.intent_target && (
@@ -413,14 +441,14 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                                 <span className="block max-w-[360px] truncate">{pagePath}</span>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <div className="font-mono text-sm">{it.intent_page_url}</div>
+                                <div className="text-sm">{it.intent_page_url}</div>
                               </TooltipContent>
                             </Tooltip>
                           ) : (
                             '—'
                           )}
                         </TableCell>
-                        <TableCell className="text-sm font-mono">
+                        <TableCell className="text-sm">
                           <div className="flex flex-wrap gap-1">
                             {clickIds.length === 0 ? (
                               <span className="text-muted-foreground">—</span>
@@ -433,7 +461,7 @@ export function LiveInbox({ siteId }: { siteId: string }) {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm font-mono tabular-nums">
+                        <TableCell className="text-sm tabular-nums">
                           <div className="flex items-center gap-2">
                             <span>{shortId(it.intent_stamp, 10)}</span>
                             {it.intent_stamp && (

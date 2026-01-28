@@ -271,37 +271,37 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   Score: {call.lead_score}
                 </span>
                 {isIntent && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold">
+                  <span className="text-sm px-2 py-1 rounded bg-amber-500/10 text-amber-700 border border-amber-200 font-semibold">
                     INTENT
                   </span>
                 )}
                 {isReal && call.matched_session_id && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <span className="text-sm px-2 py-1 rounded bg-emerald-500/10 text-emerald-700 border border-emerald-200">
                     ✓ MATCH
                   </span>
                 )}
                 {isConfirmed && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 font-semibold">
+                  <span className="text-sm px-2 py-1 rounded bg-blue-500/10 text-blue-700 border border-blue-200 font-semibold">
                     CONFIRMED
                   </span>
                 )}
                 {call.matched_session_id && !isIntent && (
-                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 ${confidence.color} border border-slate-600/50`}>
+                  <span className={`text-sm px-2 py-1 rounded bg-muted text-foreground border border-border ${confidence.color}`}>
                     {confidence.label}
                   </span>
                 )}
                 {!call.matched_session_id && !isIntent && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
+                  <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
                     NO MATCH
                   </span>
                 )}
                 {isSuspicious && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-semibold">
+                  <span className="text-sm px-2 py-1 rounded bg-yellow-500/10 text-yellow-800 border border-yellow-200 font-semibold">
                     ⚠️ SUSPICIOUS
                   </span>
                 )}
                 {isReal && (
-                  <span className="font-mono text-[10px] text-slate-500">
+                  <span className="text-sm text-muted-foreground">
                     Window: 30m
                   </span>
                 )}
@@ -316,7 +316,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     variant="ghost"
                     size="sm"
                     onClick={handleViewSession}
-                    className="h-10 px-3 lg:h-7 lg:px-2 text-xs font-mono text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30"
+                    className="h-10 px-3 lg:h-9 lg:px-3 text-sm text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 border border-emerald-200"
                     title="Jump to Session"
                   >
                     <ExternalLink className="w-3 h-3 mr-1" />
@@ -328,7 +328,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     variant="ghost"
                     size="sm"
                     disabled
-                    className="h-10 px-3 lg:h-7 lg:px-2 text-xs font-mono text-slate-500 border border-slate-700/30"
+                    className="h-10 px-3 lg:h-9 lg:px-3 text-sm text-muted-foreground border border-border"
                     title="No session matched"
                   >
                     <ExternalLink className="w-3 h-3 mr-1" />
@@ -407,7 +407,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
               </div>
               {/* Session not found feedback */}
               {showSessionNotFound && (
-                <p className="text-[10px] font-mono text-yellow-400 animate-pulse mt-0.5">
+                <p className="text-sm text-yellow-700 animate-pulse mt-0.5">
                   ⚠️ Session not in current view
                 </p>
               )}
@@ -423,14 +423,14 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 <Info className="w-3.5 h-3.5 text-slate-400" />
                 <p className="font-mono text-xs font-semibold text-slate-300">MATCHING DETAILS</p>
               </div>
-              <div className="space-y-2 text-xs font-mono">
+              <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Fingerprint:</span>
-                  <span className="text-slate-300 text-[10px]">{maskFingerprint(call.matched_fingerprint)}</span>
+                  <span className="text-slate-300 tabular-nums">{maskFingerprint(call.matched_fingerprint)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Session ID:</span>
-                  <span className="text-slate-300 text-[10px]">
+                  <span className="text-slate-300 tabular-nums">
                     {call.matched_session_id ? `${call.matched_session_id.slice(0, 8)}...` : '—'}
                   </span>
                 </div>
@@ -443,7 +443,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 {call.matched_at && (
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Matched At:</span>
-                    <span className="text-slate-300 text-[10px]">
+                    <span className="text-slate-300 tabular-nums">
                       {formatTimestamp(call.matched_at, {
                         month: 'short',
                         day: 'numeric',
@@ -467,7 +467,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   <Info className="w-3.5 h-3.5 text-yellow-400" />
                   <p className="font-mono text-xs font-semibold text-yellow-400">SUSPICIOUS MATCH</p>
                 </div>
-                <p className="text-[10px] text-yellow-300 font-mono">
+                <p className="text-sm text-yellow-800">
                   This match may be invalid. Session was created after call match time. 
                   Please review manually before confirming.
                 </p>
@@ -509,7 +509,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                   </div>
                 </div>
               ) : (
-                <div className="text-[10px] text-slate-500 font-mono">
+                <div className="text-sm text-slate-500">
                   Score breakdown not available
                 </div>
               )}

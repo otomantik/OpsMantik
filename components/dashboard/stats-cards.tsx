@@ -4,6 +4,8 @@ import { useDashboardStats } from '@/lib/hooks/use-dashboard-stats';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { RefreshCw, AlertCircle, Info } from 'lucide-react';
 
 interface StatsCardsProps {
@@ -24,19 +26,21 @@ function KpiLabel({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-center gap-2">
-        <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">{label}</div>
-        <div className="relative group">
-          <button
-            type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            aria-label={`${label} tooltip`}
-          >
-            <Info className="h-4 w-4" />
-          </button>
-          <div className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-[260px] rounded border border-slate-200 bg-white p-3 text-sm font-mono text-slate-800 shadow-lg group-hover:block">
-            {tooltip}
-          </div>
-        </div>
+        <div className="text-sm text-muted-foreground uppercase tracking-wider">{label}</div>
+        <Tooltip>
+          <TooltipTrigger>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted"
+              aria-label={`${label} tooltip`}
+            >
+              <Info className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="w-[280px]">
+            <div className="text-sm">{tooltip}</div>
+          </TooltipContent>
+        </Tooltip>
       </div>
       {rightSlot}
     </div>
@@ -68,7 +72,7 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
       <Card className="border border-rose-200 bg-rose-50">
         <CardContent className="flex flex-col items-center justify-center py-8 text-center">
           <AlertCircle className="w-10 h-10 text-rose-600 mb-2" />
-          <p className="text-rose-800 font-mono text-sm mb-4">Critical failure: {error}</p>
+          <p className="text-rose-800 text-sm mb-4">Critical failure: {error}</p>
           <Button
             variant="outline"
             size="sm"
@@ -103,11 +107,12 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
   const fmt = (n: number | null) => (n === null ? '…' : n.toLocaleString());
 
   return (
+    <TooltipProvider>
     <div className="space-y-4">
       {/* No Activity Helper - Only show when all zeros */}
       {hasNoActivity && (
         <div className="px-4 py-2 bg-slate-100 border border-slate-200 rounded-lg">
-          <p className="text-sm font-mono text-slate-700 text-center">
+          <p className="text-sm text-muted-foreground text-center">
             No activity yet • Send events from your site to see metrics here
           </p>
         </div>
@@ -115,7 +120,7 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Ads Sessions */}
-        <Card className="bg-white border border-slate-200 shadow-sm">
+        <Card className="bg-background text-foreground border border-border shadow-sm">
           <CardContent className="p-4">
             <KpiLabel
               label="Ads Sessions"
@@ -132,79 +137,80 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
                 </Button>
               }
             />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold font-mono tabular-nums text-slate-900">
-              {fmt(adsSessions)}
+            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
+              {loading ? <Skeleton className="h-10 w-24" /> : fmt(adsSessions)}
             </div>
-            <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-mono text-slate-700">
+            <div className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
               KPI
             </div>
           </CardContent>
         </Card>
 
         {/* Phone Click Intents */}
-        <Card className="bg-white border border-slate-200 shadow-sm">
+        <Card className="bg-background text-foreground border border-border shadow-sm">
           <CardContent className="p-4">
             <KpiLabel
               label="Phone Click Intents"
               tooltip="Phone click intents (calls.source='click', status intent/null) matched to an Ads session in-range."
             />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold font-mono tabular-nums text-slate-900">
-              {fmt(phoneIntents)}
+            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
+              {loading ? <Skeleton className="h-10 w-24" /> : fmt(phoneIntents)}
             </div>
-            <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-mono text-slate-700">
+            <div className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
               Click
             </div>
           </CardContent>
         </Card>
 
         {/* WhatsApp Click Intents */}
-        <Card className="bg-white border border-slate-200 shadow-sm">
+        <Card className="bg-background text-foreground border border-border shadow-sm">
           <CardContent className="p-4">
             <KpiLabel
               label="WhatsApp Click Intents"
               tooltip="WhatsApp click intents (calls.source='click', status intent/null) matched to an Ads session in-range."
             />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold font-mono tabular-nums text-slate-900">
-              {fmt(whatsappIntents)}
+            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
+              {loading ? <Skeleton className="h-10 w-24" /> : fmt(whatsappIntents)}
             </div>
-            <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-mono text-slate-700">
+            <div className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
               Click
             </div>
           </CardContent>
         </Card>
 
         {/* Forms */}
-        <Card className={formsEnabled ? "bg-white border border-slate-200 shadow-sm" : "bg-slate-50 border border-dashed border-slate-200 shadow-sm"}>
+        <Card className={formsEnabled ? "bg-background text-foreground border border-border shadow-sm" : "bg-muted text-muted-foreground border border-dashed border-border shadow-sm"}>
           <CardContent className="p-4">
             <KpiLabel
               label="Forms"
               tooltip="Form conversions (events.category='conversion' AND action='form_submit'). If a site never sends form_submit, this KPI shows Hidden."
             />
-            <div className={`mt-3 text-[2.5rem] leading-none font-bold font-mono tabular-nums ${formsEnabled ? 'text-slate-900' : 'text-slate-500'}`}>
-              {formsEnabled ? fmt(forms) : 'Hidden'}
+            <div className={`mt-3 text-[2.5rem] leading-none font-bold tabular-nums`}>
+              {loading ? <Skeleton className="h-10 w-24" /> : (formsEnabled ? fmt(forms) : 'Hidden')}
             </div>
-            <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-mono text-slate-700">
+            <div className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
               Conversion
             </div>
           </CardContent>
         </Card>
 
         {/* Sealed */}
-        <Card className="bg-white border border-slate-200 shadow-sm">
+        <Card className="bg-background text-foreground border border-border shadow-sm">
           <CardContent className="p-4">
             <KpiLabel
               label="Sealed"
               tooltip="Sealed calls: status in (confirmed, qualified, real) matched to an Ads session in-range."
             />
-            <div className="mt-3 text-[2.5rem] leading-none font-bold font-mono tabular-nums text-slate-900">
-              {fmt(sealed)}
+            <div className="mt-3 text-[2.5rem] leading-none font-bold tabular-nums">
+              {loading ? <Skeleton className="h-10 w-24" /> : fmt(sealed)}
             </div>
-            <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-mono text-slate-700">
+            <div className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
               Outcome
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

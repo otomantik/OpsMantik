@@ -10,6 +10,7 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Inbox, Search, X } from 'lucide-react';
 import { useIntents, IntentRow, IntentFilter } from '@/lib/hooks/use-intents';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
@@ -211,39 +212,39 @@ export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedge
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Zaman</th>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Tür</th>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Sayfa</th>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Şehir/Cihaz</th>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Durum</th>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Güven</th>
-                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background">
+                <TableRow>
+                  <TableHead className="text-sm">Time</TableHead>
+                  <TableHead className="text-sm">Type</TableHead>
+                  <TableHead className="text-sm">Page</TableHead>
+                  <TableHead className="text-sm">City/Device</TableHead>
+                  <TableHead className="text-sm">Status</TableHead>
+                  <TableHead className="text-sm">Confidence</TableHead>
+                  <TableHead className="text-sm"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredIntents.map((intent) => (
-                  <tr
+                  <TableRow
                     key={intent.id}
-                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    className="cursor-pointer"
                     onClick={() => setSelectedIntent(intent)}
                   >
-                    <td className="p-3">
+                    <TableCell>
                       {/* FIX 2: Ensure timestamp is string before formatting */}
-                      <div className="text-sm font-mono text-slate-900" suppressHydrationWarning>
+                      <div className="text-sm tabular-nums" suppressHydrationWarning>
                         {formatTimestamp(intent?.timestamp || null, { hour: '2-digit', minute: '2-digit' })}
                       </div>
-                      <div className="text-sm font-mono text-slate-600 mt-0.5" suppressHydrationWarning>
+                      <div className="text-sm text-muted-foreground mt-0.5 tabular-nums" suppressHydrationWarning>
                         {formatTimestamp(intent?.timestamp || null, { day: '2-digit', month: 'short' })}
                       </div>
-                    </td>
-                    <td className="p-3">
+                    </TableCell>
+                    <TableCell>
                       <IntentTypeBadge type={intent.type} />
-                    </td>
-                    <td className="p-3">
-                      <div className="max-w-xs truncate text-sm font-mono text-slate-900">
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-xs truncate text-sm">
                         {intent.page_url ? (() => {
                           try {
                             return new URL(intent.page_url).pathname;
@@ -252,38 +253,38 @@ export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedge
                           }
                         })() : 'N/A'}
                       </div>
-                      <div className="text-sm font-mono text-slate-600 truncate max-w-xs">
+                      <div className="text-sm text-muted-foreground truncate max-w-xs">
                         {intent.page_url || ''}
                       </div>
-                    </td>
-                    <td className="p-3">
-                      <div className="text-sm font-mono text-slate-900">
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
                         {intent.city || 'Bilinmiyor'}
                       </div>
-                      <div className="text-sm font-mono text-slate-600">
+                      <div className="text-sm text-muted-foreground">
                         {intent.device_type || 'N/A'}
                       </div>
-                    </td>
-                    <td className="p-3">
+                    </TableCell>
+                    <TableCell>
                       <IntentStatusBadge
                         status={intent.status}
                         sealedAt={intent.sealed_at}
                       />
-                    </td>
-                    <td className="p-3">
+                    </TableCell>
+                    <TableCell>
                       <ConfidenceScore score={intent.confidence_score} />
-                    </td>
-                    <td className="p-3">
+                    </TableCell>
+                    <TableCell>
                       {intent.matched_session_id && (
-                        <span className="inline-flex items-center px-2 py-1 rounded border border-slate-200 bg-slate-50 text-sm font-mono text-slate-700">
+                        <span className="inline-flex items-center px-2 py-1 rounded border border-border bg-muted text-sm text-muted-foreground">
                           Görüşme Var
                         </span>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </CardContent>

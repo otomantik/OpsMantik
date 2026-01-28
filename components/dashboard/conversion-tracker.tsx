@@ -146,7 +146,7 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
                         {conv.event_label}
                       </p>
                     )}
-                    <p className="font-mono text-[10px] text-slate-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1 tabular-nums">
                       Session: {conv.session_id.slice(0, 8)}...
                     </p>
                   </div>
@@ -171,7 +171,7 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
                   </div>
                 )}
                 
-                <p className="font-mono text-[10px] text-slate-600 mt-2">
+                <p className="text-sm text-muted-foreground mt-2 tabular-nums">
                   {formatTimestamp(conv.created_at)}
                 </p>
               </div>

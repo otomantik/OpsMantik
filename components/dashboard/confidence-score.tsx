@@ -1,5 +1,7 @@
 'use client';
 
+import { Badge } from '@/components/ui/badge';
+
 interface ConfidenceScoreProps {
   score: number;
 }
@@ -18,8 +20,11 @@ export function ConfidenceScore({ score }: ConfidenceScoreProps) {
   };
 
   return (
-    <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded border text-[10px] font-mono font-semibold ${getScoreColor(score)} ${getScoreBg(score)}`}>
+    <Badge
+      variant="outline"
+      className={`tabular-nums font-semibold ${getScoreColor(score)} ${getScoreBg(score)}`}
+    >
       {Math.round(score)}
-    </span>
+    </Badge>
   );
 }

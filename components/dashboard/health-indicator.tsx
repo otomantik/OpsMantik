@@ -64,10 +64,10 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
     <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg">
       {getStatusIcon()}
       <div className="flex flex-col">
-        <span className={`text-xs font-mono uppercase tracking-wider ${getStatusColor()}`}>
+        <span className={`text-sm uppercase tracking-wider ${getStatusColor()}`}>
           {health.status === 'healthy' ? 'Sağlıklı' : health.status === 'degraded' ? 'Düşük' : 'Kritik'}
         </span>
-        <span className="text-xs font-mono text-slate-600">
+        <span className="text-sm text-muted-foreground tabular-nums">
           {formatLatency(health.data_latency)} TRT
         </span>
       </div>
