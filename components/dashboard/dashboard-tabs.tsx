@@ -227,6 +227,7 @@ export function DashboardTabs({ siteId }: { siteId: string }) {
 
   const effectiveTodayRange = todayRange || urlRange;
   const effectiveCustomRange = customRange || (tab === 'custom' ? urlRange : null);
+  const pickerRange = tab === 'today' ? effectiveTodayRange : tab === 'custom' ? effectiveCustomRange || effectiveTodayRange : null;
 
   return (
     <div className="space-y-6">
@@ -239,10 +240,10 @@ export function DashboardTabs({ siteId }: { siteId: string }) {
               <TabsTrigger value="custom">Custom</TabsTrigger>
             </TabsList>
 
-            {(tab === 'today' || tab === 'custom') && (
+            {(tab === 'today' || tab === 'custom') && pickerRange && (
               <div className="w-full sm:w-auto">
                 <DateRangePicker
-                  value={(tab === 'today' ? effectiveTodayRange : effectiveCustomRange) || (effectiveTodayRange as any)}
+                  value={pickerRange}
                   onSelect={setRangeFromPicker}
                   onPresetSelect={applyPreset}
                   presets={presets}
