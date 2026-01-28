@@ -77,7 +77,7 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="bg-white border-rose-300 text-rose-800 hover:bg-rose-100"
+            className="bg-background border-rose-300 text-rose-800 hover:bg-rose-100"
           >
             <RefreshCw className="w-3 h-3 mr-2" />
             Retry Connection

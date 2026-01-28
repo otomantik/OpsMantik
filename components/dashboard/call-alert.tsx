@@ -282,7 +282,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-2">
-                <span className={`text-xs px-2 py-1 rounded font-semibold ${scoreStyle.badgeClass}`}>
+                <span className={`text-sm px-2 py-1 rounded font-semibold ${scoreStyle.badgeClass}`}>
                   Score: {call.lead_score}
                 </span>
                 {isIntent && (
@@ -436,7 +436,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground">MATCHING DETAILS</p>
+                <p className="text-sm font-semibold text-muted-foreground">MATCHING DETAILS</p>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
@@ -491,9 +491,9 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
 
             {/* Score Breakdown */}
             <div className="pt-2 border-t border-border">
-              <p className="text-xs text-muted-foreground mb-2">SCORE BREAKDOWN</p>
+              <p className="text-sm text-muted-foreground mb-2">SCORE BREAKDOWN</p>
               {call.score_breakdown ? (
-                <div className="space-y-1 text-xs">
+                <div className="space-y-1 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Conversion Points:</span>
                     <span className="text-foreground">{call.score_breakdown.conversionPoints}</span>

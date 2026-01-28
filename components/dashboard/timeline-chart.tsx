@@ -112,7 +112,7 @@ export function TimelineChart({
             <p className="text-muted-foreground text-sm uppercase tracking-widest">
               Veri yok
             </p>
-            <p className="text-muted-foreground text-xs mt-2 italic">
+            <p className="text-muted-foreground text-sm mt-2 italic">
               Seçili tarih aralığında veri bulunamadı
             </p>
           </div>

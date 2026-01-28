@@ -349,7 +349,7 @@ export function SitesManager() {
         {showAddForm && (
           <form onSubmit={handleSubmit} className="bg-muted/40 p-4 rounded border border-border space-y-3">
             <div>
-              <label htmlFor="site-name" className="block text-xs text-muted-foreground mb-1">
+              <label htmlFor="site-name" className="block text-sm text-muted-foreground mb-1">
                 Site Name *
               </label>
               <input
@@ -363,7 +363,7 @@ export function SitesManager() {
               />
             </div>
             <div>
-              <label htmlFor="domain" className="block text-xs text-muted-foreground mb-1">
+              <label htmlFor="domain" className="block text-sm text-muted-foreground mb-1">
                 Domain *
               </label>
               <input
@@ -375,7 +375,7 @@ export function SitesManager() {
                 className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="example.com"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Protocol and path will be stripped automatically
               </p>
             </div>
@@ -409,11 +409,11 @@ export function SitesManager() {
               </div>
             )}
             <div>
-              <label className="block text-xs text-muted-foreground mb-2">
+              <label className="block text-sm text-muted-foreground mb-2">
                 Install Snippet:
               </label>
               <div className="flex gap-2">
-                <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-xs break-all">
+                <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-sm break-all">
                   {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${newSite.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                 </code>
                 <Button
@@ -448,7 +448,7 @@ export function SitesManager() {
                     <p className="text-sm text-muted-foreground mt-1">
                       {site.domain}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                    <p className="text-sm text-muted-foreground mt-1 tabular-nums">
                       ID: <code className="text-foreground">{site.public_id}</code>
                     </p>
                   </div>
@@ -457,7 +457,7 @@ export function SitesManager() {
                 {/* Install Status & Verification */}
                 <div className="pt-2 border-t border-border">
                   <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs text-muted-foreground">
+                    <label className="block text-sm text-muted-foreground">
                       Install Status:
                     </label>
                     <Button
@@ -472,7 +472,7 @@ export function SitesManager() {
                   {siteStatus[site.id] && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className={`text-xs ${
+                        <span className={`text-sm ${
                           siteStatus[site.id].status === 'Receiving events' 
                             ? 'text-emerald-700' 
                             : 'text-muted-foreground'
@@ -482,7 +482,7 @@ export function SitesManager() {
                       </div>
                       
                       {siteStatus[site.id].last_event_at ? (
-                        <div className="text-xs space-y-1">
+                        <div className="text-sm space-y-1">
                           <p className="text-muted-foreground tabular-nums">
                             Last event: <span className="text-foreground">
                               {formatTimestamp(siteStatus[site.id].last_event_at!)}
@@ -490,7 +490,7 @@ export function SitesManager() {
                           </p>
                           {siteStatus[site.id].last_session_id && (
                             <p className="text-muted-foreground tabular-nums">
-                              Session: <span className="text-foreground text-xs">
+                              Session: <span className="text-foreground text-sm">
                                 {siteStatus[site.id].last_session_id?.slice(0, 8)}...
                               </span>
                             </p>
@@ -516,8 +516,8 @@ export function SitesManager() {
 
                   {/* Install Instructions */}
                   <div className="mt-3 pt-3 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Install Snippet:</p>
-                    <code className="block px-2 py-1 bg-muted/40 border border-border rounded text-foreground text-xs break-all">
+                    <p className="text-sm text-muted-foreground mb-2">Install Snippet:</p>
+                    <code className="block px-2 py-1 bg-muted/40 border border-border rounded text-foreground text-sm break-all">
                       {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${site.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
                     <p className="text-sm text-muted-foreground mt-2">
@@ -531,7 +531,7 @@ export function SitesManager() {
 
                 {/* Invite Customer Form */}
                 <div className="pt-2 border-t border-border">
-                  <label className="block text-xs text-muted-foreground mb-2">
+                  <label className="block text-sm text-muted-foreground mb-2">
                     Invite Customer:
                   </label>
                   <div className="flex gap-2">
@@ -562,8 +562,8 @@ export function SitesManager() {
                       <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message}</p>
                       {inviteSuccess[site.id].loginUrl && (
                         <div>
-                          <p className="text-xs text-muted-foreground mb-1">Login URL:</p>
-                          <code className="block px-2 py-1 bg-background border border-border rounded text-foreground text-xs break-all tabular-nums">
+                          <p className="text-sm text-muted-foreground mb-1">Login URL:</p>
+                          <code className="block px-2 py-1 bg-background border border-border rounded text-foreground text-sm break-all tabular-nums">
                             {inviteSuccess[site.id].loginUrl}
                           </code>
                         </div>

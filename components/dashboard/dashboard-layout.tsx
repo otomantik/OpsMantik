@@ -21,8 +21,8 @@ import { formatTimestamp } from '@/lib/utils';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { ChevronLeft, Menu } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from '@/components/ui/sheet';
+import { ChevronLeft, Menu, X } from 'lucide-react';
 import { DashboardTabs } from '@/components/dashboard/dashboard-tabs';
 
 export interface DashboardStats {
@@ -121,7 +121,14 @@ export function DashboardLayout({
                   </SheetTrigger>
                   <SheetContent side="left">
                     <div className="space-y-4">
-                      <div className="text-base font-semibold">Dashboard</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-base font-semibold">Dashboard</div>
+                        <SheetClose>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </SheetClose>
+                      </div>
                       <div className="space-y-2">
                         <Link href="/dashboard" className="block text-sm text-muted-foreground hover:text-foreground">
                           ← Back to Dashboard

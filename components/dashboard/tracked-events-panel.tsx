@@ -138,10 +138,10 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs font-semibold ${getCategoryColor(eventType.category)}`}>
+                    <span className={`text-sm font-semibold ${getCategoryColor(eventType.category)}`}>
                       {eventType.category.toUpperCase()}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-sm text-muted-foreground">
                       {eventType.action}
                     </span>
                   </div>
