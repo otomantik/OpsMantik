@@ -11,9 +11,14 @@
   
   /* Reset line-height to standard */
   line-height: 1.5;
-  
-  /* Base font size (14px = text-sm) */
-  font-size: 14px;
+ 
+  /*
+   * IMPORTANT:
+   * Do NOT change the base font-size here.
+   * Tailwind/shadcn sizing relies on rem (16px base). Setting 14px compresses the entire scale.
+   * Enforce minimum readable text via component classes (avoid text-xs), not by changing rem base.
+   */
+  font-size: inherit;
   
   /* Reset box-sizing */
   box-sizing: border-box;
@@ -30,19 +35,7 @@
   box-sizing: border-box;
 }
 
-/* Reset table styles (legacy tables may have custom styles) */
-.om-dashboard-reset table {
-  border-collapse: collapse;
-  border-spacing: 0;
-  width: 100%;
-}
-
-.om-dashboard-reset th,
-.om-dashboard-reset td {
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  border: none;
-}
+/* Avoid overriding shadcn Table paddings; keep reset minimal */
 
 /* Reset buttons */
 .om-dashboard-reset button {

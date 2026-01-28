@@ -162,12 +162,12 @@ export function IntentQualificationCard({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
-                    <span className="text-muted-foreground font-mono text-xs cursor-help">
+                    <span className="text-muted-foreground font-mono text-sm cursor-help">
                       {clickIdDisplay}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p className="text-xs">Click to view session details</p>
+                    <p className="text-sm">Click to view session details</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -213,7 +213,7 @@ export function IntentQualificationCard({
                 </Button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               1 = Low quality, 5 = High quality lead
             </p>
           </div>

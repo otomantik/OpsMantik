@@ -26,7 +26,7 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
         <aside className="hidden md:flex w-64 flex-col border-r border-border bg-background">
           <div className="px-4 py-4 border-b border-border">
             <div className="text-sm font-semibold truncate">{siteName || siteDomain || 'Ads Command Center'}</div>
-            <div className="text-xs text-muted-foreground truncate">Qualification workflow</div>
+            <div className="text-sm text-muted-foreground truncate">Qualification workflow</div>
           </div>
 
           <nav className="p-3 space-y-1">

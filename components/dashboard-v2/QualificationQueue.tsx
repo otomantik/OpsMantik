@@ -261,7 +261,7 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
                       <TableCell className="hidden lg:table-cell">
                         <span className="truncate text-muted-foreground">{shortPage}</span>
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell font-mono text-xs text-muted-foreground">
+                      <TableCell className="hidden lg:table-cell font-mono text-sm text-muted-foreground">
                         {shortClick}
                       </TableCell>
                       <TableCell className="text-right">
