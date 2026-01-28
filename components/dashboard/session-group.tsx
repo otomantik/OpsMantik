@@ -123,15 +123,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     fetchSessionData();
   }, [siteId, sessionId, adsOnly]);
 
-  // Ads-only mode: don't render anything until gate check completes (prevents non-ads flash)
-  if (adsOnly && !adsGateChecked) {
-    return null;
-  }
-  if (adsOnly && isExcludedByAdsOnly) {
-    return null;
-  }
-  
-  // Use session data first, fallback to event metadata
+  // Use session data first, fallback to event metadata (before any early return so hook count is stable)
   // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant
   const attributionSource = sessionData?.attribution_source || metadata.attribution_source;
   const intelligenceSummary = metadata.intelligence_summary || 'Standard Traffic';
@@ -191,7 +183,16 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
         }
         setIsLoadingCall(false);
       });
-  }, [sessionId]);
+  }, [sessionId, sessionData]);
+
+  // Ads-only mode: don't render anything until gate check completes (prevents non-ads flash)
+  // MUST be after ALL hooks to avoid React "Rendered more hooks than during the previous render" (310)
+  if (adsOnly && !adsGateChecked) {
+    return null;
+  }
+  if (adsOnly && isExcludedByAdsOnly) {
+    return null;
+  }
 
   // Get icon for event action
   const getEventIcon = (action: string | null | undefined) => {
