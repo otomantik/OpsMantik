@@ -112,7 +112,7 @@ export function TimelineChart({
             <p className="text-slate-400 font-mono text-sm uppercase tracking-widest">
               Veri yok
             </p>
-            <p className="text-slate-600 font-mono text-[10px] mt-2 italic">
+            <p className="text-slate-600 font-mono text-xs mt-2 italic">
               Seçili tarih aralığında veri bulunamadı
             </p>
           </div>
@@ -155,7 +155,7 @@ export function TimelineChart({
                 y1={y}
                 x2={chartWidth - padding.right}
                 y2={y}
-                stroke="#1e293b"
+                stroke="#94a3b8"
                 strokeWidth={1}
                 strokeDasharray="2 2"
               />
@@ -250,7 +250,7 @@ export function TimelineChart({
                 x={x}
                 y={chartHeight - padding.bottom + 20}
                 textAnchor="middle"
-                className="text-[10px] font-mono fill-slate-400"
+                className="text-xs font-mono fill-slate-600"
               >
                 {point.label}
               </text>
@@ -262,10 +262,10 @@ export function TimelineChart({
   };
 
   return (
-    <Card className="glass border-slate-800/50">
-      <CardHeader className="pb-3 border-b border-slate-800/20">
+    <Card className="bg-white border border-slate-200 shadow-sm">
+      <CardHeader className="pb-3 border-b border-slate-200">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-mono text-slate-200 uppercase tracking-tighter">
+          <CardTitle className="text-sm font-mono text-slate-900 uppercase tracking-tighter">
             Zaman Çizelgesi
           </CardTitle>
           
@@ -274,15 +274,15 @@ export function TimelineChart({
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Trafik</span>
+                <span className="text-xs font-mono text-slate-600 uppercase">Trafik</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Etkinlik</span>
+                <span className="text-xs font-mono text-slate-600 uppercase">Etkinlik</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-purple-500" />
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Çağrılar</span>
+                <span className="text-xs font-mono text-slate-600 uppercase">Çağrılar</span>
               </div>
             </div>
 
@@ -292,9 +292,9 @@ export function TimelineChart({
               size="sm"
               onClick={() => handleRefresh(false)}
               disabled={isRefreshing || loading}
-              className="h-7 w-7 p-0 bg-slate-800/30 hover:bg-slate-700/50 border border-slate-700/50"
+              className="h-7 w-7 p-0 bg-slate-100 hover:bg-slate-200 border border-slate-200"
             >
-              <RefreshCw className={`h-3 w-3 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3 w-3 text-slate-600 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
@@ -304,12 +304,12 @@ export function TimelineChart({
         {error ? (
           <div className="h-[400px] flex items-center justify-center">
             <div className="text-center">
-              <p className="text-rose-400 font-mono text-sm mb-2">Hata: {error}</p>
+              <p className="text-rose-600 font-mono text-sm mb-2">Hata: {error}</p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleRefresh(false)}
-                className="bg-slate-800/60 border-slate-700/50 text-slate-200"
+                className="bg-white border-rose-300 text-rose-800 hover:bg-rose-50"
               >
                 Tekrar Dene
               </Button>
@@ -319,7 +319,7 @@ export function TimelineChart({
           <div className="h-[400px] flex items-center justify-center">
             <div className="text-center">
               <RefreshCw className="h-8 w-8 text-slate-600 animate-spin mx-auto mb-4" />
-              <p className="text-slate-400 font-mono text-sm uppercase tracking-widest">
+              <p className="text-slate-600 font-mono text-sm uppercase tracking-widest">
                 Yükleniyor...
               </p>
             </div>
@@ -328,10 +328,8 @@ export function TimelineChart({
           <>
             {renderChart()}
             
-            {/* Last Updated */}
-            {/* FIX 1: Suppress hydration warning for timestamp */}
             <div className="mt-4 flex items-center justify-between">
-              <div className="text-[10px] font-mono text-slate-500" suppressHydrationWarning>
+              <div className="text-xs font-mono text-slate-600" suppressHydrationWarning>
                 Son güncelleme: {formatTimestamp(lastUpdated.toISOString(), { 
                   hour: '2-digit', 
                   minute: '2-digit',
@@ -339,10 +337,10 @@ export function TimelineChart({
                 })} TRT
                 {isRefreshing && ' (güncelleniyor...)'}
                 {hasNewData && (
-                  <span className="ml-2 text-emerald-400">• Yeni veri mevcut</span>
+                  <span className="ml-2 text-emerald-600">• Yeni veri mevcut</span>
                 )}
               </div>
-              <div className="text-[9px] font-mono text-slate-600 italic">
+              <div className="text-xs font-mono text-slate-600 italic">
                 Otomatik yenileme: {effectiveInterval === '5m' ? '5 dakika' : '30 dakika'}
               </div>
             </div>

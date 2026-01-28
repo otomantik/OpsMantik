@@ -12,21 +12,15 @@
 
 'use client';
 
-import { useDashboardDateRange } from '@/lib/hooks/use-dashboard-date-range';
-import { DateRangePicker } from './date-range-picker';
 import { HealthIndicator, DashboardHealth } from './health-indicator';
-import { StatsCards } from './stats-cards';
-import { LiveFeed } from './live-feed';
 import { MonthBoundaryBanner } from './month-boundary-banner';
-import { TimelineChart } from './timeline-chart';
-import { IntentLedger } from './intent-ledger';
-import { LiveInbox } from './live-inbox';
 import { RealtimePulse } from './realtime-pulse';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { formatTimestamp } from '@/lib/utils';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
+import { DashboardTabs } from './dashboard-tabs';
 
 export interface DashboardStats {
   site_id: string;
@@ -80,8 +74,6 @@ export function DashboardLayout({
   initialHealth,
   onSignOut,
 }: DashboardLayoutProps) {
-  const { range, presets, updateRange, applyPreset } = useDashboardDateRange(siteId);
-
   // Realtime dashboard connection
   const realtime = useRealtimeDashboard(siteId, {
     onDataFreshness: (lastEventAt) => {
@@ -99,42 +91,32 @@ export function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] relative">
+    <div className="min-h-screen bg-white text-slate-900 relative" data-dashboard="light">
       <MonthBoundaryBanner />
 
       {/* Top Bar - Command Center Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-900/40 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <div className="max-w-[1920px] mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-slate-500 hover:text-slate-300 transition-colors">
+            <Link href="/dashboard" className="text-slate-700 hover:text-slate-900 transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </Link>
-            <div className="h-6 w-[1px] bg-slate-800 mx-1"></div>
+            <div className="h-6 w-[1px] bg-slate-200 mx-1"></div>
             <div>
-              <h1 className="text-sm font-mono font-bold text-slate-100 uppercase tracking-tighter">
+              <h1 className="text-base font-mono font-bold text-slate-900 uppercase tracking-tighter">
                 {siteName || siteDomain || 'Site Analytics'}
               </h1>
               {/* FIX 1: Suppress hydration warning for timestamp */}
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none" suppressHydrationWarning>
+              <p className="text-sm font-mono text-slate-600 uppercase tracking-wider leading-none" suppressHydrationWarning>
                 Son güncelleme: {formatTimestamp(health.data_latency, { hour: '2-digit', minute: '2-digit' })} TRT
               </p>
             </div>
-            <span className="ml-2 inline-flex items-center px-2.5 py-1 rounded border border-amber-500/30 bg-amber-500/10 text-[10px] font-mono text-amber-300 uppercase tracking-[0.22em]">
+            <span className="ml-2 inline-flex items-center px-3 py-1 rounded border border-amber-400 bg-amber-50 text-sm font-mono text-amber-800 uppercase tracking-wider">
               ADS-ONLY MODE
             </span>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* DateRangePicker */}
-            <DateRangePicker
-              value={range}
-              onSelect={updateRange}
-              onPresetSelect={applyPreset}
-              presets={presets}
-              timezone="Europe/Istanbul"
-              maxRange={180} // 6 months max
-            />
-
             {/* Health Badge */}
             <HealthIndicator health={health} />
 
@@ -148,7 +130,7 @@ export function DashboardLayout({
 
             {process.env.NODE_ENV === 'development' && (
               <Link href="/test-page">
-                <Button variant="ghost" size="sm" className="text-[10px] font-mono text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 uppercase tracking-wider h-8">
+                <Button variant="ghost" size="sm" className="text-sm font-mono text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 uppercase tracking-wider h-9">
                   🧪 Simulator
                 </Button>
               </Link>
@@ -159,7 +141,7 @@ export function DashboardLayout({
                 variant="ghost"
                 size="sm"
                 onClick={onSignOut}
-                className="text-[10px] font-mono text-slate-400 hover:text-slate-200 uppercase tracking-wider h-8 border border-slate-800/50"
+                className="text-sm font-mono text-slate-700 hover:text-slate-900 uppercase tracking-wider h-9 border border-slate-200"
               >
                 Sign Out
               </Button>
@@ -170,30 +152,7 @@ export function DashboardLayout({
 
       {/* Main Grid */}
       <main className="max-w-[1920px] mx-auto p-6 space-y-6">
-        {/* Ads Command Center: KPI Row (Ads-only) */}
-        <section>
-          <StatsCards siteId={siteId} dateRange={range} adsOnly />
-        </section>
-
-        {/* Phase A: Live Inbox (fast, last 60m) */}
-        <section>
-          <LiveInbox siteId={siteId} />
-        </section>
-
-        {/* Optional: Timeline (Ads-only) */}
-        <section>
-          <TimelineChart siteId={siteId} dateRange={range} />
-        </section>
-
-        {/* Intent Ledger (Ads-only) */}
-        <section>
-          <IntentLedger siteId={siteId} dateRange={range} />
-        </section>
-
-        {/* Live Stream (Ads-only) */}
-        <section id="live-stream">
-          <LiveFeed siteId={siteId} adsOnly />
-        </section>
+        <DashboardTabs siteId={siteId} />
       </main>
     </div>
   );

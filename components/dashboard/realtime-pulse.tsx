@@ -22,16 +22,15 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
       {isConnected ? (
         <>
           <div className="relative">
-            <Wifi className="h-3.5 w-3.5 text-emerald-400" />
-            <div className="absolute -top-0.5 -right-0.5 h-2 w-2 bg-emerald-400 rounded-full animate-pulse" />
+            <Wifi className="h-3.5 w-3.5 text-emerald-600" />
+            <div className="absolute -top-0.5 -right-0.5 h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider">
+            <span className="text-xs font-mono text-emerald-600 uppercase tracking-wider">
               Live
             </span>
-            {/* FIX 1: Suppress hydration warning for timestamp */}
             {lastEventAt && (
-              <span className="text-[8px] font-mono text-slate-500" suppressHydrationWarning>
+              <span className="text-xs font-mono text-slate-600" suppressHydrationWarning>
                 {formatTimestamp(lastEventAt.toISOString(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
@@ -41,11 +40,11 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
         <>
           <WifiOff className="h-3.5 w-3.5 text-slate-600" />
           <div className="flex flex-col">
-            <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">
+            <span className="text-xs font-mono text-slate-600 uppercase tracking-wider">
               Offline
             </span>
             {error && (
-              <span className="text-[8px] font-mono text-rose-500 truncate max-w-[100px]">
+              <span className="text-xs font-mono text-rose-600 truncate max-w-[100px]">
                 {error}
               </span>
             )}
@@ -53,9 +52,9 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
         </>
       )}
       {eventCount > 0 && (
-        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800/30 border border-slate-700/50">
-          <Activity className="h-2.5 w-2.5 text-slate-400" />
-          <span className="text-[8px] font-mono text-slate-400">{eventCount}</span>
+        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">
+          <Activity className="h-2.5 w-2.5 text-slate-600" />
+          <span className="text-xs font-mono text-slate-600 tabular-nums">{eventCount}</span>
         </div>
       )}
     </div>

@@ -144,3 +144,16 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+/* ---------------------------------------------------------------------------
+   Phase C1: Dashboard Light Pro theme
+   - Use in dashboard only: light background, shadcn-style tokens.
+   - Typography: KPI 36–44px (tabular-nums), table 14–15px, meta 12–13px min.
+   --------------------------------------------------------------------------- */
+[data-dashboard="light"] {
+  --dashboard-kpi: 2.25rem;   /* 36px - use text-[length] or text-4xl */
+  --dashboard-kpi-lg: 2.75rem; /* 44px */
+  --dashboard-table: 0.875rem; /* 14px - text-sm */
+  --dashboard-meta: 0.75rem;  /* 12px - text-xs */
+  --dashboard-meta-min: 0.8125rem; /* 13px */
+}

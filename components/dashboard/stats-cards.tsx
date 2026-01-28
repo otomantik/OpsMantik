@@ -34,15 +34,15 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
 
   if (error) {
     return (
-      <Card className="glass border-rose-500/50 bg-rose-500/5">
+      <Card className="border border-rose-200 bg-rose-50">
         <CardContent className="flex flex-col items-center justify-center py-8 text-center">
-          <AlertCircle className="w-10 h-10 text-rose-400 mb-2" />
-          <p className="text-rose-200 font-mono text-sm mb-4">Critical failure: {error}</p>
+          <AlertCircle className="w-10 h-10 text-rose-600 mb-2" />
+          <p className="text-rose-800 font-mono text-sm mb-4">Critical failure: {error}</p>
           <Button
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60"
+            className="bg-white border-rose-300 text-rose-800 hover:bg-rose-100"
           >
             <RefreshCw className="w-3 h-3 mr-2" />
             Retry Connection
@@ -100,8 +100,8 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
     <div className="space-y-4">
       {/* No Activity Helper - Only show when all zeros */}
       {hasNoActivity && (
-        <div className="px-4 py-2 bg-slate-800/30 border border-slate-700/30 rounded-lg">
-          <p className="text-[11px] font-mono text-slate-400 text-center">
+        <div className="px-4 py-2 bg-slate-100 border border-slate-200 rounded-lg">
+          <p className="text-xs font-mono text-slate-600 text-center">
             No activity yet • Send events from your site to see metrics here
           </p>
         </div>
@@ -109,88 +109,87 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Ads Sessions - Emerald */}
-        <Card className="glass border-slate-800/50 hover:border-emerald-500/30 transition-colors group">
+        <Card className="bg-white border border-slate-200 hover:border-emerald-300 transition-colors group shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center justify-between">
+            <CardTitle className="text-xs font-mono text-slate-600 uppercase tracking-widest flex items-center justify-between">
               <span>Ads Sessions</span>
               {isActive && (
-                <div className="flex items-center gap-1.5 no-emerald-glow">
-                  <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]"></div>
-                  <span className="text-[9px] text-emerald-400">ACTIVE</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-xs text-emerald-600">ACTIVE</span>
                 </div>
               )}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-4xl font-bold font-mono text-emerald-400 group-hover:text-emerald-300 transition-colors">
+              <span className="text-4xl font-bold font-mono text-emerald-600 tabular-nums group-hover:text-emerald-700 transition-colors">
                 {displayAdsSessions}
               </span>
             </div>
             <div className="mt-2 space-y-1">
-              <p className="text-[10px] font-mono text-slate-500">Last activity: {formatLastSeen(stats?.last_event_at || null)}</p>
+              <p className="text-xs font-mono text-slate-600">Last activity: {formatLastSeen(stats?.last_event_at || null)}</p>
               <div className="flex items-center justify-between">
-                <p className="text-[9px] font-mono text-slate-600 bg-slate-800/40 px-1.5 py-0.5 rounded">7d Range</p>
-                <p className="text-[9px] font-mono text-slate-600 italic">Today vs 7d: Coming next</p>
+                <p className="text-xs font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">7d Range</p>
+                <p className="text-xs font-mono text-slate-500 italic">Today vs 7d: Coming next</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* High Intent - Rose (phone+whatsapp clicks) */}
-        <Card className="glass border-slate-800/50 hover:border-rose-500/30 transition-colors group">
+        <Card className="bg-white border border-slate-200 hover:border-rose-300 transition-colors group shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+            <CardTitle className="text-xs font-mono text-slate-600 uppercase tracking-widest">
               High Intent
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-4xl font-bold font-mono text-rose-400 group-hover:text-rose-300 transition-colors">
+              <span className="text-4xl font-bold font-mono text-rose-600 tabular-nums group-hover:text-rose-700 transition-colors">
                 {displayHighIntent}
               </span>
             </div>
             <div className="mt-2 space-y-1">
-              {/* FIX 1: Suppress hydration warning for timestamp */}
-              <p className="text-[10px] font-mono text-slate-500" suppressHydrationWarning>Last call: {formatLastSeen(stats?.last_call_at || null)}</p>
+              <p className="text-xs font-mono text-slate-600" suppressHydrationWarning>Last call: {formatLastSeen(stats?.last_call_at || null)}</p>
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-mono text-slate-500">Phone + WhatsApp intents</p>
-                <p className="text-[9px] font-mono text-slate-600 italic">Today vs 7d: Coming next</p>
+                <p className="text-xs font-mono text-slate-600">Phone + WhatsApp intents</p>
+                <p className="text-xs font-mono text-slate-500 italic">Today vs 7d: Coming next</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Sealed - Indigo */}
-        <Card className="glass border-slate-800/50 hover:border-indigo-500/30 transition-colors group">
+        <Card className="bg-white border border-slate-200 hover:border-indigo-300 transition-colors group shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+            <CardTitle className="text-xs font-mono text-slate-600 uppercase tracking-widest">
               Sealed
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-4xl font-bold font-mono text-indigo-400 group-hover:text-indigo-300 transition-colors">
+              <span className="text-4xl font-bold font-mono text-indigo-600 tabular-nums group-hover:text-indigo-700 transition-colors">
                 {displaySealed}
               </span>
             </div>
             <div className="mt-2 space-y-1">
-              <p className="text-[10px] font-mono text-slate-500">Confirmed conversions</p>
+              <p className="text-xs font-mono text-slate-600">Confirmed conversions</p>
               <div className="flex items-center justify-between">
-                <p className="text-[9px] font-mono text-slate-600 bg-slate-800/40 px-1.5 py-0.5 rounded">7d Range</p>
-                <p className="text-[9px] font-mono text-slate-600 italic">Today vs 7d: Coming next</p>
+                <p className="text-xs font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">7d Range</p>
+                <p className="text-xs font-mono text-slate-500 italic">Today vs 7d: Coming next</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* CVR - Blue */}
-        <Card className="glass border-slate-800/50 hover:border-blue-500/30 transition-colors group">
+        <Card className="bg-white border border-slate-200 hover:border-blue-300 transition-colors group shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center justify-between">
+            <CardTitle className="text-xs font-mono text-slate-600 uppercase tracking-widest flex items-center justify-between">
               <span>CVR</span>
               <div className="flex items-center gap-1 cursor-help" title="Refetch data">
-                <Button variant="ghost" size="icon" className="h-4 w-4 text-slate-600 hover:text-slate-400 p-0" onClick={() => refetch()}>
+                <Button variant="ghost" size="icon" className="h-4 w-4 text-slate-600 hover:text-slate-800 p-0" onClick={() => refetch()}>
                   <RefreshCw className={`h-2.5 w-2.5 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
@@ -198,15 +197,15 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-4xl font-bold font-mono text-blue-400 group-hover:text-blue-300 transition-colors">
+              <span className="text-4xl font-bold font-mono text-blue-600 tabular-nums group-hover:text-blue-700 transition-colors">
                 {displayCvr}
               </span>
             </div>
             <div className="mt-2 space-y-1">
-              <p className="text-[10px] font-mono text-slate-500">Sealed / Ads Sessions</p>
+              <p className="text-xs font-mono text-slate-600">Sealed / Ads Sessions</p>
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-mono text-slate-500">Ads-only KPI</p>
-                <p className="text-[9px] font-mono text-slate-600 italic">Today vs 7d: Coming next</p>
+                <p className="text-xs font-mono text-slate-600">Ads-only KPI</p>
+                <p className="text-xs font-mono text-slate-500 italic">Today vs 7d: Coming next</p>
               </div>
             </div>
           </CardContent>

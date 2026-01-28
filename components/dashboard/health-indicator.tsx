@@ -24,13 +24,13 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
   const getStatusColor = () => {
     switch (health.status) {
       case 'healthy':
-        return 'text-emerald-400';
+        return 'text-emerald-600';
       case 'degraded':
-        return 'text-yellow-400';
+        return 'text-amber-600';
       case 'critical':
-        return 'text-rose-400';
+        return 'text-rose-600';
       default:
-        return 'text-slate-400';
+        return 'text-slate-600';
     }
   };
 
@@ -61,13 +61,13 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/50 rounded-lg">
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg">
       {getStatusIcon()}
       <div className="flex flex-col">
-        <span className={`text-[10px] font-mono uppercase tracking-wider ${getStatusColor()}`}>
+        <span className={`text-xs font-mono uppercase tracking-wider ${getStatusColor()}`}>
           {health.status === 'healthy' ? 'Sağlıklı' : health.status === 'degraded' ? 'Düşük' : 'Kritik'}
         </span>
-        <span className="text-[9px] font-mono text-slate-500">
+        <span className="text-xs font-mono text-slate-600">
           {formatLatency(health.data_latency)} TRT
         </span>
       </div>

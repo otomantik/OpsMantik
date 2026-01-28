@@ -259,18 +259,18 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
 
   if (isInitialized && userSites.length === 0) {
     return (
-      <Card className="glass border-slate-800/50 border-2 border-dashed">
+      <Card className="bg-white border border-slate-200 border-2 border-dashed shadow-sm">
         <CardHeader>
-          <CardTitle className="text-sm font-mono text-slate-200">⚠️ NO SITES CONFIGURED</CardTitle>
-          <CardDescription className="text-[10px] font-mono text-slate-500 mt-2 uppercase">
+          <CardTitle className="text-sm font-mono text-slate-900">⚠️ NO SITES CONFIGURED</CardTitle>
+          <CardDescription className="text-xs font-mono text-slate-600 mt-2 uppercase">
             Onboarding required
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-slate-400 font-mono text-xs mb-4">
+          <p className="text-slate-600 font-mono text-sm mb-4">
             You need to create a site first to track events.
           </p>
-          <a href="/dashboard" className="text-emerald-400 hover:text-emerald-300 font-mono text-[10px] underline uppercase tracking-tighter">
+          <a href="/dashboard" className="text-emerald-600 hover:text-emerald-700 font-mono text-sm underline uppercase tracking-tighter">
             &rarr; Go to Dashboard
           </a>
         </CardContent>
@@ -280,29 +280,29 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
 
   if (events.length === 0 && isInitialized && !isLoading) {
     return (
-      <Card className="glass border-slate-800/50">
-        <CardHeader className="pb-3 border-b border-slate-800/20">
+      <Card className="bg-white border border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-200">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-mono text-slate-200">
+            <CardTitle className="text-sm font-mono text-slate-900">
               LIVE STREAM
               {adsOnly && (
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[9px] font-mono text-amber-300 uppercase tracking-widest">
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-xs font-mono text-amber-700 uppercase tracking-widest">
                   ADS-ONLY
                 </span>
               )}
             </CardTitle>
-            <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.4)]"></div>
-              <span className="text-[9px] font-mono text-emerald-400 uppercase">Listening</span>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-xs font-mono text-emerald-600 uppercase">Listening</span>
             </div>
           </div>
         </CardHeader>
         <CardContent className="py-12 flex flex-col items-center group">
-          <div className="w-12 h-12 bg-slate-800/20 rounded-full flex items-center justify-center mb-4 border border-slate-800/50 group-hover:border-slate-700/60 transition-colors">
-            <Activity className="w-5 h-5 text-slate-600 group-hover:text-slate-500 transition-colors" />
+          <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-4 border border-slate-200 group-hover:border-slate-300 transition-colors">
+            <Activity className="w-5 h-5 text-slate-600 group-hover:text-slate-700 transition-colors" />
           </div>
-          <p className="text-slate-400 font-mono text-xs uppercase tracking-widest mb-1">No sessions yet</p>
-          <p className="text-slate-600 font-mono text-[10px] italic">
+          <p className="text-slate-600 font-mono text-sm uppercase tracking-widest mb-1">No sessions yet</p>
+          <p className="text-slate-600 font-mono text-xs italic">
             Real-time stream active • Events will appear here
           </p>
         </CardContent>
@@ -311,32 +311,32 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
   }
 
   return (
-    <Card className="glass border-slate-800/50">
-      <CardHeader className="pb-3 border-b border-slate-800/20">
+    <Card className="bg-white border border-slate-200 shadow-sm">
+      <CardHeader className="pb-3 border-b border-slate-200">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-sm font-mono text-slate-200 tracking-tight">
+            <CardTitle className="text-sm font-mono text-slate-900 tracking-tight">
               LIVE STREAM
               {adsOnly && (
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[9px] font-mono text-amber-300 uppercase tracking-widest">
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-xs font-mono text-amber-700 uppercase tracking-widest">
                   ADS-ONLY
                 </span>
               )}
             </CardTitle>
-            <CardDescription className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
+            <CardDescription className="text-xs font-mono text-slate-600 mt-1 uppercase tracking-wider">
               {events.length} events &bull; {Object.keys(groupedSessions).length} sessions
             </CardDescription>
           </div>
-          <div className="flex items-center gap-1.5 opacity-80 no-emerald-glow">
-            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.4)]"></div>
-            <span className="text-[9px] font-mono text-emerald-400">LIVE</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-xs font-mono text-emerald-600">LIVE</span>
           </div>
         </div>
       </CardHeader>
 
       {error && !isLoading && (
-        <div className="px-6 py-2 border-b border-rose-500/20 bg-rose-500/5">
-          <div className="text-[10px] text-rose-400 font-mono flex items-center gap-2">
+        <div className="px-6 py-2 border-b border-rose-200 bg-rose-50">
+          <div className="text-xs text-rose-700 font-mono flex items-center gap-2">
             <span className="uppercase font-bold">Error:</span> {error}
           </div>
         </div>
@@ -344,19 +344,19 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
 
       <CardContent className="pt-4">
         {isLoading ? (
-          <div className="py-10 text-center font-mono text-[10px] text-slate-600 uppercase animate-pulse">
+          <div className="py-10 text-center font-mono text-sm text-slate-600 uppercase animate-pulse">
             Synchronizing stream...
           </div>
         ) : (
           <>
             {!adsOnly && (filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
-              <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-md mb-4 pb-3 border-b border-slate-800/30 -mx-6 px-6 pt-0">
+              <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm mb-4 pb-3 border-b border-slate-200 -mx-6 px-6 pt-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   {filterOptions.cities.length > 0 && (
                     <select
                       value={selectedCity || ''}
                       onChange={(e) => setSelectedCity(e.target.value || null)}
-                      className="px-2 py-1 bg-slate-800/50 border border-slate-700/50 rounded text-slate-300 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                      className="px-2 py-1 bg-white border border-slate-200 rounded text-slate-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
                     >
                       <option value="">All Cities</option>
                       {filterOptions.cities.map((city) => (
@@ -368,7 +368,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                     <select
                       value={selectedDistrict || ''}
                       onChange={(e) => setSelectedDistrict(e.target.value || null)}
-                      className="px-2 py-1 bg-slate-800/50 border border-slate-700/50 rounded text-slate-300 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                      className="px-2 py-1 bg-white border border-slate-200 rounded text-slate-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
                     >
                       <option value="">All Districts</option>
                       {filterOptions.districts.map((district) => (
@@ -380,7 +380,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                     <select
                       value={selectedDevice || ''}
                       onChange={(e) => setSelectedDevice(e.target.value || null)}
-                      className="px-2 py-1 bg-slate-800/50 border border-slate-700/50 rounded text-slate-300 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                      className="px-2 py-1 bg-white border border-slate-200 rounded text-slate-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
                     >
                       <option value="">All Devices</option>
                       {filterOptions.devices.map((device) => (
@@ -391,7 +391,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                   {hasActiveFilters && (
                     <button
                       onClick={clearFilters}
-                      className="px-2 py-1 bg-slate-700/30 hover:bg-slate-700/60 border border-slate-600/50 rounded text-slate-400 font-mono text-[9px] transition-colors uppercase"
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-slate-600 font-mono text-xs transition-colors uppercase"
                     >
                       Clear
                     </button>
@@ -401,7 +401,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
             )}
             <div className="space-y-4 max-h-[600px] overflow-y-auto relative pr-1 custom-scrollbar">
               {displayedSessions.length === 0 ? (
-                <p className="text-slate-500 font-mono text-[11px] text-center py-10 uppercase tracking-widest opacity-50">
+                <p className="text-slate-600 font-mono text-sm text-center py-10 uppercase tracking-widest opacity-70">
                   {hasActiveFilters ? 'No matches found' : 'No sessions found'}
                 </p>
               ) : (

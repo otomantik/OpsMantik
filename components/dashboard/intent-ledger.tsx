@@ -23,9 +23,14 @@ import { ConfidenceScore } from './confidence-score';
 interface IntentLedgerProps {
   siteId: string;
   dateRange: DateRange;
+  /**
+   * Phase B3: quick client-side filter (e.g. last 60m) over already fetched intents.
+   * When provided, intents with timestamp < minTimestampIso are excluded.
+   */
+  minTimestampIso?: string | null;
 }
 
-export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
+export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedgerProps) {
   const { intents, loading, error, refetch } = useIntents(siteId, dateRange);
   const [selectedIntent, setSelectedIntent] = useState<IntentRow | null>(null);
   const [filter, setFilter] = useState<IntentFilter>('all');
@@ -47,11 +52,23 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
     },
   }, { adsOnly: true });
 
-  // Filter intents
-  // FIX 3: Defensive rendering - ensure intents is array
-  const filteredIntents = useMemo(() => {
+  // Phase B3: quick filter base set (client-side, no extra RPC)
+  const baseIntents = useMemo(() => {
     if (!Array.isArray(intents)) return [];
-    return intents.filter(intent => {
+    if (!minTimestampIso) return intents;
+    const minMs = new Date(minTimestampIso).getTime();
+    if (Number.isNaN(minMs)) return intents;
+    return intents.filter((i) => {
+      const tsMs = new Date(i.timestamp).getTime();
+      if (Number.isNaN(tsMs)) return true;
+      return tsMs >= minMs;
+    });
+  }, [intents, minTimestampIso]);
+
+  // Filter intents (status + search) on top of baseIntents
+  const filteredIntents = useMemo(() => {
+    if (!Array.isArray(baseIntents)) return [];
+    return baseIntents.filter(intent => {
       // Status filter
       if (filter !== 'all') {
         if (filter === 'pending') {
@@ -75,21 +92,21 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
 
       return true;
     });
-  }, [intents, filter, search]);
+  }, [baseIntents, filter, search]);
 
   // Status counts
   // FIX 3: Defensive rendering - ensure intents is array
   const statusCounts = useMemo(() => {
-    if (!Array.isArray(intents)) {
+    if (!Array.isArray(baseIntents)) {
       return { pending: 0, sealed: 0, junk: 0, suspicious: 0 };
     }
     return {
-      pending: intents.filter(i => i.status === 'intent' || i.status === null).length,
-      sealed: intents.filter(i => ['confirmed', 'qualified', 'real'].includes(i.status || '')).length,
-      junk: intents.filter(i => i.status === 'junk').length,
-      suspicious: intents.filter(i => i.status === 'suspicious').length,
+      pending: baseIntents.filter(i => i.status === 'intent' || i.status === null).length,
+      sealed: baseIntents.filter(i => ['confirmed', 'qualified', 'real'].includes(i.status || '')).length,
+      junk: baseIntents.filter(i => i.status === 'junk').length,
+      suspicious: baseIntents.filter(i => i.status === 'suspicious').length,
     };
-  }, [intents]);
+  }, [baseIntents]);
 
   const getStatusLabel = (status: IntentFilter) => {
     switch (status) {
@@ -102,14 +119,14 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
   };
 
   return (
-    <Card className="glass border-slate-800/50">
-      <CardHeader className="pb-3 border-b border-slate-800/20">
+    <Card className="bg-white border border-slate-200">
+      <CardHeader className="pb-3 border-b border-slate-200">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-sm font-mono text-slate-200 uppercase tracking-tighter">
+            <CardTitle className="text-base font-mono text-slate-900 uppercase tracking-tighter">
               Niyet Defteri
             </CardTitle>
-            <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wider">
+            <p className="text-sm font-mono text-slate-600 mt-1 uppercase tracking-wider">
               Tüm niyetler, tıklamalar ve dönüşümler
             </p>
           </div>
@@ -123,14 +140,14 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
                   variant={filter === status ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setFilter(status)}
-                  className={`h-7 px-2 text-[10px] font-mono ${
+                  className={`h-9 px-3 text-sm font-mono ${
                     filter === status
-                      ? 'bg-slate-700 text-slate-200 border-slate-600'
-                      : 'bg-slate-800/30 text-slate-400 border-slate-700/50 hover:bg-slate-700/50'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   {getStatusLabel(status)}
-                  <span className="ml-1.5 px-1 py-0.5 rounded bg-slate-600/50 text-[9px]">
+                  <span className="ml-2 px-2 py-0.5 rounded bg-slate-100 text-sm text-slate-700">
                     {statusCounts[status]}
                   </span>
                 </Button>
@@ -139,20 +156,20 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
 
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type="text"
                 placeholder="Sayfada ara..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-7 pl-7 pr-8 text-[10px] font-mono bg-slate-800/30 border border-slate-700/50 rounded text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-600 w-48"
+                className="h-9 pl-10 pr-10 text-sm font-mono bg-white border border-slate-200 rounded text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300 w-60"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -168,7 +185,7 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
               variant="outline"
               size="sm"
               onClick={() => refetch()}
-              className="bg-slate-800/60 border-slate-700/50 text-slate-200"
+              className="bg-white border-slate-300 text-slate-800 hover:bg-slate-50"
             >
               Tekrar Dene
             </Button>
@@ -186,7 +203,7 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
             <h3 className="text-sm font-mono text-slate-300 mb-2">
               {filter === 'all' ? 'Henüz niyet yok' : 'Bu filtrelere uygun niyet yok'}
             </h3>
-            <p className="text-[10px] font-mono text-slate-500 italic">
+            <p className="text-sm font-mono text-slate-600 italic">
               {filter === 'pending'
                 ? 'Telefon veya WhatsApp tıklamaları burada görünecek'
                 : 'İlk ziyaretçileriniz geldiğinde burada göreceksiniz'}
@@ -195,30 +212,30 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-900/50 border-b border-slate-800/30">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Zaman</th>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Tür</th>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Sayfa</th>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Şehir/Cihaz</th>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Durum</th>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider">Güven</th>
-                  <th className="p-3 text-left text-[10px] font-mono text-slate-400 uppercase tracking-wider"></th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Zaman</th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Tür</th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Sayfa</th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Şehir/Cihaz</th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Durum</th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider">Güven</th>
+                  <th className="p-3 text-left text-sm font-mono text-slate-700 uppercase tracking-wider"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/30">
+              <tbody className="divide-y divide-slate-200">
                 {filteredIntents.map((intent) => (
                   <tr
                     key={intent.id}
-                    className="hover:bg-slate-800/20 cursor-pointer transition-colors"
+                    className="hover:bg-slate-50 cursor-pointer transition-colors"
                     onClick={() => setSelectedIntent(intent)}
                   >
                     <td className="p-3">
                       {/* FIX 2: Ensure timestamp is string before formatting */}
-                      <div className="text-[11px] font-mono text-slate-200" suppressHydrationWarning>
+                      <div className="text-sm font-mono text-slate-900" suppressHydrationWarning>
                         {formatTimestamp(intent?.timestamp || null, { hour: '2-digit', minute: '2-digit' })}
                       </div>
-                      <div className="text-[9px] font-mono text-slate-500 mt-0.5" suppressHydrationWarning>
+                      <div className="text-sm font-mono text-slate-600 mt-0.5" suppressHydrationWarning>
                         {formatTimestamp(intent?.timestamp || null, { day: '2-digit', month: 'short' })}
                       </div>
                     </td>
@@ -226,7 +243,7 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
                       <IntentTypeBadge type={intent.type} />
                     </td>
                     <td className="p-3">
-                      <div className="max-w-xs truncate text-[11px] font-mono text-slate-300">
+                      <div className="max-w-xs truncate text-sm font-mono text-slate-900">
                         {intent.page_url ? (() => {
                           try {
                             return new URL(intent.page_url).pathname;
@@ -235,15 +252,15 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
                           }
                         })() : 'N/A'}
                       </div>
-                      <div className="text-[9px] font-mono text-slate-600 truncate max-w-xs">
+                      <div className="text-sm font-mono text-slate-600 truncate max-w-xs">
                         {intent.page_url || ''}
                       </div>
                     </td>
                     <td className="p-3">
-                      <div className="text-[11px] font-mono text-slate-300">
+                      <div className="text-sm font-mono text-slate-900">
                         {intent.city || 'Bilinmiyor'}
                       </div>
-                      <div className="text-[9px] font-mono text-slate-500">
+                      <div className="text-sm font-mono text-slate-600">
                         {intent.device_type || 'N/A'}
                       </div>
                     </td>
@@ -258,7 +275,7 @@ export function IntentLedger({ siteId, dateRange }: IntentLedgerProps) {
                     </td>
                     <td className="p-3">
                       {intent.matched_session_id && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded border border-slate-700/50 bg-slate-800/30 text-[9px] font-mono text-slate-400">
+                        <span className="inline-flex items-center px-2 py-1 rounded border border-slate-200 bg-slate-50 text-sm font-mono text-slate-700">
                           Görüşme Var
                         </span>
                       )}
