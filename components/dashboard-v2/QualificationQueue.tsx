@@ -6,12 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Icons } from '@/components/icons';
-import { IntentCard } from './cards/IntentCard';
 import type { IntentForQualification } from './IntentQualificationCard';
 import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { cn, formatTimestamp } from '@/lib/utils';
+import { HunterCard } from './HunterCard';
+import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
+import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-react';
 
 interface QualificationQueueProps {
   siteId: string;
@@ -45,8 +47,19 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
-  const [skippedIds, setSkippedIds] = useState<Set<string>>(() => new Set());
   const [sessionEvidence, setSessionEvidence] = useState<Record<string, { city?: string | null; district?: string | null }>>({});
+
+  const [history, setHistory] = useState<
+    Array<{
+      id: string;
+      at: string;
+      status: 'confirmed' | 'junk';
+      intent_action: string | null;
+      identity: string | null;
+    }>
+  >([]);
+
+  const [toast, setToast] = useState<null | { kind: 'success' | 'danger'; text: string }>(null);
 
   const fetchUnscoredIntents = useCallback(async () => {
     try {
@@ -109,13 +122,8 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
     }
   }, [siteId]);
 
-  const visibleIntents = useMemo(() => {
-    if (skippedIds.size === 0) return intents;
-    return intents.filter((i) => !skippedIds.has(i.id));
-  }, [intents, skippedIds]);
-
-  const top = visibleIntents[0] || null;
-  const next = visibleIntents[1] || null;
+  const top = intents[0] || null;
+  const next = intents[1] || null;
 
   // Fetch richer session evidence for the TOP card only (keeps UI snappy, avoids heavy fan-out)
   useEffect(() => {
@@ -226,7 +234,7 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
         <Card className="border-2 border-dashed border-border bg-muted/20">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Icons.check className="w-16 h-16 text-green-500 mb-4" />
-            <h3 className="text-xl font-semibold mb-2">All Caught Up!</h3>
+            <h3 className="text-xl font-semibold mb-2">Mission Accomplished</h3>
             <p className="text-muted-foreground max-w-md">
               No pending intents to qualify. New intents from Google Ads will appear here automatically.
             </p>
@@ -265,6 +273,18 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
     );
   }
 
+  function pushToast(kind: 'success' | 'danger', text: string) {
+    setToast({ kind, text });
+    window.setTimeout(() => setToast(null), 1400);
+  }
+
+  function pushHistoryRow(row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) {
+    setHistory((prev) => [
+      { ...row, at: new Date().toISOString() },
+      ...prev,
+    ].slice(0, 12));
+  }
+
   const mergedTop: IntentForQualification | null = top
     ? {
         ...top,
@@ -279,90 +299,189 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
       }
     : null;
 
+  const rotateSkip = useCallback(() => {
+    setIntents((prev) => {
+      if (prev.length <= 1) return prev;
+      const [first, ...rest] = prev;
+      return [...rest, first];
+    });
+  }, []);
+
+  function iconForAction(a: string | null) {
+    const t = (a || '').toLowerCase();
+    if (t === 'whatsapp') return MessageCircle;
+    if (t === 'phone') return Phone;
+    if (t === 'form') return FileText;
+    return Icons.circleDot;
+  }
+
+  function statusBadge(status: 'confirmed' | 'junk') {
+    if (status === 'confirmed') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+          <CheckCircle2 className="h-3 w-3" />
+          Sealed
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
+        <XOctagon className="h-3 w-3" />
+        Junk
+      </span>
+    );
+  }
+
+  function ActiveDeckCard({ intent }: { intent: IntentForQualification }) {
+    const { qualify, saving } = useIntentQualification(siteId, intent.id);
+
+    const handleSeal = async ({ id, stars }: { id: string; stars: number }) => {
+      const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
+      // Optimistic: remove from deck immediately
+      setIntents((prev) => prev.filter((x) => x.id !== id));
+      pushHistoryRow({ id, status: 'confirmed', intent_action: intent.intent_action ?? null, identity: intent.intent_target ?? null });
+      pushToast('success', 'Lead captured.');
+      await qualify({ score: s, status: 'confirmed' });
+      handleQualified();
+    };
+
+    const handleJunk = async ({ id, stars }: { id: string; stars: number }) => {
+      const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
+      setIntents((prev) => prev.filter((x) => x.id !== id));
+      pushHistoryRow({ id, status: 'junk', intent_action: intent.intent_action ?? null, identity: intent.intent_target ?? null });
+      pushToast('danger', 'Trash taken out.');
+      await qualify({ score: s, status: 'junk' });
+      handleQualified();
+    };
+
+    return (
+      <div className={cn(saving && 'opacity-60 pointer-events-none')}>
+        <HunterCard
+          intent={{
+            id: intent.id,
+            intent_action: intent.intent_action ?? null,
+            intent_target: intent.intent_target ?? null,
+            created_at: intent.created_at,
+            intent_page_url: intent.intent_page_url ?? null,
+            // best-effort: pass through if available in future RPCs
+            utm_term: (intent as any)?.utm_term ?? null,
+            utm_campaign: (intent as any)?.utm_campaign ?? null,
+            risk_level: intent.risk_level ?? null,
+          }}
+          onSeal={({ id, stars }) => handleSeal({ id, stars })}
+          onJunk={({ id, stars }) => handleJunk({ id, stars })}
+          onSkip={() => rotateSkip()}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
-      <Card>
-        <CardHeader className="py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <CardTitle className="text-base font-semibold leading-none">Qualification Queue</CardTitle>
-              <div className="mt-1 text-sm text-muted-foreground">
-                Clear the stack — Seal or Junk. (Top card expanded)
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
-                {visibleIntents.length} Pending
-              </Badge>
-              {skippedIds.size > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9"
-                  onClick={() => setSkippedIds(new Set())}
-                  title="Show skipped"
-                >
-                  Show skipped ({skippedIds.size})
-                </Button>
+      <div className="space-y-3">
+        {/* lightweight toast */}
+        {toast && (
+          <div
+            className={cn(
+              'rounded-lg border px-3 py-2 text-sm font-medium',
+              toast.kind === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-red-200 bg-red-50 text-red-800'
+            )}
+          >
+            {toast.text}
+          </div>
+        )}
+
+        {/* Deck */}
+        <div className="relative">
+          {mergedNext && (
+            <div
+              className={cn(
+                'pointer-events-none absolute left-0 right-0',
+                'scale-95 opacity-50 translate-y-4',
+                'transition-all duration-200'
               )}
-              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => fetchUnscoredIntents()} title="Refresh">
-                <Icons.refresh className="w-4 h-4" />
-              </Button>
+              aria-hidden
+            >
+              <HunterCard
+                intent={{
+                  id: mergedNext.id,
+                  intent_action: mergedNext.intent_action ?? null,
+                  intent_target: mergedNext.intent_target ?? null,
+                  created_at: mergedNext.created_at,
+                  intent_page_url: mergedNext.intent_page_url ?? null,
+                  utm_term: (mergedNext as any)?.utm_term ?? null,
+                  utm_campaign: (mergedNext as any)?.utm_campaign ?? null,
+                  risk_level: mergedNext.risk_level ?? null,
+                }}
+                onSeal={() => {}}
+                onJunk={() => {}}
+                onSkip={() => {}}
+              />
             </div>
-          </div>
-        </CardHeader>
+          )}
 
-        <CardContent className="pt-0">
-          {/* Stacked cards */}
-          <div className="relative">
-            {/* Next card peeking */}
-            {mergedNext && (
-              <div
-                className={cn(
-                  'pointer-events-none absolute left-0 right-0',
-                  'translate-y-6 scale-[0.985] opacity-90'
-                )}
-                aria-hidden
-              >
-                <IntentCard
-                  siteId={siteId}
-                  intent={mergedNext}
-                  onQualified={handleQualified}
-                  onOpenSession={() => handleOpenSession(mergedNext)}
-                />
-              </div>
-            )}
-
-            {/* Top card */}
-            {mergedTop && (
-              <div className="relative z-10">
-                <IntentCard
-                  siteId={siteId}
-                  intent={mergedTop}
-                  autoFocusPrimary
-                  onSkip={() => {
-                    setSkippedIds((prev) => new Set(prev).add(mergedTop.id));
-                  }}
-                  onQualified={handleQualified}
-                  onOpenSession={() => handleOpenSession(mergedTop)}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Small helper row */}
-          <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-            <div>
-              Tip: Use <span className="font-medium text-foreground">SEAL</span> or <span className="font-medium text-foreground">JUNK</span> to clear faster.
+          {mergedTop && (
+            <div className="relative z-10 transition-all duration-200">
+              <ActiveDeckCard intent={mergedTop} />
             </div>
-            {mergedTop && (
-              <div className="tabular-nums">
-                {formatTimestamp(mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
-              </div>
-            )}
+          )}
+        </div>
+
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="tabular-nums">{intents.length} in queue</div>
+          {mergedTop && (
+            <div className="tabular-nums">
+              {formatTimestamp(mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
+            </div>
+          )}
+          <Button variant="ghost" size="sm" className="h-9" onClick={() => fetchUnscoredIntents()}>
+            <Icons.refresh className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+
+        {/* Kill Feed */}
+        <div className="relative rounded-lg border border-border bg-background p-3">
+          <div className="text-sm font-medium">Kill Feed</div>
+          <div className="mt-2 relative max-h-44 overflow-hidden">
+            <div className="space-y-2">
+              {history.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No actions yet.</div>
+              ) : (
+                history.map((h, idx) => {
+                  const Icon = iconForAction(h.intent_action);
+                  const faded = idx >= 7;
+                  return (
+                    <div
+                      key={`${h.id}-${h.at}`}
+                      className={cn(
+                        'flex items-center justify-between gap-3',
+                        faded && 'opacity-60'
+                      )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="text-xs tabular-nums text-muted-foreground w-[64px] shrink-0">
+                          {formatTimestamp(h.at, { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="text-sm font-medium tabular-nums truncate">
+                          {h.identity || '—'}
+                        </div>
+                      </div>
+                      <div className="shrink-0">{statusBadge(h.status)}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* fade mask */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-b from-transparent to-background" />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Session Drawer */}
       {selectedIntent && selectedIntent.matched_session_id && (

@@ -1,0 +1,322 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import {
+  ArrowRight,
+  CheckCircle2,
+  FileText,
+  MessageCircle,
+  Phone,
+  Search,
+  ShieldAlert,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  XOctagon,
+} from 'lucide-react';
+
+export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
+
+export type HunterIntent = {
+  id: string;
+  intent_action?: string | null; // whatsapp|phone|form (best-effort)
+  intent_target?: string | null; // phone number / identity
+  created_at: string;
+
+  // Context
+  page_url?: string | null; // alias supported
+  intent_page_url?: string | null; // existing field in calls
+  utm_term?: string | null;
+  utm_campaign?: string | null;
+
+  // Risk
+  risk_level?: 'low' | 'high' | string | null;
+};
+
+type PrimaryIntent =
+  | { kind: 'keyword'; label: 'KEYWORD'; icon: typeof Search; value: string }
+  | { kind: 'interest'; label: 'INTEREST'; icon: typeof ShoppingBag | typeof Sparkles; value: string }
+  | { kind: 'fallback'; label: 'CAMPAIGN'; icon: typeof Sparkles; value: string };
+
+function relativeTime(ts: string): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  if (!Number.isFinite(diffMs)) return '—';
+  const diffSec = Math.max(0, Math.round(diffMs / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+function sourceTypeOf(action: string | null | undefined): HunterSourceType {
+  const a = (action || '').toLowerCase();
+  if (a === 'whatsapp') return 'whatsapp';
+  if (a === 'phone') return 'phone';
+  if (a === 'form') return 'form';
+  return 'other';
+}
+
+function sourceStripClass(t: HunterSourceType): string {
+  if (t === 'whatsapp') return 'border-l-4 border-green-500';
+  if (t === 'phone') return 'border-l-4 border-blue-500';
+  if (t === 'form') return 'border-l-4 border-purple-500';
+  return 'border-l-4 border-border';
+}
+
+function sourceIcon(t: HunterSourceType) {
+  if (t === 'whatsapp') return MessageCircle;
+  if (t === 'phone') return Phone;
+  if (t === 'form') return FileText;
+  return Sparkles;
+}
+
+function safePath(url: string | null | undefined): string {
+  if (!url) return '/';
+  try {
+    return new URL(url).pathname || '/';
+  } catch {
+    // Could already be a path
+    if (url.startsWith('/')) return url;
+    return '/';
+  }
+}
+
+function titleCaseSlug(slug: string): string {
+  const clean = decodeURIComponent(slug)
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return '';
+  return clean
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w.length <= 2 ? w.toUpperCase() : (w[0]?.toUpperCase() + w.slice(1)))
+    .join(' ');
+}
+
+/**
+ * CHAMELEON INTELLIGENCE
+ * - Search: utm_term exists -> KEYWORD
+ * - PMax: no utm_term -> derive from page path slug -> INTEREST
+ * - Fallback: utm_campaign or "General Visit"
+ */
+function getPrimaryIntent(intent: HunterIntent): PrimaryIntent {
+  const term = (intent.utm_term || '').trim();
+  if (term) {
+    return { kind: 'keyword', label: 'KEYWORD', icon: Search, value: term };
+  }
+
+  const pageUrl = intent.page_url || intent.intent_page_url || null;
+  const path = safePath(pageUrl);
+  const segments = path.split('/').filter(Boolean);
+  const last = segments[segments.length - 1] || '';
+  const derived = titleCaseSlug(last);
+  if (derived && derived.toLowerCase() !== 'home' && derived.length >= 3) {
+    return { kind: 'interest', label: 'INTEREST', icon: ShoppingBag, value: derived };
+  }
+
+  const campaign = (intent.utm_campaign || '').trim();
+  return { kind: 'fallback', label: 'CAMPAIGN', icon: Sparkles, value: campaign || 'General Visit' };
+}
+
+function maskIdentity(v: string): string {
+  const s = (v || '').toString().trim();
+  if (!s) return '—';
+  const digits = s.replace(/[^\d+]/g, '');
+  const out = digits || s;
+  return out;
+}
+
+export function HunterCard({
+  intent,
+  onSeal,
+  onJunk,
+  onSkip,
+}: {
+  intent: HunterIntent;
+  onSeal: (params: { id: string; stars: number; score: number }) => void;
+  onJunk: (params: { id: string; stars: number; score: number }) => void;
+  onSkip: (params: { id: string }) => void;
+}) {
+  const t = sourceTypeOf(intent.intent_action);
+  const Icon = sourceIcon(t);
+  const isHighRisk = (intent.risk_level || '').toString().toLowerCase() === 'high';
+
+  const primary = useMemo(() => getPrimaryIntent(intent), [intent]);
+  const path = useMemo(() => {
+    const pageUrl = intent.page_url || intent.intent_page_url || null;
+    return safePath(pageUrl);
+  }, [intent.intent_page_url, intent.page_url]);
+
+  const [stars, setStars] = useState<number>(0); // default 0 (per spec)
+  const score = useMemo(() => stars * 20, [stars]); // map 0..5 => 0..100
+
+  return (
+    <Card className={cn('relative overflow-hidden bg-background shadow-sm', sourceStripClass(t))}>
+      <CardHeader className="px-4 pt-4 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className={cn(
+                'inline-flex h-9 w-9 items-center justify-center rounded-md border',
+                t === 'whatsapp'
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : t === 'phone'
+                    ? 'border-blue-200 bg-blue-50 text-blue-700'
+                    : t === 'form'
+                      ? 'border-purple-200 bg-purple-50 text-purple-700'
+                      : 'border-border bg-muted text-muted-foreground'
+              )}
+            >
+              <Icon className="h-4 w-4" />
+            </div>
+
+            <div className="min-w-0">
+              <div className="text-sm font-medium leading-none truncate">
+                {relativeTime(intent.created_at)}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground truncate">
+                {t === 'whatsapp' ? 'WhatsApp' : t === 'phone' ? 'Phone' : t === 'form' ? 'Form' : 'Intent'}
+              </div>
+            </div>
+          </div>
+
+          {isHighRisk ? (
+            <Badge className="bg-red-100 text-red-700 border border-red-200">
+              <ShieldAlert className="h-3.5 w-3.5 mr-1" />
+              High Risk
+            </Badge>
+          ) : (
+            <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">
+              Safe
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+
+      <CardContent className="px-4 space-y-4">
+        {/* INTEL BOX (visual anchor) */}
+        <div className="rounded-lg border border-border bg-muted/50 p-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background">
+              <primary.icon
+                className={cn(
+                  'h-4 w-4',
+                  primary.kind === 'keyword'
+                    ? 'text-amber-700'
+                    : primary.kind === 'interest'
+                      ? 'text-blue-700'
+                      : 'text-muted-foreground'
+                )}
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                {primary.label}
+              </div>
+              <div
+                className={cn(
+                  'mt-0.5 text-sm font-bold leading-snug',
+                  primary.kind === 'keyword'
+                    ? 'text-amber-800'
+                    : primary.kind === 'interest'
+                      ? 'text-blue-800'
+                      : 'text-foreground'
+                )}
+              >
+                {primary.value}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <div className="truncate">
+              <span className="font-medium text-muted-foreground">PATH</span>{' '}
+              <span className="font-mono">{path}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* IDENTITY */}
+        <div className="text-center">
+          <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-medium">
+            Identity
+          </div>
+          <div className="mt-1 text-3xl font-black tabular-nums select-all">
+            {maskIdentity(intent.intent_target || '')}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Device: —
+          </div>
+        </div>
+
+        {/* RATING */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium">Rating</div>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: 5 }).map((_, idx) => {
+              const v = idx + 1;
+              const active = v <= stars;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setStars(v)}
+                  className={cn(
+                    'h-10 w-10 rounded-md border border-border bg-background',
+                    'inline-flex items-center justify-center',
+                    'active:scale-[0.98] transition-transform'
+                  )}
+                  aria-label={`Rate ${v} stars`}
+                  aria-pressed={active}
+                >
+                  <Star className={cn('h-5 w-5', active ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground')} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+
+      {/* TRIGGER ZONE */}
+      <CardFooter className="px-4 pb-4 pt-0">
+        <div className="grid w-full grid-cols-3 gap-2">
+          <Button
+            variant="outline"
+            className="h-14 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+            onClick={() => onJunk({ id: intent.id, stars, score })}
+          >
+            <XOctagon className="h-5 w-5 mr-2" />
+            JUNK
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-14"
+            onClick={() => onSkip({ id: intent.id })}
+          >
+            <ArrowRight className="h-5 w-5 mr-2" />
+            SKIP
+          </Button>
+          <Button
+            variant="default"
+            className="h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            onClick={() => onSeal({ id: intent.id, stars, score })}
+          >
+            <CheckCircle2 className="h-5 w-5 mr-2" />
+            SEAL DEAL
+          </Button>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}
+

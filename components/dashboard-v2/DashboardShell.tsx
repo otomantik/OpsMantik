@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DashboardHeaderV2 } from './DashboardHeaderV2';
-import { KPICardsV2 } from './KPICardsV2';
-import { CommandCenterP0Panel } from './CommandCenterP0Panel';
+import { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { QualificationQueue } from './QualificationQueue';
-import { LiveInbox } from '@/components/dashboard/live-inbox';
-import { Card, CardContent } from '@/components/ui/card';
-import { Icons } from '@/components/icons';
+import { CommandCenterP0Panel } from './CommandCenterP0Panel';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats';
+import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { cn } from '@/lib/utils';
+import { Settings, Target, Shield, Wallet } from 'lucide-react';
 import './reset.css';
 
 interface DashboardShellProps {
@@ -18,122 +19,124 @@ interface DashboardShellProps {
 }
 
 export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellProps) {
-  const [activeTab, setActiveTab] = useState('queue');
+  const [day, setDay] = useState<'yesterday' | 'today'>('today');
+
+  const range = useMemo(() => {
+    const { fromIso, toIso } = getTodayTrtUtcRange();
+    if (day === 'today') return { fromIso, toIso };
+    const fromMs = new Date(fromIso).getTime() - 24 * 60 * 60 * 1000;
+    const toMs = new Date(toIso).getTime() - 24 * 60 * 60 * 1000;
+    return { fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
+  }, [day]);
+
+  const { stats, loading } = useCommandCenterP0Stats(siteId, range);
+  const captured = loading ? '…' : String(stats?.sealed ?? 0);
+  const filtered = loading ? '…' : String(stats?.junk ?? 0);
+  const saved = loading ? '…' : `${(stats?.estimated_budget_saved ?? 0).toLocaleString()} ${stats?.currency || ''}`.trim();
 
   return (
-    <div className="om-dashboard-reset min-h-screen bg-muted/40">
-      <div className="flex min-h-screen">
-        {/* Desktop Sidebar (shadcn-style) */}
-        <aside className="hidden md:flex w-64 flex-col border-r border-border bg-background">
-          <div className="px-4 py-4 border-b border-border">
-            <div className="text-sm font-semibold truncate">{siteName || siteDomain || 'Ads Command Center'}</div>
-            <div className="text-sm text-muted-foreground truncate">Qualification workflow</div>
-          </div>
-
-          <nav className="p-3 space-y-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('queue')}
-              className={[
-                'w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm',
-                activeTab === 'queue'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              ].join(' ')}
-            >
-              <Icons.circleDot className="w-4 h-4" />
-              Qualification Queue
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('stream')}
-              className={[
-                'w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm',
-                activeTab === 'stream'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              ].join(' ')}
-            >
-              <Icons.trendingUp className="w-4 h-4" />
-              Live Stream
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('analytics')}
-              className={[
-                'w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm',
-                activeTab === 'analytics'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              ].join(' ')}
-            >
-              <Icons.barChart className="w-4 h-4" />
-              Analytics
-            </button>
-          </nav>
-        </aside>
-
-        {/* Main Area */}
-        <div className="flex-1 min-w-0">
-          {/* Header with Realtime Pulse */}
-          <DashboardHeaderV2 siteId={siteId} siteName={siteName} siteDomain={siteDomain} />
-
-          <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 space-y-6">
-            {/* KPI Cards (Always Visible - Today's Data) */}
-            <KPICardsV2 siteId={siteId} />
-
-            {/* P0: OCI feedback loop + auto-approve + gamification */}
-            <CommandCenterP0Panel siteId={siteId} />
-
-            {/* Mobile Tabs (keep for small screens) */}
-            <div className="md:hidden">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="queue" className="text-sm flex items-center gap-2">
-                    <Icons.circleDot className="w-4 h-4" />
-                    Queue
-                  </TabsTrigger>
-                  <TabsTrigger value="stream" className="text-sm flex items-center gap-2">
-                    <Icons.trendingUp className="w-4 h-4" />
-                    Stream
-                  </TabsTrigger>
-                  <TabsTrigger value="analytics" className="text-sm flex items-center gap-2">
-                    <Icons.barChart className="w-4 h-4" />
-                    Analytics
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+    <div className="om-dashboard-reset min-h-screen bg-muted/30">
+      {/* Tactical Header */}
+      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto max-w-md px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            {/* Brand */}
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">
+                {siteName || siteDomain || 'OpsMantik'}
+              </div>
+              <div className="text-sm text-muted-foreground truncate">Hunter Terminal</div>
             </div>
 
-            {/* Content Panels */}
-            {activeTab === 'queue' && (
-              <div className="space-y-4">
-                <QualificationQueue siteId={siteId} />
-              </div>
-            )}
+            {/* Day toggle */}
+            <div className="inline-flex items-center rounded-md border border-border bg-background">
+              <button
+                type="button"
+                onClick={() => setDay('yesterday')}
+                className={cn(
+                  'px-3 py-1.5 text-sm tabular-nums',
+                  'first:rounded-l-md last:rounded-r-md',
+                  day === 'yesterday'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                )}
+                aria-pressed={day === 'yesterday'}
+              >
+                Yesterday
+              </button>
+              <button
+                type="button"
+                onClick={() => setDay('today')}
+                className={cn(
+                  'px-3 py-1.5 text-sm tabular-nums',
+                  'first:rounded-l-md last:rounded-r-md',
+                  day === 'today'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                )}
+                aria-pressed={day === 'today'}
+              >
+                Today
+              </button>
+            </div>
 
-            {activeTab === 'stream' && (
-              <div className="space-y-4">
-                <LiveInbox siteId={siteId} />
-              </div>
-            )}
+            {/* Settings -> Command Center modal */}
+            <Dialog>
+              <DialogTrigger>
+                <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Settings">
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[80vh] overflow-y-auto">
+                <DialogHeader className="mb-4">
+                  <DialogTitle>Command Center</DialogTitle>
+                </DialogHeader>
+                <CommandCenterP0Panel siteId={siteId} />
+              </DialogContent>
+            </Dialog>
+          </div>
 
-            {activeTab === 'analytics' && (
-              <div className="space-y-4">
-                <Card className="border-2 border-dashed border-border bg-background">
-                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                    <Icons.barChart className="w-12 h-12 text-muted-foreground mb-3" />
-                    <h3 className="text-lg font-semibold mb-1">Analytics Coming Soon</h3>
-                    <p className="text-sm text-muted-foreground max-w-md">
-                      Timeline charts, breakdown widgets, and trend analysis will appear here.
-                    </p>
-                  </CardContent>
-                </Card>
+          {/* Scoreboard (HUD) */}
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border bg-background p-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Target className="h-4 w-4 text-emerald-600" />
+                <span className="text-[10px] font-medium uppercase tracking-wider">Captured</span>
               </div>
-            )}
-          </main>
+              <div className="mt-1 text-xl font-semibold tabular-nums">{captured}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-background p-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[10px] font-medium uppercase tracking-wider">Filtered</span>
+              </div>
+              <div className="mt-1 text-xl font-semibold tabular-nums">{filtered}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-background p-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Wallet className="h-4 w-4 text-amber-600" />
+                <span className="text-[10px] font-medium uppercase tracking-wider">Saved</span>
+              </div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-amber-700 truncate">{saved}</div>
+            </div>
+          </div>
         </div>
-      </div>
+      </header>
+
+      {/* Feed */}
+      <main className="mx-auto max-w-md px-4 py-4 space-y-4 pb-20">
+        <QualificationQueue siteId={siteId} />
+
+        {/* Kill Feed placeholder (Phase 2) */}
+        <Card className="border border-dashed border-border bg-background">
+          <div className="p-4">
+            <div className="text-sm font-medium">Kill Feed (History)</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Coming next: a lightweight list of processed leads (time • identity • status).
+            </div>
+          </div>
+        </Card>
+      </main>
     </div>
   );
 }

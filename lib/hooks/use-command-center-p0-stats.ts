@@ -24,15 +24,21 @@ export interface CommandCenterP0Stats {
   inbox_zero_now: boolean;
 }
 
-export function useCommandCenterP0Stats(siteId: string | undefined) {
+export type CommandCenterRange = { fromIso: string; toIso: string };
+
+export function useCommandCenterP0Stats(
+  siteId: string | undefined,
+  rangeOverride?: CommandCenterRange
+) {
   const [stats, setStats] = useState<CommandCenterP0Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const dateRange = useMemo(() => {
+    if (rangeOverride?.fromIso && rangeOverride?.toIso) return rangeOverride;
     const { fromIso, toIso } = getTodayTrtUtcRange();
     return { fromIso, toIso };
-  }, []);
+  }, [rangeOverride?.fromIso, rangeOverride?.toIso]);
 
   const fetchStats = useCallback(async () => {
     if (!siteId) return;
