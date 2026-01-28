@@ -1,18 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Sheet, SheetClose, SheetContent } from '@/components/ui/sheet';
 import { Icons } from '@/components/icons';
-import { IntentQualificationCard, type IntentForQualification } from './IntentQualificationCard';
+import { IntentCard } from './cards/IntentCard';
+import type { IntentForQualification } from './IntentQualificationCard';
 import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
-import { formatTimestamp } from '@/lib/utils';
+import { cn, formatTimestamp } from '@/lib/utils';
 
 interface QualificationQueueProps {
   siteId: string;
@@ -46,7 +45,8 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
-  const [qualifyIntent, setQualifyIntent] = useState<IntentForQualification | null>(null);
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(() => new Set());
+  const [sessionEvidence, setSessionEvidence] = useState<Record<string, { city?: string | null; district?: string | null }>>({});
 
   const fetchUnscoredIntents = useCallback(async () => {
     try {
@@ -93,6 +93,13 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
           risk_reasons: Array.isArray(r.risk_reasons) ? r.risk_reasons : null,
           oci_stage: r.oci_stage ?? null,
           oci_status: r.oci_status ?? null,
+          // Evidence fields (best-effort; may be absent depending on RPC/session join)
+          attribution_source: r.attribution_source ?? null,
+          gclid: r.gclid ?? null,
+          wbraid: r.wbraid ?? null,
+          gbraid: r.gbraid ?? null,
+          total_duration_sec: typeof r.total_duration_sec === 'number' ? r.total_duration_sec : null,
+          event_count: typeof r.event_count === 'number' ? r.event_count : null,
         })) as IntentForQualification[]
       );
     } catch (err: any) {
@@ -101,6 +108,49 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
       setLoading(false);
     }
   }, [siteId]);
+
+  const visibleIntents = useMemo(() => {
+    if (skippedIds.size === 0) return intents;
+    return intents.filter((i) => !skippedIds.has(i.id));
+  }, [intents, skippedIds]);
+
+  const top = visibleIntents[0] || null;
+  const next = visibleIntents[1] || null;
+
+  // Fetch richer session evidence for the TOP card only (keeps UI snappy, avoids heavy fan-out)
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!top?.matched_session_id) return;
+      const sid = top.matched_session_id;
+      if (sessionEvidence[sid]) return;
+
+      try {
+        const supabase = createClient();
+        const { data, error: rpcError } = await supabase.rpc('get_session_details', {
+          p_site_id: siteId,
+          p_session_id: sid,
+        });
+        if (rpcError) return;
+        const row = Array.isArray(data) ? data[0] : null;
+        if (!row) return;
+        if (cancelled) return;
+        setSessionEvidence((prev) => ({
+          ...prev,
+          [sid]: {
+            city: row.city ?? null,
+            district: row.district ?? null,
+          },
+        }));
+      } catch {
+        // ignore
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [siteId, sessionEvidence, top?.matched_session_id]);
 
   // Initial fetch
   useEffect(() => {
@@ -124,7 +174,6 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
   const handleQualified = useCallback(() => {
     // Intent was qualified, refresh the list
     fetchUnscoredIntents();
-    setQualifyIntent(null);
   }, [fetchUnscoredIntents]);
 
   const handleOpenSession = useCallback((intent: IntentForQualification) => {
@@ -216,154 +265,104 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
     );
   }
 
+  const mergedTop: IntentForQualification | null = top
+    ? {
+        ...top,
+        ...(top.matched_session_id ? sessionEvidence[top.matched_session_id] : {}),
+      }
+    : null;
+
+  const mergedNext: IntentForQualification | null = next
+    ? {
+        ...next,
+        ...(next.matched_session_id ? sessionEvidence[next.matched_session_id] : {}),
+      }
+    : null;
+
   return (
     <>
-      <Sheet defaultOpen={false}>
-        <Card>
-          <CardHeader className="py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <CardTitle className="text-base font-semibold leading-none">
-                  Qualification Queue
-                </CardTitle>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  Score and seal Ads intents (dense view)
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
-                  {intents.length} Pending
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => fetchUnscoredIntents()}
-                  title="Refresh"
-                >
-                  <Icons.refresh className="w-4 h-4" />
-                </Button>
+      <Card>
+        <CardHeader className="py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle className="text-base font-semibold leading-none">Qualification Queue</CardTitle>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Clear the stack — Seal or Junk. (Top card expanded)
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-background">
-                  <TableHead className="w-[140px]">Time (TRT)</TableHead>
-                  <TableHead className="w-[120px]">Type</TableHead>
-                  <TableHead>Target</TableHead>
-                  <TableHead className="hidden lg:table-cell">Page</TableHead>
-                  <TableHead className="hidden lg:table-cell w-[160px]">Click ID</TableHead>
-                  <TableHead className="w-[220px] text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {intents.map((intent) => {
-                  const type = (intent.intent_action || '').toLowerCase();
-                  const typeBadge =
-                    type === 'phone' ? (
-                      <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                        <Icons.phone className="w-3 h-3 mr-1" />
-                        Phone
-                      </Badge>
-                    ) : type === 'whatsapp' ? (
-                      <Badge className="bg-green-100 text-green-700 border-green-200">
-                        <Icons.whatsappBrand className="w-3 h-3 mr-1" />
-                        WhatsApp
-                      </Badge>
-                    ) : type === 'form' ? (
-                      <Badge className="bg-purple-100 text-purple-700 border-purple-200">
-                        <Icons.form className="w-3 h-3 mr-1" />
-                        Form
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">
-                        <Icons.circleDot className="w-3 h-3 mr-1" />
-                        Other
-                      </Badge>
-                    );
-
-                  const shortTarget = intent.intent_target
-                    ? (intent.intent_target.length > 18 ? `${intent.intent_target.slice(0, 15)}…` : intent.intent_target)
-                    : '—';
-                  const shortPage = intent.intent_page_url
-                    ? (intent.intent_page_url.length > 34 ? `${intent.intent_page_url.slice(0, 31)}…` : intent.intent_page_url)
-                    : '—';
-                  const shortClick = intent.click_id
-                    ? (intent.click_id.length > 14 ? `${intent.click_id.slice(0, 12)}…` : intent.click_id)
-                    : '—';
-
-                  return (
-                    <TableRow key={intent.id}>
-                      <TableCell className="tabular-nums whitespace-nowrap">
-                        {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' })}
-                      </TableCell>
-                      <TableCell>{typeBadge}</TableCell>
-                      <TableCell className="min-w-0">
-                        <span className="truncate">{shortTarget}</span>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <span className="truncate text-muted-foreground">{shortPage}</span>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell font-mono text-sm text-muted-foreground">
-                        {shortClick}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="inline-flex items-center gap-2">
-                          {intent.matched_session_id && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => handleOpenSession(intent)}
-                            >
-                              <Icons.externalLink className="w-3 h-3 mr-2" />
-                              Session
-                            </Button>
-                          )}
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => setQualifyIntent(intent)}
-                          >
-                            <Icons.star className="w-4 h-4 mr-2" />
-                            Qualify
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <SheetContent side="right" className="w-[560px] max-w-[95vw] p-0">
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-4 py-3">
-            <div className="text-sm font-semibold">Qualify intent</div>
-            <SheetClose className="cursor-pointer">
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Icons.x className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                {visibleIntents.length} Pending
+              </Badge>
+              {skippedIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setSkippedIds(new Set())}
+                  title="Show skipped"
+                >
+                  Show skipped ({skippedIds.size})
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => fetchUnscoredIntents()} title="Refresh">
+                <Icons.refresh className="w-4 h-4" />
               </Button>
-            </SheetClose>
+            </div>
           </div>
-          <div className="p-4">
-            {qualifyIntent ? (
-              <IntentQualificationCard
-                siteId={siteId}
-                intent={qualifyIntent}
-                onQualified={handleQualified}
-                onOpenSession={handleOpenSession}
-              />
-            ) : (
-              <div className="text-sm text-muted-foreground">Select an intent to qualify.</div>
+        </CardHeader>
+
+        <CardContent className="pt-0">
+          {/* Stacked cards */}
+          <div className="relative">
+            {/* Next card peeking */}
+            {mergedNext && (
+              <div
+                className={cn(
+                  'pointer-events-none absolute left-0 right-0',
+                  'translate-y-6 scale-[0.985] opacity-90'
+                )}
+                aria-hidden
+              >
+                <IntentCard
+                  siteId={siteId}
+                  intent={mergedNext}
+                  onQualified={handleQualified}
+                  onOpenSession={() => handleOpenSession(mergedNext)}
+                />
+              </div>
+            )}
+
+            {/* Top card */}
+            {mergedTop && (
+              <div className="relative z-10">
+                <IntentCard
+                  siteId={siteId}
+                  intent={mergedTop}
+                  autoFocusPrimary
+                  onSkip={() => {
+                    setSkippedIds((prev) => new Set(prev).add(mergedTop.id));
+                  }}
+                  onQualified={handleQualified}
+                  onOpenSession={() => handleOpenSession(mergedTop)}
+                />
+              </div>
             )}
           </div>
-        </SheetContent>
-      </Sheet>
+
+          {/* Small helper row */}
+          <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+            <div>
+              Tip: Use <span className="font-medium text-foreground">SEAL</span> or <span className="font-medium text-foreground">JUNK</span> to clear faster.
+            </div>
+            {mergedTop && (
+              <div className="tabular-nums">
+                {formatTimestamp(mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Session Drawer */}
       {selectedIntent && selectedIntent.matched_session_id && (
