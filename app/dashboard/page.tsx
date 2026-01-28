@@ -49,7 +49,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] p-6 relative">
+    <div className="min-h-screen bg-background text-foreground p-6 relative">
       {/* Month Boundary Banner */}
       <MonthBoundaryBanner />
 
@@ -57,30 +57,23 @@ export default async function DashboardPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-100 font-mono tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight">
               WAR ROOM
             </h1>
-            <p className="text-sm text-slate-400 font-mono mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               Command Center • Real-time Intelligence • Phone Matching
             </p>
           </div>
           <div className="flex gap-2">
             {process.env.NODE_ENV === 'development' && (
               <Link href="/test-page">
-                <Button 
-                  variant="outline" 
-                  className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
-                >
+                <Button variant="outline">
                   🧪 TEST PAGE
                 </Button>
               </Link>
             )}
             <form action={signOut}>
-              <Button 
-                type="submit" 
-                variant="outline"
-                className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm"
-              >
+              <Button type="submit" variant="outline">
                 🚪 SIGN OUT
               </Button>
             </form>

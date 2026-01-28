@@ -30,7 +30,7 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
       case 'critical':
         return 'text-rose-600';
       default:
-        return 'text-slate-600';
+        return 'text-muted-foreground';
     }
   };
 
@@ -61,7 +61,7 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg">
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted border border-border rounded-lg">
       {getStatusIcon()}
       <div className="flex flex-col">
         <span className={`text-sm uppercase tracking-wider ${getStatusColor()}`}>

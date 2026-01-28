@@ -197,7 +197,7 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
         <div className="flex-1 overflow-y-auto p-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 text-slate-600 animate-spin" />
+              <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
             </div>
           ) : isLimitedView ? (
             <div className="py-8">
@@ -256,11 +256,11 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
             </div>
           ) : error ? (
             <div className="text-center py-12">
-              <p className="text-rose-400 font-mono text-sm mb-2">Hata: {error}</p>
+              <p className="text-destructive text-sm mb-2">Hata: {error}</p>
             </div>
           ) : !session ? (
             <div className="text-center py-12">
-              <p className="text-slate-500 font-mono text-sm">Eşleşmiş oturum bulunamadı</p>
+              <p className="text-muted-foreground text-sm">Eşleşmiş oturum bulunamadı</p>
             </div>
           ) : (
             <>
@@ -317,8 +317,8 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Etkinlikler:</span>
-                    <span className="ml-2 text-slate-400">{session.events.length}</span>
+                    <span className="text-muted-foreground">Etkinlikler:</span>
+                    <span className="ml-2 text-muted-foreground tabular-nums">{session.events.length}</span>
                   </div>
                 </div>
               </div>

@@ -415,22 +415,22 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 p-0 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-emerald-700 hover:bg-emerald-50"
                   onClick={handleCopySessionId}
                   title="Copy Session ID"
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </Button>
                 {isExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 )}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-slate-500" />
-                  <p className="font-mono text-xs text-slate-500">
+                  <Clock className="w-3 h-3 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground tabular-nums">
                     {formatTimestamp(firstEvent.created_at, {
                       day: '2-digit',
                       month: '2-digit',
@@ -442,25 +442,25 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                   </p>
                 </div>
                 {sessionDuration > 0 && (
-                  <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
+                  <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                     {sessionDuration}s
                   </span>
                 )}
-                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
+                <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                   {events.length} events
                 </span>
                 {conversionCount > 0 && (
-                  <span className="font-mono text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
+                  <span className="text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium tabular-nums">
                     {conversionCount} CONVERSION{conversionCount > 1 ? 'S' : ''}
                   </span>
                 )}
                 {hasPhoneCall && (
-                  <span className="font-mono text-sm px-2 py-1 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                    📞 CALL
+                  <span className="text-sm px-2 py-1 rounded bg-blue-100 text-blue-700 border border-blue-200 font-medium">
+                    Phone
                   </span>
                 )}
                 {matchedCall && (
-                  <span className="font-mono text-sm px-2 py-1 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                  <span className="text-sm px-2 py-1 rounded bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
                     MATCHED: {matchedCall.phone_number}
                   </span>
@@ -468,50 +468,50 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               </div>
             </div>
             <div className="text-right">
-              <p className={`font-mono text-3xl font-bold ${
-                leadScore >= 71 ? 'text-orange-400' : 
-                leadScore >= 31 ? 'text-blue-400' : 
-                'text-slate-400'
+              <p className={`text-3xl font-bold tabular-nums ${
+                leadScore >= 71 ? 'text-amber-700' : 
+                leadScore >= 31 ? 'text-blue-700' : 
+                'text-muted-foreground'
               }`}>
                 {leadScore}
               </p>
               {leadScore >= 71 && (
-                <p className="font-mono text-xs text-orange-400 animate-pulse font-semibold mt-1">HOT LEAD</p>
+                <p className="text-xs text-amber-800 font-semibold mt-1">HOT LEAD</p>
               )}
-              <p className="font-mono text-sm text-slate-600 uppercase tracking-wider mt-2 opacity-60">
+              <p className="text-sm text-muted-foreground uppercase tracking-wider mt-2">
                 {intelligenceSummary}
               </p>
             </div>
           </div>
           
           {/* Quick Info Row - Badge Style */}
-          <div className="mt-3 pt-2 border-t border-slate-800/50">
+          <div className="mt-3 pt-2 border-t border-border">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs px-2 py-1 rounded bg-slate-700/50 text-slate-300 border border-slate-600/30">
-                SOURCE: <span className="text-slate-100 font-semibold">{attributionSource}</span>
+              <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
+                Source: <span className="text-foreground font-medium">{attributionSource}</span>
               </span>
               {gclid && (
-                <span className="font-mono text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                  GCLID: <span className="text-purple-300">{gclid.slice(0, 12)}...</span>
+                <span className="text-xs px-2 py-1 rounded bg-yellow-50 text-yellow-800 border border-yellow-200 tabular-nums">
+                  GCLID: <span className="font-medium">{gclid.slice(0, 12)}…</span>
                 </span>
               )}
               {fingerprint && (
                 <span 
-                  className="font-mono text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 cursor-pointer hover:bg-cyan-500/30 transition-colors"
+                  className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border flex items-center gap-1 cursor-pointer hover:bg-muted/70 transition-colors tabular-nums"
                   title={`Fingerprint: ${fingerprint}\nClick to copy full fingerprint`}
                   onClick={(e) => handleCopyFingerprint(e, fingerprint)}
                 >
-                  FP: <span className="text-cyan-300">{fingerprint.slice(0, 10)}...</span>
+                  FP: <span className="text-foreground font-medium">{fingerprint.slice(0, 10)}…</span>
                   <Copy className="w-3 h-3 opacity-60" />
                 </span>
               )}
               {isReturning && (
-                <span className="font-mono text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 border border-green-500/30 font-semibold">
-                  🔄 RETURNING
+                <span className="text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                  Returning
                 </span>
               )}
               {sessionCount24h > 0 && (
-                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
+                <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                   Sessions 24h: {sessionCount24h}
                 </span>
               )}
@@ -519,7 +519,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-9 px-3 text-sm font-mono text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
+                  className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
                   onClick={handleToggleVisitorHistory}
                   title="View visitor history"
                 >
@@ -531,25 +531,25 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
           </div>
 
           {/* Context Chips Row - Always show, use "—" for missing values */}
-          <div className="mt-2 pt-2 border-t border-slate-800/30">
+          <div className="mt-2 pt-2 border-t border-border">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 min-w-0 truncate">
-                CITY: <span className="text-indigo-300 font-semibold">{city && city !== 'Unknown' ? city : '—'}</span>
+              <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
+                City: <span className="text-foreground font-medium">{city && city !== 'Unknown' ? city : '—'}</span>
               </span>
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30 min-w-0 truncate">
-                DISTRICT: <span className="text-violet-300 font-semibold">{district || '—'}</span>
+              <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
+                District: <span className="text-foreground font-medium">{district || '—'}</span>
               </span>
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 min-w-0 truncate">
-                DEVICE: <span className="text-amber-300 font-semibold">{device || '—'}</span>
+              <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
+                Device: <span className="text-foreground font-medium">{device || '—'}</span>
               </span>
               {os && os !== 'Unknown' && (
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 border border-teal-500/30 min-w-0 truncate">
-                  OS: <span className="text-teal-300 font-semibold">{os}</span>
+                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
+                  OS: <span className="text-foreground font-medium">{os}</span>
                 </span>
               )}
               {browser && browser !== 'Unknown' && (
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30 min-w-0 truncate">
-                  BROWSER: <span className="text-sky-300 font-semibold">{browser}</span>
+                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
+                  Browser: <span className="text-foreground font-medium">{browser}</span>
                 </span>
               )}
             </div>
@@ -558,10 +558,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
         {/* Expanded Content - Event Timeline & Time Table */}
         {isExpanded && (
-          <div className="border-t border-slate-800/50 p-4 space-y-4">
+          <div className="border-t border-border p-4 space-y-4">
             {/* Event Timeline (Visual) */}
             <div>
-              <p className="font-mono text-xs text-slate-400 uppercase tracking-wider mb-3">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
                 Event Timeline
               </p>
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
@@ -575,9 +575,9 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                       <div className="relative group">
                         <div className={`
                           w-8 h-8 rounded-full flex items-center justify-center
-                          ${isConversion ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                            event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                            'bg-slate-700/50 text-slate-300 border border-slate-600/30'
+                          ${isConversion ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                            event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' :
+                            'bg-muted text-muted-foreground border border-border'
                           }
                           hover:scale-110 transition-transform cursor-pointer
                         `}>
@@ -585,22 +585,22 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         </div>
                         {/* Tooltip */}
                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          <div className="bg-slate-800 text-slate-200 text-xs font-mono px-2 py-1 rounded border border-slate-700 whitespace-nowrap">
+                          <div className="bg-popover text-popover-foreground text-xs px-2 py-1 rounded border border-border whitespace-nowrap shadow-sm">
                             {event.event_action}
                             {event.event_label && `: ${event.event_label}`}
                           </div>
                         </div>
                       </div>
                       {!isLast && (
-                        <TrendingUp className="w-3 h-3 text-slate-600 flex-shrink-0" />
+                        <TrendingUp className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                       )}
                     </div>
                   );
                 })}
                 {events.length > 15 && (
                   <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                    <TrendingUp className="w-3 h-3 text-slate-600" />
-                    <span className="font-mono text-sm px-2 py-1 rounded bg-slate-800/50 text-slate-400 border border-slate-700/30">
+                    <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                       +{events.length - 15}
                     </span>
                   </div>
@@ -610,20 +610,20 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
             {/* Event Details Table */}
             <div>
-              <p className="font-mono text-xs text-slate-400 uppercase tracking-wider mb-3">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
                 Event Details & Time Table
               </p>
               <div className="overflow-x-auto">
-                <table className="w-full font-mono text-xs">
+                <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-800/50">
-                      <th className="text-left py-2 px-3 text-slate-400">Time</th>
-                      <th className="text-left py-2 px-3 text-slate-400">+Time</th>
-                      <th className="text-left py-2 px-3 text-slate-400">Category</th>
-                      <th className="text-left py-2 px-3 text-slate-400">Action</th>
-                      <th className="text-left py-2 px-3 text-slate-400">Label</th>
-                      <th className="text-left py-2 px-3 text-slate-400">Value</th>
-                      <th className="text-left py-2 px-3 text-slate-400">URL</th>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 px-3 text-muted-foreground">Time</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground">+Time</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground">Category</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground">Action</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground">Label</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground">Value</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground">URL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -637,11 +637,9 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         return (
                           <tr 
                             key={item.id} 
-                            className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors ${
-                              isConversion ? 'bg-emerald-500/5' : ''
-                            }`}
+                            className={`border-b border-border hover:bg-muted/40 transition-colors ${isConversion ? 'bg-emerald-50/50' : ''}`}
                           >
-                            <td className="py-2 px-3 text-slate-300">
+                            <td className="py-2 px-3 text-foreground tabular-nums">
                               {formatTimestamp(event.created_at, {
                                 hour: '2-digit',
                                 minute: '2-digit',
@@ -649,30 +647,30 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 fractionalSecondDigits: 3
                               })}
                             </td>
-                            <td className="py-2 px-3 text-slate-500">
+                            <td className="py-2 px-3 text-muted-foreground tabular-nums">
                               {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
                             </td>
                             <td className="py-2 px-3">
-                              <span className={`px-2 py-1 rounded text-sm ${
-                                event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
-                                event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
-                                event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
-                                'bg-slate-700/50 text-slate-300'
+                              <span className={`px-2 py-1 rounded text-xs border ${
+                                event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
+                                event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
+                                'bg-muted text-muted-foreground border-border'
                               }`}>
                                 {event.event_category.toUpperCase()}
                               </span>
                             </td>
-                            <td className="py-2 px-3 text-slate-200 flex items-center gap-2">
+                            <td className="py-2 px-3 text-foreground flex items-center gap-2">
                               <Icon className="w-3 h-3" />
                               {event.event_action}
                             </td>
-                            <td className="py-2 px-3 text-slate-400">
+                            <td className="py-2 px-3 text-muted-foreground">
                               {event.event_label || '—'}
                             </td>
-                            <td className="py-2 px-3 text-slate-400">
+                            <td className="py-2 px-3 text-muted-foreground tabular-nums">
                               {event.event_value !== null ? event.event_value : '—'}
                             </td>
-                            <td className="py-2 px-3 text-slate-500 text-sm max-w-xs truncate" title={event.url}>
+                            <td className="py-2 px-3 text-muted-foreground text-sm max-w-xs truncate" title={event.url}>
                               {event.url || '—'}
                             </td>
                           </tr>
@@ -688,12 +686,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                           <React.Fragment key={item.id}>
                             {/* Compressed row */}
                             <tr 
-                              className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors cursor-pointer ${
-                                isConversion ? 'bg-emerald-500/5' : ''
-                              }`}
+                              className={`border-b border-border hover:bg-muted/40 transition-colors cursor-pointer ${isConversion ? 'bg-emerald-50/50' : ''}`}
                               onClick={() => toggleGroup(item.id)}
                             >
-                              <td className="py-2 px-3 text-slate-300">
+                              <td className="py-2 px-3 text-foreground tabular-nums">
                                 {formatTimestamp(item.firstTime, {
                                   hour: '2-digit',
                                   minute: '2-digit',
@@ -701,7 +697,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                   fractionalSecondDigits: 3
                                 })}
                                 {item.events.length > 1 && (
-                                  <span className="text-slate-500 ml-1">
+                                  <span className="text-muted-foreground ml-1 tabular-nums">
                                     - {formatTimestamp(item.lastTime, {
                                       hour: '2-digit',
                                       minute: '2-digit',
@@ -711,36 +707,36 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-slate-500">
+                              <td className="py-2 px-3 text-muted-foreground tabular-nums">
                                 {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
                               </td>
                               <td className="py-2 px-3">
-                                <span className={`px-2 py-1 rounded text-sm ${
-                                  firstEvent.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
-                                  firstEvent.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
-                                  firstEvent.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
-                                  'bg-slate-700/50 text-slate-300'
+                                <span className={`px-2 py-1 rounded text-xs border ${
+                                  firstEvent.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  firstEvent.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
+                                  firstEvent.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
+                                  'bg-muted text-muted-foreground border-border'
                                 }`}>
                                   {firstEvent.event_category.toUpperCase()}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-slate-200 flex items-center gap-2">
+                              <td className="py-2 px-3 text-foreground flex items-center gap-2">
                                 <ChevronRight 
                                   className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                                 />
                                 <Icon className="w-3 h-3" />
                                 {firstEvent.event_action}
-                                <span className="ml-2 px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-sm font-semibold">
+                                <span className="ml-2 px-2 py-1 rounded bg-muted text-muted-foreground border border-border text-xs font-semibold tabular-nums">
                                   ×{item.count}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-slate-400">
+                              <td className="py-2 px-3 text-muted-foreground">
                                 {firstEvent.event_label || '—'}
                               </td>
-                              <td className="py-2 px-3 text-slate-400">
+                              <td className="py-2 px-3 text-muted-foreground tabular-nums">
                                 {firstEvent.event_value !== null ? firstEvent.event_value : '—'}
                               </td>
-                              <td className="py-2 px-3 text-slate-500 text-sm max-w-xs truncate" title={firstEvent.url}>
+                              <td className="py-2 px-3 text-muted-foreground text-sm max-w-xs truncate" title={firstEvent.url}>
                                 {firstEvent.url || '—'}
                               </td>
                             </tr>
@@ -748,11 +744,9 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                             {isExpanded && item.events.map((event, idx) => (
                               <tr 
                                 key={`${item.id}-${event.id}`}
-                                className={`border-b border-slate-800/20 hover:bg-slate-800/10 transition-colors ${
-                                  isConversion ? 'bg-emerald-500/3' : ''
-                                }`}
+                                className={`border-b border-border hover:bg-muted/30 transition-colors ${isConversion ? 'bg-emerald-50/30' : ''}`}
                               >
-                                <td className="py-1.5 px-3 pl-8 text-slate-400 text-sm">
+                                <td className="py-1.5 px-3 pl-8 text-muted-foreground text-sm tabular-nums">
                                   {formatTimestamp(event.created_at, {
                                     hour: '2-digit',
                                     minute: '2-digit',
@@ -760,30 +754,30 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                     fractionalSecondDigits: 3
                                   })}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-500 text-sm">
+                                <td className="py-1.5 px-3 text-muted-foreground text-sm tabular-nums">
                                   {event.timeDiff > 0 ? `+${event.timeDiff}s` : '—'}
                                 </td>
                                 <td className="py-1.5 px-3">
-                                  <span className={`px-2 py-1 rounded text-sm ${
-                                    event.event_category === 'conversion' ? 'bg-emerald-500/20 text-emerald-400' :
-                                    event.event_category === 'acquisition' ? 'bg-blue-500/20 text-blue-400' :
-                                    event.event_category === 'interaction' ? 'bg-purple-500/20 text-purple-400' :
-                                    'bg-slate-700/50 text-slate-300'
+                                  <span className={`px-2 py-1 rounded text-xs border ${
+                                    event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
+                                    event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
+                                    'bg-muted text-muted-foreground border-border'
                                   }`}>
                                     {event.event_category.toUpperCase()}
                                   </span>
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-300 text-sm flex items-center gap-2">
+                                <td className="py-1.5 px-3 text-foreground text-sm flex items-center gap-2">
                                   <Icon className="w-2.5 h-2.5" />
                                   {event.event_action}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-500 text-sm">
+                                <td className="py-1.5 px-3 text-muted-foreground text-sm">
                                   {event.event_label || '—'}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-500 text-sm">
+                                <td className="py-1.5 px-3 text-muted-foreground text-sm tabular-nums">
                                   {event.event_value !== null ? event.event_value : '—'}
                                 </td>
-                                <td className="py-1.5 px-3 text-slate-600 text-sm max-w-xs truncate" title={event.url}>
+                                <td className="py-1.5 px-3 text-muted-foreground text-sm max-w-xs truncate" title={event.url}>
                                   {event.url || '—'}
                                 </td>
                               </tr>
@@ -800,11 +794,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
             {/* Phone Match Info */}
             {matchedCall && (
-              <div className="mt-4 p-3 rounded bg-rose-500/10 border border-rose-500/30">
-                <p className="font-mono text-xs text-rose-400 mb-1">
+              <div className="mt-4 p-3 rounded bg-rose-50 border border-rose-200">
+                <p className="text-xs text-rose-700 mb-1">
                   📞 TELEFON EŞLEŞTİ: {matchedCall.phone_number}
                 </p>
-                <div className="flex items-center gap-4 text-sm text-slate-400">
+                <div className="flex items-center gap-4 text-sm text-muted-foreground tabular-nums">
                   <span>Score: {matchedCall.lead_score}</span>
                   <span>Match Time: {formatTimestamp(matchedCall.created_at)}</span>
                 </div>
@@ -852,16 +846,16 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                     {(visitorSessions || []).map((session) => (
                       <div
                         key={session.id}
-                        className={`p-3 rounded border ${
+                        className={`p-3 rounded border transition-colors ${
                           session.id === sessionId
-                            ? 'bg-emerald-500/10 border-emerald-500/30'
-                            : 'bg-slate-800/30 border-slate-700/30'
-                        } hover:bg-slate-800/50 transition-colors`}
+                            ? 'bg-emerald-50 border-emerald-200'
+                            : 'bg-background border-border'
+                        } hover:bg-muted/40`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-2">
-                              <span className="font-mono text-xs text-slate-300">
+                              <span className="text-xs text-muted-foreground tabular-nums">
                                 {formatTimestamp(session.created_at, {
                                   day: '2-digit',
                                   month: '2-digit',
@@ -871,40 +865,36 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 })}
                               </span>
                               {session.id === sessionId && (
-                                <span className="font-mono text-sm px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                <span className="text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
                                   CURRENT
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
                               {session.attribution_source && (
-                                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
+                                <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
                                   {session.attribution_source}
                                 </span>
                               )}
                               {session.device_type && (
-                                <span className="font-mono text-sm px-2 py-1 rounded bg-amber-500/20 text-amber-400">
+                                <span className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200">
                                   {session.device_type}
                                 </span>
                               )}
                               {session.city && session.city !== 'Unknown' && (
-                                <span className="font-mono text-sm px-2 py-1 rounded bg-indigo-500/20 text-indigo-400">
+                                <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
                                   {session.city}
                                 </span>
                               )}
                               {session.lead_score !== null && session.lead_score !== undefined && (
-                                <span className={`font-mono text-sm px-2 py-1 rounded ${
-                                  session.lead_score >= 71 ? 'bg-orange-500/20 text-orange-400' :
-                                  session.lead_score >= 31 ? 'bg-blue-500/20 text-blue-400' :
-                                  'bg-slate-700/50 text-slate-300'
-                                }`}>
+                                <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                                   Score: {session.lead_score}
                                 </span>
                               )}
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-mono text-xs text-slate-500">
+                            <p className="text-xs text-muted-foreground tabular-nums">
                               {session.id.slice(0, 8)}...
                             </p>
                           </div>
@@ -916,28 +906,28 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
                 {/* Other Calls Section - Fingerprint-only calls */}
                 {visitorCalls && visitorCalls.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-slate-800/50">
-                    <h4 className="font-mono text-sm text-slate-300 mb-3">Other Calls (Same Fingerprint)</h4>
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <h4 className="text-sm font-semibold text-foreground mb-3">Other Calls (Same Fingerprint)</h4>
                     <div className="space-y-2">
                       {(visitorCalls || []).map((call) => (
                         <div
                           key={call.id}
-                          className="p-3 rounded bg-slate-800/30 border border-slate-700/30 hover:bg-slate-800/50 transition-colors"
+                          className="p-3 rounded bg-muted/40 border border-border hover:bg-muted/60 transition-colors"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-2">
-                                <span className="font-mono text-xs text-slate-300">{call.phone_number}</span>
-                                <span className="font-mono text-sm px-2 py-1 rounded bg-slate-700/50 text-slate-300">
+                                <span className="text-xs text-foreground tabular-nums">{call.phone_number}</span>
+                                <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                                   Score: {call.lead_score}
                                 </span>
                                 {call.matched_session_id && (
-                                  <span className="font-mono text-sm px-2 py-1 rounded bg-cyan-500/20 text-cyan-400">
+                                  <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                                     Matched to: {call.matched_session_id.slice(0, 8)}...
                                   </span>
                                 )}
                               </div>
-                              <span className="font-mono text-sm text-slate-500">
+                              <span className="text-sm text-muted-foreground tabular-nums">
                                 {formatTimestamp(call.created_at, {
                                   day: '2-digit',
                                   month: '2-digit',
@@ -956,8 +946,8 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               </div>
               
               {/* Footer */}
-              <div className="p-4 border-t border-slate-800/50 bg-slate-900/50">
-                <p className="font-mono text-xs text-slate-400 text-center">
+              <div className="p-4 border-t border-border bg-muted/30">
+                <p className="text-xs text-muted-foreground text-center tabular-nums">
                   Showing {visitorSessions.length} session{visitorSessions.length !== 1 ? 's' : ''} 
                   {visitorCalls.length > 0 && `, ${visitorCalls.length} other call${visitorCalls.length !== 1 ? 's' : ''}`}
                   {sessionCount24h > 0 && ` • ${sessionCount24h} in last 24h`}

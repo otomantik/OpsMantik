@@ -303,26 +303,26 @@ export default function TestPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] p-8">
+    <div className="min-h-screen bg-background text-foreground p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-100 font-mono mb-2">🧪 TEST PAGE</h1>
-            <p className="text-slate-400 font-mono text-sm">
+            <h1 className="text-3xl font-bold mb-2">Test page</h1>
+            <p className="text-muted-foreground text-sm">
               Event tracker test sayfası • Dashboard'da anlık görünecek
             </p>
           </div>
           <div className="flex gap-2">
             <Link href="/dashboard">
-              <Button variant="outline" className="bg-slate-800/60 border-slate-700/50 text-slate-200 hover:bg-slate-700/60 font-mono text-xs backdrop-blur-sm">
+              <Button variant="outline">
                 📊 DASHBOARD
               </Button>
             </Link>
             <Button 
               onClick={clearStorage}
               variant="outline" 
-              className="bg-red-900/30 border-red-700/50 text-red-300 hover:bg-red-800/40 font-mono text-xs"
+              className="text-destructive border-destructive/20 hover:bg-destructive/10"
             >
               🗑️ CLEAR STORAGE
             </Button>
@@ -333,10 +333,10 @@ export default function TestPage() {
         <Card className="mb-4">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-mono text-slate-200">TRACKER STATUS</CardTitle>
+              <CardTitle className="text-base font-semibold">Tracker status</CardTitle>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${trackerLoaded ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
-                <span className={`font-mono text-xs ${trackerLoaded ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-xs ${trackerLoaded ? 'text-emerald-700' : 'text-destructive'}`}>
                   {trackerLoaded ? 'ACTIVE' : 'INACTIVE'}
                 </span>
               </div>
@@ -345,50 +345,53 @@ export default function TestPage() {
           <CardContent>
             <div className="grid grid-cols-4 gap-4 mb-4">
               <div>
-                <p className="font-mono text-xs text-slate-400 mb-1">Tracker</p>
-                <p className={`font-mono text-sm font-bold ${trackerLoaded ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p className="text-xs text-muted-foreground mb-1">Tracker</p>
+                <p className={`text-sm font-semibold ${trackerLoaded ? 'text-emerald-700' : 'text-destructive'}`}>
                   {trackerLoaded ? '✅ LOADED' : '❌ NOT LOADED'}
                 </p>
               </div>
               {sessionInfo ? (
                 <>
                   <div>
-                    <p className="font-mono text-xs text-slate-400 mb-1">Session ID</p>
-                    <p className="font-mono text-xs text-slate-200 truncate" title={sessionInfo.sessionId}>
+                    <p className="text-xs text-muted-foreground mb-1">Session ID</p>
+                    <p className="text-xs text-foreground truncate tabular-nums" title={sessionInfo.sessionId}>
                       {sessionInfo.sessionId.slice(0, 20)}...
                     </p>
                   </div>
                   <div>
-                    <p className="font-mono text-xs text-slate-400 mb-1">Fingerprint</p>
-                    <p className="font-mono text-xs text-slate-200 truncate" title={sessionInfo.fingerprint}>
+                    <p className="text-xs text-muted-foreground mb-1">Fingerprint</p>
+                    <p className="text-xs text-foreground truncate tabular-nums" title={sessionInfo.fingerprint}>
                       {sessionInfo.fingerprint}
                     </p>
                   </div>
                   <div>
-                    <p className="font-mono text-xs text-slate-400 mb-1">GCLID</p>
-                    <p className="font-mono text-xs text-slate-300">
+                    <p className="text-xs text-muted-foreground mb-1">GCLID</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
                       {sessionInfo.gclid !== 'None' ? sessionInfo.gclid.slice(0, 15) + '...' : 'Yok'}
                     </p>
                   </div>
                 </>
               ) : (
                 <div className="col-span-3">
-                  <p className="font-mono text-xs text-slate-500">Session bilgisi yükleniyor...</p>
+                  <p className="text-xs text-muted-foreground">Session bilgisi yükleniyor...</p>
                 </div>
               )}
             </div>
-            <div className="pt-3 border-t border-slate-800/50">
+            <div className="pt-3 border-t border-border">
               <div className="flex items-center gap-4">
                 <Button 
                   onClick={updateSessionInfo}
                   variant="outline"
                   size="sm"
-                  className="font-mono text-xs"
+                  className="text-xs"
                 >
                   🔄 Refresh Session
                 </Button>
-                <p className="font-mono text-xs text-slate-500">
-                  API Status: <span className={apiStatus === 'success' ? 'text-emerald-400' : apiStatus === 'error' ? 'text-red-400' : 'text-slate-400'}>{apiStatus}</span>
+                <p className="text-xs text-muted-foreground">
+                  API Status:{' '}
+                  <span className={apiStatus === 'success' ? 'text-emerald-700' : apiStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
+                    {apiStatus}
+                  </span>
                 </p>
               </div>
             </div>
@@ -398,8 +401,8 @@ export default function TestPage() {
         {/* Attribution Scenarios */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-mono text-slate-200">ATTRIBUTION SCENARIOS</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+            <CardTitle className="text-lg font-semibold">Attribution scenarios</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1">
               Test source classification and context extraction. Check /dashboard/site/&lt;id&gt; after each scenario.
             </CardDescription>
           </CardHeader>
@@ -407,40 +410,45 @@ export default function TestPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Button
                 onClick={simulatePaidClickScenario}
-                className="bg-emerald-600 hover:bg-emerald-700 font-mono text-xs"
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-sm"
                 disabled={!trackerLoaded}
               >
                 💰 Simulate Paid Click
               </Button>
               <Button
                 onClick={simulatePaidSocialScenario}
-                className="bg-blue-600 hover:bg-blue-700 font-mono text-xs"
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-sm"
                 disabled={!trackerLoaded}
               >
                 📱 Simulate Paid Social
               </Button>
               <Button
                 onClick={simulateOrganicScenario}
-                className="bg-slate-600 hover:bg-slate-700 font-mono text-xs"
+                size="sm"
+                variant="secondary"
+                className="text-sm"
                 disabled={!trackerLoaded}
               >
                 🌱 Simulate Organic
               </Button>
               <Button
                 onClick={simulateGeoOverrideScenario}
-                className="bg-purple-600 hover:bg-purple-700 font-mono text-xs"
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-sm"
                 disabled={!trackerLoaded}
               >
                 📍 Simulate Geo Override
               </Button>
             </div>
             {eventLog.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-slate-800/50">
-                <p className="font-mono text-xs text-slate-400 mb-2">Recent Scenarios:</p>
+              <div className="mt-4 pt-3 border-t border-border">
+                <p className="text-sm text-muted-foreground mb-2">Recent scenarios:</p>
                 <div className="space-y-1">
                   {eventLog.map((log, idx) => (
-                    <div key={idx} className="font-mono text-xs text-slate-300">
-                      <span className="text-slate-500">{log.time}</span> - {log.event} ({log.status})
+                    <div key={idx} className="text-sm text-foreground">
+                      <span className="text-muted-foreground tabular-nums">{log.time}</span> - {log.event} ({log.status})
                     </div>
                   ))}
                 </div>
@@ -452,8 +460,8 @@ export default function TestPage() {
         {/* Event Trigger Status */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-mono text-slate-200">EVENT TRIGGER STATUS</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+            <CardTitle className="text-lg font-semibold">Event trigger status</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1">
               Test butonlarının tetiklenme durumu
             </CardDescription>
           </CardHeader>
@@ -472,13 +480,13 @@ export default function TestPage() {
                     key={key}
                     className={`p-2 rounded border text-center transition-all ${
                       status?.triggered 
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                        : 'bg-slate-800/30 border-slate-700/30 text-slate-500'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                        : 'bg-muted border-border text-muted-foreground'
                     }`}
                   >
-                    <p className="font-mono text-[10px] font-bold">{label}</p>
+                    <p className="text-sm font-semibold">{label}</p>
                     {status?.triggered && (
-                      <p className="font-mono text-[9px] text-emerald-400 mt-1">{status.time}</p>
+                      <p className="text-sm text-emerald-800 mt-1 tabular-nums">{status.time}</p>
                     )}
                   </div>
                 );
@@ -492,8 +500,8 @@ export default function TestPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-lg font-mono text-slate-200">EVENT LOG</CardTitle>
-                <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+                <CardTitle className="text-lg font-semibold">Event log</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground mt-1">
                   Son {eventLog.length} event • Dashboard'da görünecek
                 </CardDescription>
               </div>
@@ -505,7 +513,7 @@ export default function TestPage() {
                   }}
                   variant="ghost"
                   size="sm"
-                  className="font-mono text-xs"
+                  className="text-sm"
                 >
                   Clear
                 </Button>
@@ -514,14 +522,14 @@ export default function TestPage() {
           </CardHeader>
           <CardContent>
             {eventLog.length === 0 ? (
-              <p className="text-slate-500 font-mono text-sm text-center py-4">Henüz event gönderilmedi</p>
+              <p className="text-muted-foreground text-sm text-center py-4">Henüz event gönderilmedi</p>
             ) : (
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {eventLog.map((log, idx) => (
-                  <div key={idx} className="flex items-center gap-3 text-xs font-mono py-1 border-b border-slate-800/30">
-                    <span className="text-slate-500 w-16">{log.time}</span>
-                    <span className={log.status === '✅' ? 'text-emerald-400' : 'text-red-400'}>{log.status}</span>
-                    <span className="text-slate-300 flex-1">{log.event}</span>
+                  <div key={idx} className="flex items-center gap-3 text-sm py-1 border-b border-border">
+                    <span className="text-muted-foreground w-20 tabular-nums">{log.time}</span>
+                    <span className={log.status === '✅' ? 'text-emerald-700' : 'text-destructive'}>{log.status}</span>
+                    <span className="text-foreground flex-1">{log.event}</span>
                   </div>
                 ))}
               </div>
@@ -533,35 +541,40 @@ export default function TestPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <Button
             onClick={() => sendEvent('conversion', 'cta_click', 'quick_test')}
-            className="bg-emerald-600 hover:bg-emerald-700 font-mono text-xs"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-sm"
             disabled={!trackerLoaded}
           >
             ✅ CTA Click
           </Button>
           <Button
             onClick={() => sendEvent('conversion', 'form_submit', 'quick_test')}
-            className="bg-blue-600 hover:bg-blue-700 font-mono text-xs"
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-sm"
             disabled={!trackerLoaded}
           >
             📝 Form Submit
           </Button>
           <Button
             onClick={() => sendEvent('interaction', 'page_visit', 'test_page')}
-            className="bg-purple-600 hover:bg-purple-700 font-mono text-xs"
+            size="sm"
+            className="bg-purple-600 hover:bg-purple-700 text-sm"
             disabled={!trackerLoaded}
           >
             👁️ Page Visit
           </Button>
           <Button
             onClick={() => sendEvent('conversion', 'download', 'test.pdf')}
-            className="bg-rose-600 hover:bg-rose-700 font-mono text-xs"
+            size="sm"
+            className="bg-rose-600 hover:bg-rose-700 text-sm"
             disabled={!trackerLoaded}
           >
             📥 Download
           </Button>
           <Button
             onClick={() => sendEvent('interaction', 'video_watch', 'test_video', 30)}
-            className="bg-yellow-600 hover:bg-yellow-700 font-mono text-xs"
+            size="sm"
+            className="bg-yellow-600 hover:bg-yellow-700 text-sm"
             disabled={!trackerLoaded}
           >
             🎥 Video Watch
@@ -571,15 +584,15 @@ export default function TestPage() {
         {/* Google Ads Test Module */}
         <Card className="mb-6 border-2 border-blue-200">
           <CardHeader>
-            <CardTitle className="text-lg font-mono text-slate-200">🎯 Google Ads Test (GCLID)</CardTitle>
-            <CardDescription className="font-mono text-xs text-slate-400 mt-1">
+            <CardTitle className="text-lg font-semibold">🎯 Google Ads Test (GCLID)</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1">
               Simulate paid click tracking with GCLID and UTM parameters
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="gclid" className="font-mono text-xs text-slate-300 mb-2 block">
+                <label htmlFor="gclid" className="text-sm text-muted-foreground mb-2 block">
                   GCLID *
                 </label>
                 <input
@@ -588,18 +601,18 @@ export default function TestPage() {
                   value={gclid}
                   onChange={(e) => setGclid(e.target.value)}
                   placeholder="EAIaIQobChMI..."
-                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div>
-                <label htmlFor="device" className="font-mono text-xs text-slate-300 mb-2 block">
+                <label htmlFor="device" className="text-sm text-muted-foreground mb-2 block">
                   Device Override
                 </label>
                 <select
                   id="device"
                   value={deviceOverride}
                   onChange={(e) => setDeviceOverride(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="desktop">Desktop</option>
                   <option value="mobile">Mobile</option>
@@ -607,7 +620,7 @@ export default function TestPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="utm_source" className="font-mono text-xs text-slate-300 mb-2 block">
+                <label htmlFor="utm_source" className="text-sm text-muted-foreground mb-2 block">
                   UTM Source (Optional)
                 </label>
                 <input
@@ -616,11 +629,11 @@ export default function TestPage() {
                   value={utmSource}
                   onChange={(e) => setUtmSource(e.target.value)}
                   placeholder="google"
-                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div>
-                <label htmlFor="utm_campaign" className="font-mono text-xs text-slate-300 mb-2 block">
+                <label htmlFor="utm_campaign" className="text-sm text-muted-foreground mb-2 block">
                   UTM Campaign (Optional)
                 </label>
                 <input
@@ -629,31 +642,31 @@ export default function TestPage() {
                   value={utmCampaign}
                   onChange={(e) => setUtmCampaign(e.target.value)}
                   placeholder="test_campaign"
-                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             </div>
             <div className="flex gap-3 pt-2">
               <Button
                 onClick={simulatePaidClick}
-                className="bg-blue-600 hover:bg-blue-700 font-mono text-sm flex-1"
+                className="bg-blue-600 hover:bg-blue-700 text-sm flex-1"
                 disabled={!trackerLoaded || !gclid.trim()}
               >
                 🎯 Simulate Paid Click
               </Button>
               <Button
                 onClick={simulateConversion}
-                className="bg-emerald-600 hover:bg-emerald-700 font-mono text-sm flex-1"
+                className="bg-emerald-600 hover:bg-emerald-700 text-sm flex-1"
                 disabled={!trackerLoaded}
               >
                 ✅ Simulate Conversion
               </Button>
             </div>
-            <div className="pt-2 border-t border-slate-800/50">
-              <p className="font-mono text-xs text-slate-400">
+            <div className="pt-2 border-t border-border">
+              <p className="text-sm text-muted-foreground">
                 💡 <strong>Tip:</strong> After clicking "Simulate Paid Click", check the dashboard. 
-                The session should show <span className="text-blue-400">SOURCE: First Click (Paid)</span> 
-                and <span className="text-purple-400">GCLID</span> chips.
+                The session should show <span className="text-blue-700">SOURCE: First Click (Paid)</span> 
+                and <span className="text-foreground">GCLID</span> chips.
               </p>
             </div>
           </CardContent>
@@ -664,36 +677,36 @@ export default function TestPage() {
           {/* Phone Call */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">📞 Phone Call</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">Tel link tıklama</CardDescription>
+              <CardTitle className="text-sm font-semibold">📞 Phone Call</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Tel link tıklama</CardDescription>
             </CardHeader>
             <CardContent>
-              <a href="tel:+905551234567" className="text-blue-400 hover:text-blue-300 font-mono text-sm block mb-2">
+              <a href="tel:+905551234567" className="text-blue-700 hover:text-blue-800 text-sm block mb-2">
                 +90 555 123 45 67
               </a>
-              <p className="text-xs text-slate-500 font-mono">Yukarıdaki telefon numarasına tıklayın</p>
+              <p className="text-sm text-muted-foreground">Yukarıdaki telefon numarasına tıklayın</p>
             </CardContent>
           </Card>
 
           {/* WhatsApp */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">💬 WhatsApp</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">WhatsApp link</CardDescription>
+              <CardTitle className="text-sm font-semibold">💬 WhatsApp</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">WhatsApp link</CardDescription>
             </CardHeader>
             <CardContent>
-              <a href="https://wa.me/905551234567" target="_blank" className="text-emerald-400 hover:text-emerald-300 font-mono text-sm block mb-2">
+              <a href="https://wa.me/905551234567" target="_blank" className="text-emerald-700 hover:text-emerald-800 text-sm block mb-2">
                 WhatsApp ile İletişim
               </a>
-              <p className="text-xs text-slate-500 font-mono">Yukarıdaki WhatsApp linkine tıklayın</p>
+              <p className="text-sm text-muted-foreground">Yukarıdaki WhatsApp linkine tıklayın</p>
             </CardContent>
           </Card>
 
           {/* Form Submit */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">📋 Form Submit</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">Form gönderimi</CardDescription>
+              <CardTitle className="text-sm font-semibold">📋 Form Submit</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Form gönderimi</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -705,7 +718,7 @@ export default function TestPage() {
                 <input
                   type="email"
                   placeholder="Email"
-                  className="w-full px-3 py-2 border border-slate-700 bg-slate-800/50 rounded mb-2 text-slate-200 font-mono text-sm"
+                  className="w-full px-3 py-2 border border-border bg-background rounded mb-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={!trackerLoaded}>
                   Gönder
@@ -717,8 +730,8 @@ export default function TestPage() {
           {/* CTA Button */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">🎯 CTA Button</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">Call-to-action</CardDescription>
+              <CardTitle className="text-sm font-semibold">🎯 CTA Button</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Call-to-action</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
@@ -734,8 +747,8 @@ export default function TestPage() {
           {/* Download */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">📥 Download</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">Dosya indirme</CardDescription>
+              <CardTitle className="text-sm font-semibold">📥 Download</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Dosya indirme</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
@@ -751,19 +764,19 @@ export default function TestPage() {
           {/* Pricing Hover */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">🖱️ Pricing Hover</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">2 saniye hover</CardDescription>
+              <CardTitle className="text-sm font-semibold">🖱️ Pricing Hover</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">2 saniye hover</CardDescription>
             </CardHeader>
             <CardContent>
               <div
-                className="p-4 border border-slate-700 rounded cursor-pointer hover:border-emerald-500 transition-colors"
+                className="p-4 border border-border rounded cursor-pointer hover:border-emerald-300 transition-colors"
                 onMouseEnter={() => {
                   setTimeout(() => {
                     sendEvent('interaction', 'hover_intent', 'pricing_card', 2);
                   }, 2000);
                 }}
               >
-                <p className="text-slate-300 font-mono text-sm">Hover me (2 seconds)</p>
+                <p className="text-foreground text-sm">Hover me (2 seconds)</p>
               </div>
             </CardContent>
           </Card>
@@ -771,8 +784,8 @@ export default function TestPage() {
           {/* Video Watch */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">🎥 Video Watch</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">Video izleme</CardDescription>
+              <CardTitle className="text-sm font-semibold">🎥 Video Watch</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Video izleme</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
@@ -788,8 +801,8 @@ export default function TestPage() {
           {/* Newsletter Signup */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-mono text-slate-200">📧 Newsletter</CardTitle>
-              <CardDescription className="font-mono text-xs text-slate-400">Newsletter kaydı</CardDescription>
+              <CardTitle className="text-sm font-semibold">📧 Newsletter</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Newsletter kaydı</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -801,7 +814,7 @@ export default function TestPage() {
                 <input
                   type="email"
                   placeholder="Email"
-                  className="w-full px-3 py-2 border border-slate-700 bg-slate-800/50 rounded mb-2 text-slate-200 font-mono text-sm"
+                  className="w-full px-3 py-2 border border-border bg-background rounded mb-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={!trackerLoaded}>
                   Abone Ol

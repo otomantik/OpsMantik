@@ -151,20 +151,18 @@ export function ConversionTracker({ siteId }: ConversionTrackerProps = {}) {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-sm font-bold text-emerald-400">
-                      Score: {conv.lead_score}
-                    </p>
+                    <p className="text-sm font-semibold text-emerald-700 tabular-nums">Score: {conv.lead_score}</p>
                   </div>
                 </div>
                 
                 {conv.phone_matched && conv.phone_number && (
-                  <div className="mt-2 p-2 rounded bg-rose-500/10 border border-rose-500/30 flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-rose-400" />
+                  <div className="mt-2 p-2 rounded bg-rose-50 border border-rose-200 flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-rose-700" />
                     <div>
-                      <p className="font-mono text-xs text-rose-400 font-semibold">
+                      <p className="text-sm text-rose-800 font-semibold">
                         📞 TELEFON EŞLEŞTİ
                       </p>
-                      <p className="font-mono text-sm text-rose-300">
+                      <p className="text-sm text-rose-900 tabular-nums">
                         {conv.phone_number}
                       </p>
                     </div>

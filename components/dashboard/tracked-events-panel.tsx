@@ -106,13 +106,13 @@ export function TrackedEventsPanel({ siteId }: TrackedEventsPanelProps = {}) {
   const getCategoryColor = (category: string) => {
     switch (category) {
       case 'conversion':
-        return 'text-emerald-400';
+        return 'text-emerald-700';
       case 'acquisition':
-        return 'text-blue-400';
+        return 'text-blue-700';
       case 'interaction':
-        return 'text-yellow-400';
+        return 'text-amber-800';
       default:
-        return 'text-slate-400';
+        return 'text-muted-foreground';
     }
   };
 

@@ -43,12 +43,12 @@ export function MonthBoundaryBanner() {
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500/20 border-b border-yellow-500/50 backdrop-blur-sm">
+    <div className="fixed top-0 left-0 right-0 z-50 bg-amber-50/90 border-b border-amber-200 backdrop-blur-sm">
       <div className="max-w-[1920px] mx-auto px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-            <p className="font-mono text-sm text-yellow-300">
+            <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
+            <p className="text-sm text-amber-900">
               New month detected. Refresh to switch partitions.
             </p>
           </div>
@@ -56,7 +56,7 @@ export function MonthBoundaryBanner() {
             onClick={handleRefresh}
             variant="outline"
             size="sm"
-            className="bg-yellow-500/20 border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/30 font-mono text-xs"
+            className="border-amber-300 text-amber-900 hover:bg-amber-100 text-sm"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
             Refresh

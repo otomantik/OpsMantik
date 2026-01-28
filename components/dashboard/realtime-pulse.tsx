@@ -38,7 +38,7 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
         </>
       ) : (
         <>
-          <WifiOff className="h-3.5 w-3.5 text-slate-600" />
+          <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
           <div className="flex flex-col">
             <span className="text-sm text-muted-foreground uppercase tracking-wider">
               Offline
@@ -52,8 +52,8 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
         </>
       )}
       {eventCount > 0 && (
-        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">
-          <Activity className="h-2.5 w-2.5 text-slate-600" />
+        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted border border-border">
+          <Activity className="h-2.5 w-2.5 text-muted-foreground" />
           <span className="text-sm text-muted-foreground tabular-nums">{eventCount}</span>
         </div>
       )}

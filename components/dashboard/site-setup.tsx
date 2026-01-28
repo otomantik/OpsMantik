@@ -96,9 +96,9 @@ export function SiteSetup() {
             {isCreating ? '⏳ Creating...' : success ? '✅ Created!' : '🚀 Create Test Site'}
           </Button>
 
-          <p className="font-mono text-xs text-slate-500 text-center">
+          <p className="text-sm text-muted-foreground text-center">
             After creating, you can test events on the{' '}
-            <a href="/test-page" className="text-emerald-400 hover:text-emerald-300 underline">
+            <a href="/test-page" className="text-emerald-700 hover:text-emerald-800 underline">
               Test Page
             </a>
           </p>

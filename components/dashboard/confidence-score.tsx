@@ -8,15 +8,15 @@ interface ConfidenceScoreProps {
 
 export function ConfidenceScore({ score }: ConfidenceScoreProps) {
   const getScoreColor = (score: number) => {
-    if (score >= 70) return 'text-orange-400';
-    if (score >= 40) return 'text-blue-400';
-    return 'text-slate-400';
+    if (score >= 70) return 'text-amber-800';
+    if (score >= 40) return 'text-blue-700';
+    return 'text-muted-foreground';
   };
 
   const getScoreBg = (score: number) => {
-    if (score >= 70) return 'bg-orange-500/20 border-orange-500/30';
-    if (score >= 40) return 'bg-blue-500/20 border-blue-500/30';
-    return 'bg-slate-700/20 border-slate-600/30';
+    if (score >= 70) return 'bg-amber-50 border-amber-200';
+    if (score >= 40) return 'bg-blue-100 border-blue-200';
+    return 'bg-muted border-border';
   };
 
   return (

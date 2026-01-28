@@ -100,17 +100,17 @@ export function LazySessionDrawer({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       {/* sheet */}
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[620px] bg-white border-l border-slate-200 shadow-2xl flex flex-col">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[620px] bg-background border-l border-border shadow-2xl flex flex-col">
+        <div className="p-4 border-b border-border flex items-center justify-between">
           <div>
-            <div className="text-base font-mono text-slate-900 uppercase tracking-tighter">{title}</div>
-            <div className="text-sm font-mono text-slate-600 mt-1">
-              Intent: <span className="text-slate-900">{intent.id.slice(0, 8)}…</span>
+            <div className="text-base font-semibold">{title}</div>
+            <div className="text-sm text-muted-foreground mt-1 tabular-nums">
+              Intent: <span className="text-foreground">{intent.id.slice(0, 8)}…</span>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-sm font-mono text-slate-700 hover:text-slate-900 border border-slate-200 px-3 py-2 rounded"
+            className="text-sm text-muted-foreground hover:text-foreground border border-border px-3 py-2 rounded"
           >
             Close
           </button>
@@ -118,64 +118,60 @@ export function LazySessionDrawer({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {loading ? (
-            <div className="p-6 text-center text-sm font-mono text-slate-700 uppercase tracking-widest">
-              Loading session…
-            </div>
+            <div className="p-6 text-center text-sm text-muted-foreground">Loading session…</div>
           ) : error ? (
-            <div className="p-4 border border-rose-200 bg-rose-50 text-sm font-mono text-rose-800">
-              {error}
-            </div>
+            <div className="p-4 border border-rose-200 bg-rose-50 text-sm text-rose-900">{error}</div>
           ) : (
             <>
-              <div className="p-4 rounded border border-slate-200 bg-slate-50">
+              <div className="p-4 rounded border border-border bg-muted">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">Created</div>
-                    <div className="text-sm font-mono text-slate-900" suppressHydrationWarning>
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Created</div>
+                    <div className="text-sm text-foreground tabular-nums" suppressHydrationWarning>
                       {details?.created_at ? formatTimestamp(details.created_at, { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">Device</div>
-                    <div className="text-sm font-mono text-slate-900">
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Device</div>
+                    <div className="text-sm text-foreground">
                       {details?.device_type || '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">City</div>
-                    <div className="text-sm font-mono text-slate-900">
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">City</div>
+                    <div className="text-sm text-foreground">
                       {details?.city || '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm font-mono text-slate-700 uppercase tracking-wider">Attribution</div>
-                    <div className="text-sm font-mono text-slate-900 truncate">
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Attribution</div>
+                    <div className="text-sm text-foreground truncate">
                       {details?.attribution_source || '—'}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 rounded border border-slate-200 bg-white">
-                <div className="text-sm font-mono text-slate-700 uppercase tracking-wider mb-2">
+              <div className="p-4 rounded border border-border bg-background">
+                <div className="text-sm text-muted-foreground uppercase tracking-wider mb-2">
                   Timeline ({events.length})
                 </div>
                 {events.length === 0 ? (
-                  <div className="text-sm font-mono text-slate-600">No events</div>
+                  <div className="text-sm text-muted-foreground">No events</div>
                 ) : (
                   <div className="space-y-2">
                     {events.slice(0, 100).map((e) => (
-                      <div key={e.id} className="p-3 rounded border border-slate-200 bg-slate-50">
+                      <div key={e.id} className="p-3 rounded border border-border bg-muted/50">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-mono text-slate-900 truncate">
+                          <div className="text-sm text-foreground truncate">
                             {e.event_category}/{e.event_action}
                           </div>
-                          <div className="text-sm font-mono text-slate-600" suppressHydrationWarning>
+                          <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                             {formatTimestamp(e.created_at, { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </div>
                         {(e.event_label || e.url) && (
-                          <div className="text-sm font-mono text-slate-700 truncate mt-1">
+                          <div className="text-sm text-muted-foreground truncate mt-1">
                             {e.event_label || e.url}
                           </div>
                         )}
@@ -188,7 +184,7 @@ export function LazySessionDrawer({
           )}
 
           {!sessionId && (
-            <div className="p-4 border border-slate-200 bg-slate-50 text-sm font-mono text-slate-700">
+            <div className="p-4 border border-border bg-muted text-sm text-muted-foreground">
               No matched session for this intent.
             </div>
           )}

@@ -101,10 +101,10 @@ export default async function AdminSitesPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-100 font-mono tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight">
               ADMIN • All Sites
             </h1>
-            <p className="text-sm text-slate-400 font-mono mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               Global site management • {sites.length} site{sites.length !== 1 ? 's' : ''} total
             </p>
           </div>

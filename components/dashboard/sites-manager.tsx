@@ -333,23 +333,23 @@ export function SitesManager() {
       <CardContent className="space-y-4">
         {/* Error Display - Visible error box for fetch errors */}
         {error && !error.includes('Database schema mismatch') && (
-          <div className="bg-red-900/20 border border-red-700/50 p-4 rounded space-y-2">
-            <p className="font-mono text-sm text-red-400 font-semibold">
-              ⚠️ Error Loading Sites
+          <div className="bg-destructive/10 border border-destructive/20 p-4 rounded space-y-2">
+            <p className="text-sm text-destructive font-semibold">
+              Error loading sites
             </p>
-            <p className="font-mono text-xs text-red-300 break-words">
+            <p className="text-sm text-destructive break-words">
               {error}
             </p>
-            <p className="font-mono text-xs text-red-400/70 mt-2">
+            <p className="text-sm text-muted-foreground">
               Check browser console for detailed error information.
             </p>
           </div>
         )}
         {/* Add Site Form */}
         {showAddForm && (
-          <form onSubmit={handleSubmit} className="bg-slate-900/50 p-4 rounded border border-slate-700/50 space-y-3">
+          <form onSubmit={handleSubmit} className="bg-muted/40 p-4 rounded border border-border space-y-3">
             <div>
-              <label htmlFor="site-name" className="block font-mono text-xs text-slate-300 mb-1">
+              <label htmlFor="site-name" className="block text-xs text-muted-foreground mb-1">
                 Site Name *
               </label>
               <input
@@ -358,12 +358,12 @@ export function SitesManager() {
                 value={siteName}
                 onChange={(e) => setSiteName(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="My Website"
               />
             </div>
             <div>
-              <label htmlFor="domain" className="block font-mono text-xs text-slate-300 mb-1">
+              <label htmlFor="domain" className="block text-xs text-muted-foreground mb-1">
                 Domain *
               </label>
               <input
@@ -372,22 +372,22 @@ export function SitesManager() {
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="example.com"
               />
-              <p className="font-mono text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Protocol and path will be stripped automatically
               </p>
             </div>
             {error && (
-              <div className="bg-red-900/20 border border-red-700/50 p-2 rounded">
-                <p className="font-mono text-xs text-red-400">❌ {error}</p>
+              <div className="bg-destructive/10 border border-destructive/20 p-2 rounded">
+                <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
             <Button
               type="submit"
               disabled={isCreating}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 font-mono text-sm"
+              className="w-full"
             >
               {isCreating ? '⏳ Creating...' : '🚀 Create Site'}
             </Button>
@@ -396,29 +396,28 @@ export function SitesManager() {
 
         {/* Success Message with Snippet */}
         {newSite && (
-          <div className="bg-emerald-900/20 border border-emerald-700/50 p-4 rounded space-y-3">
-            <p className="font-mono text-xs text-emerald-400">✅ Site created successfully!</p>
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded space-y-3">
+            <p className="text-sm text-emerald-700">Site created successfully!</p>
             {isUsingFallback && (
-              <div className="bg-amber-900/20 border border-amber-700/50 p-2 rounded">
-                <p className="font-mono text-xs text-amber-400">
-                  ⚠️ <strong>Warning:</strong> NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback domain: <code className="text-amber-300">{getPrimaryDomain()}</code>
+              <div className="bg-amber-50 border border-amber-200 p-2 rounded">
+                <p className="text-sm text-amber-800">
+                  <strong>Warning:</strong> NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback domain: <code className="tabular-nums">{getPrimaryDomain()}</code>
                 </p>
-                <p className="font-mono text-xs text-amber-500/70 mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                   Set NEXT_PUBLIC_PRIMARY_DOMAIN in Vercel environment variables for production.
                 </p>
               </div>
             )}
             <div>
-              <label className="block font-mono text-xs text-slate-300 mb-2">
+              <label className="block text-xs text-muted-foreground mb-2">
                 Install Snippet:
               </label>
               <div className="flex gap-2">
-                <code className="flex-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-200 font-mono text-xs break-all">
+                <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-xs break-all">
                   {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${newSite.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                 </code>
                 <Button
                   onClick={copySnippet}
-                  className="bg-slate-700 hover:bg-slate-600 font-mono text-xs whitespace-nowrap"
                   size="sm"
                 >
                   {copied ? '✓ Copied' : '📋 Copy'}
@@ -431,40 +430,39 @@ export function SitesManager() {
         {/* Sites List */}
         {sites.length === 0 ? (
           <div className="text-center py-8">
-            <p className="font-mono text-sm text-slate-500">No sites yet</p>
-            <p className="font-mono text-xs text-slate-600 mt-2">Add your first site to start tracking</p>
+            <p className="text-sm text-muted-foreground">No sites yet</p>
+            <p className="text-sm text-muted-foreground mt-2">Add your first site to start tracking</p>
           </div>
         ) : (
           <div className="space-y-2">
             {sites.map((site) => (
               <div
                 key={site.id}
-                className="bg-slate-900/50 p-3 rounded border border-slate-700/50 space-y-3"
+                className="bg-background p-3 rounded border border-border space-y-3"
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <p className="font-mono text-sm text-slate-200 font-semibold">
+                    <p className="text-sm text-foreground font-semibold">
                       {site.name || 'Unnamed Site'}
                     </p>
-                    <p className="font-mono text-xs text-slate-400 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       {site.domain}
                     </p>
-                    <p className="font-mono text-xs text-slate-500 mt-1">
-                      ID: <code className="text-slate-400">{site.public_id}</code>
+                    <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                      ID: <code className="text-foreground">{site.public_id}</code>
                     </p>
                   </div>
                 </div>
 
                 {/* Install Status & Verification */}
-                <div className="pt-2 border-t border-slate-700/50">
+                <div className="pt-2 border-t border-border">
                   <div className="flex justify-between items-center mb-2">
-                    <label className="block font-mono text-xs text-slate-300">
+                    <label className="block text-xs text-muted-foreground">
                       Install Status:
                     </label>
                     <Button
                       onClick={() => handleVerifyInstall(site.id)}
                       disabled={statusLoading[site.id]}
-                      className="bg-blue-600 hover:bg-blue-700 font-mono text-xs whitespace-nowrap"
                       size="sm"
                     >
                       {statusLoading[site.id] ? '⏳' : '🔍 Verify Install'}
@@ -474,10 +472,10 @@ export function SitesManager() {
                   {siteStatus[site.id] && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className={`font-mono text-xs ${
+                        <span className={`text-xs ${
                           siteStatus[site.id].status === 'Receiving events' 
-                            ? 'text-emerald-400' 
-                            : 'text-slate-400'
+                            ? 'text-emerald-700' 
+                            : 'text-muted-foreground'
                         }`}>
                           {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status}
                         </span>
@@ -485,31 +483,31 @@ export function SitesManager() {
                       
                       {siteStatus[site.id].last_event_at ? (
                         <div className="text-xs space-y-1">
-                          <p className="font-mono text-slate-400">
-                            Last event: <span className="text-slate-300">
+                          <p className="text-muted-foreground tabular-nums">
+                            Last event: <span className="text-foreground">
                               {formatTimestamp(siteStatus[site.id].last_event_at!)}
                             </span>
                           </p>
                           {siteStatus[site.id].last_session_id && (
-                            <p className="font-mono text-slate-400">
-                              Session: <span className="text-slate-300 font-mono text-xs">
+                            <p className="text-muted-foreground tabular-nums">
+                              Session: <span className="text-foreground text-xs">
                                 {siteStatus[site.id].last_session_id?.slice(0, 8)}...
                               </span>
                             </p>
                           )}
                           {siteStatus[site.id].last_source && (
-                            <p className="font-mono text-slate-400">
-                              Source: <span className="text-slate-300">{siteStatus[site.id].last_source}</span>
+                            <p className="text-muted-foreground">
+                              Source: <span className="text-foreground">{siteStatus[site.id].last_source}</span>
                             </p>
                           )}
                           {siteStatus[site.id].last_event_category && (
-                            <p className="font-mono text-slate-400">
-                              Category: <span className="text-slate-300">{siteStatus[site.id].last_event_category}</span>
+                            <p className="text-muted-foreground">
+                              Category: <span className="text-foreground">{siteStatus[site.id].last_event_category}</span>
                             </p>
                           )}
                         </div>
                       ) : (
-                        <p className="font-mono text-xs text-slate-500">
+                        <p className="text-sm text-muted-foreground">
                           No events recorded yet
                         </p>
                       )}
@@ -517,23 +515,23 @@ export function SitesManager() {
                   )}
 
                   {/* Install Instructions */}
-                  <div className="mt-3 pt-3 border-t border-slate-700/30">
-                    <p className="font-mono text-xs text-slate-400 mb-2">Install Snippet:</p>
-                    <code className="block px-2 py-1 bg-slate-900/50 border border-slate-700 rounded text-slate-200 font-mono text-xs break-all">
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-xs text-muted-foreground mb-2">Install Snippet:</p>
+                    <code className="block px-2 py-1 bg-muted/40 border border-border rounded text-foreground text-xs break-all">
                       {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${site.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
-                    <p className="font-mono text-xs text-slate-500 mt-2">
+                    <p className="text-sm text-muted-foreground mt-2">
                       📋 Copy this snippet and paste it in your WordPress header (Theme → Theme Editor → header.php) or use a plugin like "Insert Headers and Footers"
                     </p>
-                    <p className="font-mono text-xs text-amber-400 mt-1">
-                      ⚠️ Ensure <code className="text-amber-300">ALLOWED_ORIGINS</code> includes your WordPress domain in server environment variables.
+                    <p className="text-sm text-muted-foreground mt-1">
+                      ⚠️ Ensure <code className="text-foreground">ALLOWED_ORIGINS</code> includes your WordPress domain in server environment variables.
                     </p>
                   </div>
                 </div>
 
                 {/* Invite Customer Form */}
-                <div className="pt-2 border-t border-slate-700/50">
-                  <label className="block font-mono text-xs text-slate-300 mb-2">
+                <div className="pt-2 border-t border-border">
+                  <label className="block text-xs text-muted-foreground mb-2">
                     Invite Customer:
                   </label>
                   <div className="flex gap-2">
@@ -542,12 +540,11 @@ export function SitesManager() {
                       value={inviteEmail[site.id] || ''}
                       onChange={(e) => setInviteEmail({ ...inviteEmail, [site.id]: e.target.value })}
                       placeholder="customer@example.com"
-                      className="flex-1 px-3 py-2 bg-slate-800/50 border border-slate-700 rounded text-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     <Button
                       onClick={() => handleInvite(site.id)}
                       disabled={inviteLoading[site.id] || !inviteEmail[site.id]?.trim()}
-                      className="bg-emerald-600 hover:bg-emerald-700 font-mono text-xs whitespace-nowrap"
                       size="sm"
                     >
                       {inviteLoading[site.id] ? '⏳' : '📧 Invite'}
@@ -555,23 +552,23 @@ export function SitesManager() {
                   </div>
                   
                   {inviteError[site.id] && (
-                    <div className="mt-2 bg-red-900/20 border border-red-700/50 p-2 rounded">
-                      <p className="font-mono text-xs text-red-400">❌ {inviteError[site.id]}</p>
+                    <div className="mt-2 bg-destructive/10 border border-destructive/20 p-2 rounded">
+                      <p className="text-sm text-destructive">{inviteError[site.id]}</p>
                     </div>
                   )}
 
                   {inviteSuccess[site.id] && (
-                    <div className="mt-2 bg-emerald-900/20 border border-emerald-700/50 p-2 rounded space-y-2">
-                      <p className="font-mono text-xs text-emerald-400">✅ {inviteSuccess[site.id].message}</p>
+                    <div className="mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded space-y-2">
+                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message}</p>
                       {inviteSuccess[site.id].loginUrl && (
                         <div>
-                          <p className="font-mono text-xs text-slate-300 mb-1">Login URL:</p>
-                          <code className="block px-2 py-1 bg-slate-900/50 border border-slate-700 rounded text-slate-200 font-mono text-xs break-all">
+                          <p className="text-xs text-muted-foreground mb-1">Login URL:</p>
+                          <code className="block px-2 py-1 bg-background border border-border rounded text-foreground text-xs break-all tabular-nums">
                             {inviteSuccess[site.id].loginUrl}
                           </code>
                         </div>
                       )}
-                      <p className="font-mono text-xs text-slate-500">
+                      <p className="text-sm text-muted-foreground">
                         ⚠️ Site ownership will be transferred to customer. Page will reload in 2 seconds.
                       </p>
                     </div>

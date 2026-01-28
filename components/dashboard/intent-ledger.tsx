@@ -120,16 +120,12 @@ export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedge
   };
 
   return (
-    <Card className="bg-white border border-slate-200">
-      <CardHeader className="pb-3 border-b border-slate-200">
+    <Card>
+      <CardHeader className="pb-3 border-b border-border">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base font-mono text-slate-900 uppercase tracking-tighter">
-              Niyet Defteri
-            </CardTitle>
-            <p className="text-sm font-mono text-slate-600 mt-1 uppercase tracking-wider">
-              Tüm niyetler, tıklamalar ve dönüşümler
-            </p>
+            <CardTitle className="text-base font-semibold">Niyet defteri</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Tüm niyetler, tıklamalar ve dönüşümler</p>
           </div>
 
           {/* Filters */}
@@ -141,14 +137,10 @@ export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedge
                   variant={filter === status ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setFilter(status)}
-                  className={`h-9 px-3 text-sm font-mono ${
-                    filter === status
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                  }`}
+                  className="h-9 px-3 text-sm"
                 >
                   {getStatusLabel(status)}
-                  <span className="ml-2 px-2 py-0.5 rounded bg-slate-100 text-sm text-slate-700">
+                  <span className="ml-2 px-2 py-0.5 rounded bg-muted text-sm text-muted-foreground tabular-nums">
                     {statusCounts[status]}
                   </span>
                 </Button>
@@ -157,18 +149,18 @@ export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedge
 
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Sayfada ara..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-9 pl-10 pr-10 text-sm font-mono bg-white border border-slate-200 rounded text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300 w-60"
+                className="h-9 pl-10 pr-10 text-sm bg-background border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring w-60"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -181,30 +173,29 @@ export function IntentLedger({ siteId, dateRange, minTimestampIso }: IntentLedge
       <CardContent className="p-0">
         {error ? (
           <div className="p-12 text-center">
-            <p className="text-rose-400 font-mono text-sm mb-2">Hata: {error}</p>
+              <p className="text-destructive text-sm mb-2">Hata: {error}</p>
             <Button
               variant="outline"
               size="sm"
               onClick={() => refetch()}
-              className="bg-white border-slate-300 text-slate-800 hover:bg-slate-50"
             >
               Tekrar Dene
             </Button>
           </div>
         ) : loading ? (
           <div className="p-12 text-center">
-            <div className="inline-block h-4 w-4 border-2 border-slate-600 border-t-slate-400 rounded-full animate-spin mb-2" />
-            <p className="text-slate-400 font-mono text-sm uppercase tracking-widest">
+            <div className="inline-block h-4 w-4 border-2 border-border border-t-muted-foreground rounded-full animate-spin mb-2" />
+            <p className="text-muted-foreground text-sm uppercase tracking-widest">
               Yükleniyor...
             </p>
           </div>
         ) : filteredIntents.length === 0 ? (
           <div className="p-12 text-center">
-            <Inbox className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-sm font-mono text-slate-300 mb-2">
+            <Inbox className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-sm font-semibold text-foreground mb-2">
               {filter === 'all' ? 'Henüz niyet yok' : 'Bu filtrelere uygun niyet yok'}
             </h3>
-            <p className="text-sm font-mono text-slate-600 italic">
+            <p className="text-sm text-muted-foreground italic">
               {filter === 'pending'
                 ? 'Telefon veya WhatsApp tıklamaları burada görünecek'
                 : 'İlk ziyaretçileriniz geldiğinde burada göreceksiniz'}

@@ -111,7 +111,7 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
     <div className="space-y-4">
       {/* No Activity Helper - Only show when all zeros */}
       {hasNoActivity && (
-        <div className="px-4 py-2 bg-slate-100 border border-slate-200 rounded-lg">
+        <div className="px-4 py-2 bg-muted border border-border rounded-lg">
           <p className="text-sm text-muted-foreground text-center">
             No activity yet • Send events from your site to see metrics here
           </p>
@@ -129,7 +129,7 @@ export function StatsCards({ siteId, dateRange, adsOnly = false }: StatsCardsPro
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-slate-600 hover:text-slate-800"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
                   onClick={() => refetch()}
                   title="Refresh KPIs"
                 >

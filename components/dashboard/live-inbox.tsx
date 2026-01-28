@@ -109,17 +109,17 @@ function statusBadgeClass(status: string | null): { label: string; className: st
     return { label: 'Junk', className: 'bg-red-100 text-red-700 border border-red-200' };
   }
   if (s === 'confirmed' || s === 'qualified' || s === 'real') {
-    return { label: 'Sealed', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
+    return { label: 'Sealed', className: 'bg-muted text-foreground border border-border' };
   }
-  return { label: 'Pending', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
+  return { label: 'Pending', className: 'bg-muted text-muted-foreground border border-border' };
 }
 
 function typeBadgeVariant(action: string | null): { label: string; className: string } {
   const a = (action || '').toLowerCase();
   if (a === 'phone') return { label: 'Phone', className: 'bg-blue-100 text-blue-700 border border-blue-200' };
   if (a === 'whatsapp') return { label: 'WhatsApp', className: 'bg-green-100 text-green-700 border border-green-200' };
-  if (a === 'form') return { label: 'Form', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
-  return { label: action || 'Unknown', className: 'bg-slate-100 text-slate-700 border border-slate-200' };
+  if (a === 'form') return { label: 'Form', className: 'bg-muted text-foreground border border-border' };
+  return { label: action || 'Unknown', className: 'bg-muted text-foreground border border-border' };
 }
 
 export function LiveInbox({ siteId }: { siteId: string }) {
@@ -313,9 +313,148 @@ export function LiveInbox({ siteId }: { siteId: string }) {
 
   const rows = items.slice(0, 200);
 
+  const whatsappAdsRows = useMemo(() => {
+    // Google Ads heuristic: click id present (gclid/wbraid/gbraid are normalized into click_id by backend)
+    return rows
+      .filter((r) => (r.intent_action || '').toLowerCase() === 'whatsapp' && !!r.click_id)
+      .slice(0, 50);
+  }, [rows]);
+
+  const toPagePath = useCallback((u: string | null | undefined): string => {
+    if (!u) return '—';
+    try {
+      const url = new URL(u);
+      return url.pathname || '/';
+    } catch {
+      return u;
+    }
+  }, []);
+
   return (
     <>
       <TooltipProvider>
+      <Card className="bg-background text-foreground border border-border">
+        <CardHeader className="pb-3 border-b border-border">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle className="text-base font-semibold tracking-tight truncate">
+                WhatsApp (Google Ads)
+              </CardTitle>
+              <div className="text-sm text-muted-foreground mt-1">
+                Last 60 minutes • {whatsappAdsRows.length} clicks
+              </div>
+            </div>
+            <Button variant="outline" onClick={fetchInitial} className="shrink-0">
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-4">
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            </div>
+          ) : whatsappAdsRows.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">
+              No WhatsApp clicks (Ads) in the last 60 minutes.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background">
+                  <TableRow>
+                    <TableHead className="text-sm">Time</TableHead>
+                    <TableHead className="text-sm">Page</TableHead>
+                    <TableHead className="text-sm">Target</TableHead>
+                    <TableHead className="text-sm">Click ID</TableHead>
+                    <TableHead className="text-sm">Session</TableHead>
+                    <TableHead className="text-sm text-right">Score</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {whatsappAdsRows.slice(0, 15).map((it) => (
+                    <TableRow
+                      key={keyOf(it)}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelected(it)}
+                    >
+                      <TableCell className="text-sm tabular-nums">
+                        {formatTimestamp(it.created_at, { hour: '2-digit', minute: '2-digit' })}
+                      </TableCell>
+                      <TableCell className="text-sm min-w-[220px]">
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <div className="truncate">{toPagePath(it.intent_page_url)}</div>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-[360px]">
+                            <div className="text-sm break-all">{it.intent_page_url || '—'}</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="tabular-nums">{maskTarget(it.intent_target)}</span>
+                          {it.intent_target && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(it.intent_target!);
+                              }}
+                              title="Copy target"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="tabular-nums">
+                            {shortId(it.click_id, 14)}
+                          </Badge>
+                          {it.click_id && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(it.click_id!);
+                              }}
+                              title="Copy click id"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm tabular-nums">
+                        {it.matched_session_id ? shortId(it.matched_session_id, 10) : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm tabular-nums text-right">
+                        {typeof it.lead_score === 'number' ? Math.round(it.lead_score) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <div className="px-4 py-2 border-t border-border text-sm text-muted-foreground">
+            Tip: Click a row to open the Session Drawer (device/city/fingerprint) for matching and UTM work.
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="bg-background text-foreground border border-border">
         <CardHeader className="pb-3 border-b border-border">
           <div className="flex items-center justify-between">

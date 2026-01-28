@@ -95,9 +95,9 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
       return {
         label: 'Form',
         Icon: FileText,
-        badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
-        iconBg: 'bg-slate-100',
-        iconColor: 'text-slate-700',
+        badgeClass: 'bg-muted text-foreground border border-border',
+        iconBg: 'bg-muted',
+        iconColor: 'text-muted-foreground',
       };
     }
 
@@ -115,9 +115,9 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
     return {
       label: 'Event',
       Icon: Activity,
-      badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
-      iconBg: 'bg-slate-100',
-      iconColor: 'text-slate-700',
+      badgeClass: 'bg-muted text-foreground border border-border',
+      iconBg: 'bg-muted',
+      iconColor: 'text-muted-foreground',
     };
   }
 
@@ -322,18 +322,18 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
 
   if (isInitialized && userSites.length === 0) {
     return (
-      <Card className="bg-white border border-slate-200 border-2 border-dashed shadow-sm">
+      <Card className="border-2 border-dashed">
         <CardHeader>
-          <CardTitle className="text-sm font-mono text-slate-900">⚠️ NO SITES CONFIGURED</CardTitle>
-          <CardDescription className="text-xs font-mono text-slate-600 mt-2 uppercase">
+          <CardTitle className="text-sm font-semibold">⚠️ NO SITES CONFIGURED</CardTitle>
+          <CardDescription className="text-sm text-muted-foreground mt-2">
             Onboarding required
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-slate-600 font-mono text-sm mb-4">
+          <p className="text-sm text-muted-foreground mb-4">
             You need to create a site first to track events.
           </p>
-          <a href="/dashboard" className="text-emerald-600 hover:text-emerald-700 font-mono text-sm underline uppercase tracking-tighter">
+          <a href="/dashboard" className="text-emerald-700 hover:text-emerald-800 text-sm underline">
             &rarr; Go to Dashboard
           </a>
         </CardContent>
@@ -343,29 +343,29 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
 
   if (events.length === 0 && isInitialized && !isLoading) {
     return (
-      <Card className="bg-white border border-slate-200 shadow-sm">
-        <CardHeader className="pb-3 border-b border-slate-200">
+      <Card>
+        <CardHeader className="pb-3 border-b border-border">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-mono text-slate-900">
+            <CardTitle className="text-sm font-semibold">
               LIVE STREAM
               {adsOnly && (
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-xs font-mono text-amber-700 uppercase tracking-widest">
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-sm text-amber-900 uppercase tracking-wider">
                   ADS-ONLY
                 </span>
               )}
             </CardTitle>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-xs font-mono text-emerald-600 uppercase">Listening</span>
+              <span className="text-sm text-emerald-700 uppercase">Listening</span>
             </div>
           </div>
         </CardHeader>
         <CardContent className="py-12 flex flex-col items-center group">
-          <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-4 border border-slate-200 group-hover:border-slate-300 transition-colors">
-            <Activity className="w-5 h-5 text-slate-600 group-hover:text-slate-700 transition-colors" />
+          <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4 border border-border group-hover:bg-muted/70 transition-colors">
+            <Activity className="w-5 h-5 text-muted-foreground transition-colors" />
           </div>
-          <p className="text-slate-600 font-mono text-sm uppercase tracking-widest mb-1">No sessions yet</p>
-          <p className="text-slate-600 font-mono text-xs italic">
+          <p className="text-muted-foreground text-sm uppercase tracking-wider mb-1">No sessions yet</p>
+          <p className="text-muted-foreground text-sm italic">
             Real-time stream active • Events will appear here
           </p>
         </CardContent>
@@ -376,13 +376,13 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
   return (
     <TooltipProvider>
     <Card className="bg-background text-foreground border border-border shadow-sm">
-      <CardHeader className="pb-3 border-b border-slate-200">
+      <CardHeader className="pb-3 border-b border-border">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-sm font-mono text-slate-900 tracking-tight">
+            <CardTitle className="text-sm font-semibold tracking-tight">
               LIVE STREAM
               {adsOnly && (
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-xs font-mono text-amber-700 uppercase tracking-widest">
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-sm text-amber-900 uppercase tracking-wider">
                   ADS-ONLY
                 </span>
               )}
@@ -393,14 +393,14 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-xs font-mono text-emerald-600">LIVE</span>
+            <span className="text-sm text-emerald-700">LIVE</span>
           </div>
         </div>
       </CardHeader>
 
       {error && !isLoading && (
         <div className="px-6 py-2 border-b border-rose-200 bg-rose-50">
-          <div className="text-xs text-rose-700 font-mono flex items-center gap-2">
+          <div className="text-sm text-rose-900 flex items-center gap-2">
             <span className="uppercase font-bold">Error:</span> {error}
           </div>
         </div>
@@ -408,19 +408,19 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
 
       <CardContent className="pt-4">
         {isLoading ? (
-          <div className="py-10 text-center font-mono text-sm text-slate-600 uppercase animate-pulse">
+          <div className="py-10 text-center text-sm text-muted-foreground uppercase animate-pulse">
             Synchronizing stream...
           </div>
         ) : (
           <>
             {!adsOnly && (filterOptions.cities.length > 0 || filterOptions.districts.length > 0 || filterOptions.devices.length > 0) && (
-              <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm mb-4 pb-3 border-b border-slate-200 -mx-6 px-6 pt-0">
+              <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm mb-4 pb-3 border-b border-border -mx-6 px-6 pt-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   {filterOptions.cities.length > 0 && (
                     <select
                       value={selectedCity || ''}
                       onChange={(e) => setSelectedCity(e.target.value || null)}
-                      className="px-2 py-1 bg-white border border-slate-200 rounded text-slate-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      className="px-2 py-1 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">All Cities</option>
                       {filterOptions.cities.map((city) => (
@@ -432,7 +432,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                     <select
                       value={selectedDistrict || ''}
                       onChange={(e) => setSelectedDistrict(e.target.value || null)}
-                      className="px-2 py-1 bg-white border border-slate-200 rounded text-slate-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      className="px-2 py-1 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">All Districts</option>
                       {filterOptions.districts.map((district) => (
@@ -444,7 +444,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                     <select
                       value={selectedDevice || ''}
                       onChange={(e) => setSelectedDevice(e.target.value || null)}
-                      className="px-2 py-1 bg-white border border-slate-200 rounded text-slate-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      className="px-2 py-1 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">All Devices</option>
                       {filterOptions.devices.map((device) => (
@@ -455,7 +455,7 @@ export function LiveFeed({ siteId, adsOnly = false }: LiveFeedProps = {}) {
                   {hasActiveFilters && (
                     <button
                       onClick={clearFilters}
-                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-slate-600 font-mono text-xs transition-colors uppercase"
+                      className="px-2 py-1 bg-muted hover:bg-muted/70 border border-border rounded text-muted-foreground text-sm transition-colors uppercase"
                     >
                       Clear
                     </button>

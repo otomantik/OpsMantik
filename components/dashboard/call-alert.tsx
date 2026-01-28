@@ -108,7 +108,7 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
       };
     }
     return {
-      badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
+      badgeClass: 'bg-muted text-foreground border border-border',
       borderClass: 'border-border',
     };
   };
@@ -356,10 +356,10 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
                     size="sm"
                     onClick={handleConfirm}
                     disabled={isConfirmed || isUpdating}
-                    className={`h-10 px-3 lg:h-7 lg:px-2 text-xs font-mono ${
+                    className={`h-10 px-3 lg:h-9 lg:px-3 text-sm ${
                       isConfirmed
-                        ? 'text-blue-400 bg-blue-500/20 border border-blue-500/30'
-                        : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30'
+                        ? 'text-blue-700 bg-blue-50 border border-blue-200'
+                        : 'text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
                     }`}
                     title="Confirm Intent"
                   >
@@ -479,8 +479,8 @@ export const CallAlertComponent = memo(function CallAlertComponent({ call, onDis
             {isSuspicious && (
               <div className="pt-2 border-t border-yellow-500/30 bg-yellow-500/5">
                 <div className="flex items-center gap-2 mb-2">
-                  <Info className="w-3.5 h-3.5 text-yellow-400" />
-                  <p className="font-mono text-xs font-semibold text-yellow-400">SUSPICIOUS MATCH</p>
+                  <Info className="w-3.5 h-3.5 text-amber-700" />
+                  <p className="text-sm font-semibold text-amber-900">SUSPICIOUS MATCH</p>
                 </div>
                 <p className="text-sm text-yellow-800">
                   This match may be invalid. Session was created after call match time. 

@@ -89,7 +89,7 @@ export function getConfidence(score: number): { label: 'HIGH' | 'MEDIUM' | 'LOW'
   if (score >= 60) {
     return { label: 'MEDIUM', color: 'text-yellow-400' };
   }
-  return { label: 'LOW', color: 'text-slate-400' };
+  return { label: 'LOW', color: 'text-muted-foreground' };
 }
 
 /**

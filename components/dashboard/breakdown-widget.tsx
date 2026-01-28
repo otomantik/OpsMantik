@@ -41,7 +41,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
     switch (dim) {
       case 'source': return 'text-blue-600';
       case 'device': return 'text-emerald-600';
-      case 'city': return 'text-slate-600';
+      case 'city': return 'text-muted-foreground';
     }
   };
 
