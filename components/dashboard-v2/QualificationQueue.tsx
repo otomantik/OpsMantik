@@ -168,15 +168,16 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
       setError(null);
 
       const supabase = createClient();
-      const enableRpcV2 =
-        process.env.NEXT_PUBLIC_RPC_V2 === '1' ||
-        (typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_rpc_v2') === '1');
+      // Prefer v2 (AI fields: ai_score, ai_summary, ai_tags); fallback to v1 if v2 not available
+      const preferV2 =
+        process.env.NEXT_PUBLIC_RPC_V2 !== '0' &&
+        (typeof window === 'undefined' || window.localStorage?.getItem('opsmantik_rpc_v2') !== '0');
 
       async function fetchRange(adsOnly: boolean) {
         let data: unknown = null;
         let fetchError: any = null;
 
-        if (enableRpcV2 && rpcV2AvailableRef.current) {
+        if (preferV2 && rpcV2AvailableRef.current) {
           const v2 = await supabase.rpc('get_recent_intents_v2', {
             p_site_id: siteId,
             p_date_from: range.fromIso,
@@ -188,11 +189,11 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           fetchError = v2.error;
 
           const msg = String(fetchError?.message || fetchError?.details || '');
-          if (fetchError && msg.toLowerCase().includes('not found')) {
+          if (fetchError && (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('does not exist'))) {
             rpcV2AvailableRef.current = false;
           }
         } else {
-          fetchError = { message: 'rpc_v2_disabled' };
+          fetchError = { message: 'use_v1' };
         }
 
         if (fetchError) {
