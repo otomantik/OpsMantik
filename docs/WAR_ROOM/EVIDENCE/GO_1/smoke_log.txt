@@ -1,0 +1,30 @@
+﻿[34m­şÜÇ Starting API Smoke Tests[0m
+[0m   Base URL: https://console.opsmantik.com[0m
+[0m   Allowed Origin: https://www.sosreklam.com[0m
+[0m   Denied Origin: https://evil-example.com[0m
+[33m   Site ID: NOT SET (some tests will be skipped)[0m
+[34m
+­şôï Test 1: CORS Allow (Allowed Origin)[0m
+[32mÔ£à PASS: OPTIONS request should return 200 (got 200)[0m
+[32mÔ£à PASS: ACAO should be https://www.sosreklam.com (got https://www.sosreklam.com)[0m
+[0m   Response: 200 OK, ACAO: https://www.sosreklam.com[0m
+[34m
+­şôï Test 2: CORS Deny (Blocked Origin)[0m
+[32mÔ£à PASS: OPTIONS request should return 403 when denied (got 403)[0m
+[32mÔ£à PASS: ACAO should be ABSENT on denial (got null)[0m
+[0m   Response: 403 Forbidden (Expected), ACAO: Absent (Good)[0m
+[34m
+­şôï Test 3: Input Validation - Invalid site_id[0m
+[32mÔ£à PASS: Should return 400 for invalid site_id (got 400)[0m
+[32mÔ£à PASS: Response should have ok: false (got false)[0m
+[32mÔ£à PASS: Response should have score: null on error (got null)[0m
+[32mÔ£à PASS: Message should be 'Invalid site_id format' (got Invalid site_id format)[0m
+[0m   Response: 400 {"ok":false,"score":null,"message":"Invalid site_id format"}[0m
+[34m
+­şôï Test 4: Input Validation - Invalid URL[0m
+[33mÔÜá´©Å  SKIP: SMOKE_SITE_ID not set, skipping URL validation test[0m
+[34m
+­şôï Test 5: Happy Path (Valid Request)[0m
+[33mÔÜá´©Å  SKIP: SMOKE_SITE_ID not set, skipping happy path test[0m
+[32m
+Ô£à All smoke tests passed![0m

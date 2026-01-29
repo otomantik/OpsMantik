@@ -20,7 +20,6 @@ import { getBadgeStatus } from '@/lib/realtime-badge-status';
 import { cn, formatTimestampWithTZ } from '@/lib/utils';
 import { Home, Settings, Target, Shield, Wallet, MoreHorizontal, Check } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
-import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import './reset.css';
 
@@ -35,7 +34,6 @@ interface DashboardShellProps {
 export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
   const supabaseEnvOk = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const [role, setRole] = useState<'admin' | 'user'>('user');
   const [scope, setScope] = useState<'ads' | 'all'>('ads'); // default ADS ONLY
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -70,42 +68,14 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const showRealtimeDebug =
     typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_debug') === '1';
 
-  // Role lookup (client-side, best-effort)
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const supabase = createClient();
-        const { data: userRes } = await supabase.auth.getUser();
-        const user = userRes?.user;
-        if (!user) return;
-
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (cancelled) return;
-        setRole(profile?.role === 'admin' ? 'admin' : 'user');
-      } catch {
-        // keep default 'user'
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
     <div className="om-dashboard-reset min-h-screen bg-muted/30">
       {/* Tactical Header */}
-      <header className="sticky top-0 z-50 relative border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-md px-4 py-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
+      <header className="sticky top-0 z-50 relative border-b border-border bg-background/95 backdrop-blur overflow-x-hidden">
+        <div className="mx-auto max-w-md px-4 py-3 w-full min-w-0">
+          <div className="flex items-center justify-between gap-2 min-w-0">
             {/* Brand: min-w-0 + truncate to prevent overflow */}
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 shrink">
               <Link
                 href="/dashboard"
                 className={cn(
@@ -121,9 +91,9 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <div className="text-sm text-muted-foreground truncate">Hunter Terminal</div>
             </div>
 
-            {/* Right: status badge + (desktop: toggles) + overflow menu — no shrink-0 so it can wrap/truncate on mobile */}
-            <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
-              {/* Status badge: DISCONNECTED / CONNECTED / ACTIVE (connectivity vs activity) */}
+            {/* Right: status badge + overflow menu (⋯). Day/Scope/Settings live in menu to avoid mobile overflow. */}
+            <div className="flex items-center gap-2 shrink-0 min-w-0">
+              {/* Status badge: DISCONNECTED / CONNECTED / ACTIVE */}
               <div className="shrink-0">
                 {(() => {
                   const status = getBadgeStatus({
@@ -206,71 +176,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                 })()}
               </div>
 
-              {/* Desktop only: Day + Scope toggles (hidden on mobile to avoid overflow) */}
-              <div className="hidden sm:inline-flex items-center gap-2">
-                <div className="inline-flex items-center rounded-md border border-border bg-background">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDay('yesterday')}
-                    className={cn(
-                      'px-3 py-1.5 text-sm tabular-nums',
-                      'first:rounded-l-md last:rounded-r-md',
-                      selectedDay === 'yesterday'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    )}
-                    aria-pressed={selectedDay === 'yesterday'}
-                  >
-                    Yesterday
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDay('today')}
-                    className={cn(
-                      'px-3 py-1.5 text-sm tabular-nums',
-                      'first:rounded-l-md last:rounded-r-md',
-                      selectedDay === 'today'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    )}
-                    aria-pressed={selectedDay === 'today'}
-                  >
-                    Today
-                  </button>
-                </div>
-                <div className="inline-flex items-center rounded-md border border-border bg-background">
-                  <button
-                    type="button"
-                    onClick={() => setScope('ads')}
-                    className={cn(
-                      'px-3 py-1.5 text-sm tabular-nums',
-                      'first:rounded-l-md last:rounded-r-md',
-                      scope === 'ads'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    )}
-                    aria-pressed={scope === 'ads'}
-                  >
-                    ADS ONLY
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setScope('all')}
-                    className={cn(
-                      'px-3 py-1.5 text-sm tabular-nums',
-                      'first:rounded-l-md last:rounded-r-md',
-                      scope === 'all'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    )}
-                    aria-pressed={scope === 'all'}
-                  >
-                    ALL TRAFFIC
-                  </button>
-                </div>
-              </div>
-
-              {/* Overflow menu (⋯) — mobile: only this + badge; desktop: also has toggles */}
+              {/* Overflow menu (⋯): Day, Scope, Settings — single entry point for all viewports */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -285,11 +191,11 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56" data-testid="header-overflow-menu-content">
                   <DropdownMenuLabel>Day</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => setSelectedDay('yesterday')}>
+                  <DropdownMenuItem onClick={() => setSelectedDay('yesterday')} data-testid="menu-item-yesterday">
                     {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
                     Yesterday
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedDay('today')}>
+                  <DropdownMenuItem onClick={() => setSelectedDay('today')} data-testid="menu-item-today">
                     {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
                     Today
                   </DropdownMenuItem>
@@ -303,26 +209,22 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     {scope === 'all' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
                     ALL TRAFFIC
                   </DropdownMenuItem>
-                  {role === 'admin' && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => setSettingsOpen(true)}
-                        data-testid="menu-item-settings"
-                      >
-                        <Settings className="mr-2 h-4 w-4" />
-                        Settings
-                      </DropdownMenuItem>
-                    </>
-                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setSettingsOpen(true)}
+                    data-testid="menu-item-settings"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
 
-          {/* Settings dialog (opened from menu) */}
+          {/* Settings dialog (opened from menu item; no nested trigger) */}
           <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <DialogContent className="max-h-[80vh] overflow-y-auto">
+            <DialogContent className="max-h-[80vh] overflow-y-auto" data-testid="settings-dialog">
               <DialogHeader className="mb-4">
                 <DialogTitle>Settings</DialogTitle>
               </DialogHeader>

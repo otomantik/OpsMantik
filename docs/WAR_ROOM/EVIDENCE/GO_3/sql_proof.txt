@@ -1,0 +1,13 @@
+﻿[dotenv@17.2.3] injecting env (10) from .env.local -- tip: Ô£à audit secrets and track compliance: https://dotenvx.com/ops
+--- GO3 Queue counts (TRT day boundaries) ---
+Site: 01d24667-ca9a-44e3-ab7a-7cd171ae653f
+TRT today key: 2026-01-30
+
+Today:   pending=0 (total in range=0)
+  from: 2026-01-29T21:00:00.000Z
+  to:   2026-01-29T21:13:01.088Z
+
+Yesterday: pending=25 (total in range=27)
+  from: 2026-01-28T21:00:00.000Z
+  to:   2026-01-29T20:59:59.999Z
+---

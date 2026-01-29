@@ -1,0 +1,17 @@
+GO_5 grep proof: no code references to deleted components or live-inbox.
+
+Pattern: IntentLedger|ConversionTracker|TrackedEventsPanel|live-inbox|intent-ledger|conversion-tracker|tracked-events-panel
+
+Scope: app/, components/, lib/ (code only; docs excluded)
+
+--- app/ ---
+No matches found.
+
+--- components/ ---
+No matches found.
+
+--- lib/ ---
+No matches found.
+
+Result: PASS — no imports or references remain in code.
+(live-inbox.tsx was already removed in GO_1; type LiveInboxIntent lives in lib/types/dashboard.ts and is used only by LazySessionDrawer.)

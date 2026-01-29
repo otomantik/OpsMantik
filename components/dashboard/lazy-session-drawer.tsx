@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatTimestamp } from '@/lib/utils';
-import type { LiveInboxIntent } from './live-inbox';
+import type { LiveInboxIntent } from '@/lib/types/dashboard';
 
 type SessionDetailsRow = {
   id: string;

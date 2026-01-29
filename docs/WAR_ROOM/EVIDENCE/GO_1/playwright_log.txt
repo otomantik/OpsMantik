@@ -1,0 +1,10 @@
+Run: node scripts/smoke/go1-screenshots.mjs
+Environment: Playwright launch failed in this environment (spawn EPERM).
+
+Error: browserType.launch: spawn EPERM
+  at go1-screenshots.mjs (chromium.launch).
+
+To capture screenshots locally:
+  1. npm run start  (or npm run dev)
+  2. node scripts/smoke/go1-screenshots.mjs
+  → desktop.png, mobile.png will be saved in this folder.

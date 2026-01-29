@@ -197,10 +197,14 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         }
 
         if (fetchError) {
+          // v1 uses since + minutes; derive minutes from range so Today/Yesterday both respect absolute range
+          const fromMs = new Date(range.fromIso).getTime();
+          const toMs = new Date(range.toIso).getTime();
+          const minutesLookback = Math.max(1, Math.round((toMs - fromMs) / (60 * 1000)));
           const v1 = await supabase.rpc('get_recent_intents_v1', {
             p_site_id: siteId,
             p_since: range.fromIso,
-            p_minutes_lookback: 24 * 60,
+            p_minutes_lookback: minutesLookback,
             p_limit: 500,
             p_ads_only: adsOnly,
           });

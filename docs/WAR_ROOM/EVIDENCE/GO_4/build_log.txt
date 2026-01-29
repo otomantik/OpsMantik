@@ -1,0 +1,15 @@
+Build requires npm install first (adds @radix-ui/react-dialog, @radix-ui/react-dropdown-menu).
+
+> npm install
+> npm run build
+
+Expected after install:
+  Creating an optimized production build ...
+  ✓ Compiled successfully
+  (TypeScript step may hit EPERM in some environments — run locally to confirm.)
+
+Build error in this environment (before install):
+  Module not found: Can't resolve '@radix-ui/react-dialog'
+  Module not found: Can't resolve '@radix-ui/react-dropdown-menu'
+
+Run locally: npm install && npm run build
