@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tank Tracker Smoke Test</title>
+</head>
+<body>
+  <p>Tank Tracker Smoke Test — Store &amp; Forward</p>
+  <script>
+    (function() {
+      var params = new URLSearchParams(location.search);
+      var siteId = params.get('site_id') || '00000000-0000-4000-8000-000000000000';
+      var s = document.createElement('script');
+      s.src = '/ux-core.js';
+      s.setAttribute('data-site-id', siteId);
+      document.body.appendChild(s);
+    })();
+  </script>
+</body>
+</html>
