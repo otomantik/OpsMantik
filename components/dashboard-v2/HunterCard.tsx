@@ -10,12 +10,16 @@ import {
   CheckCircle2,
   FileText,
   MessageCircle,
+  Monitor,
+  Smartphone,
   Phone,
   Search,
   ShieldAlert,
   ShoppingBag,
   Sparkles,
   Star,
+  Timer,
+  MapPin,
   XOctagon,
 } from 'lucide-react';
 
@@ -32,9 +36,16 @@ export type HunterIntent = {
   intent_page_url?: string | null; // existing field in calls
   utm_term?: string | null;
   utm_campaign?: string | null;
+  utm_source?: string | null;
 
   // Risk
   risk_level?: 'low' | 'high' | string | null;
+
+  // Evidence (best effort)
+  city?: string | null;
+  district?: string | null;
+  device_type?: string | null;
+  total_duration_sec?: number | null;
 };
 
 type PrimaryIntent =
@@ -136,6 +147,26 @@ function maskIdentity(v: string): string {
   return out;
 }
 
+function secondsToHuman(sec: number | null | undefined): string {
+  if (typeof sec !== 'number' || Number.isNaN(sec)) return '—';
+  const s = Math.max(0, Math.floor(sec));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return `${m}m ${r}s`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${h}h ${mm}m`;
+}
+
+function deviceLabel(deviceType: string | null | undefined): { icon: typeof Smartphone | typeof Monitor; label: string } {
+  const d = (deviceType || '').toLowerCase();
+  if (!d) return { icon: Smartphone, label: 'Device —' };
+  if (d.includes('desktop') || d.includes('web')) return { icon: Monitor, label: 'Desktop' };
+  if (d.includes('mobile') || d.includes('ios') || d.includes('android')) return { icon: Smartphone, label: d.replace(/_/g, ' ') };
+  return { icon: Smartphone, label: d.replace(/_/g, ' ') };
+}
+
 export function HunterCard({
   intent,
   onSeal,
@@ -156,6 +187,28 @@ export function HunterCard({
     const pageUrl = intent.page_url || intent.intent_page_url || null;
     return safePath(pageUrl);
   }, [intent.intent_page_url, intent.page_url]);
+  const secondary = useMemo(() => {
+    const campaign = (intent.utm_campaign || '').trim();
+    const source = (intent.utm_source || '').trim();
+    if (primary.kind !== 'fallback' && campaign) return campaign;
+    return source || (primary.kind === 'fallback' ? '' : '');
+  }, [intent.utm_campaign, intent.utm_source, primary.kind]);
+
+  const location = useMemo(() => {
+    const c = (intent.city || '').trim();
+    const d = (intent.district || '').trim();
+    if (c && d) return `${c} / ${d}`;
+    if (c) return c;
+    if (d) return d;
+    return null;
+  }, [intent.city, intent.district]);
+
+  const device = useMemo(() => deviceLabel(intent.device_type ?? null), [intent.device_type]);
+  const duration = useMemo(() => {
+    if (typeof intent.total_duration_sec !== 'number') return null;
+    if (intent.total_duration_sec <= 0) return null;
+    return secondsToHuman(intent.total_duration_sec);
+  }, [intent.total_duration_sec]);
 
   const [stars, setStars] = useState<number>(0); // default 0 (per spec)
   const score = useMemo(() => stars * 20, [stars]); // map 0..5 => 0..100
@@ -163,6 +216,7 @@ export function HunterCard({
   return (
     <Card className={cn('relative overflow-hidden bg-card shadow-sm min-h-[420px]', sourceStripClass(t))}>
       <CardHeader className="px-4 pt-4 pb-3">
+        {/* Top Ribbon (Source & Time) */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div
@@ -219,13 +273,14 @@ export function HunterCard({
                 )}
               />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                 {primary.label}
               </div>
+              {/* Primary line (large/bold) */}
               <div
                 className={cn(
-                  'mt-0.5 text-sm font-bold leading-snug',
+                  'mt-0.5 text-lg font-black leading-snug',
                   primary.kind === 'keyword'
                     ? 'text-amber-800'
                     : primary.kind === 'interest'
@@ -235,6 +290,12 @@ export function HunterCard({
               >
                 {primary.value}
               </div>
+              {/* Secondary line (subtle) */}
+              {secondary ? (
+                <div className="mt-1 text-xs text-muted-foreground truncate">
+                  {secondary}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -246,6 +307,26 @@ export function HunterCard({
           </div>
         </div>
 
+        {/* Evidence Row (Pills) */}
+        <div className="flex flex-wrap gap-2">
+          {location ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              {location}
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+            <device.icon className="h-3.5 w-3.5" />
+            {device.label}
+          </span>
+          {duration ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+              <Timer className="h-3.5 w-3.5" />
+              {duration}
+            </span>
+          ) : null}
+        </div>
+
         {/* IDENTITY */}
         <div className="text-center">
           <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-medium">
@@ -254,9 +335,7 @@ export function HunterCard({
           <div className="mt-1 text-3xl font-black tabular-nums select-all">
             {maskIdentity(intent.intent_target || '')}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            Device: —
-          </div>
+          <div className="mt-1 text-xs text-muted-foreground">Device: {device.label}</div>
         </div>
 
         {/* RATING */}

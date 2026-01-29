@@ -18,6 +18,7 @@ import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-r
 interface QualificationQueueProps {
   siteId: string;
   range: { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
+  scope: 'ads' | 'all';
 }
 
 function parseRpcJsonbArray<T>(data: unknown): T[] {
@@ -123,6 +124,10 @@ function ActiveDeckCard({
           utm_term: (intent as any)?.utm_term ?? null,
           utm_campaign: (intent as any)?.utm_campaign ?? null,
           risk_level: intent.risk_level ?? null,
+          city: (intent as any)?.city ?? null,
+          district: (intent as any)?.district ?? null,
+          device_type: (intent as any)?.device_type ?? null,
+          total_duration_sec: (intent as any)?.total_duration_sec ?? null,
         }}
         onSeal={({ id, stars }) => handleSeal({ id, stars })}
         onJunk={({ id, stars }) => handleJunk({ id, stars })}
@@ -132,12 +137,14 @@ function ActiveDeckCard({
   );
 }
 
-export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
+export function QualificationQueue({ siteId, range, scope }: QualificationQueueProps) {
   const [intents, setIntents] = useState<IntentForQualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
-  const [sessionEvidence, setSessionEvidence] = useState<Record<string, { city?: string | null; district?: string | null }>>({});
+  const [sessionEvidence, setSessionEvidence] = useState<
+    Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
+  >({});
   const rpcV2AvailableRef = useRef<boolean>(true);
   const [effectiveAdsOnly, setEffectiveAdsOnly] = useState<boolean>(true);
 
@@ -220,13 +227,11 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         return pending as any[];
       }
 
-      // Attempt ADS-only first. If it yields nothing, fallback to "all traffic" so the UI isn't blank.
-      let rows = await fetchRange(true);
-      let adsOnly = true;
-      if (rows.length === 0) {
-        rows = await fetchRange(false);
-        adsOnly = false;
-      }
+      // Scope toggle is the source of truth:
+      // - scope='ads' => strictly adsOnly=true
+      // - scope='all' => adsOnly=false
+      const adsOnly = scope === 'ads';
+      const rows = await fetchRange(adsOnly);
       setEffectiveAdsOnly(adsOnly);
 
       setIntents(
@@ -258,7 +263,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     } finally {
       setLoading(false);
     }
-  }, [range.fromIso, range.toIso, siteId]);
+  }, [range.fromIso, range.toIso, siteId, scope]);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
@@ -302,6 +307,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
           [sid]: {
             city: row.city ?? null,
             district: row.district ?? null,
+            device_type: row.device_type ?? null,
           },
         }));
       } catch {
