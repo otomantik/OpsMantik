@@ -129,65 +129,107 @@
     return { sessionId, fingerprint, context };
   }
 
-  // Offline queue helpers (localStorage, max 10 items, TTL 1h)
-  function queueEvent(payload) {
+  /* --- SECTOR BRAVO: STORE & FORWARD ENGINE --- */
+
+  // 1. Güvenli Depolama (Disk I/O)
+  const QUEUE_KEY = 'opsmantik_outbox_v2';
+
+  function getQueue() {
     try {
-      const queueKey = 'opsmantik_evtq_v1';
-      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-      const now = Date.now();
-      
-      // Add timestamp and limit to 10 items
-      queue.push({ payload, ts: now });
-      const trimmed = queue.slice(-10);
-      
-      localStorage.setItem(queueKey, JSON.stringify(trimmed));
-      if (localStorage.getItem('opsmantik_debug') === '1') {
-        console.log('[track] queued:', payload.ec + '/' + payload.ea, payload.sid.slice(0, 8), payload.u);
-      }
-    } catch (err) {
-      // Silent fail - never block UI
-    }
+      return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    } catch (e) { return []; }
   }
 
-  function drainQueue() {
+  function saveQueue(queue) {
     try {
-      const queueKey = 'opsmantik_evtq_v1';
-      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-      const now = Date.now();
-      const TTL = 60 * 60 * 1000; // 1 hour
-      
-      const remaining = [];
-      queue.forEach(item => {
-        if (now - item.ts < TTL) {
-          const sent = navigator.sendBeacon && navigator.sendBeacon(
-            CONFIG.apiUrl,
-            new Blob([JSON.stringify(item.payload)], { type: 'application/json' })
-          );
-          if (!sent) {
-            remaining.push(item); // Keep for next attempt
-          }
-        }
-        // Items older than TTL are dropped
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    } catch (e) { /* Quota exceeded or private mode protection */ }
+  }
+
+  function addToOutbox(payload) {
+    const queue = getQueue();
+    var envelopeId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : generateUUID();
+    var envelope = {
+      id: envelopeId,
+      ts: Date.now(),
+      payload: payload,
+      attempts: 0
+    };
+    queue.push(envelope);
+    if (queue.length > 100) {
+      queue.splice(0, queue.length - 80);
+    }
+    saveQueue(queue);
+    processOutbox();
+  }
+
+  // 2. Akıllı Gönderici (Smart Transporter)
+  var isProcessing = false;
+
+  async function processOutbox() {
+    if (isProcessing) return;
+    var queue = getQueue();
+    if (queue.length === 0) return;
+
+    isProcessing = true;
+    var currentEnvelope = queue[0];
+
+    try {
+      if (currentEnvelope.attempts > 10 && (Date.now() - currentEnvelope.ts > 86400000)) {
+        queue.shift();
+        saveQueue(queue);
+        isProcessing = false;
+        processOutbox();
+        return;
+      }
+
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
+
+      var response = await fetch(CONFIG.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentEnvelope.payload),
+        keepalive: true,
+        signal: controller.signal
       });
-      
-      if (remaining.length > 0) {
-        localStorage.setItem(queueKey, JSON.stringify(remaining));
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        queue.shift();
+        saveQueue(queue);
+        if (localStorage.getItem('opsmantik_debug') === '1') {
+          console.log('[TankTracker] Delivered:', currentEnvelope.payload.ea);
+        }
+        isProcessing = false;
+        processOutbox();
       } else {
-        localStorage.removeItem(queueKey);
+        throw new Error('Server status: ' + response.status);
       }
     } catch (err) {
-      // Silent fail
+      console.warn('[TankTracker] Network Fail - Retrying later:', err.message);
+      currentEnvelope.attempts++;
+      saveQueue(queue);
+      isProcessing = false;
+      setTimeout(processOutbox, 5000);
     }
   }
 
-  // Send event to API with guaranteed delivery (sendBeacon + keepalive fallback)
-  function sendEvent(category, action, label, value, metadata = {}) {
-    const { sessionId, fingerprint, context } = getOrCreateSession();
-    const url = window.location.href;
-    const referrer = document.referrer || '';
-    const sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
+  // 3. Main Interface — HER ŞEYİ KUTUYA AT
+  function sendEvent(category, action, label, value, metadata) {
+    if (metadata === undefined) metadata = {};
+    var session = getOrCreateSession();
+    var sessionId = session.sessionId;
+    var fingerprint = session.fingerprint;
+    var context = session.context;
+    var url = window.location.href;
+    var referrer = document.referrer || '';
+    var sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
 
-    const payload = {
+    var payload = {
       s: siteId,
       u: url,
       sid: sessionId,
@@ -197,90 +239,17 @@
       el: label,
       ev: value,
       r: referrer,
-      meta: {
-        fp: fingerprint,
-        gclid: context,
-        ...metadata,
-      },
+      meta: { fp: fingerprint, gclid: context }
     };
+    for (var k in metadata) { if (Object.prototype.hasOwnProperty.call(metadata, k)) payload.meta[k] = metadata[k]; }
 
-    // Debug logging (conditional)
-    const isDebug = typeof window !== 'undefined' && 
-                    (localStorage.getItem('opsmantik_debug') === '1' ||
-                     localStorage.getItem('WARROOM_DEBUG') === 'true');
-    
-    if (isDebug) {
-      console.log('[OPSMANTIK] Sending event payload:', {
-        category,
-        action,
-        label,
-        value,
-        sessionId: sessionId.slice(0, 8) + '...',
-        url,
-        referrer,
-        meta: {
-          fp: fingerprint,
-          gclid: context,
-          ...metadata,
-        },
-      });
+    if (localStorage.getItem('opsmantik_debug') === '1' || localStorage.getItem('WARROOM_DEBUG') === 'true') {
+      console.log('[OPSMANTIK] Outbox:', category + '/' + action, sessionId.slice(0, 8) + '...');
     } else {
-      console.log('[OPSMANTIK] Sending event:', {
-        category,
-        action,
-        label,
-        value,
-        sessionId: sessionId.slice(0, 8) + '...',
-      });
+      console.log('[OPSMANTIK] Sending event:', { category: category, action: action, label: label, value: value, sessionId: sessionId.slice(0, 8) + '...' });
     }
 
-    // P0 FIX: Use sendBeacon for guaranteed delivery (especially for tel:/wa.me navigation)
-    let sent = false;
-    let method = '';
-
-    // Attempt 1: sendBeacon (guaranteed delivery even on navigation)
-    if (navigator.sendBeacon) {
-      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-      sent = navigator.sendBeacon(CONFIG.apiUrl, blob);
-      if (sent) {
-        method = 'beacon';
-      }
-    }
-
-    // Attempt 2: fetch with keepalive (fallback if beacon fails)
-    if (!sent) {
-      fetch(CONFIG.apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        mode: 'cors',
-        credentials: 'omit',
-        keepalive: true, // ✅ Ensures completion after navigation
-      })
-      .then(response => {
-        if (response.ok) {
-          method = 'fallback';
-          if (localStorage.getItem('opsmantik_debug') === '1') {
-            console.log('[track] fallback:', category + '/' + action, sessionId.slice(0, 8), url);
-          }
-        } else {
-          // Server rejected - queue for retry
-          queueEvent(payload);
-        }
-      })
-      .catch(err => {
-        // Network error - queue for retry
-        queueEvent(payload);
-      });
-      method = 'fallback'; // Optimistic
-    }
-
-    // Debug transport proof
-    if (localStorage.getItem('opsmantik_debug') === '1' && method === 'beacon') {
-      console.log('[track] sent:', category + '/' + action, sessionId.slice(0, 8), url);
-    }
+    addToOutbox(payload);
   }
 
   // Auto-tracking
@@ -355,16 +324,28 @@
   window.opmantik = {
     send: sendEvent,
     session: getOrCreateSession,
-    _initialized: true, // Prevent duplicate initialization
+    _initialized: true,
   };
 
-  // Drain offline queue on load
-  drainQueue();
-
-  // Initialize
+  // 4. Initialization — Sayfa yüklendiğinde outbox'ı işle
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initAutoTracking);
+    document.addEventListener('DOMContentLoaded', function () {
+      processOutbox();
+      initAutoTracking();
+    });
   } else {
+    processOutbox();
     initAutoTracking();
   }
+
+  // İnternet geri geldiğinde hemen tetikle
+  window.addEventListener('online', processOutbox);
+
+  // Last Gasp: Sayfa kapanırken kuyruğun ilk öğesini sendBeacon ile dene (yanıt okunamaz, tekrar denenecek)
+  window.addEventListener('beforeunload', function () {
+    var queue = getQueue();
+    if (queue.length > 0 && navigator.sendBeacon) {
+      navigator.sendBeacon(CONFIG.apiUrl, new Blob([JSON.stringify(queue[0].payload)], { type: 'application/json' }));
+    }
+  });
 })();
