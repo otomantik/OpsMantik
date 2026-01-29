@@ -53,7 +53,7 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
       {/* Tactical Header */}
       <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto max-w-md px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             {/* Brand */}
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">
@@ -62,96 +62,104 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
               <div className="text-sm text-muted-foreground truncate">Hunter Terminal</div>
             </div>
 
-            {/* Live pulse (connectivity + activity, independent from ads-only filtering) */}
-            <div className="shrink-0 text-right">
-              <div
-                data-testid="live-badge"
-                data-live={realtime.isLive ? '1' : '0'}
-                data-ads-live={realtime.adsLive ? '1' : '0'}
-                data-connected={realtime.isConnected ? '1' : '0'}
-                data-connection-status={realtime.connectionStatus || ''}
-                data-connection-error={realtime.error || ''}
-                data-supabase-env={supabaseEnvOk ? '1' : '0'}
-                className={cn(
-                  'inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold tabular-nums',
-                  realtime.isConnected && realtime.isLive
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : realtime.isConnected
-                      ? 'border-amber-200 bg-amber-50 text-amber-800'
-                      : 'border-red-200 bg-red-50 text-red-800'
-                )}
-                title={
-                  realtime.lastSignalAt
-                    ? `Last: ${realtime.lastSignalType || 'unknown'} @ ${realtime.lastSignalAt.toISOString()}`
-                    : 'No realtime signals yet'
-                }
-              >
-                <span className={cn('h-1.5 w-1.5 rounded-full', realtime.isLive ? 'bg-emerald-600' : 'bg-red-600')} />
-                <span>{realtime.isLive ? 'LIVE' : realtime.isConnected ? 'OFFLINE' : 'DISCONNECTED'}</span>
-                {realtime.adsLive && (
-                  <span className="inline-flex items-center gap-1 rounded bg-background/60 px-1.5 py-0.5 text-[10px] font-bold">
-                    ADS LIVE
-                  </span>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Live pulse (connectivity + activity, independent from ads-only filtering) */}
+              <div className="text-right">
+                <div
+                  data-testid="live-badge"
+                  data-live={realtime.isLive ? '1' : '0'}
+                  data-ads-live={realtime.adsLive ? '1' : '0'}
+                  data-connected={realtime.isConnected ? '1' : '0'}
+                  data-connection-status={realtime.connectionStatus || ''}
+                  data-connection-error={realtime.error || ''}
+                  data-supabase-env={supabaseEnvOk ? '1' : '0'}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold tabular-nums',
+                    realtime.isConnected && realtime.isLive
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : realtime.isConnected
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-red-200 bg-red-50 text-red-800'
+                  )}
+                  title={
+                    realtime.lastSignalAt
+                      ? `Last: ${realtime.lastSignalType || 'unknown'} @ ${realtime.lastSignalAt.toISOString()}`
+                      : 'No realtime signals yet'
+                  }
+                >
+                  <span className={cn('h-1.5 w-1.5 rounded-full', realtime.isLive ? 'bg-emerald-600' : 'bg-red-600')} />
+                  <span>{realtime.isLive ? 'LIVE' : realtime.isConnected ? 'OFFLINE' : 'DISCONNECTED'}</span>
+                  {realtime.adsLive && (
+                    <span className="inline-flex items-center gap-1 rounded bg-background/60 px-1.5 py-0.5 text-[10px] font-bold">
+                      ADS LIVE
+                    </span>
+                  )}
+                </div>
+                {showRealtimeDebug && (
+                  <div
+                    data-testid="realtime-debug"
+                    className="mt-1 text-[10px] text-muted-foreground tabular-nums"
+                    suppressHydrationWarning
+                  >
+                    lastSignalAt={realtime.lastSignalAt ? realtime.lastSignalAt.toISOString() : '—'} • type=
+                    {realtime.lastSignalType || '—'}
+                  </div>
                 )}
               </div>
-              {showRealtimeDebug && (
-                <div
-                  data-testid="realtime-debug"
-                  className="mt-1 text-[10px] text-muted-foreground tabular-nums"
-                  suppressHydrationWarning
+
+              {/* Day toggle */}
+              <div className="inline-flex items-center rounded-md border border-border bg-background">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDay('yesterday')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm tabular-nums',
+                    'first:rounded-l-md last:rounded-r-md',
+                    selectedDay === 'yesterday'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  )}
+                  aria-pressed={selectedDay === 'yesterday'}
                 >
-                  lastSignalAt={realtime.lastSignalAt ? realtime.lastSignalAt.toISOString() : '—'} • type=
-                  {realtime.lastSignalType || '—'}
-                </div>
-              )}
-            </div>
+                  Yesterday
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDay('today')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm tabular-nums',
+                    'first:rounded-l-md last:rounded-r-md',
+                    selectedDay === 'today'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  )}
+                  aria-pressed={selectedDay === 'today'}
+                >
+                  Today
+                </button>
+              </div>
 
-            {/* Day toggle */}
-            <div className="inline-flex items-center rounded-md border border-border bg-background">
-              <button
-                type="button"
-                onClick={() => setSelectedDay('yesterday')}
-                className={cn(
-                  'px-3 py-1.5 text-sm tabular-nums',
-                  'first:rounded-l-md last:rounded-r-md',
-                  selectedDay === 'yesterday'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                )}
-                aria-pressed={selectedDay === 'yesterday'}
-              >
-                Yesterday
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedDay('today')}
-                className={cn(
-                  'px-3 py-1.5 text-sm tabular-nums',
-                  'first:rounded-l-md last:rounded-r-md',
-                  selectedDay === 'today'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                )}
-                aria-pressed={selectedDay === 'today'}
-              >
-                Today
-              </button>
+              {/* Settings -> Command Center modal */}
+              <Dialog>
+                <DialogTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    aria-label="Settings"
+                    data-testid="settings-trigger"
+                  >
+                    <Settings className="h-5 w-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[80vh] overflow-y-auto">
+                  <DialogHeader className="mb-4">
+                    <DialogTitle>Settings</DialogTitle>
+                  </DialogHeader>
+                  <CommandCenterP0Panel siteId={siteId} />
+                </DialogContent>
+              </Dialog>
             </div>
-
-            {/* Settings -> Command Center modal */}
-            <Dialog>
-              <DialogTrigger>
-                <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Settings">
-                  <Settings className="h-5 w-5" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[80vh] overflow-y-auto">
-                <DialogHeader className="mb-4">
-                  <DialogTitle>Settings</DialogTitle>
-                </DialogHeader>
-                <CommandCenterP0Panel siteId={siteId} />
-              </DialogContent>
-            </Dialog>
           </div>
 
           {/* Scoreboard (HUD) */}

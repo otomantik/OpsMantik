@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,6 +49,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
   const [sessionEvidence, setSessionEvidence] = useState<Record<string, { city?: string | null; district?: string | null }>>({});
+  const rpcV2AvailableRef = useRef<boolean>(true);
 
   const [history, setHistory] = useState<
     Array<{
@@ -61,6 +62,9 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
   >([]);
 
   const [toast, setToast] = useState<null | { kind: 'success' | 'danger'; text: string }>(null);
+  const enableRpcV2 =
+    process.env.NEXT_PUBLIC_RPC_V2 === '1' ||
+    (typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_rpc_v2') === '1');
 
   const fetchUnscoredIntents = useCallback(async () => {
     try {
@@ -74,15 +78,22 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
       // Backward compatible fallback: v1 (minutes lookback) + client-side date_to enforcement
       let data: unknown = null;
       let fetchError: any = null;
-      const v2 = await supabase.rpc('get_recent_intents_v2', {
-        p_site_id: siteId,
-        p_date_from: range.fromIso,
-        p_date_to: range.toIso,
-        p_limit: 500,
-        p_ads_only: true,
-      });
-      data = v2.data;
-      fetchError = v2.error;
+      if (enableRpcV2 && rpcV2AvailableRef.current) {
+        const v2 = await supabase.rpc('get_recent_intents_v2', {
+          p_site_id: siteId,
+          p_date_from: range.fromIso,
+          p_date_to: range.toIso,
+          p_limit: 500,
+          p_ads_only: true,
+        });
+        data = v2.data;
+        fetchError = v2.error;
+
+        const msg = String(fetchError?.message || fetchError?.details || '');
+        if (fetchError && msg.toLowerCase().includes('not found')) {
+          rpcV2AvailableRef.current = false;
+        }
+      }
 
       if (fetchError) {
         const v1 = await supabase.rpc('get_recent_intents_v1', {
@@ -143,7 +154,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     } finally {
       setLoading(false);
     }
-  }, [range.fromIso, range.toIso, siteId]);
+  }, [enableRpcV2, range.fromIso, range.toIso, siteId]);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
