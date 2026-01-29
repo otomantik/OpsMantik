@@ -31,12 +31,13 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
     const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
+      // GO2 Fix: Stable range for today. Use a fixed 'now' per selection to prevent infinite loop.
       return { day: 'today' as const, fromIso: todayStartUtcIso, toIso: nowUtc.toISOString() };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
     const toMs = todayStartUtcMs - 1; // inclusive end-of-yesterday (23:59:59.999 TRT)
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
-  }, [selectedDay]);
+  }, [selectedDay]); // toIso is only updated when day toggle is clicked!
 
   // GO2: keep HUD stats unchanged (still "today" stats source)
   const { stats, loading } = useCommandCenterP0Stats(siteId);
