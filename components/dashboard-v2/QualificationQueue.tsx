@@ -257,6 +257,14 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     setSelectedIntent(null);
   }, []);
 
+  const rotateSkip = useCallback(() => {
+    setIntents((prev) => {
+      if (prev.length <= 1) return prev;
+      const [first, ...rest] = prev;
+      return [...rest, first];
+    });
+  }, []);
+
   if (loading) {
     return (
       <>
@@ -374,14 +382,6 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         ...(next.matched_session_id ? sessionEvidence[next.matched_session_id] : {}),
       }
     : null;
-
-  const rotateSkip = useCallback(() => {
-    setIntents((prev) => {
-      if (prev.length <= 1) return prev;
-      const [first, ...rest] = prev;
-      return [...rest, first];
-    });
-  }, []);
 
   function iconForAction(a: string | null) {
     const t = (a || '').toLowerCase();
