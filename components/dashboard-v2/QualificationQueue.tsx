@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { HunterCard } from './HunterCard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-react';
 
-interface QualificationQueueProps {
+export interface QualificationQueueProps {
   siteId: string;
   range: { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
   scope: 'ads' | 'all';
@@ -137,7 +137,7 @@ function ActiveDeckCard({
   );
 }
 
-export function QualificationQueue({ siteId, range, scope }: QualificationQueueProps) {
+export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, scope }) => {
   const [intents, setIntents] = useState<IntentForQualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -655,4 +655,4 @@ export function QualificationQueue({ siteId, range, scope }: QualificationQueueP
       )}
     </>
   );
-}
+};
