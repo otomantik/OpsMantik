@@ -1,0 +1,7 @@
+# Supabase project config (function-level only; rest uses defaults).
+# See: https://supabase.com/docs/guides/functions/function-configuration
+
+# Partition maintenance: run monthly via external cron or pg_cron+pg_net.
+# No JWT so cron services can POST without a user token.
+[functions.maintain-db]
+verify_jwt = false
