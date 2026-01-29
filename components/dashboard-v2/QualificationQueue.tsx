@@ -50,6 +50,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
   const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
   const [sessionEvidence, setSessionEvidence] = useState<Record<string, { city?: string | null; district?: string | null }>>({});
   const rpcV2AvailableRef = useRef<boolean>(true);
+  const [effectiveAdsOnly, setEffectiveAdsOnly] = useState<boolean>(true);
 
   const [history, setHistory] = useState<
     Array<{
@@ -66,25 +67,20 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     process.env.NEXT_PUBLIC_RPC_V2 === '1' ||
     (typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_rpc_v2') === '1');
 
-  const fetchUnscoredIntents = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
+  const fetchRange = useCallback(
+    async (adsOnly: boolean) => {
       const supabase = createClient();
 
-      // GO2: Absolute range in UTC (TRT day boundaries computed in DashboardShell)
-      // Primary path: get_recent_intents_v2(site_id, date_from, date_to, limit)
-      // Backward compatible fallback: v1 (minutes lookback) + client-side date_to enforcement
       let data: unknown = null;
       let fetchError: any = null;
+
       if (enableRpcV2 && rpcV2AvailableRef.current) {
         const v2 = await supabase.rpc('get_recent_intents_v2', {
           p_site_id: siteId,
           p_date_from: range.fromIso,
           p_date_to: range.toIso,
           p_limit: 500,
-          p_ads_only: true,
+          p_ads_only: adsOnly,
         });
         data = v2.data;
         fetchError = v2.error;
@@ -93,6 +89,8 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         if (fetchError && msg.toLowerCase().includes('not found')) {
           rpcV2AvailableRef.current = false;
         }
+      } else {
+        fetchError = { message: 'rpc_v2_disabled' };
       }
 
       if (fetchError) {
@@ -101,7 +99,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
           p_since: range.fromIso,
           p_minutes_lookback: 24 * 60,
           p_limit: 500,
-          p_ads_only: true,
+          p_ads_only: adsOnly,
         });
         data = v1.data;
         fetchError = v1.error;
@@ -117,16 +115,35 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         if (!Number.isFinite(ts)) return false;
         return ts >= fromMs && ts <= toMs;
       });
-      const unscored = inRange.filter((r) => {
+
+      // Queue rule: show *pending human decision* intents.
+      // lead_score can be auto-populated at match time; it should NOT hide rows.
+      const pending = inRange.filter((r) => {
         const status = (r?.status ?? null) as string | null;
-        const leadScore = (r?.lead_score ?? null) as number | null;
-        const statusOk = status === null || String(status).toLowerCase() === 'intent';
-        const scoreOk = leadScore === null || Number(leadScore) === 0;
-        return statusOk && scoreOk;
+        const s = status ? String(status).toLowerCase() : null;
+        return s === null || s === 'intent';
       });
 
+      return pending as any[];
+    },
+    [enableRpcV2, range.fromIso, range.toIso, siteId]
+  );
+
+  const fetchUnscoredIntents = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      // Attempt ADS-only first. If it yields nothing, fallback to "all traffic" so the UI isn't blank.
+      let rows = await fetchRange(true);
+      let adsOnly = true;
+      if (rows.length === 0) {
+        rows = await fetchRange(false);
+        adsOnly = false;
+      }
+      setEffectiveAdsOnly(adsOnly);
+
       setIntents(
-        unscored.map((r) => ({
+        rows.map((r) => ({
           id: r.id,
           created_at: r.created_at,
           intent_action: r.intent_action,
@@ -154,7 +171,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     } finally {
       setLoading(false);
     }
-  }, [enableRpcV2, range.fromIso, range.toIso, siteId]);
+  }, [fetchRange]);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
@@ -166,6 +183,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         data-day={range.day}
         data-from={range.fromIso}
         data-to={range.toIso}
+        data-ads-only={effectiveAdsOnly ? '1' : '0'}
         className="sr-only"
       />
       <div data-testid="queue-top-created-at" className="sr-only">
@@ -440,6 +458,11 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     <>
       {queueMeta}
       <div className="space-y-3">
+        {!effectiveAdsOnly && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Ads-only filter returned 0 rows. Showing all traffic for visibility.
+          </div>
+        )}
         {/* lightweight toast */}
         {toast && (
           <div
