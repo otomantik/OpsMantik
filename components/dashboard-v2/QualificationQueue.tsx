@@ -63,76 +63,74 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
   >([]);
 
   const [toast, setToast] = useState<null | { kind: 'success' | 'danger'; text: string }>(null);
-  const enableRpcV2 =
-    process.env.NEXT_PUBLIC_RPC_V2 === '1' ||
-    (typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_rpc_v2') === '1');
-
-  const fetchRange = useCallback(
-    async (adsOnly: boolean) => {
-      const supabase = createClient();
-
-      let data: unknown = null;
-      let fetchError: any = null;
-
-      if (enableRpcV2 && rpcV2AvailableRef.current) {
-        const v2 = await supabase.rpc('get_recent_intents_v2', {
-          p_site_id: siteId,
-          p_date_from: range.fromIso,
-          p_date_to: range.toIso,
-          p_limit: 500,
-          p_ads_only: adsOnly,
-        });
-        data = v2.data;
-        fetchError = v2.error;
-
-        const msg = String(fetchError?.message || fetchError?.details || '');
-        if (fetchError && msg.toLowerCase().includes('not found')) {
-          rpcV2AvailableRef.current = false;
-        }
-      } else {
-        fetchError = { message: 'rpc_v2_disabled' };
-      }
-
-      if (fetchError) {
-        const v1 = await supabase.rpc('get_recent_intents_v1', {
-          p_site_id: siteId,
-          p_since: range.fromIso,
-          p_minutes_lookback: 24 * 60,
-          p_limit: 500,
-          p_ads_only: adsOnly,
-        });
-        data = v1.data;
-        fetchError = v1.error;
-      }
-
-      if (fetchError) throw fetchError;
-
-      const rows = parseRpcJsonbArray<any>(data);
-      const fromMs = new Date(range.fromIso).getTime();
-      const toMs = new Date(range.toIso).getTime();
-      const inRange = rows.filter((r) => {
-        const ts = new Date(r?.created_at || 0).getTime();
-        if (!Number.isFinite(ts)) return false;
-        return ts >= fromMs && ts <= toMs;
-      });
-
-      // Queue rule: show *pending human decision* intents.
-      // lead_score can be auto-populated at match time; it should NOT hide rows.
-      const pending = inRange.filter((r) => {
-        const status = (r?.status ?? null) as string | null;
-        const s = status ? String(status).toLowerCase() : null;
-        return s === null || s === 'intent';
-      });
-
-      return pending as any[];
-    },
-    [enableRpcV2, range.fromIso, range.toIso, siteId]
-  );
 
   const fetchUnscoredIntents = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
+      const supabase = createClient();
+      const enableRpcV2 =
+        process.env.NEXT_PUBLIC_RPC_V2 === '1' ||
+        (typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_rpc_v2') === '1');
+
+      async function fetchRange(adsOnly: boolean) {
+        let data: unknown = null;
+        let fetchError: any = null;
+
+        if (enableRpcV2 && rpcV2AvailableRef.current) {
+          const v2 = await supabase.rpc('get_recent_intents_v2', {
+            p_site_id: siteId,
+            p_date_from: range.fromIso,
+            p_date_to: range.toIso,
+            p_limit: 500,
+            p_ads_only: adsOnly,
+          });
+          data = v2.data;
+          fetchError = v2.error;
+
+          const msg = String(fetchError?.message || fetchError?.details || '');
+          if (fetchError && msg.toLowerCase().includes('not found')) {
+            rpcV2AvailableRef.current = false;
+          }
+        } else {
+          fetchError = { message: 'rpc_v2_disabled' };
+        }
+
+        if (fetchError) {
+          const v1 = await supabase.rpc('get_recent_intents_v1', {
+            p_site_id: siteId,
+            p_since: range.fromIso,
+            p_minutes_lookback: 24 * 60,
+            p_limit: 500,
+            p_ads_only: adsOnly,
+          });
+          data = v1.data;
+          fetchError = v1.error;
+        }
+
+        if (fetchError) throw fetchError;
+
+        const rows = parseRpcJsonbArray<any>(data);
+        const fromMs = new Date(range.fromIso).getTime();
+        const toMs = new Date(range.toIso).getTime();
+        const inRange = rows.filter((r) => {
+          const ts = new Date(r?.created_at || 0).getTime();
+          if (!Number.isFinite(ts)) return false;
+          return ts >= fromMs && ts <= toMs;
+        });
+
+        // Queue rule: show *pending human decision* intents.
+        // lead_score can be auto-populated at match time; it should NOT hide rows.
+        const pending = inRange.filter((r) => {
+          const status = (r?.status ?? null) as string | null;
+          const s = status ? String(status).toLowerCase() : null;
+          return s === null || s === 'intent';
+        });
+
+        return pending as any[];
+      }
+
       // Attempt ADS-only first. If it yields nothing, fallback to "all traffic" so the UI isn't blank.
       let rows = await fetchRange(true);
       let adsOnly = true;
