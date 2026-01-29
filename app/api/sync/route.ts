@@ -5,6 +5,8 @@ import { computeAttribution, extractUTM } from '@/lib/attribution';
 import { extractGeoInfo } from '@/lib/geo';
 import { computeLeadScore } from '@/lib/scoring';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
+import { getRecentMonths, createSyncResponse } from '@/lib/sync-utils';
+import { debugLog, debugWarn } from '@/lib/utils';
 
 // UUID v4 generator (RFC 4122 compliant)
 function generateUUID(): string {
@@ -13,26 +15,6 @@ function generateUUID(): string {
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
-}
-
-/**
- * Get recent months for partition filtering
- * Returns array of month strings in format 'YYYY-MM-01' for last N months
- * 
- * @param months - Number of months to include (default: 6)
- * @returns Array of month strings, e.g., ['2026-01-01', '2025-12-01', ...]
- */
-function getRecentMonths(months: number = 6): string[] {
-    const result: string[] = [];
-    const now = new Date();
-
-    for (let i = 0; i < months; i++) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthStr = date.toISOString().slice(0, 7) + '-01';
-        result.push(monthStr);
-    }
-
-    return result;
 }
 
 // GeoIP - optional, disabled for Edge Runtime compatibility
@@ -54,27 +36,6 @@ const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 
 // Parse allowed origins (init safely to prevent route crash)
 const ALLOWED_ORIGINS = getOriginsSafe();
-
-/**
- * Response helper to guarantee { ok, score } contract
- * All responses MUST include both 'ok' and 'score' keys
- * 
- * @param ok - Success status (true = success, false = error)
- * @param score - Lead score (number on success, null on error)
- * @param data - Additional response data
- * @returns Response object with guaranteed contract
- */
-function createSyncResponse(
-    ok: boolean,
-    score: number | null,
-    data: Record<string, unknown> = {}
-): Record<string, unknown> {
-    return {
-        ok,
-        score,
-        ...data,
-    };
-}
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
@@ -128,7 +89,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (!isAllowed) {
-            console.warn('[CORS] Origin not allowed:', origin, 'Reason:', reason, 'Allowed list:', ALLOWED_ORIGINS);
+            debugWarn('[CORS] Origin not allowed:', origin, 'Reason:', reason, 'Allowed list:', ALLOWED_ORIGINS);
             return NextResponse.json(
                 createSyncResponse(false, null, {
                     error: 'Origin not allowed',
@@ -180,21 +141,15 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Debug logging (only in dev mode) - declare once at top of function
-        const isDebugMode = process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true';
-        if (isDebugMode) {
-            console.log('[SYNC_IN] Incoming payload:', {
-                site_id: rawBody.s,
-                month: rawBody.sm,
-                url: rawBody.u,
-                referrer: rawBody.r,
-                meta: rawBody.meta,
-                event_category: rawBody.ec,
-                event_action: rawBody.ea,
-            });
-        } else {
-            console.log('[SYNC_IN] Incoming payload from site:', rawBody.s, 'month:', rawBody.sm);
-        }
+        debugLog('[SYNC_IN] Incoming payload:', {
+            site_id: rawBody.s,
+            month: rawBody.sm,
+            url: rawBody.u,
+            referrer: rawBody.r,
+            meta: rawBody.meta,
+            event_category: rawBody.ec,
+            event_action: rawBody.ea,
+        });
         // atomic payload mapping
         const {
             s: site_id, u: url,
@@ -262,9 +217,7 @@ export async function POST(req: NextRequest) {
         const strippedId = typeof site_id === 'string' ? site_id.replace(/-/g, '') : site_id;
         const searchIds = Array.from(new Set([site_id, finalSiteId, strippedId]));
 
-        if (isDebugMode) {
-            console.log('[SYNC_DB] Searching site with IDs:', searchIds);
-        }
+        debugLog('[SYNC_DB] Searching site with IDs:', searchIds);
 
         const { data: site, error: siteError } = await adminClient
             .from('sites')
@@ -288,7 +241,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        console.log('[SYNC_VALID] Site verified. Internal ID:', site.id);
+        debugLog('[SYNC_VALID] Site verified. Internal ID:', site.id);
 
         // 2. Context Extraction
         const urlObj = new URL(url);
@@ -346,19 +299,16 @@ export async function POST(req: NextRequest) {
         const attributionSource = attribution.source;
         const isReturningAdUser = attribution.isPaid && !currentGclid;
 
-        // Debug logging (only in dev mode) - use isDebugMode from above
-        if (isDebugMode) {
-            console.log('[SYNC_API] Attribution computed:', {
-                gclid: currentGclid ? 'present' : 'missing',
-                utm_medium: utm?.medium || 'none',
-                referrer: referrer ? (referrer.includes('http') ? new URL(referrer).hostname : referrer) : 'none',
+        debugLog('[SYNC_API] Attribution computed:', {
+            gclid: currentGclid ? 'present' : 'missing',
+            utm_medium: utm?.medium || 'none',
+            referrer: referrer ? (referrer.includes('http') ? new URL(referrer).hostname : referrer) : 'none',
                 hasPastGclid,
                 attributionSource,
                 device_type: deviceType,
                 city: geoInfo.city,
                 district: geoInfo.district,
-            });
-        }
+        });
 
         // 4. Lead Scoring Engine (extracted to lib/scoring.ts)
         const leadScore = computeLeadScore(
@@ -413,7 +363,7 @@ export async function POST(req: NextRequest) {
                         }
                     );
                 } else if (existingSession) {
-                    console.log('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
+                    debugLog('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                     session = existingSession;
 
                     // Update existing session with attribution/context if missing
@@ -432,10 +382,10 @@ export async function POST(req: NextRequest) {
                             .eq('created_month', dbMonth);
                     }
                 } else {
-                    console.log('[SYNC_API] No existing session found for UUID:', client_sid, 'in partition:', dbMonth);
+                    debugLog('[SYNC_API] No existing session found for UUID:', client_sid, 'in partition:', dbMonth);
                 }
             } else {
-                console.warn('[SYNC_API] Invalid UUID format for session_id:', client_sid, '- will create new session');
+                debugWarn('[SYNC_API] Invalid UUID format for session_id:', client_sid, '- will create new session');
             }
 
             // Step B: Create session if not found
@@ -443,7 +393,7 @@ export async function POST(req: NextRequest) {
                 // Generate UUID if client_sid is not valid UUID
                 const finalSessionId = isUuid ? client_sid : generateUUID();
 
-                console.log('[SYNC_API] Creating NEW session:', {
+                debugLog('[SYNC_API] Creating NEW session:', {
                     provided_id: client_sid,
                     final_id: finalSessionId,
                     is_uuid: isUuid,
@@ -488,7 +438,7 @@ export async function POST(req: NextRequest) {
 
             // Step C: Insert Event (Atomic)
             if (session) {
-                console.log('[SYNC_API] Inserting event for session:', session.id);
+                debugLog('[SYNC_API] Inserting event for session:', session.id);
 
                 // Determine category: GCLID affects only user interactions, not system events
                 let finalCategory = event_category || 'interaction';
@@ -541,7 +491,7 @@ export async function POST(req: NextRequest) {
                     });
                     throw eError;
                 }
-                console.log('[SYNC_API] ✅ SUCCESS: Event inserted to DB:', {
+                debugLog('[SYNC_API] ✅ SUCCESS: Event inserted to DB:', {
                     event_id: session.id.slice(0, 8) + '...',
                     action: event_action,
                     category: finalCategory,
@@ -706,13 +656,13 @@ export async function POST(req: NextRequest) {
                             }, { onConflict: 'site_id,intent_stamp', ignoreDuplicates: true });
 
                         if (upsertErr) {
-                            console.warn('[SYNC_API] intent_stamp upsert failed (falling back to 10s dedupe):', {
+                            debugWarn('[SYNC_API] intent_stamp upsert failed (falling back to 10s dedupe):', {
                                 message: upsertErr.message,
                                 code: upsertErr.code,
                             });
                         } else {
                             stampEnsured = true;
-                            console.log('[SYNC_API] ✅ Call intent ensured (stamp):', {
+                            debugLog('[SYNC_API] ✅ Call intent ensured (stamp):', {
                                 intent_stamp: intentStamp,
                                 intent_action: canonicalAction,
                             });
@@ -756,23 +706,23 @@ export async function POST(req: NextRequest) {
                             if (callError) {
                                 // Unique conflict can happen if stamp exists but upsert path failed earlier.
                                 if (callError.code === '23505') {
-                                    console.log('[SYNC_API] Call intent dedupe (unique): skipping duplicate');
+                                    debugLog('[SYNC_API] Call intent dedupe (unique): skipping duplicate');
                                 } else {
-                                    console.warn('[SYNC_API] Failed to create call intent (fallback):', {
+                                    debugWarn('[SYNC_API] Failed to create call intent (fallback):', {
                                         message: callError.message,
                                         code: callError.code,
                                         session_id: session.id.slice(0, 8) + '...',
                                     });
                                 }
                             } else {
-                                console.log('[SYNC_API] ✅ Call intent created (fallback):', {
+                                debugLog('[SYNC_API] ✅ Call intent created (fallback):', {
                                     intent_action: canonicalAction,
                                     intent_target: canonicalTarget,
                                     session_id: session.id.slice(0, 8) + '...',
                                 });
                             }
                         } else {
-                            console.log('[SYNC_API] Call intent fallback dedupe: skipping duplicate within 10s');
+                            debugLog('[SYNC_API] Call intent fallback dedupe: skipping duplicate within 10s');
                         }
                     }
                 }

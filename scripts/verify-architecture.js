@@ -113,11 +113,8 @@ async function verifyArchitecture() {
     // 5. Check Components
     console.log('\n🎨 5. Component Files Check...');
     const componentFiles = [
-      'components/dashboard/live-feed.tsx',
-      'components/dashboard/call-alert-wrapper.tsx',
-      'components/dashboard/call-alert.tsx',
       'components/dashboard/session-group.tsx',
-      'components/dashboard/stats-cards.tsx',
+      'components/dashboard-v2/DashboardShell.tsx',
       'docs/ARCHITECTURE.md',
     ];
 

@@ -11,12 +11,21 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function isDebugEnabled(): boolean {
   if (typeof window === 'undefined') {
-    // Server-side: check NODE_ENV
-    return process.env.NODE_ENV !== 'production';
+    return process.env.NODE_ENV !== 'production' ||
+           process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true';
   }
-  // Client-side: check both NODE_ENV and explicit debug flag
-  return process.env.NODE_ENV !== 'production' || 
+  return process.env.NODE_ENV !== 'production' ||
          process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true';
+}
+
+/** Only logs in dev or when NEXT_PUBLIC_WARROOM_DEBUG=1. Use in API routes to avoid prod noise. */
+export function debugLog(...args: unknown[]): void {
+  if (isDebugEnabled()) console.log(...args);
+}
+
+/** Only warns in dev or when NEXT_PUBLIC_WARROOM_DEBUG=1. */
+export function debugWarn(...args: unknown[]): void {
+  if (isDebugEnabled()) console.warn(...args);
 }
 
 /**

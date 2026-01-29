@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
-import { DashboardLayout } from '@/components/dashboard/dashboard-layout';
 import { DashboardShell } from '@/components/dashboard-v2/DashboardShell';
 import { isAdmin } from '@/lib/auth/isAdmin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
@@ -8,9 +7,6 @@ import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// Feature Flag: Enable New Dashboard V2
-const ENABLE_NEW_DASHBOARD = true;
 
 interface SitePageProps {
   params: Promise<{ siteId: string }>;
@@ -84,25 +80,13 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     }
   }
 
-  // Feature Flag: Switch between V1 (legacy) and V2 (new clean dashboard)
-  // Pass initial today range from URL so server and client render the same data-to (avoids hydration mismatch).
-  if (ENABLE_NEW_DASHBOARD) {
-    return (
-      <DashboardShell
-        siteId={siteId}
-        siteName={site.name || undefined}
-        siteDomain={site.domain || undefined}
-        initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
-      />
-    );
-  }
-
-  // Legacy Dashboard (V1)
+  // Yayındaki ekran: DashboardShell (today range URL ile; hydration uyumu için)
   return (
-    <DashboardLayout
+    <DashboardShell
       siteId={siteId}
       siteName={site.name || undefined}
       siteDomain={site.domain || undefined}
+      initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
     />
   );
 }

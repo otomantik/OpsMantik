@@ -2,23 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { rateLimit, getClientId } from '@/lib/rate-limit';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
+import { getRecentMonths } from '@/lib/sync-utils';
+import { debugLog, debugWarn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 // Global version for debug verification
 const OPSMANTIK_VERSION = '1.0.2-bulletproof';
-
-// Helper: Get recent months for partition filtering
-function getRecentMonths(months: number = 2): string[] {
-    const result: string[] = [];
-    const now = new Date();
-    for (let i = 0; i < months; i++) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthStr = date.toISOString().slice(0, 7) + '-01';
-        result.push(monthStr);
-    }
-    return result;
-}
 
 // Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
@@ -154,7 +144,7 @@ export async function POST(req: NextRequest) {
         if (recentEvents && recentEvents.length > 0) {
             matchedSessionId = recentEvents[0].session_id;
             const sessionMonth = recentEvents[0].session_month;
-            console.log('[CALL_MATCH] Found matching session:', matchedSessionId);
+            debugLog('[CALL_MATCH] Found matching session:', matchedSessionId);
 
             // Validate: Check session exists and was created before match
             const { data: session, error: sessionError } = await adminClient
@@ -166,7 +156,7 @@ export async function POST(req: NextRequest) {
 
             if (sessionError || !session) {
                 // Session doesn't exist - invalid match
-                console.warn('[CALL_MATCH] Session not found for match:', {
+                debugWarn('[CALL_MATCH] Session not found for match:', {
                     call_id: 'pending',
                     session_id: matchedSessionId,
                     error: sessionError?.message
@@ -180,7 +170,7 @@ export async function POST(req: NextRequest) {
 
                 if (timeDiffMinutes > 2) {
                     // Suspicious: session created more than 2 minutes after match
-                    console.warn('[CALL_MATCH] Suspicious match detected:', {
+                    debugWarn('[CALL_MATCH] Suspicious match detected:', {
                         call_id: 'pending',
                         session_id: matchedSessionId,
                         session_created_at: session.created_at,

@@ -1,10 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { StatsCards } from '@/components/dashboard/stats-cards';
-import { LiveFeed } from '@/components/dashboard/live-feed';
-import { CallAlertWrapper } from '@/components/dashboard/call-alert-wrapper';
-import { TrackedEventsPanel } from '@/components/dashboard/tracked-events-panel';
-import { ConversionTracker } from '@/components/dashboard/conversion-tracker';
 import { SiteSetup } from '@/components/dashboard/site-setup';
 import { SitesManager } from '@/components/dashboard/sites-manager';
 import { SiteSwitcher } from '@/components/dashboard/site-switcher';
