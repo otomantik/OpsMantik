@@ -21,31 +21,47 @@ function Dialog({ children, defaultOpen = false }: { children: React.ReactNode; 
   return <DialogContext.Provider value={{ open, setOpen }}>{children}</DialogContext.Provider>;
 }
 
-function DialogTrigger({ children, className }: { children: React.ReactNode; className?: string }) {
+function DialogTrigger({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   const { setOpen } = useDialog();
+
+  if (React.isValidElement(children)) {
+    const child = children as React.ReactElement<{ onClick?: () => void; className?: string }>;
+    return React.cloneElement(child, {
+      className: cn(child.props.className, className),
+      onClick: () => {
+        child.props.onClick?.();
+        setOpen(true);
+      },
+    });
+  }
+
   return (
-    <span
-      className={cn("inline-flex", className)}
+    <button
+      type="button"
+      className={cn("inline-flex cursor-pointer", className)}
       onClick={() => setOpen(true)}
-      role="button"
-      tabIndex={0}
     >
       {children}
-    </span>
+    </button>
   );
 }
 
 function DialogClose({ children, className }: { children: React.ReactNode; className?: string }) {
   const { setOpen } = useDialog();
   return (
-    <span
-      className={cn("inline-flex", className)}
+    <button
+      type="button"
+      className={cn("inline-flex cursor-pointer", className)}
       onClick={() => setOpen(false)}
-      role="button"
-      tabIndex={0}
     >
       {children}
-    </span>
+    </button>
   );
 }
 

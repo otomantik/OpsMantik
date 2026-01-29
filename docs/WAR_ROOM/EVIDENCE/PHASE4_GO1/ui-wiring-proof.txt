@@ -1,0 +1,10 @@
+OK components/dashboard-v2/HunterCard.tsx
+OK components/ui/dialog.tsx
+OK components/dashboard-v2/DashboardShell.tsx
+OK components/dashboard-v2/QualificationQueue.tsx
+OK components/dashboard-v2/DashboardShell.tsx contains "Dialog"
+OK components/dashboard-v2/DashboardShell.tsx contains "Hunter Terminal"
+OK components/dashboard-v2/QualificationQueue.tsx contains "HunterCard"
+OK components/dashboard-v2/QualificationQueue.tsx contains "Kill Feed"
+OK Settings dialog opens (1)
+OK Settings dialog opens (2)

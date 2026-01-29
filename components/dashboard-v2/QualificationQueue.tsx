@@ -17,6 +17,7 @@ import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-r
 
 interface QualificationQueueProps {
   siteId: string;
+  range: { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 }
 
 function parseRpcJsonbArray<T>(data: unknown): T[] {
@@ -42,7 +43,7 @@ function parseRpcJsonbArray<T>(data: unknown): T[] {
   return [];
 }
 
-export function QualificationQueue({ siteId }: QualificationQueueProps) {
+export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
   const [intents, setIntents] = useState<IntentForQualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,22 +69,44 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
 
       const supabase = createClient();
 
-      // Source of truth: use the same RPC pipeline as LiveInbox to avoid schema/RLS drift.
-      // Pull "today-like" window (up to 24h) then filter client-side to unscored.
-      const { data, error: fetchError } = await supabase.rpc('get_recent_intents_v1', {
+      // GO2: Absolute range in UTC (TRT day boundaries computed in DashboardShell)
+      // Primary path: get_recent_intents_v2(site_id, date_from, date_to, limit)
+      // Backward compatible fallback: v1 (minutes lookback) + client-side date_to enforcement
+      let data: unknown = null;
+      let fetchError: any = null;
+      const v2 = await supabase.rpc('get_recent_intents_v2', {
         p_site_id: siteId,
-        p_since: null,
-        p_minutes_lookback: 24 * 60,
+        p_date_from: range.fromIso,
+        p_date_to: range.toIso,
         p_limit: 500,
         p_ads_only: true,
       });
+      data = v2.data;
+      fetchError = v2.error;
 
       if (fetchError) {
-        throw fetchError;
+        const v1 = await supabase.rpc('get_recent_intents_v1', {
+          p_site_id: siteId,
+          p_since: range.fromIso,
+          p_minutes_lookback: 24 * 60,
+          p_limit: 500,
+          p_ads_only: true,
+        });
+        data = v1.data;
+        fetchError = v1.error;
       }
 
+      if (fetchError) throw fetchError;
+
       const rows = parseRpcJsonbArray<any>(data);
-      const unscored = rows.filter((r) => {
+      const fromMs = new Date(range.fromIso).getTime();
+      const toMs = new Date(range.toIso).getTime();
+      const inRange = rows.filter((r) => {
+        const ts = new Date(r?.created_at || 0).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return ts >= fromMs && ts <= toMs;
+      });
+      const unscored = inRange.filter((r) => {
         const status = (r?.status ?? null) as string | null;
         const leadScore = (r?.lead_score ?? null) as number | null;
         const statusOk = status === null || String(status).toLowerCase() === 'intent';
@@ -120,10 +143,25 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
     } finally {
       setLoading(false);
     }
-  }, [siteId]);
+  }, [range.fromIso, range.toIso, siteId]);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
+
+  const queueMeta = (
+    <>
+      <div
+        data-testid="queue-range"
+        data-day={range.day}
+        data-from={range.fromIso}
+        data-to={range.toIso}
+        className="sr-only"
+      />
+      <div data-testid="queue-top-created-at" className="sr-only">
+        {top?.created_at || ''}
+      </div>
+    </>
+  );
 
   // Fetch richer session evidence for the TOP card only (keeps UI snappy, avoids heavy fan-out)
   useEffect(() => {
@@ -194,49 +232,60 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">
-            Intent Qualification Queue
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </CardContent>
-      </Card>
+      <>
+        {queueMeta}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">
+              Intent Qualification Queue
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </CardContent>
+        </Card>
+      </>
     );
   }
 
   if (error) {
     return (
-      <Card className="border border-rose-200 bg-rose-50">
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <Icons.alert className="w-10 h-10 text-rose-600 mb-2" />
-          <p className="text-rose-800 text-sm mb-4">Failed to load intents: {error}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchUnscoredIntents()}
-            className="bg-background border-rose-300 text-rose-800 hover:bg-rose-100"
-          >
-            <Icons.refresh className="w-3 h-3 mr-2" />
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
+      <>
+        {queueMeta}
+        <Card className="border border-rose-200 bg-rose-50">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <Icons.alert className="w-10 h-10 text-rose-600 mb-2" />
+            <p className="text-rose-800 text-sm mb-4">Failed to load intents: {error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchUnscoredIntents()}
+              className="bg-background border-rose-300 text-rose-800 hover:bg-rose-100"
+            >
+              <Icons.refresh className="w-3 h-3 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </>
     );
   }
 
   if (intents.length === 0) {
     return (
       <>
+        {queueMeta}
         <Card className="border-2 border-dashed border-border bg-muted/20">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Icons.check className="w-16 h-16 text-green-500 mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Mission Accomplished</h3>
+            <h3 className="text-xl font-semibold mb-2" data-testid="queue-empty-state">
+              {range.day === 'yesterday' ? 'No data for yesterday' : 'Mission Accomplished'}
+            </h3>
             <p className="text-muted-foreground max-w-md">
-              No pending intents to qualify. New intents from Google Ads will appear here automatically.
+              {range.day === 'yesterday'
+                ? 'No intents were found for yesterday in the selected TRT window.'
+                : 'No pending intents to qualify. New intents from Google Ads will appear here automatically.'}
             </p>
             <Button
               variant="ghost"
@@ -378,6 +427,7 @@ export function QualificationQueue({ siteId }: QualificationQueueProps) {
 
   return (
     <>
+      {queueMeta}
       <div className="space-y-3">
         {/* lightweight toast */}
         {toast && (

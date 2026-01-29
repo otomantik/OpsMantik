@@ -1,0 +1,16 @@
+OK components/dashboard-v2/HunterCard.tsx
+OK components/ui/dialog.tsx
+OK components/dashboard-v2/DashboardShell.tsx
+OK components/dashboard-v2/QualificationQueue.tsx
+OK components/dashboard-v2/DashboardShell.tsx contains "Dialog"
+OK components/dashboard-v2/DashboardShell.tsx contains "Hunter Terminal"
+OK components/dashboard-v2/QualificationQueue.tsx contains "HunterCard"
+OK components/dashboard-v2/QualificationQueue.tsx contains "Kill Feed"
+OK Live badge initial data-connected=1 status=STARTING err= env=1 data-live=0
+OK Realtime channel subscribed (data-connected=1)
+OK Live badge flips to LIVE within 3s
+OK Settings dialog opens (1)
+OK Settings dialog opens (2)
+OK Queue range initial day=today from=2026-01-28T21:00:00.000Z to=2026-01-29T00:40:14.088Z
+OK Queue range after toggle day=yesterday from=2026-01-27T21:00:00.000Z to=2026-01-28T20:59:59.999Z
+OK Yesterday toggle shows explicit empty state
