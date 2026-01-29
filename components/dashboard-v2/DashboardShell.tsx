@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QualificationQueue } from './QualificationQueue';
 import { CommandCenterP0Panel } from './CommandCenterP0Panel';
@@ -9,8 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { cn } from '@/lib/utils';
-import { Settings, Target, Shield, Wallet } from 'lucide-react';
+import { Home, Settings, Target, Shield, Wallet } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
+import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
 import './reset.css';
 
 interface DashboardShellProps {
@@ -22,6 +24,8 @@ interface DashboardShellProps {
 export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
   const supabaseEnvOk = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const [role, setRole] = useState<'admin' | 'user'>('user');
+  const [scope, setScope] = useState<'ads' | 'all'>('ads'); // default ADS ONLY
 
   // GO2: single source of truth for queue day selection (TRT boundaries, absolute UTC range)
   // - today:   [today 00:00 TRT, now]
@@ -39,8 +43,12 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
   }, [selectedDay]); // toIso is only updated when day toggle is clicked!
 
-  // GO2: keep HUD stats unchanged (still "today" stats source)
-  const { stats, loading } = useCommandCenterP0Stats(siteId);
+  // Scope-aware HUD stats (refetches when scope or range changes)
+  const { stats, loading } = useCommandCenterP0Stats(
+    siteId,
+    { fromIso: queueRange.fromIso, toIso: queueRange.toIso },
+    { scope }
+  );
   const captured = loading ? '…' : String(stats?.sealed ?? 0);
   const filtered = loading ? '…' : String(stats?.junk ?? 0);
   const saved = loading ? '…' : `${(stats?.estimated_budget_saved ?? 0).toLocaleString()} ${stats?.currency || ''}`.trim();
@@ -49,17 +57,54 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
   const showRealtimeDebug =
     typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_debug') === '1';
 
+  // Role lookup (client-side, best-effort)
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const supabase = createClient();
+        const { data: userRes } = await supabase.auth.getUser();
+        const user = userRes?.user;
+        if (!user) return;
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        if (cancelled) return;
+        setRole(profile?.role === 'admin' ? 'admin' : 'user');
+      } catch {
+        // keep default 'user'
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="om-dashboard-reset min-h-screen bg-muted/30">
       {/* Tactical Header */}
-      <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
+      <header className="sticky top-0 z-50 relative border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto max-w-md px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             {/* Brand */}
             <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">
-                {siteName || siteDomain || 'OpsMantik'}
-              </div>
+              <Link
+                href="/dashboard"
+                className={cn(
+                  buttonVariants({ variant: 'ghost' }),
+                  '-ml-2 h-9 px-2 inline-flex items-center gap-2 min-w-0'
+                )}
+              >
+                <Home className="h-4 w-4 shrink-0" />
+                <span className="text-sm font-semibold truncate">
+                  {siteName || siteDomain || 'OpsMantik'}
+                </span>
+              </Link>
               <div className="text-sm text-muted-foreground truncate">Hunter Terminal</div>
             </div>
 
@@ -140,26 +185,60 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
                 </button>
               </div>
 
+              {/* Scope toggle (ADS ONLY vs ALL TRAFFIC) */}
+              <div className="inline-flex items-center rounded-md border border-border bg-background">
+                <button
+                  type="button"
+                  onClick={() => setScope('ads')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm tabular-nums',
+                    'first:rounded-l-md last:rounded-r-md',
+                    scope === 'ads'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  )}
+                  aria-pressed={scope === 'ads'}
+                >
+                  ADS ONLY
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('all')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm tabular-nums',
+                    'first:rounded-l-md last:rounded-r-md',
+                    scope === 'all'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  )}
+                  aria-pressed={scope === 'all'}
+                >
+                  ALL TRAFFIC
+                </button>
+              </div>
+
               {/* Settings -> Command Center modal */}
-              <Dialog>
-                <DialogTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9"
-                    aria-label="Settings"
-                    data-testid="settings-trigger"
-                  >
-                    <Settings className="h-5 w-5" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[80vh] overflow-y-auto">
-                  <DialogHeader className="mb-4">
-                    <DialogTitle>Settings</DialogTitle>
-                  </DialogHeader>
-                  <CommandCenterP0Panel siteId={siteId} />
-                </DialogContent>
-              </Dialog>
+              {role === 'admin' ? (
+                <Dialog>
+                  <DialogTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      aria-label="Settings"
+                      data-testid="settings-trigger"
+                    >
+                      <Settings className="h-5 w-5" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[80vh] overflow-y-auto">
+                    <DialogHeader className="mb-4">
+                      <DialogTitle>Settings</DialogTitle>
+                    </DialogHeader>
+                    <CommandCenterP0Panel siteId={siteId} />
+                  </DialogContent>
+                </Dialog>
+              ) : null}
             </div>
           </div>
 
@@ -192,7 +271,7 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
 
       {/* Feed */}
       <main className="mx-auto max-w-md px-4 py-4 space-y-4 pb-20">
-        <QualificationQueue siteId={siteId} range={queueRange} />
+        <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
 
         {/* Kill Feed placeholder (Phase 2) */}
         <Card className="border border-dashed border-border bg-background">

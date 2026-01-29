@@ -26,13 +26,24 @@ export interface CommandCenterP0Stats {
 
 export type CommandCenterRange = { fromIso: string; toIso: string };
 
+export type CommandCenterScope = 'ads' | 'all';
+
+export interface UseCommandCenterP0StatsOptions {
+  /** When 'ads', stats are filtered to ads-attributed traffic only; when 'all', full calls table. */
+  scope?: CommandCenterScope;
+}
+
 export function useCommandCenterP0Stats(
   siteId: string | undefined,
-  rangeOverride?: CommandCenterRange
+  rangeOverride?: CommandCenterRange,
+  options?: UseCommandCenterP0StatsOptions
 ) {
   const [stats, setStats] = useState<CommandCenterP0Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const scope = options?.scope ?? 'ads';
+  const adsOnly = scope === 'ads';
 
   const dateRange = useMemo(() => {
     if (rangeOverride?.fromIso && rangeOverride?.toIso) return rangeOverride;
@@ -50,7 +61,7 @@ export function useCommandCenterP0Stats(
         p_site_id: siteId,
         p_date_from: dateRange.fromIso,
         p_date_to: dateRange.toIso,
-        p_ads_only: true,
+        p_ads_only: adsOnly,
       });
       if (rpcError) throw rpcError;
       setStats((data as CommandCenterP0Stats) ?? null);
@@ -59,7 +70,7 @@ export function useCommandCenterP0Stats(
     } finally {
       setLoading(false);
     }
-  }, [dateRange.fromIso, dateRange.toIso, siteId]);
+  }, [dateRange.fromIso, dateRange.toIso, siteId, adsOnly]);
 
   useEffect(() => {
     fetchStats();

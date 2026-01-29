@@ -161,7 +161,7 @@ export function HunterCard({
   const score = useMemo(() => stars * 20, [stars]); // map 0..5 => 0..100
 
   return (
-    <Card className={cn('relative overflow-hidden bg-background shadow-sm', sourceStripClass(t))}>
+    <Card className={cn('relative overflow-hidden bg-card shadow-sm min-h-[420px]', sourceStripClass(t))}>
       <CardHeader className="px-4 pt-4 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
