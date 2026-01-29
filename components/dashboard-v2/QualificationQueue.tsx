@@ -169,7 +169,7 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     } finally {
       setLoading(false);
     }
-  }, [fetchRange]);
+  }, [range.fromIso, range.toIso, siteId]);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
