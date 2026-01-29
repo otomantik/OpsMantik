@@ -43,6 +43,95 @@ function parseRpcJsonbArray<T>(data: unknown): T[] {
   return [];
 }
 
+function ActiveDeckCard({
+  siteId,
+  intent,
+  onOptimisticRemove,
+  onQualified,
+  onSkip,
+  pushToast,
+  pushHistoryRow,
+}: {
+  siteId: string;
+  intent: IntentForQualification;
+  onOptimisticRemove: (id: string) => void;
+  onQualified: () => void;
+  onSkip: () => void;
+  pushToast: (kind: 'success' | 'danger', text: string) => void;
+  pushHistoryRow: (row: {
+    id: string;
+    status: 'confirmed' | 'junk';
+    intent_action: string | null;
+    identity: string | null;
+  }) => void;
+}) {
+  // Hook must be called unconditionally (no conditional wrapper).
+  const { qualify, saving } = useIntentQualification(siteId, intent.id);
+
+  const fireQualify = (params: { score: 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }) => {
+    // Fire-and-forget background update; keep UI native-fast.
+    void qualify(params)
+      .then(() => {
+        onQualified();
+      })
+      .catch(() => {
+        // Best-effort: refresh + show error toast; avoid re-inserting the card to keep flow snappy.
+        pushToast('danger', 'Failed to update. Refetching…');
+        onQualified();
+      });
+  };
+
+  const handleSeal = ({ id, stars }: { id: string; stars: number }) => {
+    const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
+    // Step 1: remove immediately
+    onOptimisticRemove(id);
+    // Step 2: toast + history immediately
+    pushHistoryRow({
+      id,
+      status: 'confirmed',
+      intent_action: intent.intent_action ?? null,
+      identity: intent.intent_target ?? null,
+    });
+    pushToast('success', 'Lead captured.');
+    // Step 3: async update in background
+    fireQualify({ score: s, status: 'confirmed' });
+  };
+
+  const handleJunk = ({ id, stars }: { id: string; stars: number }) => {
+    const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
+    onOptimisticRemove(id);
+    pushHistoryRow({
+      id,
+      status: 'junk',
+      intent_action: intent.intent_action ?? null,
+      identity: intent.intent_target ?? null,
+    });
+    pushToast('danger', 'Trash taken out.');
+    fireQualify({ score: s, status: 'junk' });
+  };
+
+  return (
+    <div className={cn(saving && 'opacity-60 pointer-events-none')}>
+      <HunterCard
+        intent={{
+          id: intent.id,
+          intent_action: intent.intent_action ?? null,
+          intent_target: intent.intent_target ?? null,
+          created_at: intent.created_at,
+          intent_page_url: intent.intent_page_url ?? null,
+          // best-effort: pass through if available in future RPCs
+          utm_term: (intent as any)?.utm_term ?? null,
+          utm_campaign: (intent as any)?.utm_campaign ?? null,
+          risk_level: intent.risk_level ?? null,
+        }}
+        onSeal={({ id, stars }) => handleSeal({ id, stars })}
+        onJunk={({ id, stars }) => handleJunk({ id, stars })}
+        onSkip={() => onSkip()}
+      />
+    </div>
+  );
+}
+
 export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
   const [intents, setIntents] = useState<IntentForQualification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -265,6 +354,28 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     });
   }, []);
 
+  const optimisticRemove = useCallback((id: string) => {
+    setIntents((prev) => {
+      if (prev.length === 0) return prev;
+      // Fast path: remove top card by slice (preferred UX)
+      if (prev[0]?.id === id) return prev.slice(1);
+      // Fallback: remove by id
+      return prev.filter((x) => x.id !== id);
+    });
+  }, []);
+
+  const pushToast = useCallback((kind: 'success' | 'danger', text: string) => {
+    setToast({ kind, text });
+    window.setTimeout(() => setToast(null), 1400);
+  }, []);
+
+  const pushHistoryRow = useCallback(
+    (row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => {
+      setHistory((prev) => [{ ...row, at: new Date().toISOString() }, ...prev].slice(0, 12));
+    },
+    []
+  );
+
   if (loading) {
     return (
       <>
@@ -357,18 +468,6 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
     );
   }
 
-  function pushToast(kind: 'success' | 'danger', text: string) {
-    setToast({ kind, text });
-    window.setTimeout(() => setToast(null), 1400);
-  }
-
-  function pushHistoryRow(row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) {
-    setHistory((prev) => [
-      { ...row, at: new Date().toISOString() },
-      ...prev,
-    ].slice(0, 12));
-  }
-
   const mergedTop: IntentForQualification | null = top
     ? {
         ...top,
@@ -382,6 +481,14 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         ...(next.matched_session_id ? sessionEvidence[next.matched_session_id] : {}),
       }
     : null;
+
+  function peekBorderClass(action: string | null | undefined) {
+    const t = (action || '').toLowerCase();
+    if (t === 'whatsapp') return 'border-l-4 border-green-500';
+    if (t === 'phone') return 'border-l-4 border-blue-500';
+    if (t === 'form') return 'border-l-4 border-purple-500';
+    return 'border-l-4 border-border';
+  }
 
   function iconForAction(a: string | null) {
     const t = (a || '').toLowerCase();
@@ -405,50 +512,6 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         <XOctagon className="h-3 w-3" />
         Junk
       </span>
-    );
-  }
-
-  function ActiveDeckCard({ intent }: { intent: IntentForQualification }) {
-    const { qualify, saving } = useIntentQualification(siteId, intent.id);
-
-    const handleSeal = async ({ id, stars }: { id: string; stars: number }) => {
-      const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
-      // Optimistic: remove from deck immediately
-      setIntents((prev) => prev.filter((x) => x.id !== id));
-      pushHistoryRow({ id, status: 'confirmed', intent_action: intent.intent_action ?? null, identity: intent.intent_target ?? null });
-      pushToast('success', 'Lead captured.');
-      await qualify({ score: s, status: 'confirmed' });
-      handleQualified();
-    };
-
-    const handleJunk = async ({ id, stars }: { id: string; stars: number }) => {
-      const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
-      setIntents((prev) => prev.filter((x) => x.id !== id));
-      pushHistoryRow({ id, status: 'junk', intent_action: intent.intent_action ?? null, identity: intent.intent_target ?? null });
-      pushToast('danger', 'Trash taken out.');
-      await qualify({ score: s, status: 'junk' });
-      handleQualified();
-    };
-
-    return (
-      <div className={cn(saving && 'opacity-60 pointer-events-none')}>
-        <HunterCard
-          intent={{
-            id: intent.id,
-            intent_action: intent.intent_action ?? null,
-            intent_target: intent.intent_target ?? null,
-            created_at: intent.created_at,
-            intent_page_url: intent.intent_page_url ?? null,
-            // best-effort: pass through if available in future RPCs
-            utm_term: (intent as any)?.utm_term ?? null,
-            utm_campaign: (intent as any)?.utm_campaign ?? null,
-            risk_level: intent.risk_level ?? null,
-          }}
-          onSeal={({ id, stars }) => handleSeal({ id, stars })}
-          onJunk={({ id, stars }) => handleJunk({ id, stars })}
-          onSkip={() => rotateSkip()}
-        />
-      </div>
     );
   }
 
@@ -476,37 +539,37 @@ export function QualificationQueue({ siteId, range }: QualificationQueueProps) {
         )}
 
         {/* Deck */}
-        <div className="relative">
+        <div className="relative min-h-[420px]">
+          {/* Next card (peek): render a lightweight placeholder only (no text bleed). */}
           {mergedNext && (
             <div
               className={cn(
-                'pointer-events-none absolute left-0 right-0',
-                'scale-95 opacity-50 translate-y-4',
-                'transition-all duration-200'
+                'pointer-events-none absolute inset-0 -z-10',
+                'scale-95 -translate-y-2',
+                'transition-transform duration-200'
               )}
               aria-hidden
             >
-              <HunterCard
-                intent={{
-                  id: mergedNext.id,
-                  intent_action: mergedNext.intent_action ?? null,
-                  intent_target: mergedNext.intent_target ?? null,
-                  created_at: mergedNext.created_at,
-                  intent_page_url: mergedNext.intent_page_url ?? null,
-                  utm_term: (mergedNext as any)?.utm_term ?? null,
-                  utm_campaign: (mergedNext as any)?.utm_campaign ?? null,
-                  risk_level: mergedNext.risk_level ?? null,
-                }}
-                onSeal={() => {}}
-                onJunk={() => {}}
-                onSkip={() => {}}
+              <div
+                className={cn(
+                  'h-full w-full rounded-lg border border-border bg-card shadow-sm',
+                  peekBorderClass(mergedNext.intent_action)
+                )}
               />
             </div>
           )}
 
           {mergedTop && (
             <div className="relative z-10 transition-all duration-200">
-              <ActiveDeckCard intent={mergedTop} />
+              <ActiveDeckCard
+                siteId={siteId}
+                intent={mergedTop}
+                onOptimisticRemove={optimisticRemove}
+                onQualified={handleQualified}
+                onSkip={rotateSkip}
+                pushToast={pushToast}
+                pushHistoryRow={pushHistoryRow}
+              />
             </div>
           )}
         </div>
