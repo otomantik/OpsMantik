@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { safeDecode } from '@/lib/utils/string-utils';
 import {
   ArrowRight,
   CheckCircle2,
@@ -102,7 +103,8 @@ function safePath(url: string | null | undefined): string {
 }
 
 function titleCaseSlug(slug: string): string {
-  const clean = decodeURIComponent(slug)
+  const decoded = safeDecode(slug);
+  const clean = decoded
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -110,7 +112,11 @@ function titleCaseSlug(slug: string): string {
   return clean
     .split(' ')
     .filter(Boolean)
-    .map((w) => w.length <= 2 ? w.toUpperCase() : (w[0]?.toUpperCase() + w.slice(1)))
+    .map((w) =>
+      w.length <= 2
+        ? w.toLocaleUpperCase('tr-TR')
+        : (w[0]?.toLocaleUpperCase('tr-TR') ?? '') + w.slice(1).toLocaleLowerCase('tr-TR')
+    )
     .join(' ');
 }
 
@@ -119,9 +125,11 @@ function titleCaseSlug(slug: string): string {
  * - Search: utm_term exists -> KEYWORD
  * - PMax: no utm_term -> derive from page path slug -> INTEREST
  * - Fallback: utm_campaign or "General Visit"
+ * Slug: safeDecode, dashes to spaces, Turkish-aware capitalize (tr-TR).
  */
 function getPrimaryIntent(intent: HunterIntent): PrimaryIntent {
-  const term = (intent.utm_term || '').trim();
+  const termRaw = (intent.utm_term || '').trim();
+  const term = termRaw ? safeDecode(termRaw) : '';
   if (term) {
     return { kind: 'keyword', label: 'KEYWORD', icon: Search, value: term };
   }
@@ -131,11 +139,12 @@ function getPrimaryIntent(intent: HunterIntent): PrimaryIntent {
   const segments = path.split('/').filter(Boolean);
   const last = segments[segments.length - 1] || '';
   const derived = titleCaseSlug(last);
-  if (derived && derived.toLowerCase() !== 'home' && derived.length >= 3) {
+  if (derived && derived.toLocaleLowerCase('tr-TR') !== 'home' && derived.length >= 3) {
     return { kind: 'interest', label: 'INTEREST', icon: ShoppingBag, value: derived };
   }
 
-  const campaign = (intent.utm_campaign || '').trim();
+  const campaignRaw = (intent.utm_campaign || '').trim();
+  const campaign = campaignRaw ? safeDecode(campaignRaw) : '';
   return { kind: 'fallback', label: 'CAMPAIGN', icon: Sparkles, value: campaign || 'General Visit' };
 }
 
@@ -185,18 +194,19 @@ export function HunterCard({
   const primary = useMemo(() => getPrimaryIntent(intent), [intent]);
   const path = useMemo(() => {
     const pageUrl = intent.page_url || intent.intent_page_url || null;
-    return safePath(pageUrl);
+    const raw = safePath(pageUrl);
+    return safeDecode(raw) || raw;
   }, [intent.intent_page_url, intent.page_url]);
   const secondary = useMemo(() => {
-    const campaign = (intent.utm_campaign || '').trim();
-    const source = (intent.utm_source || '').trim();
+    const campaign = safeDecode((intent.utm_campaign || '').trim());
+    const source = safeDecode((intent.utm_source || '').trim());
     if (primary.kind !== 'fallback' && campaign) return campaign;
     return source || (primary.kind === 'fallback' ? '' : '');
   }, [intent.utm_campaign, intent.utm_source, primary.kind]);
 
   const location = useMemo(() => {
-    const c = (intent.city || '').trim();
-    const d = (intent.district || '').trim();
+    const c = safeDecode((intent.city || '').trim());
+    const d = safeDecode((intent.district || '').trim());
     if (c && d) return `${c} / ${d}`;
     if (c) return c;
     if (d) return d;
@@ -333,7 +343,7 @@ export function HunterCard({
             Identity
           </div>
           <div className="mt-1 text-3xl font-black tabular-nums select-all">
-            {maskIdentity(intent.intent_target || '')}
+            {safeDecode(maskIdentity(intent.intent_target || ''))}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">Device: {device.label}</div>
         </div>

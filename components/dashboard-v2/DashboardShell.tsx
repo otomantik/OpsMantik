@@ -5,11 +5,20 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QualificationQueue } from './QualificationQueue';
 import { CommandCenterP0Panel } from './CommandCenterP0Panel';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
-import { cn } from '@/lib/utils';
-import { Home, Settings, Target, Shield, Wallet } from 'lucide-react';
+import { getBadgeStatus } from '@/lib/realtime-badge-status';
+import { cn, formatTimestampWithTZ } from '@/lib/utils';
+import { Home, Settings, Target, Shield, Wallet, MoreHorizontal, Check } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -26,10 +35,11 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
   const supabaseEnvOk = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const [role, setRole] = useState<'admin' | 'user'>('user');
   const [scope, setScope] = useState<'ads' | 'all'>('ads'); // default ADS ONLY
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // GO2: single source of truth for queue day selection (TRT boundaries, absolute UTC range)
-  // - today:   [today 00:00 TRT, now]
-  // - yday:    [yday 00:00 TRT, yday 23:59:59.999 TRT]
+  // GO3: single source of truth for queue day selection (Europe/Istanbul TRT boundaries, UTC)
+  // - today:   date_from = today 00:00 TRT, date_to = now
+  // - yesterday: date_from = yesterday 00:00 TRT, date_to = yesterday 23:59:59.999 TRT
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
     const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
@@ -91,13 +101,13 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
       <header className="sticky top-0 z-50 relative border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto max-w-md px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Brand */}
-            <div className="min-w-0">
+            {/* Brand: min-w-0 + truncate to prevent overflow */}
+            <div className="min-w-0 flex-1">
               <Link
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: 'ghost' }),
-                  '-ml-2 h-9 px-2 inline-flex items-center gap-2 min-w-0'
+                  '-ml-2 h-9 px-2 inline-flex items-center gap-2 min-w-0 max-w-full'
                 )}
               >
                 <Home className="h-4 w-4 shrink-0" />
@@ -108,139 +118,214 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
               <div className="text-sm text-muted-foreground truncate">Hunter Terminal</div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Live pulse (connectivity + activity, independent from ads-only filtering) */}
-              <div className="text-right">
-                <div
-                  data-testid="live-badge"
-                  data-live={realtime.isLive ? '1' : '0'}
-                  data-ads-live={realtime.adsLive ? '1' : '0'}
-                  data-connected={realtime.isConnected ? '1' : '0'}
-                  data-connection-status={realtime.connectionStatus || ''}
-                  data-connection-error={realtime.error || ''}
-                  data-supabase-env={supabaseEnvOk ? '1' : '0'}
-                  className={cn(
-                    'inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold tabular-nums',
-                    realtime.isConnected && realtime.isLive
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                      : realtime.isConnected
-                        ? 'border-amber-200 bg-amber-50 text-amber-800'
-                        : 'border-red-200 bg-red-50 text-red-800'
-                  )}
-                  title={
-                    realtime.lastSignalAt
-                      ? `Last: ${realtime.lastSignalType || 'unknown'} @ ${realtime.lastSignalAt.toISOString()}`
-                      : 'No realtime signals yet'
-                  }
-                >
-                  <span className={cn('h-1.5 w-1.5 rounded-full', realtime.isLive ? 'bg-emerald-600' : 'bg-red-600')} />
-                  <span>{realtime.isLive ? 'LIVE' : realtime.isConnected ? 'OFFLINE' : 'DISCONNECTED'}</span>
-                  {realtime.adsLive && (
-                    <span className="inline-flex items-center gap-1 rounded bg-background/60 px-1.5 py-0.5 text-[10px] font-bold">
-                      ADS LIVE
-                    </span>
-                  )}
-                </div>
-                {showRealtimeDebug && (
-                  <div
-                    data-testid="realtime-debug"
-                    className="mt-1 text-[10px] text-muted-foreground tabular-nums"
-                    suppressHydrationWarning
+            {/* Right: status badge + (desktop: toggles) + overflow menu — no shrink-0 so it can wrap/truncate on mobile */}
+            <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+              {/* Status badge: DISCONNECTED / CONNECTED / ACTIVE (connectivity vs activity) */}
+              <div className="shrink-0">
+                {(() => {
+                  const status = getBadgeStatus({
+                    isConnected: realtime.isConnected,
+                    lastSignalAt: realtime.lastSignalAt,
+                  });
+                  const lastSignalLabel = realtime.lastSignalAt
+                    ? formatTimestampWithTZ(realtime.lastSignalAt.toISOString(), {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : '—';
+                  return (
+                    <>
+                      <div
+                        data-testid="live-badge"
+                        data-badge-status={status}
+                        data-connected={realtime.isConnected ? '1' : '0'}
+                        data-last-signal-at={realtime.lastSignalAt?.toISOString() ?? ''}
+                        data-live={realtime.adsLive ? '1' : '0'}
+                        data-ads-live={realtime.adsLive ? '1' : '0'}
+                        data-connection-status={realtime.connectionStatus || ''}
+                        data-connection-error={realtime.error || ''}
+                        data-supabase-env={supabaseEnvOk ? '1' : '0'}
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold tabular-nums',
+                          status === 'active'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : status === 'connected'
+                              ? 'border-amber-200 bg-amber-50 text-amber-800'
+                              : 'border-red-200 bg-red-50 text-red-800'
+                        )}
+                        title={`Last signal: ${lastSignalLabel}`}
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            status === 'active'
+                              ? 'bg-emerald-600'
+                              : status === 'connected'
+                                ? 'bg-amber-600'
+                                : 'bg-red-600'
+                          )}
+                        />
+                        <span>
+                          {status === 'disconnected'
+                            ? 'DISCONNECTED'
+                            : status === 'connected'
+                              ? 'CONNECTED'
+                              : 'ACTIVE'}
+                        </span>
+                        {realtime.adsLive && (
+                          <span className="inline-flex items-center gap-1 rounded bg-background/60 px-1.5 py-0.5 text-[10px] font-bold">
+                            ADS LIVE
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="mt-0.5 text-[10px] text-muted-foreground tabular-nums"
+                        data-testid="last-signal-label"
+                        title={`Last signal: ${lastSignalLabel}`}
+                      >
+                        Last signal: {lastSignalLabel}
+                      </div>
+                      {showRealtimeDebug && (
+                        <div
+                          data-testid="realtime-debug"
+                          data-debug-last-signal-type={realtime.lastSignalType ?? ''}
+                          data-debug-last-signal-at={realtime.lastSignalAt?.toISOString() ?? ''}
+                          className="mt-1 text-[10px] text-muted-foreground tabular-nums"
+                          suppressHydrationWarning
+                        >
+                          lastSignalType={realtime.lastSignalType || '—'} • lastSignalAt=
+                          {realtime.lastSignalAt ? realtime.lastSignalAt.toISOString() : '—'}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Desktop only: Day + Scope toggles (hidden on mobile to avoid overflow) */}
+              <div className="hidden sm:inline-flex items-center gap-2">
+                <div className="inline-flex items-center rounded-md border border-border bg-background">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDay('yesterday')}
+                    className={cn(
+                      'px-3 py-1.5 text-sm tabular-nums',
+                      'first:rounded-l-md last:rounded-r-md',
+                      selectedDay === 'yesterday'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                    aria-pressed={selectedDay === 'yesterday'}
                   >
-                    lastSignalAt={realtime.lastSignalAt ? realtime.lastSignalAt.toISOString() : '—'} • type=
-                    {realtime.lastSignalType || '—'}
-                  </div>
-                )}
+                    Yesterday
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDay('today')}
+                    className={cn(
+                      'px-3 py-1.5 text-sm tabular-nums',
+                      'first:rounded-l-md last:rounded-r-md',
+                      selectedDay === 'today'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                    aria-pressed={selectedDay === 'today'}
+                  >
+                    Today
+                  </button>
+                </div>
+                <div className="inline-flex items-center rounded-md border border-border bg-background">
+                  <button
+                    type="button"
+                    onClick={() => setScope('ads')}
+                    className={cn(
+                      'px-3 py-1.5 text-sm tabular-nums',
+                      'first:rounded-l-md last:rounded-r-md',
+                      scope === 'ads'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                    aria-pressed={scope === 'ads'}
+                  >
+                    ADS ONLY
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScope('all')}
+                    className={cn(
+                      'px-3 py-1.5 text-sm tabular-nums',
+                      'first:rounded-l-md last:rounded-r-md',
+                      scope === 'all'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                    aria-pressed={scope === 'all'}
+                  >
+                    ALL TRAFFIC
+                  </button>
+                </div>
               </div>
 
-              {/* Day toggle */}
-              <div className="inline-flex items-center rounded-md border border-border bg-background">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDay('yesterday')}
-                  className={cn(
-                    'px-3 py-1.5 text-sm tabular-nums',
-                    'first:rounded-l-md last:rounded-r-md',
-                    selectedDay === 'yesterday'
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+              {/* Overflow menu (⋯) — mobile: only this + badge; desktop: also has toggles */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    aria-label="Menu"
+                    data-testid="header-overflow-menu-trigger"
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56" data-testid="header-overflow-menu-content">
+                  <DropdownMenuLabel>Day</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => setSelectedDay('yesterday')}>
+                    {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
+                    Yesterday
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedDay('today')}>
+                    {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
+                    Today
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Scope</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => setScope('ads')}>
+                    {scope === 'ads' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
+                    ADS ONLY
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setScope('all')}>
+                    {scope === 'all' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
+                    ALL TRAFFIC
+                  </DropdownMenuItem>
+                  {role === 'admin' && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setSettingsOpen(true)}
+                        data-testid="menu-item-settings"
+                      >
+                        <Settings className="mr-2 h-4 w-4" />
+                        Settings
+                      </DropdownMenuItem>
+                    </>
                   )}
-                  aria-pressed={selectedDay === 'yesterday'}
-                >
-                  Yesterday
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDay('today')}
-                  className={cn(
-                    'px-3 py-1.5 text-sm tabular-nums',
-                    'first:rounded-l-md last:rounded-r-md',
-                    selectedDay === 'today'
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  )}
-                  aria-pressed={selectedDay === 'today'}
-                >
-                  Today
-                </button>
-              </div>
-
-              {/* Scope toggle (ADS ONLY vs ALL TRAFFIC) */}
-              <div className="inline-flex items-center rounded-md border border-border bg-background">
-                <button
-                  type="button"
-                  onClick={() => setScope('ads')}
-                  className={cn(
-                    'px-3 py-1.5 text-sm tabular-nums',
-                    'first:rounded-l-md last:rounded-r-md',
-                    scope === 'ads'
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  )}
-                  aria-pressed={scope === 'ads'}
-                >
-                  ADS ONLY
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScope('all')}
-                  className={cn(
-                    'px-3 py-1.5 text-sm tabular-nums',
-                    'first:rounded-l-md last:rounded-r-md',
-                    scope === 'all'
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  )}
-                  aria-pressed={scope === 'all'}
-                >
-                  ALL TRAFFIC
-                </button>
-              </div>
-
-              {/* Settings -> Command Center modal */}
-              {role === 'admin' ? (
-                <Dialog>
-                  <DialogTrigger>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9"
-                      aria-label="Settings"
-                      data-testid="settings-trigger"
-                    >
-                      <Settings className="h-5 w-5" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-h-[80vh] overflow-y-auto">
-                    <DialogHeader className="mb-4">
-                      <DialogTitle>Settings</DialogTitle>
-                    </DialogHeader>
-                    <CommandCenterP0Panel siteId={siteId} />
-                  </DialogContent>
-                </Dialog>
-              ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
+
+          {/* Settings dialog (opened from menu) */}
+          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <DialogContent className="max-h-[80vh] overflow-y-auto">
+              <DialogHeader className="mb-4">
+                <DialogTitle>Settings</DialogTitle>
+              </DialogHeader>
+              <CommandCenterP0Panel siteId={siteId} />
+            </DialogContent>
+          </Dialog>
 
           {/* Scoreboard (HUD) */}
           <div className="mt-3 grid grid-cols-3 gap-2">
