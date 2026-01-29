@@ -505,6 +505,7 @@ export async function POST(req: NextRequest) {
                     .insert({
                         session_id: session.id,
                         session_month: session.created_month,
+                        site_id: site.id,
                         url: url,
                         event_category: finalCategory,
                         event_action: event_action || 'view',
