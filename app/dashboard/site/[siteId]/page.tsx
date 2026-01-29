@@ -5,6 +5,10 @@ import { DashboardShell } from '@/components/dashboard-v2/DashboardShell';
 import { isAdmin } from '@/lib/auth/isAdmin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 
+// Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Feature Flag: Enable New Dashboard V2
 const ENABLE_NEW_DASHBOARD = true;
 
