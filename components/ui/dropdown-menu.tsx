@@ -34,19 +34,21 @@ const DropdownMenuTrigger = React.forwardRef<
     setOpen(!open);
   };
   if (asChild && React.isValidElement(children)) {
-    const child = children as React.ReactElement<{ ref?: React.Ref<unknown>; onClick?: (e: React.MouseEvent) => void; 'data-dropdown-trigger'?: boolean }>;
-    return React.cloneElement(child, {
+    const child = children as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void; 'data-dropdown-trigger'?: boolean }>;
+    const childRef = (child as unknown as { ref?: React.RefCallback<unknown> }).ref;
+    const mergedProps = {
       'data-dropdown-trigger': true,
       ref: (r: unknown) => {
         if (typeof ref === 'function') ref(r as HTMLButtonElement);
         else if (ref) (ref as React.MutableRefObject<HTMLButtonElement | null>).current = r as HTMLButtonElement;
-        (child.ref as React.RefCallback<unknown>)?.(r);
+        childRef?.(r);
       },
       onClick: (e: React.MouseEvent) => {
         child.props.onClick?.(e);
         setOpen(!open);
       },
-    });
+    };
+    return React.cloneElement(child, mergedProps as React.Attributes);
   }
   return (
     <button
