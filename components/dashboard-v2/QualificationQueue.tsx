@@ -120,7 +120,6 @@ function ActiveDeckCard({
           intent_target: intent.intent_target ?? null,
           created_at: intent.created_at,
           intent_page_url: intent.intent_page_url ?? null,
-          // best-effort: pass through if available in future RPCs
           utm_term: (intent as any)?.utm_term ?? null,
           utm_campaign: (intent as any)?.utm_campaign ?? null,
           risk_level: intent.risk_level ?? null,
@@ -128,6 +127,9 @@ function ActiveDeckCard({
           district: (intent as any)?.district ?? null,
           device_type: (intent as any)?.device_type ?? null,
           total_duration_sec: (intent as any)?.total_duration_sec ?? null,
+          ai_score: intent.ai_score ?? null,
+          ai_summary: intent.ai_summary ?? null,
+          ai_tags: intent.ai_tags ?? null,
         }}
         onSeal={({ id, stars }) => handleSeal({ id, stars })}
         onJunk={({ id, stars }) => handleJunk({ id, stars })}
@@ -256,6 +258,9 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           gbraid: r.gbraid ?? null,
           total_duration_sec: typeof r.total_duration_sec === 'number' ? r.total_duration_sec : null,
           event_count: typeof r.event_count === 'number' ? r.event_count : null,
+          ai_score: typeof r.ai_score === 'number' ? r.ai_score : null,
+          ai_summary: typeof r.ai_summary === 'string' ? r.ai_summary : null,
+          ai_tags: Array.isArray(r.ai_tags) ? r.ai_tags : null,
         })) as IntentForQualification[]
       );
     } catch (err: any) {

@@ -10,6 +10,7 @@ import {
   ArrowRight,
   CheckCircle2,
   FileText,
+  Flame,
   MessageCircle,
   Monitor,
   Smartphone,
@@ -47,6 +48,11 @@ export type HunterIntent = {
   district?: string | null;
   device_type?: string | null;
   total_duration_sec?: number | null;
+
+  // Hunter AI (from session)
+  ai_score?: number | null;
+  ai_summary?: string | null;
+  ai_tags?: string[] | null;
 };
 
 type PrimaryIntent =
@@ -254,16 +260,24 @@ export function HunterCard({
             </div>
           </div>
 
-          {isHighRisk ? (
-            <Badge className="bg-red-100 text-red-700 border border-red-200">
-              <ShieldAlert className="h-3.5 w-3.5 mr-1" />
-              High Risk
-            </Badge>
-          ) : (
-            <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">
-              Safe
-            </Badge>
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {typeof intent.ai_score === 'number' && intent.ai_score > 80 ? (
+              <Badge className="bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
+                <Flame className="h-3.5 w-3.5 mr-1" />
+                HOT LEAD
+              </Badge>
+            ) : null}
+            {isHighRisk ? (
+              <Badge className="bg-red-100 text-red-700 border border-red-200">
+                <ShieldAlert className="h-3.5 w-3.5 mr-1" />
+                High Risk
+              </Badge>
+            ) : (
+              <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">
+                Safe
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
 
@@ -315,6 +329,26 @@ export function HunterCard({
               <span className="font-mono">{path}</span>
             </div>
           </div>
+          {intent.ai_summary ? (
+            <div className="mt-3 pt-3 border-t border-border">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                AI Özet
+              </div>
+              <p className="mt-1 text-sm text-foreground leading-snug">{intent.ai_summary}</p>
+              {Array.isArray(intent.ai_tags) && intent.ai_tags.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {intent.ai_tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {/* Evidence Row (Pills) */}

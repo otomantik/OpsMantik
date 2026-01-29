@@ -27,6 +27,10 @@ export interface IntentForQualification {
   gbraid?: string | null;
   utm_campaign?: string | null;
   utm_term?: string | null;
+  // Hunter AI (from session)
+  ai_score?: number | null;
+  ai_summary?: string | null;
+  ai_tags?: string[] | null;
 }
 
 interface IntentQualificationCardProps {

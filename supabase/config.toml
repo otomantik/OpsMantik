@@ -2,6 +2,9 @@
 # See: https://supabase.com/docs/guides/functions/function-configuration
 
 # Partition maintenance: run monthly via external cron or pg_cron+pg_net.
-# No JWT so cron services can POST without a user token.
 [functions.maintain-db]
+verify_jwt = false
+
+# Hunter AI: triggered by pg_net from DB trigger (no user JWT).
+[functions.hunter-ai]
 verify_jwt = false
