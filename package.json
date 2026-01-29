@@ -19,6 +19,7 @@
     "smoke:tank-tracker-events": "node scripts/smoke/tank-tracker-events-proof.mjs",
     "smoke:tank-tracker-offline": "node scripts/smoke/tank-tracker-offline-online.mjs",
     "smoke:tank-tracker-all": "node scripts/smoke/tank-tracker-run-all.mjs",
+    "smoke:hunter-ai-ui": "node scripts/smoke/hunter-ai-ui-proof.mjs",
     "diagnostics": "node scripts/run-diagnostics.mjs"
   },
   "dependencies": {

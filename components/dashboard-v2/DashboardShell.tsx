@@ -28,9 +28,11 @@ interface DashboardShellProps {
   siteId: string;
   siteName?: string;
   siteDomain?: string;
+  /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
+  initialTodayRange?: { fromIso: string; toIso: string };
 }
 
-export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellProps) {
+export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
   const supabaseEnvOk = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const [role, setRole] = useState<'admin' | 'user'>('user');
@@ -38,20 +40,21 @@ export function DashboardShell({ siteId, siteName, siteDomain }: DashboardShellP
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // GO3: single source of truth for queue day selection (Europe/Istanbul TRT boundaries, UTC)
-  // - today:   date_from = today 00:00 TRT, date_to = now
-  // - yesterday: date_from = yesterday 00:00 TRT, date_to = yesterday 23:59:59.999 TRT
+  // Use initialTodayRange from server (URL) when available so server and client render same data-to (no hydration mismatch).
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
     const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
-      // GO2 Fix: Stable range for today. Use a fixed 'now' per selection to prevent infinite loop.
+      if (initialTodayRange?.fromIso && initialTodayRange?.toIso) {
+        return { day: 'today' as const, fromIso: initialTodayRange.fromIso, toIso: initialTodayRange.toIso };
+      }
       return { day: 'today' as const, fromIso: todayStartUtcIso, toIso: nowUtc.toISOString() };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
     const toMs = todayStartUtcMs - 1; // inclusive end-of-yesterday (23:59:59.999 TRT)
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
-  }, [selectedDay]); // toIso is only updated when day toggle is clicked!
+  }, [selectedDay, initialTodayRange?.fromIso, initialTodayRange?.toIso]);
 
   // Scope-aware HUD stats (refetches when scope or range changes)
   const { stats, loading } = useCommandCenterP0Stats(

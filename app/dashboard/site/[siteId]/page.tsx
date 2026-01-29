@@ -81,12 +81,14 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   }
 
   // Feature Flag: Switch between V1 (legacy) and V2 (new clean dashboard)
+  // Pass initial today range from URL so server and client render the same data-to (avoids hydration mismatch).
   if (ENABLE_NEW_DASHBOARD) {
     return (
       <DashboardShell
         siteId={siteId}
         siteName={site.name || undefined}
         siteDomain={site.domain || undefined}
+        initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
       />
     );
   }

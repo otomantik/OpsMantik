@@ -330,7 +330,7 @@ export function HunterCard({
             </div>
           </div>
           {intent.ai_summary ? (
-            <div className="mt-3 pt-3 border-t border-border">
+            <div data-testid="hunter-card-ai-summary" className="mt-3 pt-3 border-t border-border">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                 AI Özet
               </div>
