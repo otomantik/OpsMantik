@@ -382,6 +382,8 @@ export async function POST(req: NextRequest) {
                                 district: geoInfo.district,
                                 fingerprint: fingerprint,
                                 gclid: currentGclid || existingSession.gclid,
+                                utm_term: utm?.term || null,
+                                matchtype: utm?.matchtype || null,
                             })
                             .eq('id', client_sid)
                             .eq('created_month', dbMonth);
@@ -420,6 +422,8 @@ export async function POST(req: NextRequest) {
                     city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
                     district: geoInfo.district,
                     fingerprint: fingerprint,
+                    utm_term: utm?.term || null,
+                    matchtype: utm?.matchtype || null,
                 };
 
                 const { data: newSession, error: sError } = await adminClient

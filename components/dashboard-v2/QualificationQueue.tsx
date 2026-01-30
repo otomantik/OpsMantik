@@ -124,8 +124,11 @@ function ActiveDeckCard({
           intent_target: intent.intent_target ?? null,
           created_at: intent.created_at,
           intent_page_url: intent.intent_page_url ?? null,
+          page_url: (intent as any)?.page_url ?? intent.intent_page_url ?? null,
           utm_term: (intent as any)?.utm_term ?? null,
           utm_campaign: (intent as any)?.utm_campaign ?? null,
+          utm_source: (intent as any)?.utm_source ?? null,
+          matchtype: (intent as any)?.matchtype ?? null,
           risk_level: intent.risk_level ?? null,
           city: (intent as any)?.city ?? null,
           district: (intent as any)?.district ?? null,
@@ -136,6 +139,8 @@ function ActiveDeckCard({
           ai_score: intent.ai_score ?? null,
           ai_summary: intent.ai_summary ?? null,
           ai_tags: intent.ai_tags ?? null,
+          estimated_value: (intent as any)?.estimated_value ?? null,
+          currency: (intent as any)?.currency ?? null,
         }}
         onSeal={({ id, stars }) => handleSeal({ id, stars })}
         onSealDeal={onSealDeal}

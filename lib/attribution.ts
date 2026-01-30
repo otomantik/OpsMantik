@@ -11,6 +11,9 @@ export interface AttributionInput {
     medium?: string;
     source?: string;
     campaign?: string;
+    term?: string;
+    content?: string;
+    matchtype?: string; // Google Ads: e=Exact, p=Phrase, b=Broad
   } | null;
   referrer?: string | null;
   fingerprint?: string | null;
@@ -85,7 +88,8 @@ export function computeAttribution(input: AttributionInput): AttributionResult {
 }
 
 /**
- * Extract UTM parameters from URL
+ * Extract UTM and Google Ads params from URL
+ * Supports: utm_medium, utm_source, utm_campaign, utm_term, utm_content, matchtype
  */
 export function extractUTM(url: string): AttributionInput['utm'] | null {
   try {
@@ -93,8 +97,11 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
     const medium = urlObj.searchParams.get('utm_medium');
     const source = urlObj.searchParams.get('utm_source');
     const campaign = urlObj.searchParams.get('utm_campaign');
+    const term = urlObj.searchParams.get('utm_term');
+    const content = urlObj.searchParams.get('utm_content');
+    const matchtype = urlObj.searchParams.get('matchtype'); // e, p, b
 
-    if (!medium && !source && !campaign) {
+    if (!medium && !source && !campaign && !term && !content && !matchtype) {
       return null;
     }
 
@@ -102,6 +109,9 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
       medium: medium || undefined,
       source: source || undefined,
       campaign: campaign || undefined,
+      term: term || undefined,
+      content: content || undefined,
+      matchtype: matchtype || undefined,
     };
   } catch {
     return null;
