@@ -260,11 +260,13 @@ export async function POST(req: NextRequest) {
 
         // Device & Geo Enrichment (extracted to lib/geo.ts)
         const { geoInfo, deviceInfo } = extractGeoInfo(req, userAgent, meta);
-        const deviceType = deviceInfo.device_type;
-
         // 3. Attribution Computation (using truth table rules)
-        // Extract UTM parameters
+        // Extract UTM parameters (includes device, network, placement from Google Ads template)
         const utm = extractUTM(url);
+        // Prefer URL param device when present (Google Ads {device}), else UA-derived
+        const deviceType = (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device))
+            ? utm.device.toLowerCase()
+            : deviceInfo.device_type;
 
         // Get dbMonth early for past GCLID query
         const dbMonth = session_month || new Date().toISOString().slice(0, 7) + '-01';
@@ -371,20 +373,48 @@ export async function POST(req: NextRequest) {
                     debugLog('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                     session = existingSession;
 
-                    // Update existing session with attribution/context if missing
-                    if (!existingSession.attribution_source) {
+                    // FIX-1: Force update when incoming request has UTM/ads params (overwrite Organic with Paid)
+                    const hasNewUTM = Boolean(utm?.source || utm?.campaign || utm?.term || utm?.device || utm?.network || utm?.placement);
+                    const shouldUpdate =
+                        hasNewUTM || !existingSession.attribution_source;
+                    if (shouldUpdate) {
+                        const updates: Record<string, unknown> = {
+                            device_type: deviceType,
+                            city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
+                            district: geoInfo.district,
+                            fingerprint: fingerprint,
+                            gclid: currentGclid || (existingSession as { gclid?: string | null }).gclid || null,
+                        };
+                        if (hasNewUTM) {
+                            updates.utm_term = utm?.term ?? null;
+                            updates.matchtype = utm?.matchtype ?? null;
+                            updates.utm_source = utm?.source ?? null;
+                            updates.utm_medium = utm?.medium ?? null;
+                            updates.utm_campaign = utm?.campaign ?? null;
+                            updates.utm_content = utm?.content ?? null;
+                            updates.ads_network = utm?.network ?? null;
+                            updates.ads_placement = utm?.placement ?? null;
+                            updates.attribution_source = attributionSource;
+                            if (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device)) {
+                                updates.device_type = utm.device.toLowerCase();
+                            }
+                        } else {
+                            updates.attribution_source = attributionSource;
+                            updates.utm_term = utm?.term ?? null;
+                            updates.matchtype = utm?.matchtype ?? null;
+                            updates.utm_source = utm?.source ?? null;
+                            updates.utm_medium = utm?.medium ?? null;
+                            updates.utm_campaign = utm?.campaign ?? null;
+                            updates.utm_content = utm?.content ?? null;
+                            updates.ads_network = utm?.network ?? null;
+                            updates.ads_placement = utm?.placement ?? null;
+                            if (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device)) {
+                                updates.device_type = utm.device.toLowerCase();
+                            }
+                        }
                         await adminClient
                             .from('sessions')
-                            .update({
-                                attribution_source: attributionSource,
-                                device_type: deviceType,
-                                city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
-                                district: geoInfo.district,
-                                fingerprint: fingerprint,
-                                gclid: currentGclid || existingSession.gclid,
-                                utm_term: utm?.term || null,
-                                matchtype: utm?.matchtype || null,
-                            })
+                            .update(updates)
                             .eq('id', client_sid)
                             .eq('created_month', dbMonth);
                     }
@@ -424,6 +454,12 @@ export async function POST(req: NextRequest) {
                     fingerprint: fingerprint,
                     utm_term: utm?.term || null,
                     matchtype: utm?.matchtype || null,
+                    utm_source: utm?.source || null,
+                    utm_medium: utm?.medium || null,
+                    utm_campaign: utm?.campaign || null,
+                    utm_content: utm?.content || null,
+                    ads_network: utm?.network || null,
+                    ads_placement: utm?.placement || null,
                 };
 
                 const { data: newSession, error: sError } = await adminClient

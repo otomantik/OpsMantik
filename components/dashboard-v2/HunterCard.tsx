@@ -36,7 +36,10 @@ export type HunterIntent = {
   intent_page_url?: string | null;
   utm_term?: string | null;
   utm_campaign?: string | null;
+  utm_campaign_id?: string | null; // from URL when name missing
   utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_content?: string | null;
   matchtype?: string | null; // e=Exact, p=Phrase, b=Broad
 
   // TARGET HUD
@@ -227,8 +230,15 @@ export function HunterCard({
 
   const campaignDisplay = useMemo(() => {
     const c = (intent.utm_campaign || '').trim();
-    return c ? safeDecode(c) : '—';
-  }, [intent.utm_campaign]);
+    const id = (intent.utm_campaign_id || '').trim();
+    if (c) {
+      const decoded = safeDecode(c);
+      if (/^\d{6,}$/.test(decoded)) return `Campaign ID: ${decoded.slice(0, 4)}…`;
+      return decoded;
+    }
+    if (id) return `Campaign ID: ${id.length > 4 ? id.slice(0, 4) + '…' : id}`;
+    return '—';
+  }, [intent.utm_campaign, intent.utm_campaign_id]);
 
   const districtLabel = useMemo(() => safeDecode((intent.district || '').trim()) || null, [intent.district]);
   const cityLabel = useMemo(() => safeDecode((intent.city || '').trim()) || null, [intent.city]);
@@ -236,12 +246,21 @@ export function HunterCard({
     if (districtLabel && cityLabel) return `${districtLabel} / ${cityLabel}`;
     if (districtLabel) return districtLabel;
     if (cityLabel) return cityLabel;
-    return '—';
+    return 'Unknown Location';
   }, [districtLabel, cityLabel]);
+  const hasLocation = Boolean(districtLabel || cityLabel);
 
   const device = useMemo(() => deviceLabel(intent.device_type ?? null), [intent.device_type]);
 
-  const displayScore = typeof intent.ai_score === 'number' ? intent.ai_score : 0;
+  const displayScore = useMemo(() => {
+    const raw = intent.ai_score;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+    const mt = (intent.matchtype || '').toString().toLowerCase().trim();
+    if (mt === 'e') return 85;
+    const src = (intent.utm_source || '').toString().toLowerCase().trim();
+    if (src === 'google') return 50;
+    return 20;
+  }, [intent.ai_score, intent.matchtype, intent.utm_source]);
 
   const estDisplay = useMemo(
     () => formatEstimatedValue(intent.estimated_value, intent.currency),
@@ -334,6 +353,14 @@ export function HunterCard({
                 <span className="text-muted-foreground shrink-0 w-20">Campaign:</span>
                 <span className="text-foreground truncate">{campaignDisplay}</span>
               </div>
+              {(intent.utm_source || intent.utm_medium) ? (
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground shrink-0 w-20">Source / Medium:</span>
+                  <span className="text-foreground truncate">
+                    {[intent.utm_source, intent.utm_medium].filter(Boolean).join(' / ') || '—'}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -343,11 +370,13 @@ export function HunterCard({
               <span aria-hidden>👤</span> TARGET
             </div>
             <div className="space-y-2.5 text-sm">
-              <div className="flex gap-2 items-center">
-                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground shrink-0 w-16">Location:</span>
-                <span className="text-foreground truncate">{locationDisplay}</span>
-              </div>
+              {hasLocation ? (
+                <div className="flex gap-2 items-center">
+                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground shrink-0 w-16">Location:</span>
+                  <span className="text-foreground truncate">{locationDisplay}</span>
+                </div>
+              ) : null}
               <div className="flex gap-2 items-center">
                 <device.icon className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="text-muted-foreground shrink-0 w-16">Device:</span>
@@ -355,8 +384,14 @@ export function HunterCard({
               </div>
               <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground shrink-0 w-16 ml-6">Network:</span>
-                <span className="text-foreground">Google Ads</span>
+                <span className="text-foreground">{intent.ads_network || 'Google Ads'}</span>
               </div>
+              {intent.ads_placement ? (
+                <div className="flex gap-2 items-center">
+                  <span className="text-muted-foreground shrink-0 w-16 ml-6">Placement:</span>
+                  <span className="text-foreground truncate">{intent.ads_placement}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

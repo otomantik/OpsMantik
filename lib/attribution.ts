@@ -14,6 +14,9 @@ export interface AttributionInput {
     term?: string;
     content?: string;
     matchtype?: string; // Google Ads: e=Exact, p=Phrase, b=Broad
+    device?: string;   // Google Ads {device}: mobile, desktop, tablet
+    network?: string;  // Google Ads {network}: Search, Display, YouTube, etc.
+    placement?: string; // Google Ads {placement}
   } | null;
   referrer?: string | null;
   fingerprint?: string | null;
@@ -89,7 +92,7 @@ export function computeAttribution(input: AttributionInput): AttributionResult {
 
 /**
  * Extract UTM and Google Ads params from URL
- * Supports: utm_medium, utm_source, utm_campaign, utm_term, utm_content, matchtype
+ * Supports: utm_*, matchtype, device, network, placement (hesaptan şablon)
  */
 export function extractUTM(url: string): AttributionInput['utm'] | null {
   try {
@@ -100,8 +103,11 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
     const term = urlObj.searchParams.get('utm_term');
     const content = urlObj.searchParams.get('utm_content');
     const matchtype = urlObj.searchParams.get('matchtype'); // e, p, b
+    const device = urlObj.searchParams.get('device');   // Google Ads {device}
+    const network = urlObj.searchParams.get('network'); // Google Ads {network}
+    const placement = urlObj.searchParams.get('placement'); // Google Ads {placement}
 
-    if (!medium && !source && !campaign && !term && !content && !matchtype) {
+    if (!medium && !source && !campaign && !term && !content && !matchtype && !device && !network && !placement) {
       return null;
     }
 
@@ -112,6 +118,9 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
       term: term || undefined,
       content: content || undefined,
       matchtype: matchtype || undefined,
+      device: device || undefined,
+      network: network || undefined,
+      placement: placement || undefined,
     };
   } catch {
     return null;
