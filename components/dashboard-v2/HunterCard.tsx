@@ -205,7 +205,6 @@ export function HunterCard({
   onSealDeal,
   onJunk,
   onSkip,
-  onWhatsApp,
 }: {
   intent: HunterIntent;
   onSeal: (params: { id: string; stars: number; score: number }) => void;
@@ -213,8 +212,6 @@ export function HunterCard({
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
-  /** Optional: open WhatsApp chat (uses intent_target as number) */
-  onWhatsApp?: () => void;
 }) {
   const t = sourceTypeOf(intent.intent_action);
   const Icon = sourceIcon(t);
@@ -410,7 +407,7 @@ export function HunterCard({
         </div>
       </CardContent>
 
-      {/* Footer: JUNK | WHATSAPP | SEAL DEAL ($) */}
+      {/* Footer: JUNK | SKIP | SEAL DEAL */}
       <CardFooter className="px-4 pb-4 pt-0">
         <div className="grid w-full grid-cols-3 gap-2">
           <Button
@@ -423,29 +420,21 @@ export function HunterCard({
           </Button>
           <Button
             variant="outline"
-            className="h-12 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            onClick={() => {
-              if (onWhatsApp) onWhatsApp();
-              else if (intent.intent_target) {
-                const raw = (intent.intent_target || '').replace(/\D/g, '');
-                const num = raw.startsWith('90') ? raw : `90${raw}`;
-                window.open(`https://wa.me/${num}`, '_blank');
-              }
-            }}
+            className="h-12 border-muted-foreground/30 hover:bg-muted/50"
+            onClick={() => onSkip({ id: intent.id })}
           >
-            <MessageCircle className="h-4 w-4 mr-2" />
-            WHATSAPP
+            Skip
           </Button>
           <Button
             variant="default"
-            className="h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            className="h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold min-w-0"
             onClick={() =>
               onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })
             }
             data-testid="hunter-card-seal-deal"
           >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            SEAL DEAL ($)
+            <CheckCircle2 className="h-4 w-4 shrink-0 mr-1.5" />
+            <span className="truncate">SEAL DEAL</span>
           </Button>
         </div>
       </CardFooter>
