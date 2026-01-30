@@ -9,6 +9,7 @@
 
 'use server';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 
@@ -20,18 +21,20 @@ export interface SiteAccessResult {
 
 /**
  * Validates if a user has access to a specific site.
- * 
+ *
  * @param siteId - UUID of the site to check access for
- * @param userId - UUID of the user (optional, defaults to current auth user)
+ * @param userId - UUID of the user (optional, defaults to current auth user from client)
+ * @param supabaseClient - Optional client with auth (e.g. Bearer). When provided, used for all queries so RLS sees the user.
  * @returns Promise with access result including role if allowed
  */
 export async function validateSiteAccess(
   siteId: string,
-  userId?: string
+  userId?: string,
+  supabaseClient?: SupabaseClient
 ): Promise<SiteAccessResult> {
   try {
-    const supabase = await createClient();
-    
+    const supabase = supabaseClient ?? (await createClient());
+
     // Get current user if userId not provided
     let currentUserId = userId;
     if (!currentUserId) {

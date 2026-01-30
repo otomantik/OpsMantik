@@ -1,0 +1,19 @@
+> opsmantik-v1@0.1.0 build
+> next build
+
+▲ Next.js 16.1.4 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 6.1s
+  Running TypeScript ...
+
+> Build error occurred
+Error: spawn EPERM
+    at ignore-listed frames {
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'spawn'
+}
+
+Note: Compile step PASS (6.1s). TypeScript step hit EPERM in sandbox. Run npm run build locally for full build.

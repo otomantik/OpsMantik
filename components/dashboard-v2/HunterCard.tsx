@@ -48,6 +48,8 @@ export type HunterIntent = {
   district?: string | null;
   device_type?: string | null;
   total_duration_sec?: number | null;
+  click_id?: string | null;
+  matched_session_id?: string | null;
 
   // Hunter AI (from session)
   ai_score?: number | null;
@@ -84,7 +86,7 @@ function sourceTypeOf(action: string | null | undefined): HunterSourceType {
 }
 
 function sourceStripClass(t: HunterSourceType): string {
-  if (t === 'whatsapp') return 'border-l-4 border-green-500';
+  if (t === 'whatsapp') return 'border-l-4 border-emerald-500';
   if (t === 'phone') return 'border-l-4 border-blue-500';
   if (t === 'form') return 'border-l-4 border-purple-500';
   return 'border-l-4 border-border';
@@ -185,11 +187,14 @@ function deviceLabel(deviceType: string | null | undefined): { icon: typeof Smar
 export function HunterCard({
   intent,
   onSeal,
+  onSealDeal,
   onJunk,
   onSkip,
 }: {
   intent: HunterIntent;
   onSeal: (params: { id: string; stars: number; score: number }) => void;
+  /** When provided, SEAL DEAL opens Casino modal instead of star-based seal */
+  onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
 }) {
@@ -239,7 +244,7 @@ export function HunterCard({
               className={cn(
                 'inline-flex h-9 w-9 items-center justify-center rounded-md border',
                 t === 'whatsapp'
-                  ? 'border-green-200 bg-green-50 text-green-700'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : t === 'phone'
                     ? 'border-blue-200 bg-blue-50 text-blue-700'
                     : t === 'form'
@@ -323,11 +328,27 @@ export function HunterCard({
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
             <div className="truncate">
-              <span className="font-medium text-muted-foreground">PATH</span>{' '}
+              <span className="font-medium text-muted-foreground">PAGE</span>{' '}
               <span className="font-mono">{path}</span>
             </div>
+            {location ? (
+              <div className="truncate">
+                <span className="font-medium text-muted-foreground">CITY/DISTRICT</span>{' '}
+                <span className="font-mono">{location}</span>
+              </div>
+            ) : null}
+            <div className="truncate">
+              <span className="font-medium text-muted-foreground">DEVICE</span>{' '}
+              <span className="font-mono">{device.label}</span>
+            </div>
+            {intent.click_id ? (
+              <div className="truncate">
+                <span className="font-medium text-muted-foreground">CLICK_ID</span>{' '}
+                <span className="font-mono">{intent.click_id}</span>
+              </div>
+            ) : null}
           </div>
           {intent.ai_summary ? (
             <div data-testid="hunter-card-ai-summary" className="mt-3 pt-3 border-t border-border">
@@ -379,7 +400,12 @@ export function HunterCard({
           <div className="mt-1 text-3xl font-black tabular-nums select-all">
             {safeDecode(maskIdentity(intent.intent_target || ''))}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">Device: {device.label}</div>
+          <div className="mt-1 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <span>Device: {device.label}</span>
+            {intent.matched_session_id ? (
+              <span className="font-mono">Session: {intent.matched_session_id.slice(0, 8)}…</span>
+            ) : null}
+          </div>
         </div>
 
         {/* RATING */}
@@ -432,7 +458,8 @@ export function HunterCard({
           <Button
             variant="default"
             className="h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-            onClick={() => onSeal({ id: intent.id, stars, score })}
+            onClick={() => (onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars, score }))}
+            data-testid="hunter-card-seal-deal"
           >
             <CheckCircle2 className="h-5 w-5 mr-2" />
             SEAL DEAL

@@ -1,0 +1,4 @@
+callId=1bd59952-6c56-4a73-86ad-c5c93bcf44e3
+seal API 200
+sale_amount=1000
+status=confirmed

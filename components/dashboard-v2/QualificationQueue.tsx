@@ -13,6 +13,8 @@ import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { cn, formatTimestamp } from '@/lib/utils';
 import { HunterCard } from './HunterCard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
+import { useSiteConfig } from '@/lib/hooks/use-site-config';
+import { SealModal } from './SealModal';
 import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-react';
 
 export interface QualificationQueueProps {
@@ -50,6 +52,7 @@ function ActiveDeckCard({
   onOptimisticRemove,
   onQualified,
   onSkip,
+  onSealDeal,
   pushToast,
   pushHistoryRow,
 }: {
@@ -58,6 +61,7 @@ function ActiveDeckCard({
   onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
   onSkip: () => void;
+  onSealDeal?: () => void;
   pushToast: (kind: 'success' | 'danger', text: string) => void;
   pushHistoryRow: (row: {
     id: string;
@@ -127,11 +131,14 @@ function ActiveDeckCard({
           district: (intent as any)?.district ?? null,
           device_type: (intent as any)?.device_type ?? null,
           total_duration_sec: (intent as any)?.total_duration_sec ?? null,
+          click_id: intent.click_id ?? null,
+          matched_session_id: intent.matched_session_id ?? null,
           ai_score: intent.ai_score ?? null,
           ai_summary: intent.ai_summary ?? null,
           ai_tags: intent.ai_tags ?? null,
         }}
         onSeal={({ id, stars }) => handleSeal({ id, stars })}
+        onSealDeal={onSealDeal}
         onJunk={({ id, stars }) => handleJunk({ id, stars })}
         onSkip={() => onSkip()}
       />
@@ -140,10 +147,13 @@ function ActiveDeckCard({
 }
 
 export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, scope }) => {
+  const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
   const [intents, setIntents] = useState<IntentForQualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
+  const [sealModalOpen, setSealModalOpen] = useState(false);
+  const [intentForSeal, setIntentForSeal] = useState<IntentForQualification | null>(null);
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});
@@ -583,6 +593,10 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                 onOptimisticRemove={optimisticRemove}
                 onQualified={handleQualified}
                 onSkip={rotateSkip}
+                onSealDeal={() => {
+                  setIntentForSeal(mergedTop);
+                  setSealModalOpen(true);
+                }}
                 pushToast={pushToast}
                 pushHistoryRow={pushHistoryRow}
               />
@@ -643,6 +657,48 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           </div>
         </div>
       </div>
+
+      {/* Seal Modal (Casino Table) */}
+      {intentForSeal && (
+        <SealModal
+          open={sealModalOpen}
+          onOpenChange={(open) => {
+            setSealModalOpen(open);
+            if (!open) setIntentForSeal(null);
+          }}
+          callId={intentForSeal.id}
+          siteId={siteId}
+          currency={siteCurrency}
+          chipValues={bountyChips}
+          onConfirm={async (saleAmount, currency) => {
+            const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sale_amount: saleAmount, currency }),
+            });
+            if (!res.ok) {
+              const j = await res.json().catch(() => ({}));
+              throw new Error((j as { error?: string }).error || res.statusText);
+            }
+          }}
+          onSuccess={() => {
+            optimisticRemove(intentForSeal.id);
+            pushHistoryRow({
+              id: intentForSeal.id,
+              status: 'confirmed',
+              intent_action: intentForSeal.intent_action ?? null,
+              identity: intentForSeal.intent_target ?? null,
+            });
+            pushToast('success', 'Deal sealed.');
+            setSealModalOpen(false);
+            setIntentForSeal(null);
+            handleQualified();
+          }}
+          onError={(message) => {
+            pushToast('danger', message);
+          }}
+        />
+      )}
 
       {/* Session Drawer */}
       {selectedIntent && selectedIntent.matched_session_id && (
