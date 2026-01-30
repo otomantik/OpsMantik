@@ -8,6 +8,8 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
+import { logInfo, logError } from '@/lib/log';
+import * as Sentry from '@sentry/nextjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +17,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const requestId = req.headers.get('x-request-id') ?? undefined;
+  const route = '/api/calls/[id]/seal';
   try {
     const { id: callId } = await params;
     if (!callId) {
@@ -67,6 +71,8 @@ export async function POST(
     if (!userClient) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    logInfo('seal request', { request_id: requestId, route, user_id: user.id });
 
     // Lookup: admin only for id+site_id (do not trust client). Then gate by access; update with user client (RLS).
     const { data: call, error: fetchError } = await adminClient
@@ -129,6 +135,8 @@ export async function POST(
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';
+    logError(message, { request_id: requestId, route });
+    Sentry.captureException(err, { tags: { request_id: requestId, route } });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

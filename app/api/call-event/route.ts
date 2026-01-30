@@ -4,6 +4,8 @@ import { rateLimit, getClientId } from '@/lib/rate-limit';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { debugLog, debugWarn } from '@/lib/utils';
+import { logInfo, logError } from '@/lib/log';
+import * as Sentry from '@sentry/nextjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +39,10 @@ export async function OPTIONS(req: NextRequest) {
     });
 }
 
+const CALL_EVENT_ROUTE = '/api/call-event';
+
 export async function POST(req: NextRequest) {
+    const requestId = req.headers.get('x-request-id') ?? undefined;
     try {
         // CORS check
         const origin = req.headers.get('origin');
@@ -271,11 +276,8 @@ export async function POST(req: NextRequest) {
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('[CALL_MATCH] Error:', {
-            message: errorMessage,
-            timestamp: new Date().toISOString(),
-            url: req.url
-        });
+        logError(errorMessage, { request_id: requestId, route: CALL_EVENT_ROUTE });
+        Sentry.captureException(error, { tags: { request_id: requestId, route: CALL_EVENT_ROUTE } });
 
         return NextResponse.json(
             { error: 'Internal server error' },

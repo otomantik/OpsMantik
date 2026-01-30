@@ -1,0 +1,3 @@
+test_throw_500=true
+x-request-id=98d8d580-a2f6-4574-82b6-8a982275a55e
+captured error (integration hooks fire)

@@ -14,6 +14,7 @@
     "check:warroom": "node scripts/check-warroom.js",
     "check:attribution": "node scripts/check-attribution.js",
     "smoke:api": "node scripts/smoke/api.prod.mjs",
+    "smoke:watchtower": "node scripts/smoke/watchtower-proof.mjs",
     "smoke:v2_2": "node scripts/smoke/v2_2_rpc_contract.mjs",
     "smoke:tank-tracker": "node scripts/smoke/tank-tracker-proof.mjs",
     "smoke:tank-tracker-events": "node scripts/smoke/tank-tracker-events-proof.mjs",
@@ -24,12 +25,15 @@
     "smoke:go3-today-yesterday": "node scripts/smoke/go3-today-yesterday-proof.mjs",
     "smoke:go4-canonical-ui": "node scripts/smoke/go4-canonical-ui-proof.mjs",
     "audit:codebase": "node scripts/audit-codebase.mjs",
-    "diagnostics": "node scripts/run-diagnostics.mjs"
+    "diagnostics": "node scripts/run-diagnostics.mjs",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
     "@radix-ui/react-dropdown-menu": "^2.1.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@sentry/nextjs": "^10.38.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
     "class-variance-authority": "^0.7.1",
@@ -50,6 +54,7 @@
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
+    "@playwright/test": "^1.58.0",
     "playwright": "^1.58.0",
     "tailwindcss": "^4",
     "typescript": "^5"

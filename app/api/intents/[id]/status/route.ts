@@ -10,13 +10,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { logInfo, logError } from '@/lib/log';
+import * as Sentry from '@sentry/nextjs';
 
 export const dynamic = 'force-dynamic';
+
+const route = '/api/intents/[id]/status';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const requestId = req.headers.get('x-request-id') ?? undefined;
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -27,6 +32,8 @@ export async function POST(
         { status: 401 }
       );
     }
+
+    logInfo('intent status request', { request_id: requestId, route, user_id: user.id });
 
     const body = await req.json();
     const { status } = body;
@@ -93,7 +100,7 @@ export async function POST(
       .single();
 
     if (updateError) {
-      console.error('[INTENT_STATUS] Update error:', updateError);
+      logError('intent status update failed', { request_id: requestId, route, error: updateError.message });
       return NextResponse.json(
         { error: 'Failed to update status' },
         { status: 500 }
@@ -105,7 +112,9 @@ export async function POST(
       call: updatedCall,
     });
   } catch (error) {
-    console.error('[INTENT_STATUS] Error:', error);
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    logError(message, { request_id: requestId, route });
+    Sentry.captureException(error, { tags: { request_id: requestId, route } });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

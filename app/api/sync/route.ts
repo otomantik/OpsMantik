@@ -7,6 +7,8 @@ import { computeLeadScore } from '@/lib/scoring';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 import { getRecentMonths, createSyncResponse } from '@/lib/sync-utils';
 import { debugLog, debugWarn } from '@/lib/utils';
+import { logInfo, logError } from '@/lib/log';
+import * as Sentry from '@sentry/nextjs';
 
 // UUID v4 generator (RFC 4122 compliant)
 function generateUUID(): string {
@@ -67,7 +69,10 @@ export async function OPTIONS(req: NextRequest) {
     });
 }
 
+const SYNC_ROUTE = '/api/sync';
+
 export async function POST(req: NextRequest) {
+    const requestId = req.headers.get('x-request-id') ?? undefined;
     try {
         // CORS check
         const origin = req.headers.get('origin');
@@ -806,13 +811,8 @@ export async function POST(req: NextRequest) {
         const errorStack = error instanceof Error ? error.stack : undefined;
         const origin = req.headers.get('origin');
 
-        // Enhanced error logging
-        console.error('[SYNC_API] Tracking Error:', {
-            message: errorMessage,
-            stack: errorStack,
-            timestamp: new Date().toISOString(),
-            url: req.url
-        });
+        logError(errorMessage, { request_id: requestId, route: SYNC_ROUTE, stack: errorStack });
+        Sentry.captureException(error, { tags: { request_id: requestId, route: SYNC_ROUTE } });
 
         const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
 
