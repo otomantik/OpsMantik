@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QualificationQueue } from './QualificationQueue';
+import { BreakdownWidgets } from './widgets/BreakdownWidgets';
 import { CommandCenterP0Panel } from './CommandCenterP0Panel';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -69,7 +70,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
     typeof window !== 'undefined' && window.localStorage?.getItem('opsmantik_debug') === '1';
 
   return (
-    <div className="om-dashboard-reset min-h-screen bg-muted/30">
+    <div className="om-dashboard-reset min-h-screen bg-muted/30 overflow-x-hidden">
       {/* Tactical Header */}
       <header className="sticky top-0 z-50 relative border-b border-border bg-background/95 backdrop-blur overflow-x-hidden">
         <div className="mx-auto max-w-md px-4 py-3 w-full min-w-0">
@@ -259,8 +260,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         </div>
       </header>
 
-      {/* Feed */}
-      <main className="mx-auto max-w-md px-4 py-4 space-y-4 pb-20">
+      {/* Breakdown widgets + Feed */}
+      <main className="mx-auto max-w-md px-4 py-4 space-y-4 pb-20 overflow-x-hidden min-w-0">
+        <BreakdownWidgets
+          siteId={siteId}
+          dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
+          adsOnly={scope === 'ads'}
+        />
         <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
 
         {/* Kill Feed placeholder (Phase 2) */}

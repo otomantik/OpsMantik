@@ -1,0 +1,78 @@
+{
+  "date_to": "2026-01-30T09:34:10.008+00:00",
+  "devices": [
+    {
+      "count": 871,
+      "label": "Mobile",
+      "percentage": 98.09
+    },
+    {
+      "count": 17,
+      "label": "Desktop",
+      "percentage": 1.91
+    }
+  ],
+  "site_id": "01d24667-ca9a-44e3-ab7a-7cd171ae653f",
+  "sources": [
+    {
+      "count": 879,
+      "label": "First Click (Paid)",
+      "percentage": 98.99
+    },
+    {
+      "count": 9,
+      "label": "Organic",
+      "percentage": 1.01
+    }
+  ],
+  "ads_only": true,
+  "date_from": "2026-01-23T09:34:10.008+00:00",
+  "locations": [
+    {
+      "count": 635,
+      "label": "Istanbul",
+      "percentage": 71.51
+    },
+    {
+      "count": 107,
+      "label": "Other",
+      "percentage": 12.05
+    },
+    {
+      "count": 53,
+      "label": "Unknown",
+      "percentage": 5.97
+    },
+    {
+      "count": 29,
+      "label": "Ankara",
+      "percentage": 3.27
+    },
+    {
+      "count": 28,
+      "label": "Bursa",
+      "percentage": 3.15
+    },
+    {
+      "count": 11,
+      "label": "%C4%B0zmit",
+      "percentage": 1.24
+    },
+    {
+      "count": 9,
+      "label": "Izmir",
+      "percentage": 1.01
+    },
+    {
+      "count": 8,
+      "label": "K%C3%BC%C3%A7%C3%BCk%C3%A7ekmece",
+      "percentage": 0.9
+    },
+    {
+      "count": 8,
+      "label": "%C3%9Csk%C3%BCdar",
+      "percentage": 0.9
+    }
+  ],
+  "total_sessions": 888
+}

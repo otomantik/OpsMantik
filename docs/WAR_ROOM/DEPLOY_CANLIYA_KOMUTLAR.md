@@ -1,11 +1,41 @@
 # Canlıya Alma — Komutlar
 
-**Tarih:** 2026-01-29  
+**Tarih:** 2026-01-29 (güncelleme: 2026-01-30)  
 **Amaç:** Tüm güncel değişiklikleri commit edip push ile Vercel’de otomatik deploy tetiklemek.
 
 ---
 
-## 1. Terminalde çalıştır
+## Sıralı komut listesi (canlıya almak için)
+
+Proje kökünde aşağıdaki komutları **sırayla** çalıştır:
+
+| # | Komut | Açıklama |
+|---|--------|-----------|
+| 1 | `cd "c:\Users\serka\OneDrive\Desktop\project\opsmantik-v1"` | Proje köküne geç |
+| 2 | `npm run build` | Build’in hatasız bittiğini kontrol et |
+| 3 | *(isteğe bağlı)* `npm run smoke:p4-breakdown` | RPC smoke (get_dashboard_breakdown_v1) |
+| 4 | *(isteğe bağlı)* `npm run smoke:p4-ui` | UI wiring smoke |
+| 5 | `npx supabase db push` | Yeni migration varsa canlı DB’ye uygula (Supabase projesi bağlı olmalı) |
+| 6 | `git add -A` | Tüm değişiklikleri stage et |
+| 7 | `git commit -m "chore: canlıya al - <kısa açıklama>"` | Commit (açıklamayı güncelle) |
+| 8 | `git push` | Vercel otomatik deploy tetikler |
+| 9 | Vercel Dashboard → Deployments → “Ready” bekle (2–5 dk) | |
+| 10 | Gizli pencerede canlı URL’i aç, login + dashboard test | Cache’siz doğrula |
+
+**Kısa kopyala-yapıştır (commit mesajını kendin düzenle):**
+
+```bash
+cd "c:\Users\serka\OneDrive\Desktop\project\opsmantik-v1"
+npm run build
+npx supabase db push
+git add -A
+git commit -m "chore: canlıya al - P4 breakdown RPC + UI + Recharts, screenshot script fix"
+git push
+```
+
+---
+
+## 1. Terminalde çalıştır (detay)
 
 Proje kökünde (opsmantik-v1) şu komutları sırayla çalıştır:
 

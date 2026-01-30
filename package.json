@@ -24,6 +24,9 @@
     "smoke:go3-queue-counts": "node scripts/smoke/go3-queue-counts-today-yesterday.mjs",
     "smoke:go3-today-yesterday": "node scripts/smoke/go3-today-yesterday-proof.mjs",
     "smoke:go4-canonical-ui": "node scripts/smoke/go4-canonical-ui-proof.mjs",
+    "smoke:p4-breakdown": "node scripts/smoke/p4-breakdown-proof.mjs",
+    "smoke:p4-ui": "node scripts/smoke/p4-ui-proof.mjs",
+    "smoke:p4-3-screenshot": "node scripts/smoke/p4-3-screenshot.mjs",
     "audit:codebase": "node scripts/audit-codebase.mjs",
     "diagnostics": "node scripts/run-diagnostics.mjs",
     "e2e": "playwright test",
@@ -42,10 +45,12 @@
     "next": "16.1.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "recharts": "^2.15.4",
     "tailwind-merge": "^2.6.0",
     "ua-parser-js": "^1.0.37"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -54,7 +59,6 @@
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
-    "@playwright/test": "^1.58.0",
     "playwright": "^1.58.0",
     "tailwindcss": "^4",
     "typescript": "^5"
