@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils';
 import { safeDecode } from '@/lib/utils/string-utils';
 import { decodeMatchType } from '@/lib/types/hunter';
 import {
-  ArrowRight,
   CheckCircle2,
   FileText,
   Flame,
@@ -17,11 +16,8 @@ import {
   Smartphone,
   Phone,
   Search,
-  ShieldAlert,
   ShoppingBag,
   Sparkles,
-  Star,
-  Timer,
   MapPin,
   XOctagon,
 } from 'lucide-react';
@@ -204,6 +200,7 @@ export function HunterCard({
   onSealDeal,
   onJunk,
   onSkip,
+  onWhatsApp,
 }: {
   intent: HunterIntent;
   onSeal: (params: { id: string; stars: number; score: number }) => void;
@@ -211,69 +208,62 @@ export function HunterCard({
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
+  /** Optional: open WhatsApp chat (uses intent_target as number) */
+  onWhatsApp?: () => void;
 }) {
   const t = sourceTypeOf(intent.intent_action);
   const Icon = sourceIcon(t);
-  const isHighRisk = (intent.risk_level || '').toString().toLowerCase() === 'high';
   const matchTypeDecoded = useMemo(() => decodeMatchType(intent.matchtype), [intent.matchtype]);
-  const isHighIntent =
-    t === 'whatsapp' ||
-    (typeof intent.ai_score === 'number' && intent.ai_score > 80) ||
-    matchTypeDecoded.highIntent;
+  const isHighPotential =
+    matchTypeDecoded.type === 'exact' || (typeof intent.ai_score === 'number' && intent.ai_score > 80);
+  const isHighIntent = t === 'whatsapp' || isHighPotential;
 
-  const primary = useMemo(() => getPrimaryIntent(intent), [intent]);
-  const path = useMemo(() => {
-    const pageUrl = intent.page_url || intent.intent_page_url || null;
-    const raw = safePath(pageUrl);
-    return safeDecode(raw) || raw;
-  }, [intent.intent_page_url, intent.page_url]);
-  const secondary = useMemo(() => {
-    const campaign = safeDecode((intent.utm_campaign || '').trim());
-    const source = safeDecode((intent.utm_source || '').trim());
-    if (primary.kind !== 'fallback' && campaign) return campaign;
-    return source || (primary.kind === 'fallback' ? '' : '');
-  }, [intent.utm_campaign, intent.utm_source, primary.kind]);
+  const keywordDisplay = useMemo(() => {
+    const term = (intent.utm_term || '').trim();
+    if (term) return safeDecode(term);
+    const primary = getPrimaryIntent(intent);
+    return primary.value;
+  }, [intent]);
+
+  const campaignDisplay = useMemo(() => {
+    const c = (intent.utm_campaign || '').trim();
+    return c ? safeDecode(c) : '—';
+  }, [intent.utm_campaign]);
 
   const districtLabel = useMemo(() => safeDecode((intent.district || '').trim()) || null, [intent.district]);
   const cityLabel = useMemo(() => safeDecode((intent.city || '').trim()) || null, [intent.city]);
-  const locationParts = useMemo(() => {
-    if (districtLabel && cityLabel) return { district: districtLabel, city: cityLabel };
-    if (districtLabel) return { district: districtLabel, city: null };
-    if (cityLabel) return { district: null, city: cityLabel };
-    return { district: null, city: null };
+  const locationDisplay = useMemo(() => {
+    if (districtLabel && cityLabel) return `${districtLabel} / ${cityLabel}`;
+    if (districtLabel) return districtLabel;
+    if (cityLabel) return cityLabel;
+    return '—';
   }, [districtLabel, cityLabel]);
 
   const device = useMemo(() => deviceLabel(intent.device_type ?? null), [intent.device_type]);
-  const duration = useMemo(() => {
-    if (typeof intent.total_duration_sec !== 'number') return null;
-    if (intent.total_duration_sec <= 0) return null;
-    return secondsToHuman(intent.total_duration_sec);
-  }, [intent.total_duration_sec]);
+
+  const displayScore = typeof intent.ai_score === 'number' ? intent.ai_score : 0;
 
   const estDisplay = useMemo(
     () => formatEstimatedValue(intent.estimated_value, intent.currency),
     [intent.estimated_value, intent.currency]
   );
-
-  const [stars, setStars] = useState<number>(0);
-  const score = useMemo(() => stars * 20, [stars]);
-
-  const hasKeyword = Boolean((intent.utm_term || '').trim());
+  const isHighSegment =
+    typeof intent.estimated_value === 'number' && Number.isFinite(intent.estimated_value) && intent.estimated_value > 10000;
 
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-card shadow-md min-h-[420px] border-border/80',
+        'relative overflow-hidden bg-card shadow-md border-border/80',
         sourceStripClass(t, isHighIntent)
       )}
     >
-      {/* TOP BAR: Source Icon + Time + Intent Score Badge + Financial Badge */}
+      {/* Header: [ICON] [TIME_AGO]    🔥 HIGH POTENTIAL    [ Score: {score} ] */}
       <CardHeader className="px-4 pt-4 pb-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div
               className={cn(
-                'inline-flex h-9 w-9 items-center justify-center rounded-md border',
+                'inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border',
                 t === 'whatsapp' || isHighIntent
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : t === 'phone'
@@ -295,218 +285,130 @@ export function HunterCard({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-            {typeof intent.ai_score === 'number' && intent.ai_score > 80 ? (
+            {isHighPotential ? (
               <Badge className="bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
                 <Flame className="h-3.5 w-3.5 mr-1" />
-                HOT LEAD
+                HIGH POTENTIAL
               </Badge>
             ) : null}
-            {estDisplay ? (
-              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold">
-                💰 Est. {estDisplay}
-              </Badge>
-            ) : null}
-            {isHighRisk ? (
-              <Badge className="bg-red-100 text-red-700 border border-red-200">
-                <ShieldAlert className="h-3.5 w-3.5 mr-1" />
-                High Risk
-              </Badge>
-            ) : (
-              <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">
-                Safe
-              </Badge>
-            )}
+            <Badge variant="secondary" className="font-mono font-semibold">
+              Score: {displayScore}
+            </Badge>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="px-4 space-y-4">
-        {/* MAIN GRID: INTEL BOX (left) + TARGET HUD (right) */}
+        {/* Main grid: INTEL (left) + TARGET (right) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* INTEL BOX — The "Why" */}
-          <div
-            className={cn(
-              'rounded-lg border p-4',
-              hasKeyword
-                ? 'border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-700/50'
-                : 'border-border bg-muted/50'
-            )}
-          >
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
-              INTEL
+          {/* INTEL */}
+          <div className="rounded-lg border border-border bg-muted/50 p-4">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-3 flex items-center gap-1.5">
+              <span aria-hidden>🕵️</span> INTEL
             </div>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-border bg-background">
-                <primary.icon
-                  className={cn(
-                    'h-4 w-4',
-                    primary.kind === 'keyword'
-                      ? 'text-amber-700'
-                      : primary.kind === 'interest'
-                        ? 'text-blue-700'
-                        : 'text-muted-foreground'
-                  )}
-                />
+            <div className="space-y-2.5 text-sm">
+              <div className="flex gap-2">
+                <span className="text-muted-foreground shrink-0 w-20">Keyword:</span>
+                <span className="font-bold text-foreground break-words">{keywordDisplay || '—'}</span>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                    {primary.label}
-                  </span>
-                  {matchTypeDecoded.type !== 'unknown' ? (
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        'text-[10px] font-medium',
-                        matchTypeDecoded.highIntent
-                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                          : 'bg-muted text-muted-foreground'
-                      )}
-                    >
-                      {matchTypeDecoded.highIntent ? <Flame className="h-3 w-3 mr-0.5" /> : null}
-                      {matchTypeDecoded.highIntent ? 'Exact Match (High Intent)' : matchTypeDecoded.label}
-                    </Badge>
-                  ) : null}
-                </div>
-                <div
-                  className={cn(
-                    'mt-0.5 text-lg font-black leading-snug break-words',
-                    primary.kind === 'keyword'
-                      ? 'text-amber-800 dark:text-amber-200'
-                      : primary.kind === 'interest'
-                        ? 'text-blue-800 dark:text-blue-200'
-                        : 'text-foreground',
-                    hasKeyword && 'ring-1 ring-amber-300/40 rounded px-1 -mx-1'
-                  )}
-                >
-                  {primary.value}
-                </div>
-                {secondary ? (
-                  <div className="mt-1 text-xs text-muted-foreground truncate">
-                    {secondary}
-                  </div>
-                ) : null}
+              <div className="flex gap-2 items-center">
+                <span className="text-muted-foreground shrink-0 w-20">Match:</span>
+                {matchTypeDecoded.type !== 'unknown' ? (
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      'text-xs font-medium',
+                      matchTypeDecoded.highIntent
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {matchTypeDecoded.highIntent ? <Flame className="h-3 w-3 mr-0.5" /> : null}
+                    {matchTypeDecoded.highIntent ? 'Exact Match' : matchTypeDecoded.label}
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </div>
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              <span className="font-medium text-muted-foreground">Path</span>{' '}
-              <span className="font-mono truncate block">{path}</span>
+              <div className="flex gap-2">
+                <span className="text-muted-foreground shrink-0 w-20">Campaign:</span>
+                <span className="text-foreground truncate">{campaignDisplay}</span>
+              </div>
             </div>
           </div>
 
-          {/* TARGET HUD — The "Who" */}
+          {/* TARGET */}
           <div className="rounded-lg border border-border bg-muted/30 p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
-              TARGET
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-3 flex items-center gap-1.5">
+              <span aria-hidden>👤</span> TARGET
             </div>
-            {locationParts.district || locationParts.city ? (
-              <div className="flex items-center gap-1.5 text-sm mb-2">
-                <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span>
-                  {locationParts.district && locationParts.city ? (
-                    <>
-                      <span className="font-bold text-foreground">{locationParts.district}</span>
-                      <span className="text-muted-foreground">, {locationParts.city}</span>
-                    </>
-                  ) : locationParts.district ? (
-                    <span className="font-bold text-foreground">{locationParts.district}</span>
-                  ) : (
-                    <span className="text-foreground">{locationParts.city}</span>
-                  )}
-                </span>
+            <div className="space-y-2.5 text-sm">
+              <div className="flex gap-2 items-center">
+                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground shrink-0 w-16">Location:</span>
+                <span className="text-foreground truncate">{locationDisplay}</span>
               </div>
-            ) : null}
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
-              <device.icon className="h-4 w-4 flex-shrink-0" />
-              <span>{device.label}</span>
-            </div>
-            <div className="mt-2 pt-2 border-t border-border">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                Identity
+              <div className="flex gap-2 items-center">
+                <device.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground shrink-0 w-16">Device:</span>
+                <span className="text-foreground">{device.label}</span>
               </div>
-              <div className="mt-0.5 text-xl font-bold tabular-nums select-all truncate">
-                {safeDecode(maskIdentity(intent.intent_target || ''))}
+              <div className="flex gap-2 items-center">
+                <span className="text-muted-foreground shrink-0 w-16 ml-6">Network:</span>
+                <span className="text-foreground">Google Ads</span>
               </div>
             </div>
           </div>
         </div>
 
-        {intent.ai_summary ? (
-          <div data-testid="hunter-card-ai-summary" className="rounded-lg border border-border bg-muted/30 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-              AI Özet
-            </div>
-            <p className="mt-1 text-sm text-foreground leading-snug">{intent.ai_summary}</p>
-            {Array.isArray(intent.ai_tags) && intent.ai_tags.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {intent.ai_tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* RATING */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-medium">Rating</div>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: 5 }).map((_, idx) => {
-              const v = idx + 1;
-              const active = v <= stars;
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setStars(v)}
-                  className={cn(
-                    'h-10 w-10 rounded-md border border-border bg-background',
-                    'inline-flex items-center justify-center',
-                    'active:scale-[0.98] transition-transform'
-                  )}
-                  aria-label={`Rate ${v} stars`}
-                  aria-pressed={active}
-                >
-                  <Star className={cn('h-5 w-5', active ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground')} />
-                </button>
-              );
-            })}
-          </div>
+        {/* Financial bar: EST. VALUE */}
+        <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 px-4 py-3 flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-foreground">💰 EST. VALUE:</span>
+          <span className="font-bold tabular-nums">
+            {estDisplay || '—'}
+          </span>
+          {isHighSegment && estDisplay ? (
+            <span className="text-muted-foreground text-sm">(High Segment)</span>
+          ) : null}
         </div>
       </CardContent>
 
-      {/* TRIGGER ZONE */}
+      {/* Footer: JUNK | WHATSAPP | SEAL DEAL ($) */}
       <CardFooter className="px-4 pb-4 pt-0">
         <div className="grid w-full grid-cols-3 gap-2">
           <Button
             variant="outline"
-            className="h-14 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-            onClick={() => onJunk({ id: intent.id, stars, score })}
+            className="h-12 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+            onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
           >
-            <XOctagon className="h-5 w-5 mr-2" />
+            <XOctagon className="h-4 w-4 mr-2" />
             JUNK
           </Button>
           <Button
-            variant="ghost"
-            className="h-14"
-            onClick={() => onSkip({ id: intent.id })}
+            variant="outline"
+            className="h-12 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            onClick={() => {
+              if (onWhatsApp) onWhatsApp();
+              else if (intent.intent_target) {
+                const raw = (intent.intent_target || '').replace(/\D/g, '');
+                const num = raw.startsWith('90') ? raw : `90${raw}`;
+                window.open(`https://wa.me/${num}`, '_blank');
+              }
+            }}
           >
-            <ArrowRight className="h-5 w-5 mr-2" />
-            SKIP
+            <MessageCircle className="h-4 w-4 mr-2" />
+            WHATSAPP
           </Button>
           <Button
             variant="default"
-            className="h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-            onClick={() => (onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars, score }))}
+            className="h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            onClick={() =>
+              onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })
+            }
             data-testid="hunter-card-seal-deal"
           >
-            <CheckCircle2 className="h-5 w-5 mr-2" />
-            SEAL DEAL
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            SEAL DEAL ($)
           </Button>
         </div>
       </CardFooter>
