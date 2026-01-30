@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
+    "verify:ai-pipeline": "node scripts/verify-ai-pipeline.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

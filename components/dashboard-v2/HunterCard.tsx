@@ -46,6 +46,8 @@ export type HunterIntent = {
   city?: string | null;
   district?: string | null;
   device_type?: string | null;
+  ads_network?: string | null;
+  ads_placement?: string | null;
   total_duration_sec?: number | null;
   click_id?: string | null;
   matched_session_id?: string | null;

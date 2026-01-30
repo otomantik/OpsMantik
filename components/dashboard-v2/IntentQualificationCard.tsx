@@ -19,6 +19,9 @@ export interface IntentForQualification {
   oci_status?: string | null;
   city?: string | null;
   district?: string | null;
+  device_type?: string | null;
+  ads_network?: string | null;
+  ads_placement?: string | null;
   total_duration_sec?: number | null;
   event_count?: number | null;
   attribution_source?: string | null;

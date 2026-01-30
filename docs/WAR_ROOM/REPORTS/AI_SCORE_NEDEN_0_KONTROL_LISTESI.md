@@ -138,3 +138,19 @@ Bakılacaklar:
 | Hata ayıklama | hunter-ai → Logs | İstek geliyor mu, 500/OpenAI hatası var mı bak |
 
 Hepsi tamamsa: yeni bir **telefon veya WhatsApp tıklaması** yapıp 10–30 saniye sonra ilgili session için **ai_score** (ve varsa **ai_summary**) dolmalı. Hâlâ 0 ise **hunter-ai Logs** ve **OpenAI API key / kota** tarafını kontrol edin.
+
+---
+
+## Kanıt / Test (Çalışıyor mu?)
+
+**1) Node script (yerel)**  
+Proje kökünde `.env.local` ile:
+
+```bash
+npm run verify:ai-pipeline
+```
+
+Çıktıda: high-intent call sayısı, AI doldurulmuş session sayısı, “pipeline çalışıyor” veya “sorun var” özeti.
+
+**2) SQL (Supabase SQL Editor)**  
+`docs/WAR_ROOM/SQL_AI_PIPELINE_EVIDENCE.sql` dosyasındaki sorguları kopyalayıp SQL Editor’da çalıştır. Sonuçlar: high-intent call sayısı, AI dolu session sayısı, son call’ların session’ında ai_score var mı, `private.api_keys` satırları.
