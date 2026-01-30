@@ -1,4 +1,4 @@
 PASS
-site_id=01d24667-ca9a-44e3-ab7a-7cd171ae653f
-ads_only=true total=894
-ads_only=false total=1166
+site_id=85db0db7-529f-405b-ba26-58032a07cd4b
+ads_only=true total=0
+ads_only=false total=0

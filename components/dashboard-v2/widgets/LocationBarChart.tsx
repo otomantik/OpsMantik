@@ -39,7 +39,7 @@ export function LocationBarChart({ items, topN = 8 }: LocationBarChartProps) {
   if (barData.length === 0) return null;
 
   return (
-    <div className="min-w-0 w-full" style={{ minHeight: 200 }}>
+    <div className="min-w-0 w-full h-[200px]">
       <ResponsiveContainer width="100%" height={200}>
         <BarChart
           layout="vertical"
@@ -54,7 +54,7 @@ export function LocationBarChart({ items, topN = 8 }: LocationBarChartProps) {
             width={72}
             tick={{ fontSize: 11 }}
             stroke="hsl(var(--muted-foreground))"
-            tickFormatter={(v) => (v.length > 10 ? `${v.slice(0, 9)}…` : v)}
+            tickFormatter={(v) => (typeof v === 'string' && v.length > 10 ? `${v.slice(0, 9)}…` : v)}
           />
           <Bar
             dataKey="count"

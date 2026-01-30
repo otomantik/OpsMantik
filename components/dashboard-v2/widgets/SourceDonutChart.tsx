@@ -37,7 +37,7 @@ export function SourceDonutChart({ items, total }: SourceDonutChartProps) {
   if (pieData.length === 0 || total === 0) return null;
 
   return (
-    <div className="min-w-0 w-full" style={{ minHeight: 180 }}>
+    <div className="min-w-0 w-full h-[180px]">
       <ResponsiveContainer width="100%" height={180}>
         <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
           <Pie

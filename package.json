@@ -26,6 +26,7 @@
     "smoke:go4-canonical-ui": "node scripts/smoke/go4-canonical-ui-proof.mjs",
     "smoke:p4-breakdown": "node scripts/smoke/p4-breakdown-proof.mjs",
     "smoke:p4-ui": "node scripts/smoke/p4-ui-proof.mjs",
+    "smoke:auth-save-state": "node scripts/smoke/auth-login-save-state.mjs",
     "smoke:p4-3-screenshot": "node scripts/smoke/p4-3-screenshot.mjs",
     "audit:codebase": "node scripts/audit-codebase.mjs",
     "diagnostics": "node scripts/run-diagnostics.mjs",

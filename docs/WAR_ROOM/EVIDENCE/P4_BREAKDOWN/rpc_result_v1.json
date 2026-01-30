@@ -1,27 +1,11 @@
 {
   "ads_only_true": {
-    "devices": [
-      {
-        "pct": 98,
-        "name": "Mobile",
-        "count": 876
-      },
-      {
-        "pct": 1.9,
-        "name": "Desktop",
-        "count": 17
-      },
-      {
-        "pct": 0.1,
-        "name": "Other",
-        "count": 1
-      }
-    ],
+    "devices": [],
     "sources": [
       {
-        "pct": 100,
+        "pct": 0,
         "name": "Google Ads",
-        "count": 894
+        "count": 0
       },
       {
         "pct": 0,
@@ -29,132 +13,13 @@
         "count": 0
       }
     ],
-    "locations": [
-      {
-        "pct": 71.5,
-        "name": "Istanbul",
-        "count": 639
-      },
-      {
-        "pct": 12.1,
-        "name": "Other",
-        "count": 108
-      },
-      {
-        "pct": 6,
-        "name": "Unknown",
-        "count": 54
-      },
-      {
-        "pct": 3.2,
-        "name": "Ankara",
-        "count": 29
-      },
-      {
-        "pct": 3.1,
-        "name": "Bursa",
-        "count": 28
-      },
-      {
-        "pct": 1.2,
-        "name": "%C4%B0zmit",
-        "count": 11
-      },
-      {
-        "pct": 1,
-        "name": "Izmir",
-        "count": 9
-      },
-      {
-        "pct": 0.9,
-        "name": "K%C3%BC%C3%A7%C3%BCk%C3%A7ekmece",
-        "count": 8
-      },
-      {
-        "pct": 0.9,
-        "name": "%C3%9Csk%C3%BCdar",
-        "count": 8
-      }
-    ],
-    "total_sessions": 894
+    "locations": [],
+    "total_sessions": 0
   },
   "ads_only_false": {
-    "devices": [
-      {
-        "pct": 84.3,
-        "name": "Mobile",
-        "count": 983
-      },
-      {
-        "pct": 15.6,
-        "name": "Desktop",
-        "count": 182
-      },
-      {
-        "pct": 0.1,
-        "name": "Other",
-        "count": 1
-      }
-    ],
-    "sources": [
-      {
-        "pct": 75.9,
-        "name": "Google Ads",
-        "count": 885
-      },
-      {
-        "pct": 24.1,
-        "name": "Organic",
-        "count": 281
-      }
-    ],
-    "locations": [
-      {
-        "pct": 62.7,
-        "name": "Istanbul",
-        "count": 731
-      },
-      {
-        "pct": 17.2,
-        "name": "Unknown",
-        "count": 200
-      },
-      {
-        "pct": 10.6,
-        "name": "Other",
-        "count": 124
-      },
-      {
-        "pct": 3,
-        "name": "Ankara",
-        "count": 35
-      },
-      {
-        "pct": 2.6,
-        "name": "Bursa",
-        "count": 30
-      },
-      {
-        "pct": 1.2,
-        "name": "%C3%9Csk%C3%BCdar",
-        "count": 14
-      },
-      {
-        "pct": 1,
-        "name": "K%C3%BC%C3%A7%C3%BCk%C3%A7ekmece",
-        "count": 12
-      },
-      {
-        "pct": 0.9,
-        "name": "%C4%B0zmit",
-        "count": 11
-      },
-      {
-        "pct": 0.8,
-        "name": "Izmir",
-        "count": 9
-      }
-    ],
-    "total_sessions": 1166
+    "devices": [],
+    "sources": [],
+    "locations": [],
+    "total_sessions": 0
   }
 }
