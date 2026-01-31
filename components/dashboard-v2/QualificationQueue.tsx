@@ -133,6 +133,7 @@ function ActiveDeckCard({
           city: (intent as any)?.city ?? null,
           district: (intent as any)?.district ?? null,
           device_type: (intent as any)?.device_type ?? intent.device_type ?? null,
+          device_os: (intent as any)?.device_os ?? intent.device_os ?? null,
           ads_network: (intent as any)?.ads_network ?? intent.ads_network ?? null,
           ads_placement: (intent as any)?.ads_placement ?? intent.ads_placement ?? null,
           total_duration_sec: (intent as any)?.total_duration_sec ?? intent.total_duration_sec ?? null,
@@ -285,6 +286,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           ai_tags: Array.isArray(r.ai_tags) ? r.ai_tags : null,
           ads_network: r.ads_network ?? null,
           ads_placement: r.ads_placement ?? null,
+          device_type: r.device_type ?? null,
+          device_os: r.device_os ?? null,
         })) as IntentForQualification[]
       );
     } catch (err: any) {

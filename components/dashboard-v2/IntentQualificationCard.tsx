@@ -20,6 +20,7 @@ export interface IntentForQualification {
   city?: string | null;
   district?: string | null;
   device_type?: string | null;
+  device_os?: string | null;
   ads_network?: string | null;
   ads_placement?: string | null;
   total_duration_sec?: number | null;

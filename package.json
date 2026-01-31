@@ -5,6 +5,13 @@
   "scripts": {
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
     "verify:ai-pipeline": "node scripts/verify-ai-pipeline.mjs",
+    "smoke:hunter-card-data": "node scripts/smoke/hunter-card-data-correctness.mjs",
+    "smoke:hunter-card-fields": "node scripts/smoke/hunter-card-fields-proof.mjs",
+    "smoke:sync-utm": "node scripts/smoke/sync-utm-capture-proof.mjs",
+    "smoke:backfill-entry-page": "node scripts/smoke/backfill-entry-page-proof.mjs",
+    "smoke:backfill-events-url": "node scripts/smoke/backfill-events-url-proof.mjs",
+    "smoke:device-os": "node scripts/smoke/device-os-proof.mjs",
+    "smoke:ai-pipeline-gate": "node scripts/smoke/ai-pipeline-gate.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

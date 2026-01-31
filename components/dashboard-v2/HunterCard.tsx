@@ -326,7 +326,7 @@ export function HunterCard({
               </Badge>
             ) : null}
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <Badge variant="secondary" className="font-mono font-semibold cursor-help">
                   Score: {displayScore}
                 </Badge>
@@ -419,7 +419,7 @@ export function HunterCard({
         {/* Financial bar: EST. VALUE */}
         <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 px-4 py-3 flex items-center gap-2 flex-wrap">
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <span className="font-semibold text-foreground cursor-help">💰 EST. VALUE:</span>
             </TooltipTrigger>
             <TooltipContent>Set when you seal a deal (manual/ops). Not AI.</TooltipContent>

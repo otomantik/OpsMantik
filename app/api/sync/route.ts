@@ -373,18 +373,28 @@ export async function POST(req: NextRequest) {
                     debugLog('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                     session = existingSession;
 
-                    // FIX-1: Force update when incoming request has UTM/ads params (overwrite Organic with Paid)
-                    const hasNewUTM = Boolean(utm?.source || utm?.campaign || utm?.term || utm?.device || utm?.network || utm?.placement);
+                    // FIX-1: Force update when incoming request has UTM/ads params or click IDs (overwrite Organic with Paid, write GCLID)
+                    const hasNewUTM = Boolean(
+                        utm?.source || utm?.medium || utm?.campaign || utm?.term || utm?.content
+                        || utm?.matchtype || utm?.device || utm?.network || utm?.placement
+                    );
+                    const hasNewClickId = Boolean(currentGclid || params.get('wbraid') || params.get('gbraid') || meta?.wbraid || meta?.gbraid);
                     const shouldUpdate =
-                        hasNewUTM || !existingSession.attribution_source;
+                        hasNewUTM || hasNewClickId || !existingSession.attribution_source;
                     if (shouldUpdate) {
+                        const existing = existingSession as { gclid?: string | null };
                         const updates: Record<string, unknown> = {
                             device_type: deviceType,
+                            device_os: deviceInfo.os || null,
                             city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
                             district: geoInfo.district,
                             fingerprint: fingerprint,
-                            gclid: currentGclid || (existingSession as { gclid?: string | null }).gclid || null,
+                            gclid: currentGclid || existing.gclid || null,
                         };
+                        const newWbraid = params.get('wbraid') || meta?.wbraid;
+                        const newGbraid = params.get('gbraid') || meta?.gbraid;
+                        if (newWbraid) updates.wbraid = newWbraid;
+                        if (newGbraid) updates.gbraid = newGbraid;
                         if (hasNewUTM) {
                             updates.utm_term = utm?.term ?? null;
                             updates.matchtype = utm?.matchtype ?? null;
@@ -441,7 +451,7 @@ export async function POST(req: NextRequest) {
                     id: finalSessionId, // Always set ID (UUID or generated)
                     site_id: site.id,
                     ip_address: ip,
-                    entry_page: url,
+                    entry_page: url, // Full landing URL including query string (do not strip)
                     gclid: currentGclid,
                     wbraid: params.get('wbraid') || meta?.wbraid,
                     gbraid: params.get('gbraid') || meta?.gbraid,
@@ -449,6 +459,7 @@ export async function POST(req: NextRequest) {
                     // Attribution and context fields
                     attribution_source: attributionSource,
                     device_type: deviceType,
+                    device_os: deviceInfo.os || null,
                     city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
                     district: geoInfo.district,
                     fingerprint: fingerprint,
