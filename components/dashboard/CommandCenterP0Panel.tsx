@@ -84,12 +84,12 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
   };
 
   return (
-    <Card className="border border-border bg-background">
+    <Card className="border border-slate-200 bg-white shadow-none">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <CardTitle className="text-base font-semibold">Command Center P0</CardTitle>
-            <div className="mt-1 text-sm text-muted-foreground">
+            <div className="mt-1 text-sm text-slate-500">
               OCI feedback loop • High-Risk explainability • Auto-approve safety valve
             </div>
           </div>
@@ -126,14 +126,14 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
 
       <CardContent className="space-y-4">
         {error && (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 text-sm text-rose-800">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {/* Inbox / Gamification */}
-          <div className="rounded-lg border border-border p-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Inbox</div>
               {loading ? (
@@ -147,32 +147,32 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
 
             <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
               <div>
-                <div className="text-muted-foreground">Sealed</div>
+                <div className="text-slate-500">Sealed</div>
                 <div className="font-semibold tabular-nums">{loading ? '…' : fmt(stats?.sealed)}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Junk</div>
+                <div className="text-slate-500">Junk</div>
                 <div className="font-semibold tabular-nums">{loading ? '…' : fmt(stats?.junk)}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Auto</div>
+                <div className="text-slate-500">Auto</div>
                 <div className="font-semibold tabular-nums">{loading ? '…' : fmt(stats?.auto_approved)}</div>
               </div>
             </div>
 
-            <div className="mt-3 rounded-md bg-muted/30 p-2 text-sm">
-              <div className="text-muted-foreground">Estimated budget saved</div>
+            <div className="mt-3 rounded-md bg-slate-100 p-2 text-sm">
+              <div className="text-slate-500">Estimated budget saved</div>
               <div className="mt-0.5 font-semibold tabular-nums">
                 {loading ? '…' : `${fmt(stats?.estimated_budget_saved)} ${currency}`}
               </div>
             </div>
 
             <div className="mt-3 flex items-center gap-2">
-              <div className="text-sm text-muted-foreground">Assumed CPC</div>
+              <div className="text-sm text-slate-500">Assumed CPC</div>
               <input
                 value={cpcValue}
                 onChange={(e) => setCpcDraft(e.target.value)}
-                className="h-9 w-24 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
+                className="h-9 w-24 rounded-md border border-slate-300 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                 inputMode="decimal"
               />
               <Button
@@ -193,7 +193,7 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
           </div>
 
           {/* OCI Pipeline */}
-          <div className="rounded-lg border border-border p-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">OCI Feedback Loop</div>
               <Badge variant="secondary">Today</Badge>
@@ -201,15 +201,15 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
 
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Icons.seal className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Icons.seal className="h-4 w-4" />
                   <span>Sealed & matchable</span>
                 </div>
                 <span className="font-semibold tabular-nums">{loading ? '…' : fmt(stats?.oci_matchable_sealed)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Icons.upload className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Icons.upload className="h-4 w-4" />
                   <span>Uploaded (exported)</span>
                 </div>
                 <span className="font-semibold tabular-nums">{loading ? '…' : fmt(stats?.oci_uploaded)}</span>
@@ -223,18 +223,18 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
               </div>
             </div>
 
-            <div className="mt-3 text-sm text-muted-foreground">
+            <div className="mt-3 text-sm text-slate-500">
               “Matched” is shown when a click-id exists and an OCI export was generated. Google does not expose per-click match confirmation in a reliable way.
             </div>
           </div>
 
           {/* Human Bottleneck guardrail */}
-          <div className="rounded-lg border border-border p-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Human Bottleneck Guardrail</div>
               <Badge variant="secondary">24h</Badge>
             </div>
-            <div className="mt-3 text-sm text-muted-foreground">
+            <div className="mt-3 text-sm text-slate-500">
               If the queue is ignored, Ads learning starves. Auto-approve seals <span className="font-medium">only</span> low-risk intents (click-id present + non-bounce session).
             </div>
             <div className="mt-3 flex items-center gap-2">

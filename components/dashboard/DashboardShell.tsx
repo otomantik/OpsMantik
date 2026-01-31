@@ -194,7 +194,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56" data-testid="header-overflow-menu-content">
+                <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-white text-slate-950 dark:text-slate-950 border border-slate-200" data-testid="header-overflow-menu-content">
                   <DropdownMenuLabel>Day</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => setSelectedDay('yesterday')} data-testid="menu-item-yesterday">
                     {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4" /> : <span className="mr-2 w-4" />}
@@ -229,7 +229,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
           {/* Settings dialog (opened from menu item; no nested trigger) */}
           <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <DialogContent className="max-h-[80vh] overflow-y-auto" data-testid="settings-dialog">
+            <DialogContent className="max-h-[80vh] overflow-y-auto bg-white dark:bg-white text-slate-950 dark:text-slate-950 border border-slate-200" data-testid="settings-dialog">
               <DialogHeader className="mb-4">
                 <DialogTitle>Settings</DialogTitle>
               </DialogHeader>

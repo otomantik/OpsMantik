@@ -14,8 +14,6 @@ import { cn } from '@/lib/utils';
 export interface SealModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  callId: string;
-  siteId: string;
   currency: string;
   chipValues: number[];
   onConfirm: (saleAmount: number, currency: string) => Promise<void>;
@@ -28,8 +26,6 @@ const DEFAULT_CHIPS = [1000, 5000, 10000, 25000];
 export function SealModal({
   open,
   onOpenChange,
-  callId,
-  siteId,
   currency,
   chipValues,
   onConfirm,
@@ -64,7 +60,7 @@ export function SealModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[min(92vw,400px)] max-h-[85vh] overflow-y-auto"
+        className="max-w-[min(92vw,400px)] max-h-[85vh] overflow-y-auto bg-white dark:bg-white text-slate-950 dark:text-slate-950 border border-slate-200"
         data-testid="seal-modal"
         onPointerDownOutside={(e) => e.preventDefault()}
       >
@@ -72,7 +68,7 @@ export function SealModal({
           <DialogTitle className="text-lg">Seal deal</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             Choose amount or enter custom value ({currency}).
           </p>
           {/* Chips */}
@@ -98,13 +94,13 @@ export function SealModal({
           </div>
           {/* Custom amount */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Custom amount</label>
+            <label className="text-xs font-medium text-slate-700">Custom amount</label>
             <input
               type="number"
               min={0}
               step={1}
               placeholder="0"
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 focus:border-primary focus:ring-1 focus:ring-primary outline-none"
               value={customAmount}
               onChange={(e) => {
                 setCustomAmount(e.target.value);

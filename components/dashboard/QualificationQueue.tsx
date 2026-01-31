@@ -659,8 +659,6 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
             setSealModalOpen(open);
             if (!open) setIntentForSeal(null);
           }}
-          callId={intentForSeal.id}
-          siteId={siteId}
           currency={siteCurrency}
           chipValues={bountyChips}
           onConfirm={async (saleAmount, currency) => {
