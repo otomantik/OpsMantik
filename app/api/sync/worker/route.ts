@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractGeoInfo } from '@/lib/geo';
 import * as Sentry from '@sentry/nextjs';
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
-import { createHash } from 'crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
 
@@ -22,10 +21,19 @@ function getQstashMessageId(req: NextRequest): string | null {
     );
 }
 
-function deterministicUuidFromString(input: string): string {
+async function sha256Hex(input: string): Promise<string> {
+    // WebCrypto works in both Edge + Node runtimes (no Node 'crypto' import).
+    const data = new TextEncoder().encode(input);
+    const hash = await globalThis.crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hash))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+async function deterministicUuidFromString(input: string): Promise<string> {
     // We need a UUID to reuse the existing `public.processed_signals` ledger (UUID PK).
     // Use a stable SHA-256 hash and force UUIDv5-like version/variant bits.
-    const hex = createHash('sha256').update(input).digest('hex'); // 64 hex chars
+    const hex = await sha256Hex(input); // 64 hex chars
     let raw = hex.slice(0, 32); // 128-bit
 
     // Set version nibble (index 12) to '5'
@@ -94,7 +102,7 @@ async function handler(req: NextRequest) {
         const dedupInput = qstashMessageId
             ? `qstash:${qstashMessageId}`
             : `fallback:${site_id}:${client_sid || ''}:${event_action || ''}:${url}`;
-        dedupEventId = deterministicUuidFromString(dedupInput);
+        dedupEventId = await deterministicUuidFromString(dedupInput);
 
         Sentry.setTag('ingest_dedup_event_id', dedupEventId);
         Sentry.setTag('site_id', site.id);

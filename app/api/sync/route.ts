@@ -3,7 +3,6 @@ import { RateLimitService } from '@/lib/services/RateLimitService';
 import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { Client } from '@upstash/qstash';
-import { randomUUID } from 'crypto';
 
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
@@ -66,7 +65,9 @@ export async function POST(req: NextRequest) {
     // Extract headers needed for background processing
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || '0.0.0.0';
     const ua = req.headers.get('user-agent') || 'Unknown';
-    const ingestId = randomUUID();
+    const ingestId = globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
         const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
