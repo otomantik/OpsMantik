@@ -110,6 +110,8 @@ export class SessionService {
             updates.utm_content = utm?.content ?? null;
             updates.ads_network = utm?.network ?? null;
             updates.ads_placement = utm?.placement ?? null;
+            updates.telco_carrier = geoInfo.telco_carrier ?? null;
+            updates.browser = deviceInfo.browser || null;
 
             if (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device)) {
                 updates.device_type = utm.device.toLowerCase();
@@ -158,6 +160,8 @@ export class SessionService {
             utm_content: utm?.content || null,
             ads_network: utm?.network || null,
             ads_placement: utm?.placement || null,
+            telco_carrier: geoInfo.telco_carrier || null,
+            browser: deviceInfo.browser || null,
         };
 
         const { data: newSession, error: sError } = await adminClient

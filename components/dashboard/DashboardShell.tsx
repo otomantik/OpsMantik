@@ -239,33 +239,33 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
           {/* Scoreboard (HUD) */}
           <div className="mt-3 grid grid-cols-4 gap-2">
-            <div className="rounded-lg border border-border bg-background p-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Target className="h-4 w-4 text-emerald-600" />
-                <span className="text-[10px] font-medium uppercase tracking-wider">Captured</span>
+            <div className="rounded-lg border border-slate-200 bg-white p-2 sm:p-3 shadow-sm">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <Target className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight">Captured</span>
               </div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">{captured}</div>
+              <div className="mt-1 text-lg sm:text-xl font-bold tabular-nums text-slate-900">{captured}</div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Shield className="h-4 w-4 text-muted-foreground" />
-                <span className="text-[10px] font-medium uppercase tracking-wider">Filtered</span>
+            <div className="rounded-lg border border-slate-200 bg-white p-2 sm:p-3 shadow-sm">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <Shield className="h-3.5 w-3.5 text-slate-400" />
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight">Filtered</span>
               </div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">{filtered}</div>
+              <div className="mt-1 text-lg sm:text-xl font-bold tabular-nums text-slate-900">{filtered}</div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Wallet className="h-4 w-4 text-amber-600" />
-                <span className="text-[10px] font-medium uppercase tracking-wider">Saved</span>
+            <div className="rounded-lg border border-slate-200 bg-white p-2 sm:p-3 shadow-sm">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <Wallet className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight">Saved</span>
               </div>
-              <div className="mt-1 text-[10px] font-semibold tabular-nums text-amber-700 truncate">{saved}</div>
+              <div className="mt-1 text-[11px] sm:text-sm font-bold tabular-nums text-amber-700 truncate">{saved}</div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Check className="h-4 w-4 text-blue-600" />
-                <span className="text-[10px] font-medium uppercase tracking-wider">Revenue</span>
+            <div className="rounded-lg border border-slate-200 bg-white p-2 sm:p-3 shadow-sm">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <Check className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight">Revenue</span>
               </div>
-              <div className="mt-1 text-[10px] font-semibold tabular-nums text-blue-700 truncate">{revenue}</div>
+              <div className="mt-1 text-[11px] sm:text-sm font-bold tabular-nums text-blue-700 truncate">{revenue}</div>
             </div>
           </div>
         </div>

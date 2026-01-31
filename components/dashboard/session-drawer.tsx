@@ -183,7 +183,7 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-base font-semibold tracking-tight">
-            Oturum Detayları
+            Session Details
           </h3>
           <button
             onClick={onClose}
@@ -256,18 +256,18 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
             </div>
           ) : error ? (
             <div className="text-center py-12">
-              <p className="text-destructive text-sm mb-2">Hata: {error}</p>
+              <p className="text-destructive text-sm mb-2">Error: {error}</p>
             </div>
           ) : !session ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground text-sm">Eşleşmiş oturum bulunamadı</p>
+              <p className="text-muted-foreground text-sm">No matched session found</p>
             </div>
           ) : (
             <>
               {/* Session Timeline */}
               <div className="mb-6">
                 <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">
-                  Oturum Zaman Çizelgesi
+                  Session Timeline
                 </h4>
                 <SessionGroup siteId={siteId} sessionId={session.id} events={session.events.filter(e => e.event_category !== 'heartbeat')} />
               </div>
@@ -275,7 +275,7 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
               {/* Technical Details */}
               <div className="border-t border-border pt-6">
                 <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">
-                  Teknik Detaylar
+                  Technical Details
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -291,21 +291,21 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                     <span className="ml-2 text-muted-foreground truncate block">{'—'}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Süre:</span>
+                    <span className="text-muted-foreground">Duration:</span>
                     <span className="ml-2 text-muted-foreground tabular-nums">
                       {session.events.length > 1
                         ? formatDuration(
-                            Math.floor(
-                              (new Date(session.events[session.events.length - 1].created_at).getTime() -
-                                new Date(session.events[0].created_at).getTime()) /
-                                1000
-                            )
+                          Math.floor(
+                            (new Date(session.events[session.events.length - 1].created_at).getTime() -
+                              new Date(session.events[0].created_at).getTime()) /
+                            1000
                           )
+                        )
                         : 'N/A'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Oluşturulma:</span>
+                    <span className="text-muted-foreground">Created:</span>
                     <span className="ml-2 text-muted-foreground tabular-nums">
                       {formatTimestamp(session.created_at, {
                         day: '2-digit',
@@ -317,7 +317,7 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Etkinlikler:</span>
+                    <span className="text-muted-foreground">Events:</span>
                     <span className="ml-2 text-muted-foreground tabular-nums">{session.events.length}</span>
                   </div>
                 </div>

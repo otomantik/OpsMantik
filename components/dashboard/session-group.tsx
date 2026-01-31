@@ -48,7 +48,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVisitorHistory, setShowVisitorHistory] = useState(false);
   const [matchedCall, setMatchedCall] = useState<any>(null);
-  const [isLoadingCall, setIsLoadingCall] = useState(false);
+  // isLoadingCall removed (unused)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [adsGateChecked, setAdsGateChecked] = useState(false);
   const [isExcludedByAdsOnly, setIsExcludedByAdsOnly] = useState(false);
@@ -61,12 +61,12 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     gclid?: string | null;
     site_id?: string | null;
   } | null>(null);
-  
+
   const firstEvent = events[events.length - 1]; // Oldest event
   const lastEvent = events[0]; // Newest event
   const metadata = firstEvent.metadata || {};
   const leadScore = metadata.lead_score || 0;
-  
+
   // Fetch session data (normalized fields) - fallback to event metadata
   // Also fetch site_id for visitor history
   useEffect(() => {
@@ -119,7 +119,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
       }
       setAdsGateChecked(true);
     };
-    
+
     fetchSessionData();
   }, [siteId, sessionId, adsOnly]);
 
@@ -128,17 +128,17 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   const attributionSource = sessionData?.attribution_source || metadata.attribution_source;
   const intelligenceSummary = metadata.intelligence_summary || 'Standard Traffic';
   const gclid = sessionData?.gclid || metadata.gclid || null;
-  
+
   // Get fingerprint and site_id for visitor history
   const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
   const effectiveSiteId = (sessionData as any)?.site_id || siteId || null;
-  
+
   // Fetch visitor history if fingerprint and siteId are available
   const { sessions: visitorSessions, calls: visitorCalls, sessionCount24h, isReturning, isLoading: isLoadingHistory } = useVisitorHistory(
     effectiveSiteId || '',
     fingerprint
   );
-  
+
   // Context chips data - prefer session, fallback to metadata
   const city = sessionData?.city || metadata.city || null;
   const district = sessionData?.district || metadata.district || null;
@@ -151,15 +151,13 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   useEffect(() => {
     if (!sessionId) return;
 
-    setIsLoadingCall(true);
     const supabase = createClient();
-    
+
     // Use JOIN pattern for RLS compliance - calls -> sites -> user_id
     // Contract: MATCHED badge shows ONLY when call.matched_session_id === session.id
     // Iron Dome: Add explicit site_id scope for defense in depth
     const siteIdForQuery = (sessionData as any)?.site_id;
     if (!siteIdForQuery) {
-      setIsLoadingCall(false);
       return;
     }
     supabase
@@ -175,13 +173,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
         if (error) {
           // Silently ignore RLS errors (call might belong to another user)
           console.log('[SESSION_GROUP] Call lookup error (RLS?):', error.message);
-          setIsLoadingCall(false);
           return;
         }
         if (data) {
           setMatchedCall(data);
         }
-        setIsLoadingCall(false);
       });
   }, [sessionId, sessionData]);
 
@@ -263,10 +259,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
           timeDiff:
             result.length > 0
               ? Math.round(
-                  (new Date(group[0].created_at).getTime() -
-                    new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) /
-                    1000
-                )
+                (new Date(group[0].created_at).getTime() -
+                  new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) /
+                1000
+              )
               : 0,
         });
       } else {
@@ -279,10 +275,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
           timeDiff:
             result.length > 0
               ? Math.round(
-                  (new Date(currentEvent.created_at).getTime() -
-                    new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) /
-                    1000
-                )
+                (new Date(currentEvent.created_at).getTime() -
+                  new Date(result[result.length - 1].lastTime || result[result.length - 1].event!.created_at).getTime()) /
+                1000
+              )
               : 0,
         });
       }
@@ -327,7 +323,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   };
 
   // Get border glow for hot leads
-  const getBorderGlow = (score: number) => {
+  const getBorderGlow = () => {
     return {};
   };
 
@@ -346,18 +342,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
   // Count conversions
   const conversionCount = events.filter(e => e.event_category === 'conversion').length;
-  const hasPhoneCall = events.some(e => 
-    e.event_action?.toLowerCase().includes('phone') || 
+  const hasPhoneCall = events.some(e =>
+    e.event_action?.toLowerCase().includes('phone') ||
     e.event_action?.toLowerCase().includes('call')
   );
 
-  // Calculate time differences between events
-  const eventsWithTimeDiff = sortedEvents.map((event, index) => {
-    const timeDiff = index > 0 
-      ? Math.round((new Date(event.created_at).getTime() - new Date(sortedEvents[index - 1].created_at).getTime()) / 1000)
-      : 0;
-    return { ...event, timeDiff };
-  });
 
   const handleCopySessionId = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent accordion toggle
@@ -395,14 +384,14 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   };
 
   return (
-    <Card 
+    <Card
       className={`${getBorderColor(leadScore)} transition-all duration-300`}
-      style={getBorderGlow(leadScore)}
+      style={getBorderGlow()}
       data-session-id={sessionId}
     >
       <CardContent className="p-0">
         {/* Clickable Header */}
-        <div 
+        <div
           className="p-4 cursor-pointer hover:bg-muted transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
@@ -468,11 +457,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               </div>
             </div>
             <div className="text-right">
-              <p className={`text-3xl font-bold tabular-nums ${
-                leadScore >= 71 ? 'text-amber-700' : 
-                leadScore >= 31 ? 'text-blue-700' : 
-                'text-muted-foreground'
-              }`}>
+              <p className={`text-3xl font-bold tabular-nums ${leadScore >= 71 ? 'text-amber-700' :
+                leadScore >= 31 ? 'text-blue-700' :
+                  'text-muted-foreground'
+                }`}>
                 {leadScore}
               </p>
               {leadScore >= 71 && (
@@ -483,7 +471,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               </p>
             </div>
           </div>
-          
+
           {/* Quick Info Row - Badge Style */}
           <div className="mt-3 pt-2 border-t border-border">
             <div className="flex items-center gap-2 flex-wrap">
@@ -496,7 +484,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 </span>
               )}
               {fingerprint && (
-                <span 
+                <span
                   className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border flex items-center gap-1 cursor-pointer hover:bg-muted/70 transition-colors tabular-nums"
                   title={`Fingerprint: ${fingerprint}\nClick to copy full fingerprint`}
                   onClick={(e) => handleCopyFingerprint(e, fingerprint)}
@@ -569,15 +557,15 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                   const Icon = getEventIcon(event?.event_action);
                   const isLast = index === sortedEvents.slice(0, 15).length - 1;
                   const isConversion = event.event_category === 'conversion';
-                  
+
                   return (
-                    <div key={event.id} className="flex items-center gap-1 flex-shrink-0">
+                    <div key={event.id} className="flex items-center gap-1 shrink-0 ml-2">
                       <div className="relative group">
                         <div className={`
                           w-8 h-8 rounded-full flex items-center justify-center
                           ${isConversion ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                             event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' :
-                            'bg-muted text-muted-foreground border border-border'
+                              'bg-muted text-muted-foreground border border-border'
                           }
                           hover:scale-110 transition-transform cursor-pointer
                         `}>
@@ -592,13 +580,13 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         </div>
                       </div>
                       {!isLast && (
-                        <TrendingUp className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        <TrendingUp className="w-3 h-3 text-muted-foreground shrink-0" />
                       )}
                     </div>
                   );
                 })}
                 {events.length > 15 && (
-                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
                     <TrendingUp className="w-3 h-3 text-muted-foreground" />
                     <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
                       +{events.length - 15}
@@ -633,10 +621,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         const event = item.event;
                         const Icon = getEventIcon(event.event_action);
                         const isConversion = event.event_category === 'conversion';
-                        
+
                         return (
-                          <tr 
-                            key={item.id} 
+                          <tr
+                            key={item.id}
                             className={`border-b border-border hover:bg-muted/40 transition-colors ${isConversion ? 'bg-emerald-50/50' : ''}`}
                           >
                             <td className="py-2 px-3 text-foreground tabular-nums">
@@ -651,12 +639,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                               {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
                             </td>
                             <td className="py-2 px-3">
-                              <span className={`px-2 py-1 rounded text-sm border ${
-                                event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              <span className={`px-2 py-1 rounded text-sm border ${event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                 event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
-                                event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
-                                'bg-muted text-muted-foreground border-border'
-                              }`}>
+                                  event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
+                                    'bg-muted text-muted-foreground border-border'
+                                }`}>
                                 {event.event_category.toUpperCase()}
                               </span>
                             </td>
@@ -681,11 +668,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         const Icon = getEventIcon(firstEvent.event_action);
                         const isConversion = firstEvent.event_category === 'conversion';
                         const isExpanded = expandedGroups.has(item.id);
-                        
+
                         return (
                           <React.Fragment key={item.id}>
                             {/* Compressed row */}
-                            <tr 
+                            <tr
                               className={`border-b border-border hover:bg-muted/40 transition-colors cursor-pointer ${isConversion ? 'bg-emerald-50/50' : ''}`}
                               onClick={() => toggleGroup(item.id)}
                             >
@@ -711,17 +698,16 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
                               </td>
                               <td className="py-2 px-3">
-                                <span className={`px-2 py-1 rounded text-sm border ${
-                                  firstEvent.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                <span className={`px-2 py-1 rounded text-sm border ${firstEvent.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                   firstEvent.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
-                                  firstEvent.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
-                                  'bg-muted text-muted-foreground border-border'
-                                }`}>
+                                    firstEvent.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
+                                      'bg-muted text-muted-foreground border-border'
+                                  }`}>
                                   {firstEvent.event_category.toUpperCase()}
                                 </span>
                               </td>
                               <td className="py-2 px-3 text-foreground flex items-center gap-2">
-                                <ChevronRight 
+                                <ChevronRight
                                   className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                                 />
                                 <Icon className="w-3 h-3" />
@@ -741,8 +727,8 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                               </td>
                             </tr>
                             {/* Expanded rows (if toggled) */}
-                            {isExpanded && item.events.map((event, idx) => (
-                              <tr 
+                            {isExpanded && item.events.map((event) => (
+                              <tr
                                 key={`${item.id}-${event.id}`}
                                 className={`border-b border-border hover:bg-muted/30 transition-colors ${isConversion ? 'bg-emerald-50/30' : ''}`}
                               >
@@ -758,12 +744,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                   {event.timeDiff > 0 ? `+${event.timeDiff}s` : '—'}
                                 </td>
                                 <td className="py-1.5 px-3">
-                                  <span className={`px-2 py-1 rounded text-sm border ${
-                                    event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  <span className={`px-2 py-1 rounded text-sm border ${event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                     event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
-                                    event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
-                                    'bg-muted text-muted-foreground border-border'
-                                  }`}>
+                                      event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
+                                        'bg-muted text-muted-foreground border-border'
+                                    }`}>
                                     {event.event_category.toUpperCase()}
                                   </span>
                                 </td>
@@ -796,7 +781,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
             {matchedCall && (
               <div className="mt-4 p-3 rounded bg-rose-50 border border-rose-200">
                 <p className="text-sm text-rose-700 mb-1">
-                  TELEFON EŞLEŞTİ: {matchedCall.phone_number}
+                  PHONE MATCHED: {matchedCall.phone_number}
                 </p>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground tabular-nums">
                   <span>Score: {matchedCall.lead_score}</span>
@@ -807,7 +792,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
           </div>
         )}
       </CardContent>
-      
+
       {/* Visitor History Drawer */}
       {showVisitorHistory && fingerprint && siteId && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end lg:items-center justify-center p-4">
@@ -830,7 +815,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                   <X className="w-4 h-4" />
                 </Button>
               </div>
-              
+
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-4">
                 {isLoadingHistory ? (
@@ -846,11 +831,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                     {(visitorSessions || []).map((session) => (
                       <div
                         key={session.id}
-                        className={`p-3 rounded border transition-colors ${
-                          session.id === sessionId
-                            ? 'bg-emerald-50 border-emerald-200'
-                            : 'bg-background border-border'
-                        } hover:bg-muted/40`}
+                        className={`p-3 rounded border transition-colors ${session.id === sessionId
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-background border-border'
+                          } hover:bg-muted/40`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
@@ -944,11 +928,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                   </div>
                 )}
               </div>
-              
+
               {/* Footer */}
               <div className="p-4 border-t border-border bg-muted/30">
                 <p className="text-sm text-muted-foreground text-center tabular-nums">
-                  Showing {visitorSessions.length} session{visitorSessions.length !== 1 ? 's' : ''} 
+                  Showing {visitorSessions.length} session{visitorSessions.length !== 1 ? 's' : ''}
                   {visitorCalls.length > 0 && `, ${visitorCalls.length} other call${visitorCalls.length !== 1 ? 's' : ''}`}
                   {sessionCount24h > 0 && ` • ${sessionCount24h} in last 24h`}
                 </p>
@@ -961,6 +945,6 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   );
 }, (prevProps, nextProps) => {
   // Custom comparison: only re-render if sessionId or events array reference changes
-  return prevProps.sessionId === nextProps.sessionId && 
-         prevProps.events === nextProps.events;
+  return prevProps.sessionId === nextProps.sessionId &&
+    prevProps.events === nextProps.events;
 });

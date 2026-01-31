@@ -34,6 +34,7 @@ export interface HunterIntent {
   // Device (TARGET HUD)
   device_type?: string | null;
   device_os?: string | null;
+  browser?: string | null;
   device_model?: string | null;
   network?: string | null;
   telco_carrier?: string | null;
