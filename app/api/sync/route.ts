@@ -148,7 +148,8 @@ export async function POST(req: NextRequest) {
             dbMonth,
             {
                 client_sid, url, currentGclid, meta, params,
-                attributionSource, deviceType, fingerprint, utm
+                attributionSource, deviceType, fingerprint, utm,
+                referrer
             },
             { ip, userAgent, geoInfo, deviceInfo }
         );

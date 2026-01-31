@@ -23,6 +23,14 @@ export interface DeviceInfo {
     os: string;
     browser: string;
     browser_version: string | undefined;
+    // Hardware DNA
+    browser_language: string | null;
+    device_memory: number | null;
+    hardware_concurrency: number | null;
+    screen_width: number | null;
+    screen_height: number | null;
+    pixel_ratio: number | null;
+    gpu_renderer: string | null;
 }
 
 export interface GeoExtractionResult {
@@ -74,6 +82,14 @@ export function extractGeoInfo(
         os: parser.getOS().name || 'Unknown',
         browser: parser.getBrowser().name || 'Unknown',
         browser_version: parser.getBrowser().version,
+        // Hardware DNA from meta
+        browser_language: meta?.lan || null,
+        device_memory: meta?.mem ? parseInt(meta.mem) : null,
+        hardware_concurrency: meta?.con ? parseInt(meta.con) : null,
+        screen_width: meta?.sw ? parseInt(meta.sw) : null,
+        screen_height: meta?.sh ? parseInt(meta.sh) : null,
+        pixel_ratio: meta?.dpr ? parseFloat(meta.dpr) : null,
+        gpu_renderer: meta?.gpu || null,
     };
 
     // Geo extraction from headers (Edge Runtime compatible)

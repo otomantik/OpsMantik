@@ -107,6 +107,20 @@ export class EventService {
             updates.total_duration_sec = meta.duration_sec;
         }
 
+        // Behavioral Forensics
+        if (meta?.scroll_pct) {
+            updates.max_scroll_percentage = meta.scroll_pct;
+        }
+        if (meta?.cta_hovers) {
+            updates.cta_hover_count = meta.cta_hovers;
+        }
+        if (meta?.focus_dur) {
+            updates.form_focus_duration = meta.focus_dur;
+        }
+        if (meta?.active_sec) {
+            updates.total_active_seconds = meta.active_sec;
+        }
+
         if (action === 'session_end' && meta?.exit_page) {
             updates.exit_page = meta.exit_page;
         }

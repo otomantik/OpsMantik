@@ -13,7 +13,21 @@ import {
   Monitor,
   Smartphone,
   MapPin,
+  Cpu,
+  Zap,
+  MousePointer2,
+  Clock,
+  ExternalLink,
+  ShieldCheck,
+  Signal,
 } from 'lucide-react';
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -47,15 +61,28 @@ function sourceTypeOf(action: string | null | undefined): HunterSourceType {
   return 'other';
 }
 
-/** v3: Green = WhatsApp / High Score (>80) / Exact Match; Blue = Phone; Purple = Form */
-function sourceStripClass(t: HunterSourceType, isHighIntent?: boolean): string {
-  if (t === 'whatsapp' || isHighIntent) return 'border-l-4 border-emerald-500';
-  if (t === 'phone') return 'border-l-4 border-blue-500';
-  if (t === 'form') return 'border-l-4 border-purple-500';
-  return 'border-l-4 border-border';
+/** Predator HUD v2: Superior accent colors and glass effects */
+function getScoreColor(score: number): { border: string; bg: string; text: string; shadow: string } {
+  if (score >= 85) return {
+    border: 'border-emerald-500/50',
+    bg: 'bg-emerald-500/10',
+    text: 'text-emerald-500',
+    shadow: 'shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+  };
+  if (score >= 50) return {
+    border: 'border-amber-500/50',
+    bg: 'bg-amber-500/10',
+    text: 'text-amber-500',
+    shadow: 'shadow-[0_0_20px_rgba(245,158,11,0.15)]'
+  };
+  return {
+    border: 'border-slate-500/30',
+    bg: 'bg-slate-500/5',
+    text: 'text-slate-400',
+    shadow: ''
+  };
 }
 
-/** Display: `${device_type}` + (device_os ? ` · ${device_os}` : ''). E.g. "Mobile · iOS", "Desktop · Windows". */
 function deviceLabel(
   deviceType: string | null | undefined,
   deviceOs?: string | null,
@@ -78,7 +105,6 @@ function deviceLabel(
     typeLabel = 'Mobile';
   }
 
-  // Detect specific OS for better UX
   let detailedOs = os;
   if (osLower.includes('ios') || osLower.includes('iphone')) detailedOs = 'iPhone';
   else if (osLower.includes('android')) detailedOs = 'Android';
@@ -96,12 +122,83 @@ function deviceLabel(
   return { icon: Icon, label };
 }
 
-/** Format estimated_value for CASINO CHIP: 5000 -> "5K", 20000 -> "20K" */
 function formatEstimatedValue(value: number | null | undefined, currency?: string | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
   const sym = (currency || 'TRY').toUpperCase() === 'TRY' ? '₺' : (currency || '');
   if (value >= 1000) return `${Math.round(value / 1000)}K ${sym}`.trim();
   return `${value} ${sym}`.trim();
+}
+
+/** ANIMATED WRAPPER COMPONENTS */
+const PulseSignal = ({ children, active }: { children: React.ReactNode, active: boolean }) => (
+  <div className="relative inline-flex items-center">
+    {children}
+    {active && (
+      <span className="absolute -right-1 -top-1 flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      </span>
+    )}
+  </div>
+);
+
+const ScanningIcon = ({ icon: Icon, active, className }: any) => (
+  <div className={cn("relative overflow-hidden rounded", className)}>
+    <Icon className="h-4 w-4 relative z-10" />
+    {active && (
+      <div className="absolute inset-0 bg-linear-to-b from-transparent via-emerald-400/20 to-transparent animate-scan z-20 pointer-events-none" />
+    )}
+  </div>
+);
+
+/** QUADRANT COMPONENT */
+function Quadrant({ title, icon: Icon, children, className }: any) {
+  return (
+    <div className={cn("p-3 rounded-xl border border-border/40 bg-background/40 backdrop-blur-md relative overflow-hidden group/quad", className)}>
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className="h-3 w-3 text-muted-foreground transition-all duration-500 group-hover/quad:text-foreground group-hover/quad:scale-110" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover/quad:text-foreground transition-colors">{title}</span>
+      </div>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, value, subValue, icon: Icon, highlight, tip }: any) {
+  const IconComponent = typeof Icon === 'function' ? Icon : null;
+  const StaticIcon = typeof Icon !== 'function' ? Icon : null;
+
+  const content = (
+    <div className="flex items-start gap-2.5 min-w-0 group/field">
+      <div className="p-1 rounded bg-muted/30 border border-border/20 group-hover/field:border-foreground/20 transition-colors">
+        {IconComponent ? <IconComponent /> : StaticIcon ? <StaticIcon className="h-3 w-3 text-muted-foreground/60 shrink-0 group-hover/field:text-foreground/80" /> : <div className="h-3 w-3" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[9px] uppercase font-black text-muted-foreground/50 leading-none mb-1 tracking-tight">{label}</div>
+        <div className={cn("text-xs font-bold truncate leading-tight transition-colors", highlight ? "text-foreground" : "text-foreground/80 group-hover/field:text-foreground")}>
+          {value || '—'}
+        </div>
+        {subValue && <div className="text-[9px] text-muted-foreground/60 truncate italic mt-0.5">{subValue}</div>}
+      </div>
+    </div>
+  );
+
+  if (tip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <div className="cursor-help">{content}</div>
+          </TooltipTrigger>
+          <TooltipContent className="bg-slate-900 border-slate-800 text-slate-100 text-[10px] max-w-[200px] font-medium leading-relaxed">
+            {tip}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return content;
 }
 
 export function HunterCard({
@@ -113,7 +210,6 @@ export function HunterCard({
 }: {
   intent: HunterIntent;
   onSeal: (params: { id: string; stars: number; score: number }) => void;
-  /** When provided, SEAL DEAL opens Casino modal instead of star-based seal */
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
@@ -121,42 +217,6 @@ export function HunterCard({
   const t = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[t] || ICON_MAP.other;
   const matchTypeDecoded = useMemo(() => decodeMatchType(intent.matchtype), [intent.matchtype]);
-  const isHighPotential =
-    matchTypeDecoded.type === 'exact' || (typeof intent.ai_score === 'number' && intent.ai_score > 80);
-  const isHighIntent = t === 'whatsapp' || isHighPotential;
-
-  // 1) Keyword: ONLY sessions.utm_term; no path fallback; null/empty -> '—'
-  const keywordDisplay = useMemo(() => {
-    const term = (intent.utm_term || '').trim();
-    return term ? safeDecode(term) : '—';
-  }, [intent.utm_term]);
-
-  // 2) Match: sessions.matchtype (e/p/b -> Exact Match/Phrase/Broad); null -> '—'
-  const matchDisplay = useMemo(
-    () => decodeMatchType(intent.matchtype).label,
-    [intent.matchtype]
-  );
-
-  // 3) Campaign: ONLY sessions.utm_campaign; null -> '—'
-  const campaignDisplay = useMemo(() => {
-    const c = (intent.utm_campaign || '').trim();
-    return c ? safeDecode(c) : '—';
-  }, [intent.utm_campaign]);
-
-  const districtLabel = useMemo(() => safeDecode((intent.district || '').trim()) || null, [intent.district]);
-  const cityLabel = useMemo(() => safeDecode((intent.city || '').trim()) || null, [intent.city]);
-  const locationDisplay = useMemo(() => {
-    if (districtLabel && cityLabel) return `${districtLabel} / ${cityLabel}`;
-    if (districtLabel) return districtLabel;
-    if (cityLabel) return cityLabel;
-    return 'Location Unknown';
-  }, [districtLabel, cityLabel]);
-
-  const device = useMemo(
-    () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null, intent.browser ?? null),
-    [intent.device_type, intent.device_os, intent.browser]
-  );
-
   const displayScore = useMemo(() => {
     const raw = intent.ai_score;
     if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
@@ -167,204 +227,230 @@ export function HunterCard({
     return 20;
   }, [intent.ai_score, intent.matchtype, intent.utm_source]);
 
+  const scoreTheme = getScoreColor(displayScore);
+  const isHighPotential = matchTypeDecoded.type === 'exact' || displayScore >= 85;
+  const isHighIntent = t === 'whatsapp' || isHighPotential;
+
+  const device = useMemo(
+    () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null, intent.browser ?? null),
+    [intent.device_type, intent.device_os, intent.browser]
+  );
+
   const estDisplay = useMemo(
     () => formatEstimatedValue(intent.estimated_value, intent.currency),
     [intent.estimated_value, intent.currency]
   );
-  const isHighSegment =
-    typeof intent.estimated_value === 'number' && Number.isFinite(intent.estimated_value) && intent.estimated_value > 10000;
+
+  const hwSummary = useMemo(() => {
+    const parts = [];
+    if (intent.device_memory) parts.push(`${intent.device_memory}GB RAM`);
+    if (intent.hardware_concurrency) parts.push(`${intent.hardware_concurrency} Cores`);
+    return parts.join(' · ') || null;
+  }, [intent.device_memory, intent.hardware_concurrency]);
+
+  const locationDisplay = useMemo(() => {
+    const districtLabel = safeDecode((intent.district || '').trim());
+    const cityLabel = safeDecode((intent.city || '').trim());
+    if (districtLabel && cityLabel) return `${districtLabel} / ${cityLabel}`;
+    if (districtLabel) return districtLabel;
+    if (cityLabel) return cityLabel;
+    return 'Location Unknown';
+  }, [intent.district, intent.city]);
 
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-card shadow-md border-border/80 min-h-[460px] flex flex-col',
-        sourceStripClass(t, isHighIntent)
+        'relative overflow-hidden bg-card/60 backdrop-blur-md shadow-2xl border-2 transition-all duration-500 min-h-[500px] flex flex-col group',
+        scoreTheme.border,
+        scoreTheme.shadow
       )}
     >
-      {/* Header: [ICON] [TIME_AGO]    🔥 HIGH POTENTIAL    [ Score: {score} ] */}
-      <CardHeader className="px-4 pt-4 pb-3 shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <div
-              className={cn(
-                'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border relative',
-                t === 'whatsapp' || isHighIntent
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : t === 'phone'
-                    ? 'border-blue-200 bg-blue-50 text-blue-700'
-                    : t === 'form'
-                      ? 'border-purple-200 bg-purple-50 text-purple-700'
-                      : 'border-border bg-muted text-muted-foreground'
-              )}
-            >
-              <IntentIcon className="h-4 w-4" />
+      {/* GLOW DECORATION */}
+      <div className={cn("absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20 pointer-events-none", scoreTheme.bg)} />
+
+      {/* HEADER SECTION */}
+      <CardHeader className="p-4 pb-2 z-10 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={cn(
+              "p-2 rounded-xl border transition-all duration-300 relative",
+              isHighIntent ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-muted border-border text-muted-foreground"
+            )}>
+              <IntentIcon className="h-5 w-5" />
               {intent.click_id && (
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-white"></span>
-                </span>
+                <div className="absolute -top-1 -right-1">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-white"></span>
+                  </span>
+                </div>
               )}
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-medium leading-none truncate flex items-center gap-1.5">
-                {relativeTime(intent.created_at)}
-                {intent.click_id && (
-                  <span className="text-[9px] font-bold text-emerald-600 tracking-tighter uppercase leading-none">
-                    Verified
-                  </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-foreground/90 uppercase tracking-tight">
+                  {t === 'whatsapp' ? 'WhatsApp Direct' : t === 'phone' ? 'Phone Inquiry' : t === 'form' ? 'Lead Form' : 'General Intent'}
+                </span>
+                {intent.is_returning && (
+                  <Badge className="bg-blue-500/10 text-blue-500 border-none h-4 text-[9px] px-1.5 font-black uppercase">
+                    Returning
+                  </Badge>
                 )}
               </div>
-              <div className="mt-0.5 text-xs text-muted-foreground truncate">
-                {t === 'whatsapp' ? 'WhatsApp' : t === 'phone' ? 'Phone' : t === 'form' ? 'Form' : 'Interest'}
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {relativeTime(intent.created_at)}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            {isHighPotential ? (
-              <Badge className="bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
-                <Flame className="h-3.5 w-3.5 mr-1" />
-                HIGH POTENTIAL
-              </Badge>
-            ) : null}
-            <Badge variant="secondary" className="font-mono font-semibold">
-              Score: {displayScore}
-            </Badge>
+
+          <div className="flex flex-col items-end gap-1">
+            <div className={cn("text-[10px] font-black uppercase tracking-tighter", scoreTheme.text)}>
+              AI CONFIDENCE
+            </div>
+            <div className={cn("px-2 py-0.5 rounded-full border text-xs font-mono font-black", scoreTheme.border, scoreTheme.bg, scoreTheme.text)}>
+              {displayScore}%
+            </div>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="px-4 space-y-4 flex-1 overflow-hidden">
-        {/* Main grid: INTEL (left) + TARGET (right) */}
-        <div className="grid grid-cols-1 gap-3">
-          {/* INTEL */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-3 flex items-center justify-between leading-none">
-              <div className="flex items-center gap-1.5">
-                <span aria-hidden>🕵️</span> AD INTEL
-              </div>
-              {intent.click_id && (
-                <div className="flex items-center gap-1 text-emerald-600">
-                  <Icons.check className="h-2.5 w-2.5" />
-                  <span>TRACKING ACTIVE</span>
-                </div>
-              )}
-            </div>
-            <div className="space-y-2.5 text-sm">
-              <div className="flex gap-2">
-                <span className="text-slate-500 shrink-0 w-24">Keyword:</span>
-                <span className="font-bold text-slate-900 wrap-break-word line-clamp-2">{keywordDisplay}</span>
-              </div>
-              <div className="flex gap-2 items-center h-5">
-                <span className="text-slate-500 shrink-0 w-24">Match:</span>
-                {matchTypeDecoded.type !== 'unknown' ? (
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      'text-[10px] h-5 font-bold uppercase',
-                      matchTypeDecoded.highIntent
-                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                        : 'bg-slate-200 text-slate-600'
-                    )}
-                  >
-                    {matchDisplay}
-                  </Badge>
-                ) : (
-                  <span className="text-slate-400 font-medium">{matchDisplay}</span>
-                )}
-              </div>
-              <div className="flex gap-3">
-                <span className="text-slate-500 shrink-0 w-24">Campaign:</span>
-                <span className="text-slate-900 font-medium truncate">{campaignDisplay}</span>
-              </div>
-            </div>
-          </div>
+      <CardContent className="p-4 space-y-3 flex-1 z-10">
+        <div className="grid grid-cols-2 gap-3">
+          {/* Q1: ORIGIN (Ad Intel) */}
+          <Quadrant title="Origin" icon={Zap}>
+            <Field
+              label="Keyword"
+              value={safeDecode(intent.utm_term || '—')}
+              highlight
+              tip="The exact search term used to trigger your ad. 'Exact' matches are highest value."
+              icon={() => <ScanningIcon icon={MousePointer2} active={isHighPotential} />}
+            />
+            <Field
+              label="Match Type"
+              value={matchTypeDecoded.label}
+              icon={ShieldCheck}
+              tip="How closely the user's search matched your keyword settings."
+            />
+            <Field
+              label="Campaign"
+              value={safeDecode(intent.utm_campaign || '—')}
+              tip="The marketing campaign responsible for this visitor."
+            />
+          </Quadrant>
 
-          {/* TARGET */}
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-3 flex items-center gap-1.5 leading-none">
-              <span aria-hidden>👤</span> TARGET ANALYSIS
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <div className="flex gap-3 items-center">
-                <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                  <MapPin className="h-4 w-4 text-slate-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 leading-none mb-1">Location</div>
-                  <div className="text-slate-900 font-semibold truncate leading-none">{locationDisplay}</div>
-                </div>
-              </div>
+          {/* Q2: IDENTITY (Hardware DNA) */}
+          <Quadrant title="Identity" icon={Cpu}>
+            <Field
+              label="Device / OS"
+              value={device.label}
+              icon={device.icon}
+              highlight
+              tip="The visitor's hardware and operating system. Premium devices often indicate higher buying power."
+            />
+            <Field
+              label="Hardware DNA"
+              value={hwSummary || 'Detecting...'}
+              icon={Monitor}
+              tip="Detailed hardware specs (RAM/CPU). Used to distinguish real humans from low-end bot farms."
+            />
+            <Field
+              label="Carrier / ISP"
+              value={intent.telco_carrier || 'Identifying...'}
+              icon={() => <PulseSignal active={!!intent.telco_carrier}><Signal className="h-3 w-3" /></PulseSignal>}
+              tip="The internet service provider or mobile carrier being used."
+            />
+            <Field
+              label="Location"
+              value={locationDisplay}
+              icon={MapPin}
+              tip="The geographic source of the click, verified via IP headers."
+            />
+          </Quadrant>
 
-              <div className="flex gap-3 items-center">
-                <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                  <device.icon className="h-4 w-4 text-slate-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 leading-none mb-1">Device / OS</div>
-                  <div className="text-slate-900 font-semibold truncate leading-none">{device.label}</div>
-                </div>
-              </div>
+          {/* Q3: BEHAVIOR (Action Pulse) */}
+          <Quadrant title="Behavior" icon={MousePointer2}>
+            <Field
+              label="Engagement"
+              value={intent.max_scroll_percentage ? `${intent.max_scroll_percentage}% Page Depth` : 'Low Engagement'}
+              icon={() => <ScanningIcon icon={Flame} active={intent.max_scroll_percentage && intent.max_scroll_percentage > 50} />}
+              highlight={intent.max_scroll_percentage && intent.max_scroll_percentage > 70}
+              tip="How far down the user scrolled. >70% indicates high interest in your content."
+            />
+            <Field
+              label="Active Time"
+              value={intent.total_active_seconds ? `${intent.total_active_seconds}s Focus Time` : 'Idle Browser'}
+              icon={Clock}
+              highlight={intent.total_active_seconds && intent.total_active_seconds > 30}
+              tip="Purely active time spent interacting with the page, excluding background tabs."
+            />
+            <Field
+              label="Interactions"
+              value={`${intent.cta_hover_count || 0} CTA Hovers`}
+              icon={Zap}
+              tip="The number of times the user hovered over calls-to-action (Buttons/WhatsApp)."
+            />
+          </Quadrant>
 
-              <div className="flex gap-3 items-center">
-                <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                  <Icons.barChart className="h-4 w-4 text-slate-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 leading-none mb-1">Network</div>
-                  <div className="text-slate-900 font-semibold truncate leading-none">{intent.ads_network || 'Google Ads'}</div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 items-center">
-                <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                  <Icons.phone className="h-4 w-4 text-slate-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 leading-none mb-1">Carrier / ISP</div>
-                  <div className="text-slate-900 font-semibold truncate leading-none">{intent.telco_carrier || 'Identifying…'}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sözleşme Değeri */}
-          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-4 py-2 flex items-center justify-between">
-            <div className="text-[10px] uppercase font-bold text-emerald-600">Estimated Value</div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold tabular-nums text-emerald-700">{estDisplay || '—'}</span>
-              {isHighSegment && <Badge className="bg-emerald-600 text-[9px] h-4">VIP</Badge>}
-            </div>
-          </div>
+          {/* Q4: INTELLIGENCE (Context) */}
+          <Quadrant title="Intelligence" icon={ShieldCheck} className={isHighPotential ? "border-amber-500/30 bg-amber-500/5" : ""}>
+            <Field
+              label="Verification"
+              value={intent.click_id ? "GCLID Active" : "No Ad Signal"}
+              icon={() => <PulseSignal active={!!intent.click_id}><ShieldCheck className="h-3 w-3" /></PulseSignal>}
+              highlight={!!intent.click_id}
+              tip="Verified Google Click ID (GCLID). Guarantees the lead came directly from a paid Google Ad."
+            />
+            <Field
+              label="Referrer Host"
+              value={intent.referrer_host || 'Direct / Ad Click'}
+              icon={ExternalLink}
+              tip="The external website the user came from before arriving at your landing page."
+            />
+            <Field
+              label="Lead Potential"
+              value={estDisplay || 'Evaluating...'}
+              icon={Zap}
+              highlight
+              tip="Estimated financial value of this potential deal based on site-wide averages."
+            />
+          </Quadrant>
         </div>
+
+        {/* BOTTOM AI INSIGHT BAR */}
+        {intent.ai_summary && (
+          <div className="mt-2 p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 flex gap-2 items-start">
+            <span className="text-[10px] p-1 bg-emerald-500 rounded text-white leading-none">AI</span>
+            <p className="text-[11px] leading-tight text-emerald-700/80 font-medium">
+              {intent.ai_summary}
+            </p>
+          </div>
+        )}
       </CardContent>
 
-      {/* Footer: JUNK | SKIP | SEAL DEAL */}
-      <CardFooter className="px-4 pb-4 pt-2 shrink-0">
-        <div className="grid w-full grid-cols-3 gap-2">
+      <CardFooter className="p-4 pt-0 gap-2 shrink-0 z-10">
+        <div className="grid grid-cols-3 gap-2 w-full">
           <Button
             variant="outline"
-            className="h-10 border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors"
+            size="sm"
+            className="h-9 border-slate-200 hover:bg-rose-50 hover:text-rose-700 transition-all font-bold text-[11px]"
             onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
           >
-            <Icons.x className="h-4 w-4 mr-2" />
             JUNK
           </Button>
           <Button
             variant="outline"
-            className="h-10 border-slate-200 text-slate-600 hover:bg-slate-50"
+            size="sm"
+            className="h-9 border-slate-200 font-bold text-[11px]"
             onClick={() => onSkip({ id: intent.id })}
           >
             SKIP
           </Button>
           <Button
-            variant="default"
-            className="h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-600/20"
-            onClick={() =>
-              onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })
-            }
-            data-testid="hunter-card-seal-deal"
+            size="sm"
+            className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] shadow-lg shadow-emerald-500/20"
+            onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
           >
-            <Icons.check className="h-4 w-4 mr-1.5" />
             SEAL
           </Button>
         </div>
@@ -372,4 +458,3 @@ export function HunterCard({
     </Card>
   );
 }
-

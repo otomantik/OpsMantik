@@ -22,6 +22,11 @@ export interface CommandCenterP0Stats {
   estimated_budget_saved: number;
   projected_revenue: number;
 
+  // Enterprise Metrics
+  total_leads: number;
+  gclid_leads: number;
+  avg_scroll_depth: number;
+
   inbox_zero_now: boolean;
 }
 

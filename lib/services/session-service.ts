@@ -18,6 +18,7 @@ interface IncomingData {
     deviceType: string;
     fingerprint?: string | null;
     utm?: any;
+    referrer?: string | null;
 }
 
 export class SessionService {
@@ -113,6 +114,25 @@ export class SessionService {
             updates.telco_carrier = geoInfo.telco_carrier ?? null;
             updates.browser = deviceInfo.browser || null;
 
+            // Hardware DNA Updates
+            updates.browser_language = deviceInfo.browser_language;
+            updates.device_memory = deviceInfo.device_memory;
+            updates.hardware_concurrency = deviceInfo.hardware_concurrency;
+            updates.screen_width = deviceInfo.screen_width;
+            updates.screen_height = deviceInfo.screen_height;
+            updates.pixel_ratio = deviceInfo.pixel_ratio;
+            updates.gpu_renderer = deviceInfo.gpu_renderer;
+
+            // Extended Signals
+            updates.connection_type = meta?.con_type || null;
+            if (data.referrer) {
+                try {
+                    updates.referrer_host = new URL(data.referrer).hostname;
+                } catch {
+                    updates.referrer_host = data.referrer;
+                }
+            }
+
             if (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device)) {
                 updates.device_type = utm.device.toLowerCase();
             }
@@ -162,6 +182,25 @@ export class SessionService {
             ads_placement: utm?.placement || null,
             telco_carrier: geoInfo.telco_carrier || null,
             browser: deviceInfo.browser || null,
+            // Hardware DNA
+            browser_language: deviceInfo.browser_language,
+            device_memory: deviceInfo.device_memory,
+            hardware_concurrency: deviceInfo.hardware_concurrency,
+            screen_width: deviceInfo.screen_width,
+            screen_height: deviceInfo.screen_height,
+            pixel_ratio: deviceInfo.pixel_ratio,
+            gpu_renderer: deviceInfo.gpu_renderer,
+            // Extended Signals
+            connection_type: meta?.con_type || null,
+            referrer_host: (function () {
+                if (!data.url && !data.referrer) return null;
+                try {
+                    return new URL(data.referrer || '').hostname || null;
+                } catch {
+                    return data.referrer || null;
+                }
+            })(),
+            is_returning: false, // Default for new session, could be checked against DB later
         };
 
         const { data: newSession, error: sError } = await adminClient

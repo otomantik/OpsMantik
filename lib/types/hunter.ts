@@ -36,10 +36,26 @@ export interface HunterIntent {
   device_os?: string | null;
   browser?: string | null;
   device_model?: string | null;
+  browser_language?: string | null;
+  device_memory?: number | null;
+  hardware_concurrency?: number | null;
+  screen_width?: number | null;
+  screen_height?: number | null;
+  pixel_ratio?: number | null;
+  gpu_renderer?: string | null;
+  connection_type?: string | null;
+  is_returning?: boolean | null;
+  referrer_host?: string | null;
   network?: string | null;
   telco_carrier?: string | null;
   ads_network?: string | null;
   ads_placement?: string | null;
+  // Behavior (Action Pulse)
+  max_scroll_percentage?: number | null;
+  cta_hover_count?: number | null;
+  form_focus_duration?: number | null;
+  total_active_seconds?: number | null;
+  engagement_score?: number | null;
 
   // Financial & AI
   estimated_value?: number | null;
