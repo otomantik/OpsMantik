@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
-import { DashboardShell } from '@/components/dashboard-v2/DashboardShell';
+import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { isAdmin } from '@/lib/auth/isAdmin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 

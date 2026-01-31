@@ -20,6 +20,7 @@ export interface CommandCenterP0Stats {
   assumed_cpc: number;
   currency: string;
   estimated_budget_saved: number;
+  projected_revenue: number;
 
   inbox_zero_now: boolean;
 }
@@ -57,7 +58,7 @@ export function useCommandCenterP0Stats(
     setError(null);
     try {
       const supabase = createClient();
-      const { data, error: rpcError } = await supabase.rpc('get_command_center_p0_stats_v1', {
+      const { data, error: rpcError } = await supabase.rpc('get_command_center_p0_stats_v2', {
         p_site_id: siteId,
         p_date_from: dateRange.fromIso,
         p_date_to: dateRange.toIso,

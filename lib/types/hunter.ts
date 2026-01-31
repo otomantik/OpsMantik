@@ -9,17 +9,22 @@ export type HunterMatchTypeRaw = 'e' | 'p' | 'b' | string;
 /** Decoded match intent for UI badges (Exact = High Intent, Broad = Medium) */
 export type HunterMatchIntentType = 'exact' | 'phrase' | 'broad' | 'unknown';
 
-export interface HunterCardIntentV3 {
+/** Unified Hunter Intent (v3) - Single source of truth */
+export interface HunterIntent {
   id: string;
-  intent_action?: 'whatsapp' | 'phone' | 'form' | 'other' | null;
-  intent_target?: string | null;
   created_at: string;
+  intent_action?: 'whatsapp' | 'phone' | 'form' | 'other' | string | null;
+  intent_target?: string | null;
 
   // Search & attribution (INTEL BOX)
+  page_url?: string | null;
+  intent_page_url?: string | null;
   utm_term?: string | null;
   utm_campaign?: string | null;
+  utm_campaign_id?: string | null;
   utm_source?: string | null;
-  /** Raw from Google: e=Exact, p=Phrase, b=Broad */
+  utm_medium?: string | null;
+  utm_content?: string | null;
   matchtype?: string | null;
 
   // Geo (TARGET HUD)
@@ -28,9 +33,12 @@ export interface HunterCardIntentV3 {
 
   // Device (TARGET HUD)
   device_type?: string | null;
+  device_os?: string | null;
   device_model?: string | null;
   network?: string | null;
   telco_carrier?: string | null;
+  ads_network?: string | null;
+  ads_placement?: string | null;
 
   // Financial & AI
   estimated_value?: number | null;
@@ -40,33 +48,36 @@ export interface HunterCardIntentV3 {
   ai_summary?: string | null;
   ai_tags?: string[] | null;
 
-  // Existing fields
-  page_url?: string | null;
-  intent_page_url?: string | null;
+  // Metadata
   intent_stamp?: string | null;
   risk_level?: 'low' | 'high' | string | null;
+  risk_reasons?: string[] | null;
   total_duration_sec?: number | null;
   click_id?: string | null;
   matched_session_id?: string | null;
   status?: string | null;
+  event_count?: number | null;
+
+  // OCI/Backend
   oci_status?: string | null;
   oci_status_updated_at?: string | null;
   oci_uploaded_at?: string | null;
   oci_batch_id?: string | null;
   oci_error?: string | null;
   oci_matchable?: boolean;
-  risk_reasons?: string[];
-  oci_stage?: string;
+  oci_stage?: string | null;
   attribution_source?: string | null;
-  event_count?: number | null;
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
 }
 
 export interface HunterCardV3Props {
-  intent: HunterCardIntentV3;
+  intent: HunterIntent;
   siteId?: string;
-  onSeal?: (intent: HunterCardIntentV3) => void;
-  onJunk?: (intent: HunterCardIntentV3, reason?: string) => void;
-  onWhatsApp?: (intent: HunterCardIntentV3) => void;
+  onSeal?: (intent: HunterIntent) => void;
+  onJunk?: (intent: HunterIntent, reason?: string) => void;
+  onWhatsApp?: (intent: HunterIntent) => void;
 }
 
 /**

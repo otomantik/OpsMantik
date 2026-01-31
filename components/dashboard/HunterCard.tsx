@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { safeDecode } from '@/lib/utils/string-utils';
-import { decodeMatchType } from '@/lib/types/hunter';
+import { decodeMatchType, type HunterIntent } from '@/lib/types/hunter';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   CheckCircle2,
@@ -25,45 +25,6 @@ import {
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
-/** HunterCard v3 intent shape (aligned with get_recent_intents_v2 + HunterCardIntentV3) */
-export type HunterIntent = {
-  id: string;
-  intent_action?: string | null;
-  intent_target?: string | null;
-  created_at: string;
-
-  // INTEL BOX (get_recent_intents_v2)
-  page_url?: string | null;
-  intent_page_url?: string | null;
-  utm_term?: string | null;
-  utm_campaign?: string | null;
-  utm_campaign_id?: string | null; // from URL when name missing
-  utm_source?: string | null;
-  utm_medium?: string | null;
-  utm_content?: string | null;
-  matchtype?: string | null; // e=Exact, p=Phrase, b=Broad
-
-  // TARGET HUD
-  city?: string | null;
-  district?: string | null;
-  device_type?: string | null;
-  device_os?: string | null;
-  ads_network?: string | null;
-  ads_placement?: string | null;
-  total_duration_sec?: number | null;
-  click_id?: string | null;
-  matched_session_id?: string | null;
-
-  // CASINO CHIP
-  estimated_value?: number | null;
-  currency?: string | null;
-
-  // Risk & AI
-  risk_level?: 'low' | 'high' | string | null;
-  ai_score?: number | null;
-  ai_summary?: string | null;
-  ai_tags?: string[] | null;
-};
 
 type PrimaryIntent =
   | { kind: 'keyword'; label: 'KEYWORD'; icon: typeof Search; value: string }
@@ -108,82 +69,7 @@ function sourceIcon(t: HunterSourceType) {
   return Sparkles;
 }
 
-function safePath(url: string | null | undefined): string {
-  if (!url) return '/';
-  try {
-    return new URL(url).pathname || '/';
-  } catch {
-    // Could already be a path
-    if (url.startsWith('/')) return url;
-    return '/';
-  }
-}
 
-function titleCaseSlug(slug: string): string {
-  const decoded = safeDecode(slug);
-  const clean = decoded
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!clean) return '';
-  return clean
-    .split(' ')
-    .filter(Boolean)
-    .map((w) =>
-      w.length <= 2
-        ? w.toLocaleUpperCase('tr-TR')
-        : (w[0]?.toLocaleUpperCase('tr-TR') ?? '') + w.slice(1).toLocaleLowerCase('tr-TR')
-    )
-    .join(' ');
-}
-
-/**
- * CHAMELEON INTELLIGENCE
- * - Search: utm_term exists -> KEYWORD
- * - PMax: no utm_term -> derive from page path slug -> INTEREST
- * - Fallback: utm_campaign or "General Visit"
- * Slug: safeDecode, dashes to spaces, Turkish-aware capitalize (tr-TR).
- */
-function getPrimaryIntent(intent: HunterIntent): PrimaryIntent {
-  const termRaw = (intent.utm_term || '').trim();
-  const term = termRaw ? safeDecode(termRaw) : '';
-  if (term) {
-    return { kind: 'keyword', label: 'KEYWORD', icon: Search, value: term };
-  }
-
-  const pageUrl = intent.page_url || intent.intent_page_url || null;
-  const path = safePath(pageUrl);
-  const segments = path.split('/').filter(Boolean);
-  const last = segments[segments.length - 1] || '';
-  const derived = titleCaseSlug(last);
-  if (derived && derived.toLocaleLowerCase('tr-TR') !== 'home' && derived.length >= 3) {
-    return { kind: 'interest', label: 'INTEREST', icon: ShoppingBag, value: derived };
-  }
-
-  const campaignRaw = (intent.utm_campaign || '').trim();
-  const campaign = campaignRaw ? safeDecode(campaignRaw) : '';
-  return { kind: 'fallback', label: 'CAMPAIGN', icon: Sparkles, value: campaign || 'General Visit' };
-}
-
-function maskIdentity(v: string): string {
-  const s = (v || '').toString().trim();
-  if (!s) return '—';
-  const digits = s.replace(/[^\d+]/g, '');
-  const out = digits || s;
-  return out;
-}
-
-function secondsToHuman(sec: number | null | undefined): string {
-  if (typeof sec !== 'number' || Number.isNaN(sec)) return '—';
-  const s = Math.max(0, Math.floor(sec));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  if (m < 60) return `${m}m ${r}s`;
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${h}h ${mm}m`;
-}
 
 /** Display: `${device_type}` + (device_os ? ` · ${device_os}` : ''). E.g. "Mobile · iOS", "Desktop · Windows". */
 function deviceLabel(
@@ -297,7 +183,7 @@ export function HunterCard({
           <div className="flex items-center gap-2 min-w-0">
             <div
               className={cn(
-                'inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border',
+                'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border',
                 t === 'whatsapp' || isHighIntent
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : t === 'phone'
@@ -318,7 +204,7 @@ export function HunterCard({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             {isHighPotential ? (
               <Badge className="bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
                 <Flame className="h-3.5 w-3.5 mr-1" />
@@ -348,7 +234,7 @@ export function HunterCard({
             <div className="space-y-2.5 text-sm">
               <div className="flex gap-2">
                 <span className="text-muted-foreground shrink-0 w-20">Keyword:</span>
-                <span className="font-bold text-foreground break-words">{keywordDisplay}</span>
+                <span className="font-bold text-foreground wrap-break-word">{keywordDisplay}</span>
               </div>
               <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground shrink-0 w-20">Match:</span>

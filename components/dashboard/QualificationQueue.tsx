@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Icons } from '@/components/icons';
-import type { IntentForQualification } from './IntentQualificationCard';
+import { HunterIntent } from '@/lib/types/hunter';
 import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
@@ -23,27 +22,75 @@ export interface QualificationQueueProps {
   scope: 'ads' | 'all';
 }
 
-function parseRpcJsonbArray<T>(data: unknown): T[] {
+function parseHunterIntents(data: unknown): HunterIntent[] {
   if (!data) return [];
+  let rows: any[] = [];
+
   if (Array.isArray(data)) {
     if (data.length === 0) return [];
-    if (typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
-      return data as T[];
-    }
+    // Handle specific Supabase behavior where jsonb[] might be strings
     if (typeof data[0] === 'string') {
-      const out: T[] = [];
-      for (const item of data as string[]) {
+      rows = data.map(item => {
         try {
-          const parsed = JSON.parse(item);
-          if (parsed && typeof parsed === 'object') out.push(parsed as T);
+          return typeof item === 'string' ? JSON.parse(item) : item;
         } catch {
-          // ignore
+          return null;
         }
-      }
-      return out;
+      }).filter(Boolean);
+    } else {
+      rows = data;
     }
   }
-  return [];
+
+  // Basic shape validation (could be stricter with Zod)
+  return rows.map((r: any) => ({
+    id: r.id,
+    created_at: r.created_at,
+    intent_action: r.intent_action ?? null,
+    intent_target: r.intent_target ?? null,
+    intent_page_url: r.intent_page_url ?? null,
+    page_url: r.page_url ?? r.intent_page_url ?? null,
+    matched_session_id: r.matched_session_id ?? null,
+    lead_score: r.lead_score ?? null,
+    status: r.status ?? null,
+    click_id: r.click_id ?? null,
+    intent_stamp: r.intent_stamp ?? null,
+
+    // Intel
+    utm_term: r.utm_term ?? null,
+    utm_campaign: r.utm_campaign ?? null,
+    utm_source: r.utm_source ?? null,
+    matchtype: r.matchtype ?? null,
+
+    // Geo/Device
+    city: r.city ?? null,
+    district: r.district ?? null,
+    device_type: r.device_type ?? null,
+    device_os: r.device_os ?? null,
+    ads_network: r.ads_network ?? null,
+    ads_placement: r.ads_placement ?? null,
+
+    // AI/Risk
+    risk_level: r.risk_level ?? null,
+    risk_reasons: Array.isArray(r.risk_reasons) ? r.risk_reasons : null,
+    ai_score: typeof r.ai_score === 'number' ? r.ai_score : null,
+    ai_summary: typeof r.ai_summary === 'string' ? r.ai_summary : null,
+    ai_tags: Array.isArray(r.ai_tags) ? r.ai_tags : null,
+    total_duration_sec: typeof r.total_duration_sec === 'number' ? r.total_duration_sec : null,
+    estimated_value: typeof r.estimated_value === 'number' ? r.estimated_value : null,
+    currency: r.currency ?? null,
+
+    // OCI
+    oci_stage: r.oci_stage ?? null,
+    oci_status: r.oci_status ?? null,
+
+    // Evidence
+    attribution_source: r.attribution_source ?? null,
+    gclid: r.gclid ?? null,
+    wbraid: r.wbraid ?? null,
+    gbraid: r.gbraid ?? null,
+    event_count: typeof r.event_count === 'number' ? r.event_count : null,
+  })) as HunterIntent[];
 }
 
 function ActiveDeckCard({
@@ -57,7 +104,7 @@ function ActiveDeckCard({
   pushHistoryRow,
 }: {
   siteId: string;
-  intent: IntentForQualification;
+  intent: HunterIntent;
   onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
   onSkip: () => void;
@@ -118,33 +165,7 @@ function ActiveDeckCard({
   return (
     <div className={cn(saving && 'opacity-60 pointer-events-none')}>
       <HunterCard
-        intent={{
-          id: intent.id,
-          intent_action: intent.intent_action ?? null,
-          intent_target: intent.intent_target ?? null,
-          created_at: intent.created_at,
-          intent_page_url: intent.intent_page_url ?? null,
-          page_url: (intent as any)?.page_url ?? intent.intent_page_url ?? null,
-          utm_term: (intent as any)?.utm_term ?? null,
-          utm_campaign: (intent as any)?.utm_campaign ?? null,
-          utm_source: (intent as any)?.utm_source ?? null,
-          matchtype: (intent as any)?.matchtype ?? null,
-          risk_level: intent.risk_level ?? null,
-          city: (intent as any)?.city ?? null,
-          district: (intent as any)?.district ?? null,
-          device_type: (intent as any)?.device_type ?? intent.device_type ?? null,
-          device_os: (intent as any)?.device_os ?? intent.device_os ?? null,
-          ads_network: (intent as any)?.ads_network ?? intent.ads_network ?? null,
-          ads_placement: (intent as any)?.ads_placement ?? intent.ads_placement ?? null,
-          total_duration_sec: (intent as any)?.total_duration_sec ?? intent.total_duration_sec ?? null,
-          click_id: intent.click_id ?? null,
-          matched_session_id: intent.matched_session_id ?? null,
-          ai_score: intent.ai_score ?? null,
-          ai_summary: intent.ai_summary ?? null,
-          ai_tags: intent.ai_tags ?? null,
-          estimated_value: (intent as any)?.estimated_value ?? null,
-          currency: (intent as any)?.currency ?? null,
-        }}
+        intent={intent}
         onSeal={({ id, stars }) => handleSeal({ id, stars })}
         onSealDeal={onSealDeal}
         onJunk={({ id, stars }) => handleJunk({ id, stars })}
@@ -156,12 +177,12 @@ function ActiveDeckCard({
 
 export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, scope }) => {
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
-  const [intents, setIntents] = useState<IntentForQualification[]>([]);
+  const [intents, setIntents] = useState<HunterIntent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIntent, setSelectedIntent] = useState<IntentForQualification | null>(null);
+  const [selectedIntent, setSelectedIntent] = useState<HunterIntent | null>(null);
   const [sealModalOpen, setSealModalOpen] = useState(false);
-  const [intentForSeal, setIntentForSeal] = useState<IntentForQualification | null>(null);
+  const [intentForSeal, setIntentForSeal] = useState<HunterIntent | null>(null);
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});
@@ -191,7 +212,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         process.env.NEXT_PUBLIC_RPC_V2 !== '0' &&
         (typeof window === 'undefined' || window.localStorage?.getItem('opsmantik_rpc_v2') !== '0');
 
-      async function fetchRange(adsOnly: boolean) {
+      async function fetchRange(adsOnly: boolean): Promise<HunterIntent[]> {
         let data: unknown = null;
         let fetchError: any = null;
 
@@ -232,24 +253,18 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
         if (fetchError) throw fetchError;
 
-        const rows = parseRpcJsonbArray<any>(data);
+        const rows = parseHunterIntents(data);
         const fromMs = new Date(range.fromIso).getTime();
         const toMs = new Date(range.toIso).getTime();
-        const inRange = rows.filter((r) => {
-          const ts = new Date(r?.created_at || 0).getTime();
+
+        return rows.filter((r) => {
+          const ts = new Date(r.created_at || 0).getTime();
           if (!Number.isFinite(ts)) return false;
-          return ts >= fromMs && ts <= toMs;
+          // Status filter: pending only
+          const s = (r.status || '').toLowerCase();
+          const isPending = !s || s === 'intent';
+          return isPending && ts >= fromMs && ts <= toMs;
         });
-
-        // Queue rule: show *pending human decision* intents.
-        // lead_score can be auto-populated at match time; it should NOT hide rows.
-        const pending = inRange.filter((r) => {
-          const status = (r?.status ?? null) as string | null;
-          const s = status ? String(status).toLowerCase() : null;
-          return s === null || s === 'intent';
-        });
-
-        return pending as any[];
       }
 
       // Scope toggle is the source of truth:
@@ -259,37 +274,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
       const rows = await fetchRange(adsOnly);
       setEffectiveAdsOnly(adsOnly);
 
-      setIntents(
-        rows.map((r) => ({
-          id: r.id,
-          created_at: r.created_at,
-          intent_action: r.intent_action,
-          intent_target: r.intent_target,
-          intent_page_url: r.intent_page_url,
-          matched_session_id: r.matched_session_id,
-          lead_score: r.lead_score ?? null,
-          status: r.status ?? null,
-          click_id: r.click_id ?? null,
-          risk_level: r.risk_level ?? null,
-          risk_reasons: Array.isArray(r.risk_reasons) ? r.risk_reasons : null,
-          oci_stage: r.oci_stage ?? null,
-          oci_status: r.oci_status ?? null,
-          // Evidence fields (best-effort; may be absent depending on RPC/session join)
-          attribution_source: r.attribution_source ?? null,
-          gclid: r.gclid ?? null,
-          wbraid: r.wbraid ?? null,
-          gbraid: r.gbraid ?? null,
-          total_duration_sec: typeof r.total_duration_sec === 'number' ? r.total_duration_sec : null,
-          event_count: typeof r.event_count === 'number' ? r.event_count : null,
-          ai_score: typeof r.ai_score === 'number' ? r.ai_score : null,
-          ai_summary: typeof r.ai_summary === 'string' ? r.ai_summary : null,
-          ai_tags: Array.isArray(r.ai_tags) ? r.ai_tags : null,
-          ads_network: r.ads_network ?? null,
-          ads_placement: r.ads_placement ?? null,
-          device_type: r.device_type ?? null,
-          device_os: r.device_os ?? null,
-        })) as IntentForQualification[]
-      );
+      setIntents(rows);
     } catch (err: any) {
       setError(err?.message || 'Failed to load intents');
     } finally {
@@ -375,10 +360,6 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     // Intent was qualified, refresh the list
     fetchUnscoredIntents();
   }, [fetchUnscoredIntents]);
-
-  const handleOpenSession = useCallback((intent: IntentForQualification) => {
-    setSelectedIntent(intent);
-  }, []);
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedIntent(null);
@@ -490,14 +471,14 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
             intent={{
               id: selectedIntent.id,
               created_at: selectedIntent.created_at,
-              intent_action: selectedIntent.intent_action,
-              intent_target: selectedIntent.intent_target,
-              intent_page_url: selectedIntent.intent_page_url,
+              intent_action: selectedIntent.intent_action ?? null,
+              intent_target: selectedIntent.intent_target ?? null,
+              intent_page_url: selectedIntent.intent_page_url ?? null,
               intent_stamp: null,
               matched_session_id: selectedIntent.matched_session_id,
-              lead_score: selectedIntent.lead_score,
-              status: selectedIntent.status,
-              click_id: selectedIntent.click_id,
+              lead_score: selectedIntent.lead_score ?? null,
+              status: selectedIntent.status ?? null,
+              click_id: selectedIntent.click_id ?? null,
             }}
             onClose={handleCloseDrawer}
           />
@@ -506,18 +487,18 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     );
   }
 
-  const mergedTop: IntentForQualification | null = top
+  const mergedTop: HunterIntent | null = top
     ? {
-        ...top,
-        ...(top.matched_session_id ? sessionEvidence[top.matched_session_id] : {}),
-      }
+      ...top,
+      ...(top.matched_session_id ? sessionEvidence[top.matched_session_id] : {}),
+    }
     : null;
 
-  const mergedNext: IntentForQualification | null = next
+  const mergedNext: HunterIntent | null = next
     ? {
-        ...next,
-        ...(next.matched_session_id ? sessionEvidence[next.matched_session_id] : {}),
-      }
+      ...next,
+      ...(next.matched_session_id ? sessionEvidence[next.matched_session_id] : {}),
+    }
     : null;
 
   function peekBorderClass(action: string | null | undefined) {
@@ -665,7 +646,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
             </div>
 
             {/* fade mask */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-b from-transparent to-background" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-b from-transparent to-background" />
           </div>
         </div>
       </div>
@@ -719,14 +700,14 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           intent={{
             id: selectedIntent.id,
             created_at: selectedIntent.created_at,
-            intent_action: selectedIntent.intent_action,
-            intent_target: selectedIntent.intent_target,
-            intent_page_url: selectedIntent.intent_page_url,
-            intent_stamp: null,
+            intent_action: selectedIntent.intent_action ?? null,
+            intent_target: selectedIntent.intent_target ?? null,
+            intent_page_url: selectedIntent.intent_page_url ?? null,
+            intent_stamp: selectedIntent.intent_stamp ?? null,
             matched_session_id: selectedIntent.matched_session_id,
-            lead_score: selectedIntent.lead_score,
-            status: selectedIntent.status,
-            click_id: selectedIntent.click_id,
+            lead_score: selectedIntent.lead_score ?? null,
+            status: selectedIntent.status ?? null,
+            click_id: selectedIntent.click_id ?? null,
           }}
           onClose={handleCloseDrawer}
         />

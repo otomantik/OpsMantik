@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { QualificationQueue } from './QualificationQueue';
 import { BreakdownWidgets } from './widgets/BreakdownWidgets';
+import { PulseProjectionWidgets } from './widgets/PulseProjectionWidgets';
 import { CommandCenterP0Panel } from './CommandCenterP0Panel';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -38,6 +38,9 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const [scope, setScope] = useState<'ads' | 'all'>('ads'); // default ADS ONLY
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  const initialFrom = initialTodayRange?.fromIso;
+  const initialTo = initialTodayRange?.toIso;
+
   // GO3: single source of truth for queue day selection (Europe/Istanbul TRT boundaries, UTC)
   // Use initialTodayRange from server (URL) when available so server and client render same data-to (no hydration mismatch).
   const queueRange = useMemo(() => {
@@ -45,15 +48,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
     const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
-      if (initialTodayRange?.fromIso && initialTodayRange?.toIso) {
-        return { day: 'today' as const, fromIso: initialTodayRange.fromIso, toIso: initialTodayRange.toIso };
+      if (initialFrom && initialTo) {
+        return { day: 'today' as const, fromIso: initialFrom, toIso: initialTo };
       }
       return { day: 'today' as const, fromIso: todayStartUtcIso, toIso: nowUtc.toISOString() };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
     const toMs = todayStartUtcMs - 1; // inclusive end-of-yesterday (23:59:59.999 TRT)
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
-  }, [selectedDay, initialTodayRange?.fromIso, initialTodayRange?.toIso]);
+  }, [selectedDay, initialFrom, initialTo]);
 
   // Scope-aware HUD stats (refetches when scope or range changes)
   const { stats, loading } = useCommandCenterP0Stats(
@@ -64,6 +67,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const captured = loading ? '…' : String(stats?.sealed ?? 0);
   const filtered = loading ? '…' : String(stats?.junk ?? 0);
   const saved = loading ? '…' : `${(stats?.estimated_budget_saved ?? 0).toLocaleString()} ${stats?.currency || ''}`.trim();
+  const revenue = loading ? '…' : `${(stats?.projected_revenue ?? 0).toLocaleString()} ${stats?.currency || ''}`.trim();
 
   const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
   const showRealtimeDebug =
@@ -72,7 +76,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   return (
     <div className="om-dashboard-reset min-h-screen bg-muted/30 overflow-x-hidden">
       {/* Tactical Header */}
-      <header className="sticky top-0 z-50 relative border-b border-border bg-background/95 backdrop-blur overflow-x-hidden">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur overflow-x-hidden">
         <div className="mx-auto max-w-md px-4 py-3 w-full min-w-0">
           <div className="flex items-center justify-between gap-2 min-w-0">
             {/* Brand: min-w-0 + truncate to prevent overflow */}
@@ -103,10 +107,10 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   });
                   const lastSignalLabel = realtime.lastSignalAt
                     ? formatTimestampWithTZ(realtime.lastSignalAt.toISOString(), {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })
                     : '—';
                   return (
                     <>
@@ -234,7 +238,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
           </Dialog>
 
           {/* Scoreboard (HUD) */}
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid grid-cols-4 gap-2">
             <div className="rounded-lg border border-border bg-background p-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Target className="h-4 w-4 text-emerald-600" />
@@ -254,7 +258,14 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                 <Wallet className="h-4 w-4 text-amber-600" />
                 <span className="text-[10px] font-medium uppercase tracking-wider">Saved</span>
               </div>
-              <div className="mt-1 text-sm font-semibold tabular-nums text-amber-700 truncate">{saved}</div>
+              <div className="mt-1 text-[10px] font-semibold tabular-nums text-amber-700 truncate">{saved}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-background p-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Check className="h-4 w-4 text-blue-600" />
+                <span className="text-[10px] font-medium uppercase tracking-wider">Revenue</span>
+              </div>
+              <div className="mt-1 text-[10px] font-semibold tabular-nums text-blue-700 truncate">{revenue}</div>
             </div>
           </div>
         </div>
@@ -262,22 +273,17 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
       {/* Breakdown widgets + Feed */}
       <main className="mx-auto max-w-md px-4 py-4 space-y-4 pb-20 overflow-x-hidden min-w-0">
+        <PulseProjectionWidgets
+          siteId={siteId}
+          dateRange={queueRange}
+          scope={scope}
+        />
         <BreakdownWidgets
           siteId={siteId}
           dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
           adsOnly={scope === 'ads'}
         />
         <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
-
-        {/* Kill Feed placeholder (Phase 2) */}
-        <Card className="border border-dashed border-border bg-background">
-          <div className="p-4">
-            <div className="text-sm font-medium">Kill Feed (History)</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              Coming next: a lightweight list of processed leads (time • identity • status).
-            </div>
-          </div>
-        </Card>
       </main>
     </div>
   );

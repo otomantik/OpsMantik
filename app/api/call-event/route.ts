@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { rateLimit, getClientId } from '@/lib/rate-limit';
+import { RateLimitService } from '@/lib/services/RateLimitService';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { debugLog, debugWarn } from '@/lib/utils';
-import { logInfo, logError } from '@/lib/log';
+import { logError } from '@/lib/log';
 import * as Sentry from '@sentry/nextjs';
 
 export const dynamic = 'force-dynamic';
@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Rate limiting: 50 requests per minute per IP (calls are less frequent)
-        const clientId = getClientId(req);
-        const rateLimitResult = rateLimit(clientId, 50, 60 * 1000);
+        const clientId = RateLimitService.getClientId(req);
+        const rateLimitResult = await RateLimitService.check(clientId, 50, 60 * 1000);
 
         if (!rateLimitResult.allowed) {
             return NextResponse.json(
