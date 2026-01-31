@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { safeDecode } from '@/lib/utils/string-utils';
 import { decodeMatchType } from '@/lib/types/hunter';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   CheckCircle2,
   FileText,
@@ -46,6 +47,7 @@ export type HunterIntent = {
   city?: string | null;
   district?: string | null;
   device_type?: string | null;
+  device_os?: string | null;
   ads_network?: string | null;
   ads_placement?: string | null;
   total_duration_sec?: number | null;
@@ -183,12 +185,24 @@ function secondsToHuman(sec: number | null | undefined): string {
   return `${h}h ${mm}m`;
 }
 
-function deviceLabel(deviceType: string | null | undefined): { icon: typeof Smartphone | typeof Monitor; label: string } {
-  const d = (deviceType || '').toLowerCase();
-  if (!d) return { icon: Smartphone, label: 'Device —' };
-  if (d.includes('desktop') || d.includes('web')) return { icon: Monitor, label: 'Desktop' };
-  if (d.includes('mobile') || d.includes('ios') || d.includes('android')) return { icon: Smartphone, label: d.replace(/_/g, ' ') };
-  return { icon: Smartphone, label: d.replace(/_/g, ' ') };
+/** Display: `${device_type}` + (device_os ? ` · ${device_os}` : ''). E.g. "Mobile · iOS", "Desktop · Windows". */
+function deviceLabel(
+  deviceType: string | null | undefined,
+  deviceOs?: string | null
+): { icon: typeof Smartphone | typeof Monitor; label: string } {
+  const d = (deviceType || '').toLowerCase().trim();
+  const os = (deviceOs || '').trim();
+  const typeLabel = !d
+    ? 'Device'
+    : d.includes('desktop') || d.includes('web')
+      ? 'Desktop'
+      : d.includes('tablet')
+        ? 'Tablet'
+        : 'Mobile';
+  const label = os ? `${typeLabel} · ${os}` : typeLabel;
+  if (!d && !os) return { icon: Smartphone, label: 'Device —' };
+  if (d.includes('desktop') || d.includes('web')) return { icon: Monitor, label: label };
+  return { icon: Smartphone, label: label };
 }
 
 /** Format estimated_value for CASINO CHIP: 5000 -> "5K", 20000 -> "20K" */
@@ -220,24 +234,23 @@ export function HunterCard({
     matchTypeDecoded.type === 'exact' || (typeof intent.ai_score === 'number' && intent.ai_score > 80);
   const isHighIntent = t === 'whatsapp' || isHighPotential;
 
+  // 1) Keyword: ONLY sessions.utm_term; no path fallback; null/empty -> '—'
   const keywordDisplay = useMemo(() => {
     const term = (intent.utm_term || '').trim();
-    if (term) return safeDecode(term);
-    const primary = getPrimaryIntent(intent);
-    return primary.value;
-  }, [intent]);
+    return term ? safeDecode(term) : '—';
+  }, [intent.utm_term]);
 
+  // 2) Match: sessions.matchtype (e/p/b -> Exact Match/Phrase/Broad); null -> '—'
+  const matchDisplay = useMemo(
+    () => decodeMatchType(intent.matchtype).label,
+    [intent.matchtype]
+  );
+
+  // 3) Campaign: ONLY sessions.utm_campaign; null -> '—'
   const campaignDisplay = useMemo(() => {
     const c = (intent.utm_campaign || '').trim();
-    const id = (intent.utm_campaign_id || '').trim();
-    if (c) {
-      const decoded = safeDecode(c);
-      if (/^\d{6,}$/.test(decoded)) return `Campaign ID: ${decoded.slice(0, 4)}…`;
-      return decoded;
-    }
-    if (id) return `Campaign ID: ${id.length > 4 ? id.slice(0, 4) + '…' : id}`;
-    return '—';
-  }, [intent.utm_campaign, intent.utm_campaign_id]);
+    return c ? safeDecode(c) : '—';
+  }, [intent.utm_campaign]);
 
   const districtLabel = useMemo(() => safeDecode((intent.district || '').trim()) || null, [intent.district]);
   const cityLabel = useMemo(() => safeDecode((intent.city || '').trim()) || null, [intent.city]);
@@ -249,7 +262,10 @@ export function HunterCard({
   }, [districtLabel, cityLabel]);
   const hasLocation = Boolean(districtLabel || cityLabel);
 
-  const device = useMemo(() => deviceLabel(intent.device_type ?? null), [intent.device_type]);
+  const device = useMemo(
+    () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null),
+    [intent.device_type, intent.device_os]
+  );
 
   const displayScore = useMemo(() => {
     const raw = intent.ai_score;
@@ -309,9 +325,14 @@ export function HunterCard({
                 HIGH POTENTIAL
               </Badge>
             ) : null}
-            <Badge variant="secondary" className="font-mono font-semibold">
-              Score: {displayScore}
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="font-mono font-semibold cursor-help">
+                  Score: {displayScore}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>AI score (if pipeline enabled).</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </CardHeader>
@@ -327,7 +348,7 @@ export function HunterCard({
             <div className="space-y-2.5 text-sm">
               <div className="flex gap-2">
                 <span className="text-muted-foreground shrink-0 w-20">Keyword:</span>
-                <span className="font-bold text-foreground break-words">{keywordDisplay || '—'}</span>
+                <span className="font-bold text-foreground break-words">{keywordDisplay}</span>
               </div>
               <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground shrink-0 w-20">Match:</span>
@@ -342,10 +363,10 @@ export function HunterCard({
                     )}
                   >
                     {matchTypeDecoded.highIntent ? <Flame className="h-3 w-3 mr-0.5" /> : null}
-                    {matchTypeDecoded.highIntent ? 'Exact Match' : matchTypeDecoded.label}
+                    {matchDisplay}
                   </Badge>
                 ) : (
-                  <span className="text-muted-foreground">—</span>
+                  <span className="text-muted-foreground">{matchDisplay}</span>
                 )}
               </div>
               <div className="flex gap-2">
@@ -397,7 +418,12 @@ export function HunterCard({
 
         {/* Financial bar: EST. VALUE */}
         <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 px-4 py-3 flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-foreground">💰 EST. VALUE:</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="font-semibold text-foreground cursor-help">💰 EST. VALUE:</span>
+            </TooltipTrigger>
+            <TooltipContent>Set when you seal a deal (manual/ops). Not AI.</TooltipContent>
+          </Tooltip>
           <span className="font-bold tabular-nums">
             {estDisplay || '—'}
           </span>
