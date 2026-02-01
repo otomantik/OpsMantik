@@ -70,7 +70,10 @@ export function useCommandCenterP0Stats(
         p_ads_only: adsOnly,
       });
       if (rpcError) throw rpcError;
-      setStats((data as CommandCenterP0Stats) ?? null);
+      // Normalize: Supabase/PostgREST may return jsonb as single-element array or raw object
+      const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
+      const payload = raw && typeof raw === 'object' && 'sealed' in raw ? raw : null;
+      setStats((payload as CommandCenterP0Stats) ?? null);
     } catch (e: any) {
       setError(e?.message || 'Failed to load P0 stats');
     } finally {
@@ -94,13 +97,20 @@ export function useCommandCenterP0Stats(
 
         setStats(prev => {
           if (!prev) return prev;
+          const prevSealed = Number(prev.sealed);
+          const prevJunk = Number(prev.junk);
+          const prevLeads = Number(prev.total_leads);
+          const prevGclid = Number(prev.gclid_leads);
+          const cap = Number(realtimeData.captured) || 0;
+          const junk = Number(realtimeData.junk) || 0;
+          const gclid = Number(realtimeData.gclid) || 0;
           // Overlay Redis data if it's higher than DB (means DB is still processing)
           return {
             ...prev,
-            sealed: Math.max(prev.sealed, realtimeData.captured || 0),
-            junk: Math.max(prev.junk, realtimeData.junk || 0),
-            total_leads: Math.max(prev.total_leads, realtimeData.captured || 0),
-            gclid_leads: Math.max(prev.gclid_leads, realtimeData.gclid || 0),
+            sealed: Math.max(prevSealed, cap),
+            junk: Math.max(prevJunk, junk),
+            total_leads: Math.max(prevLeads, cap),
+            gclid_leads: Math.max(prevGclid, gclid),
           };
         });
       } catch (e) {
