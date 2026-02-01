@@ -54,6 +54,8 @@ export class EventService {
 
         const insertPayload: Record<string, unknown> = {
                 session_id: session.id,
+                // NOTE: session_month will be set by trigger (trg_events_set_session_month_from_session)
+                // Trigger ensures it matches session.created_month (which is also trigger-set)
                 session_month: session.created_month,
                 site_id: siteId,
                 url: url,

@@ -182,6 +182,8 @@ export class SessionService {
             gclid: currentGclid,
             wbraid: params.get('wbraid') || meta?.wbraid,
             gbraid: params.get('gbraid') || meta?.gbraid,
+            // NOTE: created_month will be set by trigger (trg_sessions_set_created_month)
+            // We still pass dbMonth for backward compatibility, but trigger overrides it
             created_month: dbMonth,
             attribution_source: attributionSource,
             device_type: deviceType,
