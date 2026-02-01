@@ -5,6 +5,8 @@ import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
 
+export const runtime = 'nodejs';
+
 // Services
 import { SiteService } from '@/lib/services/site-service';
 import { AttributionService } from '@/lib/services/attribution-service';

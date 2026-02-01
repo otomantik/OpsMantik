@@ -4,6 +4,8 @@ import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { Client } from '@upstash/qstash';
 
+export const runtime = 'nodejs';
+
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
 const ALLOWED_ORIGINS = parseAllowedOrigins();

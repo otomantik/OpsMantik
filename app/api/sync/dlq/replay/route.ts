@@ -3,6 +3,8 @@ import { isAdmin } from '@/lib/auth/isAdmin';
 import { adminClient } from '@/lib/supabase/admin';
 import { Client } from '@upstash/qstash';
 
+export const runtime = 'nodejs';
+
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
 
 export async function POST(req: NextRequest) {

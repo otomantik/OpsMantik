@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { StatsService } from '@/lib/services/stats-service';
 import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
 
+export const runtime = 'nodejs';
+
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 export async function GET(req: NextRequest) {

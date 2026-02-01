@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdmin } from '@/lib/auth/isAdmin';
 import { adminClient } from '@/lib/supabase/admin';
 
+export const runtime = 'nodejs';
+
 export async function GET(req: NextRequest) {
   const admin = await isAdmin();
   if (!admin) {

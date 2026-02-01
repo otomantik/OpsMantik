@@ -5,6 +5,8 @@ import { SiteService } from '@/lib/services/site-service';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtDateKey, trtDateKeyToUtcRange } from '@/lib/time/today-range';
 
+export const runtime = 'nodejs';
+
 function monthStartFromDateKey(dateKey: string): string {
   return `${dateKey.slice(0, 7)}-01`;
 }
