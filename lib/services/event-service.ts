@@ -21,6 +21,8 @@ interface EventData {
     geoInfo: any;
     deviceInfo: any;
     client_sid: string;
+    /** Optional idempotency key (worker dedup_event_id); duplicate insert → no double count */
+    ingestDedupId?: string | null;
 }
 
 export class EventService {
@@ -28,7 +30,7 @@ export class EventService {
         const {
             session, siteId, url, event_category, event_action, event_label, event_value,
             meta, referrer, currentGclid, attributionSource, summary, fingerprint, ip,
-            userAgent, geoInfo, deviceInfo, client_sid
+            userAgent, geoInfo, deviceInfo, client_sid, ingestDedupId
         } = data;
 
         debugLog('[SYNC_API] Inserting event for session:', session.id);
@@ -50,9 +52,7 @@ export class EventService {
             isReturningAdUser
         );
 
-        const { error: eError } = await adminClient
-            .from('events')
-            .insert({
+        const insertPayload: Record<string, unknown> = {
                 session_id: session.id,
                 session_month: session.created_month,
                 site_id: siteId,
@@ -76,9 +76,18 @@ export class EventService {
                     gclid: currentGclid,
                     ip_anonymized: ip.replace(/\.\d+$/, '.0')
                 }
-            });
+            };
+        if (ingestDedupId) insertPayload.ingest_dedup_id = ingestDedupId;
+
+        const { error: eError } = await adminClient
+            .from('events')
+            .insert(insertPayload);
 
         if (eError) {
+            if (eError.code === '23505' && ingestDedupId) {
+                debugLog('[SYNC_API] Event insert duplicate (ingest_dedup_id) — idempotent skip');
+                return { leadScore: 0 };
+            }
             console.error('[SYNC_API] Event insert failed:', {
                 message: eError.message,
                 session_id: session.id
@@ -92,8 +101,8 @@ export class EventService {
             session_id: session.id.slice(0, 8) + '...',
         });
 
-        // Update session stats if needed (heartbeat/end)
-        if (event_action === 'heartbeat' || event_action === 'session_end') {
+        // Update session stats: heartbeat, session_end, or conversion (Intent Pulse batch)
+        if (event_action === 'heartbeat' || event_action === 'session_end' || event_category === 'conversion') {
             await this.updateSessionStats(session.id, session.created_month, event_action, meta);
         }
 

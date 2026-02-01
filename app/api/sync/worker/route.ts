@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nextjs';
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
+import { logError } from '@/lib/log';
 
 export const runtime = 'nodejs';
 
@@ -77,11 +78,12 @@ async function handler(req: NextRequest) {
         qstashMessageId = getQstashMessageId(req);
         rawBody = await req.json();
         const {
-            s: site_id, url, sid: client_sid, sm: session_month,
+            s: site_id, sid: client_sid, sm: session_month,
             ec: event_category, ea: event_action, el: event_label, ev: event_value,
             meta, r: referrer, ip, ua: userAgent,
             ingest_id
         } = rawBody;
+        const url = rawBody.url ?? rawBody.u;
 
         if (!site_id || !url) return NextResponse.json({ ok: true });
 
@@ -145,6 +147,9 @@ async function handler(req: NextRequest) {
         // --- 2. Context Layer ---
         const geoResult = extractGeoInfo(null, userAgent, meta);
         const { geoInfo, deviceInfo } = geoResult;
+        // Producer sends isp_asn / is_proxy_detected from client req headers; worker has no client req
+        if (rawBody.isp_asn != null) geoInfo.isp_asn = rawBody.isp_asn;
+        if (rawBody.is_proxy_detected != null) geoInfo.is_proxy_detected = Boolean(rawBody.is_proxy_detected);
 
         const urlObj = new URL(url);
         const params = urlObj.searchParams;
@@ -180,7 +185,8 @@ async function handler(req: NextRequest) {
             siteId: site.id,
             url, event_category, event_action, event_label, event_value,
             meta, referrer, currentGclid, attributionSource, summary,
-            fingerprint, ip, userAgent, geoInfo, deviceInfo, client_sid
+            fingerprint, ip, userAgent, geoInfo, deviceInfo, client_sid,
+            ingestDedupId: dedupEventId
         });
 
         // --- 5. Intent ---
@@ -220,7 +226,16 @@ async function handler(req: NextRequest) {
         }
 
         // DLQ for non-retryable errors; retry for transient ones
+        const ingestIdFromPayload = rawBody?.ingest_id ?? null;
         const retryable = isRetryableError(error);
+        Sentry.setTag('ingest_id', ingestIdFromPayload || 'none');
+        Sentry.setContext('sync_worker_error', {
+            ingest_id: ingestIdFromPayload,
+            qstash_message_id: qstashMessageId,
+            site_id: siteDbId,
+            dedup_event_id: dedupEventId,
+            retryable,
+        });
         if (!retryable) {
             try {
                 await adminClient
@@ -235,13 +250,26 @@ async function handler(req: NextRequest) {
                     });
             } catch { /* ignore */ }
 
-            console.error('[QSTASH_WORKER_DLQ]', error);
+            logError('QSTASH_WORKER_DLQ', {
+                route: 'sync_worker',
+                ingest_id: ingestIdFromPayload ?? undefined,
+                qstash_message_id: qstashMessageId ?? undefined,
+                site_id: siteDbId ?? undefined,
+                dedup_event_id: dedupEventId ?? undefined,
+                error: String((error as Error)?.message ?? error),
+            });
             Sentry.captureException(error);
             // Return 200 so QStash won't retry a poison message.
             return NextResponse.json({ ok: true, dlq: true });
         }
 
-        console.error('[QSTASH_WORKER_ERROR]', error);
+        logError('QSTASH_WORKER_ERROR', {
+            route: 'sync_worker',
+            ingest_id: ingestIdFromPayload ?? undefined,
+            qstash_message_id: qstashMessageId ?? undefined,
+            site_id: siteDbId ?? undefined,
+            error: String((error as Error)?.message ?? error),
+        });
         Sentry.captureException(error);
         return NextResponse.json({ error: 'Worker failed' }, { status: 500 });
     }

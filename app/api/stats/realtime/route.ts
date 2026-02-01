@@ -25,6 +25,8 @@ export async function GET(req: NextRequest) {
         const stats = await StatsService.getRealtimeStats(siteId);
         return NextResponse.json(stats);
     } catch (error) {
-        return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
+        console.error('[STATS_REALTIME] Redis error:', error);
+        // Fallback so dashboard does not break when Redis is down or env missing
+        return NextResponse.json({ captured: 0, gclid: 0, junk: 0, _fallback: true });
     }
 }

@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdmin } from '@/lib/auth/isAdmin';
 import { adminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { Client } from '@upstash/qstash';
 
 export const runtime = 'nodejs';
 
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
+
+async function getCurrentUserForAudit(): Promise<{ id: string | null; email: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return { id: user?.id ?? null, email: user?.email ?? null };
+  } catch {
+    return { id: null, email: null };
+  }
+}
 
 export async function POST(req: NextRequest) {
   const admin = await isAdmin();
@@ -18,6 +29,8 @@ export async function POST(req: NextRequest) {
   if (!dlqId) {
     return NextResponse.json({ error: 'id required' }, { status: 400 });
   }
+
+  const auditUser = await getCurrentUserForAudit();
 
   try {
     const { data: row, error } = await adminClient
@@ -41,11 +54,33 @@ export async function POST(req: NextRequest) {
     if (rpcErr) throw rpcErr;
 
     const meta = Array.isArray(updated) ? updated[0] : updated;
-    return NextResponse.json({ ok: true, id: dlqId, replay_count: meta?.replay_count ?? null });
+    const replayCountAfter = meta?.replay_count ?? 0;
+
+    await adminClient.from('sync_dlq_replay_audit').insert({
+      dlq_id: dlqId,
+      replayed_by_user_id: auditUser.id,
+      replayed_by_email: auditUser.email,
+      replay_count_after: replayCountAfter,
+      error_if_failed: null,
+    });
+
+    return NextResponse.json({ ok: true, id: dlqId, replay_count: replayCountAfter });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     try {
       await adminClient.rpc('sync_dlq_record_replay', { p_id: dlqId, p_error: message });
+    } catch { /* ignore */ }
+
+    try {
+      const { data: row } = await adminClient.from('sync_dlq').select('replay_count').eq('id', dlqId).single();
+      const replayCountAfter = Number(row?.replay_count ?? 0);
+      await adminClient.from('sync_dlq_replay_audit').insert({
+        dlq_id: dlqId,
+        replayed_by_user_id: auditUser.id,
+        replayed_by_email: auditUser.email,
+        replay_count_after: replayCountAfter,
+        error_if_failed: message,
+      });
     } catch { /* ignore */ }
 
     return NextResponse.json({ error: 'replay_failed', message }, { status: 500 });

@@ -20,6 +20,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Signal,
+  Check,
 } from 'lucide-react';
 
 import {
@@ -151,10 +152,10 @@ const ScanningIcon = ({ icon: Icon, active, className }: any) => (
   </div>
 );
 
-/** QUADRANT COMPONENT */
+/** QUADRANT COMPONENT — Semi-transparent glass panel */
 function Quadrant({ title, icon: Icon, children, className }: any) {
   return (
-    <div className={cn("p-3 rounded-xl border border-border/40 bg-background/40 backdrop-blur-md relative overflow-hidden group/quad", className)}>
+    <div className={cn("p-3 rounded-xl border border-border/50 bg-background/50 dark:bg-background/30 backdrop-blur-md relative overflow-hidden group/quad", className)}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className="h-3 w-3 text-muted-foreground transition-all duration-500 group-hover/quad:text-foreground group-hover/quad:scale-110" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover/quad:text-foreground transition-colors">{title}</span>
@@ -260,13 +261,13 @@ export function HunterCard({
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-card/60 backdrop-blur-md shadow-2xl border-2 transition-all duration-500 min-h-[500px] flex flex-col group',
+        'relative overflow-hidden bg-card/50 dark:bg-card/40 backdrop-blur-xl shadow-2xl border-2 transition-all duration-500 min-h-[500px] flex flex-col group',
         scoreTheme.border,
         scoreTheme.shadow
       )}
     >
-      {/* GLOW DECORATION */}
-      <div className={cn("absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20 pointer-events-none", scoreTheme.bg)} />
+      {/* Semi-transparent glass + subtle RGB glow by score (Emerald 90+, Amber 50-89, Slate) */}
+      <div className={cn("absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-25 pointer-events-none", scoreTheme.bg)} />
 
       {/* HEADER SECTION */}
       <CardHeader className="p-4 pb-2 z-10 shrink-0">
@@ -296,6 +297,13 @@ export function HunterCard({
                     Returning
                   </Badge>
                 )}
+                {intent.visitor_rank === 'VETERAN_HUNTER' && (
+                  <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-none h-4 text-[9px] px-1.5 font-black uppercase" title="Seen multiple times in last 7 days">
+                    {typeof intent.previous_visit_count === 'number' && intent.previous_visit_count > 0
+                      ? `High-Frequency (${intent.previous_visit_count + 1} visits)`
+                      : 'High-Frequency Visitor'}
+                  </Badge>
+                )}
               </div>
               <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -317,7 +325,7 @@ export function HunterCard({
 
       <CardContent className="p-4 space-y-3 flex-1 z-10">
         <div className="grid grid-cols-2 gap-3">
-          {/* Q1: ORIGIN (Ad Intel) */}
+          {/* Q1: ORIGIN (Northwest) — Verified Ads Signal, Keyword, Network Type */}
           <Quadrant title="Origin" icon={Zap}>
             <Field
               label="Keyword"
@@ -333,13 +341,19 @@ export function HunterCard({
               tip="How closely the user's search matched your keyword settings."
             />
             <Field
+              label="Network Type"
+              value={intent.connection_type || intent.ads_network || '—'}
+              icon={Signal}
+              tip="Connection (4g, wifi) or ad network. Helps verify real device vs proxy."
+            />
+            <Field
               label="Campaign"
               value={safeDecode(intent.utm_campaign || '—')}
               tip="The marketing campaign responsible for this visitor."
             />
           </Quadrant>
 
-          {/* Q2: IDENTITY (Hardware DNA) */}
+          {/* Q2: IDENTITY (Northeast) — Hardware DNA, Device, ISP, Language, OS */}
           <Quadrant title="Identity" icon={Cpu}>
             <Field
               label="Device / OS"
@@ -347,6 +361,12 @@ export function HunterCard({
               icon={device.icon}
               highlight
               tip="The visitor's hardware and operating system. Premium devices often indicate higher buying power."
+            />
+            <Field
+              label="Language"
+              value={intent.browser_language || '—'}
+              icon={Monitor}
+              tip="Browser language preference. Useful for localization and intent."
             />
             <Field
               label="Hardware DNA"
@@ -358,7 +378,7 @@ export function HunterCard({
               label="Carrier / ISP"
               value={intent.telco_carrier || 'Identifying...'}
               icon={() => <PulseSignal active={!!intent.telco_carrier}><Signal className="h-3 w-3" /></PulseSignal>}
-              tip="The internet service provider or mobile carrier being used."
+              tip="The internet service provider or mobile carrier. High-end hardware suggests a premium device user."
             />
             <Field
               label="Location"
@@ -392,12 +412,15 @@ export function HunterCard({
             />
           </Quadrant>
 
-          {/* Q4: INTELLIGENCE (Context) */}
+          {/* Q4: INTELLIGENCE (Southeast) — Lead Confidence Score, Verification */}
           <Quadrant title="Intelligence" icon={ShieldCheck} className={isHighPotential ? "border-amber-500/30 bg-amber-500/5" : ""}>
             <Field
               label="Verification"
               value={intent.click_id ? "GCLID Active" : "No Ad Signal"}
-              icon={() => <PulseSignal active={!!intent.click_id}><ShieldCheck className="h-3 w-3" /></PulseSignal>}
+              icon={() => intent.click_id
+                ? <span className="text-emerald-500" title="Verified"><Check className="h-3.5 w-3.5 animate-pulse" strokeWidth={3} /></span>
+                : <PulseSignal active={false}><ShieldCheck className="h-3 w-3" /></PulseSignal>
+              }
               highlight={!!intent.click_id}
               tip="Verified Google Click ID (GCLID). Guarantees the lead came directly from a paid Google Ad."
             />

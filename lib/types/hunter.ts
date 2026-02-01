@@ -45,9 +45,13 @@ export interface HunterIntent {
   gpu_renderer?: string | null;
   connection_type?: string | null;
   is_returning?: boolean | null;
+  visitor_rank?: string | null;
+  previous_visit_count?: number | null;
   referrer_host?: string | null;
   network?: string | null;
   telco_carrier?: string | null;
+  isp_asn?: string | null;
+  is_proxy_detected?: boolean | null;
   ads_network?: string | null;
   ads_placement?: string | null;
   // Behavior (Action Pulse)

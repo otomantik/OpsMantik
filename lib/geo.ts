@@ -16,6 +16,10 @@ export interface GeoInfo {
     country: string;
     timezone: string;
     telco_carrier: string | null;
+    /** ASN from edge (e.g. cf-connecting-ip-asn, x-asn). Set only when req is available (producer). */
+    isp_asn: string | null;
+    /** Heuristic: multiple IPs in x-forwarded-for or cf-visitor. Set only when req is available (producer). */
+    is_proxy_detected: boolean;
 }
 
 export interface DeviceInfo {
@@ -129,6 +133,14 @@ export function extractGeoInfo(
         countryFromGeneric ||
         'Unknown';
 
+    // isp_asn: Cloudflare/Vercel or custom header (producer only; worker has no client req)
+    const ispAsn = req?.headers.get('cf-connecting-ip-asn') ??
+        req?.headers.get('x-vercel-ip-asn') ??
+        req?.headers.get('x-asn') ?? null;
+    // is_proxy_detected: multiple IPs in x-forwarded-for or cf-visitor indicates proxy
+    const forwarded = req?.headers.get('x-forwarded-for') ?? '';
+    const proxyDetected = forwarded ? forwarded.split(',').length > 1 : false;
+
     const geoInfo: GeoInfo = {
         city: city || 'Unknown',
         district: district,
@@ -140,6 +152,8 @@ export function extractGeoInfo(
             req?.headers.get('x-isp') ||
             req?.headers.get('x-operator') ||
             null,
+        isp_asn: ispAsn,
+        is_proxy_detected: proxyDetected,
     };
 
     return {

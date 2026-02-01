@@ -90,6 +90,46 @@
     return `${ts}-${rand4()}-${actionShort}-${tHash}`;
   }
 
+  // Hardware DNA + Network (backend: meta.lan, mem, con, sw, sh, dpr, gpu, con_type)
+  function getHardwareMeta() {
+    var o = {};
+    try { if (navigator.language) o.lan = navigator.language; } catch (e) {}
+    try { if (typeof navigator.deviceMemory === 'number') o.mem = navigator.deviceMemory; } catch (e) {}
+    try { if (typeof navigator.hardwareConcurrency === 'number') o.con = navigator.hardwareConcurrency; } catch (e) {}
+    try { if (typeof screen !== 'undefined') { o.sw = screen.width; o.sh = screen.height; } } catch (e) {}
+    try { if (typeof window.devicePixelRatio === 'number') o.dpr = window.devicePixelRatio; } catch (e) {}
+    try {
+      var canvas = document.createElement('canvas');
+      var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (gl) {
+        var ext = gl.getExtension('WEBGL_debug_renderer_info');
+        if (ext) { var r = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL); if (r) o.gpu = r; }
+      }
+    } catch (e) {}
+    try {
+      var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (conn && conn.effectiveType) o.con_type = conn.effectiveType;
+    } catch (e) {}
+    return o;
+  }
+
+  // Intent Pulse (Prompt 2.1): accumulated behavior for session
+  var pulse = {
+    maxScroll: 0,
+    ctaHovers: 0,
+    focusDur: 0,
+    activeSec: 0,
+    lastActiveAt: typeof Date !== 'undefined' ? Date.now() : 0
+  };
+  function getPulseMeta() {
+    var o = {};
+    if (pulse.maxScroll > 0) o.scroll_pct = Math.min(100, pulse.maxScroll);
+    if (pulse.ctaHovers > 0) o.cta_hovers = pulse.ctaHovers;
+    if (pulse.focusDur > 0) o.focus_dur = pulse.focusDur;
+    if (pulse.activeSec > 0) o.active_sec = pulse.activeSec;
+    return o;
+  }
+
   // Session management
   function getOrCreateSession() {
     let sessionId = sessionStorage.getItem(CONFIG.sessionKey);
@@ -229,6 +269,18 @@
     var referrer = document.referrer || '';
     var sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
 
+    var meta = { fp: fingerprint, gclid: context };
+    var hw = getHardwareMeta();
+    for (var k in hw) { if (Object.prototype.hasOwnProperty.call(hw, k)) meta[k] = hw[k]; }
+    if (category === 'conversion' || action === 'heartbeat' || action === 'session_end') {
+      if (action === 'heartbeat') {
+        pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
+        pulse.lastActiveAt = Date.now();
+      }
+      var pm = getPulseMeta();
+      for (var k in pm) { if (Object.prototype.hasOwnProperty.call(pm, k)) meta[k] = pm[k]; }
+    }
+    for (var k in metadata) { if (Object.prototype.hasOwnProperty.call(metadata, k)) meta[k] = metadata[k]; }
     var payload = {
       s: siteId,
       u: url,
@@ -239,9 +291,8 @@
       el: label,
       ev: value,
       r: referrer,
-      meta: { fp: fingerprint, gclid: context }
+      meta: meta
     };
-    for (var k in metadata) { if (Object.prototype.hasOwnProperty.call(metadata, k)) payload.meta[k] = metadata[k]; }
 
     if (localStorage.getItem('opsmantik_debug') === '1' || localStorage.getItem('WARROOM_DEBUG') === 'true') {
       console.log('[OPSMANTIK] Outbox:', category + '/' + action, sessionId.slice(0, 8) + '...');
@@ -291,14 +342,12 @@
       }
     });
 
-    // Scroll depth
-    let maxScroll = 0;
-    window.addEventListener('scroll', () => {
-      const scrollPercent = Math.round(
-        ((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight) * 100
-      );
-      if (scrollPercent > maxScroll) {
-        maxScroll = scrollPercent;
+    // Scroll depth (Intent Pulse)
+    window.addEventListener('scroll', function () {
+      var doc = document.documentElement;
+      var scrollPercent = Math.round(((window.scrollY + window.innerHeight) / doc.scrollHeight) * 100);
+      if (scrollPercent > pulse.maxScroll) {
+        pulse.maxScroll = scrollPercent;
         if (scrollPercent >= 50 && scrollPercent < 90) {
           sendEvent('interaction', 'scroll_depth', '50%', scrollPercent);
         } else if (scrollPercent >= 90) {
@@ -307,13 +356,46 @@
       }
     });
 
+    // CTA hover count (Intent Pulse): tel, wa, [data-om-cta]
+    function onCtaHover() {
+      pulse.ctaHovers += 1;
+    }
+    document.addEventListener('mouseenter', function (e) {
+      var t = e.target.closest && e.target.closest('a[href^="tel:"], a[href*="wa.me"], a[href*="whatsapp.com"], [data-om-cta="true"]');
+      if (t) onCtaHover();
+    }, true);
+
+    // Form focus duration (Intent Pulse)
+    var focusStart = 0;
+    document.addEventListener('focusin', function (e) {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) {
+        focusStart = Date.now();
+      }
+    });
+    document.addEventListener('focusout', function (e) {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') && focusStart > 0) {
+        pulse.focusDur += Math.round((Date.now() - focusStart) / 1000);
+        focusStart = 0;
+      }
+    });
+
+    // Active seconds (Intent Pulse): exclude idle when tab hidden
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') {
+        pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
+      } else {
+        pulse.lastActiveAt = Date.now();
+      }
+    });
+
     // Heartbeat
     setInterval(() => {
       sendEvent('system', 'heartbeat', 'session_active');
     }, CONFIG.heartbeatInterval);
 
-    // Session end
-    window.addEventListener('beforeunload', () => {
+    // Session end (flush active time before send)
+    window.addEventListener('beforeunload', function () {
+      pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
       sendEvent('system', 'session_end', 'page_unload', null, {
         exit_page: window.location.href,
       });

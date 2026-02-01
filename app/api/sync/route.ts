@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { RateLimitService } from '@/lib/services/RateLimitService';
 import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
+import { logError } from '@/lib/log';
 import { Client } from '@upstash/qstash';
 
 export const runtime = 'nodejs';
@@ -59,17 +61,26 @@ export async function POST(req: NextRequest) {
     let body;
     try { body = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400 }); }
 
-    if (!body.s || !body.url) {
+    if (!body.s || (!body.url && !body.u)) {
         return NextResponse.json(createSyncResponse(true, 0, { status: 'skipped' }), { headers: baseHeaders });
     }
 
     // --- 3. Offload to QStash ---
-    // Extract headers needed for background processing
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || '0.0.0.0';
+    // Extract headers needed for background processing (producer has client req; worker does not)
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '0.0.0.0';
     const ua = req.headers.get('user-agent') || 'Unknown';
+    const { extractGeoInfo } = await import('@/lib/geo');
+    const { geoInfo } = extractGeoInfo(req, ua, body.meta);
     const ingestId = globalThis.crypto?.randomUUID
         ? globalThis.crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    Sentry.setTag('ingest_id', ingestId);
+    Sentry.setContext('sync_producer', {
+        ingest_id: ingestId,
+        site_id: body.s,
+        url: body.url?.slice?.(0, 200) ?? null,
+    });
 
     try {
         const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
@@ -80,7 +91,9 @@ export async function POST(req: NextRequest) {
                 ...body,
                 ingest_id: ingestId,
                 ip,
-                ua
+                ua,
+                isp_asn: geoInfo.isp_asn ?? undefined,
+                is_proxy_detected: geoInfo.is_proxy_detected ?? undefined,
             },
             // High reliability retries (3 times)
             retries: 3,
@@ -92,7 +105,13 @@ export async function POST(req: NextRequest) {
             { headers: baseHeaders }
         );
     } catch (err) {
-        console.error('[QSTASH_PUBLISH_ERROR]', { ingest_id: ingestId, err });
+        logError('QSTASH_PUBLISH_ERROR', {
+            route: 'sync',
+            ingest_id: ingestId,
+            site_id: body.s,
+            error: String((err as Error)?.message ?? err),
+        });
+        Sentry.captureException(err);
         // Fallback: If QStash fails, we still return 200 to client to not break their page, but log the loss.
         return NextResponse.json(createSyncResponse(true, 0, { status: 'degraded', ingest_id: ingestId }), { headers: baseHeaders });
     }

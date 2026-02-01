@@ -113,6 +113,8 @@ export class SessionService {
             updates.ads_placement = utm?.placement ?? null;
             updates.telco_carrier = geoInfo.telco_carrier ?? null;
             updates.browser = deviceInfo.browser || null;
+            updates.isp_asn = geoInfo.isp_asn ?? null;
+            updates.is_proxy_detected = geoInfo.is_proxy_detected ?? false;
 
             // Hardware DNA Updates
             updates.browser_language = deviceInfo.browser_language;
@@ -157,6 +159,21 @@ export class SessionService {
 
         debugLog('[SYNC_API] Creating NEW session:', { final_id: sessionId, partition: dbMonth });
 
+        // Prompt 2.2 Returning Giant: count previous sessions with same fingerprint in last 7 days
+        let previousVisitCount = 0;
+        if (fingerprint) {
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            const { count, error: countErr } = await adminClient
+                .from('sessions')
+                .select('id', { count: 'exact', head: true })
+                .eq('site_id', siteId)
+                .eq('fingerprint', fingerprint)
+                .gte('created_at', sevenDaysAgo);
+            if (!countErr && typeof count === 'number') {
+                previousVisitCount = count;
+            }
+        }
+
         const sessionPayload: Record<string, unknown> = {
             id: sessionId,
             site_id: siteId,
@@ -182,6 +199,8 @@ export class SessionService {
             ads_placement: utm?.placement || null,
             telco_carrier: geoInfo.telco_carrier || null,
             browser: deviceInfo.browser || null,
+            isp_asn: geoInfo.isp_asn ?? null,
+            is_proxy_detected: geoInfo.is_proxy_detected ?? false,
             // Hardware DNA
             browser_language: deviceInfo.browser_language,
             device_memory: deviceInfo.device_memory,
@@ -200,7 +219,9 @@ export class SessionService {
                     return data.referrer || null;
                 }
             })(),
-            is_returning: false, // Default for new session, could be checked against DB later
+            is_returning: previousVisitCount > 0,
+            visitor_rank: previousVisitCount >= 1 ? 'VETERAN_HUNTER' : null,
+            previous_visit_count: previousVisitCount,
         };
 
         const { data: newSession, error: sError } = await adminClient
@@ -210,6 +231,16 @@ export class SessionService {
             .single();
 
         if (sError) {
+            if (sError.code === '23505') {
+                debugLog('[SYNC_API] Session insert duplicate (id, created_month) — idempotent re-select');
+                const { data: existing } = await adminClient
+                    .from('sessions')
+                    .select('id, created_month')
+                    .eq('id', sessionId)
+                    .eq('created_month', dbMonth)
+                    .single();
+                if (existing) return existing;
+            }
             console.error('[SYNC_API] Session insert failed:', {
                 message: sError.message,
                 session_id: sessionId,

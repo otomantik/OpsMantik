@@ -110,10 +110,50 @@
     return out.slice(0, 6).padEnd(6, '0');
   }
 
+  // Hardware DNA + Network (backend: meta.lan, mem, con, sw, sh, dpr, gpu, con_type)
+  function getHardwareMeta() {
+    const o = {};
+    try { if (navigator.language) o.lan = navigator.language; } catch (e) {}
+    try { if (typeof navigator.deviceMemory === 'number') o.mem = navigator.deviceMemory; } catch (e) {}
+    try { if (typeof navigator.hardwareConcurrency === 'number') o.con = navigator.hardwareConcurrency; } catch (e) {}
+    try { if (typeof screen !== 'undefined') { o.sw = screen.width; o.sh = screen.height; } } catch (e) {}
+    try { if (typeof window.devicePixelRatio === 'number') o.dpr = window.devicePixelRatio; } catch (e) {}
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (gl) {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        if (ext) { const r = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL); if (r) o.gpu = r; }
+      }
+    } catch (e) {}
+    try {
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (conn && conn.effectiveType) o.con_type = conn.effectiveType;
+    } catch (e) {}
+    return o;
+  }
+
   function makeIntentStamp(actionShort, target) {
     const ts = Date.now();
     const tHash = hash6((target || '').toString().toLowerCase());
     return `${ts}-${rand4()}-${actionShort}-${tHash}`;
+  }
+
+  // Intent Pulse (Prompt 2.1)
+  const pulse = {
+    maxScroll: 0,
+    ctaHovers: 0,
+    focusDur: 0,
+    activeSec: 0,
+    lastActiveAt: Date.now(),
+  };
+  function getPulseMeta() {
+    const o = {};
+    if (pulse.maxScroll > 0) o.scroll_pct = Math.min(100, pulse.maxScroll);
+    if (pulse.ctaHovers > 0) o.cta_hovers = pulse.ctaHovers;
+    if (pulse.focusDur > 0) o.focus_dur = pulse.focusDur;
+    if (pulse.activeSec > 0) o.active_sec = pulse.activeSec;
+    return o;
   }
 
   // Session management
@@ -240,6 +280,15 @@
     const url = window.location.href;
     const referrer = document.referrer || '';
     const sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
+    const meta = { fp: fingerprint, gclid: context, ...getHardwareMeta() };
+    if (category === 'conversion' || action === 'heartbeat' || action === 'session_end') {
+      if (action === 'heartbeat') {
+        pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
+        pulse.lastActiveAt = Date.now();
+      }
+      Object.assign(meta, getPulseMeta());
+    }
+    for (const k in metadata) { if (Object.prototype.hasOwnProperty.call(metadata, k)) meta[k] = metadata[k]; }
     const payload = {
       s: siteId,
       u: url,
@@ -250,9 +299,8 @@
       el: label,
       ev: value,
       r: referrer,
-      meta: { fp: fingerprint, gclid: context },
+      meta,
     };
-    for (const k in metadata) { if (Object.prototype.hasOwnProperty.call(metadata, k)) payload.meta[k] = metadata[k]; }
     if (localStorage.getItem('opsmantik_debug') === '1') {
       console.log('[OPSMANTIK] Outbox:', category + '/' + action, sessionId.slice(0, 8) + '...');
     } else {
@@ -300,14 +348,12 @@
       }
     });
 
-    // Scroll depth
-    let maxScroll = 0;
+    // Scroll depth (Intent Pulse)
     window.addEventListener('scroll', () => {
-      const scrollPercent = Math.round(
-        ((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight) * 100
-      );
-      if (scrollPercent > maxScroll) {
-        maxScroll = scrollPercent;
+      const doc = document.documentElement;
+      const scrollPercent = Math.round(((window.scrollY + window.innerHeight) / doc.scrollHeight) * 100);
+      if (scrollPercent > pulse.maxScroll) {
+        pulse.maxScroll = scrollPercent;
         if (scrollPercent >= 50 && scrollPercent < 90) {
           sendEvent('interaction', 'scroll_depth', '50%', scrollPercent);
         } else if (scrollPercent >= 90) {
@@ -316,13 +362,43 @@
       }
     });
 
+    // CTA hover count (Intent Pulse)
+    document.addEventListener('mouseenter', (e) => {
+      const t = e.target.closest && e.target.closest('a[href^="tel:"], a[href*="wa.me"], a[href*="whatsapp.com"], [data-om-cta="true"]');
+      if (t) pulse.ctaHovers += 1;
+    }, true);
+
+    // Form focus duration (Intent Pulse)
+    let focusStart = 0;
+    document.addEventListener('focusin', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) {
+        focusStart = Date.now();
+      }
+    });
+    document.addEventListener('focusout', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') && focusStart > 0) {
+        pulse.focusDur += Math.round((Date.now() - focusStart) / 1000);
+        focusStart = 0;
+      }
+    });
+
+    // Active seconds (Intent Pulse)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
+      } else {
+        pulse.lastActiveAt = Date.now();
+      }
+    });
+
     // Heartbeat
     setInterval(() => {
       sendEvent('system', 'heartbeat', 'session_active');
     }, CONFIG.heartbeatInterval);
 
-    // Session end
+    // Session end (flush active before send)
     window.addEventListener('beforeunload', () => {
+      pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
       sendEvent('system', 'session_end', 'page_unload', null, {
         exit_page: window.location.href,
       });
