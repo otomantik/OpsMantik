@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './QualificationQueue';
 import { BreakdownWidgets } from './widgets/BreakdownWidgets';
@@ -38,26 +38,34 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [godMode, setGodMode] = useState(false);
 
-  const initialFrom = initialTodayRange?.fromIso;
-  const initialTo = initialTodayRange?.toIso;
+  // For "today": always use client-computed TRT range so "today" = user's calendar day (server TZ can differ; fixes "yesterday has data, today empty").
+  const [todayRange, setTodayRange] = useState<{ fromIso: string; toIso: string } | null>(null);
+  useEffect(() => {
+    if (selectedDay !== 'today') return;
+    const update = () => {
+      const now = new Date();
+      const { fromIso } = getTodayTrtUtcRange(now);
+      setTodayRange({ fromIso, toIso: now.toISOString() });
+    };
+    update();
+    const id = setInterval(update, 60_000); // refresh "today so far" every minute
+    return () => clearInterval(id);
+  }, [selectedDay]);
 
-  // Real-time signals for the Shell
-  const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
-
-  // GO3: single source of truth for queue day selection. Normalize URL from/to (trim) for RPC.
+  // GO3: single source of truth for queue day selection.
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
     const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
-      const fromIso = (initialFrom && initialFrom.trim()) ? initialFrom.trim() : todayStartUtcIso;
-      const toIso = (initialTo && initialTo.trim()) ? initialTo.trim() : nowUtc.toISOString();
+      // Use client-computed "today so far" so today is never wrong-day (TRT = user's day)
+      const { fromIso, toIso } = todayRange ?? { fromIso: todayStartUtcIso, toIso: nowUtc.toISOString() };
       return { day: 'today' as const, fromIso, toIso };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
     const toMs = todayStartUtcMs - 1;
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
-  }, [selectedDay, initialFrom, initialTo]);
+  }, [selectedDay, todayRange]);
 
   // Scope-aware HUD stats
   const { stats, loading, error: statsError } = useCommandCenterP0Stats(
