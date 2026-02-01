@@ -26,11 +26,15 @@ function parseHunterIntents(data: unknown): HunterIntent[] {
   if (!data) return [];
   let rows: any[] = [];
 
-  if (Array.isArray(data)) {
-    if (data.length === 0) return [];
-    // Handle specific Supabase behavior where jsonb[] might be strings
-    if (typeof data[0] === 'string') {
-      rows = data.map(item => {
+  // Unwrap: Supabase/PostgREST may return jsonb[] as raw array, or single-element wrapper
+  const raw = data;
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return [];
+    // Single-element array containing the real list (some drivers return [[...]])
+    if (raw.length === 1 && Array.isArray(raw[0])) {
+      rows = raw[0] as any[];
+    } else if (typeof raw[0] === 'string') {
+      rows = raw.map((item: any) => {
         try {
           return typeof item === 'string' ? JSON.parse(item) : item;
         } catch {
@@ -38,12 +42,15 @@ function parseHunterIntents(data: unknown): HunterIntent[] {
         }
       }).filter(Boolean);
     } else {
-      rows = data;
+      rows = raw as any[];
     }
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const arr = (raw as any).data ?? (raw as any).rows ?? (raw as any).intents;
+    if (Array.isArray(arr)) rows = arr;
   }
 
-  // Basic shape validation (could be stricter with Zod)
-  return rows.map((r: any) => ({
+  // Basic shape validation: need id for card key
+  return rows.filter((r: any) => r != null && r.id != null).map((r: any) => ({
     id: r.id,
     created_at: r.created_at,
     intent_action: r.intent_action ?? null,
@@ -451,6 +458,11 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
               {range.day === 'yesterday'
                 ? 'No intents were found for yesterday in the selected TRT window.'
                 : 'No pending intents to qualify. New intents from Google Ads will appear here automatically.'}
+            </p>
+            <p className="text-muted-foreground text-xs mt-2 max-w-md">
+              {range.day === 'today' && scope === 'ads'
+                ? 'Try Full Network Graph (menu) or Refresh to load intents from all sources.'
+                : 'Use Refresh to fetch again.'}
             </p>
             <Button
               variant="ghost"
