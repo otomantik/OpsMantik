@@ -53,7 +53,7 @@ export interface GeoExtractionResult {
  * @returns GeoInfo and DeviceInfo
  */
 export function extractGeoInfo(
-    req: NextRequest,
+    req: NextRequest | null,
     userAgent: string,
     meta?: any
 ): GeoExtractionResult {
@@ -95,19 +95,19 @@ export function extractGeoInfo(
     // Geo extraction from headers (Edge Runtime compatible)
     // Priority: Metadata override > Vercel > Cloudflare > Generic > Unknown
     // Vercel headers (x-vercel-ip-*) are added by Vercel Edge Network
-    const cityFromVercel = req.headers.get('x-vercel-ip-city');
-    const countryFromVercel = req.headers.get('x-vercel-ip-country');
+    const cityFromVercel = req?.headers.get('x-vercel-ip-city');
+    const countryFromVercel = req?.headers.get('x-vercel-ip-country');
 
     // Cloudflare headers (cf-ipcity, cf-ipdistrict) - if behind Cloudflare
-    const cityFromCloudflare = req.headers.get('cf-ipcity');
-    const districtFromCloudflare = req.headers.get('cf-ipdistrict');
-    const countryFromCloudflare = req.headers.get('cf-ipcountry');
+    const cityFromCloudflare = req?.headers.get('cf-ipcity');
+    const districtFromCloudflare = req?.headers.get('cf-ipdistrict');
+    const countryFromCloudflare = req?.headers.get('cf-ipcountry');
 
     // Generic headers (x-city, x-district) - fallback
-    const cityFromGeneric = req.headers.get('x-city') ||
-        req.headers.get('x-forwarded-city');
-    const districtFromGeneric = req.headers.get('x-district');
-    const countryFromGeneric = req.headers.get('x-country');
+    const cityFromGeneric = req?.headers.get('x-city') ||
+        req?.headers.get('x-forwarded-city');
+    const districtFromGeneric = req?.headers.get('x-district');
+    const countryFromGeneric = req?.headers.get('x-country');
 
     // Priority: Metadata override > Vercel > Cloudflare > Generic > null
     const city = meta?.city ||
@@ -133,12 +133,12 @@ export function extractGeoInfo(
         city: city || 'Unknown',
         district: district,
         country: country,
-        timezone: req.headers.get('cf-timezone') ||
-            req.headers.get('x-timezone') ||
+        timezone: req?.headers.get('cf-timezone') ||
+            req?.headers.get('x-timezone') ||
             'Unknown',
-        telco_carrier: req.headers.get('cf-as-organization') ||
-            req.headers.get('x-isp') ||
-            req.headers.get('x-operator') ||
+        telco_carrier: req?.headers.get('cf-as-organization') ||
+            req?.headers.get('x-isp') ||
+            req?.headers.get('x-operator') ||
             null,
     };
 

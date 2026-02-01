@@ -30,7 +30,7 @@ export interface CommandCenterP0Stats {
   inbox_zero_now: boolean;
 }
 
-export type CommandCenterRange = { fromIso: string; toIso: string };
+export type CommandCenterRange = { fromIso: string; toIso: string; day?: 'today' | 'yesterday' };
 
 export type CommandCenterScope = 'ads' | 'all';
 
@@ -81,6 +81,35 @@ export function useCommandCenterP0Stats(
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  // Real-time Poll for Today
+  useEffect(() => {
+    if (!siteId || !stats || rangeOverride?.day === 'yesterday') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/stats/realtime?siteId=${siteId}`);
+        if (!res.ok) return;
+        const realtimeData = await res.json();
+
+        setStats(prev => {
+          if (!prev) return prev;
+          // Overlay Redis data if it's higher than DB (means DB is still processing)
+          return {
+            ...prev,
+            sealed: Math.max(prev.sealed, realtimeData.captured || 0),
+            junk: Math.max(prev.junk, realtimeData.junk || 0),
+            total_leads: Math.max(prev.total_leads, realtimeData.captured || 0),
+            gclid_leads: Math.max(prev.gclid_leads, realtimeData.gclid || 0),
+          };
+        });
+      } catch (e) {
+        console.error('Realtime poll failed', e);
+      }
+    }, 10000); // 10s poll for overlay
+
+    return () => clearInterval(interval);
+  }, [siteId, rangeOverride?.day, !!stats]);
 
   return { stats, loading, error, refetch: fetchStats, dateRange };
 }
