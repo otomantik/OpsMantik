@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './QualificationQueue';
 import { BreakdownWidgets } from './widgets/BreakdownWidgets';
@@ -38,34 +38,28 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [godMode, setGodMode] = useState(false);
 
-  // For "today": always use client-computed TRT range so "today" = user's calendar day (server TZ can differ; fixes "yesterday has data, today empty").
-  const [todayRange, setTodayRange] = useState<{ fromIso: string; toIso: string } | null>(null);
-  useEffect(() => {
-    if (selectedDay !== 'today') return;
-    const update = () => {
-      const now = new Date();
-      const { fromIso } = getTodayTrtUtcRange(now);
-      setTodayRange({ fromIso, toIso: now.toISOString() });
-    };
-    update();
-    const id = setInterval(update, 60_000); // refresh "today so far" every minute
-    return () => clearInterval(id);
-  }, [selectedDay]);
+  // Real-time signals for the Shell
+  const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
+
+  const initialFrom = initialTodayRange?.fromIso?.trim();
+  const initialTo = initialTodayRange?.toIso?.trim();
 
   // GO3: single source of truth for queue day selection.
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
-    const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
+    const { fromIso: todayStartUtcIso, toIso: todayEndUtcIso } = getTodayTrtUtcRange(nowUtc);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
-      // Use client-computed "today so far" so today is never wrong-day (TRT = user's day)
-      const { fromIso, toIso } = todayRange ?? { fromIso: todayStartUtcIso, toIso: nowUtc.toISOString() };
+      // IMPORTANT: Use full TRT day [start, next day start) (same as server redirect).
+      // This avoids "today empty" when DB timestamps drift slightly into the future (TRT/UTC offset bugs).
+      const fromIso = initialFrom || todayStartUtcIso;
+      const toIso = initialTo || todayEndUtcIso;
       return { day: 'today' as const, fromIso, toIso };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
     const toMs = todayStartUtcMs - 1;
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
-  }, [selectedDay, todayRange]);
+  }, [selectedDay, initialFrom, initialTo]);
 
   // Scope-aware HUD stats
   const { stats, loading, error: statsError } = useCommandCenterP0Stats(

@@ -88,7 +88,10 @@ export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidget
 
   return (
     <div className="space-y-3 min-w-0" data-testid="p4-breakdown">
-      <h2 className="text-sm font-semibold">Breakdown</h2>
+      <div>
+        <h2 className="text-sm font-semibold">Breakdown</h2>
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Sessions (ziyaret) — not Google Ads API clicks</p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
         <div className="min-w-0">
           <SourceBreakdownCard items={sources} total={total} />

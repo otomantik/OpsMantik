@@ -155,7 +155,16 @@ async function handler(req: NextRequest) {
         const params = urlObj.searchParams;
         const currentGclid = params.get('gclid') || meta?.gclid;
         const fingerprint = meta?.fp || null;
-        const dbMonth = session_month || new Date().toISOString().slice(0, 7) + '-01';
+        
+        // CRITICAL: dbMonth must match trigger logic (TRT timezone, month from created_at UTC)
+        // Trigger: date_trunc('month', (created_at AT TIME ZONE 'utc'))::date
+        // Since created_at will be NOW() in UTC, we compute month from UTC now, matching trigger
+        const dbMonth = session_month || (() => {
+            const nowUtc = new Date();
+            const year = nowUtc.getUTCFullYear();
+            const month = String(nowUtc.getUTCMonth() + 1).padStart(2, '0');
+            return `${year}-${month}-01`;
+        })();
 
         // --- 3. Attribution & Session ---
         const { attribution, utm } = await AttributionService.resolveAttribution(currentGclid, fingerprint, url, referrer);

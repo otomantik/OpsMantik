@@ -81,8 +81,9 @@ export function useDashboardBreakdown(
 
       if (rpcError) throw rpcError;
 
-      const result = rpcData as DashboardBreakdownData | null;
-      if (result && typeof result === 'object' && Array.isArray(result.sources)) {
+      const raw = Array.isArray(rpcData) && rpcData.length === 1 ? rpcData[0] : rpcData;
+      const result = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? (raw as DashboardBreakdownData) : null;
+      if (result && Array.isArray(result.sources)) {
         setData(result);
         cache.set(k, { data: result, ts: Date.now() });
       } else {
