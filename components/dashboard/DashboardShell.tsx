@@ -44,16 +44,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   // Real-time signals for the Shell
   const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
 
-  // GO3: single source of truth for queue day selection
+  // GO3: single source of truth for queue day selection. Normalize URL from/to (trim) for RPC.
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
     const { fromIso: todayStartUtcIso } = getTodayTrtUtcRange(nowUtc);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
-      if (initialFrom && initialTo) {
-        return { day: 'today' as const, fromIso: initialFrom, toIso: initialTo };
-      }
-      return { day: 'today' as const, fromIso: todayStartUtcIso, toIso: nowUtc.toISOString() };
+      const fromIso = (initialFrom && initialFrom.trim()) ? initialFrom.trim() : todayStartUtcIso;
+      const toIso = (initialTo && initialTo.trim()) ? initialTo.trim() : nowUtc.toISOString();
+      return { day: 'today' as const, fromIso, toIso };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
     const toMs = todayStartUtcMs - 1;
@@ -61,7 +60,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   }, [selectedDay, initialFrom, initialTo]);
 
   // Scope-aware HUD stats
-  const { stats, loading } = useCommandCenterP0Stats(
+  const { stats, loading, error: statsError } = useCommandCenterP0Stats(
     siteId,
     { fromIso: queueRange.fromIso, toIso: queueRange.toIso },
     { scope }
@@ -220,6 +219,11 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             </DialogContent>
           </Dialog>
 
+          {statsError && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {statsError}
+            </div>
+          )}
           {/* Scoreboard (HUD) - Enterprise V3 */}
           <div className="mt-4 grid grid-cols-4 gap-2.5">
             {[
