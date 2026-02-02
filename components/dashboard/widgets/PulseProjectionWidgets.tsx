@@ -62,7 +62,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
                     <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold tabular-nums">
+                        <span className="text-2xl font-bold tabular-nums" suppressHydrationWarning>
                             {revenue.toLocaleString()}
                         </span>
                         <span className="text-sm font-medium text-muted-foreground">{currency}</span>

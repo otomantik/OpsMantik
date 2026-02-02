@@ -95,7 +95,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="hidden xs:inline">{new Date().toLocaleTimeString('en-GB', { hour12: false })} IST</span>
+          <span className="hidden xs:inline" suppressHydrationWarning>{new Date().toLocaleTimeString('en-GB', { hour12: false })} IST</span>
           <button
             onClick={() => setGodMode(!godMode)}
             className={cn(

@@ -52,7 +52,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
           <CardTitle className="text-sm font-semibold tracking-tight">
             Dağılım
           </CardTitle>
-          
+
           {/* Dimension Selector */}
           <div className="flex gap-1">
             {(['source', 'device', 'city'] as BreakdownDimension[]).map((dim) => {
@@ -61,11 +61,10 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                 <button
                   key={dim}
                   onClick={() => setDimension(dim)}
-                  className={`p-1.5 rounded border transition-colors ${
-                    dimension === dim
-                      ? 'bg-muted border-border text-foreground'
-                      : 'bg-background border-border text-muted-foreground hover:bg-muted'
-                  }`}
+                  className={`p-1.5 rounded border transition-colors ${dimension === dim
+                    ? 'bg-muted border-border text-foreground'
+                    : 'bg-background border-border text-muted-foreground hover:bg-muted'
+                    }`}
                   title={getDimensionLabel(dim)}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -108,7 +107,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                   className="flex items-center justify-between p-2 rounded bg-muted/50 border border-border"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className={`flex-shrink-0 ${getDimensionColor(dimension)}`}>
+                    <div className={`shrink-0 ${getDimensionColor(dimension)}`}>
                       {(() => {
                         const Icon = getDimensionIcon(dimension);
                         return <Icon className="h-3.5 w-3.5" />;
@@ -118,8 +117,8 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                       {safeItem.dimension_value}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-sm text-muted-foreground tabular-nums">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                       {safeItem.count.toLocaleString()}
                     </span>
                     <span className="text-sm text-muted-foreground tabular-nums">

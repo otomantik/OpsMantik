@@ -129,13 +129,13 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="space-y-1">
                   <div className="text-xs text-slate-500 uppercase font-bold tracking-tight">Pending in Queue</div>
-                  <div className="text-xl font-bold text-slate-900">
+                  <div className="text-xl font-bold text-slate-900" suppressHydrationWarning>
                     {loading ? <Skeleton className="h-7 w-12" /> : fmt(stats?.queue_pending)}
                   </div>
                 </div>
                 <div className="space-y-1 text-right">
                   <div className="text-xs text-slate-500 uppercase font-bold tracking-tight">Est. Savings</div>
-                  <div className="text-xl font-bold text-emerald-600">
+                  <div className="text-xl font-bold text-emerald-600" suppressHydrationWarning>
                     {loading ? <Skeleton className="h-7 w-12 ml-auto" /> : `${fmt(stats?.estimated_budget_saved)} ${currency}`}
                   </div>
                 </div>
@@ -183,15 +183,15 @@ export function CommandCenterP0Panel({ siteId }: { siteId: string }) {
               <div className="grid grid-cols-3 gap-2">
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Matched</div>
-                  <div className="text-lg font-bold">{loading ? '…' : fmt(stats?.oci_matchable_sealed)}</div>
+                  <div className="text-lg font-bold" suppressHydrationWarning>{loading ? '…' : fmt(stats?.oci_matchable_sealed)}</div>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Uploaded</div>
-                  <div className="text-lg font-bold">{loading ? '…' : fmt(stats?.oci_uploaded)}</div>
+                  <div className="text-lg font-bold" suppressHydrationWarning>{loading ? '…' : fmt(stats?.oci_uploaded)}</div>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Error</div>
-                  <div className="text-lg font-bold text-rose-600">{loading ? '…' : fmt(stats?.oci_failed)}</div>
+                  <div className="text-lg font-bold text-rose-600" suppressHydrationWarning>{loading ? '…' : fmt(stats?.oci_failed)}</div>
                 </div>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed italic">

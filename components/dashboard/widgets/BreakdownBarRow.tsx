@@ -27,7 +27,7 @@ export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowPro
         <span className="text-sm truncate" title={label}>
           {label}
         </span>
-        <span className="text-sm tabular-nums shrink-0">
+        <span className="text-sm tabular-nums shrink-0" suppressHydrationWarning>
           {item.count.toLocaleString()} ({item.pct}%)
         </span>
       </div>

@@ -142,7 +142,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-3xl font-semibold tabular-nums">
+            <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : fmt(adsSessions)}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Today (TRT)</div>
@@ -160,7 +160,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-3xl font-semibold tabular-nums">
+            <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : fmt(phoneIntents)}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Clicks</div>
@@ -178,7 +178,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-3xl font-semibold tabular-nums">
+            <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : fmt(whatsappIntents)}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Clicks</div>
@@ -196,7 +196,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-3xl font-semibold tabular-nums">
+            <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : (formsEnabled ? fmt(forms) : 'Hidden')}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Conversions</div>

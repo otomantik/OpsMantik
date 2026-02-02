@@ -88,7 +88,7 @@ export function SealModal({
                   setCustomAmount('');
                 }}
               >
-                {value.toLocaleString()} {currency}
+                <span suppressHydrationWarning>{value.toLocaleString()} {currency}</span>
               </Button>
             ))}
           </div>
