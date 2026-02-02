@@ -50,6 +50,11 @@ async function main() {
   const fullUrl =
     BASE_URL +
     '/?utm_term=smoke+keyword&utm_campaign=smoke+campaign&matchtype=e&utm_source=google&utm_medium=cpc&utm_content=proof';
+  const fragmentUrl =
+    BASE_URL +
+    '/?gclid=test-gclid-' +
+    Date.now() +
+    '#utm_term=frag+keyword&utm_campaign=frag+campaign&matchtype=p&utm_source=google&utm_medium=cpc&utm_content=fragproof';
 
   const { data: sites } = await supabase.from('sites').select('id').limit(1);
   const siteId = sites?.[0]?.id;
@@ -82,6 +87,29 @@ async function main() {
     log('1) Sync API not reachable (' + (e?.message || e) + '); will use direct insert.', 'yellow');
   }
 
+  // Fragment-style URL proof (hash-based params)
+  const fragmentSessionId = uuidV4();
+  try {
+    const res2 = await fetch(`${BASE_URL}/api/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        s: siteId,
+        u: fragmentUrl,
+        sid: fragmentSessionId,
+        sm: dbMonth,
+        ec: 'page',
+        ea: 'view',
+      }),
+    });
+    const body2 = await res2.json().catch(() => ({}));
+    if (res2.ok && body2?.ok) {
+      log('1b) Sync API accepted FRAGMENT payload (session_id=' + fragmentSessionId.slice(0, 8) + '…)', 'cyan');
+    }
+  } catch (e) {
+    log('1b) Fragment sync skipped (API unreachable): ' + (e?.message || e), 'yellow');
+  }
+
   if (!usedSyncApi) {
     const { error: insertErr } = await supabase.from('sessions').insert({
       id: sessionId,
@@ -100,6 +128,45 @@ async function main() {
       process.exit(1);
     }
     log('1) Inserted test session directly (session_id=' + sessionId.slice(0, 8) + '…)', 'cyan');
+  }
+
+  // Select + assert fragment session when sync was used; otherwise skip (direct insert won’t exercise parsing)
+  if (usedSyncApi) {
+    const { data: fragRow, error: fragErr } = await supabase
+      .from('sessions')
+      .select('id, entry_page, utm_term, utm_campaign, matchtype')
+      .eq('id', fragmentSessionId)
+      .eq('created_month', dbMonth)
+      .maybeSingle();
+
+    if (fragErr) {
+      log('❌ Fragment select failed: ' + fragErr.message, 'red');
+      process.exit(1);
+    }
+    if (!fragRow) {
+      log('❌ Fragment session not found after sync', 'red');
+      process.exit(1);
+    }
+
+    const okFragTerm = fragRow.utm_term != null && String(fragRow.utm_term).trim() !== '';
+    const okFragCampaign = fragRow.utm_campaign != null && String(fragRow.utm_campaign).trim() !== '';
+    const okFragMatch = fragRow.matchtype != null && ['e', 'p', 'b'].includes(String(fragRow.matchtype).toLowerCase().trim());
+
+    log('FRAG) entry_page: ' + (fragRow.entry_page || '').slice(0, 80) + '…', 'cyan');
+    log('FRAG) utm_term: ' + (fragRow.utm_term ?? 'null') + ', utm_campaign: ' + (fragRow.utm_campaign ?? 'null') + ', matchtype: ' + (fragRow.matchtype ?? 'null'), 'cyan');
+
+    if (!okFragTerm) {
+      log('FAIL: fragment utm_term not persisted', 'red');
+      process.exit(1);
+    }
+    if (!okFragCampaign) {
+      log('FAIL: fragment utm_campaign not persisted', 'red');
+      process.exit(1);
+    }
+    if (!okFragMatch) {
+      log('FAIL: fragment matchtype not persisted (e/p/b)', 'red');
+      process.exit(1);
+    }
   }
 
   const { data: row, error: selectErr } = await supabase

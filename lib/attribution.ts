@@ -100,16 +100,38 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
     const urlObj = new URL(url);
     let params = new URLSearchParams(urlObj.search);
 
-    // ROBUST: Parse fragment (#) if it contains query params (Google Ads redirect bug)
-    // Example: https://domain.com/?gclid=xxx#4?utm_source=google&utm_term=keyword
-    if (urlObj.hash && urlObj.hash.includes('?')) {
-      const fragmentQuery = urlObj.hash.split('?')[1];
-      if (fragmentQuery) {
-        const fragmentParams = new URLSearchParams(fragmentQuery);
-        // Merge fragment params into main params (fragment values take precedence if duplicate)
-        fragmentParams.forEach((value, key) => {
-          params.set(key, value);
-        });
+    // ROBUST: Parse fragment (#) when Google Ads (or SPA routers) place params after hash.
+    // Seen formats:
+    // - https://domain.com/?gclid=xxx#4?utm_term=keyword&matchtype=p
+    // - https://domain.com/?gclid=xxx#utm_term=keyword&matchtype=e
+    // - https://domain.com/#utm_source=google&utm_medium=cpc&utm_term=keyword
+    if (urlObj.hash) {
+      const rawHash = urlObj.hash.startsWith('#') ? urlObj.hash.slice(1) : urlObj.hash;
+      const hash = rawHash.startsWith('?') ? rawHash.slice(1) : rawHash;
+
+      // Prefer substring after the first '?', but also support hashes without '?'.
+      const afterQuestion = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : hash;
+
+      // Find where known keys start (sometimes hash has a prefix like "4" or route tokens).
+      const keyStart = (() => {
+        const re = /(?:^|[&#?])(utm_source|utm_medium|utm_campaign|utm_term|utm_content|matchtype|device|network|placement)=/i;
+        const m1 = re.exec(afterQuestion);
+        if (m1?.index != null) return m1.index;
+        const m2 = /(utm_source|utm_medium|utm_campaign|utm_term|utm_content|matchtype|device|network|placement)=/i.exec(afterQuestion);
+        return m2?.index ?? -1;
+      })();
+
+      if (keyStart >= 0) {
+        const fragmentQuery = afterQuestion
+          .slice(keyStart)
+          .replace(/^[&#?]+/, '');
+        if (fragmentQuery) {
+          const fragmentParams = new URLSearchParams(fragmentQuery);
+          // Merge fragment params into main params (fragment values take precedence)
+          fragmentParams.forEach((value, key) => {
+            params.set(key, value);
+          });
+        }
       }
     }
 
