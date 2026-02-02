@@ -3,7 +3,7 @@
  * - Viewport 390x844 (mobile)
  * - Assert no horizontal scroll
  * - Open overflow menu, assert menu contains Day + Scope + (optional) Settings
- * - Screenshot to docs/WAR_ROOM/EVIDENCE/PHASE4_GO1
+ * - Screenshot to docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/PHASE4_GO1
  */
 import dotenv from 'dotenv';
 import fs from 'node:fs';
@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const root = process.cwd();
-const outDir = path.join(root, 'docs', 'WAR_ROOM', 'EVIDENCE', 'PHASE4_GO1');
+const outDir = path.join(root, 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'PHASE4_GO1');
 
 const targetUrl =
   process.env.PROOF_URL ||

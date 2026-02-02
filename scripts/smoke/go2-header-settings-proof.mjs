@@ -1,7 +1,7 @@
 /**
  * GO_2 AUTOPROOF: Mobile header overflow fix + Settings via DropdownMenu.
  * - Open overflow menu, click Settings, assert dialog opens (run twice).
- * - Screenshots: mobile header + menu open → docs/WAR_ROOM/EVIDENCE/GO_2/
+ * - Screenshots: mobile header + menu open → docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/GO_2/
  *
  * Requires: app running (npm run start/dev), .env.local with Supabase + PROOF_*.
  * Usage: node scripts/smoke/go2-header-settings-proof.mjs
@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
-const OUT_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'GO_2');
+const OUT_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'GO_2');
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
 const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || '/dashboard/site/00000000-0000-0000-0000-000000000001';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;

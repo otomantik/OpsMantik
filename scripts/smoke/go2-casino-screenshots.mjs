@@ -1,6 +1,6 @@
 /**
  * GO2 Casino UI — Playwright screenshots: Hunter card + Seal modal (chips).
- * Saves: hunter-card.png, seal-modal-chips.png under docs/WAR_ROOM/EVIDENCE/GO2_CASINO_UI/
+ * Saves: hunter-card.png, seal-modal-chips.png under docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/GO2_CASINO_UI/
  *
  * Requires: app running (npm run start/dev), .env.local with Supabase + PROOF_*.
  * Usage: node scripts/smoke/go2-casino-screenshots.mjs
@@ -13,7 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
-const OUT_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'GO2_CASINO_UI');
+const OUT_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'GO2_CASINO_UI');
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
 const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || '/dashboard/site/01d24667-ca9a-44e3-ab7a-7cd171ae653f';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -4,7 +4,7 @@
  * then save context.storageState for reuse by p4-ui-screenshot and p4-3-screenshot.
  *
  * Requires: app running (npm run dev/start), .env.local with SupABASE + PROOF_EMAIL, PROOF_PASSWORD.
- * Env: PROOF_STORAGE_STATE (default: docs/WAR_ROOM/EVIDENCE/auth/auth-state.json), PROOF_URL.
+ * Env: PROOF_STORAGE_STATE (default: docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/auth/auth-state.json), PROOF_URL.
  * Usage: node scripts/smoke/auth-login-save-state.mjs
  */
 import path from 'node:path';
@@ -16,7 +16,7 @@ import { createClient } from '@supabase/supabase-js';
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
-const STATE_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'auth');
+const STATE_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'auth');
 const PROOF_STORAGE_STATE = process.env.PROOF_STORAGE_STATE || path.join(STATE_DIR, 'auth-state.json');
 const LOGIN_FAIL_SCREENSHOT = path.join(STATE_DIR, 'login-fail.png');
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;

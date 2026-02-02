@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const root = process.cwd();
-const outDir = path.join(root, 'docs', 'WAR_ROOM', 'EVIDENCE', 'PHASE4_GO2');
+const outDir = path.join(root, 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'PHASE4_GO2');
 
 const targetUrl =
   process.env.PROOF_URL ||

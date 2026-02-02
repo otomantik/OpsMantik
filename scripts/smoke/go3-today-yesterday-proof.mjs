@@ -2,7 +2,7 @@
  * GO_3 AUTOPROOF: Today/Yesterday toggle wires to QualificationQueue via absolute date range.
  * - Open menu, click Yesterday → assert queue shows data-day="yesterday" (empty state or cards).
  * - Click Today → assert queue shows data-day="today".
- * - Screenshots: after Today, after Yesterday → docs/WAR_ROOM/EVIDENCE/GO_3/
+ * - Screenshots: after Today, after Yesterday → docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/GO_3/
  *
  * Requires: app running (npm run start/dev), .env.local with Supabase + PROOF_*.
  * Usage: node scripts/smoke/go3-today-yesterday-proof.mjs
@@ -15,7 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
-const OUT_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'GO_3');
+const OUT_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'GO_3');
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
 const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || '/dashboard/site/00000000-0000-0000-0000-000000000001';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -46,8 +46,10 @@ function base64UrlEncode(input) {
   return Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function getStorageKey(url) {
-  const ref = new URL(url).hostname.split('.')[0];
+function getStorageKeyFromSupabaseUrl(supabaseUrl) {
+  // Supabase SSR cookie name is derived from the Supabase project ref (first subdomain of *.supabase.co),
+  // not from the app domain (localhost / console.opsmantik.com).
+  const ref = new URL(supabaseUrl).hostname.split('.')[0];
   return `sb-${ref}-auth-token`;
 }
 
@@ -59,7 +61,8 @@ function getCookieDomain(url) {
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const session = await getSession();
-const cookieName = getStorageKey(BASE_URL);
+if (!SUPABASE_URL) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
+const cookieName = getStorageKeyFromSupabaseUrl(SUPABASE_URL);
 const cookieValue = `base64-${base64UrlEncode(JSON.stringify(session))}`;
 const cookieDomain = getCookieDomain(BASE_URL);
 

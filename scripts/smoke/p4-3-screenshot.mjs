@@ -3,7 +3,7 @@
  * Saves: source-donut.png, location-bars.png (or fallback source-card.png, location-card.png + full.png on failure).
  *
  * Requires: auth state from auth-login-save-state.mjs (no addCookies).
- * Env: PROOF_STORAGE_STATE (default: docs/WAR_ROOM/EVIDENCE/auth/auth-state.json),
+ * Env: PROOF_STORAGE_STATE (default: docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/auth/auth-state.json),
  *      SITE_ID or TEST_SITE_ID, PROOF_URL, PROOF_DASHBOARD_PATH override.
  * Usage: 1) node scripts/smoke/auth-login-save-state.mjs
  *        2) node scripts/smoke/p4-3-screenshot.mjs
@@ -15,8 +15,8 @@ import { chromium } from 'playwright';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
-const OUT_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'P4_3_CHARTS');
-const AUTH_STATE_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'auth');
+const OUT_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'P4_3_CHARTS');
+const AUTH_STATE_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'auth');
 const PROOF_STORAGE_STATE = process.env.PROOF_STORAGE_STATE || path.join(AUTH_STATE_DIR, 'auth-state.json');
 const TIMEOUT_MS = 30000;
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';

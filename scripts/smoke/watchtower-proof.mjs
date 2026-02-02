@@ -15,8 +15,8 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
-const OUT_DIR_GO1 = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'WATCHTOWER_GO1');
-const OUT_DIR_GO2 = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'WATCHTOWER_GO2');
+const OUT_DIR_GO1 = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'WATCHTOWER_GO1');
+const OUT_DIR_GO2 = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'WATCHTOWER_GO2');
 
 fs.mkdirSync(OUT_DIR_GO1, { recursive: true });
 fs.mkdirSync(OUT_DIR_GO2, { recursive: true });

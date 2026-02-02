@@ -17,7 +17,7 @@ const siteIdEnv = process.env.SITE_ID || process.env.TEST_SITE_ID;
 const fromEnv = process.env.P4_FROM;
 const toEnv = process.env.P4_TO;
 
-const OUT_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'P4_BREAKDOWN');
+const OUT_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'P4_BREAKDOWN');
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');

@@ -105,7 +105,7 @@ async function main() {
   log(`   Database: ${SUPABASE_URL}`, 'reset');
   
   // Read SQL diagnostics file
-  const sqlPath = join(__dirname, '../docs/WAR_ROOM/REPORTS/SQL_DIAGNOSTICS.sql');
+  const sqlPath = join(__dirname, '../docs/_archive/2026-02-02/WAR_ROOM/REPORTS/SQL_DIAGNOSTICS.sql');
   const sqlContent = readFileSync(sqlPath, 'utf8');
   
   // Split by query blocks (separated by -- =====)

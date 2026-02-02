@@ -2,7 +2,7 @@
  * GO_4 AUTOPROOF: Canonical shadcn (Radix) Dialog, Sheet, DropdownMenu.
  * - Settings opens, closes with Escape, focus returns.
  * - Keyboard nav in dropdown: Arrow Down/Up, Enter to select.
- * - Build + screenshots in docs/WAR_ROOM/EVIDENCE/GO_4/
+ * - Build + screenshots in docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/GO_4/
  *
  * Requires: app running (npm run start/dev), .env.local with Supabase + PROOF_*.
  * Usage: node scripts/smoke/go4-canonical-ui-proof.mjs
@@ -15,7 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
-const OUT_DIR = path.join(process.cwd(), 'docs', 'WAR_ROOM', 'EVIDENCE', 'GO_4');
+const OUT_DIR = path.join(process.cwd(), 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', 'GO_4');
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
 const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || '/dashboard/site/00000000-0000-0000-0000-000000000001';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;

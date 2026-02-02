@@ -9,7 +9,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 const root = process.cwd();
 const report = [];
 const phase = process.env.PROOF_PHASE || 'PHASE4_GO2';
-const outDir = path.join(root, 'docs', 'WAR_ROOM', 'EVIDENCE', phase);
+const outDir = path.join(root, 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EVIDENCE', phase);
 
 const targetUrl =
   process.env.PROOF_URL ||

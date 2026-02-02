@@ -156,7 +156,7 @@ async function main() {
   };
 
   // Write evidence file
-  const outputPath = join(__dirname, '../docs/WAR_ROOM/EVIDENCE/v2_2/sql_verification_results.json');
+  const outputPath = join(__dirname, '../docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/v2_2/sql_verification_results.json');
   writeFileSync(outputPath, JSON.stringify(evidence, null, 2));
   
   console.log('\n✅ Verification complete!');

@@ -547,7 +547,7 @@ If production is broken and you need immediate rollback:
 - **Vercel Docs**: https://vercel.com/docs
 - **Cloudflare Docs**: https://developers.cloudflare.com/dns
 - **Supabase Docs**: https://supabase.com/docs
-- **Project Docs**: `docs/INSTALL_WP.md` for WordPress installation
+- **Project Docs**: `docs/SETUP/INSTALL_WP.md` for WordPress installation
 
 ---
 

@@ -21,13 +21,24 @@ async function checkIntents() {
     const from = `${today}T00:00:00Z`;
     const to = `${today}T23:59:59Z`;
 
-    const { data: intents } = await supabase.rpc('get_recent_intents_v2', {
+    const { data: intents, error } = await supabase.rpc('get_recent_intents_v2', {
         p_site_id: site.id,
         p_date_from: from,
         p_date_to: to,
         p_limit: 10,
         p_ads_only: true
     });
+
+    if (error) {
+        console.error('[check-intents] RPC error:', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+        });
+        process.exitCode = 1;
+        return;
+    }
 
     console.log(`Intents for ${site.name}:`, intents?.length || 0);
     if (intents && intents.length > 0) {

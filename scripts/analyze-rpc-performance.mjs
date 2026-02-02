@@ -163,7 +163,7 @@ async function main() {
   }, 'Last 30 Days'));
 
   // Write results
-  const outputPath = join(__dirname, '../docs/WAR_ROOM/REPORTS/RPC_PERF_PROOF_V2_2.md');
+  const outputPath = join(__dirname, '../docs/_archive/2026-02-02/WAR_ROOM/REPORTS/RPC_PERF_PROOF_V2_2.md');
   
   let report = `# RPC Performance Proof v2.2\n\n**Date**: ${new Date().toISOString()}\n**Test Site**: ${siteId}\n\n`;
   report += `## Note\n\n`;

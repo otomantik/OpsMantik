@@ -87,7 +87,7 @@ async function main() {
 
   log('\n---', 'reset');
   if (fail) {
-    log('FAIL (fix config: pg_net, trigger, api_keys, or hunter-ai deploy). See docs/WAR_ROOM/REPORTS/AI_SCORE_PIPELINE_GATE.md', 'red');
+    log('FAIL (fix config: pg_net, trigger, api_keys, or hunter-ai deploy). See docs/_archive/2026-02-02/WAR_ROOM/REPORTS/AI_SCORE_PIPELINE_GATE.md', 'red');
     process.exit(1);
   }
   log('PASS (AI pipeline gate: hunter-ai reachable, pg_net enabled, trigger exists, api_keys configured)', 'green');

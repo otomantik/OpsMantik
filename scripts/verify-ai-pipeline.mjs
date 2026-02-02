@@ -104,7 +104,7 @@ async function main() {
     log('Kanıt: AI pipeline çalışıyor (en az bir session ai_score/ai_summary ile güncellenmiş).', 'green');
   } else if ((calls || []).length > 0) {
     log('Kanıt: High-intent call var ama hiç session AI ile güncellenmemiş → trigger veya hunter-ai tarafında sorun.', 'red');
-    log('Kontrol: docs/WAR_ROOM/REPORTS/AI_SCORE_NEDEN_0_KONTROL_LISTESI.md + Edge Functions → hunter-ai → Logs', 'yellow');
+    log('Kontrol: docs/_archive/2026-02-02/WAR_ROOM/REPORTS/AI_SCORE_NEDEN_0_KONTROL_LISTESI.md + Edge Functions → hunter-ai → Logs', 'yellow');
   } else {
     log('Henüz high-intent call yok. Sitede telefon/WhatsApp tıklaması yapıp tekrar dene.', 'yellow');
   }
