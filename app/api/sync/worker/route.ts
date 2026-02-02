@@ -147,7 +147,13 @@ async function handler(req: NextRequest) {
         // --- 2. Context Layer ---
         const geoResult = extractGeoInfo(null, userAgent, meta);
         const { geoInfo, deviceInfo } = geoResult;
-        // Producer sends isp_asn / is_proxy_detected from client req headers; worker has no client req
+        // Producer sends geo data from Vercel/Cloudflare headers; worker has no client req
+        // Override geoInfo with producer-extracted values (these come from edge headers)
+        if (rawBody.geo_city) geoInfo.city = rawBody.geo_city;
+        if (rawBody.geo_district) geoInfo.district = rawBody.geo_district;
+        if (rawBody.geo_country) geoInfo.country = rawBody.geo_country;
+        if (rawBody.geo_timezone) geoInfo.timezone = rawBody.geo_timezone;
+        if (rawBody.geo_telco_carrier) geoInfo.telco_carrier = rawBody.geo_telco_carrier;
         if (rawBody.isp_asn != null) geoInfo.isp_asn = rawBody.isp_asn;
         if (rawBody.is_proxy_detected != null) geoInfo.is_proxy_detected = Boolean(rawBody.is_proxy_detected);
 

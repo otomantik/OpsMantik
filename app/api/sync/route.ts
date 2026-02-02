@@ -92,6 +92,12 @@ export async function POST(req: NextRequest) {
                 ingest_id: ingestId,
                 ip,
                 ua,
+                // Geo data from Vercel/Cloudflare headers (producer has req; worker does not)
+                geo_city: geoInfo.city !== 'Unknown' ? geoInfo.city : undefined,
+                geo_district: geoInfo.district ?? undefined,
+                geo_country: geoInfo.country !== 'Unknown' ? geoInfo.country : undefined,
+                geo_timezone: geoInfo.timezone !== 'Unknown' ? geoInfo.timezone : undefined,
+                geo_telco_carrier: geoInfo.telco_carrier ?? undefined,
                 isp_asn: geoInfo.isp_asn ?? undefined,
                 is_proxy_detected: geoInfo.is_proxy_detected ?? undefined,
             },
