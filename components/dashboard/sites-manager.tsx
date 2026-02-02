@@ -132,9 +132,9 @@ export function SitesManager() {
       setSiteName('');
       setDomain('');
       setShowAddForm(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[SITES_MANAGER] Error:', err);
-      setError(err.message || 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsCreating(false);
     }
@@ -194,9 +194,9 @@ export function SitesManager() {
       setTimeout(() => {
         window.location.reload();
       }, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[SITES_MANAGER] Invite error:', err);
-      setInviteError({ ...inviteError, [siteId]: err.message || 'Unknown error' });
+      setInviteError({ ...inviteError, [siteId]: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
       setInviteLoading({ ...inviteLoading, [siteId]: false });
     }
@@ -225,7 +225,7 @@ export function SitesManager() {
           last_event_action: data.last_event_action,
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[SITES_MANAGER] Status check error:', err);
       setSiteStatus({
         ...siteStatus,

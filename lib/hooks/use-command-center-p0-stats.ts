@@ -74,8 +74,8 @@ export function useCommandCenterP0Stats(
       const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
       const payload = raw && typeof raw === 'object' && 'sealed' in raw ? raw : null;
       setStats((payload as CommandCenterP0Stats) ?? null);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load P0 stats');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load P0 stats');
     } finally {
       setLoading(false);
     }

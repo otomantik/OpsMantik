@@ -14,7 +14,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { IntentRow } from './use-intents';
-import { isDebugEnabled } from '@/lib/utils';
+import { isDebugEnabled, debugLog, debugWarn } from '@/lib/utils';
 
 // Realtime Event Types
 export type DashboardEvent =
@@ -126,18 +126,11 @@ export function useRealtimeDashboard(
   // Deduplication check
   const isDuplicate = useCallback((eventId: string): boolean => {
     if (processedEventsRef.current.has(eventId)) {
-      // Log deduplication in development
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[REALTIME] Duplicate event ignored:', eventId);
-      }
+      debugLog('[REALTIME] Duplicate event ignored:', eventId);
       return true;
     }
     processedEventsRef.current.add(eventId);
-    
-    // Log new event in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[REALTIME] New event processed:', eventId);
-    }
+    debugLog('[REALTIME] New event processed:', eventId);
     
     // Cleanup old events (keep last 1000)
     if (processedEventsRef.current.size > 1000) {
@@ -148,10 +141,8 @@ export function useRealtimeDashboard(
     return false;
   }, []);
 
-  const logAdsOnly = useCallback((message: string, extra?: any) => {
-    if (!isDebugEnabled()) return;
-    // Keep logs terse; they are only visible in dev or explicit debug mode.
-    console.log('[REALTIME][ADS_ONLY]', message, extra || '');
+  const logAdsOnly = useCallback((message: string, extra?: unknown) => {
+    debugLog('[REALTIME][ADS_ONLY]', message, extra ?? '');
   }, []);
 
   const getMetaField = useCallback((obj: any, key: string): string | null => {
@@ -266,11 +257,7 @@ export function useRealtimeDashboard(
       // Create site-specific channel
       const channelName = `dashboard_updates:${siteId}`;
 
-      // Log site scoping in development
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[REALTIME] Subscribing to site-specific channel:', channelName);
-        console.log('[REALTIME] Site filter applied: site_id=eq.' + siteId);
-      }
+      debugLog('[REALTIME] Subscribing to site-specific channel:', channelName, 'site_id=eq.' + siteId);
 
       const channel = supabase
         .channel(channelName)
@@ -287,11 +274,8 @@ export function useRealtimeDashboard(
 
           const newCall = payload.new as any;
           
-          // Verify site_id matches (defense in depth)
           if (newCall.site_id !== siteId) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('[REALTIME] Cross-site event blocked:', newCall.site_id, '!==', siteId);
-            }
+            debugWarn('[REALTIME] Cross-site event blocked:', newCall.site_id, '!==', siteId);
             return;
           }
 
@@ -349,11 +333,8 @@ export function useRealtimeDashboard(
 
           const updatedCall = payload.new as any;
           
-          // Verify site_id matches (defense in depth)
           if (updatedCall.site_id !== siteId) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('[REALTIME] Cross-site event blocked:', updatedCall.site_id, '!==', siteId);
-            }
+            debugWarn('[REALTIME] Cross-site event blocked:', updatedCall.site_id, '!==', siteId);
             return;
           }
 
@@ -586,12 +567,13 @@ export function useRealtimeDashboard(
           subscriptionRef.current = null;
         }
       };
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       setState((prev) => ({
         ...prev,
         isConnected: false,
         connectionStatus: 'ERROR',
-        error: e?.message || 'Realtime init failed',
+        error: msg || 'Realtime init failed',
       }));
       return;
     }

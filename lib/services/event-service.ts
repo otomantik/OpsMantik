@@ -1,6 +1,7 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
 import { computeLeadScore } from '@/lib/scoring';
+import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 
 interface EventData {
     session: { id: string, created_month: string };
@@ -10,7 +11,7 @@ interface EventData {
     event_action: string;
     event_label: string;
     event_value: number | null;
-    meta: any;
+    meta: Record<string, unknown>;
     referrer: string | null;
     currentGclid: string | null;
     attributionSource: string;
@@ -18,8 +19,8 @@ interface EventData {
     fingerprint: string | null;
     ip: string;
     userAgent: string;
-    geoInfo: any;
-    deviceInfo: any;
+    geoInfo: GeoInfo;
+    deviceInfo: DeviceInfo;
     client_sid: string;
     /** Optional idempotency key (worker dedup_event_id); duplicate insert → no double count */
     ingestDedupId?: string | null;
@@ -111,7 +112,7 @@ export class EventService {
         return { leadScore };
     }
 
-    public static async updateSessionStats(sessionId: string, sessionMonth: string, action: string, meta: any) {
+    public static async updateSessionStats(sessionId: string, sessionMonth: string, action: string, meta: Record<string, unknown>) {
         const updates: Record<string, unknown> = {};
 
         if (meta?.duration_sec) {

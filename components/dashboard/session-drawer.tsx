@@ -8,26 +8,8 @@ import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { IntentRow } from '@/lib/hooks/use-intents';
-import { formatTimestamp } from '@/lib/utils';
+import { formatTimestamp, debugLog } from '@/lib/utils';
 import { SessionGroup } from './session-group';
-
-/**
- * TEMP DEBUG (gated, 1 run only)
- * Enable by running in browser console:
- *   localStorage.setItem('opsmantik_debug_sessions_errors_once', '1'); location.reload();
- * Logs will self-disable after the first page load that consumes the flag.
- */
-function shouldLogSessionsErrorsThisRun(): boolean {
-  if (typeof window === 'undefined') return false;
-  const key = 'opsmantik_debug_sessions_errors_once';
-  const anyWindow = window as any;
-  if (anyWindow.__opsmantikDebugSessionsErrorsThisRun === true) return true;
-  const enabled = window.localStorage.getItem(key) === '1';
-  if (!enabled) return false;
-  window.localStorage.removeItem(key);
-  anyWindow.__opsmantikDebugSessionsErrorsThisRun = true;
-  return true;
-}
 
 interface SessionDrawerProps {
   intent: IntentRow;
@@ -124,37 +106,15 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
           events: eventsData || [],
         });
       } catch (err: unknown) {
-        if (shouldLogSessionsErrorsThisRun()) {
-          const e = err as any;
-          const payload = {
-            code: e?.code,
-            message: e?.message,
-            details: e?.details,
-            hint: e?.hint,
-            status: e?.status,
-            name: e?.name,
-          };
-          console.log('[DEBUG][sessions][SessionDrawer] failing query context', {
-            table: 'sessions',
-            select: 'id, created_at, city, district, device_type, ip, user_agent, fingerprint, created_month',
-            filters: { id: intent.matched_session_id, site_id: siteId },
-            method: 'single()',
-          });
-          console.log('[DEBUG][sessions][SessionDrawer] error payload', payload);
-          try {
-            console.log('[DEBUG][sessions][SessionDrawer] error JSON', JSON.stringify(e));
-          } catch {
-            // ignore
-          }
-        }
-        // Avoid red console spam; show limited view for unknown failures too.
-        // Still keep a human-readable UI state.
+        const e = err instanceof Error ? err : new Error(String(err));
+        debugLog('[DEBUG][sessions][SessionDrawer] failing query context', {
+          table: 'sessions',
+          filters: { id: intent.matched_session_id, site_id: siteId },
+          error: e.message,
+        });
         setSession(null);
         setIsLimitedView(true);
         setLimitedReason('unavailable');
-        if (shouldLogSessionsErrorsThisRun()) {
-          console.log('[DEBUG][sessions][SessionDrawer] unexpected error', err);
-        }
       } finally {
         setIsLoading(false);
       }

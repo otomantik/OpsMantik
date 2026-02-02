@@ -13,24 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-
-/**
- * TEMP DEBUG (gated, 1 run only)
- * Enable by running in browser console:
- *   localStorage.setItem('opsmantik_debug_sessions_errors_once', '1'); location.reload();
- * Logs will self-disable after the first page load that consumes the flag.
- */
-function shouldLogSessionsErrorsThisRun(): boolean {
-  if (typeof window === 'undefined') return false;
-  const key = 'opsmantik_debug_sessions_errors_once';
-  const anyWindow = window as any;
-  if (anyWindow.__opsmantikDebugSessionsErrorsThisRun === true) return true;
-  const enabled = window.localStorage.getItem(key) === '1';
-  if (!enabled) return false;
-  window.localStorage.removeItem(key);
-  anyWindow.__opsmantikDebugSessionsErrorsThisRun = true;
-  return true;
-}
+import { debugLog } from '@/lib/utils';
 
 export interface VisitorSession {
   id: string;
@@ -157,30 +140,11 @@ export function useVisitorHistory(
         setSessionCount24h(count24h);
         setIsLoading(false);
       } catch (err) {
-        if (shouldLogSessionsErrorsThisRun()) {
-          const e = err as any;
-          const payload = {
-            code: e?.code,
-            message: e?.message,
-            details: e?.details,
-            hint: e?.hint,
-            status: e?.status,
-            name: e?.name,
-          };
-          console.log('[DEBUG][sessions][useVisitorHistory] failing query context', {
-            table: 'sessions',
-            select: 'id, created_at, attribution_source, device_type, city, lead_score',
-            filters: { site_id: siteId, fingerprint },
-            order: ['created_at.desc', 'id.desc'],
-            limit: 20,
-          });
-          console.log('[DEBUG][sessions][useVisitorHistory] error payload', payload);
-          try {
-            console.log('[DEBUG][sessions][useVisitorHistory] error JSON', JSON.stringify(e));
-          } catch {
-            // ignore
-          }
-        }
+        debugLog('[DEBUG][sessions][useVisitorHistory] error', {
+          site_id: siteId,
+          fingerprint,
+          error: err instanceof Error ? err.message : String(err),
+        });
         setError(err instanceof Error ? err : new Error('Failed to fetch visitor history'));
         setIsLoading(false);
       }

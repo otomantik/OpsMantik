@@ -42,9 +42,9 @@ export function SiteSetup() {
       setTimeout(() => {
         window.location.reload();
       }, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[SITE_SETUP] ❌ Error:', err);
-      setError(err.message || 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsCreating(false);
     }

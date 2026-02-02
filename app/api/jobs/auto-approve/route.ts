@@ -51,9 +51,10 @@ export async function POST(req: NextRequest) {
     const count = Array.isArray(updated) ? updated.length : 0;
 
     return NextResponse.json({ ok: true, updated: count });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: 'Internal server error', details: e?.message || String(e) },
+      { error: 'Internal server error', details },
       { status: 500 }
     );
   }

@@ -84,8 +84,8 @@ export function useIntentQualification(siteId: string, intentId: string) {
 
         setSaving(false);
         return { success: true };
-      } catch (err: any) {
-        const errorMessage = err?.message || 'Failed to qualify intent';
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to qualify intent';
         setError(errorMessage);
         setSaving(false);
         return { success: false, error: errorMessage };

@@ -282,8 +282,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
       setEffectiveAdsOnly(adsOnly);
 
       setIntents(rows);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load intents');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load intents');
     } finally {
       setLoading(false);
     }

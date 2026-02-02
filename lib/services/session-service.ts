@@ -1,23 +1,24 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog, debugWarn } from '@/lib/utils';
+import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 
 interface SessionContext {
     ip: string;
     userAgent: string;
-    geoInfo: any;
-    deviceInfo: any;
+    geoInfo: GeoInfo;
+    deviceInfo: DeviceInfo;
 }
 
 interface IncomingData {
     client_sid: string;
     url: string;
     currentGclid?: string | null;
-    meta?: any;
+    meta?: Record<string, unknown>;
     params: URLSearchParams;
     attributionSource: string;
     deviceType: string;
     fingerprint?: string | null;
-    utm?: any;
+    utm?: { source?: string; medium?: string; campaign?: string; term?: string; content?: string; matchtype?: string; device?: string; network?: string; placement?: string } | null;
     referrer?: string | null;
 }
 
@@ -76,7 +77,7 @@ export class SessionService {
         return session;
     }
 
-    private static async updateSessionIfNecesary(session: any, data: IncomingData, context: SessionContext, dbMonth: string) {
+    private static async updateSessionIfNecesary(session: { id: string; created_month: string; attribution_source?: string | null; gclid?: string | null }, data: IncomingData, context: SessionContext, dbMonth: string) {
         const { utm, currentGclid, params, meta, attributionSource, deviceType, fingerprint } = data;
         const { geoInfo, deviceInfo } = context;
 

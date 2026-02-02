@@ -34,4 +34,5 @@ Canonical entry point for system documentation.
 - **API contract:** [API/API_CONTRACT.md](API/API_CONTRACT.md)
 - **Cleanup audit:** [AUDIT/CLEANUP_QUICK_AUDIT.sql](AUDIT/CLEANUP_QUICK_AUDIT.sql)
 - **SQL referansı:** [AUDIT/MIGRATIONS_INDEX.md](AUDIT/MIGRATIONS_INDEX.md)
+- **Teknik borç:** [AUDIT/TECH_DEBT_SCAN.md](AUDIT/TECH_DEBT_SCAN.md)
 - **Performance:** [PERF/PERFORMANCE_CHECKLIST.md](PERF/PERFORMANCE_CHECKLIST.md)

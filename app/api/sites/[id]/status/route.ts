@@ -183,10 +183,11 @@ export async function GET(
       last_event_category: mostRecentEvent?.event_category || null,
       last_event_action: mostRecentEvent?.event_action || null,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[SITES_STATUS] Exception:', error);
+    const details = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error', details },
       { status: 500 }
     );
   }

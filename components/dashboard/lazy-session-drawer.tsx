@@ -81,9 +81,9 @@ export function LazySessionDrawer({
         setDetails(row || null);
         if (tErr) throw tErr;
         setEvents((tData as any[]) || []);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelled) return;
-        setError(e?.message || 'Failed to load session');
+        setError(e instanceof Error ? e.message : 'Failed to load session');
       } finally {
         if (!cancelled) setLoading(false);
       }

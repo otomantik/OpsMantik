@@ -75,10 +75,11 @@ export async function POST(_req: NextRequest) {
       { status: 500 }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[CREATE_TEST_SITE] Exception:', error);
+    const details = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error', details },
       { status: 500 }
     );
   }

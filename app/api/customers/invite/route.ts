@@ -193,10 +193,11 @@ export async function POST(req: NextRequest) {
       role: role,
       note: 'Share this login URL with the customer',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[CUSTOMERS_INVITE] Exception:', error);
+    const details = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error', details },
       { status: 500 }
     );
   }

@@ -97,11 +97,10 @@ export function TimelineChart({
     }, intervalMs);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- effectiveInterval is the only relevant dep; data/range come from parent
   }, [effectiveInterval]);
 
-  // Simple SVG-based chart (no external dependencies)
-  // TODO: Install recharts for better chart visualization
+  // SVG-based chart (recharts available; kept lightweight for timeline)
   const renderChart = () => {
     // FIX 3: Defensive rendering - ensure data is array
     if (!Array.isArray(data) || data.length === 0) {

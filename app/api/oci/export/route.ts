@@ -180,8 +180,9 @@ export async function GET(req: NextRequest) {
         'Content-Disposition': `attachment; filename="opsmantik_oci_${siteId}.csv"`,
       },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'Internal server error', details: e?.message || String(e) }, { status: 500 });
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
   }
 }
 

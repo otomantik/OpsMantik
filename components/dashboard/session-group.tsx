@@ -6,25 +6,7 @@ import { Phone, MapPin, TrendingUp, ChevronDown, ChevronUp, CheckCircle2, Clock,
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
-import { formatTimestamp } from '@/lib/utils';
-
-/**
- * TEMP DEBUG (gated, 1 run only)
- * Enable by running in browser console:
- *   localStorage.setItem('opsmantik_debug_sessions_errors_once', '1'); location.reload();
- * Logs will self-disable after the first page load that consumes the flag.
- */
-function shouldLogSessionsErrorsThisRun(): boolean {
-  if (typeof window === 'undefined') return false;
-  const key = 'opsmantik_debug_sessions_errors_once';
-  const anyWindow = window as any;
-  if (anyWindow.__opsmantikDebugSessionsErrorsThisRun === true) return true;
-  const enabled = window.localStorage.getItem(key) === '1';
-  if (!enabled) return false;
-  window.localStorage.removeItem(key);
-  anyWindow.__opsmantikDebugSessionsErrorsThisRun = true;
-  return true;
-}
+import { formatTimestamp, debugLog } from '@/lib/utils';
 
 interface Event {
   id: string;
@@ -78,26 +60,12 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
         p_session_id: sessionId,
       });
 
-      if (error && shouldLogSessionsErrorsThisRun()) {
-        const e = error as any;
-        const payload = {
-          code: e?.code,
-          message: e?.message,
-          details: e?.details,
-          hint: e?.hint,
-          status: e?.status,
-          name: e?.name,
-        };
-        console.log('[DEBUG][sessions][SessionGroup] failing query context', {
-          rpc: 'get_session_details',
-          args: { p_site_id: siteId, p_session_id: sessionId },
+      if (error) {
+        debugLog('[DEBUG][sessions][SessionGroup] get_session_details error', {
+          p_site_id: siteId,
+          p_session_id: sessionId,
+          error: error instanceof Error ? error.message : String(error),
         });
-        console.log('[DEBUG][sessions][SessionGroup] error payload', payload);
-        try {
-          console.log('[DEBUG][sessions][SessionGroup] error JSON', JSON.stringify(e));
-        } catch {
-          // ignore
-        }
       }
 
       if (sessionRows && Array.isArray(sessionRows) && sessionRows[0]) {

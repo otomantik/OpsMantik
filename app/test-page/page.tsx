@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { debugLog } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -46,7 +47,7 @@ export default function TestPage() {
 
       if (sites?.public_id) {
         setSiteId(sites.public_id);
-        console.log('[TEST_PAGE] Using site ID:', sites.public_id);
+        debugLog('[TEST_PAGE] Using site ID:', sites.public_id);
       }
     };
 
@@ -59,7 +60,7 @@ export default function TestPage() {
 
     // Check if tracker already exists
     if (window.opmantik) {
-      console.log('[TEST_PAGE] Tracker already loaded');
+      debugLog('[TEST_PAGE] Tracker already loaded');
       setTrackerLoaded(true);
       updateSessionInfo();
       return;
@@ -68,7 +69,7 @@ export default function TestPage() {
     // Check if script already exists in DOM
     const existingScript = document.querySelector(`script[data-site-id="${siteId}"]`);
     if (existingScript) {
-      console.log('[TEST_PAGE] Script already in DOM, waiting...');
+      debugLog('[TEST_PAGE] Script already in DOM, waiting...');
       const checkInterval = setInterval(() => {
         if (window.opmantik) {
           setTrackerLoaded(true);
@@ -87,7 +88,7 @@ export default function TestPage() {
     script.setAttribute('id', 'opmantik-tracker-script');
     
     script.onload = () => {
-      console.log('[TEST_PAGE] ✅ Tracker script loaded');
+      debugLog('[TEST_PAGE] Tracker script loaded');
       setTimeout(() => {
         if (window.opmantik) {
           setTrackerLoaded(true);
@@ -130,7 +131,7 @@ export default function TestPage() {
     sessionStorage.removeItem('opmantik_session_sid');
     sessionStorage.removeItem('opmantik_session_context');
     localStorage.removeItem('opmantik_session_fp');
-    console.log('[TEST_PAGE] ✅ Storage cleared');
+    debugLog('[TEST_PAGE] Storage cleared');
     alert('Storage temizlendi! Sayfa yenilenecek...');
     window.location.reload();
   };
@@ -164,15 +165,15 @@ export default function TestPage() {
       }, ...prev].slice(0, 30));
       
       setApiStatus('success');
-      console.log('[TEST_PAGE] ✅ Event triggered:', { category, action, label, value, metadata });
-      console.log('[TEST_PAGE] Note: Check console for API response. Network errors are expected if server is down.');
+      debugLog('[TEST_PAGE] Event triggered:', { category, action, label, value, metadata });
       
       setTimeout(() => setApiStatus('idle'), 2000);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       setApiStatus('error');
       setEventLog(prev => [{ 
         time, 
-        event: `${category}:${action} - ERROR: ${error.message || 'Unknown'}`, 
+        event: `${category}:${action} - ERROR: ${msg || 'Unknown'}`, 
         status: '❌' 
       }, ...prev].slice(0, 30));
       console.error('[TEST_PAGE] ❌ Event send error:', error);
@@ -188,7 +189,7 @@ export default function TestPage() {
 
     // Store GCLID in sessionStorage so tracker picks it up
     sessionStorage.setItem('opmantik_session_context', gclid);
-    console.log('[TEST_PAGE] GCLID stored in sessionStorage:', gclid);
+    debugLog('[TEST_PAGE] GCLID stored in sessionStorage:', gclid);
     
     // Build URL with GCLID and UTM params
     const url = new URL(window.location.href);
@@ -198,23 +199,23 @@ export default function TestPage() {
     
     // Update URL without reload (for testing)
     window.history.replaceState({}, '', url.toString());
-    console.log('[TEST_PAGE] URL updated with GCLID:', url.toString());
+    debugLog('[TEST_PAGE] URL updated with GCLID:', url.toString());
     
     // Verify URL was updated
     const currentUrl = new URL(window.location.href);
     const urlGclid = currentUrl.searchParams.get('gclid');
-    console.log('[TEST_PAGE] Current URL GCLID:', urlGclid);
+    debugLog('[TEST_PAGE] Current URL GCLID:', urlGclid);
     
     // Force tracker to re-read context by triggering a new session check
     // The tracker reads from URL params first, then sessionStorage
     if (window.opmantik?.session) {
       // Get fresh session with updated context
       const session = window.opmantik.session();
-      console.log('[TEST_PAGE] Session context:', session.context);
+      debugLog('[TEST_PAGE] Session context:', session.context);
     }
     
     // Send event with GCLID in metadata (explicit override - this takes precedence)
-    console.log('[TEST_PAGE] Sending paid_click event with GCLID:', gclid);
+    debugLog('[TEST_PAGE] Sending paid_click event with GCLID:', gclid);
     sendEvent('acquisition', 'paid_click', 'google_ads_test', undefined, {
       gclid: gclid, // Explicit override in metadata
       utm_source: utmSource || undefined,
@@ -224,7 +225,7 @@ export default function TestPage() {
     
     // Also send a page view to create session (with GCLID in URL)
     setTimeout(() => {
-      console.log('[TEST_PAGE] Sending page view event');
+      debugLog('[TEST_PAGE] Sending page view event');
       sendEvent('interaction', 'view', 'test_page_paid');
     }, 500);
   };
