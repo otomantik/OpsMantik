@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -167,7 +167,15 @@ function Quadrant({ title, icon: Icon, children, className }: { title: string; i
 }
 
 function Field({ label, value, subValue, icon: Icon, highlight, tip }: { label: string; value: React.ReactNode; subValue?: React.ReactNode; icon?: LucideIcon | React.ReactNode | (() => React.ReactNode); highlight?: boolean; tip?: string }) {
-  const iconContent = typeof Icon === 'function' ? <Icon /> : Icon ?? <div className="h-3 w-3" />;
+  // Icon can be:
+  // - a React element: <SomeIcon />
+  // - a component type (including lucide-react forwardRef icons)
+  // - a function component (() => <ScanningIcon ... />)
+  const iconContent = Icon
+    ? (React.isValidElement(Icon)
+        ? Icon
+        : React.createElement(Icon as any, { className: "h-3 w-3 text-muted-foreground/60 shrink-0 group-hover/field:text-foreground/80" }))
+    : <div className="h-3 w-3" />;
 
   const content = (
     <div className="flex items-start gap-2.5 min-w-0 group/field">
