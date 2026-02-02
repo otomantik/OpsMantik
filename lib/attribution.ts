@@ -93,19 +93,35 @@ export function computeAttribution(input: AttributionInput): AttributionResult {
 /**
  * Extract UTM and Google Ads params from URL
  * Supports: utm_*, matchtype, device, network, placement (hesaptan şablon)
+ * ROBUST: Also parses fragment-based query strings (e.g., #?utm_term=keyword)
  */
 export function extractUTM(url: string): AttributionInput['utm'] | null {
   try {
     const urlObj = new URL(url);
-    const medium = urlObj.searchParams.get('utm_medium');
-    const source = urlObj.searchParams.get('utm_source');
-    const campaign = urlObj.searchParams.get('utm_campaign');
-    const term = urlObj.searchParams.get('utm_term');
-    const content = urlObj.searchParams.get('utm_content');
-    const matchtype = urlObj.searchParams.get('matchtype'); // e, p, b
-    const device = urlObj.searchParams.get('device');   // Google Ads {device}
-    const network = urlObj.searchParams.get('network'); // Google Ads {network}
-    const placement = urlObj.searchParams.get('placement'); // Google Ads {placement}
+    let params = new URLSearchParams(urlObj.search);
+
+    // ROBUST: Parse fragment (#) if it contains query params (Google Ads redirect bug)
+    // Example: https://domain.com/?gclid=xxx#4?utm_source=google&utm_term=keyword
+    if (urlObj.hash && urlObj.hash.includes('?')) {
+      const fragmentQuery = urlObj.hash.split('?')[1];
+      if (fragmentQuery) {
+        const fragmentParams = new URLSearchParams(fragmentQuery);
+        // Merge fragment params into main params (fragment values take precedence if duplicate)
+        fragmentParams.forEach((value, key) => {
+          params.set(key, value);
+        });
+      }
+    }
+
+    const medium = params.get('utm_medium');
+    const source = params.get('utm_source');
+    const campaign = params.get('utm_campaign');
+    const term = params.get('utm_term');
+    const content = params.get('utm_content');
+    const matchtype = params.get('matchtype'); // e, p, b
+    const device = params.get('device');   // Google Ads {device}
+    const network = params.get('network'); // Google Ads {network}
+    const placement = params.get('placement'); // Google Ads {placement}
 
     if (!medium && !source && !campaign && !term && !content && !matchtype && !device && !network && !placement) {
       return null;

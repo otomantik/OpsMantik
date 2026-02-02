@@ -52,3 +52,27 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Diagnostic and test files (may contain secrets)
+*_ENV_*.txt
+VERCEL_ENV_*.txt
+test-*.mjs
+*_CHECKS.sql
+*_DIAGNOSTIC.sql
+*_ANALYSIS.sql
+*_QUERIES.sql
+DEBUG_*.sql
+CHECK_*.sql
+*_REPORT.md
+*_CHECKLIST.md
+*_TEMPLATE.md
+CRITICAL_*.md
+FIX_*.md
+ANALYSIS_*.md
+SYSTEM_*.sql
+BASIC_*.sql
+SITE_ID_*.sql
+GCLID_*.sql
+GOOGLE_ADS_*.md
+TRACKING_DROP_*.sql
+TRACKING_DROP_*.md
