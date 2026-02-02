@@ -33,4 +33,5 @@ Canonical entry point for system documentation.
 - **Google OAuth:** [SETUP/AUTH_GOOGLE_OAUTH_SETUP.md](SETUP/AUTH_GOOGLE_OAUTH_SETUP.md)
 - **API contract:** [API/API_CONTRACT.md](API/API_CONTRACT.md)
 - **Cleanup audit:** [AUDIT/CLEANUP_QUICK_AUDIT.sql](AUDIT/CLEANUP_QUICK_AUDIT.sql)
+- **SQL referansı:** [AUDIT/MIGRATIONS_INDEX.md](AUDIT/MIGRATIONS_INDEX.md)
 - **Performance:** [PERF/PERFORMANCE_CHECKLIST.md](PERF/PERFORMANCE_CHECKLIST.md)
