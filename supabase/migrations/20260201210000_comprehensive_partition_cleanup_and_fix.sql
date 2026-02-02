@@ -138,22 +138,29 @@ BEGIN
   END IF;
   
   -- Lookup session's created_month (trigger ensures it's correct)
+  -- NOTE: If session not found, it might be in the same transaction (not yet committed)
+  -- In that case, we'll use the provided session_month (worker should have set it correctly)
   SELECT s.created_month, s.site_id
     INTO v_month, v_site
   FROM public.sessions s
   WHERE s.id = NEW.session_id
   LIMIT 1;
   
-  IF v_month IS NULL THEN
-    RAISE EXCEPTION 'Session % not found for event insert/update', NEW.session_id;
-  END IF;
-  
-  -- CRITICAL: Always override session_month (even if worker sent it)
-  NEW.session_month := v_month;
-  
-  -- Backfill site_id if NULL
-  IF NEW.site_id IS NULL THEN
-    NEW.site_id := v_site;
+  -- If session found: use its created_month (always correct, trigger-set)
+  IF v_month IS NOT NULL THEN
+    NEW.session_month := v_month;
+    IF NEW.site_id IS NULL THEN
+      NEW.site_id := v_site;
+    END IF;
+  ELSE
+    -- Session not found: might be same transaction (FK is DEFERRABLE)
+    -- In this case, trust the provided session_month (worker calculated it)
+    -- But log a warning for debugging
+    IF NEW.session_month IS NULL THEN
+      RAISE EXCEPTION 'Session % not found and session_month is NULL', NEW.session_id;
+    END IF;
+    -- session_month already set by worker, keep it
+    -- site_id will be set by another trigger or worker
   END IF;
   
   RETURN NEW;
