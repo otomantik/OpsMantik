@@ -14,7 +14,7 @@ interface Event {
   event_action: string;
   event_label: string | null;
   event_value: number | null;
-  metadata: any;
+  metadata: Record<string, unknown>;
   created_at: string;
   url?: string;
 }
@@ -29,7 +29,7 @@ interface SessionGroupProps {
 export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, events, adsOnly = false }: SessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVisitorHistory, setShowVisitorHistory] = useState(false);
-  const [matchedCall, setMatchedCall] = useState<any>(null);
+  const [matchedCall, setMatchedCall] = useState<{ id: string; phone_number?: string; matched_session_id?: string | null; lead_score?: number | null; created_at?: string } | null>(null);
   // isLoadingCall removed (unused)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [adsGateChecked, setAdsGateChecked] = useState(false);
@@ -47,7 +47,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   const firstEvent = events[events.length - 1]; // Oldest event
   const lastEvent = events[0]; // Newest event
   const metadata = firstEvent.metadata || {};
-  const leadScore = metadata.lead_score || 0;
+  const leadScore = (typeof metadata.lead_score === 'number' ? metadata.lead_score : 0);
 
   // Fetch session data (normalized fields) - fallback to event metadata
   // Also fetch site_id for visitor history
@@ -69,15 +69,15 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
       }
 
       if (sessionRows && Array.isArray(sessionRows) && sessionRows[0]) {
-        const session = sessionRows[0] as any;
+        const session = sessionRows[0] as Record<string, unknown>;
         setSessionData({
-          attribution_source: session.attribution_source ?? null,
-          device_type: session.device_type ?? null,
-          city: session.city ?? null,
-          district: session.district ?? null,
-          fingerprint: session.fingerprint ?? null,
-          gclid: session.gclid ?? null,
-          site_id: session.site_id ?? null,
+          attribution_source: (session.attribution_source as string | null | undefined) ?? null,
+          device_type: (session.device_type as string | null | undefined) ?? null,
+          city: (session.city as string | null | undefined) ?? null,
+          district: (session.district as string | null | undefined) ?? null,
+          fingerprint: (session.fingerprint as string | null | undefined) ?? null,
+          gclid: (session.gclid as string | null | undefined) ?? null,
+          site_id: (session.site_id as string | null | undefined) ?? null,
         });
         setIsExcludedByAdsOnly(false);
       } else if (adsOnly) {
@@ -93,13 +93,13 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
   // Use session data first, fallback to event metadata (before any early return so hook count is stable)
   // Note: computeAttribution always returns a value, so 'Organic' fallback is redundant
-  const attributionSource = sessionData?.attribution_source || metadata.attribution_source;
-  const intelligenceSummary = metadata.intelligence_summary || 'Standard Traffic';
-  const gclid = sessionData?.gclid || metadata.gclid || null;
+  const attributionSource = (sessionData?.attribution_source ?? metadata.attribution_source ?? null) as string | null;
+  const intelligenceSummary = (typeof metadata.intelligence_summary === 'string' ? metadata.intelligence_summary : 'Standard Traffic');
+  const gclid = (sessionData?.gclid ?? metadata.gclid ?? null) as string | null;
 
   // Get fingerprint and site_id for visitor history
-  const fingerprint = sessionData?.fingerprint || metadata.fingerprint || metadata.fp || null;
-  const effectiveSiteId = (sessionData as any)?.site_id || siteId || null;
+  const fingerprint = (sessionData?.fingerprint ?? metadata.fingerprint ?? metadata.fp ?? null) as string | null;
+  const effectiveSiteId = (sessionData?.site_id ?? siteId) ?? null;
 
   // Fetch visitor history if fingerprint and siteId are available
   const { sessions: visitorSessions, calls: visitorCalls, sessionCount24h, isReturning, isLoading: isLoadingHistory } = useVisitorHistory(
@@ -108,11 +108,11 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   );
 
   // Context chips data - prefer session, fallback to metadata
-  const city = sessionData?.city || metadata.city || null;
-  const district = sessionData?.district || metadata.district || null;
-  const device = sessionData?.device_type || metadata.device_type || null;
-  const os = metadata.os || null;
-  const browser = metadata.browser || null;
+  const city = (sessionData?.city ?? metadata.city ?? null) as string | null;
+  const district = (sessionData?.district ?? metadata.district ?? null) as string | null;
+  const device = (sessionData?.device_type ?? metadata.device_type ?? null) as string | null;
+  const os = (metadata.os ?? null) as string | null;
+  const browser = (metadata.browser ?? null) as string | null;
 
   // Check for matched call when component mounts or session changes
   // FIX: Use matched_session_id instead of fingerprint to prevent fingerprint leakage
@@ -124,7 +124,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     // Use JOIN pattern for RLS compliance - calls -> sites -> user_id
     // Contract: MATCHED badge shows ONLY when call.matched_session_id === session.id
     // Iron Dome: Add explicit site_id scope for defense in depth
-    const siteIdForQuery = (sessionData as any)?.site_id;
+    const siteIdForQuery = sessionData?.site_id;
     if (!siteIdForQuery) {
       return;
     }
@@ -139,8 +139,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
       .maybeSingle()
       .then(({ data, error }) => {
         if (error) {
-          // Silently ignore RLS errors (call might belong to another user)
-          console.log('[SESSION_GROUP] Call lookup error (RLS?):', error.message);
+          debugLog('[SESSION_GROUP] Call lookup error (RLS?):', error.message);
           return;
         }
         if (data) {

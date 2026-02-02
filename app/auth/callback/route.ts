@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { debugLog, debugWarn } from '@/lib/utils';
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -16,9 +17,7 @@ export async function GET(request: Request) {
     // Fallback to current origin (development only)
     redirectUrl = `${requestUrl.origin}/dashboard`;
     
-    if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-      console.warn('[AUTH_CALLBACK] ⚠️ NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectUrl);
-    }
+    debugWarn('[AUTH_CALLBACK] NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectUrl);
   }
   
   if (code) {
@@ -29,9 +28,7 @@ export async function GET(request: Request) {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     
     if (!supabaseUrl || !anonKey) {
-      if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-        console.error('[AUTH_CALLBACK] Missing Supabase env vars');
-      }
+      debugLog('[AUTH_CALLBACK] Missing Supabase env vars');
       return NextResponse.redirect(new URL('/login?error=config', redirectUrl));
     }
     
@@ -46,11 +43,7 @@ export async function GET(request: Request) {
               cookieStore.set(name, value, options);
             });
           } catch (error) {
-            // In route handlers, we need to handle cookies differently
-            // The cookies will be set via the response headers
-            if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-              console.warn('[AUTH_CALLBACK] Cookie set error (expected in route handler):', error);
-            }
+            debugWarn('[AUTH_CALLBACK] Cookie set error (expected in route handler):', error);
           }
         },
       },
@@ -60,9 +53,7 @@ export async function GET(request: Request) {
     const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
     
     if (exchangeError) {
-      if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-        console.error('[AUTH_CALLBACK] Exchange error:', exchangeError);
-      }
+      debugLog('[AUTH_CALLBACK] Exchange error:', exchangeError);
       return NextResponse.redirect(new URL('/login?error=exchange', redirectUrl));
     }
     
@@ -70,29 +61,20 @@ export async function GET(request: Request) {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
-      if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-        console.error('[AUTH_CALLBACK] No session after exchange');
-      }
+      debugLog('[AUTH_CALLBACK] No session after exchange');
       return NextResponse.redirect(new URL('/login?error=no_session', redirectUrl));
     }
     
     // Get all cookies that were set during exchange
     const allCookies = cookieStore.getAll();
     
-    if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-      console.log('[AUTH_CALLBACK] Session exchanged successfully. User:', session.user.email);
-      console.log('[AUTH_CALLBACK] Cookies set:', allCookies.filter(c => c.name.startsWith('sb-')).length);
-      console.log('[AUTH_CALLBACK] Redirecting to:', redirectUrl);
-    }
+    debugLog('[AUTH_CALLBACK] Session exchanged. User:', session.user.email, 'Cookies:', allCookies.filter(c => c.name.startsWith('sb-')).length, 'Redirect:', redirectUrl);
     
     // Create redirect response - cookies are automatically included via cookieStore.set()
     // Next.js route handlers automatically include cookies set via cookies().set() in the response
     return NextResponse.redirect(redirectUrl);
   }
   
-  // No code provided, redirect to login
-  if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-    console.warn('[AUTH_CALLBACK] No code provided in callback');
-  }
+  debugWarn('[AUTH_CALLBACK] No code provided in callback');
   return NextResponse.redirect(new URL('/login?error=no_code', redirectUrl));
 }

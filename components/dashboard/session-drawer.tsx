@@ -32,7 +32,7 @@ interface SessionData {
     event_action: string;
     event_label: string | null;
     event_value: number | null;
-    metadata: any;
+    metadata: Record<string, unknown>;
     created_at: string;
     url?: string;
   }>;
@@ -69,8 +69,9 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
         // Graceful limited view: session might be missing, denied, or not authenticated.
         // Do NOT surface as a red error unless it's unexpected.
         if (sessionError) {
-          const msg = (sessionError as any)?.message;
-          const details = (sessionError as any)?.details;
+          const err = sessionError as { message?: string; details?: string };
+          const msg = err?.message;
+          const details = err?.details;
           const expected = msg === 'access_denied' || msg === 'not_authenticated';
           setSession(null);
           setIsLimitedView(true);

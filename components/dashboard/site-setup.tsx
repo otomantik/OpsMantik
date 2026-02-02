@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { debugLog } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function SiteSetup() {
@@ -30,12 +31,9 @@ export function SiteSetup() {
       }
 
       setSuccess(true);
-      console.log('[SITE_SETUP] ✅ Test site created:', data.site);
-      
-      // Show the public_id to user
+      debugLog('[SITE_SETUP] Test site created:', data.site);
       if (data.site?.public_id) {
-        console.log('[SITE_SETUP] Your site public_id:', data.site.public_id);
-        console.log('[SITE_SETUP] Use this in test page: data-site-id="' + data.site.public_id + '"');
+        debugLog('[SITE_SETUP] public_id:', data.site.public_id, 'Use in test page: data-site-id="' + data.site.public_id + '"');
       }
       
       // Reload page after 2 seconds to refresh dashboard

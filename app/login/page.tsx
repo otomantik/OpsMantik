@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { debugLog, debugWarn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
@@ -41,14 +42,10 @@ export default function LoginPage() {
       // Fallback to current origin (development only)
       redirectTo = `${window.location.origin}/auth/callback`;
       
-      if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-        console.warn('[AUTH] ⚠️ NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectTo);
-      }
+      debugWarn('[AUTH] NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectTo);
     }
     
-    if (process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true') {
-      console.log('[AUTH] Google OAuth redirectTo:', redirectTo);
-    }
+    debugLog('[AUTH] Google OAuth redirectTo:', redirectTo);
     
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

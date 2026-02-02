@@ -22,35 +22,38 @@ export interface QualificationQueueProps {
   scope: 'ads' | 'all';
 }
 
+type RpcIntentRow = Record<string, unknown>;
+
 function parseHunterIntents(data: unknown): HunterIntent[] {
   if (!data) return [];
-  let rows: any[] = [];
+  let rows: RpcIntentRow[] = [];
 
-  // Unwrap: Supabase/PostgREST may return jsonb[] as raw array, or single-element wrapper
   const raw = data;
   if (Array.isArray(raw)) {
     if (raw.length === 0) return [];
-    // Single-element array containing the real list (some drivers return [[...]])
     if (raw.length === 1 && Array.isArray(raw[0])) {
-      rows = raw[0] as any[];
+      rows = raw[0] as RpcIntentRow[];
     } else if (typeof raw[0] === 'string') {
-      rows = raw.map((item: any) => {
-        try {
-          return typeof item === 'string' ? JSON.parse(item) : item;
-        } catch {
-          return null;
-        }
-      }).filter(Boolean);
+      rows = raw
+        .map((item: unknown): RpcIntentRow | null => {
+          try {
+            return (typeof item === 'string' ? JSON.parse(item) : item) as RpcIntentRow | null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((r): r is RpcIntentRow => r != null);
     } else {
-      rows = raw as any[];
+      rows = raw as RpcIntentRow[];
     }
   } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    const arr = (raw as any).data ?? (raw as any).rows ?? (raw as any).intents;
-    if (Array.isArray(arr)) rows = arr;
+    const obj = raw as Record<string, unknown>;
+    const arr = (obj.data ?? obj.rows ?? obj.intents) as unknown[];
+    if (Array.isArray(arr)) rows = arr as RpcIntentRow[];
   }
 
   // Basic shape validation: need id for card key
-  return rows.filter((r: any) => r != null && r.id != null).map((r: any) => ({
+  return rows.filter((r) => r != null && r.id != null).map((r) => ({
     id: r.id,
     created_at: r.created_at,
     intent_action: r.intent_action ?? null,
@@ -221,7 +224,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
       async function fetchRange(adsOnly: boolean): Promise<HunterIntent[]> {
         let data: unknown = null;
-        let fetchError: any = null;
+        let fetchError: { message?: string; details?: string } | null = null;
 
         if (preferV2 && rpcV2AvailableRef.current) {
           const v2 = await supabase.rpc('get_recent_intents_v2', {
