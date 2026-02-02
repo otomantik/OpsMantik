@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, TrendingUp } from 'lucide-react';
 import { useTimelineData, TimelinePoint } from '@/lib/hooks/use-timeline-data';
+import { debugLog } from '@/lib/utils';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { formatTimestamp } from '@/lib/utils';
 
@@ -59,10 +60,7 @@ export function TimelineChart({
       setIsRefreshing(true);
     }
     
-    // Log refresh in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[TimelineChart] Refreshing chart', { silent, timestamp: new Date().toISOString() });
-    }
+    debugLog('[TimelineChart] Refreshing chart', { silent, timestamp: new Date().toISOString() });
     
     try {
       await refetch();
@@ -85,9 +83,7 @@ export function TimelineChart({
       '30m': 1800000,
     }[effectiveInterval];
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[TimelineChart] Auto-refresh interval set:', effectiveInterval, `(${intervalMs}ms)`);
-    }
+    debugLog('[TimelineChart] Auto-refresh interval set:', effectiveInterval, `(${intervalMs}ms)`);
 
     const interval = setInterval(() => {
       // Only refresh if tab is visible

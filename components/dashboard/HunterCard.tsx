@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Signal,
   Check,
+  type LucideIcon,
 } from 'lucide-react';
 
 import {
@@ -32,7 +33,7 @@ import {
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
-const ICON_MAP: Record<string, any> = {
+const ICON_MAP: Record<string, LucideIcon> = {
   whatsapp: Icons.whatsapp,
   phone: Icons.phone,
   form: Icons.form,
@@ -88,7 +89,7 @@ function deviceLabel(
   deviceType: string | null | undefined,
   deviceOs?: string | null,
   browser?: string | null
-): { icon: any; label: string } {
+): { icon: LucideIcon; label: string } {
   const d = (deviceType || '').toLowerCase().trim();
   const os = (deviceOs || '').trim();
   const b = (browser || '').trim();
@@ -143,7 +144,7 @@ const PulseSignal = ({ children, active }: { children: React.ReactNode, active: 
   </div>
 );
 
-const ScanningIcon = ({ icon: Icon, active, className }: any) => (
+const ScanningIcon = ({ icon: Icon, active, className }: { icon: LucideIcon; active: boolean; className?: string }) => (
   <div className={cn("relative overflow-hidden rounded", className)}>
     <Icon className="h-4 w-4 relative z-10" />
     {active && (
@@ -153,7 +154,7 @@ const ScanningIcon = ({ icon: Icon, active, className }: any) => (
 );
 
 /** QUADRANT COMPONENT — Semi-transparent glass panel */
-function Quadrant({ title, icon: Icon, children, className }: any) {
+function Quadrant({ title, icon: Icon, children, className }: { title: string; icon: LucideIcon; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("p-3 rounded-xl border border-border/50 bg-background/50 dark:bg-background/30 backdrop-blur-md relative overflow-hidden group/quad", className)}>
       <div className="flex items-center gap-2 mb-2">
@@ -165,14 +166,13 @@ function Quadrant({ title, icon: Icon, children, className }: any) {
   );
 }
 
-function Field({ label, value, subValue, icon: Icon, highlight, tip }: any) {
-  const IconComponent = typeof Icon === 'function' ? Icon : null;
-  const StaticIcon = typeof Icon !== 'function' ? Icon : null;
+function Field({ label, value, subValue, icon: Icon, highlight, tip }: { label: string; value: React.ReactNode; subValue?: React.ReactNode; icon?: LucideIcon | React.ReactNode | (() => React.ReactNode); highlight?: boolean; tip?: string }) {
+  const iconContent = typeof Icon === 'function' ? <Icon /> : Icon ?? <div className="h-3 w-3" />;
 
   const content = (
     <div className="flex items-start gap-2.5 min-w-0 group/field">
       <div className="p-1 rounded bg-muted/30 border border-border/20 group-hover/field:border-foreground/20 transition-colors">
-        {IconComponent ? <IconComponent /> : StaticIcon ? <StaticIcon className="h-3 w-3 text-muted-foreground/60 shrink-0 group-hover/field:text-foreground/80" /> : <div className="h-3 w-3" />}
+        {iconContent}
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[9px] uppercase font-black text-muted-foreground/50 leading-none mb-1 tracking-tight">{label}</div>
@@ -393,15 +393,15 @@ export function HunterCard({
             <Field
               label="Engagement"
               value={intent.max_scroll_percentage ? `${intent.max_scroll_percentage}% Page Depth` : 'Low Engagement'}
-              icon={() => <ScanningIcon icon={Flame} active={intent.max_scroll_percentage && intent.max_scroll_percentage > 50} />}
-              highlight={intent.max_scroll_percentage && intent.max_scroll_percentage > 70}
+              icon={() => <ScanningIcon icon={Flame} active={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 50)} />}
+              highlight={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 70)}
               tip="How far down the user scrolled. >70% indicates high interest in your content."
             />
             <Field
               label="Active Time"
               value={intent.total_active_seconds ? `${intent.total_active_seconds}s Focus Time` : 'Idle Browser'}
               icon={Clock}
-              highlight={intent.total_active_seconds && intent.total_active_seconds > 30}
+              highlight={!!(intent.total_active_seconds && intent.total_active_seconds > 30)}
               tip="Purely active time spent interacting with the page, excluding background tabs."
             />
             <Field

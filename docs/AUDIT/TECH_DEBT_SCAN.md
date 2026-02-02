@@ -1,8 +1,8 @@
 # Teknik Borç Taraması
 
 **Tarih:** 2026-02-02  
-**Güncelleme:** 2026-02-02 — Aksiyonlar 1, 2, 3, 5, 6 uygulandı  
-**Kapsam:** Kod tabanı (app, components, lib), mevcut CLEANUP_BACKLOG ile birlikte.
+**Güncelleme:** 2026-02-02 — Mühendis modu tam tarama  
+**Kapsam:** Kod tabanı (app, components, lib, supabase), CLEANUP_BACKLOG ile birlikte.
 
 ---
 
@@ -10,116 +10,128 @@
 
 | Kategori | Adet | Öncelik |
 |----------|------|---------|
-| TODO/TEMP/FIXME | 4 | P2 |
-| console.log/warn/error | 125 | P2 (debug olanlar P2) |
-| `any` tipi kullanımı | 83 | P2 |
+| TODO/FIXME/HACK | 0 | — |
+| console.log/warn/error | 95 | P2 (debug olanlar) |
+| `any` tipi | 60 | P2 |
 | eslint-disable | 1 | P2 |
-| TEMP DEBUG (gated) | 3 dosya | P2 |
+| catch (e: any) | 0 | ✅ Tamamlandı |
+| @ts-ignore | 0 | — |
 
 ---
 
-## 2. TODO / TEMP / FIXME
+## 2. console.log / warn / error (95 adet)
 
-| Dosya | Satır | İçerik |
-|-------|-------|--------|
-| `components/dashboard/timeline-chart.tsx` | 104 | `TODO: Install recharts for better chart visualization` |
-| `components/dashboard/session-drawer.tsx` | 15 | `TEMP DEBUG (gated, 1 run only)` |
-| `components/dashboard/session-group.tsx` | 12 | `TEMP DEBUG (gated, 1 run only)` |
-| `lib/hooks/use-visitor-history.ts` | 18 | `TEMP DEBUG (gated, 1 run only)` |
-
-**Öneri:** TEMP DEBUG blokları `shouldLogSessionsErrorsThisRun()` ile kapalı; production'da tetiklenmez. İstersen tamamen kaldır. Timeline TODO: recharts zaten package.json'da; yorum güncellenmeli veya silinmeli.
-
----
-
-## 3. console.log / warn / error
-
-### Gereksiz / Debug (P2 — kaldırılabilir)
+### Kabul edilebilir (error handling, güvenlik, prod)
 
 | Dosya | Not |
 |-------|-----|
-| `app/test-page/page.tsx` | ~15 console.log — test sayfası, dev için; prod'da genelde kullanılmaz |
-| `components/dashboard/session-drawer.tsx` | 4× console.log (DEBUG) — gated, yine de temizlenebilir |
-| `components/dashboard/session-group.tsx` | 4× console.log (DEBUG) — aynı |
-| `lib/hooks/use-visitor-history.ts` | 3× console.log (DEBUG) — aynı |
-| `lib/hooks/use-realtime-dashboard.ts` | 6× console.log — Realtime debug; `NEXT_PUBLIC_WARROOM_DEBUG` ile kapatılabilir |
-| `lib/auth/isAdmin.ts` | 6× console.log — zaten `isDebug` ile gated |
-| `app/auth/callback/route.ts` | 3× console.log — auth flow debug |
-| `app/login/page.tsx` | 1× console.log, 1× console.warn |
-| `components/dashboard/timeline-chart.tsx` | 2× console.log |
-| `components/dashboard/site-setup.tsx` | 3× console.log, 2× console.error |
+| API route'lar | `console.error` — SYNC_API, CALL_MATCH, SITES_*, CUSTOMERS_INVITE, CREATE_TEST_SITE, STATS_REALTIME |
+| lib/services | `console.error` — session-service, event-service, site-service |
+| lib/security | `console.warn/error` — validate-site-access, scrub-data |
+| lib/cors.ts | `console.error/warn` — ALLOWED_ORIGINS, wildcard uyarısı |
+| lib/utils.ts | `console.warn` — jumpToSession, formatTimestamp |
+| lib/upstash.ts | `console.warn` — Redis credentials missing |
+| Supabase functions | hunter-ai, maintain-db — edge logging |
 
-### Kabul edilebilir (error handling)
+### Debug / dev-only (P2 → debugLog)
 
-- `console.error` — API route'ları, service'ler (CALL_MATCH, SYNC_ERROR, vb.)
-- `console.warn` — CORS, SECURITY, UPSTASH uyarıları
-
-**Öneri:** Debug console.log'ları `debugLog()` (lib/utils) veya env-gated wrapper ile değiştir; prod'da kapalı olsun.
+| Dosya | Satır | İçerik |
+|-------|-------|--------|
+| `components/dashboard/timeline-chart.tsx` | 64, 89 | Refreshing chart, Auto-refresh interval |
+| `components/dashboard/site-setup.tsx` | 33, 37, 38 | Test site created, public_id, Use in test page |
+| `components/dashboard/session-group.tsx` | 143 | Call lookup error (RLS?) |
+| `app/auth/callback/route.ts` | 83, 84, 85 | Session exchanged, Cookies set, Redirecting |
+| `app/login/page.tsx` | 45, 50 | NEXT_PUBLIC_PRIMARY_DOMAIN fallback, redirectTo |
+| `lib/auth/isAdmin.ts` | 26, 33, 39, 51, 59, 67 | getUser error, No user, Checking admin, Profile query/not found, User role — zaten `isDebug` ile gated |
 
 ---
 
-## 4. `any` Tipi (83 kullanım)
+## 3. `any` Tipi (60 adet)
 
-### Yaygın yerler
+### Kritik hotspotlar
 
 | Dosya | Kullanım |
 |-------|----------|
-| `QualificationQueue.tsx` | `rows: any[]`, `raw.map((item: any))`, `(raw as any).data` |
-| `HunterCard.tsx` | `icon: any`, `ScanningIcon`, `Quadrant`, `Field` props |
-| `use-realtime-dashboard.ts` | `data: any`, `payload: any`, `getMetaField(obj: any)` |
+| `use-realtime-dashboard.ts` | `DashboardEvent` types (call_created/updated, event_created), `getMetaField(obj: any)`, `decideAdsFromPayload(payload: any)`, `payload.new as any` |
+| `QualificationQueue.tsx` | `rows: any[]`, `raw.map((item: any))`, `(raw as any).data`, `fetchError: any` |
+| `session-group.tsx` | `metadata: any`, `matchedCall: any`, `sessionRows[0] as any`, `(sessionData as any)?.site_id` |
+| `HunterCard.tsx` | `icon: any`, `ScanningIcon`, `Quadrant`, `Field` — props any |
 | `session-drawer.tsx` | `metadata: any`, `(sessionError as any)?.message` |
-| `session-group.tsx` | `metadata: any`, `(sessionData as any)?.site_id` |
-| `event-service.ts` | `geoInfo: any`, `deviceInfo: any`, `meta: any` |
-| `session-service.ts` | `geoInfo: any`, `deviceInfo: any`, `session: any` |
-| API route'lar | `} catch (e: any)` — yaygın pattern |
+| `lazy-session-drawer.tsx` | `metadata: any`, `(tData as any[])` |
 
-**Öneri:**  
-- Service'lerde `GeoInfo`, `DeviceInfo` tipleri zaten `lib/geo.ts`'de; import et.  
-- Supabase payload'ları için `Database['public']['Tables']['sessions']['Row']` vb. kullan.  
-- `catch (e: unknown)` + `e instanceof Error` tercih et.
+### API / lib
+
+| Dosya | Kullanım |
+|-------|----------|
+| `app/api/oci/export/route.ts` | `(site as any)?.currency`, `rows.map((r: any))`, `sessions as any[]` |
+| `app/api/call-event/route.ts` | `scoreBreakdown: any`, `(e.metadata as any)?.lead_score` |
+| `app/api/sync/worker/route.ts` | `rawBody: any`, `err as any`, `(error as any)?.message` |
+| `app/api/intents/[id]/status/route.ts` | `(call.sites as any)?.user_id`, `updateData: any` |
+| `lib/geo.ts` | `meta?: any` |
+| `lib/supabase/middleware.ts` | `options?: any` |
+| `lib/supabase/admin.ts` | `(client as any)[prop]` |
+
+**Öneri:** Supabase `Database['public']['Tables']` tipleri kullan; event payload için `RealtimePostgresChangesPayload`; UI bileşenleri için explicit interface.
 
 ---
 
-## 5. eslint-disable
+## 4. eslint-disable
 
 | Dosya | Satır | Açıklama |
 |-------|-------|----------|
-| `components/dashboard/timeline-chart.tsx` | 100 | `eslint-disable-next-line react-hooks/exhaustive-deps` |
-
-**Öneri:** Dependency array eksikliği varsa nedenini not et veya `useCallback`/`useMemo` ile düzelt; mümkünse disable kaldır.
+| `timeline-chart.tsx` | 100 | `react-hooks/exhaustive-deps` — effectiveInterval tek dep; açıklama eklendi |
 
 ---
 
-## 6. Mevcut CLEANUP_BACKLOG ile Örtüşenler
+## 5. CLEANUP_BACKLOG ile Örtüşenler
 
-- **P0:** Partition drift, orphan calls/events — `CLEANUP_QUICK_AUDIT.sql` ile izle.
-- **P1:** RPC payload growth, realtime source-of-truth, çoklu polling, v1/v2 coexistence.
-- **P2:** Dead grant code, half-open vs BETWEEN, TRT vs UTC scripts, hook deps, suppressHydrationWarning.
+| Öncelik | Madde | Durum |
+|---------|-------|-------|
+| P0 | Partition drift, orphan calls/events | `CLEANUP_QUICK_AUDIT.sql` ile izleniyor |
+| P1 | RPC payload growth, realtime source-of-truth | Dokümante |
+| P1 | Çoklu polling (500ms + 10s + 5min fallback) | Opsiyonel konsolidasyon |
+| P1 | v1 vs v2 RPC coexistence | Opsiyonel v1 deprecation |
+| P2 | Dead grant `get_dashboard_stats(uuid,int)` | Migration güncellemesi |
+| P2 | Hook dependency arrays | Audit önerilir |
+| P2 | suppressHydrationWarning | Yeni zaman alanları için pattern |
 
 ---
 
-## 7. Öncelikli Aksiyonlar
+## 6. Tamamlanan Aksiyonlar
 
-| # | Aksiyon | Öncelik | Durum |
-|---|---------|---------|-------|
-| 1 | TEMP DEBUG bloklarını kaldır veya `debugLog()` ile değiştir | P2 | ✅ Yapıldı |
-| 2 | `timeline-chart.tsx` TODO yorumunu güncelle/sil (recharts zaten var) | P2 | ✅ Yapıldı |
-| 3 | `event-service`, `session-service`: `any` → `GeoInfo`, `DeviceInfo` | P2 | ✅ Yapıldı |
-| 4 | `catch (e: any)` → `catch (e: unknown)` + type guard | P2 | ✅ Yapıldı |
-| 5 | Test sayfası console.log'ları: dev-only wrapper veya kaldır | P2 | ✅ Yapıldı (debugLog) |
-| 6 | Realtime dashboard console.log: `NEXT_PUBLIC_WARROOM_DEBUG` gated | P2 | ✅ Yapıldı (debugLog) |
+| # | Aksiyon | Durum |
+|---|---------|-------|
+| 1 | TEMP DEBUG → debugLog | ✅ |
+| 2 | timeline-chart TODO | ✅ |
+| 3 | event-service, session-service GeoInfo/DeviceInfo | ✅ |
+| 4 | catch (e: any) → catch (e: unknown) | ✅ |
+| 5 | Test page console.log → debugLog | ✅ |
+| 6 | Realtime dashboard console.log → debugLog | ✅ |
+
+---
+
+## 7. Bekleyen / Önerilen Aksiyonlar
+
+| # | Aksiyon | Öncelik |
+|---|---------|---------|
+| 1 | timeline-chart, site-setup, session-group, auth callback, login: debug log'ları → debugLog | P2 ✅ |
+| 2 | QualificationQueue: rows/raw tipleri → IntentRow[] veya DB tipi | P2 |
+| 3 | use-realtime-dashboard: DashboardEvent data tipleri → Call/Event interface | P2 |
+| 4 | HunterCard: ScanningIcon, Quadrant, Field props interface | P2 |
+| 5 | sync/worker rawBody, OCI export, call-event: any → explicit types | P2 |
 
 ---
 
 ## 8. Dosya Başına Özet
 
-| Dosya | console | any | TODO/TEMP |
-|-------|---------|-----|-----------|
-| session-drawer.tsx | 4 debug | 4 | TEMP DEBUG |
-| session-group.tsx | 5 | 6 | TEMP DEBUG |
-| use-visitor-history.ts | 3 debug | 3 | TEMP DEBUG |
-| use-realtime-dashboard.ts | 6 | 14 | — |
-| isAdmin.ts | 6 (gated) | 0 | — |
-| QualificationQueue.tsx | 0 | 6 | — |
-| HunterCard.tsx | 0 | 5 | — |
-| event-service.ts | 1 | 4 | — |
-| session-service.ts | 2 | 5 | — |
+| Dosya | console (debug) | any |
+|-------|-----------------|-----|
+| use-realtime-dashboard.ts | — | 14 |
+| QualificationQueue.tsx | — | 8 |
+| session-group.tsx | 1 | 5 |
+| HunterCard.tsx | — | 5 |
+| session-drawer.tsx | — | 3 |
+| oci/export/route.ts | — | 4 |
+| sync/worker/route.ts | — | 3 |
+| call-event/route.ts | — | 2 |
+| timeline-chart.tsx | 2 | — |

@@ -34,7 +34,7 @@ type TimelineEvent = {
   event_action: string;
   event_label: string | null;
   url: string | null;
-  metadata: any;
+  metadata: Record<string, unknown>;
 };
 
 export function LazySessionDrawer({
@@ -80,7 +80,7 @@ export function LazySessionDrawer({
         const row = Array.isArray(sData) ? sData[0] : null;
         setDetails(row || null);
         if (tErr) throw tErr;
-        setEvents((tData as any[]) || []);
+        setEvents(Array.isArray(tData) ? (tData as TimelineEvent[]) : []);
       } catch (e: unknown) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : 'Failed to load session');
