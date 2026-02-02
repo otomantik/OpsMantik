@@ -7,8 +7,25 @@ export const runtime = 'nodejs';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 export async function GET(req: NextRequest) {
-    const origin = req.headers.get('origin');
-    const { isAllowed } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+    // Same-origin browser fetches may omit the Origin header for GET requests.
+    // In that case, fall back to Referer → URL origin → nextUrl.origin.
+    const originHeader = req.headers.get('origin');
+    const referer = req.headers.get('referer');
+    let originToCheck: string | null = originHeader;
+
+    if (!originToCheck && referer) {
+        try {
+            originToCheck = new URL(referer).origin;
+        } catch {
+            // ignore invalid referer
+        }
+    }
+
+    if (!originToCheck) {
+        originToCheck = req.nextUrl.origin;
+    }
+
+    const { isAllowed } = isOriginAllowed(originToCheck, ALLOWED_ORIGINS);
 
     if (!isAllowed) {
         return new NextResponse(null, { status: 403 });
