@@ -80,12 +80,12 @@ function pickBorder(kind: IntentCardKind): string {
   return 'border-l-4 border-border bg-background';
 }
 
-function pickIcon(kind: IntentCardKind) {
-  if (kind === 'whatsapp') return MessageCircle;
-  if (kind === 'phone') return Phone;
-  if (kind === 'form') return FileText;
-  return ArrowRight;
-}
+const KIND_ICON: Record<IntentCardKind, any> = {
+  whatsapp: MessageCircle,
+  phone: Phone,
+  form: FileText,
+  other: ArrowRight,
+};
 
 function toPath(u: string | null | undefined): string {
   if (!u) return '—';
@@ -129,7 +129,7 @@ export function IntentCard({
   autoFocusPrimary?: boolean;
 }) {
   const kind = getKind(intent.intent_action);
-  const Icon = pickIcon(kind);
+  const Icon = KIND_ICON[kind];
 
   const riskLevel = (intent.risk_level || 'low').toString().toLowerCase();
   const isHighRisk = riskLevel === 'high';
@@ -237,10 +237,10 @@ export function IntentCard({
                   <div className="text-sm font-medium">
                     {kind === 'whatsapp' ? 'WhatsApp' : kind === 'phone' ? 'Phone' : kind === 'form' ? 'Form' : 'Intent'}
                   </div>
-                  <div className="text-sm text-muted-foreground tabular-nums">
+                  <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                     {formatRelative(intent.created_at)}
                   </div>
-                  <div className="text-sm text-muted-foreground tabular-nums">
+                  <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                     • {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' })} TRT
                   </div>
                 </div>

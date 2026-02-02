@@ -612,7 +612,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="tabular-nums">{intents.length} in queue</div>
           {mergedTop && (
-            <div className="tabular-nums">
+            <div className="tabular-nums" suppressHydrationWarning>
               {formatTimestamp(mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
             </div>
           )}
@@ -642,7 +642,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                       )}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="text-xs tabular-nums text-muted-foreground w-[64px] shrink-0">
+                        <div className="text-xs tabular-nums text-muted-foreground w-[64px] shrink-0" suppressHydrationWarning>
                           {formatTimestamp(h.at, { hour: '2-digit', minute: '2-digit' })}
                         </div>
                         <Icon className="h-4 w-4 text-muted-foreground shrink-0" />

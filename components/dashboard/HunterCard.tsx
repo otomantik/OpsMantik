@@ -307,7 +307,7 @@ export function HunterCard({
               </div>
               <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {relativeTime(intent.created_at)}
+                <span suppressHydrationWarning>{relativeTime(intent.created_at)}</span>
               </div>
             </div>
           </div>
