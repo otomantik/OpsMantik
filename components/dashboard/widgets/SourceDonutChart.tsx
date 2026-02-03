@@ -37,17 +37,17 @@ export function SourceDonutChart({ items, total }: SourceDonutChartProps) {
   if (pieData.length === 0 || total === 0) return null;
 
   return (
-    <div className="min-w-0 w-full h-[180px]">
-      <ResponsiveContainer width="100%" height={180}>
-        <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+    <div className="min-w-0 w-full h-[200px]">
+      <ResponsiveContainer width="100%" height={200}>
+        <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <Pie
             data={pieData}
             dataKey="value"
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={52}
-            outerRadius={72}
+            innerRadius={58}
+            outerRadius={82}
             paddingAngle={1}
           >
             {pieData.map((_, index) => (

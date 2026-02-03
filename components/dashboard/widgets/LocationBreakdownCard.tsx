@@ -11,34 +11,47 @@ const LocationBarChart = dynamic(
   { ssr: false }
 );
 
+const TOP_LIST = 8;
+const LIST_MAX_HEIGHT = 220;
+
 interface LocationBreakdownCardProps {
   items: BreakdownItem[];
   total: number;
 }
 
 export function LocationBreakdownCard({ items, total }: LocationBreakdownCardProps) {
+  const showItems = items.slice(0, TOP_LIST);
+  const restCount = items.length > TOP_LIST ? items.length - TOP_LIST : 0;
+
   return (
-    <Card className="border-border bg-card" data-testid="p4-location-card">
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-base font-semibold">Locations</CardTitle>
+    <Card className="border border-slate-200 bg-white shadow-sm" data-testid="p4-location-card">
+      <CardHeader className="p-5 pb-2">
+        <CardTitle className="text-base font-semibold text-slate-800">Locations</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-0 space-y-3 min-w-0">
+      <CardContent className="p-5 pt-0 space-y-4 min-w-0">
         {ENABLE_CHARTS && items.length > 0 && (
-          <div className="min-w-0">
+          <div className="min-w-0 rounded-lg bg-slate-50/80 p-3">
             <LocationBarChart items={items} topN={8} />
           </div>
         )}
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No locations in range</p>
+          <p className="text-sm text-slate-500">No locations in range</p>
         ) : (
-          items.map((item) => (
-            <BreakdownBarRow
-              key={item.name}
-              item={item}
-              total={total}
-              decodeLabel
-            />
-          ))
+          <div className="space-y-2.5 overflow-y-auto pr-1" style={{ maxHeight: LIST_MAX_HEIGHT }}>
+            {showItems.map((item) => (
+              <BreakdownBarRow
+                key={item.name}
+                item={item}
+                total={total}
+                decodeLabel
+              />
+            ))}
+            {restCount > 0 && (
+              <p className="text-xs text-slate-400 pt-1 border-t border-slate-100 mt-2">
+                +{restCount} diğer konum
+              </p>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

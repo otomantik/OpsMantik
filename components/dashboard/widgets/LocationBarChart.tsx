@@ -39,28 +39,28 @@ export function LocationBarChart({ items, topN = 8 }: LocationBarChartProps) {
   if (barData.length === 0) return null;
 
   return (
-    <div className="min-w-0 w-full h-[200px]">
-      <ResponsiveContainer width="100%" height={200}>
+    <div className="min-w-0 w-full h-[280px]">
+      <ResponsiveContainer width="100%" height={280}>
         <BarChart
           layout="vertical"
           data={barData}
-          margin={{ top: 4, right: 8, bottom: 4, left: 4 }}
+          margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
         >
-          <CartesianGrid strokeDasharray="2 2" stroke="hsl(var(--border))" />
-          <XAxis type="number" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+          <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" vertical={false} />
+          <XAxis type="number" tick={{ fontSize: 12 }} stroke="#64748b" />
           <YAxis
             type="category"
             dataKey="name"
-            width={72}
-            tick={{ fontSize: 11 }}
-            stroke="hsl(var(--muted-foreground))"
-            tickFormatter={(v) => (typeof v === 'string' && v.length > 10 ? `${v.slice(0, 9)}…` : v)}
+            width={100}
+            tick={{ fontSize: 12 }}
+            stroke="#64748b"
+            tickFormatter={(v) => (typeof v === 'string' && v.length > 18 ? `${v.slice(0, 17)}…` : v)}
           />
           <Bar
             dataKey="count"
-            fill="hsl(var(--primary) / 0.2)"
-            radius={[0, 4, 4, 0]}
-            maxBarSize={24}
+            fill="#3b82f6"
+            radius={[0, 6, 6, 0]}
+            maxBarSize={28}
           />
         </BarChart>
       </ResponsiveContainer>

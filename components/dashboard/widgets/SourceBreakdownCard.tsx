@@ -18,22 +18,24 @@ interface SourceBreakdownCardProps {
 
 export function SourceBreakdownCard({ items, total }: SourceBreakdownCardProps) {
   return (
-    <Card className="border-border bg-card" data-testid="p4-source-card">
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-base font-semibold">Sources</CardTitle>
+    <Card className="border border-slate-200 bg-white shadow-sm" data-testid="p4-source-card">
+      <CardHeader className="p-5 pb-2">
+        <CardTitle className="text-base font-semibold text-slate-800">Sources</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-0 space-y-3 min-w-0">
+      <CardContent className="p-5 pt-0 space-y-4 min-w-0">
         {ENABLE_CHARTS && items.length > 0 && total > 0 && (
-          <div className="min-w-0">
+          <div className="min-w-0 rounded-lg bg-slate-50/80 p-3">
             <SourceDonutChart items={items} total={total} />
           </div>
         )}
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No sources in range</p>
+          <p className="text-sm text-slate-500">No sources in range</p>
         ) : (
-          items.map((item) => (
-            <BreakdownBarRow key={item.name} item={item} total={total} />
-          ))
+          <div className="space-y-2.5">
+            {items.map((item) => (
+              <BreakdownBarRow key={item.name} item={item} total={total} />
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

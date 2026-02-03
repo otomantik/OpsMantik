@@ -11,13 +11,13 @@ interface DeviceBreakdownCardProps {
 
 export function DeviceBreakdownCard({ items, total }: DeviceBreakdownCardProps) {
   return (
-    <Card className="border-border bg-card" data-testid="p4-device-card">
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-base font-semibold">Devices</CardTitle>
+    <Card className="border border-slate-200 bg-white shadow-sm" data-testid="p4-device-card">
+      <CardHeader className="p-5 pb-2">
+        <CardTitle className="text-base font-semibold text-slate-800">Devices</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-0 space-y-3">
+      <CardContent className="p-5 pt-0 space-y-2.5">
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No devices in range</p>
+          <p className="text-sm text-slate-500">No devices in range</p>
         ) : (
           items.map((item) => (
             <BreakdownBarRow key={item.name} item={item} total={total} />
