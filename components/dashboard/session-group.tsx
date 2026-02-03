@@ -386,7 +386,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground tabular-nums">
+                  <p className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                     {formatTimestamp(firstEvent.created_at, {
                       day: '2-digit',
                       month: '2-digit',
@@ -594,7 +594,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                             key={item.id}
                             className={`border-b border-border hover:bg-muted/40 transition-colors ${isConversion ? 'bg-emerald-50/50' : ''}`}
                           >
-                            <td className="py-2 px-3 text-foreground tabular-nums">
+                            <td className="py-2 px-3 text-foreground tabular-nums" suppressHydrationWarning>
                               {formatTimestamp(event.created_at, {
                                 hour: '2-digit',
                                 minute: '2-digit',
@@ -643,7 +643,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                               className={`border-b border-border hover:bg-muted/40 transition-colors cursor-pointer ${isConversion ? 'bg-emerald-50/50' : ''}`}
                               onClick={() => toggleGroup(item.id)}
                             >
-                              <td className="py-2 px-3 text-foreground tabular-nums">
+                              <td className="py-2 px-3 text-foreground tabular-nums" suppressHydrationWarning>
                                 {formatTimestamp(item.firstTime, {
                                   hour: '2-digit',
                                   minute: '2-digit',
@@ -651,7 +651,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                   fractionalSecondDigits: 3
                                 })}
                                 {item.events.length > 1 && (
-                                  <span className="text-muted-foreground ml-1 tabular-nums">
+                                  <span className="text-muted-foreground ml-1 tabular-nums" suppressHydrationWarning>
                                     - {formatTimestamp(item.lastTime, {
                                       hour: '2-digit',
                                       minute: '2-digit',
@@ -699,7 +699,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 key={`${item.id}-${event.id}`}
                                 className={`border-b border-border hover:bg-muted/30 transition-colors ${isConversion ? 'bg-emerald-50/30' : ''}`}
                               >
-                                <td className="py-1.5 px-3 pl-8 text-muted-foreground text-sm tabular-nums">
+                                <td className="py-1.5 px-3 pl-8 text-muted-foreground text-sm tabular-nums" suppressHydrationWarning>
                                   {formatTimestamp(event.created_at, {
                                     hour: '2-digit',
                                     minute: '2-digit',
@@ -752,7 +752,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 </p>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground tabular-nums">
                   <span>Score: {matchedCall.lead_score}</span>
-                  <span>Match Time: {formatTimestamp(matchedCall.created_at)}</span>
+                  <span suppressHydrationWarning>Match Time: {formatTimestamp(matchedCall.created_at)}</span>
                 </div>
               </div>
             )}
@@ -806,7 +806,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-2">
-                              <span className="text-sm text-muted-foreground tabular-nums">
+                              <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                                 {formatTimestamp(session.created_at, {
                                   day: '2-digit',
                                   month: '2-digit',
@@ -878,7 +878,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                   </span>
                                 )}
                               </div>
-                              <span className="text-sm text-muted-foreground tabular-nums">
+                              <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                                 {formatTimestamp(call.created_at, {
                                   day: '2-digit',
                                   month: '2-digit',

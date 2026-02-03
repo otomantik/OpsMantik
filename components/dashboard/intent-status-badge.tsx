@@ -19,7 +19,7 @@ export function IntentStatusBadge({ status, sealedAt }: IntentStatusBadgeProps) 
           Kapanan
         </Badge>
         {sealedAt && (
-          <span className="text-sm text-muted-foreground tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
             {formatTimestamp(sealedAt, { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}

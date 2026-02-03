@@ -267,7 +267,7 @@ export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: Sessi
                   </div>
                   <div>
                     <span className="text-muted-foreground">Created:</span>
-                    <span className="ml-2 text-muted-foreground tabular-nums">
+                    <span className="ml-2 text-muted-foreground tabular-nums" suppressHydrationWarning>
                       {formatTimestamp(session.created_at, {
                         day: '2-digit',
                         month: '2-digit',

@@ -484,7 +484,7 @@ export function SitesManager() {
                       {siteStatus[site.id].last_event_at ? (
                         <div className="text-sm space-y-1">
                           <p className="text-muted-foreground tabular-nums">
-                            Last event: <span className="text-foreground">
+                            Last event: <span className="text-foreground" suppressHydrationWarning>
                               {formatTimestamp(siteStatus[site.id].last_event_at!)}
                             </span>
                           </p>
