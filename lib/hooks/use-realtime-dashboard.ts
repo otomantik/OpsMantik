@@ -16,16 +16,31 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { IntentRow } from './use-intents';
 import { isDebugEnabled, debugLog, debugWarn } from '@/lib/utils';
 
-// Realtime Event Types
+/** Realtime call payload (Supabase POSTGRES_CHANGES) */
+export interface CallRealtimePayload {
+  id?: string;
+  site_id?: string;
+  matched_session_id?: string | null;
+  [key: string]: unknown;
+}
+
+/** Realtime event payload (Supabase POSTGRES_CHANGES) */
+export interface EventRealtimePayload {
+  id?: string;
+  session_id?: string | null;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export type DashboardEvent =
   | { type: 'intent_created'; data: IntentRow; eventId: string }
   | { type: 'intent_updated'; data: Partial<IntentRow> & { id: string }; eventId: string }
   | { type: 'session_heartbeat'; data: { session_id: string; site_id: string }; eventId: string }
   | { type: 'conversion_sealed'; data: { intent_id: string; sealed_at: Date }; eventId: string }
   | { type: 'data_freshness'; data: { last_event_at: Date }; eventId: string }
-  | { type: 'call_created'; data: any; eventId: string }
-  | { type: 'call_updated'; data: Partial<any> & { id: string }; eventId: string }
-  | { type: 'event_created'; data: any; eventId: string };
+  | { type: 'call_created'; data: CallRealtimePayload; eventId: string }
+  | { type: 'call_updated'; data: CallRealtimePayload; eventId: string }
+  | { type: 'event_created'; data: EventRealtimePayload; eventId: string };
 
 export interface RealtimeDashboardState {
   isConnected: boolean;
@@ -50,9 +65,9 @@ export interface RealtimeDashboardState {
 export interface RealtimeDashboardCallbacks {
   onIntentCreated?: (intent: IntentRow) => void;
   onIntentUpdated?: (intent: Partial<IntentRow> & { id: string }) => void;
-  onCallCreated?: (call: any) => void;
-  onCallUpdated?: (call: Partial<any> & { id: string }) => void;
-  onEventCreated?: (event: any) => void;
+  onCallCreated?: (call: CallRealtimePayload) => void;
+  onCallUpdated?: (call: CallRealtimePayload) => void;
+  onEventCreated?: (event: EventRealtimePayload) => void;
   onDataFreshness?: (lastEventAt: Date) => void;
 }
 
@@ -145,15 +160,15 @@ export function useRealtimeDashboard(
     debugLog('[REALTIME][ADS_ONLY]', message, extra ?? '');
   }, []);
 
-  const getMetaField = useCallback((obj: any, key: string): string | null => {
+  const getMetaField = useCallback((obj: Record<string, unknown> | null | undefined, key: string): string | null => {
     const v = obj?.[key];
     if (typeof v === 'string' && v.trim().length > 0) return v.trim();
     return null;
   }, []);
 
-  const decideAdsFromPayload = useCallback((payload: any): AdsDecision => {
+  const decideAdsFromPayload = useCallback((payload: Record<string, unknown> | null | undefined): AdsDecision => {
     // Prefer metadata fields; fall back to top-level if present
-    const meta = payload?.metadata || payload?.meta || {};
+    const meta = (payload?.metadata ?? payload?.meta ?? {}) as Record<string, unknown>;
 
     const gclid = getMetaField(meta, 'gclid') || getMetaField(payload, 'gclid');
     const wbraid = getMetaField(meta, 'wbraid') || getMetaField(payload, 'wbraid');
@@ -272,7 +287,7 @@ export function useRealtimeDashboard(
         (payload) => {
           if (!isMountedRef.current) return;
 
-          const newCall = payload.new as any;
+          const newCall = payload.new as CallRealtimePayload;
           
           if (newCall.site_id !== siteId) {
             debugWarn('[REALTIME] Cross-site event blocked:', newCall.site_id, '!==', siteId);
@@ -282,7 +297,7 @@ export function useRealtimeDashboard(
           // Connectivity/activity signal is independent from ads-only classification.
           markSignal('calls', false);
           
-          const eventId = generateEventId('calls', newCall.id, payload.commit_timestamp || new Date().toISOString());
+          const eventId = generateEventId('calls', newCall.id ?? 'unknown', payload.commit_timestamp || new Date().toISOString());
 
           // Deduplication
           if (isDuplicate(eventId)) {
@@ -331,7 +346,7 @@ export function useRealtimeDashboard(
         (payload) => {
           if (!isMountedRef.current) return;
 
-          const updatedCall = payload.new as any;
+          const updatedCall = payload.new as CallRealtimePayload;
           
           if (updatedCall.site_id !== siteId) {
             debugWarn('[REALTIME] Cross-site event blocked:', updatedCall.site_id, '!==', siteId);
@@ -341,7 +356,7 @@ export function useRealtimeDashboard(
           // Connectivity/activity signal is independent from ads-only classification.
           markSignal('calls', false);
           
-          const eventId = generateEventId('calls', updatedCall.id, payload.commit_timestamp || new Date().toISOString());
+          const eventId = generateEventId('calls', updatedCall.id ?? 'unknown', payload.commit_timestamp || new Date().toISOString());
 
           // Deduplication
           if (isDuplicate(eventId)) {
@@ -385,9 +400,9 @@ export function useRealtimeDashboard(
         },
         (payload) => {
           if (!isMountedRef.current) return;
-          const newSession = payload.new as any;
+          const newSession = payload.new as { site_id?: string; id?: string };
           if (newSession?.site_id !== siteId) return;
-          const eventId = generateEventId('sessions', newSession.id, payload.commit_timestamp || new Date().toISOString());
+          const eventId = generateEventId('sessions', newSession.id ?? 'unknown', payload.commit_timestamp || new Date().toISOString());
           if (isDuplicate(eventId)) return;
 
           const decision = decideAdsFromPayload(newSession);
@@ -406,7 +421,7 @@ export function useRealtimeDashboard(
         async (payload) => {
           if (!isMountedRef.current) return;
 
-          const newEvent = payload.new as any;
+          const newEvent = payload.new as EventRealtimePayload;
           // Optional signal: if payload includes site_id, enforce it. Otherwise we can only classify via session lookup.
           if (newEvent?.site_id && newEvent.site_id !== siteId) return;
 
@@ -452,7 +467,7 @@ export function useRealtimeDashboard(
             markSignal('events', true);
           }
 
-          const eventId = generateEventId('events', newEvent.id, payload.commit_timestamp || new Date().toISOString());
+          const eventId = generateEventId('events', newEvent.id ?? 'unknown', payload.commit_timestamp || new Date().toISOString());
 
           // Deduplication
           if (isDuplicate(eventId)) {
