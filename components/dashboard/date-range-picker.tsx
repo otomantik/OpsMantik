@@ -42,10 +42,8 @@ function PresetButton({
 
 export function DateRangePicker({
   value,
-  onSelect,
   onPresetSelect,
   presets,
-  timezone = 'Europe/Istanbul',
   maxRange = 180,
 }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);

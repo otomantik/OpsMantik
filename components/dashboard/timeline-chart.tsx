@@ -21,7 +21,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, TrendingUp } from 'lucide-react';
-import { useTimelineData, TimelinePoint } from '@/lib/hooks/use-timeline-data';
+import { useTimelineData } from '@/lib/hooks/use-timeline-data';
 import { debugLog } from '@/lib/utils';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { formatTimestamp } from '@/lib/utils';
@@ -32,11 +32,7 @@ interface TimelineChartProps {
   refreshInterval?: '1m' | '5m' | '30m';
 }
 
-export function TimelineChart({
-  siteId,
-  dateRange,
-  refreshInterval = '5m',
-}: TimelineChartProps) {
+export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
   const { data, loading, error, refetch } = useTimelineData(siteId, dateRange);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -93,8 +89,7 @@ export function TimelineChart({
     }, intervalMs);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- effectiveInterval is the only relevant dep; data/range come from parent
-  }, [effectiveInterval]);
+  }, [effectiveInterval, handleRefresh]);
 
   // SVG-based chart (recharts available; kept lightweight for timeline)
   const renderChart = () => {
@@ -237,7 +232,7 @@ export function TimelineChart({
           )}
 
           {/* X-axis labels */}
-          {safeData.filter((_, i) => i % Math.ceil(safeData.length / 10) === 0 || i === safeData.length - 1).map((point, index) => {
+          {safeData.filter((_, i) => i % Math.ceil(safeData.length / 10) === 0 || i === safeData.length - 1).map((point) => {
             const x = padding.left + (safeData.indexOf(point) / (safeData.length - 1 || 1)) * (chartWidth - padding.left - padding.right);
             return (
               <text

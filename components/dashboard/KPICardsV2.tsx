@@ -5,48 +5,12 @@ import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { Icons } from '@/components/icons';
 import { useMemo } from 'react';
 
 interface KPICardsV2Props {
   siteId: string;
-}
-
-function KpiLabel({
-  label,
-  tooltip,
-  rightSlot,
-}: {
-  label: string;
-  tooltip: string;
-  rightSlot?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <div className="text-sm text-muted-foreground uppercase tracking-wider">{label}</div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger>
-              <button
-                type="button"
-                className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                aria-label={`${label} tooltip`}
-              >
-                <Icons.info className="h-4 w-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="w-[280px]">
-              <div className="text-sm">{tooltip}</div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-      {rightSlot}
-    </div>
-  );
 }
 
 export function KPICardsV2({ siteId }: KPICardsV2Props) {

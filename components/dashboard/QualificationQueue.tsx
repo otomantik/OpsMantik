@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Icons } from '@/components/icons';
-import { HunterIntent } from '@/lib/types/hunter';
+import { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
@@ -24,7 +24,7 @@ export interface QualificationQueueProps {
 
 type RpcIntentRow = Record<string, unknown>;
 
-function parseHunterIntents(data: unknown): HunterIntent[] {
+function parseHunterIntentsFull(data: unknown): HunterIntent[] {
   if (!data) return [];
   let rows: RpcIntentRow[] = [];
 
@@ -57,7 +57,8 @@ function parseHunterIntents(data: unknown): HunterIntent[] {
     id: r.id,
     created_at: r.created_at,
     intent_action: r.intent_action ?? null,
-    intent_target: r.intent_target ?? null,
+    // Lite list may provide 'summary' instead of full intent_target
+    intent_target: (r.intent_target ?? (r as any).summary) ?? null,
     intent_page_url: r.intent_page_url ?? null,
     page_url: r.page_url ?? r.intent_page_url ?? null,
     matched_session_id: r.matched_session_id ?? null,
@@ -103,9 +104,50 @@ function parseHunterIntents(data: unknown): HunterIntent[] {
   })) as HunterIntent[];
 }
 
+function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
+  if (!data) return [];
+  let rows: RpcIntentRow[] = [];
+
+  const raw = data;
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return [];
+    if (raw.length === 1 && Array.isArray(raw[0])) {
+      rows = raw[0] as RpcIntentRow[];
+    } else if (typeof raw[0] === 'string') {
+      rows = raw
+        .map((item: unknown): RpcIntentRow | null => {
+          try {
+            return (typeof item === 'string' ? JSON.parse(item) : item) as RpcIntentRow | null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((r): r is RpcIntentRow => r != null);
+    } else {
+      rows = raw as RpcIntentRow[];
+    }
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    const arr = (obj.data ?? obj.rows ?? obj.intents) as unknown[];
+    if (Array.isArray(arr)) rows = arr as RpcIntentRow[];
+  }
+
+  return rows
+    .filter((r) => r != null && r.id != null && r.created_at != null)
+    .map((r) => ({
+      id: String(r.id),
+      created_at: String(r.created_at),
+      status: (r.status as string | null | undefined) ?? null,
+      matched_session_id: (r.matched_session_id as string | null | undefined) ?? null,
+      intent_action: (r.intent_action as string | null | undefined) ?? null,
+      summary: ((r as any).summary as string | null | undefined) ?? null,
+    })) as HunterIntentLite[];
+}
+
 function ActiveDeckCard({
   siteId,
   intent,
+  onOpenDetails,
   onOptimisticRemove,
   onQualified,
   onSkip,
@@ -114,7 +156,8 @@ function ActiveDeckCard({
   pushHistoryRow,
 }: {
   siteId: string;
-  intent: HunterIntent;
+  intent: HunterIntent; // full intent preferred for the heavy HunterCard view
+  onOpenDetails: (callId: string) => void;
   onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
   onSkip: () => void;
@@ -174,29 +217,102 @@ function ActiveDeckCard({
 
   return (
     <div className={cn(saving && 'opacity-60 pointer-events-none')}>
-      <HunterCard
-        intent={intent}
-        onSeal={({ id, stars }) => handleSeal({ id, stars })}
-        onSealDeal={onSealDeal}
-        onJunk={({ id, stars }) => handleJunk({ id, stars })}
-        onSkip={() => onSkip()}
-      />
+      <div
+        onClickCapture={(e) => {
+          const el = e.target as HTMLElement | null;
+          // Don't open drawer when clicking action buttons inside the card.
+          if (el && (el.closest('button') || el.getAttribute('role') === 'button')) return;
+          onOpenDetails(intent.id);
+        }}
+      >
+        <HunterCard
+          intent={intent}
+          onSeal={({ id, stars }) => handleSeal({ id, stars })}
+          onSealDeal={onSealDeal}
+          onJunk={({ id, stars }) => handleJunk({ id, stars })}
+          onSkip={() => onSkip()}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LiteDeckCard({
+  intent,
+  onOpenDetails,
+  onSkip,
+}: {
+  intent: HunterIntentLite;
+  onOpenDetails: (callId: string) => void;
+  onSkip: () => void;
+}) {
+  const action = (intent.intent_action || 'intent').toString();
+  const summary = intent.summary || 'Loading details…';
+
+  return (
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <button
+        type="button"
+        className="w-full text-left p-4 hover:bg-muted/30 transition-colors"
+        onClick={() => onOpenDetails(intent.id)}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            {action}
+          </div>
+          <div className="text-xs text-muted-foreground tabular-nums" suppressHydrationWarning>
+            {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
+          </div>
+        </div>
+        <div className="mt-2 text-sm font-medium truncate">{summary}</div>
+        <div className="mt-2 text-xs text-muted-foreground">Fetching details…</div>
+      </button>
+
+      <div className="p-3 pt-0">
+        <div className="grid grid-cols-3 gap-2 w-full">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 border-slate-200 font-bold text-[11px]"
+            disabled
+            title="Loading details…"
+          >
+            JUNK
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 border-slate-200 font-bold text-[11px]"
+            onClick={() => onSkip()}
+          >
+            SKIP
+          </Button>
+          <Button
+            size="sm"
+            className="h-9 bg-emerald-600 text-white font-black text-[11px]"
+            disabled
+            title="Loading details…"
+          >
+            SEAL
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
 
 export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, scope }) => {
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
-  const [intents, setIntents] = useState<HunterIntent[]>([]);
+  const [intents, setIntents] = useState<HunterIntentLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<HunterIntent | null>(null);
+  const [detailsById, setDetailsById] = useState<Record<string, HunterIntent>>({});
   const [sealModalOpen, setSealModalOpen] = useState(false);
   const [intentForSeal, setIntentForSeal] = useState<HunterIntent | null>(null);
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});
-  const rpcV2AvailableRef = useRef<boolean>(true);
   const [effectiveAdsOnly, setEffectiveAdsOnly] = useState<boolean>(true);
 
   const [history, setHistory] = useState<
@@ -211,41 +327,51 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
   const [toast, setToast] = useState<null | { kind: 'success' | 'danger'; text: string }>(null);
 
+  const fetchIntentDetails = useCallback(async (callId: string): Promise<HunterIntent | null> => {
+    if (!callId) return null;
+    if (detailsById[callId]) return detailsById[callId];
+    try {
+      const supabase = createClient();
+      const { data, error: rpcError } = await supabase.rpc('get_intent_details_v1', {
+        p_site_id: siteId,
+        p_call_id: callId,
+      });
+      if (rpcError) return null;
+      // get_intent_details_v1 returns a single jsonb object
+      const rows = parseHunterIntentsFull(data ? [data as any] : []);
+      const full = rows[0] || null;
+      if (!full) return null;
+      setDetailsById((prev) => ({ ...prev, [callId]: full }));
+      return full;
+    } catch {
+      // ignore
+    }
+    return null;
+  }, [detailsById, siteId]);
+
   const fetchUnscoredIntents = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
       const supabase = createClient();
-      // Prefer v2 (AI fields: ai_score, ai_summary, ai_tags); fallback to v1 if v2 not available
-      const preferV2 =
-        process.env.NEXT_PUBLIC_RPC_V2 !== '0' &&
-        (typeof window === 'undefined' || window.localStorage?.getItem('opsmantik_rpc_v2') !== '0');
 
-      async function fetchRange(adsOnly: boolean): Promise<HunterIntent[]> {
+      async function fetchRange(adsOnly: boolean): Promise<HunterIntentLite[]> {
         let data: unknown = null;
-        let fetchError: { message?: string; details?: string } | null = null;
+        // 1) Lite RPC (default limit 100) — cheap list payload
+        const lite = await supabase.rpc('get_recent_intents_lite_v1', {
+          p_site_id: siteId,
+          p_date_from: range.fromIso,
+          p_date_to: range.toIso,
+          p_limit: 100,
+          p_ads_only: adsOnly,
+        });
+        data = lite.data;
+        const liteErr = lite.error;
 
-        if (preferV2 && rpcV2AvailableRef.current) {
-          const v2 = await supabase.rpc('get_recent_intents_v2', {
-            p_site_id: siteId,
-            p_date_from: range.fromIso,
-            p_date_to: range.toIso,
-            p_limit: 500,
-            p_ads_only: adsOnly,
-          });
-          data = v2.data;
-          fetchError = v2.error;
-
-          const msg = String(fetchError?.message || fetchError?.details || '');
-          if (fetchError && (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('does not exist'))) {
-            rpcV2AvailableRef.current = false;
-          }
-        } else {
-          fetchError = { message: 'use_v1' };
-        }
-
-        if (fetchError) {
+        // Fallback: if lite RPC doesn't exist in older DBs
+        const liteMsg = String(liteErr?.message || liteErr?.details || '').toLowerCase();
+        if (liteErr && (liteMsg.includes('not found') || liteMsg.includes('does not exist'))) {
           // v1 uses since + minutes; derive minutes from range so Today/Yesterday both respect absolute range
           const fromMs = new Date(range.fromIso).getTime();
           const toMs = new Date(range.toIso).getTime();
@@ -254,16 +380,17 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
             p_site_id: siteId,
             p_since: range.fromIso,
             p_minutes_lookback: minutesLookback,
-            p_limit: 500,
+            p_limit: 100,
             p_ads_only: adsOnly,
           });
           data = v1.data;
-          fetchError = v1.error;
+          if (v1.error) throw v1.error;
+        } else if (liteErr) {
+          throw liteErr;
         }
 
-        if (fetchError) throw fetchError;
-
-        const rows = parseHunterIntents(data);
+        // Parse to LITE list items (even if fallback v1 returned heavier rows)
+        const rows = parseHunterIntentsLite(data);
         const fromMs = new Date(range.fromIso).getTime();
         const toMs = new Date(range.toIso).getTime();
 
@@ -294,6 +421,12 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
   const top = intents[0] || null;
   const next = intents[1] || null;
+
+  // Lazy-load full details for the ACTIVE (top) card only
+  useEffect(() => {
+    if (!top?.id) return;
+    void fetchIntentDetails(top.id);
+  }, [fetchIntentDetails, top?.id]);
 
   const queueMeta = (
     <>
@@ -374,6 +507,12 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const handleCloseDrawer = useCallback(() => {
     setSelectedIntent(null);
   }, []);
+
+  const openDrawerWithLazyDetails = useCallback(async (callId: string) => {
+    const full = await fetchIntentDetails(callId);
+    if (!full) return;
+    setSelectedIntent(full);
+  }, [fetchIntentDetails]);
 
   const rotateSkip = useCallback(() => {
     setIntents((prev) => {
@@ -502,17 +641,18 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     );
   }
 
-  const mergedTop: HunterIntent | null = top
+  const mergedTop: HunterIntent | null = top?.id && detailsById[top.id]
     ? {
-      ...top,
-      ...(top.matched_session_id ? sessionEvidence[top.matched_session_id] : {}),
+      ...detailsById[top.id],
+      ...(detailsById[top.id].matched_session_id ? sessionEvidence[detailsById[top.id].matched_session_id] : {}),
     }
     : null;
 
-  const mergedNext: HunterIntent | null = next
+  const mergedNext: HunterIntentLite | null = next
     ? {
       ...next,
-      ...(next.matched_session_id ? sessionEvidence[next.matched_session_id] : {}),
+      // keep existing lightweight session evidence (optional)
+      matched_session_id: next.matched_session_id ?? null,
     }
     : null;
 
@@ -593,11 +733,14 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
             </div>
           )}
 
-          {mergedTop && (
+          {mergedTop ? (
             <div className="relative z-10 transition-all duration-200">
               <ActiveDeckCard
                 siteId={siteId}
                 intent={mergedTop}
+                onOpenDetails={(callId) => {
+                  void openDrawerWithLazyDetails(callId);
+                }}
                 onOptimisticRemove={optimisticRemove}
                 onQualified={handleQualified}
                 onSkip={rotateSkip}
@@ -609,7 +752,17 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                 pushHistoryRow={pushHistoryRow}
               />
             </div>
-          )}
+          ) : top ? (
+            <div className="relative z-10 transition-all duration-200">
+              <LiteDeckCard
+                intent={top}
+                onOpenDetails={(callId) => {
+                  void openDrawerWithLazyDetails(callId);
+                }}
+                onSkip={rotateSkip}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between text-sm text-muted-foreground">

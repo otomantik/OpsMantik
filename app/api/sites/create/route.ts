@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       // Remove port if present (for localhost cases, keep it)
       // Actually, keep port for localhost:3000 cases
       normalizedDomain = normalizedDomain.trim();
-    } catch (e) {
+    } catch {
       return NextResponse.json(
         { error: 'Invalid domain format' },
         { status: 400 }

@@ -205,12 +205,14 @@ async function handler(req: NextRequest) {
         });
 
         // --- 5. Intent ---
-        await IntentService.handleIntent(
-            site.id,
-            { id: session.id },
-            { fingerprint, event_action, event_label, meta, url, currentGclid, params },
-            leadScore
-        );
+        if (event_action !== 'heartbeat') {
+            await IntentService.handleIntent(
+                site.id,
+                { id: session.id },
+                { fingerprint, event_action, event_label, meta, url, currentGclid, params },
+                leadScore
+            );
+        }
 
         // Mark ledger as processed
         await adminClient

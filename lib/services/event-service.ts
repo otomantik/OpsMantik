@@ -36,6 +36,15 @@ export class EventService {
 
         debugLog('[SYNC_API] Inserting event for session:', session.id);
 
+        // Heartbeat optimization:
+        // - Skip INSERT into events to prevent DB bloat
+        // - Still update session stats (duration/scroll/active time/etc.)
+        // - Intent does not change on heartbeat; worker will skip IntentService for heartbeat
+        if (event_action === 'heartbeat') {
+            await this.updateSessionStats(session.id, session.created_month, event_action, meta);
+            return { leadScore: 0 };
+        }
+
         // Determine category: GCLID affects only user interactions, not system events
         let finalCategory = event_category || 'interaction';
 

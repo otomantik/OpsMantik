@@ -90,11 +90,3 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     />
   );
 }
-
-// Sign out action (server action)
-async function signOut() {
-  'use server';
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  redirect('/login');
-}

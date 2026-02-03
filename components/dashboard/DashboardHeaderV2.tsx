@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Icons, PulseIndicator } from '@/components/icons';
+import { useEffect, useState } from 'react';
 
 interface DashboardHeaderV2Props {
   siteId: string;
@@ -14,10 +15,17 @@ interface DashboardHeaderV2Props {
 
 export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHeaderV2Props) {
   const { isConnected, lastEventAt } = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
+  // Keep a ticking "now" value so render stays pure (no Date.now in render).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNowMs(Date.now()), 10_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   const formatLastSeen = (date: Date | null) => {
     if (!date) return 'Never';
-    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    const seconds = Math.floor((nowMs - date.getTime()) / 1000);
     if (seconds < 10) return 'Just now';
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);

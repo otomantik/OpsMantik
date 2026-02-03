@@ -9,6 +9,20 @@ export type HunterMatchTypeRaw = 'e' | 'p' | 'b' | string;
 /** Decoded match intent for UI badges (Exact = High Intent, Broad = Medium) */
 export type HunterMatchIntentType = 'exact' | 'phrase' | 'broad' | 'unknown';
 
+/**
+ * Lite intent payload for queue/list views.
+ * Used with get_recent_intents_lite_v1 (cheap RPC) + lazy details fetch.
+ */
+export interface HunterIntentLite {
+  id: string;
+  created_at: string;
+  status?: string | null;
+  matched_session_id?: string | null;
+  intent_action?: 'whatsapp' | 'phone' | 'form' | 'other' | string | null;
+  /** A brief text summary for list UI (e.g. intent_target or action). */
+  summary?: string | null;
+}
+
 /** Unified Hunter Intent (v3) - Single source of truth */
 export interface HunterIntent {
   id: string;

@@ -49,7 +49,6 @@ export function useDashboardBreakdown(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { fromIso, toIso } = dateRange ? normalizeRange(dateRange) : { fromIso: '', toIso: '' };
-  const key = siteId && fromIso && toIso ? cacheKey(siteId, fromIso, toIso, adsOnly) : '';
 
   const fetchData = useCallback(async () => {
     if (!siteId || !fromIso || !toIso) {

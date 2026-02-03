@@ -98,7 +98,7 @@ export function computeAttribution(input: AttributionInput): AttributionResult {
 export function extractUTM(url: string): AttributionInput['utm'] | null {
   try {
     const urlObj = new URL(url);
-    let params = new URLSearchParams(urlObj.search);
+    const params = new URLSearchParams(urlObj.search);
 
     // ROBUST: Parse fragment (#) when Google Ads (or SPA routers) place params after hash.
     // Seen formats:

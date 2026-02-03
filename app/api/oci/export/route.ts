@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     );
 
     // Pull click-ids from sessions (best effort; ids are globally unique UUIDs)
-    let sessionMap = new Map<string, { gclid?: string | null; wbraid?: string | null; gbraid?: string | null }>();
+    const sessionMap = new Map<string, { gclid?: string | null; wbraid?: string | null; gbraid?: string | null }>();
     if (sessionIds.length > 0) {
       const { data: sessions, error: sessError } = await adminClient
         .from('sessions')

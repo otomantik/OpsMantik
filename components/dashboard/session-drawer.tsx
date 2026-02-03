@@ -38,7 +38,7 @@ interface SessionData {
   }>;
 }
 
-export function SessionDrawer({ intent, siteId, onClose, onStatusChange }: SessionDrawerProps) {
+export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
   const [session, setSession] = useState<SessionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

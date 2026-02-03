@@ -14,7 +14,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { IntentRow } from './use-intents';
-import { isDebugEnabled, debugLog, debugWarn } from '@/lib/utils';
+import { debugLog, debugWarn } from '@/lib/utils';
 
 /** Realtime call payload (Supabase POSTGRES_CHANGES) */
 export interface CallRealtimePayload {
@@ -113,7 +113,13 @@ export function useRealtimeDashboard(
   const isLiveRef = useRef<boolean>(false);
   const callbacksRef = useRef<RealtimeDashboardCallbacks | undefined>(callbacks);
   const optionsRef = useRef<RealtimeDashboardOptions | undefined>(options);
-  const adsCacheRef = useRef<Map<string, boolean>>(new Map()); // session_id -> isAds
+  // Session lookup cache (client-side, TTL + LRU) to avoid spamming get_session_details
+  // Key: sessionId
+  type AdsCacheEntry = { v: boolean; exp: number };
+  const ADS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  const ADS_CACHE_MAX = 1000;
+  const adsCacheRef = useRef<Map<string, AdsCacheEntry>>(new Map());
+  const adsLookupInflightRef = useRef<Map<string, Promise<'ads' | 'non_ads' | 'error'>>>(new Map());
   
   // Update callbacks ref when callbacks change
   useEffect(() => {
@@ -210,33 +216,61 @@ export function useRealtimeDashboard(
     return { kind: 'unknown', reason: 'insufficient_payload_fields' };
   }, [getMetaField]);
 
+  const cacheGet = useCallback((sessionId: string): boolean | undefined => {
+    const entry = adsCacheRef.current.get(sessionId);
+    if (!entry) return undefined;
+    if (Date.now() > entry.exp) {
+      adsCacheRef.current.delete(sessionId);
+      return undefined;
+    }
+    // LRU touch: move to end
+    adsCacheRef.current.delete(sessionId);
+    adsCacheRef.current.set(sessionId, entry);
+    return entry.v;
+  }, []);
+
   const cacheSet = useCallback((sessionId: string, isAds: boolean) => {
-    adsCacheRef.current.set(sessionId, isAds);
-    // Cap cache size
-    if (adsCacheRef.current.size > 500) {
-      const keys = Array.from(adsCacheRef.current.keys());
-      for (const k of keys.slice(0, 250)) adsCacheRef.current.delete(k);
+    const entry: AdsCacheEntry = { v: isAds, exp: Date.now() + ADS_CACHE_TTL_MS };
+    // LRU set: delete then set (moves to end)
+    adsCacheRef.current.delete(sessionId);
+    adsCacheRef.current.set(sessionId, entry);
+    // Cap cache size (evict oldest)
+    while (adsCacheRef.current.size > ADS_CACHE_MAX) {
+      const firstKey = adsCacheRef.current.keys().next().value as string | undefined;
+      if (!firstKey) break;
+      adsCacheRef.current.delete(firstKey);
     }
   }, []);
 
   const isAdsSessionByLookup = useCallback(async (sid: string): Promise<'ads' | 'non_ads' | 'error'> => {
-    const cached = adsCacheRef.current.get(sid);
+    const cached = cacheGet(sid);
     if (typeof cached === 'boolean') return cached ? 'ads' : 'non_ads';
 
-    try {
-      const supabase = supabaseRef.current;
-      const { data: rows, error } = await supabase.rpc('get_session_details', {
-        p_site_id: siteId,
-        p_session_id: sid,
-      });
-      if (error) return 'error';
-      const isAds = !!(rows && Array.isArray(rows) && rows.length > 0);
-      cacheSet(sid, isAds);
-      return isAds ? 'ads' : 'non_ads';
-    } catch {
-      return 'error';
-    }
-  }, [cacheSet, siteId]);
+    // De-dupe concurrent lookups for the same sessionId (stampede protection)
+    const inflight = adsLookupInflightRef.current.get(sid);
+    if (inflight) return await inflight;
+
+    const p = (async (): Promise<'ads' | 'non_ads' | 'error'> => {
+      try {
+        const supabase = supabaseRef.current;
+        const { data: rows, error } = await supabase.rpc('get_session_details', {
+          p_site_id: siteId,
+          p_session_id: sid,
+        });
+        if (error) return 'error';
+        const isAds = !!(rows && Array.isArray(rows) && rows.length > 0);
+        cacheSet(sid, isAds);
+        return isAds ? 'ads' : 'non_ads';
+      } catch {
+        return 'error';
+      } finally {
+        adsLookupInflightRef.current.delete(sid);
+      }
+    })();
+
+    adsLookupInflightRef.current.set(sid, p);
+    return await p;
+  }, [cacheGet, cacheSet, siteId]);
 
   const markSignal = useCallback((type: 'calls' | 'sessions' | 'events', adsQualified?: boolean) => {
     const now = new Date();

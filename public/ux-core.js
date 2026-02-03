@@ -7,7 +7,7 @@
     sessionKey: 'opmantik_session_sid',
     fingerprintKey: 'opmantik_session_fp',
     contextKey: 'opmantik_session_context',
-    heartbeatInterval: 30000, // 30 seconds
+    heartbeatInterval: 60000, // 60 seconds
     sessionTimeout: 1800000, // 30 minutes
   };
 

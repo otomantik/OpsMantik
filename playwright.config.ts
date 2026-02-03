@@ -7,7 +7,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://localhost:3000';
-const siteId = process.env.E2E_SITE_ID || process.env.PLAYWRIGHT_SITE_ID || '00000000-0000-0000-0000-000000000000';
 const authFile = path.join(process.cwd(), 'auth.json');
 const useStorageState = fs.existsSync(authFile) ? { storageState: authFile } : {};
 

@@ -3,6 +3,7 @@
 // external cron or pg_cron + pg_net.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Deno.serve handler signature requires request param
 Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')

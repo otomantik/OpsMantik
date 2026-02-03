@@ -9,7 +9,6 @@
  */
 import { test, expect } from '@playwright/test';
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://localhost:3000';
 const siteId = process.env.E2E_SITE_ID || process.env.PLAYWRIGHT_SITE_ID || '00000000-0000-0000-0000-000000000000';
 
 test.describe('Dashboard Watchtower E2E-lite', () => {
