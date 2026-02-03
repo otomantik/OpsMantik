@@ -3,46 +3,41 @@ import { debugLog } from '@/lib/utils';
 
 export class SiteService {
     /**
-     * Validate site ID format and check existence in DB.
-     * Supports UUID v4 with or without hyphens.
+     * Validate site ID and check existence in DB.
+     * Supports: (1) UUID v4 (with or without hyphens), (2) public_id (e.g. test_site_abc12345).
      */
     static async validateSite(siteId: string) {
-        // 1. Normalize site_id format (UUID v4 - accept both hyphenated and non-hyphenated)
-        let normalizedSiteId = siteId;
-        if (typeof siteId === 'string') {
-            // Remove existing hyphens
-            const stripped = siteId.replace(/-/g, '');
+        if (typeof siteId !== 'string' || !siteId.trim()) {
+            return { valid: false, error: 'Invalid site_id format' };
+        }
+        const trimmed = siteId.trim();
 
-            // Check if it's 32 hex characters (UUID without hyphens)
-            if (/^[0-9a-f]{32}$/i.test(stripped)) {
-                // Re-add hyphens in UUID v4 format: 8-4-4-4-12
-                normalizedSiteId =
-                    stripped.substring(0, 8) + '-' +
-                    stripped.substring(8, 12) + '-' +
-                    stripped.substring(12, 16) + '-' +
-                    stripped.substring(16, 20) + '-' +
-                    stripped.substring(20, 32);
+        const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const stripped = trimmed.replace(/-/g, '');
+        const looksLikeUuid = /^[0-9a-f]{32}$/i.test(stripped);
+
+        let searchBy: 'id' | 'public_id' = 'public_id';
+        let idValue: string = trimmed;
+
+        if (looksLikeUuid) {
+            const normalizedUuid =
+                stripped.substring(0, 8) + '-' +
+                stripped.substring(8, 12) + '-' +
+                stripped.substring(12, 16) + '-' +
+                stripped.substring(16, 20) + '-' +
+                stripped.substring(20, 32);
+            if (uuidV4Regex.test(normalizedUuid)) {
+                searchBy = 'id';
+                idValue = normalizedUuid;
             }
         }
 
-        // Validate the normalized UUID v4 format
-        const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        if (typeof normalizedSiteId !== 'string' || !uuidV4Regex.test(normalizedSiteId)) {
-            return { valid: false, error: 'Invalid site_id format' };
-        }
-
-        const finalSiteId = normalizedSiteId;
-
-        // Search for multiple formats: original, stripped, or hyphenated
-        const strippedId = typeof siteId === 'string' ? siteId.replace(/-/g, '') : siteId;
-        const searchIds = Array.from(new Set([siteId, finalSiteId, strippedId]));
-
-        debugLog('[SYNC_DB] Searching site with IDs:', searchIds);
+        debugLog('[SYNC_DB] Searching site:', { searchBy, idValue });
 
         const { data: site, error: siteError } = await adminClient
             .from('sites')
             .select('id')
-            .in('public_id', searchIds)
+            .eq(searchBy === 'id' ? 'id' : 'public_id', idValue)
             .maybeSingle();
 
         if (siteError) {

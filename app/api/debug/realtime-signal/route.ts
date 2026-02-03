@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
   }
 
+  const { validateSiteAccess } = await import('@/lib/security/validate-site-access');
+  const access = await validateSiteAccess(siteId, user.id, supabase);
+  if (!access.allowed) {
+    return NextResponse.json({ error: 'Forbidden: no access to this site' }, { status: 403 });
+  }
+
   if (kind === 'sessions') {
     const id = crypto.randomUUID();
     const now = new Date();
