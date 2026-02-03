@@ -352,14 +352,14 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
   return (
     <Card
-      className={`${getBorderColor(leadScore)} transition-all duration-300`}
+      className={`bg-white border-slate-200 shadow-sm ${getBorderColor(leadScore)} transition-all duration-300`}
       style={getBorderGlow()}
       data-session-id={sessionId}
     >
       <CardContent className="p-0">
         {/* Clickable Header */}
         <div
-          className="p-4 cursor-pointer hover:bg-muted transition-colors"
+          className="p-4 cursor-pointer hover:bg-slate-50 transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <div className="flex justify-between items-start">
@@ -513,7 +513,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
 
         {/* Expanded Content - Event Timeline & Time Table */}
         {isExpanded && (
-          <div className="border-t border-border p-4 space-y-4">
+          <div className="border-t border-slate-200 p-4 space-y-4 bg-white">
             {/* Event Timeline (Visual) */}
             <div>
               <p className="text-sm text-muted-foreground uppercase tracking-wider mb-3">
@@ -532,7 +532,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                           w-8 h-8 rounded-full flex items-center justify-center
                           ${isConversion ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                             event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' :
-                              'bg-muted text-muted-foreground border border-border'
+                              'bg-white text-muted-foreground border border-slate-200'
                           }
                           hover:scale-110 transition-transform cursor-pointer
                         `}>
@@ -555,7 +555,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                 {events.length > 15 && (
                   <div className="flex items-center gap-1 shrink-0 ml-2">
                     <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                    <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
+                    <span className="text-sm px-2 py-1 rounded bg-white text-muted-foreground border border-slate-200 tabular-nums">
                       +{events.length - 15}
                     </span>
                   </div>
@@ -592,7 +592,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                         return (
                           <tr
                             key={item.id}
-                            className={`border-b border-border hover:bg-muted/40 transition-colors ${isConversion ? 'bg-emerald-50/50' : ''}`}
+                            className={`border-b border-slate-200 hover:bg-slate-50 transition-colors ${isConversion ? 'bg-emerald-50/50' : ''}`}
                           >
                             <td className="py-2 px-3 text-foreground tabular-nums" suppressHydrationWarning>
                               {formatTimestamp(event.created_at, {
@@ -608,8 +608,8 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                             <td className="py-2 px-3">
                               <span className={`px-2 py-1 rounded text-sm border ${event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                 event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
-                                  event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
-                                    'bg-muted text-muted-foreground border-border'
+                                  event.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
+                                    'bg-white text-muted-foreground border-slate-200'
                                 }`}>
                                 {event.event_category.toUpperCase()}
                               </span>
@@ -640,7 +640,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                           <React.Fragment key={item.id}>
                             {/* Compressed row */}
                             <tr
-                              className={`border-b border-border hover:bg-muted/40 transition-colors cursor-pointer ${isConversion ? 'bg-emerald-50/50' : ''}`}
+                              className={`border-b border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer ${isConversion ? 'bg-emerald-50/50' : ''}`}
                               onClick={() => toggleGroup(item.id)}
                             >
                               <td className="py-2 px-3 text-foreground tabular-nums" suppressHydrationWarning>
@@ -667,8 +667,8 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                               <td className="py-2 px-3">
                                 <span className={`px-2 py-1 rounded text-sm border ${firstEvent.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                   firstEvent.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
-                                    firstEvent.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
-                                      'bg-muted text-muted-foreground border-border'
+                                    firstEvent.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
+                                      'bg-white text-muted-foreground border-slate-200'
                                   }`}>
                                   {firstEvent.event_category.toUpperCase()}
                                 </span>
@@ -697,7 +697,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                             {isExpanded && item.events.map((event) => (
                               <tr
                                 key={`${item.id}-${event.id}`}
-                                className={`border-b border-border hover:bg-muted/30 transition-colors ${isConversion ? 'bg-emerald-50/30' : ''}`}
+                                className={`border-b border-slate-200 hover:bg-slate-50 transition-colors ${isConversion ? 'bg-emerald-50/30' : ''}`}
                               >
                                 <td className="py-1.5 px-3 pl-8 text-muted-foreground text-sm tabular-nums" suppressHydrationWarning>
                                   {formatTimestamp(event.created_at, {
@@ -713,8 +713,8 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
                                 <td className="py-1.5 px-3">
                                   <span className={`px-2 py-1 rounded text-sm border ${event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                     event.event_category === 'acquisition' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' :
-                                      event.event_category === 'interaction' ? 'bg-muted text-muted-foreground border-border' :
-                                        'bg-muted text-muted-foreground border-border'
+                                      event.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
+                                        'bg-white text-muted-foreground border-slate-200'
                                     }`}>
                                     {event.event_category.toUpperCase()}
                                   </span>

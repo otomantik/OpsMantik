@@ -140,7 +140,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
       />
 
       {/* Drawer Panel */}
-      <div className="relative w-full sm:w-[600px] sm:max-w-full h-[90vh] sm:h-auto sm:max-h-[90vh] bg-background text-foreground border-t sm:border border-border rounded-t-lg sm:rounded-lg shadow-xl flex flex-col">
+      <div className="relative w-full sm:w-[600px] sm:max-w-full h-[90vh] sm:h-auto sm:max-h-[90vh] bg-white text-foreground border-t sm:border border-slate-200 rounded-t-lg sm:rounded-lg shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-base font-semibold tracking-tight">
@@ -162,7 +162,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
             </div>
           ) : isLimitedView ? (
             <div className="py-8">
-              <div className="mb-4 p-3 rounded border border-border bg-muted">
+              <div className="mb-4 p-3 rounded border border-slate-200 bg-white">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm text-muted-foreground uppercase tracking-widest">
@@ -185,7 +185,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
 
               {/* Keep UX: show intent-level info even if session fetch fails */}
               <div className="space-y-2">
-                <div className="p-3 rounded bg-muted border border-border">
+                <div className="p-3 rounded bg-white border border-slate-200">
                   <p className="text-sm text-muted-foreground uppercase tracking-wider">Intent</p>
                   <div className="mt-1 text-sm break-all tabular-nums">
                     {intent.id}
@@ -193,11 +193,11 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="p-3 rounded bg-muted border border-border">
+                  <div className="p-3 rounded bg-white border border-slate-200">
                     <p className="text-sm text-muted-foreground uppercase tracking-wider">Type</p>
                     <p className="mt-1 text-sm">{intent.type}</p>
                   </div>
-                  <div className="p-3 rounded bg-muted border border-border">
+                  <div className="p-3 rounded bg-white border border-slate-200">
                     <p className="text-sm text-muted-foreground uppercase tracking-wider">Time</p>
                     <p className="mt-1 text-sm tabular-nums" suppressHydrationWarning>
                       {formatTimestamp(intent.timestamp, { hour: '2-digit', minute: '2-digit' })}
@@ -206,7 +206,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                 </div>
 
                 {intent.matched_session_id && (
-                  <div className="p-3 rounded bg-muted border border-border">
+                  <div className="p-3 rounded bg-white border border-slate-200">
                     <p className="text-sm text-muted-foreground uppercase tracking-wider">Matched session</p>
                     <div className="mt-1 text-sm break-all tabular-nums">
                       {intent.matched_session_id}

@@ -100,7 +100,7 @@ export function LazySessionDrawer({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       {/* sheet */}
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[620px] bg-background border-l border-border shadow-2xl flex flex-col">
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[620px] bg-white border-l border-slate-200 shadow-2xl flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div>
             <div className="text-base font-semibold">{title}</div>
@@ -123,7 +123,7 @@ export function LazySessionDrawer({
             <div className="p-4 border border-rose-200 bg-rose-50 text-sm text-rose-900">{error}</div>
           ) : (
             <>
-              <div className="p-4 rounded border border-border bg-muted">
+              <div className="p-4 rounded border border-slate-200 bg-white shadow-sm">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-sm text-muted-foreground uppercase tracking-wider">Created</div>
@@ -152,7 +152,7 @@ export function LazySessionDrawer({
                 </div>
               </div>
 
-              <div className="p-4 rounded border border-border bg-background">
+              <div className="p-4 rounded border border-slate-200 bg-white shadow-sm">
                 <div className="text-sm text-muted-foreground uppercase tracking-wider mb-2">
                   Timeline ({events.length})
                 </div>
@@ -161,7 +161,7 @@ export function LazySessionDrawer({
                 ) : (
                   <div className="space-y-2">
                     {events.slice(0, 100).map((e) => (
-                      <div key={e.id} className="p-3 rounded border border-border bg-muted/50">
+                      <div key={e.id} className="p-3 rounded border border-slate-200 bg-white">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm text-foreground truncate">
                             {e.event_category}/{e.event_action}
@@ -184,7 +184,7 @@ export function LazySessionDrawer({
           )}
 
           {!sessionId && (
-            <div className="p-4 border border-border bg-muted text-sm text-muted-foreground">
+            <div className="p-4 border border-slate-200 bg-white text-sm text-muted-foreground">
               No matched session for this intent.
             </div>
           )}
