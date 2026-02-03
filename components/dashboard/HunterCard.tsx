@@ -24,13 +24,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -166,18 +159,14 @@ function Quadrant({ title, icon: Icon, children, className }: { title: string; i
   );
 }
 
-function Field({ label, value, subValue, icon: Icon, highlight, tip }: { label: string; value: React.ReactNode; subValue?: React.ReactNode; icon?: LucideIcon | React.ReactNode | (() => React.ReactNode); highlight?: boolean; tip?: string }) {
-  // Icon can be:
-  // - a React element: <SomeIcon />
-  // - a component type (including lucide-react forwardRef icons)
-  // - a function component (() => <ScanningIcon ... />)
+function Field({ label, value, subValue, icon: Icon, highlight }: { label: string; value: React.ReactNode; subValue?: React.ReactNode; icon?: LucideIcon | React.ReactNode | (() => React.ReactNode); highlight?: boolean }) {
   const iconContent = Icon
     ? (React.isValidElement(Icon)
         ? Icon
-        : React.createElement(Icon as any, { className: "h-3 w-3 text-muted-foreground/60 shrink-0 group-hover/field:text-foreground/80" }))
+        : React.createElement(Icon as React.ComponentType<{ className?: string }>, { className: "h-3 w-3 text-muted-foreground/60 shrink-0 group-hover/field:text-foreground/80" }))
     : <div className="h-3 w-3" />;
 
-  const content = (
+  return (
     <div className="flex items-start gap-2.5 min-w-0 group/field">
       <div className="p-1 rounded bg-muted/30 border border-border/20 group-hover/field:border-foreground/20 transition-colors">
         {iconContent}
@@ -191,23 +180,6 @@ function Field({ label, value, subValue, icon: Icon, highlight, tip }: { label: 
       </div>
     </div>
   );
-
-  if (tip) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger>
-            <div className="cursor-help">{content}</div>
-          </TooltipTrigger>
-          <TooltipContent className="bg-slate-900 border-slate-800 text-slate-100 text-[10px] max-w-[200px] font-medium leading-relaxed">
-            {tip}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
-  return content;
 }
 
 export function HunterCard({
@@ -339,25 +311,21 @@ export function HunterCard({
               label="Keyword"
               value={safeDecode(intent.utm_term || '—')}
               highlight
-              tip="The exact search term used to trigger your ad. 'Exact' matches are highest value."
               icon={() => <ScanningIcon icon={MousePointer2} active={isHighPotential} />}
             />
             <Field
               label="Match Type"
               value={matchTypeDecoded.label}
               icon={ShieldCheck}
-              tip="How closely the user's search matched your keyword settings."
             />
             <Field
               label="Network Type"
               value={intent.connection_type || intent.ads_network || '—'}
               icon={Signal}
-              tip="Connection (4g, wifi) or ad network. Helps verify real device vs proxy."
             />
             <Field
               label="Campaign"
               value={safeDecode(intent.utm_campaign || '—')}
-              tip="The marketing campaign responsible for this visitor."
             />
           </Quadrant>
 
@@ -368,31 +336,26 @@ export function HunterCard({
               value={device.label}
               icon={device.icon}
               highlight
-              tip="The visitor's hardware and operating system. Premium devices often indicate higher buying power."
             />
             <Field
               label="Language"
               value={intent.browser_language || '—'}
               icon={Monitor}
-              tip="Browser language preference. Useful for localization and intent."
             />
             <Field
               label="Hardware DNA"
               value={hwSummary || 'Detecting...'}
               icon={Monitor}
-              tip="Detailed hardware specs (RAM/CPU). Used to distinguish real humans from low-end bot farms."
             />
             <Field
               label="Carrier / ISP"
               value={intent.telco_carrier || 'Identifying...'}
               icon={() => <PulseSignal active={!!intent.telco_carrier}><Signal className="h-3 w-3" /></PulseSignal>}
-              tip="The internet service provider or mobile carrier. High-end hardware suggests a premium device user."
             />
             <Field
               label="Location"
               value={locationDisplay}
               icon={MapPin}
-              tip="The geographic source of the click, verified via IP headers."
             />
           </Quadrant>
 
@@ -403,20 +366,17 @@ export function HunterCard({
               value={intent.max_scroll_percentage ? `${intent.max_scroll_percentage}% Page Depth` : 'Low Engagement'}
               icon={() => <ScanningIcon icon={Flame} active={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 50)} />}
               highlight={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 70)}
-              tip="How far down the user scrolled. >70% indicates high interest in your content."
             />
             <Field
               label="Active Time"
               value={intent.total_active_seconds ? `${intent.total_active_seconds}s Focus Time` : 'Idle Browser'}
               icon={Clock}
               highlight={!!(intent.total_active_seconds && intent.total_active_seconds > 30)}
-              tip="Purely active time spent interacting with the page, excluding background tabs."
             />
             <Field
               label="Interactions"
               value={`${intent.cta_hover_count || 0} CTA Hovers`}
               icon={Zap}
-              tip="The number of times the user hovered over calls-to-action (Buttons/WhatsApp)."
             />
           </Quadrant>
 
@@ -430,20 +390,17 @@ export function HunterCard({
                 : <PulseSignal active={false}><ShieldCheck className="h-3 w-3" /></PulseSignal>
               }
               highlight={!!intent.click_id}
-              tip="Verified Google Click ID (GCLID). Guarantees the lead came directly from a paid Google Ad."
             />
             <Field
               label="Referrer Host"
               value={intent.referrer_host || 'Direct / Ad Click'}
               icon={ExternalLink}
-              tip="The external website the user came from before arriving at your landing page."
             />
             <Field
               label="Lead Potential"
               value={estDisplay || 'Evaluating...'}
               icon={Zap}
               highlight
-              tip="Estimated financial value of this potential deal based on site-wide averages."
             />
           </Quadrant>
         </div>
