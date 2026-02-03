@@ -80,13 +80,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   return (
     <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
       {/* ENTERPRISE GLOBAL STATUS BAR */}
-      <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-700 bg-slate-900 text-slate-400 z-[60] relative">
+      <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-[60] relative">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-400" />
+            <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
             {strings.operationsCenter.toUpperCase()} // OCI ACTIVE
           </div>
-          <div className="hidden sm:block opacity-60 text-slate-500">
+          <div className="hidden sm:block opacity-70 text-slate-500">
             LATENCY: {loading ? '...' : '12ms'}
           </div>
         </div>
