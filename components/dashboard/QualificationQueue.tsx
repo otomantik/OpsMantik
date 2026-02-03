@@ -642,10 +642,14 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   }
 
   const mergedTop: HunterIntent | null = top?.id && detailsById[top.id]
-    ? {
-      ...detailsById[top.id],
-      ...(detailsById[top.id].matched_session_id ? sessionEvidence[detailsById[top.id].matched_session_id] : {}),
-    }
+    ? (() => {
+        const detail = detailsById[top.id];
+        const sid = detail.matched_session_id;
+        return {
+          ...detail,
+          ...(sid ? sessionEvidence[sid] : {}),
+        };
+      })()
     : null;
 
   const mergedNext: HunterIntentLite | null = next
