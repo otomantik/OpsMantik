@@ -48,56 +48,56 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
     const pulseRate = total > 0 ? Math.round((sealed / total) * 100) : 0;
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="executive-pulse">
-            {/* Revenue Projection Card */}
-            <Card className="relative overflow-hidden border-border bg-background shadow-sm transition-all hover:shadow-md">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="executive-pulse">
+            {/* Revenue Projection Card — masaüstü okunaklı */}
+            <Card className="relative overflow-hidden border border-slate-200 bg-white shadow-sm">
                 <div className="absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-8 opacity-5">
                     <DollarSign className="h-full w-full" />
                 </div>
-                <CardHeader className="p-4 pb-2">
-                    <CardTitle className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        <TrendingUp className="h-3.5 w-3.5 text-blue-500" />
+                <CardHeader className="p-5 pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-600">
+                        <TrendingUp className="h-4 w-4 text-blue-500" />
                         Revenue Projection
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="p-4 pt-0">
+                <CardContent className="p-5 pt-0">
                     <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold tabular-nums" suppressHydrationWarning>
+                        <span className="text-3xl font-bold tabular-nums text-slate-900" suppressHydrationWarning>
                             {revenue.toLocaleString()}
                         </span>
-                        <span className="text-sm font-medium text-muted-foreground">{currency}</span>
+                        <span className="text-base font-medium text-slate-500">{currency}</span>
                     </div>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-2 text-xs text-slate-500">
                         Based on {sealed} sealed deals in this period.
                     </p>
                 </CardContent>
             </Card>
 
             {/* Conversion Pulse Card */}
-            <Card className="relative overflow-hidden border-border bg-background shadow-sm transition-all hover:shadow-md">
+            <Card className="relative overflow-hidden border border-slate-200 bg-white shadow-sm">
                 <div className="absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-8 opacity-5">
                     <Zap className="h-full w-full" />
                 </div>
-                <CardHeader className="p-4 pb-2">
-                    <CardTitle className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        <Activity className="h-3.5 w-3.5 text-emerald-500" />
+                <CardHeader className="p-5 pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-600">
+                        <Activity className="h-4 w-4 text-emerald-500" />
                         Conversion Pulse
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="p-4 pt-0">
+                <CardContent className="p-5 pt-0">
                     <div className="flex items-center gap-3">
-                        <div className="text-2xl font-bold tabular-nums">{pulseRate}%</div>
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="text-3xl font-bold tabular-nums text-slate-900">{pulseRate}%</div>
+                        <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                             <div
                                 className={cn(
-                                    "h-full transition-all duration-500",
+                                    "h-full transition-all duration-500 rounded-full",
                                     pulseRate > 50 ? "bg-emerald-500" : pulseRate > 20 ? "bg-amber-500" : "bg-blue-500"
                                 )}
                                 style={{ width: `${pulseRate}%` }}
                             />
                         </div>
                     </div>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-2 text-xs text-slate-500">
                         {sealed} qualified / {total} total incoming intents.
                     </p>
                 </CardContent>

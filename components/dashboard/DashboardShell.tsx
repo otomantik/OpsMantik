@@ -76,42 +76,42 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const avgEngagement = typeof avgScroll === 'number' && Number.isFinite(avgScroll) ? avgScroll : null;
 
   return (
-    <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-muted/30 text-slate-900">
-      {/* ENTERPRISE GLOBAL STATUS BAR */}
-      <div className="w-full h-8 px-4 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] border-b border-slate-800 bg-slate-900 text-slate-400 z-60 relative">
-        <div className="flex items-center gap-4">
+    <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
+      {/* ENTERPRISE GLOBAL STATUS BAR — Operasyon Merkezi */}
+      <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-700 bg-slate-900 text-slate-400 z-[60] relative">
+        <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full animate-pulse bg-blue-400" />
-            SYSTEM SECURE // OCI ACTIVE
+            <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-400" />
+            OPERATIONS CENTER // OCI ACTIVE
           </div>
-          <div className="hidden sm:block opacity-50">
+          <div className="hidden sm:block opacity-60 text-slate-500">
             LATENCY: {loading ? '...' : '12ms'}
           </div>
         </div>
-        <span className="hidden xs:inline" suppressHydrationWarning>{new Date().toLocaleTimeString('en-GB', { hour12: false })} IST</span>
+        <span className="tabular-nums" suppressHydrationWarning>{new Date().toLocaleTimeString('tr-TR', { hour12: false })}</span>
       </div>
 
-      {/* Tactical Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-xl shadow-sm">
-        <div className="mx-auto max-w-md px-4 py-3 w-full min-w-0">
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="min-w-0 flex-1 shrink">
+      {/* Desktop-first Header */}
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
+        <div className="mx-auto max-w-7xl px-6 py-4 w-full min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0 flex-shrink-0">
               <Link
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: 'ghost' }),
-                  "-ml-2 h-9 px-2 inline-flex items-center gap-2 min-w-0 max-w-full hover:bg-transparent transition-colors"
+                  "-ml-2 h-10 px-3 inline-flex items-center gap-2 min-w-0 hover:bg-slate-100 transition-colors rounded-lg"
                 )}
               >
-                <Home className="h-4 w-4 shrink-0" />
-                <span className="text-sm font-black tracking-tighter truncate uppercase italic">
+                <Home className="h-5 w-5 shrink-0 text-slate-600" />
+                <span className="text-base font-bold tracking-tight text-slate-800 truncate max-w-[240px] sm:max-w-none">
                   {siteName || siteDomain || 'OpsMantik'}
                 </span>
               </Link>
-              <div className="text-[10px] font-black uppercase tracking-[0.15em] px-2 leading-none text-muted-foreground/60">P0 Tactical Dashboard</div>
+              <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">P0 Operasyon Merkezi</div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 min-w-0">
+            <div className="flex items-center gap-3 shrink-0 min-w-0">
               <div className="shrink-0 flex flex-col items-end">
                 {(() => {
                   const status = getBadgeStatus({
@@ -187,26 +187,26 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
           </Dialog>
 
           {statsError && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
               {statsError}
             </div>
           )}
-          {/* Scoreboard (HUD) - Enterprise V3 */}
-          <div className="mt-4 grid grid-cols-4 gap-2.5">
+          {/* Scoreboard — masaüstü okunaklı */}
+          <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Capture', value: captured, icon: Target, color: 'emerald', sub: 'Verified' },
-              { label: 'Shield', value: filtered, icon: Shield, color: 'slate', sub: 'Redacted' },
-              { label: 'Efficiency', value: `${gclidRatio}%`, icon: Zap, color: 'amber', sub: 'GCLID Ratio' },
-              { label: 'Interest', value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, color: 'blue', sub: 'Avg Scroll' }
+              { label: 'Capture', value: captured, icon: Target, sub: 'Verified' },
+              { label: 'Shield', value: filtered, icon: Shield, sub: 'Redacted' },
+              { label: 'Efficiency', value: `${gclidRatio}%`, icon: Zap, sub: 'GCLID Ratio' },
+              { label: 'Interest', value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: 'Avg Scroll' }
             ].map((item, idx) => (
-              <div key={idx} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col justify-between group/stat relative overflow-hidden">
-                <div className="flex items-center gap-1.5 relative z-10">
-                  <item.icon className="h-3 w-3 text-slate-400 transition-transform group-hover/stat:scale-110" />
-                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-slate-400">{item.label}</span>
+              <div key={idx} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm flex flex-col justify-between min-h-[72px]">
+                <div className="flex items-center gap-2">
+                  <item.icon className="h-4 w-4 text-slate-500" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</span>
                 </div>
-                <div className="flex flex-col mt-1 relative z-10">
-                  <div className="text-base sm:text-xl font-black tabular-nums tracking-tighter leading-none text-slate-900">{item.value}</div>
-                  <div className="text-[7px] font-bold text-slate-500 truncate uppercase mt-0.5 tracking-widest">{item.sub}</div>
+                <div className="mt-2">
+                  <div className="text-xl sm:text-2xl font-bold tabular-nums leading-tight text-slate-900">{item.value}</div>
+                  <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{item.sub}</div>
                 </div>
               </div>
             ))}
@@ -214,19 +214,33 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         </div>
       </header>
 
-      {/* Breakdown widgets + Feed */}
-      <main className="mx-auto max-w-md px-4 py-4 space-y-4 pb-20 overflow-x-hidden min-w-0 relative z-10">
-        <PulseProjectionWidgets
-          siteId={siteId}
-          dateRange={queueRange}
-          scope={scope}
-        />
-        <BreakdownWidgets
-          siteId={siteId}
-          dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-          adsOnly={scope === 'ads'}
-        />
-        <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
+      {/* Masaüstü: geniş alan, iki kolon (widgets | kuyruk) */}
+      <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-5 space-y-6">
+            <div className="mb-1">
+              <h2 className="text-base font-semibold text-slate-800">Raporlar</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Revenue, conversion pulse, breakdown</p>
+            </div>
+            <PulseProjectionWidgets
+              siteId={siteId}
+              dateRange={queueRange}
+              scope={scope}
+            />
+            <BreakdownWidgets
+              siteId={siteId}
+              dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
+              adsOnly={scope === 'ads'}
+            />
+          </div>
+          <div className="lg:col-span-7">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">Canlı Kuyruk</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Intent qualification — today / yesterday</p>
+            </div>
+            <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
+          </div>
+        </div>
       </main>
     </div>
   );
