@@ -215,9 +215,16 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         </div>
       </header>
 
-      {/* Desktop: two columns (reports | queue), full-width Breakdown below */}
+      {/* Desktop: Live Queue first (left), then Reports; full-width Breakdown below */}
       <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-7">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">{strings.liveQueue}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{strings.liveQueueSubtitle}</p>
+            </div>
+            <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
+          </div>
           <div className="lg:col-span-5 space-y-6">
             <div className="mb-1">
               <h2 className="text-base font-semibold text-slate-800">{strings.reports}</h2>
@@ -228,13 +235,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               dateRange={queueRange}
               scope={scope}
             />
-          </div>
-          <div className="lg:col-span-7">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{strings.liveQueue}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{strings.liveQueueSubtitle}</p>
-            </div>
-            <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
           </div>
         </div>
         {/* Breakdown: full-width row */}
