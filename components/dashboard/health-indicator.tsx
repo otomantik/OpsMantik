@@ -8,6 +8,7 @@
 
 import { Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { formatTimestamp } from '@/lib/utils';
+import { strings } from '@/lib/i18n/en';
 
 export interface DashboardHealth {
   data_latency: string; // ISO timestamp
@@ -55,10 +56,10 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
 
-    if (diffMins < 1) return 'Şimdi';
-    if (diffMins < 60) return `${diffMins} dk önce`;
+    if (diffMins < 1) return strings.now;
+    if (diffMins < 60) return strings.minutesAgo(diffMins);
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} sa önce`;
+    if (diffHours < 24) return strings.hoursAgo(diffHours);
     return formatTimestamp(timestamp, { hour: '2-digit', minute: '2-digit' });
   };
 
@@ -67,10 +68,10 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
       {getStatusIcon()}
       <div className="flex flex-col">
         <span className={`text-sm uppercase tracking-wider ${getStatusColor()}`}>
-          {health.status === 'healthy' ? 'Sağlıklı' : health.status === 'degraded' ? 'Düşük' : 'Kritik'}
+          {health.status === 'healthy' ? strings.healthy : health.status === 'degraded' ? strings.degraded : strings.critical}
         </span>
         <span className="text-sm text-muted-foreground tabular-nums">
-          {formatLatency(health.data_latency)} TRT
+          {formatLatency(health.data_latency)}
         </span>
       </div>
     </div>

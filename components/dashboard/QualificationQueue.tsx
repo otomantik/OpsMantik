@@ -10,6 +10,7 @@ import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { cn, formatTimestamp } from '@/lib/utils';
+import { strings } from '@/lib/i18n/en';
 import { HunterCard } from './HunterCard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { useSiteConfig } from '@/lib/hooks/use-site-config';
@@ -594,17 +595,13 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Icons.check className="w-16 h-16 text-green-500 mb-4" />
             <h3 className="text-xl font-semibold mb-2" data-testid="queue-empty-state">
-              {range.day === 'yesterday' ? 'No data for yesterday' : 'Mission Accomplished'}
+              {range.day === 'yesterday' ? strings.queueEmptyYesterday : strings.queueEmptyTitle}
             </h3>
             <p className="text-muted-foreground max-w-md">
-              {range.day === 'yesterday'
-                ? 'No intents were found for yesterday in the selected TRT window.'
-                : 'No pending intents to qualify. New intents from Google Ads will appear here automatically.'}
+              {range.day === 'yesterday' ? strings.queueEmptyYesterdayDesc : strings.queueEmptyTodayDesc}
             </p>
             <p className="text-muted-foreground text-xs mt-2 max-w-md">
-              {range.day === 'today' && scope === 'ads'
-                ? 'Try Full Network Graph (menu) or Refresh to load intents from all sources.'
-                : 'Use Refresh to fetch again.'}
+              {range.day === 'today' && scope === 'ads' ? strings.queueEmptyTryFullNetwork : strings.queueEmptyUseRefresh}
             </p>
             <Button
               variant="ghost"
@@ -613,7 +610,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
               className="mt-4"
             >
               <Icons.refresh className="w-4 h-4 mr-2" />
-              Refresh
+              {strings.refresh}
             </Button>
           </CardContent>
         </Card>

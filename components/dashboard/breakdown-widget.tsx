@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useBreakdownData, BreakdownDimension } from '@/lib/hooks/use-breakdown-data';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { TrendingUp, Smartphone, MapPin, Loader2, AlertCircle } from 'lucide-react';
+import { strings } from '@/lib/i18n/en';
 
 interface BreakdownWidgetProps {
   siteId: string;
@@ -31,9 +32,9 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
 
   const getDimensionLabel = (dim: BreakdownDimension) => {
     switch (dim) {
-      case 'source': return 'Kaynak';
-      case 'device': return 'Cihaz';
-      case 'city': return 'Şehir';
+      case 'source': return strings.dimensionSource;
+      case 'device': return strings.dimensionDevice;
+      case 'city': return strings.dimensionCity;
     }
   };
 
@@ -50,7 +51,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
       <CardHeader className="pb-3 border-b border-border">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold tracking-tight">
-            Dağılım
+            {strings.breakdown}
           </CardTitle>
 
           {/* Dimension Selector */}
@@ -79,7 +80,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
         {error ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <AlertCircle className="w-8 h-8 text-destructive mb-2" />
-            <p className="text-destructive text-sm mb-2">Hata: {error}</p>
+            <p className="text-destructive text-sm mb-2">{strings.errorLabel(error)}</p>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-8">
@@ -88,7 +89,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
         ) : data.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-sm text-muted-foreground uppercase tracking-wider">
-              Veri yok
+              {strings.noData}
             </p>
           </div>
         ) : (

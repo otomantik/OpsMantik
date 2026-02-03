@@ -14,6 +14,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useCallback } from 'react';
+import { strings } from '@/lib/i18n/en';
 
 export interface DateRange {
   from: Date;
@@ -69,13 +70,12 @@ export function useDashboardDateRange(siteId: string) {
     return { from, to };
   }, [fromParam, toParam]);
 
-  // Presets (Turkish labels)
   const presets: DateRangePreset[] = useMemo(() => [
-    { label: 'Bugün', value: 'today' },
-    { label: 'Dün', value: 'yesterday' },
-    { label: 'Son 7 Gün', value: '7d' },
-    { label: 'Son 30 Gün', value: '30d' },
-    { label: 'Bu Ay', value: 'month' },
+    { label: strings.today, value: 'today' },
+    { label: strings.yesterday, value: 'yesterday' },
+    { label: strings.last7Days, value: '7d' },
+    { label: strings.last30Days, value: '30d' },
+    { label: strings.thisMonth, value: 'month' },
   ], []);
 
   // Apply preset

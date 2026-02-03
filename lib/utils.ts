@@ -123,7 +123,7 @@ export function formatTimestamp(
       console.warn('[formatTimestamp] Invalid date:', ts);
       return '—';
     }
-    return date.toLocaleString('tr-TR', {
+    return date.toLocaleString('en-GB', {
       timeZone: 'Europe/Istanbul',
       ...options
     });

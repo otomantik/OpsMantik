@@ -25,6 +25,7 @@ import { useTimelineData } from '@/lib/hooks/use-timeline-data';
 import { debugLog } from '@/lib/utils';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { formatTimestamp } from '@/lib/utils';
+import { strings } from '@/lib/i18n/en';
 
 interface TimelineChartProps {
   siteId: string;
@@ -100,10 +101,10 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
           <div className="text-center">
             <TrendingUp className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground text-sm uppercase tracking-widest">
-              Veri yok
+              {strings.noData}
             </p>
             <p className="text-muted-foreground text-sm mt-2 italic">
-              Seçili tarih aralığında veri bulunamadı
+              {strings.noDataInRange}
             </p>
           </div>
         </div>
@@ -262,15 +263,15 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <span className="text-sm text-muted-foreground">Trafik</span>
+                <span className="text-sm text-muted-foreground">{strings.traffic}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="text-sm text-muted-foreground">Etkinlik</span>
+                <span className="text-sm text-muted-foreground">{strings.activity}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-purple-500" />
-                <span className="text-sm text-muted-foreground">Çağrılar</span>
+                <span className="text-sm text-muted-foreground">{strings.calls}</span>
               </div>
             </div>
 
@@ -292,13 +293,13 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
         {error ? (
           <div className="h-[400px] flex items-center justify-center">
             <div className="text-center">
-              <p className="text-destructive text-sm mb-2">Hata: {error}</p>
+              <p className="text-destructive text-sm mb-2">{strings.errorLabel(error)}</p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleRefresh(false)}
               >
-                Tekrar Dene
+                {strings.retry}
               </Button>
             </div>
           </div>
@@ -306,7 +307,7 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
           <div className="h-[400px] flex items-center justify-center">
             <div className="text-center">
               <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground uppercase tracking-widest">Yükleniyor...</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-widest">{strings.loading}</p>
             </div>
           </div>
         ) : (
@@ -315,18 +316,18 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
             
             <div className="mt-4 flex items-center justify-between">
               <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                Son güncelleme: {formatTimestamp(lastUpdated.toISOString(), { 
+                {strings.lastUpdate}: {formatTimestamp(lastUpdated.toISOString(), { 
                   hour: '2-digit', 
                   minute: '2-digit',
                   second: '2-digit'
-                })} TRT
-                {isRefreshing && ' (güncelleniyor...)'}
+                })}
+                {isRefreshing && ` (${strings.updating})`}
                 {hasNewData && (
-                  <span className="ml-2 text-emerald-700">• Yeni veri mevcut</span>
+                  <span className="ml-2 text-emerald-700">• {strings.newDataAvailable}</span>
                 )}
               </div>
               <div className="text-sm text-muted-foreground italic">
-                Otomatik yenileme: {effectiveInterval === '5m' ? '5 dakika' : '30 dakika'}
+                {strings.autoRefresh(effectiveInterval === '5m' ? strings.autoRefresh5m : strings.autoRefresh30m)}
               </div>
             </div>
           </>

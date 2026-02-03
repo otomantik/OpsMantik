@@ -19,6 +19,7 @@ import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { getBadgeStatus } from '@/lib/realtime-badge-status';
 import { cn } from '@/lib/utils';
+import { strings } from '@/lib/i18n/en';
 import { Home, Settings, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
@@ -77,18 +78,18 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
   return (
     <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
-      {/* ENTERPRISE GLOBAL STATUS BAR — Operasyon Merkezi */}
+      {/* ENTERPRISE GLOBAL STATUS BAR */}
       <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-700 bg-slate-900 text-slate-400 z-[60] relative">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-400" />
-            OPERATIONS CENTER // OCI ACTIVE
+            {strings.operationsCenter.toUpperCase()} // OCI ACTIVE
           </div>
           <div className="hidden sm:block opacity-60 text-slate-500">
             LATENCY: {loading ? '...' : '12ms'}
           </div>
         </div>
-        <span className="tabular-nums" suppressHydrationWarning>{new Date().toLocaleTimeString('tr-TR', { hour12: false })}</span>
+        <span className="tabular-nums" suppressHydrationWarning>{new Date().toLocaleTimeString('en-GB', { hour12: false })}</span>
       </div>
 
       {/* Desktop-first Header */}
@@ -108,7 +109,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   {siteName || siteDomain || 'OpsMantik'}
                 </span>
               </Link>
-              <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">P0 Operasyon Merkezi</div>
+              <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{strings.p0CommandCenter}</div>
             </div>
 
             <div className="flex items-center gap-3 shrink-0 min-w-0">
@@ -191,7 +192,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               {statsError}
             </div>
           )}
-          {/* Scoreboard — masaüstü okunaklı */}
+          {/* Scoreboard */}
           <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: 'Capture', value: captured, icon: Target, sub: 'Verified' },
@@ -214,32 +215,35 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         </div>
       </header>
 
-      {/* Masaüstü: geniş alan, iki kolon (widgets | kuyruk) */}
+      {/* Desktop: two columns (reports | queue), full-width Breakdown below */}
       <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-5 space-y-6">
             <div className="mb-1">
-              <h2 className="text-base font-semibold text-slate-800">Raporlar</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Revenue, conversion pulse, breakdown</p>
+              <h2 className="text-base font-semibold text-slate-800">{strings.reports}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{strings.reportsSubtitle}</p>
             </div>
             <PulseProjectionWidgets
               siteId={siteId}
               dateRange={queueRange}
               scope={scope}
             />
-            <BreakdownWidgets
-              siteId={siteId}
-              dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-              adsOnly={scope === 'ads'}
-            />
           </div>
           <div className="lg:col-span-7">
             <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">Canlı Kuyruk</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Intent qualification — today / yesterday</p>
+              <h2 className="text-base font-semibold text-slate-800">{strings.liveQueue}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{strings.liveQueueSubtitle}</p>
             </div>
             <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
           </div>
+        </div>
+        {/* Breakdown: full-width row */}
+        <div className="mt-8 pt-6 border-t border-slate-200">
+          <BreakdownWidgets
+            siteId={siteId}
+            dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
+            adsOnly={scope === 'ads'}
+          />
         </div>
       </main>
     </div>

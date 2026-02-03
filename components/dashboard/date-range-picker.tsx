@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { formatTimestamp } from '@/lib/utils';
+import { strings } from '@/lib/i18n/en';
 
 interface DateRangePickerProps {
   value: DateRange;
@@ -84,7 +85,7 @@ export function DateRangePicker({
               {/* Presets */}
               <div className="space-y-1 mb-4">
                 <p className="text-sm text-muted-foreground uppercase tracking-widest mb-2">
-                  Hızlı Seçim
+                  {strings.quickSelect}
                 </p>
                 {presets.map((preset) => (
                   <PresetButton
@@ -103,23 +104,23 @@ export function DateRangePicker({
               {/* Custom Range (Placeholder) */}
               <div className="pt-4 border-t border-border">
                 <p className="text-sm text-muted-foreground uppercase tracking-widest mb-2">
-                  Özel Tarih Aralığı
+                  {strings.customDateRange}
                 </p>
                 <p className="text-sm text-muted-foreground italic">
-                  Tarih seçici yakında eklenecek
+                  {strings.customDateRangeComingSoon}
                 </p>
               </div>
 
               {/* Current Range Display */}
               <div className="pt-4 border-t border-border mt-4">
                 <p className="text-sm text-muted-foreground uppercase tracking-widest mb-1">
-                  Seçili Aralık
+                  {strings.selectedRange}
                 </p>
                 <p className="text-sm tabular-nums">
-                  {displayText} (TRT)
+                  {displayText}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1 tabular-nums">
-                  Max: {maxRange} gün
+                  {strings.maxDays(maxRange)}
                 </p>
               </div>
             </CardContent>
