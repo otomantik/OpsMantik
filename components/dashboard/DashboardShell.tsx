@@ -23,6 +23,7 @@ import { strings } from '@/lib/i18n/en';
 import { Home, Settings, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
+import { LiveClock } from './LiveClock';
 import './reset.css';
 
 interface DashboardShellProps {
@@ -89,7 +90,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             LATENCY: {loading ? '...' : '12ms'}
           </div>
         </div>
-        <span className="tabular-nums" suppressHydrationWarning>{new Date().toLocaleTimeString('en-GB', { hour12: false })}</span>
+        <LiveClock />
       </div>
 
       {/* Desktop-first Header */}
