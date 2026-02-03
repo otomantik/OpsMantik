@@ -11,9 +11,23 @@
     return;
   }
 
-  // Get site ID and API URL from script tag
+  // Get site ID and API URL from script tag (LiteSpeed/deferred load: currentScript can be null)
   const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
-  const siteId = scriptTag?.getAttribute('data-site-id') || '';
+  let siteId = scriptTag?.getAttribute('data-site-id') || '';
+  if (!siteId && typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.siteId) {
+    siteId = String(window.opmantikConfig.siteId);
+  }
+  if (!siteId) {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var s = scripts[i];
+      var src = (s.src || '').toLowerCase();
+      if ((src.indexOf('core.js') !== -1 || src.indexOf('ux-core.js') !== -1) && s.getAttribute('data-site-id')) {
+        siteId = s.getAttribute('data-site-id') || '';
+        break;
+      }
+    }
+  }
 
   // Determine API endpoint with priority:
   // A) data-api attribute (if present)

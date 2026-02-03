@@ -70,9 +70,10 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const captured = loading ? '…' : String(stats?.sealed ?? 0);
   const filtered = loading ? '…' : String(stats?.junk ?? 0);
 
-  // DERMINISTIC ENTERPRISE METRICS
+  // DERMINISTIC ENTERPRISE METRICS (no fake fallback for scroll — show — when no data)
   const gclidRatio = stats?.total_leads ? Math.round(((stats?.gclid_leads || 0) / stats.total_leads) * 100) : 0;
-  const avgEngagement = stats?.avg_scroll_depth || 68;
+  const avgScroll = stats?.avg_scroll_depth;
+  const avgEngagement = typeof avgScroll === 'number' && Number.isFinite(avgScroll) ? avgScroll : null;
 
   return (
     <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-muted/30 text-slate-900">
@@ -196,7 +197,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               { label: 'Capture', value: captured, icon: Target, color: 'emerald', sub: 'Verified' },
               { label: 'Shield', value: filtered, icon: Shield, color: 'slate', sub: 'Redacted' },
               { label: 'Efficiency', value: `${gclidRatio}%`, icon: Zap, color: 'amber', sub: 'GCLID Ratio' },
-              { label: 'Interest', value: `${avgEngagement}%`, icon: Flame, color: 'blue', sub: 'Avg Scroll' }
+              { label: 'Interest', value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, color: 'blue', sub: 'Avg Scroll' }
             ].map((item, idx) => (
               <div key={idx} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col justify-between group/stat relative overflow-hidden">
                 <div className="flex items-center gap-1.5 relative z-10">

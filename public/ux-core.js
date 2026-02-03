@@ -22,9 +22,23 @@
     return;
   }
 
-  // Get site ID from script tag
+  // Get site ID from script tag (LiteSpeed/deferred: currentScript can be null)
   const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
-  const siteId = scriptTag?.getAttribute('data-site-id') || '';
+  let siteId = scriptTag ? (scriptTag.getAttribute('data-site-id') || '') : '';
+  if (!siteId && typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.siteId) {
+    siteId = String(window.opmantikConfig.siteId);
+  }
+  if (!siteId) {
+    var allScripts = document.getElementsByTagName('script');
+    for (var i = 0; i < allScripts.length; i++) {
+      var s = allScripts[i];
+      var src = (s.src || '').toLowerCase();
+      if ((src.indexOf('core.js') !== -1 || src.indexOf('ux-core.js') !== -1) && s.getAttribute('data-site-id')) {
+        siteId = s.getAttribute('data-site-id') || '';
+        break;
+      }
+    }
+  }
 
   if (!siteId) {
     console.warn('[OPSMANTIK] ❌ Site ID not found');

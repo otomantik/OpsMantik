@@ -85,41 +85,8 @@ export function useCommandCenterP0Stats(
     fetchStats();
   }, [fetchStats]);
 
-  // Real-time Poll for Today
-  useEffect(() => {
-    if (!siteId || !stats || rangeOverride?.day === 'yesterday') return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/stats/realtime?siteId=${siteId}`);
-        if (!res.ok) return;
-        const realtimeData = await res.json();
-
-        setStats(prev => {
-          if (!prev) return prev;
-          const prevSealed = Number(prev.sealed);
-          const prevJunk = Number(prev.junk);
-          const prevLeads = Number(prev.total_leads);
-          const prevGclid = Number(prev.gclid_leads);
-          const cap = Number(realtimeData.captured) || 0;
-          const junk = Number(realtimeData.junk) || 0;
-          const gclid = Number(realtimeData.gclid) || 0;
-          // Overlay Redis data if it's higher than DB (means DB is still processing)
-          return {
-            ...prev,
-            sealed: Math.max(prevSealed, cap),
-            junk: Math.max(prevJunk, junk),
-            total_leads: Math.max(prevLeads, cap),
-            gclid_leads: Math.max(prevGclid, gclid),
-          };
-        });
-      } catch (e) {
-        console.error('Realtime poll failed', e);
-      }
-    }, 10000); // 10s poll for overlay
-
-    return () => clearInterval(interval);
-  }, [siteId, rangeOverride?.day, !!stats]);
+  // sealed, junk, total_leads, gclid_leads come ONLY from RPC (DB). Redis "captured" is event
+  // count, not sealed count — overlay was causing Capture to show inflated numbers (see DASHBOARD_METRICS_LOGIC_AUDIT.md).
 
   return { stats, loading, error, refetch: fetchStats, dateRange };
 }
