@@ -2,27 +2,13 @@
 
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { safeDecode } from '@/lib/utils/string-utils';
-import { decodeMatchType, type HunterIntent } from '@/lib/types/hunter';
+import type { HunterIntent } from '@/lib/types/hunter';
+import { strings } from '@/lib/i18n/en';
 import { Icons } from '@/components/icons';
-import {
-  Flame,
-  Monitor,
-  Smartphone,
-  MapPin,
-  Cpu,
-  Zap,
-  MousePointer2,
-  Clock,
-  ExternalLink,
-  ShieldCheck,
-  Signal,
-  Check,
-  type LucideIcon,
-} from 'lucide-react';
+import { Monitor, Smartphone, MapPin, Clock, FileText, type LucideIcon } from 'lucide-react';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -57,21 +43,9 @@ function sourceTypeOf(action: string | null | undefined): HunterSourceType {
 }
 
 function getScoreColor(score: number): { border: string; bg: string; text: string } {
-  if (score >= 85) return {
-    border: 'border-emerald-500/50',
-    bg: 'bg-emerald-500/10',
-    text: 'text-emerald-500',
-  };
-  if (score >= 50) return {
-    border: 'border-amber-500/50',
-    bg: 'bg-amber-500/10',
-    text: 'text-amber-500',
-  };
-  return {
-    border: 'border-slate-500/30',
-    bg: 'bg-slate-500/5',
-    text: 'text-slate-400',
-  };
+  if (score >= 85) return { border: 'border-blue-500/40', bg: 'bg-blue-500/10', text: 'text-blue-600' };
+  if (score >= 50) return { border: 'border-blue-400/30', bg: 'bg-blue-500/5', text: 'text-blue-600' };
+  return { border: 'border-slate-300', bg: 'bg-slate-100', text: 'text-slate-600' };
 }
 
 function deviceLabel(
@@ -113,61 +87,18 @@ function deviceLabel(
   return { icon: Icon, label };
 }
 
-function formatEstimatedValue(value: number | null | undefined, currency?: string | null): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '';
-  const sym = (currency || 'TRY').toUpperCase() === 'TRY' ? '₺' : (currency || '');
-  if (value >= 1000) return `${Math.round(value / 1000)}K ${sym}`.trim();
-  return `${value} ${sym}`.trim();
-}
-
-const PulseSignal = ({ children, active }: { children: React.ReactNode; active: boolean }) => (
-  <div className="relative inline-flex items-center">
-    {children}
-    {active && (
-      <span className="absolute -right-1 -top-1 inline-flex h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-    )}
-  </div>
-);
-
-const ScanningIcon = ({ icon: Icon, className }: { icon: LucideIcon; active?: boolean; className?: string }) => (
-  <div className={cn('rounded', className)}>
-    <Icon className="h-4 w-4 text-muted-foreground" />
-  </div>
-);
-
-function Quadrant({ title, icon: Icon, children, className }: { title: string; icon: LucideIcon; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn('p-3 rounded-xl border border-border/50 bg-background/80 dark:bg-background/50 relative overflow-hidden', className)}>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="h-3 w-3 text-muted-foreground" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">{title}</span>
-      </div>
-      <div className="space-y-2">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, value, subValue, icon: Icon, highlight }: { label: string; value: React.ReactNode; subValue?: React.ReactNode; icon?: LucideIcon | React.ReactNode | (() => React.ReactNode); highlight?: boolean }) {
-  const iconContent = Icon
-    ? (React.isValidElement(Icon)
-        ? Icon
-        : React.createElement(Icon as React.ComponentType<{ className?: string }>, { className: 'h-3 w-3 text-muted-foreground/60 shrink-0' }))
-    : <div className="h-3 w-3" />;
-
-  return (
-    <div className="flex items-start gap-2.5 min-w-0">
-      <div className="p-1 rounded bg-muted/30 border border-border/20 shrink-0">
-        {iconContent}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[9px] uppercase font-black text-muted-foreground/50 leading-none mb-1 tracking-tight">{label}</div>
-        <div className={cn('text-xs font-bold truncate leading-tight', highlight ? 'text-foreground' : 'text-foreground/80')}>
-          {value || '—'}
-        </div>
-        {subValue && <div className="text-[9px] text-muted-foreground/60 truncate italic mt-0.5">{subValue}</div>}
-      </div>
-    </div>
-  );
+/** Path / or empty → Homepage; else show path or last segment */
+function getPageLabel(pageUrl: string | null | undefined): string {
+  const raw = (pageUrl || '').trim();
+  if (!raw) return strings.homepage;
+  try {
+    const path = new URL(raw, 'https://x').pathname.replace(/\/$/, '') || '/';
+    if (path === '/') return strings.homepage;
+    const segment = path.split('/').filter(Boolean).pop();
+    return segment ? decodeURIComponent(segment) : path;
+  } catch {
+    return raw.length > 24 ? `${raw.slice(0, 24)}…` : raw;
+  }
 }
 
 export function HunterCard({
@@ -185,7 +116,6 @@ export function HunterCard({
 }) {
   const t = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[t] || ICON_MAP.other;
-  const matchTypeDecoded = useMemo(() => decodeMatchType(intent.matchtype), [intent.matchtype]);
   const displayScore = useMemo(() => {
     const raw = intent.ai_score;
     if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
@@ -197,25 +127,11 @@ export function HunterCard({
   }, [intent.ai_score, intent.matchtype, intent.utm_source]);
 
   const scoreTheme = getScoreColor(displayScore);
-  const isHighPotential = matchTypeDecoded.type === 'exact' || displayScore >= 85;
-  const isHighIntent = t === 'whatsapp' || isHighPotential;
 
   const device = useMemo(
     () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null, intent.browser ?? null),
     [intent.device_type, intent.device_os, intent.browser]
   );
-
-  const estDisplay = useMemo(
-    () => formatEstimatedValue(intent.estimated_value, intent.currency),
-    [intent.estimated_value, intent.currency]
-  );
-
-  const hwSummary = useMemo(() => {
-    const parts = [];
-    if (intent.device_memory) parts.push(`${intent.device_memory}GB RAM`);
-    if (intent.hardware_concurrency) parts.push(`${intent.hardware_concurrency} Cores`);
-    return parts.join(' · ') || null;
-  }, [intent.device_memory, intent.hardware_concurrency]);
 
   const locationDisplay = useMemo(() => {
     const districtLabel = safeDecode((intent.district || '').trim());
@@ -223,184 +139,72 @@ export function HunterCard({
     if (districtLabel && cityLabel) return `${districtLabel} / ${cityLabel}`;
     if (districtLabel) return districtLabel;
     if (cityLabel) return cityLabel;
-    return 'Location Unknown';
+    return strings.locationUnknown;
   }, [intent.district, intent.city]);
+
+  const pageDisplay = useMemo(
+    () => getPageLabel(intent.intent_page_url || intent.page_url),
+    [intent.intent_page_url, intent.page_url]
+  );
+
+  const keywordDisplay = useMemo(() => safeDecode((intent.utm_term || '').trim()) || '—', [intent.utm_term]);
 
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-card border-2 min-h-[500px] flex flex-col shadow-sm',
+        'relative overflow-hidden bg-white border-2 flex flex-col shadow-sm min-h-0',
         scoreTheme.border
       )}
     >
-      {/* HEADER SECTION */}
-      <CardHeader className="p-4 pb-2 z-10 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
+      <CardHeader className="p-4 pb-2 shrink-0 border-b border-slate-100">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className={cn(
-              'p-2 rounded-xl border relative',
-              isHighIntent ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-muted border-border text-muted-foreground'
+              'p-2.5 rounded-xl border shrink-0',
+              'bg-blue-500/10 border-blue-500/20 text-blue-600'
             )}>
               <IntentIcon className="h-5 w-5" />
-              {intent.click_id && (
-                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border border-white" aria-hidden />
-              )}
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-foreground/90 uppercase tracking-tight">
-                  {t === 'whatsapp' ? 'WhatsApp Direct' : t === 'phone' ? 'Phone Inquiry' : t === 'form' ? 'Lead Form' : 'General Intent'}
-                </span>
-                {intent.is_returning && (
-                  <Badge className="bg-blue-500/10 text-blue-500 border-none h-4 text-[9px] px-1.5 font-black uppercase">
-                    Returning
-                  </Badge>
-                )}
-                {intent.visitor_rank === 'VETERAN_HUNTER' && (
-                  <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-none h-4 text-[9px] px-1.5 font-black uppercase" title="Seen multiple times in last 7 days">
-                    {typeof intent.previous_visit_count === 'number' && intent.previous_visit_count > 0
-                      ? `High-Frequency (${intent.previous_visit_count + 1} visits)`
-                      : 'High-Frequency Visitor'}
-                  </Badge>
-                )}
+              <div className="text-sm font-semibold text-slate-800 truncate">
+                {t === 'whatsapp' ? 'WhatsApp Direct' : t === 'phone' ? 'Phone Inquiry' : t === 'form' ? 'Lead Form' : 'General Intent'}
               </div>
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
+              <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                <Clock className="h-3.5 w-3.5" />
                 <span suppressHydrationWarning>{relativeTime(intent.created_at)}</span>
               </div>
             </div>
           </div>
-
-          <div className="flex flex-col items-end gap-1">
-            <div className={cn("text-[10px] font-black uppercase tracking-tighter", scoreTheme.text)}>
-              AI CONFIDENCE
-            </div>
-            <div className={cn("px-2 py-0.5 rounded-full border text-xs font-mono font-black", scoreTheme.border, scoreTheme.bg, scoreTheme.text)}>
+          <div className={cn('shrink-0 flex flex-col items-end', scoreTheme.text)}>
+            <span className="text-[10px] font-semibold uppercase tracking-wide">{strings.aiConfidence}</span>
+            <span className={cn('text-sm font-bold tabular-nums px-2 py-0.5 rounded-md border', scoreTheme.bg, scoreTheme.border)}>
               {displayScore}%
-            </div>
+            </span>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 space-y-3 flex-1 z-10">
-        <div className="grid grid-cols-2 gap-3">
-          {/* Q1: ORIGIN (Northwest) — Verified Ads Signal, Keyword, Network Type */}
-          <Quadrant title="Origin" icon={Zap}>
-            <Field
-              label="Keyword"
-              value={safeDecode(intent.utm_term || '—')}
-              highlight
-              icon={() => <ScanningIcon icon={MousePointer2} />}
-            />
-            <Field
-              label="Match Type"
-              value={matchTypeDecoded.label}
-              icon={ShieldCheck}
-            />
-            <Field
-              label="Network Type"
-              value={intent.connection_type || intent.ads_network || '—'}
-              icon={Signal}
-            />
-            <Field
-              label="Campaign"
-              value={safeDecode(intent.utm_campaign || '—')}
-            />
-          </Quadrant>
-
-          {/* Q2: IDENTITY (Northeast) — Hardware DNA, Device, ISP, Language, OS */}
-          <Quadrant title="Identity" icon={Cpu}>
-            <Field
-              label="Device / OS"
-              value={device.label}
-              icon={device.icon}
-              highlight
-            />
-            <Field
-              label="Language"
-              value={intent.browser_language || '—'}
-              icon={Monitor}
-            />
-            <Field
-              label="Hardware DNA"
-              value={hwSummary || 'Detecting...'}
-              icon={Monitor}
-            />
-            <Field
-              label="Carrier / ISP"
-              value={intent.telco_carrier || 'Identifying...'}
-              icon={() => <PulseSignal active={!!intent.telco_carrier}><Signal className="h-3 w-3" /></PulseSignal>}
-            />
-            <Field
-              label="Location"
-              value={locationDisplay}
-              icon={MapPin}
-            />
-          </Quadrant>
-
-          {/* Q3: BEHAVIOR (Action Pulse) */}
-          <Quadrant title="Behavior" icon={MousePointer2}>
-            <Field
-              label="Engagement"
-              value={intent.max_scroll_percentage ? `${intent.max_scroll_percentage}% Page Depth` : 'Low Engagement'}
-              icon={() => <ScanningIcon icon={Flame} />}
-              highlight={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 70)}
-            />
-            <Field
-              label="Active Time"
-              value={intent.total_active_seconds ? `${intent.total_active_seconds}s Focus Time` : 'Idle Browser'}
-              icon={Clock}
-              highlight={!!(intent.total_active_seconds && intent.total_active_seconds > 30)}
-            />
-            <Field
-              label="Interactions"
-              value={`${intent.cta_hover_count || 0} CTA Hovers`}
-              icon={Zap}
-            />
-          </Quadrant>
-
-          {/* Q4: INTELLIGENCE (Southeast) — Lead Confidence Score, Verification */}
-          <Quadrant title="Intelligence" icon={ShieldCheck} className={isHighPotential ? "border-amber-500/30 bg-amber-500/5" : ""}>
-            <Field
-              label="Verification"
-              value={intent.click_id ? 'GCLID Active' : 'No Ad Signal'}
-              icon={() => intent.click_id
-                ? <span className="text-emerald-500" title="Verified"><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
-                : <PulseSignal active={false}><ShieldCheck className="h-3 w-3" /></PulseSignal>
-              }
-              highlight={!!intent.click_id}
-            />
-            <Field
-              label="Referrer Host"
-              value={intent.referrer_host || 'Direct / Ad Click'}
-              icon={ExternalLink}
-            />
-            <Field
-              label="Lead Potential"
-              value={estDisplay || 'Evaluating...'}
-              icon={Zap}
-              highlight
-            />
-          </Quadrant>
+      <CardContent className="p-4 flex-1">
+        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+          <Row label={strings.hunterKeyword} value={keywordDisplay} icon={FileText} />
+          <Row label={strings.hunterLocation} value={locationDisplay} icon={MapPin} />
+          <Row label={strings.hunterPage} value={pageDisplay} icon={FileText} />
+          <Row label={strings.hunterTime} value={relativeTime(intent.created_at)} icon={Clock} />
+          <Row label={strings.hunterDevice} value={device.label} icon={device.icon} />
         </div>
-
-        {/* BOTTOM AI INSIGHT BAR */}
         {intent.ai_summary && (
-          <div className="mt-2 p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 flex gap-2 items-start">
-            <span className="text-[10px] p-1 bg-emerald-500 rounded text-white leading-none">AI</span>
-            <p className="text-[11px] leading-tight text-emerald-700/80 font-medium">
-              {intent.ai_summary}
-            </p>
+          <div className="mt-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
+            <p className="text-xs leading-snug text-slate-700">{intent.ai_summary}</p>
           </div>
         )}
       </CardContent>
 
-      <CardFooter className="p-4 pt-0 gap-2 shrink-0 z-10">
+      <CardFooter className="p-4 pt-0 gap-2 shrink-0 border-t border-slate-100">
         <div className="grid grid-cols-3 gap-2 w-full">
           <Button
             variant="outline"
             size="sm"
-            className="h-9 border-slate-200 hover:bg-rose-50 hover:text-rose-700 transition-all font-bold text-[11px]"
+            className="h-9 border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs"
             onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
           >
             JUNK
@@ -408,14 +212,14 @@ export function HunterCard({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 border-slate-200 font-bold text-[11px]"
+            className="h-9 border-slate-200 font-semibold text-xs"
             onClick={() => onSkip({ id: intent.id })}
           >
             SKIP
           </Button>
           <Button
             size="sm"
-            className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px]"
+            className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
           >
             SEAL
@@ -423,5 +227,17 @@ export function HunterCard({
         </div>
       </CardFooter>
     </Card>
+  );
+}
+
+function Row({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      <Icon className="h-4 w-4 text-blue-600 shrink-0 opacity-80" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{label}</div>
+        <div className="text-sm font-medium text-slate-800 truncate" title={value}>{value || '—'}</div>
+      </div>
+    </div>
   );
 }

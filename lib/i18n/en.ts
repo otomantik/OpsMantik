@@ -81,6 +81,16 @@ export const strings = {
   queueEmptyUseRefresh: 'Use Refresh to fetch again.',
   refresh: 'Refresh',
 
+  // Hunter card (simplified, user-friendly)
+  hunterKeyword: 'Keyword',
+  hunterLocation: 'Location',
+  hunterPage: 'Page',
+  hunterTime: 'Time',
+  hunterDevice: 'Device',
+  locationUnknown: 'Unknown',
+  homepage: 'Homepage',
+  aiConfidence: 'AI Confidence',
+
   // Generic
   errorLabel: (msg: string) => `Error: ${msg}`,
 } as const;
