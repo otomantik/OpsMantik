@@ -36,7 +36,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
   const [scope, setScope] = useState<'ads' | 'all'>('ads');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [godMode, setGodMode] = useState(false);
 
   // Real-time signals for the Shell
   const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
@@ -76,45 +75,23 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const avgEngagement = stats?.avg_scroll_depth || 68;
 
   return (
-    <div className={cn(
-      "om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10",
-      godMode ? "bg-slate-950 text-slate-100 selection:bg-emerald-500/30" : "bg-muted/30 text-slate-900"
-    )}>
+    <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-muted/30 text-slate-900">
       {/* ENTERPRISE GLOBAL STATUS BAR */}
-      <div className={cn(
-        "w-full h-8 px-4 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] border-b transition-all duration-500 z-60 relative",
-        godMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-slate-900 border-slate-800 text-slate-400"
-      )}>
+      <div className="w-full h-8 px-4 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] border-b border-slate-800 bg-slate-900 text-slate-400 z-60 relative">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", godMode ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" : "bg-blue-400")} />
+            <div className="h-1.5 w-1.5 rounded-full animate-pulse bg-blue-400" />
             SYSTEM SECURE // OCI ACTIVE
           </div>
           <div className="hidden sm:block opacity-50">
             LATENCY: {loading ? '...' : '12ms'}
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="hidden xs:inline" suppressHydrationWarning>{new Date().toLocaleTimeString('en-GB', { hour12: false })} IST</span>
-          <button
-            onClick={() => setGodMode(!godMode)}
-            className={cn(
-              "px-3 py-0.5 rounded-full border text-[9px] font-black transition-all duration-300 active:scale-95",
-              godMode
-                ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-                : "border-slate-700 hover:border-slate-500 hover:text-slate-200"
-            )}
-          >
-            {godMode ? "INTEL MODE: ON" : "GOD MODE: OFF"}
-          </button>
-        </div>
+        <span className="hidden xs:inline" suppressHydrationWarning>{new Date().toLocaleTimeString('en-GB', { hour12: false })} IST</span>
       </div>
 
       {/* Tactical Header */}
-      <header className={cn(
-        "sticky top-0 z-50 border-b backdrop-blur-xl transition-all duration-500",
-        godMode ? "bg-slate-950/80 border-slate-800 shadow-[0_10px_30px_rgba(0,0,0,0.5)]" : "bg-background/95 border-border shadow-sm"
-      )}>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-xl shadow-sm">
         <div className="mx-auto max-w-md px-4 py-3 w-full min-w-0">
           <div className="flex items-center justify-between gap-2 min-w-0">
             <div className="min-w-0 flex-1 shrink">
@@ -122,8 +99,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: 'ghost' }),
-                  "-ml-2 h-9 px-2 inline-flex items-center gap-2 min-w-0 max-w-full hover:bg-transparent transition-colors",
-                  godMode && "text-emerald-400 hover:text-emerald-300"
+                  "-ml-2 h-9 px-2 inline-flex items-center gap-2 min-w-0 max-w-full hover:bg-transparent transition-colors"
                 )}
               >
                 <Home className="h-4 w-4 shrink-0" />
@@ -131,10 +107,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   {siteName || siteDomain || 'OpsMantik'}
                 </span>
               </Link>
-              <div className={cn(
-                "text-[10px] font-black uppercase tracking-[0.15em] px-2 leading-none",
-                godMode ? "text-emerald-500/50" : "text-muted-foreground/60"
-              )}>P0 Tactical Dashboard</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.15em] px-2 leading-none text-muted-foreground/60">P0 Tactical Dashboard</div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0 min-w-0">
@@ -148,19 +121,17 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     <div
                       className={cn(
                         'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-tighter transition-all duration-500',
-                        godMode
-                          ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.05)]'
-                          : status === 'active'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            : status === 'connected'
-                              ? 'border-amber-200 bg-amber-50 text-amber-800'
-                              : 'border-red-200 bg-red-50 text-red-800'
+                        status === 'active'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                          : status === 'connected'
+                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                            : 'border-red-200 bg-red-50 text-red-800'
                       )}
                     >
                       <span
                         className={cn(
                           'h-1.5 w-1.5 rounded-full',
-                          status === 'active' || godMode ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
+                          status === 'active' ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
                         )}
                       />
                       {status === 'disconnected' ? 'OFFLINE' : 'UPLINK ACTIVE'}
@@ -171,14 +142,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9 shrink-0 rounded-full",
-                      godMode && "text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                    )}
-                  >
+                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full">
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -234,25 +198,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               { label: 'Efficiency', value: `${gclidRatio}%`, icon: Zap, color: 'amber', sub: 'GCLID Ratio' },
               { label: 'Interest', value: `${avgEngagement}%`, icon: Flame, color: 'blue', sub: 'Avg Scroll' }
             ].map((item, idx) => (
-              <div key={idx} className={cn(
-                "rounded-xl border p-2.5 transition-all duration-500 flex flex-col justify-between group/stat relative overflow-hidden",
-                godMode
-                  ? "bg-slate-900/50 border-slate-800 hover:border-emerald-500/50"
-                  : "bg-white border-slate-200 shadow-sm"
-              )}>
-                {godMode && <div className="absolute top-0 right-0 p-1 opacity-10"><item.icon className="h-8 w-8 text-emerald-500" /></div>}
+              <div key={idx} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col justify-between group/stat relative overflow-hidden">
                 <div className="flex items-center gap-1.5 relative z-10">
-                  <item.icon className={cn("h-3 w-3 transition-transform group-hover/stat:scale-110", godMode ? "text-emerald-500" : `text-slate-400`)} />
-                  <span className={cn(
-                    "text-[8px] sm:text-[9px] font-black uppercase tracking-wider",
-                    godMode ? "text-slate-500" : "text-slate-400"
-                  )}>{item.label}</span>
+                  <item.icon className="h-3 w-3 text-slate-400 transition-transform group-hover/stat:scale-110" />
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-slate-400">{item.label}</span>
                 </div>
                 <div className="flex flex-col mt-1 relative z-10">
-                  <div className={cn(
-                    "text-base sm:text-xl font-black tabular-nums tracking-tighter leading-none",
-                    godMode ? "text-emerald-400" : "text-slate-900"
-                  )}>{item.value}</div>
+                  <div className="text-base sm:text-xl font-black tabular-nums tracking-tighter leading-none text-slate-900">{item.value}</div>
                   <div className="text-[7px] font-bold text-slate-500 truncate uppercase mt-0.5 tracking-widest">{item.sub}</div>
                 </div>
               </div>
@@ -273,20 +225,8 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
           dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
           adsOnly={scope === 'ads'}
         />
-        <div className={cn(
-          "transition-all duration-500",
-          godMode ? "opacity-100 scale-100" : "opacity-100"
-        )}>
-          <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
-        </div>
+        <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
       </main>
-
-      {/* GOD MODE SCAN LINES (DECORATIVE) */}
-      {godMode && (
-        <div className="fixed inset-0 pointer-events-none z-0 opacity-5">
-          <div className="absolute inset-0 bg-linear-to-b from-transparent via-emerald-400/10 to-transparent bg-size-[100%_4px] animate-scan" />
-        </div>
-      )}
     </div>
   );
 }

@@ -56,25 +56,21 @@ function sourceTypeOf(action: string | null | undefined): HunterSourceType {
   return 'other';
 }
 
-/** Predator HUD v2: Superior accent colors and glass effects */
-function getScoreColor(score: number): { border: string; bg: string; text: string; shadow: string } {
+function getScoreColor(score: number): { border: string; bg: string; text: string } {
   if (score >= 85) return {
     border: 'border-emerald-500/50',
     bg: 'bg-emerald-500/10',
     text: 'text-emerald-500',
-    shadow: 'shadow-[0_0_20px_rgba(16,185,129,0.2)]'
   };
   if (score >= 50) return {
     border: 'border-amber-500/50',
     bg: 'bg-amber-500/10',
     text: 'text-amber-500',
-    shadow: 'shadow-[0_0_20px_rgba(245,158,11,0.15)]'
   };
   return {
     border: 'border-slate-500/30',
     bg: 'bg-slate-500/5',
     text: 'text-slate-400',
-    shadow: ''
   };
 }
 
@@ -124,35 +120,27 @@ function formatEstimatedValue(value: number | null | undefined, currency?: strin
   return `${value} ${sym}`.trim();
 }
 
-/** ANIMATED WRAPPER COMPONENTS */
-const PulseSignal = ({ children, active }: { children: React.ReactNode, active: boolean }) => (
+const PulseSignal = ({ children, active }: { children: React.ReactNode; active: boolean }) => (
   <div className="relative inline-flex items-center">
     {children}
     {active && (
-      <span className="absolute -right-1 -top-1 flex h-2 w-2">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-      </span>
+      <span className="absolute -right-1 -top-1 inline-flex h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
     )}
   </div>
 );
 
-const ScanningIcon = ({ icon: Icon, active, className }: { icon: LucideIcon; active: boolean; className?: string }) => (
-  <div className={cn("relative overflow-hidden rounded", className)}>
-    <Icon className="h-4 w-4 relative z-10" />
-    {active && (
-      <div className="absolute inset-0 bg-linear-to-b from-transparent via-emerald-400/20 to-transparent animate-scan z-20 pointer-events-none" />
-    )}
+const ScanningIcon = ({ icon: Icon, className }: { icon: LucideIcon; active?: boolean; className?: string }) => (
+  <div className={cn('rounded', className)}>
+    <Icon className="h-4 w-4 text-muted-foreground" />
   </div>
 );
 
-/** QUADRANT COMPONENT — Semi-transparent glass panel */
 function Quadrant({ title, icon: Icon, children, className }: { title: string; icon: LucideIcon; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("p-3 rounded-xl border border-border/50 bg-background/50 dark:bg-background/30 backdrop-blur-md relative overflow-hidden group/quad", className)}>
+    <div className={cn('p-3 rounded-xl border border-border/50 bg-background/80 dark:bg-background/50 relative overflow-hidden', className)}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className="h-3 w-3 text-muted-foreground transition-all duration-500 group-hover/quad:text-foreground group-hover/quad:scale-110" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover/quad:text-foreground transition-colors">{title}</span>
+        <Icon className="h-3 w-3 text-muted-foreground" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">{title}</span>
       </div>
       <div className="space-y-2">{children}</div>
     </div>
@@ -163,17 +151,17 @@ function Field({ label, value, subValue, icon: Icon, highlight }: { label: strin
   const iconContent = Icon
     ? (React.isValidElement(Icon)
         ? Icon
-        : React.createElement(Icon as React.ComponentType<{ className?: string }>, { className: "h-3 w-3 text-muted-foreground/60 shrink-0 group-hover/field:text-foreground/80" }))
+        : React.createElement(Icon as React.ComponentType<{ className?: string }>, { className: 'h-3 w-3 text-muted-foreground/60 shrink-0' }))
     : <div className="h-3 w-3" />;
 
   return (
-    <div className="flex items-start gap-2.5 min-w-0 group/field">
-      <div className="p-1 rounded bg-muted/30 border border-border/20 group-hover/field:border-foreground/20 transition-colors">
+    <div className="flex items-start gap-2.5 min-w-0">
+      <div className="p-1 rounded bg-muted/30 border border-border/20 shrink-0">
         {iconContent}
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[9px] uppercase font-black text-muted-foreground/50 leading-none mb-1 tracking-tight">{label}</div>
-        <div className={cn("text-xs font-bold truncate leading-tight transition-colors", highlight ? "text-foreground" : "text-foreground/80 group-hover/field:text-foreground")}>
+        <div className={cn('text-xs font-bold truncate leading-tight', highlight ? 'text-foreground' : 'text-foreground/80')}>
           {value || '—'}
         </div>
         {subValue && <div className="text-[9px] text-muted-foreground/60 truncate italic mt-0.5">{subValue}</div>}
@@ -241,30 +229,21 @@ export function HunterCard({
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-card/50 dark:bg-card/40 backdrop-blur-xl shadow-2xl border-2 transition-all duration-500 min-h-[500px] flex flex-col group',
-        scoreTheme.border,
-        scoreTheme.shadow
+        'relative overflow-hidden bg-card border-2 min-h-[500px] flex flex-col shadow-sm',
+        scoreTheme.border
       )}
     >
-      {/* Semi-transparent glass + subtle RGB glow by score (Emerald 90+, Amber 50-89, Slate) */}
-      <div className={cn("absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-25 pointer-events-none", scoreTheme.bg)} />
-
       {/* HEADER SECTION */}
       <CardHeader className="p-4 pb-2 z-10 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className={cn(
-              "p-2 rounded-xl border transition-all duration-300 relative",
-              isHighIntent ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-muted border-border text-muted-foreground"
+              'p-2 rounded-xl border relative',
+              isHighIntent ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-muted border-border text-muted-foreground'
             )}>
               <IntentIcon className="h-5 w-5" />
               {intent.click_id && (
-                <div className="absolute -top-1 -right-1">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-white"></span>
-                  </span>
-                </div>
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border border-white" aria-hidden />
               )}
             </div>
             <div className="min-w-0">
@@ -311,7 +290,7 @@ export function HunterCard({
               label="Keyword"
               value={safeDecode(intent.utm_term || '—')}
               highlight
-              icon={() => <ScanningIcon icon={MousePointer2} active={isHighPotential} />}
+              icon={() => <ScanningIcon icon={MousePointer2} />}
             />
             <Field
               label="Match Type"
@@ -364,7 +343,7 @@ export function HunterCard({
             <Field
               label="Engagement"
               value={intent.max_scroll_percentage ? `${intent.max_scroll_percentage}% Page Depth` : 'Low Engagement'}
-              icon={() => <ScanningIcon icon={Flame} active={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 50)} />}
+              icon={() => <ScanningIcon icon={Flame} />}
               highlight={!!(intent.max_scroll_percentage && intent.max_scroll_percentage > 70)}
             />
             <Field
@@ -384,9 +363,9 @@ export function HunterCard({
           <Quadrant title="Intelligence" icon={ShieldCheck} className={isHighPotential ? "border-amber-500/30 bg-amber-500/5" : ""}>
             <Field
               label="Verification"
-              value={intent.click_id ? "GCLID Active" : "No Ad Signal"}
+              value={intent.click_id ? 'GCLID Active' : 'No Ad Signal'}
               icon={() => intent.click_id
-                ? <span className="text-emerald-500" title="Verified"><Check className="h-3.5 w-3.5 animate-pulse" strokeWidth={3} /></span>
+                ? <span className="text-emerald-500" title="Verified"><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
                 : <PulseSignal active={false}><ShieldCheck className="h-3 w-3" /></PulseSignal>
               }
               highlight={!!intent.click_id}
@@ -436,7 +415,7 @@ export function HunterCard({
           </Button>
           <Button
             size="sm"
-            className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] shadow-lg shadow-emerald-500/20"
+            className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px]"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
           >
             SEAL
