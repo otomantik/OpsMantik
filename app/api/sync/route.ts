@@ -12,6 +12,66 @@ const OPSMANTIK_VERSION = '2.1.0-upstash';
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
+export async function GET(req: NextRequest) {
+    // NOTE: /api/sync is designed for POST ingestion. A browser-open GET should return 405.
+    // For production debugging of Cloudflare vs Vercel geo headers, we expose an explicit
+    // diagnostic mode that does NOT reveal client IP.
+    //
+    // Usage after deploy: https://console.opsmantik.com/api/sync?diag=1
+    const url = new URL(req.url);
+    if (url.searchParams.get('diag') !== '1') {
+        return NextResponse.json(
+            { error: 'Method not allowed. Use POST.', diag: 'Add ?diag=1 for header diagnostics.' },
+            { status: 405, headers: { 'Allow': 'POST, OPTIONS' } }
+        );
+    }
+
+    const ua = req.headers.get('user-agent') || 'Unknown';
+    const { extractGeoInfo } = await import('@/lib/geo');
+    const { geoInfo } = extractGeoInfo(req, ua, undefined);
+
+    const cf = {
+        city: req.headers.get('cf-ipcity'),
+        district: req.headers.get('cf-ipdistrict'),
+        country: req.headers.get('cf-ipcountry'),
+        timezone: req.headers.get('cf-timezone'),
+        asn: req.headers.get('cf-connecting-ip-asn'),
+        org: req.headers.get('cf-as-organization'),
+        ray: req.headers.get('cf-ray'),
+    };
+    const vercel = {
+        city: req.headers.get('x-vercel-ip-city'),
+        country: req.headers.get('x-vercel-ip-country'),
+        asn: req.headers.get('x-vercel-ip-asn'),
+        id: req.headers.get('x-vercel-id'),
+    };
+
+    const headersPresent = {
+        cf_ipcity: Boolean(cf.city),
+        cf_ipdistrict: Boolean(cf.district),
+        cf_ipcountry: Boolean(cf.country),
+        x_vercel_ip_city: Boolean(vercel.city),
+        x_vercel_ip_country: Boolean(vercel.country),
+    };
+
+    return NextResponse.json(
+        {
+            ok: true,
+            v: OPSMANTIK_VERSION,
+            headers_present: headersPresent,
+            chosen: {
+                city: geoInfo.city,
+                district: geoInfo.district,
+                country: geoInfo.country,
+                timezone: geoInfo.timezone,
+            },
+            cf,
+            vercel,
+        },
+        { headers: { 'Cache-Control': 'no-store' } }
+    );
+}
+
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
     const { isAllowed } = isOriginAllowed(origin, ALLOWED_ORIGINS);
