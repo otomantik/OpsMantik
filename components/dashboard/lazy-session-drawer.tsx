@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatTimestamp } from '@/lib/utils';
+import { formatLocation } from '@/lib/utils/format-location';
 import type { LiveInboxIntent } from '@/lib/types/dashboard';
 
 type SessionDetailsRow = {
@@ -138,9 +139,9 @@ export function LazySessionDrawer({
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground uppercase tracking-wider">City</div>
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Location</div>
                     <div className="text-sm text-foreground">
-                      {details?.city || '—'}
+                      {formatLocation(details?.city ?? null, details?.district ?? null)}
                     </div>
                   </div>
                   <div>

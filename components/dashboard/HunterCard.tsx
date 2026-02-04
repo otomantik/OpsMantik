@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { safeDecode } from '@/lib/utils/string-utils';
+import { formatLocation } from '@/lib/utils/format-location';
 import type { HunterIntent } from '@/lib/types/hunter';
 import { strings } from '@/lib/i18n/en';
 import { Icons } from '@/components/icons';
@@ -193,13 +194,9 @@ export function HunterCard({
   );
 
   const locationDisplay = useMemo(() => {
-    const districtLabel = safeDecode((intent.district || '').trim());
-    const cityLabel = safeDecode((intent.city || '').trim());
-    if (districtLabel && cityLabel) return `${districtLabel} / ${cityLabel}`;
-    if (districtLabel) return districtLabel;
-    if (cityLabel) return cityLabel;
-    return strings.locationUnknown;
-  }, [intent.district, intent.city]);
+    const out = formatLocation(intent.city ?? null, intent.district ?? null);
+    return out === '—' ? strings.locationUnknown : out;
+  }, [intent.city, intent.district]);
 
   const pageDisplay = useMemo(
     () => getPageLabel(intent.intent_page_url || intent.page_url),

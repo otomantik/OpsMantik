@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
 import { formatTimestamp, debugLog } from '@/lib/utils';
+import { formatLocation } from '@/lib/utils/format-location';
 
 interface Event {
   id: string;
@@ -113,6 +114,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   const device = (sessionData?.device_type ?? metadata.device_type ?? null) as string | null;
   const os = (metadata.os ?? null) as string | null;
   const browser = (metadata.browser ?? null) as string | null;
+  const locationLabel = formatLocation(city, district);
 
   // Check for matched call when component mounts or session changes
   // FIX: Use matched_session_id instead of fingerprint to prevent fingerprint leakage
@@ -489,10 +491,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
           <div className="mt-2 pt-2 border-t border-border">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
-                City: <span className="text-foreground font-medium">{city && city !== 'Unknown' ? city : '—'}</span>
-              </span>
-              <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
-                District: <span className="text-foreground font-medium">{district || '—'}</span>
+                Location:{' '}
+                <span className="text-foreground font-medium">
+                  {locationLabel && locationLabel !== 'Unknown' ? locationLabel : '—'}
+                </span>
               </span>
               <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
                 Device: <span className="text-foreground font-medium">{device || '—'}</span>
