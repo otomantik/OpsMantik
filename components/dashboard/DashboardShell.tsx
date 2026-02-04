@@ -35,10 +35,10 @@ interface DashboardShellProps {
 
 export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
-  const [scope, setScope] = useState<'ads' | 'all'>('ads');
 
   // Real-time signals for the Shell
-  const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
+  // Holistic View: always show ALL traffic (no ads-only filter).
+  const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: false });
 
   const initialFrom = initialTodayRange?.fromIso?.trim();
   const initialTo = initialTodayRange?.toIso?.trim();
@@ -65,7 +65,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const { stats, loading, error: statsError } = useCommandCenterP0Stats(
     siteId,
     { fromIso: queueRange.fromIso, toIso: queueRange.toIso },
-    { scope }
+    { scope: 'all' }
   );
 
   const captured = loading ? '…' : String(stats?.sealed ?? 0);
@@ -158,16 +158,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
                     Real-Time (Today)
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-slate-800" />
-                  <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">Filters</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => setScope('ads')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
-                    {scope === 'ads' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
-                    Paid Search (SEM)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setScope('all')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
-                    {scope === 'all' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
-                    Full Network Graph
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -209,7 +199,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <h2 className="text-base font-semibold text-slate-800">{strings.liveQueue}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{strings.liveQueueSubtitle}</p>
             </div>
-            <QualificationQueue siteId={siteId} range={queueRange} scope={scope} />
+            <QualificationQueue siteId={siteId} range={queueRange} />
           </div>
           <div className="lg:col-span-5 space-y-6">
             <div className="mb-1">
@@ -223,7 +213,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             <PulseProjectionWidgets
               siteId={siteId}
               dateRange={queueRange}
-              scope={scope}
+              scope="all"
             />
           </div>
         </div>
@@ -232,7 +222,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
           <BreakdownWidgets
             siteId={siteId}
             dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-            adsOnly={scope === 'ads'}
+            adsOnly={false}
           />
         </div>
       </main>

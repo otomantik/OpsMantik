@@ -69,6 +69,21 @@ function hasAny(url: URL | null, params: any, keys: string[]): boolean {
   return keys.some((k) => Boolean(getParam(url, params, k)));
 }
 
+function isPaidUtmMedium(mediumLc: string): boolean {
+  const m = (mediumLc || '').toLowerCase().trim();
+  if (!m) return false;
+  return (
+    m === 'cpc' ||
+    m === 'ppc' ||
+    m === 'paid' ||
+    m === 'ads' ||
+    m === 'paidsearch' ||
+    m === 'paid_search' ||
+    m === 'paid-social' ||
+    m === 'paid_social'
+  );
+}
+
 function isSearchRef(host: string): { engine: string } | null {
   const h = host;
   if (h.includes('google.')) return { engine: 'Google' };
@@ -112,26 +127,38 @@ export function determineTrafficSource(url: string, referrer: string, params: an
   const isInternal = Boolean(pageHost && refHost && pageHost === refHost);
   const effectiveRefHost = isInternal ? null : refHost;
 
-  const hasPaidSearch = hasAny(pageUrl, params, ['gclid', 'wbraid', 'gbraid']);
-  if (hasPaidSearch) {
-    // Channel label (user-facing)
+  const utmMedium = (getParam(pageUrl, params, 'utm_medium') || '').toLowerCase();
+  const utmSource = getParam(pageUrl, params, 'utm_source');
+
+  // STRICT RULES:
+  // - Google Ads MUST take priority when ANY Google paid click-id exists.
+  // - SEO MUST ONLY be: search referrer + NO paid params + utm_medium != cpc/paid.
+  // Paid params include click-ids and explicit paid UTMs.
+
+  // Paid click IDs (Google + others)
+  const hasGooglePaidId = hasAny(pageUrl, params, ['gclid', 'wbraid', 'gbraid', 'gclsrc', 'dclid']);
+  if (hasGooglePaidId) {
     return { traffic_source: 'Google Ads', traffic_medium: 'cpc' };
   }
 
   const hasFb = hasAny(pageUrl, params, ['fbclid']);
-  const hasTt = hasAny(pageUrl, params, ['ttclid']);
   if (hasFb) {
     return { traffic_source: 'Meta Ads', traffic_medium: 'cpc' };
   }
+
+  const hasTt = hasAny(pageUrl, params, ['ttclid']);
   if (hasTt) {
     return { traffic_source: 'TikTok Ads', traffic_medium: 'cpc' };
   }
 
-  const utmMedium = (getParam(pageUrl, params, 'utm_medium') || '').toLowerCase();
-  const utmSource = getParam(pageUrl, params, 'utm_source');
+  // Microsoft Ads (Bing) click id
+  const hasMs = hasAny(pageUrl, params, ['msclkid']);
+  if (hasMs) {
+    return { traffic_source: 'Microsoft Ads', traffic_medium: 'cpc' };
+  }
 
   // Direct paid (explicit UTMs)
-  if (utmMedium === 'cpc' || utmMedium === 'ppc' || utmMedium === 'paid' || utmMedium === 'paidsearch' || utmMedium === 'paid_search') {
+  if (isPaidUtmMedium(utmMedium)) {
     // Keep explicit tags but still user-friendly; allow caller to set utm_source like "facebook".
     const src = (utmSource?.trim() || 'Paid').slice(0, 64);
     return { traffic_source: src, traffic_medium: 'cpc' };
@@ -141,7 +168,14 @@ export function determineTrafficSource(url: string, referrer: string, params: an
   if (effectiveRefHost) {
     const se = isSearchRef(effectiveRefHost);
     if (se) {
+      // Strict SEO definition:
+      // - search referrer
+      // - no paid click ids
+      // - utm_medium is NOT paid/cpc
+      // (paid checks above cover click-ids; keep medium guard for safety.)
+      if (!isPaidUtmMedium(utmMedium)) {
       return { traffic_source: 'SEO', traffic_medium: 'organic', label: se.engine };
+      }
     }
 
     const social = isSocialRef(effectiveRefHost);

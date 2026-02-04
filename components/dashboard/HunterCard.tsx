@@ -8,7 +8,7 @@ import { safeDecode } from '@/lib/utils/string-utils';
 import type { HunterIntent } from '@/lib/types/hunter';
 import { strings } from '@/lib/i18n/en';
 import { Icons } from '@/components/icons';
-import { Monitor, Smartphone, MapPin, Clock, FileText, type LucideIcon } from 'lucide-react';
+import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, type LucideIcon } from 'lucide-react';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -101,14 +101,71 @@ function getPageLabel(pageUrl: string | null | undefined): string {
   }
 }
 
+function normalizeTraffic(
+  traffic_source: string | null | undefined,
+  traffic_medium: string | null | undefined
+): { kind: 'google_ads' | 'seo' | 'social' | 'direct' | 'other'; label: string } {
+  const src = (traffic_source || '').toString().trim();
+  const med = (traffic_medium || '').toString().trim().toLowerCase();
+  const srcLc = src.toLowerCase();
+
+  // SEO: prefer medium=organic as the "certain" signal.
+  if (med === 'organic') return { kind: 'seo', label: 'SEO' };
+
+  // Google Ads: common classifier outputs.
+  if (srcLc.includes('google ads') || (srcLc.includes('google') && (med === 'cpc' || med === 'ppc' || med === 'paid'))) {
+    return { kind: 'google_ads', label: 'Google Ads' };
+  }
+
+  // Social: paid or organic social buckets.
+  if (med === 'social' || med === 'paid_social' || ['instagram', 'facebook', 'meta', 'tiktok', 'linkedin', 'twitter', 'x'].some((k) => srcLc.includes(k))) {
+    return { kind: 'social', label: 'Social' };
+  }
+
+  // Direct
+  if (med === 'direct' || srcLc === 'direct') return { kind: 'direct', label: 'Direct' };
+
+  if (!src && !med) return { kind: 'other', label: '—' };
+  return { kind: 'other', label: src || 'Other' };
+}
+
+function SourceBadge({ traffic_source, traffic_medium }: { traffic_source?: string | null; traffic_medium?: string | null }) {
+  const t = normalizeTraffic(traffic_source, traffic_medium);
+  if (t.kind === 'other' && (t.label === '—' || !t.label)) return null;
+
+  const theme =
+    t.kind === 'google_ads'
+      ? { cls: 'border-rose-200 bg-rose-50 text-rose-700', icon: Icons.google }
+      : t.kind === 'seo'
+        ? { cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: Leaf }
+        : t.kind === 'social'
+          ? { cls: 'border-blue-200 bg-blue-50 text-blue-700', icon: Share2 }
+          : t.kind === 'direct'
+            ? { cls: 'border-slate-200 bg-slate-50 text-slate-700', icon: Compass }
+            : { cls: 'border-slate-200 bg-slate-50 text-slate-700', icon: Icons.circleDot };
+
+  const Icon = theme.icon as any;
+
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold', theme.cls)}>
+      <Icon className="h-3.5 w-3.5" />
+      <span className="leading-none">{t.label}</span>
+    </span>
+  );
+}
+
 export function HunterCard({
   intent,
+  traffic_source,
+  traffic_medium,
   onSeal,
   onSealDeal,
   onJunk,
   onSkip,
 }: {
   intent: HunterIntent;
+  traffic_source?: string | null;
+  traffic_medium?: string | null;
   onSeal: (params: { id: string; stars: number; score: number }) => void;
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
@@ -116,6 +173,8 @@ export function HunterCard({
 }) {
   const t = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[t] || ICON_MAP.other;
+  const trafficSource = traffic_source ?? (intent as any).traffic_source ?? null;
+  const trafficMedium = traffic_medium ?? (intent as any).traffic_medium ?? null;
   const displayScore = useMemo(() => {
     const raw = intent.ai_score;
     if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
@@ -185,7 +244,8 @@ export function HunterCard({
               </div>
             </div>
           </div>
-          <div className={cn('shrink-0 flex flex-col items-end', scoreTheme.text)}>
+          <div className={cn('shrink-0 flex flex-col items-end gap-1', scoreTheme.text)}>
+            <SourceBadge traffic_source={trafficSource} traffic_medium={trafficMedium} />
             <span className="text-[10px] font-semibold uppercase tracking-wide">{strings.aiConfidence}</span>
             <span className={cn('text-sm font-bold tabular-nums px-2 py-0.5 rounded-md border', scoreTheme.bg, scoreTheme.border)}>
               {displayScore}%

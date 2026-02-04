@@ -20,7 +20,6 @@ import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-r
 export interface QualificationQueueProps {
   siteId: string;
   range: { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
-  scope: 'ads' | 'all';
 }
 
 type RpcIntentRow = Record<string, unknown>;
@@ -106,6 +105,10 @@ function parseHunterIntentsFull(data: unknown): HunterIntent[] {
     // Session-based action evidence (single card)
     phone_clicks: typeof (r as any).phone_clicks === 'number' ? (r as any).phone_clicks : null,
     whatsapp_clicks: typeof (r as any).whatsapp_clicks === 'number' ? (r as any).whatsapp_clicks : null,
+
+    // Traffic source (from sessions join)
+    traffic_source: typeof (r as any).traffic_source === 'string' ? (r as any).traffic_source : null,
+    traffic_medium: typeof (r as any).traffic_medium === 'string' ? (r as any).traffic_medium : null,
   })) as HunterIntent[];
 }
 
@@ -151,6 +154,10 @@ function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
       phone_clicks: typeof (r as any).phone_clicks === 'number' ? (r as any).phone_clicks : null,
       whatsapp_clicks: typeof (r as any).whatsapp_clicks === 'number' ? (r as any).whatsapp_clicks : null,
       intent_events: typeof (r as any).intent_events === 'number' ? (r as any).intent_events : null,
+
+      // Traffic source (from sessions join)
+      traffic_source: typeof (r as any).traffic_source === 'string' ? (r as any).traffic_source : null,
+      traffic_medium: typeof (r as any).traffic_medium === 'string' ? (r as any).traffic_medium : null,
     })) as HunterIntentLite[];
 }
 
@@ -237,6 +244,8 @@ function ActiveDeckCard({
       >
         <HunterCard
           intent={intent}
+          traffic_source={(intent as any).traffic_source ?? null}
+          traffic_medium={(intent as any).traffic_medium ?? null}
           onSeal={({ id, stars }) => handleSeal({ id, stars })}
           onSealDeal={onSealDeal}
           onJunk={({ id, stars }) => handleJunk({ id, stars })}
@@ -322,7 +331,7 @@ function LiteDeckCard({
   );
 }
 
-export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, scope }) => {
+export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range }) => {
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
   const [intents, setIntents] = useState<HunterIntentLite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -339,7 +348,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});
-  const [effectiveAdsOnly, setEffectiveAdsOnly] = useState<boolean>(true);
+  // Holistic View: always ALL traffic
+  const effectiveAdsOnly = false;
 
   const [history, setHistory] = useState<
     Array<{
@@ -382,7 +392,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
       const supabase = createClient();
 
-      async function fetchRange(adsOnly: boolean): Promise<HunterIntentLite[]> {
+      async function fetchRange(): Promise<HunterIntentLite[]> {
         let data: unknown = null;
         // 1) Lite RPC (default limit 100) — cheap list payload
         const lite = await supabase.rpc('get_recent_intents_lite_v1', {
@@ -390,7 +400,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           p_date_from: range.fromIso,
           p_date_to: range.toIso,
           p_limit: 100,
-          p_ads_only: adsOnly,
+          p_ads_only: false,
         });
         data = lite.data;
         const liteErr = lite.error;
@@ -407,7 +417,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
             p_since: range.fromIso,
             p_minutes_lookback: minutesLookback,
             p_limit: 100,
-            p_ads_only: adsOnly,
+            p_ads_only: false,
           });
           data = v1.data;
           if (v1.error) throw v1.error;
@@ -431,12 +441,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         });
       }
 
-      // Scope toggle is the source of truth:
-      // - scope='ads' => strictly adsOnly=true
-      // - scope='all' => adsOnly=false
-      const adsOnly = scope === 'ads';
-      const rows = await fetchRange(adsOnly);
-      setEffectiveAdsOnly(adsOnly);
+      const rows = await fetchRange();
 
       setIntents(rows);
     } catch (err: unknown) {
@@ -444,7 +449,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     } finally {
       setLoading(false);
     }
-  }, [range.fromIso, range.toIso, siteId, scope]);
+  }, [range.fromIso, range.toIso, siteId]);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
@@ -462,7 +467,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         data-day={range.day}
         data-from={range.fromIso}
         data-to={range.toIso}
-        data-ads-only={effectiveAdsOnly ? '1' : '0'}
+        data-ads-only="0"
         className="sr-only"
       />
       <div data-testid="queue-top-created-at" className="sr-only">
@@ -523,10 +528,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         fetchUnscoredIntents();
       },
     },
-    // Keep realtime classification aligned with scope:
-    // - ads scope => adsOnly=true
-    // - all scope => adsOnly=false (don't miss non-ads updates)
-    { adsOnly: scope === 'ads' }
+    // Holistic View: always ALL traffic
+    { adsOnly: false }
   );
 
   const handleQualified = useCallback(() => {
@@ -630,7 +633,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
               {range.day === 'yesterday' ? strings.queueEmptyYesterdayDesc : strings.queueEmptyTodayDesc}
             </p>
             <p className="text-muted-foreground text-xs mt-2 max-w-md">
-              {range.day === 'today' && scope === 'ads' ? strings.queueEmptyTryFullNetwork : strings.queueEmptyUseRefresh}
+              {strings.queueEmptyUseRefresh}
             </p>
             <Button
               variant="ghost"
@@ -723,11 +726,6 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     <>
       {queueMeta}
       <div className="space-y-3">
-        {!effectiveAdsOnly && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Ads-only filter returned 0 rows. Showing all traffic for visibility.
-          </div>
-        )}
         {/* lightweight toast */}
         {toast && (
           <div
