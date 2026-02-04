@@ -11,33 +11,49 @@ export class SiteService {
             return { valid: false, error: 'Invalid site_id format' };
         }
         const trimmed = siteId.trim();
-
-        const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const stripped = trimmed.replace(/-/g, '');
-        const looksLikeUuid = /^[0-9a-f]{32}$/i.test(stripped);
+        const is32Hex = /^[0-9a-f]{32}$/i.test(stripped);
 
-        let searchBy: 'id' | 'public_id' = 'public_id';
-        let idValue: string = trimmed;
-
-        if (looksLikeUuid) {
+        // 32-char hex: client may send UUID without hyphens OR public_id that looks like hex.
+        // Try by id first (normalized UUID), then by public_id, so both cases resolve.
+        if (is32Hex) {
             const normalizedUuid =
                 stripped.substring(0, 8) + '-' +
                 stripped.substring(8, 12) + '-' +
                 stripped.substring(12, 16) + '-' +
                 stripped.substring(16, 20) + '-' +
                 stripped.substring(20, 32);
-            if (uuidV4Regex.test(normalizedUuid)) {
-                searchBy = 'id';
-                idValue = normalizedUuid;
+            debugLog('[SYNC_DB] Searching site (32hex): try id then public_id', { normalizedUuid, trimmed });
+            const byId = await adminClient
+                .from('sites')
+                .select('id')
+                .eq('id', normalizedUuid)
+                .maybeSingle();
+            if (byId.error) {
+                console.error('[SYNC_ERROR] Site query error:', siteId, byId.error?.message, byId.error?.code);
+                return { valid: false, error: 'Site validation failed' };
             }
+            if (byId.data) return { valid: true, site: byId.data };
+            const byPublicId = await adminClient
+                .from('sites')
+                .select('id')
+                .eq('public_id', trimmed)
+                .maybeSingle();
+            if (byPublicId.error) {
+                console.error('[SYNC_ERROR] Site query error:', siteId, byPublicId.error?.message, byPublicId.error?.code);
+                return { valid: false, error: 'Site validation failed' };
+            }
+            if (byPublicId.data) return { valid: true, site: byPublicId.data };
+            console.error('[SYNC_ERROR] Site not found:', siteId);
+            return { valid: false, error: 'Site not found' };
         }
 
-        debugLog('[SYNC_DB] Searching site:', { searchBy, idValue });
-
+        // Non-32hex: treat as public_id (e.g. test_site_abc)
+        debugLog('[SYNC_DB] Searching site by public_id:', { idValue: trimmed });
         const { data: site, error: siteError } = await adminClient
             .from('sites')
             .select('id')
-            .eq(searchBy === 'id' ? 'id' : 'public_id', idValue)
+            .eq('public_id', trimmed)
             .maybeSingle();
 
         if (siteError) {
