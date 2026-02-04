@@ -1,6 +1,7 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog, debugWarn } from '@/lib/utils';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
+import { determineTrafficSource } from '@/lib/analytics/source-classifier';
 
 interface SessionContext {
     ip: string;
@@ -89,6 +90,20 @@ export class SessionService {
         const shouldUpdate = hasNewUTM || hasNewClickId || !session.attribution_source;
 
         if (shouldUpdate) {
+            const traffic = determineTrafficSource(data.url, data.referrer || '', {
+                utm_source: utm?.source ?? null,
+                utm_medium: utm?.medium ?? null,
+                utm_campaign: utm?.campaign ?? null,
+                utm_term: utm?.term ?? null,
+                utm_content: utm?.content ?? null,
+                gclid: currentGclid ?? null,
+                wbraid: params.get('wbraid') || (meta as any)?.wbraid || null,
+                gbraid: params.get('gbraid') || (meta as any)?.gbraid || null,
+                fbclid: params.get('fbclid') || (meta as any)?.fbclid || null,
+                ttclid: params.get('ttclid') || (meta as any)?.ttclid || null,
+                msclkid: params.get('msclkid') || (meta as any)?.msclkid || null,
+            });
+
             const updates: Record<string, unknown> = {
                 device_type: deviceType,
                 device_os: deviceInfo.os || null,
@@ -96,6 +111,8 @@ export class SessionService {
                 district: geoInfo.district,
                 fingerprint: fingerprint,
                 gclid: currentGclid || session.gclid || null,
+                traffic_source: traffic.traffic_source,
+                traffic_medium: traffic.traffic_medium,
             };
             const newWbraid = params.get('wbraid') || meta?.wbraid;
             const newGbraid = params.get('gbraid') || meta?.gbraid;
@@ -160,6 +177,20 @@ export class SessionService {
 
         debugLog('[SYNC_API] Creating NEW session:', { final_id: sessionId, partition: dbMonth });
 
+        const traffic = determineTrafficSource(url, data.referrer || '', {
+            utm_source: utm?.source ?? null,
+            utm_medium: utm?.medium ?? null,
+            utm_campaign: utm?.campaign ?? null,
+            utm_term: utm?.term ?? null,
+            utm_content: utm?.content ?? null,
+            gclid: currentGclid ?? null,
+            wbraid: params.get('wbraid') || (meta as any)?.wbraid || null,
+            gbraid: params.get('gbraid') || (meta as any)?.gbraid || null,
+            fbclid: params.get('fbclid') || (meta as any)?.fbclid || null,
+            ttclid: params.get('ttclid') || (meta as any)?.ttclid || null,
+            msclkid: params.get('msclkid') || (meta as any)?.msclkid || null,
+        });
+
         // Prompt 2.2 Returning Giant: count previous sessions with same fingerprint in last 7 days
         let previousVisitCount = 0;
         if (fingerprint) {
@@ -187,6 +218,8 @@ export class SessionService {
             // We still pass dbMonth for backward compatibility, but trigger overrides it
             created_month: dbMonth,
             attribution_source: attributionSource,
+            traffic_source: traffic.traffic_source,
+            traffic_medium: traffic.traffic_medium,
             device_type: deviceType,
             device_os: deviceInfo.os || null,
             city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,

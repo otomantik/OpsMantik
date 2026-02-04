@@ -5,6 +5,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './QualificationQueue';
 import { BreakdownWidgets } from './widgets/BreakdownWidgets';
 import { PulseProjectionWidgets } from './widgets/PulseProjectionWidgets';
+import { TrafficSourceBreakdown } from './widgets/TrafficSourceBreakdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -215,6 +216,10 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <h2 className="text-base font-semibold text-slate-800">{strings.reports}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{strings.reportsSubtitle}</p>
             </div>
+            <TrafficSourceBreakdown
+              siteId={siteId}
+              dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
+            />
             <PulseProjectionWidgets
               siteId={siteId}
               dateRange={queueRange}
