@@ -286,6 +286,12 @@
     var meta = { fp: fingerprint, gclid: context };
     var hw = getHardwareMeta();
     for (var k in hw) { if (Object.prototype.hasOwnProperty.call(hw, k)) meta[k] = hw[k]; }
+    if (scriptTag) {
+      var dc = scriptTag.getAttribute('data-geo-city');
+      var dd = scriptTag.getAttribute('data-geo-district');
+      if (dc) meta.city = dc;
+      if (dd) meta.district = dd;
+    }
     if (category === 'conversion' || action === 'heartbeat' || action === 'session_end') {
       if (action === 'heartbeat') {
         pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);

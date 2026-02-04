@@ -91,6 +91,19 @@ export const strings = {
   homepage: 'Homepage',
   aiConfidence: 'AI Confidence',
 
+  // Seal modal (Lazy Antiques Dealer)
+  sealModalTitle: 'Seal deal',
+  sealModalStarLabel: 'Lead quality (required)',
+  sealModalStarQualified: 'Qualified',
+  sealModalPriceLabel: 'Actual price (optional)',
+  sealModalPricePlaceholder: '0',
+  sealModalJunk: 'Junk',
+  sealModalCancel: 'Cancel',
+  sealModalConfirm: 'Save',
+  sealModalSealing: 'Saving…',
+  sealModalDealSealed: 'Deal sealed.',
+  sealModalMarkedJunk: 'Marked as junk.',
+
   // Generic
   errorLabel: (msg: string) => `Error: ${msg}`,
 } as const;

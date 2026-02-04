@@ -28,6 +28,12 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const saleAmount = body.sale_amount != null ? Number(body.sale_amount) : null;
     const currency = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
+    // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
+    const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
+    const leadScore =
+      leadScoreRaw != null && Number.isFinite(leadScoreRaw) && leadScoreRaw >= 0 && leadScoreRaw <= 100
+        ? Math.round(leadScoreRaw)
+        : null;
 
     if (saleAmount != null && (Number.isNaN(saleAmount) || saleAmount < 0)) {
       return NextResponse.json(
@@ -91,7 +97,7 @@ export async function POST(
       return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
     }
 
-    const updatePayload = {
+    const updatePayload: Record<string, unknown> = {
       sale_amount: saleAmount,
       currency,
       status: 'confirmed',
@@ -100,6 +106,9 @@ export async function POST(
       oci_status: 'sealed',
       oci_status_updated_at: new Date().toISOString(),
     };
+    if (leadScore != null) {
+      updatePayload.lead_score = leadScore;
+    }
 
     const { data: updated, error: updateError } = await userClient
       .from('calls')

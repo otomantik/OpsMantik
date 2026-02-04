@@ -1,3 +1,16 @@
+/**
+ * Auto-approve (Auto-Seal) job: marks low-risk stale intents as confirmed after 24h.
+ *
+ * Scheduling: This endpoint is NOT invoked by any built-in cron. To run daily:
+ * - Vercel Cron: Add to vercel.json "crons" and call POST with body { siteId } per site (or
+ *   implement a separate route that lists sites and calls this for each).
+ * - External cron (e.g. cron-job.org): POST to /api/jobs/auto-approve with Authorization
+ *   (or use a server-side script with service role) and body { siteId, minAgeHours?, limit? }.
+ * - See docs/OPS/AUTO_APPROVE_CRON.md for full scheduling options.
+ *
+ * Behaviour: Only low-risk intents are updated (GCLID + session duration >= 10s + events >= 2).
+ * Nothing is ever set to junk; uncertain leads stay pending.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';

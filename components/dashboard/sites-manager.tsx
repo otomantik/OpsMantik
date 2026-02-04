@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,63 +43,59 @@ export function SitesManager() {
   }>>({});
   const [statusLoading, setStatusLoading] = useState<Record<string, boolean>>({});
 
+  const fetchSites = useCallback(async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data: sitesData, error: sitesError } = await supabase
+      .from('sites')
+      .select('id, name, domain, public_id')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (sitesError) {
+      console.error('[SITES_MANAGER] Error fetching sites:', {
+        message: sitesError?.message,
+        code: sitesError?.code,
+        details: sitesError?.details,
+        hint: sitesError?.hint,
+        raw: sitesError
+      });
+
+      const isSchemaMismatch = sitesError.code === '42703' ||
+        sitesError.code === 'PGRST116' ||
+        (sitesError.message && (
+          sitesError.message.includes('column') &&
+          sitesError.message.includes('does not exist')
+        ));
+
+      if (isSchemaMismatch) {
+        setError('Database schema mismatch: required columns missing on sites table (name/domain/public_id). Run migration.');
+      } else {
+        let errorMessage = 'Failed to load sites';
+        if (sitesError.message) {
+          errorMessage = sitesError.message;
+        }
+        if (sitesError.code) {
+          errorMessage += ` (Code: ${sitesError.code})`;
+        }
+        if (sitesError.details) {
+          errorMessage += ` - ${sitesError.details}`;
+        }
+        setError(errorMessage);
+      }
+    } else {
+      setSites(sitesData || []);
+    }
+    setIsLoading(false);
+  }, []);
+
   // Fetch sites
   useEffect(() => {
-    const fetchSites = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return;
-
-      const { data: sitesData, error: sitesError } = await supabase
-        .from('sites')
-        .select('id, name, domain, public_id')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (sitesError) {
-        // Detailed error logging
-        console.error('[SITES_MANAGER] Error fetching sites:', {
-          message: sitesError?.message,
-          code: sitesError?.code,
-          details: sitesError?.details,
-          hint: sitesError?.hint,
-          raw: sitesError
-        });
-        
-        // Check for PostgreSQL error code 42703 (undefined_column)
-        // This indicates a schema mismatch - required columns are missing
-        const isSchemaMismatch = sitesError.code === '42703' || 
-                                 sitesError.code === 'PGRST116' ||
-                                 (sitesError.message && (
-                                   sitesError.message.includes('column') && 
-                                   sitesError.message.includes('does not exist')
-                                 ));
-        
-        if (isSchemaMismatch) {
-          setError('Database schema mismatch: required columns missing on sites table (name/domain/public_id). Run migration.');
-        } else {
-          // Build human-readable error message
-          let errorMessage = 'Failed to load sites';
-          if (sitesError.message) {
-            errorMessage = sitesError.message;
-          }
-          if (sitesError.code) {
-            errorMessage += ` (Code: ${sitesError.code})`;
-          }
-          if (sitesError.details) {
-            errorMessage += ` - ${sitesError.details}`;
-          }
-          setError(errorMessage);
-        }
-      } else {
-        setSites(sitesData || []);
-      }
-      setIsLoading(false);
-    };
-
-    fetchSites();
-  }, []);
+    void fetchSites();
+  }, [fetchSites]);
 
   // Handle form submit
   const handleSubmit = async (e: React.FormEvent) => {
@@ -127,7 +123,7 @@ export function SitesManager() {
       }
 
       // Add new site to list
-      setSites([data.site, ...sites]);
+      setSites((prev) => [data.site, ...prev]);
       setNewSite(data.site);
       setSiteName('');
       setDomain('');
@@ -155,13 +151,13 @@ export function SitesManager() {
   const handleInvite = async (siteId: string) => {
     const email = inviteEmail[siteId]?.trim();
     if (!email) {
-      setInviteError({ ...inviteError, [siteId]: 'Email is required' });
+      setInviteError((prev) => ({ ...prev, [siteId]: 'Email is required' }));
       return;
     }
 
-    setInviteLoading({ ...inviteLoading, [siteId]: true });
-    setInviteError({ ...inviteError, [siteId]: '' });
-    setInviteSuccess({ ...inviteSuccess, [siteId]: { loginUrl: null, message: '' } });
+    setInviteLoading((prev) => ({ ...prev, [siteId]: true }));
+    setInviteError((prev) => ({ ...prev, [siteId]: '' }));
+    setInviteSuccess((prev) => ({ ...prev, [siteId]: { loginUrl: null, message: '' } }));
 
     try {
       const response = await fetch('/api/customers/invite', {
@@ -181,30 +177,29 @@ export function SitesManager() {
         throw new Error(data.error || 'Failed to invite customer');
       }
 
-      setInviteSuccess({
-        ...inviteSuccess,
+      setInviteSuccess((prev) => ({
+        ...prev,
         [siteId]: {
           loginUrl: data.login_url || null,
           message: data.message || 'Customer invited successfully',
         },
-      });
-      setInviteEmail({ ...inviteEmail, [siteId]: '' });
-      
-      // Refresh sites list to reflect ownership change
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
+      }));
+      setInviteEmail((prev) => ({ ...prev, [siteId]: '' }));
+
+      // No reload needed: inviting a customer creates/updates a membership record, not site ownership.
+      // Still refetch sites as a best-effort to keep UI consistent if the query changes later.
+      void fetchSites();
     } catch (err: unknown) {
       console.error('[SITES_MANAGER] Invite error:', err);
-      setInviteError({ ...inviteError, [siteId]: err instanceof Error ? err.message : 'Unknown error' });
+      setInviteError((prev) => ({ ...prev, [siteId]: err instanceof Error ? err.message : 'Unknown error' }));
     } finally {
-      setInviteLoading({ ...inviteLoading, [siteId]: false });
+      setInviteLoading((prev) => ({ ...prev, [siteId]: false }));
     }
   };
 
   // Handle install verification
   const handleVerifyInstall = async (siteId: string) => {
-    setStatusLoading({ ...statusLoading, [siteId]: true });
+    setStatusLoading((prev) => ({ ...prev, [siteId]: true }));
 
     try {
       const response = await fetch(`/api/sites/${siteId}/status`);
@@ -239,7 +234,7 @@ export function SitesManager() {
         },
       });
     } finally {
-      setStatusLoading({ ...statusLoading, [siteId]: false });
+      setStatusLoading((prev) => ({ ...prev, [siteId]: false }));
     }
   };
 
@@ -538,7 +533,7 @@ export function SitesManager() {
                     <input
                       type="email"
                       value={inviteEmail[site.id] || ''}
-                      onChange={(e) => setInviteEmail({ ...inviteEmail, [site.id]: e.target.value })}
+                      onChange={(e) => setInviteEmail((prev) => ({ ...prev, [site.id]: e.target.value }))}
                       placeholder="customer@example.com"
                       className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
@@ -569,7 +564,7 @@ export function SitesManager() {
                         </div>
                       )}
                       <p className="text-sm text-muted-foreground">
-                        ⚠️ Site ownership will be transferred to customer. Page will reload in 2 seconds.
+                        Share the login URL with the customer. No page reload required.
                       </p>
                     </div>
                   )}

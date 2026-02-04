@@ -45,8 +45,8 @@ export interface GeoExtractionResult {
 /**
  * Extract geographic and device information from request headers and metadata.
  * 
- * Priority for geo:
- * - Metadata override > Vercel headers > Cloudflare headers > Generic headers > Unknown
+ * Priority for geo (when behind Cloudflare, prefer CF so visitor IP is used, not edge):
+ * - Metadata override > Cloudflare headers > Vercel headers > Generic headers > Unknown
  * 
  * Device type normalization:
  * - mobile/tablet/desktop (default: desktop)
@@ -97,39 +97,32 @@ export function extractGeoInfo(
     };
 
     // Geo extraction from headers (Edge Runtime compatible)
-    // Priority: Metadata override > Vercel > Cloudflare > Generic > Unknown
-    // Vercel headers (x-vercel-ip-*) are added by Vercel Edge Network
-    const cityFromVercel = req?.headers.get('x-vercel-ip-city');
-    const countryFromVercel = req?.headers.get('x-vercel-ip-country');
-
-    // Cloudflare headers (cf-ipcity, cf-ipdistrict) - if behind Cloudflare
+    // Priority: Metadata override > Cloudflare > Vercel > Generic > Unknown (CF first = visitor IP, not edge)
     const cityFromCloudflare = req?.headers.get('cf-ipcity');
     const districtFromCloudflare = req?.headers.get('cf-ipdistrict');
     const countryFromCloudflare = req?.headers.get('cf-ipcountry');
 
-    // Generic headers (x-city, x-district) - fallback
+    const cityFromVercel = req?.headers.get('x-vercel-ip-city');
+    const countryFromVercel = req?.headers.get('x-vercel-ip-country');
+
     const cityFromGeneric = req?.headers.get('x-city') ||
         req?.headers.get('x-forwarded-city');
     const districtFromGeneric = req?.headers.get('x-district');
     const countryFromGeneric = req?.headers.get('x-country');
 
-    // Priority: Metadata override > Vercel > Cloudflare > Generic > null
     const city = meta?.city ||
-        cityFromVercel ||
         cityFromCloudflare ||
+        cityFromVercel ||
         cityFromGeneric ||
         null;
 
-    // District: Metadata override > Cloudflare > Generic > null
-    // Note: x-vercel-ip-country-region is region/province, not district - do not use
     const district = meta?.district ||
         districtFromCloudflare ||
         districtFromGeneric ||
         null;
 
-    // Country: Vercel > Cloudflare > Generic > Unknown
-    const country = countryFromVercel ||
-        countryFromCloudflare ||
+    const country = countryFromCloudflare ||
+        countryFromVercel ||
         countryFromGeneric ||
         'Unknown';
 

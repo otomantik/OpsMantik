@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { calculateLeadValue } from '@/lib/valuation/calculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
 
     const { data: site, error: siteError } = await adminClient
       .from('sites')
-      .select('id, currency')
+      .select('id, currency, default_deal_value')
       .eq('id', siteId)
       .maybeSingle();
 
@@ -42,12 +43,13 @@ export async function GET(req: NextRequest) {
     }
 
     const currency = (site as { currency?: string })?.currency || 'TRY';
+    const siteDefaultValue = Number((site as { default_deal_value?: number | null }).default_deal_value) || 0;
     const { fromIso, toIso } = getTodayTrtUtcRange();
 
-    // 3. VERİ ÇEKME (Calls tablosu – mevcut export ile aynı mantık)
+    // 3. Fetch calls (sealed only) with lead_score and sale_amount for proxy value
     const { data: calls, error: callsError } = await adminClient
       .from('calls')
-      .select('id, created_at, confirmed_at, matched_session_id, click_id, oci_status')
+      .select('id, created_at, confirmed_at, matched_session_id, click_id, oci_status, lead_score, sale_amount')
       .eq('site_id', siteId)
       .in('status', ['confirmed', 'qualified', 'real'])
       .gte('created_at', fromIso)
@@ -105,12 +107,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 5. JSON HAZIRLAMA (Google Ads Script formatı)
+    // 5. Build JSON for Google Ads Script (with proxy conversion value)
     const batchId = crypto.randomUUID();
     const nowIso = new Date().toISOString();
     // Conversion name: Google Ads’teki Offline Conversion aksiyon adıyla birebir aynı olmalı.
     const conversionName = process.env.OCI_CONVERSION_NAME || 'Sealed Lead';
-    const conversionValue = 1;
 
     const exportedCallIds: string[] = [];
     const jsonOutput: Array<{
@@ -130,6 +131,8 @@ export async function GET(req: NextRequest) {
         click_id?: string | null;
         confirmed_at?: string | null;
         created_at?: string | null;
+        lead_score?: number | null;
+        sale_amount?: number | null;
       };
       const sid = row.matched_session_id ? String(row.matched_session_id) : '';
       const sess = sid ? sessionMap.get(sid) : undefined;
@@ -142,6 +145,19 @@ export async function GET(req: NextRequest) {
       const hasAnyClickId = Boolean(gclid || wbraid || gbraid || fallbackClick);
       if (!hasAnyClickId) continue;
 
+      // Proxy value: use sale_amount if set, else derive from lead_score + site default_deal_value
+      const leadScore0to5 =
+        row.lead_score != null && Number.isFinite(row.lead_score)
+          ? Math.min(5, Math.max(0, Math.round(row.lead_score / 20)))
+          : 3;
+      const userPrice =
+        row.sale_amount != null && Number.isFinite(row.sale_amount) && row.sale_amount > 0
+          ? row.sale_amount
+          : null;
+      const conversionValue = calculateLeadValue(leadScore0to5, userPrice, siteDefaultValue);
+      // Do not send 0 to Google for qualified leads (ROAS bidding fails)
+      const value = conversionValue > 0 ? conversionValue : 1;
+
       exportedCallIds.push(String(row.id));
       const rawTime = String(row.confirmed_at || row.created_at || '');
 
@@ -151,7 +167,7 @@ export async function GET(req: NextRequest) {
         wbraid: wbraid || '',
         conversion_name: conversionName,
         conversion_time: rawTime,
-        value: conversionValue,
+        value,
         currency,
       });
     }

@@ -174,7 +174,7 @@ function ActiveDeckCard({
   // Hook must be called unconditionally (no conditional wrapper).
   const { qualify, saving } = useIntentQualification(siteId, intent.id);
 
-  const fireQualify = (params: { score: 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }) => {
+  const fireQualify = (params: { score: 0 | 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }) => {
     // Fire-and-forget background update; keep UI native-fast.
     void qualify(params)
       .then(() => {
@@ -204,7 +204,6 @@ function ActiveDeckCard({
   };
 
   const handleJunk = ({ id, stars }: { id: string; stars: number }) => {
-    const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
     onOptimisticRemove(id);
     pushHistoryRow({
       id,
@@ -213,7 +212,8 @@ function ActiveDeckCard({
       identity: intent.intent_target ?? null,
     });
     pushToast('danger', 'Trash taken out.');
-    fireQualify({ score: s, status: 'junk' });
+    // Junk should be score=0 (0-100 lead_score = 0) to avoid polluting OCI value logic.
+    fireQualify({ score: 0, status: 'junk' });
   };
 
   return (
@@ -311,6 +311,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const [detailsById, setDetailsById] = useState<Record<string, HunterIntent>>({});
   const [sealModalOpen, setSealModalOpen] = useState(false);
   const [intentForSeal, setIntentForSeal] = useState<HunterIntent | null>(null);
+  const { qualify: qualifyModalIntent } = useIntentQualification(siteId, intentForSeal?.id ?? '');
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});
@@ -392,6 +393,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
         // Parse to LITE list items (even if fallback v1 returned heavier rows)
         const rows = parseHunterIntentsLite(data);
+        // Range contract is half-open: [from, to) where to = next day start for "today" in TRT.
         const fromMs = new Date(range.fromIso).getTime();
         const toMs = new Date(range.toIso).getTime();
 
@@ -401,7 +403,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           // Status filter: pending only
           const s = (r.status || '').toLowerCase();
           const isPending = !s || s === 'intent';
-          return isPending && ts >= fromMs && ts <= toMs;
+          return isPending && ts >= fromMs && ts < toMs;
         });
       }
 
@@ -497,7 +499,10 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         fetchUnscoredIntents();
       },
     },
-    { adsOnly: true }
+    // Keep realtime classification aligned with scope:
+    // - ads scope => adsOnly=true
+    // - all scope => adsOnly=false (don't miss non-ads updates)
+    { adsOnly: scope === 'ads' }
   );
 
   const handleQualified = useCallback(() => {
@@ -830,16 +835,24 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           }}
           currency={siteCurrency}
           chipValues={bountyChips}
-          onConfirm={async (saleAmount, currency) => {
+          onConfirm={async (saleAmount, currency, leadScore) => {
             const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sale_amount: saleAmount, currency }),
+              body: JSON.stringify({
+                sale_amount: saleAmount ?? null,
+                currency,
+                lead_score: leadScore * 20,
+              }),
             });
             if (!res.ok) {
               const j = await res.json().catch(() => ({}));
               throw new Error((j as { error?: string }).error || res.statusText);
             }
+          }}
+          onJunk={async () => {
+            const result = await qualifyModalIntent({ score: 0, status: 'junk' });
+            if (!result.success) throw new Error(result.error);
           }}
           onSuccess={() => {
             optimisticRemove(intentForSeal.id);
@@ -849,7 +862,20 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
               intent_action: intentForSeal.intent_action ?? null,
               identity: intentForSeal.intent_target ?? null,
             });
-            pushToast('success', 'Deal sealed.');
+            pushToast('success', strings.sealModalDealSealed);
+            setSealModalOpen(false);
+            setIntentForSeal(null);
+            handleQualified();
+          }}
+          onJunkSuccess={() => {
+            optimisticRemove(intentForSeal.id);
+            pushHistoryRow({
+              id: intentForSeal.id,
+              status: 'junk',
+              intent_action: intentForSeal.intent_action ?? null,
+              identity: intentForSeal.intent_target ?? null,
+            });
+            pushToast('success', strings.sealModalMarkedJunk);
             setSealModalOpen(false);
             setIntentForSeal(null);
             handleQualified();

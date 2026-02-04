@@ -44,10 +44,12 @@ export interface SiteConfig {
   [key: string]: unknown;
 }
 
-/** Sites row shape (minimal for config) */
+/** Sites row shape (minimal for config + proxy value) */
 export interface SiteRow {
   id: string;
   user_id: string;
   config: SiteConfig;
+  /** Average deal revenue; used for proxy value when sale_amount is not entered (Lazy Antiques Dealer). */
+  default_deal_value?: number | null;
   [key: string]: unknown;
 }

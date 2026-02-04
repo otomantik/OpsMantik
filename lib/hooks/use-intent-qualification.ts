@@ -15,9 +15,10 @@ import { useCallback, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 export interface QualifyIntentParams {
-  score: 1 | 2 | 3 | 4 | 5;                    // User-provided score (1-5)
-  status: 'confirmed' | 'junk';                // Sealed (confirmed) or Junk
-  note?: string;                               // Optional user note
+  /** 0 = junk, 1-5 = lead quality (Lazy Antiques Dealer). */
+  score: 0 | 1 | 2 | 3 | 4 | 5;
+  status: 'confirmed' | 'junk';
+  note?: string;
 }
 
 export interface QualifyIntentResult {
@@ -42,14 +43,14 @@ export function useIntentQualification(siteId: string, intentId: string) {
           throw new Error('User not authenticated');
         }
 
-        // Convert 1-5 score to 20-100 scale (legacy compatibility)
+        // Convert 0-5 score to 0-100 scale (0 = junk, 1-5 = 20-100)
         const leadScore = params.score * 20;
 
-        // Build update payload
+        const isConfirmed = params.status === 'confirmed';
         const updatePayload = {
           lead_score: leadScore,
           status: params.status,
-          confirmed_at: new Date().toISOString(),
+          confirmed_at: isConfirmed ? new Date().toISOString() : null,
           confirmed_by: user.id,
           note: params.note || null,
           score_breakdown: {
@@ -57,38 +58,43 @@ export function useIntentQualification(siteId: string, intentId: string) {
             qualified_by: 'user',
             timestamp: new Date().toISOString(),
           },
-          // OCI feedback loop (P0): mark internal sealing decision
-          oci_status: params.status === 'confirmed' ? 'sealed' : 'skipped',
+          oci_status: isConfirmed ? 'sealed' : 'skipped',
           oci_status_updated_at: new Date().toISOString(),
         };
 
-        // Atomic update: only if status is still 'intent' (prevent race conditions)
-        const { error: updateError, count } = await supabase
+        // Atomic update: only if status is still 'intent' (prevent race conditions).
+        // IMPORTANT: PostgREST "count" is NOT returned unless explicitly requested.
+        // We rely on the returned row (via select) to detect whether an update happened.
+        const { data: updatedRows, error: updateError } = await supabase
           .from('calls')
           .update(updatePayload)
           .eq('id', intentId)
           .eq('site_id', siteId)
-          .in('status', ['intent', null]); // Only update if not already qualified
+          .in('status', ['intent', null]) // Only update if not already qualified
+          .select('id');
 
         if (updateError) {
           throw updateError;
         }
 
-        // Check if any rows were updated
-        if (count === 0) {
-          // Intent was already qualified by another user (race condition)
-          setError('This intent was already qualified by another user.');
-          setSaving(false);
-          return { success: false, error: 'Already qualified' };
+        // If 0 rows matched, PostgREST returns empty data when we request a select.
+        // Without this check, the UI can show "success" while nothing changed in DB.
+        // Note: some older supabase-js versions return null data without a select; keep this defensive.
+        const didUpdate =
+          Array.isArray(updatedRows) ? updatedRows.length > 0 : Boolean(updatedRows);
+        if (!didUpdate) {
+          const msg = 'This intent was already qualified (or no longer pending).';
+          setError(msg);
+          return { success: false, error: msg };
         }
 
-        setSaving(false);
         return { success: true };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to qualify intent';
         setError(errorMessage);
-        setSaving(false);
         return { success: false, error: errorMessage };
+      } finally {
+        setSaving(false);
       }
     },
     [siteId, intentId]

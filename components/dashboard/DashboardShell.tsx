@@ -5,8 +5,6 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './QualificationQueue';
 import { BreakdownWidgets } from './widgets/BreakdownWidgets';
 import { PulseProjectionWidgets } from './widgets/PulseProjectionWidgets';
-import { CommandCenterP0Panel } from './CommandCenterP0Panel';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +18,7 @@ import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { getBadgeStatus } from '@/lib/realtime-badge-status';
 import { cn } from '@/lib/utils';
 import { strings } from '@/lib/i18n/en';
-import { Home, Settings, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
+import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
 import { LiveClock } from './LiveClock';
@@ -37,7 +35,6 @@ interface DashboardShellProps {
 export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
   const [scope, setScope] = useState<'ads' | 'all'>('ads');
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Real-time signals for the Shell
   const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
@@ -58,7 +55,8 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
       return { day: 'today' as const, fromIso, toIso };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
-    const toMs = todayStartUtcMs - 1;
+    // Half-open range [yesterdayStart, todayStart)
+    const toMs = todayStartUtcMs;
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
   }, [selectedDay, initialFrom, initialTo]);
 
@@ -169,24 +167,10 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     {scope === 'all' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
                     Full Network Graph
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-slate-800" />
-                  <DropdownMenuItem onClick={() => setSettingsOpen(true)} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
-                    <Settings className="mr-2 h-4 w-4" />
-                    System Parameters
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
-
-          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <DialogContent className="max-h-[80vh] overflow-y-auto bg-slate-900 border-slate-800 text-slate-100 shadow-2xl">
-              <DialogHeader className="mb-4">
-                <DialogTitle className="font-black uppercase tracking-widest text-emerald-400">Tactical Control Panel</DialogTitle>
-              </DialogHeader>
-              <CommandCenterP0Panel siteId={siteId} />
-            </DialogContent>
-          </Dialog>
 
           {statsError && (
             <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">

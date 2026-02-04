@@ -295,6 +295,12 @@
     const referrer = document.referrer || '';
     const sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
     const meta = { fp: fingerprint, gclid: context, ...getHardwareMeta() };
+    if (scriptTag) {
+      var dc = scriptTag.getAttribute('data-geo-city');
+      var dd = scriptTag.getAttribute('data-geo-district');
+      if (dc) meta.city = dc;
+      if (dd) meta.district = dd;
+    }
     if (category === 'conversion' || action === 'heartbeat' || action === 'session_end') {
       if (action === 'heartbeat') {
         pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
