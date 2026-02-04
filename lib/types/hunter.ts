@@ -21,6 +21,10 @@ export interface HunterIntentLite {
   intent_action?: 'whatsapp' | 'phone' | 'form' | 'other' | string | null;
   /** A brief text summary for list UI (e.g. intent_target or action). */
   summary?: string | null;
+  /** Session-based action evidence (single card per session). */
+  phone_clicks?: number | null;
+  whatsapp_clicks?: number | null;
+  intent_events?: number | null;
 }
 
 /** Unified Hunter Intent (v3) - Single source of truth */
@@ -92,6 +96,10 @@ export interface HunterIntent {
   matched_session_id?: string | null;
   status?: string | null;
   event_count?: number | null;
+
+  /** Session action counts (evidence for "2x phone, 1x WhatsApp"). */
+  phone_clicks?: number | null;
+  whatsapp_clicks?: number | null;
 
   // OCI/Backend
   oci_status?: string | null;

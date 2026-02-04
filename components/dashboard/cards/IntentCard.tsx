@@ -139,7 +139,7 @@ export function IntentCard({
   // Keep existing logic: use same qualification hook, but make the UI "game-like".
   // Default score is 3/5; user can bump quickly if needed.
   const [score, setScore] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const { qualify, saving, error, clearError } = useIntentQualification(siteId, intent.id);
+  const { qualify, saving, error, clearError } = useIntentQualification(siteId, intent.id, intent.matched_session_id);
 
   const [flash, setFlash] = useState<null | 'sealed' | 'junk'>(null);
 

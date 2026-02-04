@@ -102,6 +102,10 @@ function parseHunterIntentsFull(data: unknown): HunterIntent[] {
     wbraid: r.wbraid ?? null,
     gbraid: r.gbraid ?? null,
     event_count: typeof r.event_count === 'number' ? r.event_count : null,
+
+    // Session-based action evidence (single card)
+    phone_clicks: typeof (r as any).phone_clicks === 'number' ? (r as any).phone_clicks : null,
+    whatsapp_clicks: typeof (r as any).whatsapp_clicks === 'number' ? (r as any).whatsapp_clicks : null,
   })) as HunterIntent[];
 }
 
@@ -142,6 +146,11 @@ function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
       matched_session_id: (r.matched_session_id as string | null | undefined) ?? null,
       intent_action: (r.intent_action as string | null | undefined) ?? null,
       summary: ((r as any).summary as string | null | undefined) ?? null,
+
+      // Session-based action evidence (from get_recent_intents_lite_v1)
+      phone_clicks: typeof (r as any).phone_clicks === 'number' ? (r as any).phone_clicks : null,
+      whatsapp_clicks: typeof (r as any).whatsapp_clicks === 'number' ? (r as any).whatsapp_clicks : null,
+      intent_events: typeof (r as any).intent_events === 'number' ? (r as any).intent_events : null,
     })) as HunterIntentLite[];
 }
 
@@ -172,7 +181,7 @@ function ActiveDeckCard({
   }) => void;
 }) {
   // Hook must be called unconditionally (no conditional wrapper).
-  const { qualify, saving } = useIntentQualification(siteId, intent.id);
+  const { qualify, saving } = useIntentQualification(siteId, intent.id, intent.matched_session_id ?? null);
 
   const fireQualify = (params: { score: 0 | 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }) => {
     // Fire-and-forget background update; keep UI native-fast.
@@ -249,6 +258,15 @@ function LiteDeckCard({
 }) {
   const action = (intent.intent_action || 'intent').toString();
   const summary = intent.summary || 'Loading details…';
+  const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;
+  const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
+  const actionsLine =
+    (phoneClicks > 0 || waClicks > 0)
+      ? [
+          phoneClicks > 0 ? `${phoneClicks}× phone` : null,
+          waClicks > 0 ? `${waClicks}× WhatsApp` : null,
+        ].filter(Boolean).join(' · ')
+      : null;
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -266,7 +284,9 @@ function LiteDeckCard({
           </div>
         </div>
         <div className="mt-2 text-sm font-medium truncate">{summary}</div>
-        <div className="mt-2 text-xs text-muted-foreground">Fetching details…</div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {actionsLine || 'Fetching details…'}
+        </div>
       </button>
 
       <div className="p-3 pt-0">
@@ -311,7 +331,11 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const [detailsById, setDetailsById] = useState<Record<string, HunterIntent>>({});
   const [sealModalOpen, setSealModalOpen] = useState(false);
   const [intentForSeal, setIntentForSeal] = useState<HunterIntent | null>(null);
-  const { qualify: qualifyModalIntent } = useIntentQualification(siteId, intentForSeal?.id ?? '');
+  const { qualify: qualifyModalIntent } = useIntentQualification(
+    siteId,
+    intentForSeal?.id ?? '',
+    intentForSeal?.matched_session_id ?? null
+  );
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});

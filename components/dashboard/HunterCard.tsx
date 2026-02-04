@@ -149,6 +149,16 @@ export function HunterCard({
 
   const keywordDisplay = useMemo(() => safeDecode((intent.utm_term || '').trim()) || '—', [intent.utm_term]);
 
+  const actionsDisplay = useMemo(() => {
+    const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;
+    const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
+    const parts = [
+      phoneClicks > 0 ? `${phoneClicks}× phone` : null,
+      waClicks > 0 ? `${waClicks}× WhatsApp` : null,
+    ].filter(Boolean) as string[];
+    return parts.length ? parts.join(' · ') : '—';
+  }, [intent.phone_clicks, intent.whatsapp_clicks]);
+
   return (
     <Card
       className={cn(
@@ -186,6 +196,7 @@ export function HunterCard({
 
       <CardContent className="p-4 flex-1">
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+          <Row label="Session Actions" value={actionsDisplay} icon={Clock} />
           <Row label={strings.hunterKeyword} value={keywordDisplay} icon={FileText} />
           <Row label={strings.hunterLocation} value={locationDisplay} icon={MapPin} />
           <Row label={strings.hunterPage} value={pageDisplay} icon={FileText} />

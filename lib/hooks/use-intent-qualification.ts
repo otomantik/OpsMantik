@@ -26,7 +26,7 @@ export interface QualifyIntentResult {
   error?: string;
 }
 
-export function useIntentQualification(siteId: string, intentId: string) {
+export function useIntentQualification(siteId: string, intentId: string, matchedSessionId?: string | null) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,16 +62,29 @@ export function useIntentQualification(siteId: string, intentId: string) {
           oci_status_updated_at: new Date().toISOString(),
         };
 
-        // Atomic update: only if status is still 'intent' (prevent race conditions).
-        // IMPORTANT: PostgREST "count" is NOT returned unless explicitly requested.
-        // We rely on the returned row (via select) to detect whether an update happened.
-        const { data: updatedRows, error: updateError } = await supabase
-          .from('calls')
-          .update(updatePayload)
-          .eq('id', intentId)
-          .eq('site_id', siteId)
-          .in('status', ['intent', null]) // Only update if not already qualified
-          .select('id');
+        // Session-based single card:
+        // If we have matched_session_id, qualify ALL pending click-intents in that session.
+        // This ensures legacy duplicates can't remain visible and the queue stays "1 person = 1 card".
+        const doSessionUpdate = Boolean(matchedSessionId && String(matchedSessionId).trim().length > 0);
+
+        const updateQuery = doSessionUpdate
+          ? supabase
+              .from('calls')
+              .update(updatePayload)
+              .eq('site_id', siteId)
+              .eq('matched_session_id', matchedSessionId as string)
+              .eq('source', 'click')
+              .in('status', ['intent', null])
+              .select('id')
+          : supabase
+              .from('calls')
+              .update(updatePayload)
+              .eq('id', intentId)
+              .eq('site_id', siteId)
+              .in('status', ['intent', null]) // Only update if not already qualified
+              .select('id');
+
+        const { data: updatedRows, error: updateError } = await updateQuery;
 
         if (updateError) {
           throw updateError;
@@ -83,7 +96,9 @@ export function useIntentQualification(siteId: string, intentId: string) {
         const didUpdate =
           Array.isArray(updatedRows) ? updatedRows.length > 0 : Boolean(updatedRows);
         if (!didUpdate) {
-          const msg = 'This intent was already qualified (or no longer pending).';
+          const msg = doSessionUpdate
+            ? 'This session was already qualified (or no longer pending).'
+            : 'This intent was already qualified (or no longer pending).';
           setError(msg);
           return { success: false, error: msg };
         }
@@ -97,7 +112,7 @@ export function useIntentQualification(siteId: string, intentId: string) {
         setSaving(false);
       }
     },
-    [siteId, intentId]
+    [siteId, intentId, matchedSessionId]
   );
 
   const clearError = useCallback(() => {

@@ -55,115 +55,30 @@ export class IntentService {
             || null;
 
         // Server fallback stamp
-        const intentStamp = this.generateIntentStamp(meta?.intent_stamp, canonicalAction, canonicalTarget);
+        // Session-based single-card:
+        // Use an atomic RPC that ensures ONE click-intent row per session and increments counters.
+        // This prevents "one person => multiple queue items" while preserving "2x phone, 1x WhatsApp" evidence.
+        const { data: ensuredId, error: ensureErr } = await adminClient.rpc('ensure_session_intent_v1', {
+            p_site_id: siteId,
+            p_session_id: session.id,
+            p_fingerprint: fingerprint,
+            p_lead_score: leadScore,
+            p_intent_action: canonicalAction,
+            p_intent_target: canonicalTarget,
+            p_intent_page_url: intentPageUrl,
+            p_click_id: clickId,
+        });
 
-        // 3. Upsert / Dedupe
-        let stampEnsured = false;
-        if (intentStamp) {
-            const { error: upsertErr } = await adminClient
-                .from('calls')
-                .upsert({
-                    site_id: siteId,
-                    phone_number: canonicalTarget || 'Unknown',
-                    matched_session_id: session.id,
-                    matched_fingerprint: fingerprint,
-                    lead_score: leadScore,
-                    lead_score_at_match: leadScore,
-                    status: 'intent',
-                    source: 'click',
-                    intent_stamp: intentStamp,
-                    intent_action: canonicalAction,
-                    intent_target: canonicalTarget,
-                    intent_page_url: intentPageUrl,
-                    click_id: clickId,
-                }, { onConflict: 'site_id,intent_stamp', ignoreDuplicates: true });
-
-            if (upsertErr) {
-                debugWarn('[SYNC_API] intent_stamp upsert failed (falling back to 10s dedupe):', {
-                    code: upsertErr.code,
-                });
-            } else {
-                stampEnsured = true;
-                debugLog('[SYNC_API] ✅ Call intent ensured (stamp):', { intent_stamp: intentStamp });
-            }
+        if (ensureErr) {
+            debugWarn('[SYNC_API] ensure_session_intent_v1 failed:', { code: ensureErr.code, message: ensureErr.message });
+            return;
         }
 
-        if (!stampEnsured) {
-            await this.fallbackDedupe(
-                siteId, session.id, fingerprint, leadScore, canonicalAction, canonicalTarget,
-                intentPageUrl, clickId, intentStamp
-            );
-        }
-    }
-
-    private static async fallbackDedupe(
-        siteId: string, sessionId: string, fingerprint: string | null, leadScore: number,
-        action: 'phone' | 'whatsapp', target: string, pageUrl: string | null, clickId: string | null,
-        intentStamp: string
-    ) {
-        // Fallback dedupe (10s): site_id + matched_session_id + action + target
-        const tenSecondsAgo = new Date(Date.now() - 10 * 1000).toISOString();
-        const { data: existingIntent } = await adminClient
-            .from('calls')
-            .select('id')
-            .eq('site_id', siteId)
-            .eq('matched_session_id', sessionId)
-            .eq('source', 'click')
-            .or('status.eq.intent,status.is.null')
-            .eq('intent_action', action)
-            .eq('intent_target', target)
-            .gte('created_at', tenSecondsAgo)
-            .maybeSingle();
-
-        if (!existingIntent) {
-            const { error: callError } = await adminClient
-                .from('calls')
-                .insert({
-                    site_id: siteId,
-                    phone_number: target || 'Unknown',
-                    matched_session_id: sessionId,
-                    matched_fingerprint: fingerprint,
-                    lead_score: leadScore,
-                    lead_score_at_match: leadScore,
-                    status: 'intent',
-                    source: 'click',
-                    intent_stamp: intentStamp,
-                    intent_action: action,
-                    intent_target: target,
-                    intent_page_url: pageUrl,
-                    click_id: clickId,
-                });
-
-            if (callError) {
-                if (callError.code !== '23505') { // Ignore unique violation
-                    debugWarn('[SYNC_API] Failed to create call intent (fallback):', callError.message);
-                }
-            } else {
-                debugLog('[SYNC_API] ✅ Call intent created (fallback):', { action });
-            }
-        }
-    }
-
-    // --- Helpers ---
-
-    private static generateIntentStamp(raw: string | undefined, action: string, target: string): string {
-        const rand4 = (): string => Math.random().toString(36).slice(2, 6).padEnd(4, '0');
-        const hash6 = (v: string): string => {
-            const s = (v || '').toString();
-            let h = 0;
-            for (let i = 0; i < s.length; i++) {
-                h = ((h << 5) - h) + s.charCodeAt(i);
-                h |= 0;
-            }
-            const out = Math.abs(h).toString(36);
-            return out.slice(0, 6).padEnd(6, '0');
-        };
-
-        let stamp = (typeof raw === 'string' && raw.trim().length > 0) ? raw.trim() : '';
-        if (!stamp) {
-            stamp = `${Date.now()}-${rand4()}-${action}-${hash6(target)}`;
-        }
-        return stamp.slice(0, 128);
+        debugLog('[SYNC_API] ✅ Session intent ensured:', {
+            session_id: session.id,
+            call_id: ensuredId ?? null,
+            action: canonicalAction,
+        });
     }
 
     private static normalizeTelTarget(v: string): string {
