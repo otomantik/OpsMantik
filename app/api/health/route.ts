@@ -4,11 +4,17 @@
  * Lightweight DB check (SELECT 1) with timeout; never blocks.
  */
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 
 const DB_CHECK_TIMEOUT_MS = 2000;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const SIGNING_DISABLED =
+  process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
+const SIGNING_DISABLED_IN_PROD = SIGNING_DISABLED && process.env.NODE_ENV === 'production';
+let sentSigningDisabledWarning = false;
 
 export async function GET() {
   const ts = new Date().toISOString();
@@ -24,11 +30,20 @@ export async function GET() {
     db_ok = false;
   }
 
+  if (SIGNING_DISABLED_IN_PROD && !sentSigningDisabledWarning) {
+    sentSigningDisabledWarning = true;
+    Sentry.captureMessage('CALL_EVENT_SIGNING_DISABLED enabled in production', {
+      level: 'warning',
+      tags: { route: '/api/health' },
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     ts,
     ...(git_sha != null && { git_sha }),
     ...(db_ok !== undefined && { db_ok }),
+    ...(SIGNING_DISABLED_IN_PROD && { signing_disabled: true }),
   });
 }
 
