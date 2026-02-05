@@ -5,6 +5,8 @@ import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
 import { logError } from '@/lib/log';
+import { assertQstashEnv } from '@/lib/qstash/env';
+import { getFinalUrl, isRecord, parseValidWorkerJobData, type IngestMeta } from '@/lib/types/ingest';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +17,20 @@ import { SessionService } from '@/lib/services/session-service';
 import { EventService } from '@/lib/services/event-service';
 import { IntentService } from '@/lib/services/intent-service';
 import { StatsService } from '@/lib/services/stats-service';
+
+// Ensure QStash env is present in production (signature verification relies on signing key).
+assertQstashEnv();
+
+type ErrorLike = { code?: unknown; message?: unknown; status?: unknown };
+function asErrorLike(err: unknown): ErrorLike {
+    return isRecord(err) ? (err as ErrorLike) : {};
+}
+function getErrorMessage(err: unknown): string {
+    if (err instanceof Error && typeof err.message === 'string') return err.message;
+    const e = asErrorLike(err);
+    if (typeof e.message === 'string') return e.message;
+    return String(err);
+}
 
 function getQstashMessageId(req: NextRequest): string | null {
     return (
@@ -48,15 +64,17 @@ async function deterministicUuidFromString(input: string): Promise<string> {
 }
 
 function isUniqueViolation(err: unknown): boolean {
-    const anyErr = err as any;
-    return anyErr?.code === '23505' || /duplicate key value/i.test(anyErr?.message || '');
+    const e = asErrorLike(err);
+    const code = typeof e.code === 'string' ? e.code : undefined;
+    const message = typeof e.message === 'string' ? e.message : '';
+    return code === '23505' || /duplicate key value/i.test(message);
 }
 
 function isRetryableError(err: unknown): boolean {
-    const anyErr = err as any;
-    const message = String(anyErr?.message || '');
-    const code = String(anyErr?.code || '');
-    const status = typeof anyErr?.status === 'number' ? anyErr.status : undefined;
+    const e = asErrorLike(err);
+    const message = typeof e.message === 'string' ? e.message : String(err);
+    const code = typeof e.code === 'string' ? e.code : '';
+    const status = typeof e.status === 'number' ? e.status : undefined;
 
     if (status && [408, 429, 500, 502, 503, 504].includes(status)) return true;
     if (/timeout|timed out|ETIMEDOUT|ECONNRESET|EPIPE|fetch failed|network|temporarily unavailable/i.test(message)) return true;
@@ -72,20 +90,37 @@ async function handler(req: NextRequest) {
     let qstashMessageId: string | null = null;
     let dedupEventId: string | null = null;
     let siteDbId: string | null = null;
-    let rawBody: any = null;
+    let rawBody: unknown = null;
 
     try {
         qstashMessageId = getQstashMessageId(req);
         rawBody = await req.json();
-        const {
-            s: site_id, sid: client_sid, sm: session_month,
-            ec: event_category, ea: event_action, el: event_label, ev: event_value,
-            meta, r: referrer, ip, ua: userAgent,
-            ingest_id
-        } = rawBody;
-        const url = rawBody.url ?? rawBody.u;
+        const parsed = parseValidWorkerJobData(rawBody);
+        if (parsed.kind !== 'ok') return NextResponse.json({ ok: true });
 
-        if (!site_id || !url) return NextResponse.json({ ok: true });
+        const job = parsed.data;
+        const site_id = job.s;
+        const client_sid = typeof job.sid === 'string' ? job.sid : '';
+        const session_month = typeof job.sm === 'string' ? job.sm : '';
+        const event_category = typeof job.ec === 'string' ? job.ec : '';
+        const event_action = typeof job.ea === 'string' ? job.ea : '';
+        const event_label = typeof job.el === 'string' ? job.el : '';
+        const event_value: number | null =
+            typeof job.ev === 'number'
+                ? (Number.isFinite(job.ev) ? job.ev : null)
+                : typeof job.ev === 'string'
+                    ? (() => {
+                        const n = Number(job.ev);
+                        return Number.isFinite(n) ? n : null;
+                    })()
+                    : null;
+        const meta: IngestMeta = (job.meta ?? {}) as IngestMeta;
+        const referrer = typeof job.r === 'string' ? job.r : null;
+        // parser guarantees ip/ua are present + sanitized (fallbacks applied)
+        const userAgent = job.ua as string;
+        const ip = job.ip as string;
+        const ingest_id = typeof job.ingest_id === 'string' ? job.ingest_id : undefined;
+        const url = getFinalUrl(job);
 
         Sentry.setTag('ingest_id', ingest_id || 'none');
         Sentry.setTag('qstash_message_id', qstashMessageId || 'none');
@@ -149,17 +184,24 @@ async function handler(req: NextRequest) {
         const { geoInfo, deviceInfo } = geoResult;
         // Producer sends geo data from Vercel/Cloudflare headers; worker has no client req
         // Override geoInfo with producer-extracted values (these come from edge headers)
-        if (rawBody.geo_city) geoInfo.city = rawBody.geo_city;
-        if (rawBody.geo_district) geoInfo.district = rawBody.geo_district;
-        if (rawBody.geo_country) geoInfo.country = rawBody.geo_country;
-        if (rawBody.geo_timezone) geoInfo.timezone = rawBody.geo_timezone;
-        if (rawBody.geo_telco_carrier) geoInfo.telco_carrier = rawBody.geo_telco_carrier;
-        if (rawBody.isp_asn != null) geoInfo.isp_asn = rawBody.isp_asn;
-        if (rawBody.is_proxy_detected != null) geoInfo.is_proxy_detected = Boolean(rawBody.is_proxy_detected);
+        if (typeof job.geo_city === 'string' && job.geo_city) geoInfo.city = job.geo_city;
+        if (typeof job.geo_district === 'string' && job.geo_district) geoInfo.district = job.geo_district;
+        if (typeof job.geo_country === 'string' && job.geo_country) geoInfo.country = job.geo_country;
+        if (typeof job.geo_timezone === 'string' && job.geo_timezone) geoInfo.timezone = job.geo_timezone;
+        if (typeof job.geo_telco_carrier === 'string' && job.geo_telco_carrier) geoInfo.telco_carrier = job.geo_telco_carrier;
+        if (job.isp_asn != null) {
+            geoInfo.isp_asn =
+                typeof job.isp_asn === 'string'
+                    ? job.isp_asn
+                    : typeof job.isp_asn === 'number'
+                        ? String(job.isp_asn)
+                        : geoInfo.isp_asn;
+        }
+        if (job.is_proxy_detected != null) geoInfo.is_proxy_detected = Boolean(job.is_proxy_detected);
 
         const urlObj = new URL(url);
         const params = urlObj.searchParams;
-        const currentGclid = params.get('gclid') || meta?.gclid;
+        const currentGclid = params.get('gclid') || meta?.gclid || null;
         const fingerprint = meta?.fp || null;
         
         // CRITICAL: dbMonth must match trigger logic (TRT timezone, month from created_at UTC)
@@ -243,7 +285,10 @@ async function handler(req: NextRequest) {
         }
 
         // DLQ for non-retryable errors; retry for transient ones
-        const ingestIdFromPayload = rawBody?.ingest_id ?? null;
+        const ingestIdFromPayload =
+            isRecord(rawBody) && typeof rawBody.ingest_id === 'string'
+                ? rawBody.ingest_id
+                : null;
         const retryable = isRetryableError(error);
         Sentry.setTag('ingest_id', ingestIdFromPayload || 'none');
         Sentry.setContext('sync_worker_error', {
@@ -262,8 +307,8 @@ async function handler(req: NextRequest) {
                         qstash_message_id: qstashMessageId,
                         dedup_event_id: dedupEventId,
                         stage: 'sync_worker',
-                        error: String((error as any)?.message || error),
-                        payload: rawBody ?? { note: 'rawBody unavailable' }
+                        error: getErrorMessage(error),
+                        payload: isRecord(rawBody) ? rawBody : { note: 'rawBody_unavailable_or_non_object' }
                     });
             } catch { /* ignore */ }
 
@@ -273,7 +318,7 @@ async function handler(req: NextRequest) {
                 qstash_message_id: qstashMessageId ?? undefined,
                 site_id: siteDbId ?? undefined,
                 dedup_event_id: dedupEventId ?? undefined,
-                error: String((error as Error)?.message ?? error),
+                error: getErrorMessage(error),
             });
             Sentry.captureException(error);
             // Return 200 so QStash won't retry a poison message.
@@ -285,7 +330,7 @@ async function handler(req: NextRequest) {
             ingest_id: ingestIdFromPayload ?? undefined,
             qstash_message_id: qstashMessageId ?? undefined,
             site_id: siteDbId ?? undefined,
-            error: String((error as Error)?.message ?? error),
+            error: getErrorMessage(error),
         });
         Sentry.captureException(error);
         return NextResponse.json({ error: 'Worker failed' }, { status: 500 });

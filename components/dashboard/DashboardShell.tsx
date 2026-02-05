@@ -11,7 +11,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats';
@@ -83,7 +82,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
-            {strings.operationsCenter.toUpperCase()} // OCI ACTIVE
+            {strings.operationsCenter.toUpperCase()} {' // OCI ACTIVE'}
           </div>
           <div className="hidden sm:block opacity-70 text-slate-500">
             LATENCY: {loading ? '...' : '12ms'}

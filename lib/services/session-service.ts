@@ -2,6 +2,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { debugLog, debugWarn } from '@/lib/utils';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import { determineTrafficSource } from '@/lib/analytics/source-classifier';
+import type { IngestMeta } from '@/lib/types/ingest';
 
 interface SessionContext {
     ip: string;
@@ -14,7 +15,7 @@ interface IncomingData {
     client_sid: string;
     url: string;
     currentGclid?: string | null;
-    meta?: Record<string, unknown>;
+    meta?: IngestMeta;
     params: URLSearchParams;
     attributionSource: string;
     deviceType: string;
@@ -97,11 +98,11 @@ export class SessionService {
                 utm_term: utm?.term ?? null,
                 utm_content: utm?.content ?? null,
                 gclid: currentGclid ?? null,
-                wbraid: params.get('wbraid') || (meta as any)?.wbraid || null,
-                gbraid: params.get('gbraid') || (meta as any)?.gbraid || null,
-                fbclid: params.get('fbclid') || (meta as any)?.fbclid || null,
-                ttclid: params.get('ttclid') || (meta as any)?.ttclid || null,
-                msclkid: params.get('msclkid') || (meta as any)?.msclkid || null,
+                wbraid: params.get('wbraid') || meta?.wbraid || null,
+                gbraid: params.get('gbraid') || meta?.gbraid || null,
+                fbclid: params.get('fbclid') || meta?.fbclid || null,
+                ttclid: params.get('ttclid') || meta?.ttclid || null,
+                msclkid: params.get('msclkid') || meta?.msclkid || null,
             });
 
             const updates: Record<string, unknown> = {
@@ -184,11 +185,11 @@ export class SessionService {
             utm_term: utm?.term ?? null,
             utm_content: utm?.content ?? null,
             gclid: currentGclid ?? null,
-            wbraid: params.get('wbraid') || (meta as any)?.wbraid || null,
-            gbraid: params.get('gbraid') || (meta as any)?.gbraid || null,
-            fbclid: params.get('fbclid') || (meta as any)?.fbclid || null,
-            ttclid: params.get('ttclid') || (meta as any)?.ttclid || null,
-            msclkid: params.get('msclkid') || (meta as any)?.msclkid || null,
+            wbraid: params.get('wbraid') || meta?.wbraid || null,
+            gbraid: params.get('gbraid') || meta?.gbraid || null,
+            fbclid: params.get('fbclid') || meta?.fbclid || null,
+            ttclid: params.get('ttclid') || meta?.ttclid || null,
+            msclkid: params.get('msclkid') || meta?.msclkid || null,
         });
 
         // Prompt 2.2 Returning Giant: count previous sessions with same fingerprint in last 7 days

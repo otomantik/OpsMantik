@@ -9,6 +9,7 @@
 
 import { NextRequest } from 'next/server';
 import { UAParser } from 'ua-parser-js';
+import type { IngestMeta } from '@/lib/types/ingest';
 
 export interface GeoInfo {
     city: string;
@@ -59,10 +60,22 @@ export interface GeoExtractionResult {
 export function extractGeoInfo(
     req: NextRequest | null,
     userAgent: string,
-    meta?: any
+    meta?: IngestMeta
 ): GeoExtractionResult {
     // Device & Geo Enrichment
     const parser = new UAParser(userAgent);
+
+    const toIntOrNull = (v: unknown): number | null => {
+        if (v === undefined || v === null) return null;
+        const n = typeof v === 'number' ? v : parseInt(String(v), 10);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const toFloatOrNull = (v: unknown): number | null => {
+        if (v === undefined || v === null) return null;
+        const n = typeof v === 'number' ? v : parseFloat(String(v));
+        return Number.isFinite(n) ? n : null;
+    };
 
     // Normalize device_type to desktop/mobile/tablet
     const rawDeviceType = parser.getDevice().type;
@@ -88,11 +101,11 @@ export function extractGeoInfo(
         browser_version: parser.getBrowser().version,
         // Hardware DNA from meta
         browser_language: meta?.lan || null,
-        device_memory: meta?.mem ? parseInt(meta.mem) : null,
-        hardware_concurrency: meta?.con ? parseInt(meta.con) : null,
-        screen_width: meta?.sw ? parseInt(meta.sw) : null,
-        screen_height: meta?.sh ? parseInt(meta.sh) : null,
-        pixel_ratio: meta?.dpr ? parseFloat(meta.dpr) : null,
+        device_memory: toIntOrNull(meta?.mem),
+        hardware_concurrency: toIntOrNull(meta?.con),
+        screen_width: toIntOrNull(meta?.sw),
+        screen_height: toIntOrNull(meta?.sh),
+        pixel_ratio: toFloatOrNull(meta?.dpr),
         gpu_renderer: meta?.gpu || null,
     };
 

@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdmin } from '@/lib/auth/isAdmin';
 import { adminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { Client } from '@upstash/qstash';
+import { qstash } from '@/lib/qstash/client';
 
 export const runtime = 'nodejs';
-
-const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
 
 async function getCurrentUserForAudit(): Promise<{ id: string | null; email: string | null }> {
   try {

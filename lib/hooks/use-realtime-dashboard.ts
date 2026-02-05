@@ -108,8 +108,10 @@ export function useRealtimeDashboard(
   const processedEventsRef = useRef<Set<string>>(new Set());
   const isMountedRef = useRef<boolean>(true);
   const supabaseRef = useRef(createClient());
-  const connectionPollRef = useRef<number | null>(null);
-  const activityPollRef = useRef<number | null>(null);
+  const adaptivePollRef = useRef<number | null>(null);
+  const lastAdaptiveTickAtRef = useRef<number>(0);
+  const fastBudgetRef = useRef<number>(5); // start fast, then slow down if no activity
+  const windowActiveRef = useRef<boolean>(true);
   const isLiveRef = useRef<boolean>(false);
   const callbacksRef = useRef<RealtimeDashboardCallbacks | undefined>(callbacks);
   const optionsRef = useRef<RealtimeDashboardOptions | undefined>(options);
@@ -133,10 +135,7 @@ export function useRealtimeDashboard(
 
   useEffect(() => {
     isLiveRef.current = state.isLive;
-    if (state.isLive && activityPollRef.current) {
-      window.clearInterval(activityPollRef.current);
-      activityPollRef.current = null;
-    }
+    // Once live, we stop fallback activity checks inside the adaptive loop.
   }, [state.isLive]);
 
   // Generate unique event ID for deduplication
@@ -283,7 +282,38 @@ export function useRealtimeDashboard(
       lastSignalType: type,
       eventCount: prev.eventCount + 1,
     }));
+    // Any signal => reset fast budget so UI becomes responsive again.
+    fastBudgetRef.current = 5;
   }, []);
+
+  const computeDesiredPollMs = useCallback((): number => {
+    // If the tab/window is inactive, drastically reduce polling to minimize load.
+    const isHidden = typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false;
+    const isActive = windowActiveRef.current && !isHidden;
+    if (!isActive) return 5 * 60 * 1000; // 5 minutes
+
+    // If we still have "fast budget", stay fast.
+    if (fastBudgetRef.current > 0) return 2000;
+
+    // No recent activity => slow down.
+    return 10 * 1000;
+  }, []);
+
+  const clearAdaptivePoll = useCallback(() => {
+    if (adaptivePollRef.current) {
+      window.clearTimeout(adaptivePollRef.current);
+      adaptivePollRef.current = null;
+    }
+  }, []);
+
+  const scheduleAdaptiveTick = useCallback((tick: () => Promise<void>) => {
+    clearAdaptivePoll();
+    const ms = computeDesiredPollMs();
+    adaptivePollRef.current = window.setTimeout(async () => {
+      await tick();
+      scheduleAdaptiveTick(tick);
+    }, ms);
+  }, [clearAdaptivePoll, computeDesiredPollMs]);
 
   // Subscribe to realtime updates
   useEffect(() => {
@@ -546,19 +576,19 @@ export function useRealtimeDashboard(
 
       subscriptionRef.current = channel;
 
-      // Fallback connectivity monitor: if subscribe callback doesn't fire in some runtimes,
-      // we still reflect websocket connectivity.
-      if (connectionPollRef.current) {
-        window.clearInterval(connectionPollRef.current);
-        connectionPollRef.current = null;
-      }
+      // Centralized adaptive polling loop:
+      // - tab inactive -> 5min
+      // - start fast (2s) then slow to 10s if no signals
+      // - handles both connectivity check + fallback activity detection (until live)
       if (typeof window !== 'undefined') {
-        connectionPollRef.current = window.setInterval(() => {
+        const tick = async () => {
           if (!isMountedRef.current) return;
+          lastAdaptiveTickAtRef.current = Date.now();
+
+          // 1) Connectivity check (cheap)
           try {
             const socketOpen = supabase.realtime.isConnected();
             setState((prev) => {
-              // Don't clobber explicit error states; only improve "connected" signal.
               if (socketOpen && !prev.isConnected) {
                 return { ...prev, isConnected: true, connectionStatus: prev.connectionStatus || 'SOCKET_OPEN' };
               }
@@ -567,19 +597,12 @@ export function useRealtimeDashboard(
           } catch {
             // ignore
           }
-        }, 500);
-      }
 
-      // Fallback activity monitor: if realtime payloads are gated/missed, poll a cheap SECURITY DEFINER RPC
-      // to detect new activity and flip isLive (independent of ads-only filtering).
-      if (activityPollRef.current) {
-        window.clearInterval(activityPollRef.current);
-        activityPollRef.current = null;
-      }
-      if (typeof window !== 'undefined') {
-        activityPollRef.current = window.setInterval(async () => {
-          if (!isMountedRef.current) return;
+          // 2) Activity fallback (bounded): only while not live, only when active
+          const isHidden = typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false;
+          if (isHidden || !windowActiveRef.current) return;
           if (isLiveRef.current) return;
+
           try {
             const sinceIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
             const { data } = await supabase.rpc('get_recent_intents_v1', {
@@ -594,23 +617,22 @@ export function useRealtimeDashboard(
               const r0 = rows[0] || {};
               const decision = decideAdsFromPayload(r0);
               markSignal('calls', decision.kind === 'ads');
+              return;
             }
           } catch {
             // ignore
+          } finally {
+            // If we didn't receive any signal, reduce fast budget to eventually slow down.
+            if (fastBudgetRef.current > 0) fastBudgetRef.current -= 1;
           }
-        }, 2000);
+        };
+
+        scheduleAdaptiveTick(tick);
       }
 
       return () => {
         isMountedRef.current = false;
-        if (connectionPollRef.current) {
-          window.clearInterval(connectionPollRef.current);
-          connectionPollRef.current = null;
-        }
-        if (activityPollRef.current) {
-          window.clearInterval(activityPollRef.current);
-          activityPollRef.current = null;
-        }
+        clearAdaptivePoll();
         if (subscriptionRef.current) {
           supabase.removeChannel(subscriptionRef.current);
           subscriptionRef.current = null;
@@ -632,10 +654,35 @@ export function useRealtimeDashboard(
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      clearAdaptivePoll();
       if (subscriptionRef.current) {
         supabaseRef.current.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
       }
+    };
+  }, []);
+
+  // Window/tab activity detection: throttle polling when tab is inactive.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onFocus = () => { windowActiveRef.current = true; fastBudgetRef.current = 5; };
+    const onBlur = () => { windowActiveRef.current = false; };
+    const onVisibility = () => {
+      // When coming back, reset fast budget for responsiveness.
+      if (document.visibilityState === 'visible') {
+        windowActiveRef.current = true;
+        fastBudgetRef.current = 5;
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

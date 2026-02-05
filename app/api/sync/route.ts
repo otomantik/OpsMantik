@@ -4,12 +4,12 @@ import { RateLimitService } from '@/lib/services/RateLimitService';
 import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/log';
-import { Client } from '@upstash/qstash';
+import { qstash } from '@/lib/qstash/client';
+import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
 
 export const runtime = 'nodejs';
 
 const OPSMANTIK_VERSION = '2.1.0-upstash';
-const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 export async function GET(req: NextRequest) {
@@ -118,17 +118,17 @@ export async function POST(req: NextRequest) {
     }
 
     // --- 2. Request Validation ---
-    let body;
-    try { body = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400 }); }
+    let json: unknown;
+    try { json = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400 }); }
 
-    if (!body.s || (!body.url && !body.u)) {
-        return NextResponse.json(createSyncResponse(true, 0, { status: 'skipped' }), { headers: baseHeaders });
-    }
+    const parsed = parseValidIngestPayload(json);
+    if (parsed.kind === 'invalid') return NextResponse.json({ ok: false }, { status: 400 });
+    const body = parsed.data;
 
     // --- 3. Offload to QStash ---
     // Extract headers needed for background processing (producer has client req; worker does not)
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '0.0.0.0';
-    const ua = req.headers.get('user-agent') || 'Unknown';
+    const ip = normalizeIp(req.headers.get('x-forwarded-for'));
+    const ua = normalizeUserAgent(req.headers.get('user-agent'));
     const { extractGeoInfo } = await import('@/lib/geo');
     const { geoInfo } = extractGeoInfo(req, ua, body.meta);
     const ingestId = globalThis.crypto?.randomUUID
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     Sentry.setContext('sync_producer', {
         ingest_id: ingestId,
         site_id: body.s,
-        url: body.url?.slice?.(0, 200) ?? null,
+        url: getFinalUrl(body).slice(0, 200),
     });
 
     try {

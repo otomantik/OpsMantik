@@ -2,6 +2,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
 import { computeLeadScore } from '@/lib/scoring';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
+import type { IngestMeta } from '@/lib/types/ingest';
 
 interface EventData {
     session: { id: string, created_month: string };
@@ -11,7 +12,7 @@ interface EventData {
     event_action: string;
     event_label: string;
     event_value: number | null;
-    meta: Record<string, unknown>;
+    meta: IngestMeta;
     referrer: string | null;
     currentGclid: string | null;
     attributionSource: string;
@@ -72,7 +73,8 @@ export class EventService {
                 event_category: finalCategory,
                 event_action: event_action || 'view',
                 event_label: event_label,
-                event_value: event_value ? Number(event_value) : null,
+                // Preserve 0; only null/undefined should map to null.
+                event_value: event_value != null ? Number(event_value) : null,
                 metadata: {
                     referrer,
                     ...meta,
