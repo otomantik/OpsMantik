@@ -34,12 +34,12 @@ export async function GET() {
 
 async function checkDbWithTimeout(): Promise<boolean> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return false;
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const client = createClient(url, key, { auth: { persistSession: false } });
-    const query = client.from('sites').select('id').limit(1).maybeSingle();
+    const query = client.rpc('ping');
     const timeout = new Promise<{ error: Error }>((_, reject) =>
       setTimeout(() => reject(new Error('db_timeout')), DB_CHECK_TIMEOUT_MS)
     );
