@@ -3,9 +3,10 @@ import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/RateLimitService';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 import { getRecentMonths } from '@/lib/sync-utils';
-import { debugLog, debugWarn } from '@/lib/utils';
-import { logError } from '@/lib/log';
+import { logError, logWarn } from '@/lib/log';
 import * as Sentry from '@sentry/nextjs';
+import { z } from 'zod';
+import { verifySignedRequest } from '@/lib/security/verifySignedRequest';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -18,19 +19,24 @@ const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 // Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
-type CallEventBody = {
-    site_id: string;
-    phone_number?: string | null;
-    fingerprint: string;
-    // Some clients send a generic "value" field (often null). Accept it to avoid crashes.
-    value?: number | string | null;
-    // Optional richer intent fields (preferred if client can send them)
-    intent_action?: string | null;
-    intent_target?: string | null;
-    intent_stamp?: string | null;
-    intent_page_url?: string | null;
-    click_id?: string | null;
-};
+const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
+
+// Public site_id is a 32-hex public id (not a UUID).
+const SITE_PUBLIC_ID_RE = /^[a-f0-9]{32}$/i;
+
+const CallEventSchema = z
+    .object({
+        site_id: z.string().min(1).max(64).regex(SITE_PUBLIC_ID_RE),
+        fingerprint: z.string().min(1).max(128),
+        phone_number: z.string().max(256).nullable().optional(),
+        value: z.union([z.number(), z.string(), z.null()]).optional(),
+        intent_action: z.string().max(32).nullable().optional(),
+        intent_target: z.string().max(512).nullable().optional(),
+        intent_stamp: z.string().max(128).nullable().optional(),
+        intent_page_url: z.string().max(2048).nullable().optional(),
+        click_id: z.string().max(256).nullable().optional(),
+    })
+    .strict();
 
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -93,7 +99,7 @@ export async function OPTIONS(req: NextRequest) {
 
     const headers: Record<string, string> = {
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Ops-Site-Id, X-Ops-Ts, X-Ops-Signature',
         'Access-Control-Max-Age': '86400',
         'Vary': 'Origin',
         'X-OpsMantik-Version': OPSMANTIK_VERSION,
@@ -158,11 +164,47 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // --- 0) Read raw body (for HMAC) + enforce max size ---
+        const rawBody = await req.text();
+        const rawBytes = Buffer.byteLength(rawBody, 'utf8');
+        if (rawBytes > MAX_CALL_EVENT_BODY_BYTES) {
+            return NextResponse.json(
+                { error: 'Payload too large' },
+                { status: 413, headers: baseHeaders }
+            );
+        }
+
+        // --- 1) Auth boundary: verify signature BEFORE any service-role DB call ---
+        // Step 1 assumption (documented): we bootstrap with an env secret to avoid DB calls
+        // before verification. Step 2 will move per-site secrets into private schema + rotation.
+        const envSecret = process.env.OPSMANTIK_CALL_EVENT_HMAC_SECRET || process.env.CALL_EVENT_HMAC_SECRET || '';
+        const secrets = envSecret
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
+
+        const sig = verifySignedRequest({ rawBody, headers: req.headers, secrets });
+        if (!sig.ok) {
+            logWarn('call-event signature rejected', {
+                request_id: requestId,
+                route: CALL_EVENT_ROUTE,
+                error: sig.error,
+            });
+            return NextResponse.json(
+                { error: 'Unauthorized' },
+                { status: 401, headers: baseHeaders }
+            );
+        }
+
         let bodyJson: unknown;
         try {
-            bodyJson = await req.json();
+            bodyJson = rawBody ? JSON.parse(rawBody) : {};
         } catch (e) {
-            console.error('[CALL_MATCH] Invalid JSON body', { request_id: requestId, error: String((e as Error)?.message ?? e) });
+            logWarn('call-event invalid json body', {
+                request_id: requestId,
+                route: CALL_EVENT_ROUTE,
+                error: String((e as Error)?.message ?? e),
+            });
             return NextResponse.json(
                 { error: 'Invalid JSON' },
                 { status: 400, headers: baseHeaders }
@@ -176,9 +218,25 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const body = bodyJson as CallEventBody;
-        const site_id = typeof body.site_id === 'string' ? body.site_id : '';
-        const fingerprint = typeof body.fingerprint === 'string' ? body.fingerprint : '';
+        const parsed = CallEventSchema.safeParse(bodyJson);
+        if (!parsed.success) {
+            return NextResponse.json(
+                { error: 'Invalid body' },
+                { status: 400, headers: baseHeaders }
+            );
+        }
+
+        const body = parsed.data;
+        // Enforce header/body site_id binding (prevents cross-site signature reuse).
+        if (body.site_id !== sig.siteId) {
+            return NextResponse.json(
+                { error: 'Unauthorized' },
+                { status: 401, headers: baseHeaders }
+            );
+        }
+
+        const site_id = body.site_id;
+        const fingerprint = body.fingerprint;
         const phone_number = (typeof body.phone_number === 'string' ? body.phone_number : null) ?? null;
         // Accept value=null/undefined without failing.
         const value = parseValueAllowNull(body.value);
@@ -198,7 +256,7 @@ export async function POST(req: NextRequest) {
             .single();
 
         if (siteError || !site) {
-            console.error('[CALL_MATCH] Site not found:', site_id);
+            logWarn('call-event site not found', { request_id: requestId, route: CALL_EVENT_ROUTE, site_id });
             return NextResponse.json(
                 { error: 'Site not found' },
                 { status: 404, headers: baseHeaders }
@@ -220,12 +278,14 @@ export async function POST(req: NextRequest) {
             .limit(1);
 
         if (eventsError) {
-            console.error('[CALL_MATCH] Events query error:', {
-                message: eventsError.message,
+            logError('call-event events query error', {
+                request_id: requestId,
+                route: CALL_EVENT_ROUTE,
+                site_id,
+                fingerprint,
                 code: eventsError.code,
                 details: eventsError.details,
-                fingerprint,
-                timestamp: new Date().toISOString()
+                message: eventsError.message,
             });
 
             return NextResponse.json(
@@ -243,7 +303,6 @@ export async function POST(req: NextRequest) {
         if (recentEvents && recentEvents.length > 0) {
             matchedSessionId = recentEvents[0].session_id;
             const sessionMonth = recentEvents[0].session_month;
-            debugLog('[CALL_MATCH] Found matching session:', matchedSessionId);
 
             // Validate: Check session exists and was created before match
             const { data: session, error: sessionError } = await adminClient
@@ -255,10 +314,12 @@ export async function POST(req: NextRequest) {
 
             if (sessionError || !session) {
                 // Session doesn't exist - invalid match
-                debugWarn('[CALL_MATCH] Session not found for match:', {
-                    call_id: 'pending',
+                logWarn('call-event session not found for match', {
+                    request_id: requestId,
+                    route: CALL_EVENT_ROUTE,
+                    site_id,
                     session_id: matchedSessionId,
-                    error: sessionError?.message
+                    error: sessionError?.message,
                 });
                 matchedSessionId = null;
             } else {
@@ -269,12 +330,14 @@ export async function POST(req: NextRequest) {
 
                 if (timeDiffMinutes > 2) {
                     // Suspicious: session created more than 2 minutes after match
-                    debugWarn('[CALL_MATCH] Suspicious match detected:', {
-                        call_id: 'pending',
+                    logWarn('call-event suspicious match detected', {
+                        request_id: requestId,
+                        route: CALL_EVENT_ROUTE,
+                        site_id,
                         session_id: matchedSessionId,
                         session_created_at: session.created_at,
                         matched_at: matchedAt,
-                        time_diff_minutes: timeDiffMinutes.toFixed(2)
+                        time_diff_minutes: timeDiffMinutes.toFixed(2),
                     });
                     callStatus = 'suspicious';
                 } else {
@@ -289,11 +352,13 @@ export async function POST(req: NextRequest) {
                     .eq('session_month', sessionMonth);
 
                 if (sessionEventsError) {
-                    console.error('[CALL_MATCH] Session events query error:', {
-                        message: sessionEventsError.message,
-                        code: sessionEventsError.code,
+                    logError('call-event session events query error', {
+                        request_id: requestId,
+                        route: CALL_EVENT_ROUTE,
+                        site_id,
                         session_id: matchedSessionId,
-                        timestamp: new Date().toISOString()
+                        code: sessionEventsError.code,
+                        message: sessionEventsError.message,
                     });
 
                     return NextResponse.json(
@@ -374,12 +439,14 @@ export async function POST(req: NextRequest) {
             .single();
 
         if (insertError) {
-            console.error('[CALL_MATCH] Insert failed:', {
-                message: insertError.message,
+            logError('call-event insert failed', {
+                request_id: requestId,
+                route: CALL_EVENT_ROUTE,
+                site_id,
                 code: insertError.code,
                 details: insertError.details,
                 hint: insertError.hint,
-                request_id: requestId,
+                message: insertError.message,
             });
             return NextResponse.json(
                 { error: 'Failed to record call' },
@@ -405,10 +472,6 @@ export async function POST(req: NextRequest) {
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('[CALL_MATCH] Unhandled error:', {
-            message: errorMessage,
-            request_id: requestId,
-        });
         logError(errorMessage, { request_id: requestId, route: CALL_EVENT_ROUTE });
         Sentry.captureException(error, { tags: { request_id: requestId, route: CALL_EVENT_ROUTE } });
 
