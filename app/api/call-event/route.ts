@@ -6,7 +6,6 @@ import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/log';
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
-import { verifySignedRequest } from '@/lib/security/verifySignedRequest';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -175,25 +174,44 @@ export async function POST(req: NextRequest) {
         }
 
         // --- 1) Auth boundary: verify signature BEFORE any service-role DB call ---
-        // Step 1 assumption (documented): we bootstrap with an env secret to avoid DB calls
-        // before verification. Step 2 will move per-site secrets into private schema + rotation.
-        const envSecret = process.env.OPSMANTIK_CALL_EVENT_HMAC_SECRET || process.env.CALL_EVENT_HMAC_SECRET || '';
-        const secrets = envSecret
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean);
+        const headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
+        const headerTs = (req.headers.get('x-ops-ts') || '').trim();
+        const headerSig = (req.headers.get('x-ops-signature') || '').trim();
 
-        const sig = verifySignedRequest({ rawBody, headers: req.headers, secrets });
-        if (!sig.ok) {
+        // Fast validation (fail-closed)
+        if (!headerSiteId || !SITE_PUBLIC_ID_RE.test(headerSiteId) || !/^\d{9,12}$/.test(headerTs) || !/^[0-9a-f]{64}$/i.test(headerSig)) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+        }
+
+        const tsNum = Number(headerTs);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (!Number.isFinite(tsNum) || nowSec - tsNum > 300 || tsNum - nowSec > 60) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+        }
+
+        // Verify signature via DB (boolean only; secrets never leave DB).
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!url || !anonKey) {
+            logError('call-event verifier misconfigured (missing supabase env)', { request_id: requestId, route: CALL_EVENT_ROUTE });
+            return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+        }
+        const { createClient } = await import('@supabase/supabase-js');
+        const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
+        const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
+            p_site_public_id: headerSiteId,
+            p_ts: tsNum,
+            p_raw_body: rawBody,
+            p_signature: headerSig,
+        });
+        if (sigErr || sigOk !== true) {
             logWarn('call-event signature rejected', {
                 request_id: requestId,
                 route: CALL_EVENT_ROUTE,
-                error: sig.error,
+                site_id: headerSiteId,
+                error: sigErr?.message,
             });
-            return NextResponse.json(
-                { error: 'Unauthorized' },
-                { status: 401, headers: baseHeaders }
-            );
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
         }
 
         let bodyJson: unknown;
@@ -228,7 +246,7 @@ export async function POST(req: NextRequest) {
 
         const body = parsed.data;
         // Enforce header/body site_id binding (prevents cross-site signature reuse).
-        if (body.site_id !== sig.siteId) {
+        if (body.site_id !== headerSiteId) {
             return NextResponse.json(
                 { error: 'Unauthorized' },
                 { status: 401, headers: baseHeaders }
