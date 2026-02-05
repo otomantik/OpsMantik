@@ -7,12 +7,18 @@ import * as Sentry from "@sentry/nextjs";
 import { scrubEventPii } from "@/lib/sentry-pii";
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
+const tracesSampleRate = (() => {
+  const raw = process.env.SENTRY_TRACES_SAMPLE_RATE;
+  const n = raw != null && raw !== "" ? Number(raw) : NaN;
+  if (Number.isFinite(n)) return Math.max(0, Math.min(1, n));
+  return process.env.NODE_ENV === "production" ? 0.05 : 1.0;
+})();
 
 Sentry.init({
   dsn: dsn || undefined,
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
+  tracesSampleRate,
 
   // Enable logs to be sent to Sentry
   enableLogs: true,
