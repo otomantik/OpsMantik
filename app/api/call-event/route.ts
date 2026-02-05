@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/RateLimitService';
+import { ReplayCacheService } from '@/lib/services/ReplayCacheService';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/log';
@@ -203,10 +204,11 @@ export async function POST(req: NextRequest) {
             process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
 
         let headerSiteId = '';
+        let headerSig = '';
         if (!signingDisabled) {
             headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
             const headerTs = (req.headers.get('x-ops-ts') || '').trim();
-            const headerSig = (req.headers.get('x-ops-signature') || '').trim();
+            headerSig = (req.headers.get('x-ops-signature') || '').trim();
 
             // Fast validation (fail-closed)
             if (
@@ -318,20 +320,30 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 1. Validate Site
-        const { data: site, error: siteError } = await adminClient
-            .from('sites')
-            .select('id')
-            .eq('id', site_id)
-            .single();
-
-        if (siteError || !site) {
-            logWarn('call-event site not found', { request_id: requestId, route: CALL_EVENT_ROUTE, site_id });
-            return NextResponse.json(
-                { error: 'Site not found' },
-                { status: 404, headers: baseHeaders }
-            );
+        // Replay cache (stronger than timestamp window). Degraded mode falls back locally on redis errors.
+        const replayKey = ReplayCacheService.makeReplayKey({ siteId: site_id, eventId: event_id, signature: headerSig || null });
+        const replay = await ReplayCacheService.checkAndStore(replayKey, 10 * 60 * 1000, { mode: 'degraded', namespace: 'call-event' });
+        if (replay.isReplay) {
+            // Best-effort: if event_id is present, return existing call id to help client-side correlation.
+            if (event_id) {
+                const { data: existing } = await adminClient
+                    .from('calls')
+                    .select('id, matched_session_id, lead_score')
+                    .eq('site_id', site_id)
+                    .eq('event_id', event_id)
+                    .single();
+                if (existing?.id) {
+                    return NextResponse.json(
+                        { status: 'noop', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: existing.lead_score ?? null },
+                        { headers: baseHeaders }
+                    );
+                }
+            }
+            return NextResponse.json({ status: 'noop' }, { status: 200, headers: baseHeaders });
         }
+
+        // We already validated existence via resolve_site_identifier_v1; use canonical UUID directly.
+        const site = { id: site_id } as const;
 
         // 2. Find most recent session for this fingerprint (within last 30 minutes)
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
