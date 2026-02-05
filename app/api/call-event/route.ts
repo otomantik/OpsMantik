@@ -7,6 +7,9 @@ import { debugLog, debugWarn } from '@/lib/utils';
 import { logError } from '@/lib/log';
 import * as Sentry from '@sentry/nextjs';
 
+// Ensure Node.js runtime (uses process.env + supabase-js).
+export const runtime = 'nodejs';
+
 export const dynamic = 'force-dynamic';
 
 // Global version for debug verification
