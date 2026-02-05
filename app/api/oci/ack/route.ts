@@ -1,0 +1,71 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { adminClient } from '@/lib/supabase/admin';
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * POST /api/oci/ack
+ *
+ * Two-phase commit ACK endpoint for OCI pull strategy.
+ * The client (e.g., Google Ads Script) should call this AFTER it successfully uploads conversions.
+ *
+ * Auth: x-api-key must match OCI_API_KEY (same as export-batch).
+ * Body: { site_id: string, call_ids: string[] }
+ *
+ * Side effect: Marks ONLY provided call_ids as oci_status='uploaded' (site-scoped).
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const apiKey = req.headers.get('x-api-key');
+    const envKey = process.env.OCI_API_KEY;
+
+    if (!envKey || apiKey !== envKey) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Invalid or missing API Key' },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const siteId = typeof body?.site_id === 'string' ? body.site_id : '';
+    const callIdsRaw = Array.isArray(body?.call_ids) ? body.call_ids : [];
+    const callIds = callIdsRaw
+      .map((x: unknown) => (typeof x === 'string' ? x.trim() : ''))
+      .filter((x: string) => x.length > 0);
+
+    if (!siteId) {
+      return NextResponse.json({ error: 'Missing site_id' }, { status: 400 });
+    }
+    if (callIds.length === 0) {
+      return NextResponse.json({ error: 'Missing call_ids' }, { status: 400 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const batchId = crypto.randomUUID();
+
+    const { error } = await adminClient
+      .from('calls')
+      .update({
+        oci_status: 'uploaded',
+        oci_uploaded_at: nowIso,
+        oci_status_updated_at: nowIso,
+        oci_batch_id: batchId,
+        oci_error: null,
+      })
+      .in('id', callIds)
+      .eq('site_id', siteId);
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'ACK update failed', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, site_id: siteId, updated: callIds.length, batch_id: batchId });
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
+  }
+}
+

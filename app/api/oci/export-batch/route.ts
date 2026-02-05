@@ -108,12 +108,9 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. Build JSON for Google Ads Script (with proxy conversion value)
-    const batchId = crypto.randomUUID();
-    const nowIso = new Date().toISOString();
     // Conversion name: Google Ads’teki Offline Conversion aksiyon adıyla birebir aynı olmalı.
     const conversionName = process.env.OCI_CONVERSION_NAME || 'Sealed Lead';
 
-    const exportedCallIds: string[] = [];
     const jsonOutput: Array<{
       gclid: string;
       gbraid: string;
@@ -158,7 +155,6 @@ export async function GET(req: NextRequest) {
       // Do not send 0 to Google for qualified leads (ROAS bidding fails)
       const value = conversionValue > 0 ? conversionValue : 1;
 
-      exportedCallIds.push(String(row.id));
       const rawTime = String(row.confirmed_at || row.created_at || '');
 
       jsonOutput.push({
@@ -170,25 +166,6 @@ export async function GET(req: NextRequest) {
         value,
         currency,
       });
-    }
-
-    // 6. DURUM GÜNCELLEME (Mark as uploaded – script tekrar aynı satırları çekmesin)
-    if (exportedCallIds.length > 0) {
-      const { error: updError } = await adminClient
-        .from('calls')
-        .update({
-          oci_status: 'uploaded',
-          oci_uploaded_at: nowIso,
-          oci_status_updated_at: nowIso,
-          oci_batch_id: batchId,
-          oci_error: null,
-        })
-        .in('id', exportedCallIds)
-        .eq('site_id', siteId);
-
-      if (updError) {
-        console.error('[OCI export-batch] Update error:', updError);
-      }
     }
 
     return NextResponse.json(jsonOutput);
