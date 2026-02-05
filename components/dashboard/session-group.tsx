@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
 import { formatTimestamp, debugLog } from '@/lib/utils';
 import { formatLocation } from '@/lib/utils/format-location';
+import { logger } from '@/lib/logging/logger';
 
 interface Event {
   id: string;
@@ -322,7 +323,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     try {
       await navigator.clipboard.writeText(sessionId);
     } catch (err) {
-      console.error('[SESSION_GROUP] Failed to copy session ID:', err);
+      logger.error('SESSION_GROUP failed to copy session ID', { error: String((err as Error)?.message ?? err) });
     }
   };
 
@@ -331,7 +332,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     try {
       await navigator.clipboard.writeText(fullFingerprint);
     } catch (err) {
-      console.error('[SESSION_GROUP] Failed to copy fingerprint:', err);
+      logger.error('SESSION_GROUP failed to copy fingerprint', { error: String((err as Error)?.message ?? err) });
     }
   };
 

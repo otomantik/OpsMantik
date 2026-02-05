@@ -9,6 +9,7 @@ import { strings } from '@/lib/i18n/en';
 import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/QualificationQueue/parsers';
 import type { ActivityRow } from '@/components/dashboard/QualificationQueue/ActivityLogInline';
+import { logger } from '@/lib/logging/logger';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 
@@ -143,7 +144,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
             p_limit: 50,
           });
           if (legacy.error) {
-            console.warn('[fetchKillFeed] legacy RPC error:', legacy.error);
+            logger.warn('fetchKillFeed legacy RPC error', { error: legacy.error });
             return;
           }
           const legacyRows = Array.isArray(legacy.data) ? (legacy.data as any[]) : [];
@@ -172,7 +173,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
           return;
         }
 
-        console.warn('[fetchKillFeed] RPC error:', rpcError);
+        logger.warn('fetchKillFeed RPC error', { error: rpcError });
         return;
       }
       if (!data) return;
@@ -215,7 +216,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         .filter((x: any) => x.id && x.call_id && x.at);
       setHistory(feed);
     } catch (err) {
-      console.warn('[fetchKillFeed] Error:', err);
+      logger.warn('fetchKillFeed error', { error: String((err as Error)?.message ?? err) });
     }
   }, [siteId]);
 
