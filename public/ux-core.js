@@ -323,6 +323,32 @@
     addToOutbox(payload);
   }
 
+  // Call Event API — Phone/WhatsApp tıklamalarını calls tablosuna kaydet
+  function sendCallEvent(phoneNumber) {
+    var session = getOrCreateSession();
+    var callEventUrl = window.location.origin + '/api/call-event';
+    
+    // Fire-and-forget async call (non-blocking)
+    fetch(callEventUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site_id: siteId,
+        phone_number: phoneNumber,
+        fingerprint: session.fingerprint
+      }),
+      keepalive: true
+    }).then(function(response) {
+      if (response.ok) {
+        console.log('[OPSMANTIK] Call event recorded:', phoneNumber.slice(0, 15) + '...');
+      } else {
+        console.warn('[OPSMANTIK] Call event failed:', response.status);
+      }
+    }).catch(function(err) {
+      console.warn('[OPSMANTIK] Call event network error:', err.message);
+    });
+  }
+
   // Auto-tracking
   function initAutoTracking() {
     console.log('[OPSMANTIK] Auto-tracking initialized');
@@ -339,6 +365,8 @@
           intent_stamp,
           intent_action: 'phone_call',
         });
+        // Also record to calls table via /api/call-event
+        sendCallEvent(target.href);
       }
     });
 
@@ -351,6 +379,8 @@
           intent_stamp,
           intent_action: 'whatsapp',
         });
+        // Also record to calls table via /api/call-event
+        sendCallEvent(target.href);
       }
     });
 
