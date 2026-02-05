@@ -66,8 +66,12 @@ export async function GET(req: NextRequest) {
     }
 
     const redisKeyId = site.public_id || site.id;
+    const timezoneHeader = req.headers.get('x-timezone');
+    const timezone = typeof timezoneHeader === 'string' && timezoneHeader.trim().length > 0
+        ? timezoneHeader.trim()
+        : undefined;
     try {
-        const stats = await StatsService.getRealtimeStats(redisKeyId);
+        const stats = await StatsService.getRealtimeStats(redisKeyId, undefined, timezone);
         return NextResponse.json(stats);
     } catch (error) {
         console.error('[STATS_REALTIME] Redis error:', error);

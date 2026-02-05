@@ -3,7 +3,7 @@ import { isAdmin } from '@/lib/auth/isAdmin';
 import { StatsService } from '@/lib/services/stats-service';
 import { SiteService } from '@/lib/services/site-service';
 import { adminClient } from '@/lib/supabase/admin';
-import { getTodayTrtDateKey, trtDateKeyToUtcRange } from '@/lib/time/today-range';
+import { DEFAULT_TIMEZONE, dateKeyToUtcRange, getTodayDateKey } from '@/lib/time/today-range';
 
 export const runtime = 'nodejs';
 
@@ -19,18 +19,20 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const siteId = searchParams.get('siteId'); // public_id used by Redis keys
-  const dateKey = searchParams.get('date') || getTodayTrtDateKey();
+  const tzHeader = req.headers.get('x-timezone');
+  const timezone = typeof tzHeader === 'string' && tzHeader.trim().length > 0 ? tzHeader.trim() : DEFAULT_TIMEZONE;
+  const dateKey = searchParams.get('date') || getTodayDateKey(timezone);
 
   if (!siteId) {
     return NextResponse.json({ error: 'siteId required' }, { status: 400 });
   }
 
   try {
-    const { fromIso, toIso } = trtDateKeyToUtcRange(dateKey);
+    const { fromIso, toIso } = dateKeyToUtcRange(dateKey, timezone);
     const monthStart = monthStartFromDateKey(dateKey);
 
     // Redis (hot counters)
-    const redis = await StatsService.getRealtimeStats(siteId, dateKey);
+    const redis = await StatsService.getRealtimeStats(siteId, dateKey, timezone);
 
     // Map public siteId -> DB site uuid
     const { valid, site } = await SiteService.validateSite(siteId);

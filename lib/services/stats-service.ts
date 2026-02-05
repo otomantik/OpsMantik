@@ -1,22 +1,21 @@
 import { redis } from '@/lib/upstash';
+import { DEFAULT_TIMEZONE, getTodayDateKey } from '@/lib/time/today-range';
 
 export class StatsService {
-    private static getTodayKey(): string {
-        const trtDate = new Date().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' });
-        // Format: DD.MM.YYYY
-        return trtDate.split('.').reverse().join('-'); // YYYY-MM-DD
+    private static getTodayKey(timezone: string = DEFAULT_TIMEZONE): string {
+        return getTodayDateKey(timezone);
     }
 
-    private static getBaseKey(siteId: string, dateStr?: string): string {
-        const date = dateStr || this.getTodayKey();
+    private static getBaseKey(siteId: string, dateStr?: string, timezone: string = DEFAULT_TIMEZONE): string {
+        const date = dateStr || this.getTodayKey(timezone);
         return `stats:${siteId}:${date}`;
     }
 
     /**
      * Atomically increment captured intents
      */
-    static async incrementCaptured(siteId: string, isGclid: boolean = false) {
-        const key = this.getBaseKey(siteId);
+    static async incrementCaptured(siteId: string, isGclid: boolean = false, timezone: string = DEFAULT_TIMEZONE) {
+        const key = this.getBaseKey(siteId, undefined, timezone);
         const pipeline = redis.pipeline();
 
         pipeline.hincrby(key, 'captured', 1);
@@ -33,16 +32,16 @@ export class StatsService {
     /**
      * Increment junk filter count
      */
-    static async incrementJunk(siteId: string) {
-        const key = this.getBaseKey(siteId);
+    static async incrementJunk(siteId: string, timezone: string = DEFAULT_TIMEZONE) {
+        const key = this.getBaseKey(siteId, undefined, timezone);
         await redis.hincrby(key, 'junk', 1);
     }
 
     /**
      * Fetch real-time stats from Redis
      */
-    static async getRealtimeStats(siteId: string, dateStr?: string) {
-        const key = this.getBaseKey(siteId, dateStr);
+    static async getRealtimeStats(siteId: string, dateStr?: string, timezone: string = DEFAULT_TIMEZONE) {
+        const key = this.getBaseKey(siteId, dateStr, timezone);
         const data = await redis.hgetall(key);
 
         if (!data) return { captured: 0, gclid: 0, junk: 0 };

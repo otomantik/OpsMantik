@@ -43,8 +43,24 @@ export class RateLimitService {
     }
 
     static getClientId(req: Request): string {
-        const forwarded = req.headers.get('x-forwarded-for');
-        const ip = forwarded ? forwarded.split(',')[0] : 'unknown';
-        return ip;
+        // Prefer edge/CDN headers to avoid masking real client IP.
+        // Cloudflare: cf-connecting-ip is the true client IP.
+        const cfIp = req.headers.get('cf-connecting-ip');
+        const xff = req.headers.get('x-forwarded-for');
+        const xRealIp = req.headers.get('x-real-ip');
+        const trueClientIp = req.headers.get('true-client-ip');
+
+        const ip =
+            (cfIp && cfIp.trim()) ||
+            (xff && xff.split(',')[0]?.trim()) ||
+            (xRealIp && xRealIp.trim()) ||
+            (trueClientIp && trueClientIp.trim()) ||
+            'unknown';
+
+        // NAT mitigation: include a small UA slice so one office IP doesn't instantly block everyone.
+        const ua = req.headers.get('user-agent') || '';
+        const uaKey = ua.trim().slice(0, 64);
+
+        return `${ip}|${uaKey}`;
     }
 }
