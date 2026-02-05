@@ -9,7 +9,7 @@ import { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
-import { cn, formatTimestamp } from '@/lib/utils';
+import { cn, formatTimestamp, formatRelativeTime } from '@/lib/utils';
 import { strings } from '@/lib/i18n/en';
 import { HunterCard } from './HunterCard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
@@ -355,9 +355,11 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     Array<{
       id: string;
       at: string;
-      status: 'confirmed' | 'junk';
+      status: 'confirmed' | 'junk' | 'cancelled';
       intent_action: string | null;
       identity: string | null;
+      sale_amount?: number | null;
+      currency?: string | null;
     }>
   >([]);
 
@@ -386,6 +388,37 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     }
     return null;
   }, [detailsById, siteId]);
+
+  const fetchKillFeed = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data, error: rpcError } = await supabase.rpc('get_kill_feed_v1', {
+        p_site_id: siteId,
+        p_hours_back: 24,
+        p_limit: 50,
+      });
+      if (rpcError) {
+        console.warn('[fetchKillFeed] RPC error:', rpcError);
+        return;
+      }
+      if (!data) return;
+      
+      // Parse jsonb array
+      const rows = Array.isArray(data) ? data : [];
+      const feed = rows.map((r: any) => ({
+        id: r.id,
+        at: r.action_at || r.created_at,
+        status: r.status as 'confirmed' | 'junk' | 'cancelled',
+        intent_action: r.intent_action ?? null,
+        identity: r.intent_target ?? null,
+        sale_amount: r.sale_amount ?? null,
+        currency: r.currency ?? null,
+      }));
+      setHistory(feed);
+    } catch (err) {
+      console.warn('[fetchKillFeed] Error:', err);
+    }
+  }, [siteId]);
 
   const fetchUnscoredIntents = useCallback(async () => {
     try {
@@ -517,7 +550,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   // Initial fetch
   useEffect(() => {
     fetchUnscoredIntents();
-  }, [fetchUnscoredIntents]);
+    fetchKillFeed();
+  }, [fetchUnscoredIntents, fetchKillFeed]);
 
   // Realtime updates: refetch when new intents arrive
   useRealtimeDashboard(
@@ -525,9 +559,11 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     {
       onCallCreated: () => {
         fetchUnscoredIntents();
+        fetchKillFeed();
       },
       onCallUpdated: () => {
         fetchUnscoredIntents();
+        fetchKillFeed();
       },
     },
     // Holistic View: always ALL traffic
@@ -591,11 +627,10 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         const j = await res.json().catch(() => ({}));
         throw new Error((j as { error?: string }).error || res.statusText);
       }
-      // Optimistically remove from history
-      setHistory((prev) => prev.filter((h) => h.id !== callId));
       pushToast('success', 'Restored to queue.');
-      // Refresh to show it back in the queue
+      // Refresh both queue and kill feed
       fetchUnscoredIntents();
+      fetchKillFeed();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to restore';
       pushToast('danger', msg);
@@ -606,7 +641,34 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         return next;
       });
     }
-  }, [fetchUnscoredIntents, pushToast]);
+  }, [fetchUnscoredIntents, fetchKillFeed, pushToast]);
+
+  const cancelDeal = useCallback(async (callId: string) => {
+    setRestoringIds((prev) => new Set(prev).add(callId));
+    try {
+      const res = await fetch(`/api/intents/${callId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled', lead_score: 0 }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error || res.statusText);
+      }
+      pushToast('success', 'Deal cancelled.');
+      // Refresh kill feed to show updated status
+      fetchKillFeed();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to cancel';
+      pushToast('danger', msg);
+    } finally {
+      setRestoringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(callId);
+        return next;
+      });
+    }
+  }, [fetchKillFeed, pushToast]);
 
   if (loading) {
     return (
@@ -736,12 +798,20 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     return Icons.circleDot;
   }
 
-  function statusBadge(status: 'confirmed' | 'junk') {
+  function statusBadge(status: 'confirmed' | 'junk' | 'cancelled') {
     if (status === 'confirmed') {
       return (
         <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
           <CheckCircle2 className="h-3 w-3" />
           Sealed
+        </span>
+      );
+    }
+    if (status === 'cancelled') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+          <XOctagon className="h-3 w-3" />
+          Cancelled
         </span>
       );
     }
@@ -850,25 +920,26 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                   const faded = idx >= 7;
                   const isRestoring = restoringIds.has(h.id);
                   const canRestore = h.status === 'junk';
+                  const canCancel = h.status === 'confirmed';
                   return (
                     <div
                       key={`${h.id}-${h.at}`}
                       className={cn(
-                        'flex items-center justify-between gap-3',
+                        'flex items-center justify-between gap-2',
                         faded && 'opacity-60',
                         isRestoring && 'opacity-50'
                       )}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="text-xs tabular-nums text-muted-foreground w-[64px] shrink-0" suppressHydrationWarning>
-                          {formatTimestamp(h.at, { hour: '2-digit', minute: '2-digit' })}
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="text-xs tabular-nums text-muted-foreground w-[52px] shrink-0" suppressHydrationWarning>
+                          {formatRelativeTime(h.at)}
                         </div>
                         <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
                         <div className="text-sm font-medium tabular-nums truncate">
                           {h.identity || '—'}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {statusBadge(h.status)}
                         {canRestore && (
                           <button
@@ -879,6 +950,17 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                             title="Restore to queue"
                           >
                             <Undo2 className="h-3.5 w-3.5 text-slate-600" />
+                          </button>
+                        )}
+                        {canCancel && (
+                          <button
+                            type="button"
+                            className="p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
+                            onClick={() => cancelDeal(h.id)}
+                            disabled={isRestoring}
+                            title="Cancel deal"
+                          >
+                            <XOctagon className="h-3.5 w-3.5 text-red-600" />
                           </button>
                         )}
                       </div>

@@ -4,7 +4,7 @@
  * Updates the status of a call (intent) in the calls table.
  * 
  * POST /api/intents/[id]/status
- * Body: { status: 'confirmed' | 'qualified' | 'real' | 'junk' | 'suspicious' }
+ * Body: { status: 'confirmed' | 'qualified' | 'real' | 'junk' | 'suspicious' | 'cancelled' | 'intent' }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -36,11 +36,11 @@ export async function POST(
     logInfo('intent status request', { request_id: requestId, route, user_id: user.id });
 
     const body = await req.json();
-    const { status } = body;
+    const { status, lead_score } = body;
     const { id: callId } = await params;
 
     // Validate status
-    const validStatuses = ['confirmed', 'qualified', 'real', 'junk', 'suspicious', 'intent'];
+    const validStatuses = ['confirmed', 'qualified', 'real', 'junk', 'suspicious', 'cancelled', 'intent'];
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json(
         { error: 'Invalid status' },
@@ -88,8 +88,19 @@ export async function POST(
     // Set confirmed_at if status is confirmed/qualified/real
     if (['confirmed', 'qualified', 'real'].includes(status)) {
       updateData.confirmed_at = new Date().toISOString();
+      updateData.cancelled_at = null;
+    } else if (status === 'cancelled') {
+      // Set cancelled_at for cancelled status
+      updateData.cancelled_at = new Date().toISOString();
     } else {
+      // Clear both for other statuses (junk, intent, etc.)
       updateData.confirmed_at = null;
+      updateData.cancelled_at = null;
+    }
+
+    // Update lead_score if provided
+    if (lead_score !== undefined) {
+      updateData.lead_score = lead_score;
     }
 
     const { data: updatedCall, error: updateError } = await adminClient

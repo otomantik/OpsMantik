@@ -149,6 +149,35 @@ export function formatTimestampWithTZ(
   return `${formatted} (TRT)`;
 }
 
+/**
+ * Format relative time (e.g., "5m ago", "2h ago", "3d ago")
+ * 
+ * @param ts - ISO timestamp string or null
+ * @returns Relative time string or "—" for null
+ */
+export function formatRelativeTime(ts: string | null | undefined): string {
+  if (!ts) return '—';
+  try {
+    const date = new Date(ts);
+    if (isNaN(date.getTime())) return '—';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHour < 24) return `${diffHour}h ago`;
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return formatTimestamp(ts, { month: 'short', day: 'numeric' });
+  } catch {
+    return '—';
+  }
+}
+
 // Expose globally for external calls
 if (typeof window !== 'undefined') {
   (window as any).jumpToSession = jumpToSession;
