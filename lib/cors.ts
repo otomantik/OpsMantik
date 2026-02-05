@@ -15,7 +15,7 @@
  */
 export function parseAllowedOrigins(): string[] {
   const raw = process.env.ALLOWED_ORIGINS;
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'production';
 
   // Fail-closed in production
   if (isProduction) {
@@ -42,9 +42,9 @@ export function parseAllowedOrigins(): string[] {
     return ['*'];
   }
 
-  // Warn if wildcard found in production
+  // Hard-fail if wildcard found in production
   if (isProduction && origins.includes('*')) {
-    console.warn('[CORS] ⚠️ WARNING: Wildcard (*) found in ALLOWED_ORIGINS in production. This allows all origins and is a security risk.');
+    throw new Error('Security Risk: Wildcard CORS is not allowed in production.');
   }
 
   return origins;

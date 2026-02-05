@@ -47,20 +47,23 @@ BEGIN
       c.lead_score,
       c.sale_amount,
       c.currency,
-      COALESCE(a.metadata->'meta'->>'reason', a.metadata->>'reason') AS reason,
-      (a.id = (
-        SELECT a2.id
-        FROM public.call_actions a2
-        WHERE a2.call_id = a.call_id
-        ORDER BY a2.created_at DESC, a2.id DESC
-        LIMIT 1
-      )) AS is_latest_for_call
+      COALESCE(a.metadata->'meta'->>'reason', a.metadata->>'reason') AS reason
     FROM public.call_actions a
     JOIN public.calls c ON c.id = a.call_id
     WHERE a.site_id = p_site_id
       AND a.created_at >= v_from
       AND (p_action_types IS NULL OR a.action_type = ANY(p_action_types))
-    ORDER BY a.created_at DESC, a.id DESC
+  ),
+  ranked AS (
+    SELECT
+      b.*,
+      ROW_NUMBER() OVER (PARTITION BY b.call_id ORDER BY b.created_at DESC, b.id DESC) AS rn
+    FROM base b
+  ),
+  limited AS (
+    SELECT *
+    FROM ranked
+    ORDER BY created_at DESC, id DESC
     LIMIT v_limit
   )
   SELECT jsonb_agg(
@@ -79,12 +82,12 @@ BEGIN
       'sale_amount', sale_amount,
       'currency', currency,
       'reason', reason,
-      'is_latest_for_call', is_latest_for_call
+      'is_latest_for_call', (rn = 1)
     )
     ORDER BY created_at DESC
   )
   INTO v_rows
-  FROM base;
+  FROM limited;
 
   RETURN COALESCE(v_rows, '[]'::jsonb);
 END;
