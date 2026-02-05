@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { calculateLeadValue } from '@/lib/valuation/calculator';
+import { RateLimitService } from '@/lib/services/RateLimitService';
+import { timingSafeCompare } from '@/lib/security/timingSafeCompare';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 /**
  * GET /api/oci/export-batch?siteId=<uuid>
@@ -13,15 +16,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: NextRequest) {
   try {
-    // 1. GÜVENLİK: API Key Kontrolü (Cookie/Session yerine)
-    const apiKey = req.headers.get('x-api-key');
-    const envKey = process.env.OCI_API_KEY;
+    // 1. SECURITY: API Key auth (timing-safe, generic 401 on fail)
+    const apiKey = (req.headers.get('x-api-key') || '').trim();
+    const envKey = (process.env.OCI_API_KEY || '').trim();
+    const authed = Boolean(envKey) && timingSafeCompare(apiKey, envKey);
 
-    if (!envKey || apiKey !== envKey) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Invalid or missing API Key' },
-        { status: 401 }
-      );
+    if (!authed) {
+      // Stricter throttling on auth failures (response stays generic 401).
+      const clientId = RateLimitService.getClientId(req);
+      await RateLimitService.check(`oci-authfail:${clientId}`, 10, 60 * 1000);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // 2. PARAMETRELER
