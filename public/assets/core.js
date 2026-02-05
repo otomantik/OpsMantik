@@ -335,26 +335,48 @@
     const callEventUrl = isLocalhost
       ? window.location.origin + '/api/call-event'
       : 'https://console.opsmantik.com/api/call-event';
-    
-    // Fire-and-forget async call (non-blocking)
-    fetch(callEventUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        site_id: siteId,
-        phone_number: phoneNumber,
-        fingerprint: session.fingerprint
-      }),
-      keepalive: true
-    }).then(response => {
-      if (response.ok) {
-        console.log('[OPSMANTIK] Call event recorded:', phoneNumber.slice(0, 15) + '...');
-      } else {
-        console.warn('[OPSMANTIK] Call event failed:', response.status);
-      }
-    }).catch(err => {
-      console.warn('[OPSMANTIK] Call event network error:', err.message);
+
+    // Signed request (HMAC-SHA256): requires data-ops-secret on script tag
+    const secret =
+      (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-secret')) ||
+      (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsSecret) ||
+      '';
+    if (!secret || !window.crypto || !window.crypto.subtle) return;
+
+    const ts = Math.floor(Date.now() / 1000);
+    const rawBody = JSON.stringify({
+      site_id: siteId,
+      phone_number: phoneNumber,
+      fingerprint: session.fingerprint,
     });
+
+    const enc = new TextEncoder();
+    const msg = ts + '.' + rawBody;
+
+    // Fire-and-forget async call (non-blocking)
+    window.crypto.subtle
+      .importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+      .then((key) => window.crypto.subtle.sign('HMAC', key, enc.encode(msg)))
+      .then((sigBuf) => {
+        const bytes = new Uint8Array(sigBuf);
+        let hex = '';
+        for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+
+        return fetch(callEventUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Ops-Site-Id': siteId,
+            'X-Ops-Ts': String(ts),
+            'X-Ops-Signature': hex,
+          },
+          body: rawBody,
+          keepalive: true,
+        });
+      })
+      .catch(() => {
+        // silent: do not block UX
+      });
   }
 
   // Auto-tracking
