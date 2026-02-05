@@ -188,7 +188,12 @@ function ActiveDeckCard({
   }) => void;
 }) {
   // Hook must be called unconditionally (no conditional wrapper).
-  const { qualify, saving } = useIntentQualification(siteId, intent.id, intent.matched_session_id ?? null);
+  const { qualify, saving } = useIntentQualification(
+    siteId,
+    intent.id,
+    intent.matched_session_id ?? null,
+    onQualified // Pass refetch callback for undo success
+  );
 
   const fireQualify = (params: { score: 0 | 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }) => {
     // Fire-and-forget background update; keep UI native-fast.
@@ -340,11 +345,6 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const [detailsById, setDetailsById] = useState<Record<string, HunterIntent>>({});
   const [sealModalOpen, setSealModalOpen] = useState(false);
   const [intentForSeal, setIntentForSeal] = useState<HunterIntent | null>(null);
-  const { qualify: qualifyModalIntent } = useIntentQualification(
-    siteId,
-    intentForSeal?.id ?? '',
-    intentForSeal?.matched_session_id ?? null
-  );
   const [sessionEvidence, setSessionEvidence] = useState<
     Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
   >({});
@@ -575,6 +575,14 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     // Intent was qualified, refresh the list
     fetchUnscoredIntents();
   }, [fetchUnscoredIntents]);
+
+  // Modal qualification hook (must be after handleQualified definition)
+  const { qualify: qualifyModalIntent } = useIntentQualification(
+    siteId,
+    intentForSeal?.id ?? '',
+    intentForSeal?.matched_session_id ?? null,
+    handleQualified // Pass refetch for undo success
+  );
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedIntent(null);

@@ -13,6 +13,7 @@
 
 import { useCallback, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 export interface QualifyIntentParams {
   /** 0 = junk, 1-5 = lead quality (Lazy Antiques Dealer). */
@@ -26,9 +27,46 @@ export interface QualifyIntentResult {
   error?: string;
 }
 
-export function useIntentQualification(siteId: string, intentId: string, matchedSessionId?: string | null) {
+interface UndoState {
+  callId: string;
+  previousStatus: 'intent' | null;
+  action: 'seal' | 'junk';
+}
+
+export function useIntentQualification(
+  siteId: string,
+  intentId: string,
+  matchedSessionId?: string | null,
+  onUndoSuccess?: () => void
+) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const undoQualification = useCallback(
+    async (callId: string): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const response = await fetch(`/api/intents/${callId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'intent',
+            lead_score: null,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to undo');
+        }
+
+        return { success: true };
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Undo failed';
+        return { success: false, error: errorMessage };
+      }
+    },
+    []
+  );
 
   const qualify = useCallback(
     async (params: QualifyIntentParams): Promise<QualifyIntentResult> => {
@@ -103,16 +141,40 @@ export function useIntentQualification(siteId: string, intentId: string, matched
           return { success: false, error: msg };
         }
 
+        // Show success toast with undo button
+        const actionText = params.status === 'confirmed' ? 'sealed' : 'marked as junk';
+        const undoToastId = toast.success('İşlem Tamam', {
+          description: `Intent ${actionText}.`,
+          duration: 8000,
+          action: {
+            label: 'Geri Al',
+            onClick: async () => {
+              toast.dismiss(undoToastId);
+              toast.loading('Geri alınıyor...');
+              const result = await undoQualification(intentId);
+              if (result.success) {
+                toast.success('İşlem geri alındı');
+                onUndoSuccess?.();
+              } else {
+                toast.error('Geri alma başarısız', {
+                  description: result.error || 'Try again',
+                });
+              }
+            },
+          },
+        });
+
         return { success: true };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to qualify intent';
         setError(errorMessage);
+        toast.error('İşlem başarısız', { description: errorMessage });
         return { success: false, error: errorMessage };
       } finally {
         setSaving(false);
       }
     },
-    [siteId, intentId, matchedSessionId]
+    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess]
   );
 
   const clearError = useCallback(() => {
