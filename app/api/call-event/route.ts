@@ -18,6 +18,75 @@ const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 // Parse allowed origins (fail-closed in production)
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
+type CallEventBody = {
+    site_id: string;
+    phone_number?: string | null;
+    fingerprint: string;
+    // Some clients send a generic "value" field (often null). Accept it to avoid crashes.
+    value?: number | string | null;
+    // Optional richer intent fields (preferred if client can send them)
+    intent_action?: string | null;
+    intent_target?: string | null;
+    intent_stamp?: string | null;
+    intent_page_url?: string | null;
+    click_id?: string | null;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function normalizePhoneTarget(raw: string): string {
+    // Keep a stable normalized target for dedupe. Do not over-normalize WhatsApp URLs.
+    const t = raw.trim();
+    if (t.toLowerCase().startsWith('tel:')) {
+        return t.slice(4).replace(/[^\d+]/g, '');
+    }
+    // For plain numbers, normalize to digits/+ only.
+    if (/^\+?\d[\d\s().-]{6,}$/.test(t)) {
+        return t.replace(/[^\d+]/g, '');
+    }
+    return t;
+}
+
+function inferIntentAction(phoneOrHref: string): 'phone' | 'whatsapp' {
+    const v = phoneOrHref.toLowerCase();
+    if (v.includes('wa.me') || v.includes('whatsapp.com')) return 'whatsapp';
+    if (v.startsWith('tel:')) return 'phone';
+    // Fallback: treat numeric-ish as phone
+    return 'phone';
+}
+
+function rand4(): string {
+    return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+}
+
+function hash6(str: string): string {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h) + str.charCodeAt(i);
+        h |= 0;
+    }
+    const out = Math.abs(h).toString(36);
+    return out.slice(0, 6).padEnd(6, '0');
+}
+
+function makeIntentStamp(actionShort: string, target: string): string {
+    const ts = Date.now();
+    const tHash = hash6((target || '').toLowerCase());
+    return `${ts}-${rand4()}-${actionShort}-${tHash}`;
+}
+
+function parseValueAllowNull(v: unknown): number | null {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    }
+    return null;
+}
+
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
     const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
@@ -89,10 +158,32 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const body = await req.json();
-        const { site_id, phone_number, fingerprint } = body;
+        let bodyJson: unknown;
+        try {
+            bodyJson = await req.json();
+        } catch (e) {
+            console.error('[CALL_MATCH] Invalid JSON body', { request_id: requestId, error: String((e as Error)?.message ?? e) });
+            return NextResponse.json(
+                { error: 'Invalid JSON' },
+                { status: 400, headers: baseHeaders }
+            );
+        }
 
-        if (!site_id || !phone_number || !fingerprint) {
+        if (!isRecord(bodyJson)) {
+            return NextResponse.json(
+                { error: 'Invalid body' },
+                { status: 400, headers: baseHeaders }
+            );
+        }
+
+        const body = bodyJson as CallEventBody;
+        const site_id = typeof body.site_id === 'string' ? body.site_id : '';
+        const fingerprint = typeof body.fingerprint === 'string' ? body.fingerprint : '';
+        const phone_number = (typeof body.phone_number === 'string' ? body.phone_number : null) ?? null;
+        // Accept value=null/undefined without failing.
+        const value = parseValueAllowNull(body.value);
+
+        if (!site_id || !fingerprint) {
             return NextResponse.json(
                 { error: 'Missing required fields' },
                 { status: 400, headers: baseHeaders }
@@ -236,6 +327,27 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // Derive intent fields required by DB invariants for click-sourced calls.
+        // IMPORTANT: DB has a CHECK constraint:
+        //   source <> 'click' OR (intent_action in ('phone','whatsapp') AND intent_target AND intent_stamp).
+        // We explicitly set these to avoid insert failures.
+        const inferredAction = inferIntentAction(phone_number ?? '');
+        const intent_action = (typeof body.intent_action === 'string' && body.intent_action.trim() !== '')
+            ? (body.intent_action.trim().toLowerCase() === 'whatsapp' ? 'whatsapp' : 'phone')
+            : inferredAction;
+        const intent_target = (typeof body.intent_target === 'string' && body.intent_target.trim() !== '')
+            ? body.intent_target.trim()
+            : normalizePhoneTarget(phone_number ?? 'Unknown');
+        const intent_stamp = (typeof body.intent_stamp === 'string' && body.intent_stamp.trim() !== '')
+            ? body.intent_stamp.trim()
+            : makeIntentStamp(intent_action === 'whatsapp' ? 'wa' : 'tel', intent_target);
+        const intent_page_url = typeof body.intent_page_url === 'string' && body.intent_page_url.trim() !== ''
+            ? body.intent_page_url.trim()
+            : (req.headers.get('referer') || null);
+        const click_id = typeof body.click_id === 'string' && body.click_id.trim() !== ''
+            ? body.click_id.trim()
+            : null;
+
         // 4. Insert call record
         const { data: callRecord, error: insertError } = await adminClient
             .from('calls')
@@ -249,12 +361,26 @@ export async function POST(req: NextRequest) {
                 score_breakdown: scoreBreakdown,
                 matched_at: matchedSessionId ? matchedAt : null,
                 status: callStatus, // 'intent', 'suspicious', or null
+                source: 'click',
+                intent_action,
+                intent_target,
+                intent_stamp,
+                intent_page_url,
+                click_id,
+                // value is accepted but not stored (calls table uses intent_* + lead_score)
+                ...(value !== null ? { _client_value: value } : {}),
             })
             .select()
             .single();
 
         if (insertError) {
-            console.error('[CALL_MATCH] Insert failed:', insertError.message);
+            console.error('[CALL_MATCH] Insert failed:', {
+                message: insertError.message,
+                code: insertError.code,
+                details: insertError.details,
+                hint: insertError.hint,
+                request_id: requestId,
+            });
             return NextResponse.json(
                 { error: 'Failed to record call' },
                 { status: 500, headers: baseHeaders }
@@ -279,6 +405,10 @@ export async function POST(req: NextRequest) {
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[CALL_MATCH] Unhandled error:', {
+            message: errorMessage,
+            request_id: requestId,
+        });
         logError(errorMessage, { request_id: requestId, route: CALL_EVENT_ROUTE });
         Sentry.captureException(error, { tags: { request_id: requestId, route: CALL_EVENT_ROUTE } });
 
