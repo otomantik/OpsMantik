@@ -32,12 +32,18 @@ async function verifyArchitecture() {
     const currentMonth = new Date().toISOString().slice(0, 7);
     const partitionName = `events_${currentMonth.replace('-', '_')}`;
     
-    const { data: partitionCheck } = await supabase.rpc('exec_sql', {
-      query: `SELECT EXISTS (
-        SELECT 1 FROM information_schema.tables 
-        WHERE table_name = '${partitionName}'
-      ) as exists;`
-    }).catch(() => ({ data: null }));
+    let partitionCheck = null;
+    try {
+      const res = await supabase.rpc('exec_sql', {
+        query: `SELECT EXISTS (
+          SELECT 1 FROM information_schema.tables 
+          WHERE table_name = '${partitionName}'
+        ) as exists;`,
+      });
+      partitionCheck = res?.data ?? null;
+    } catch {
+      partitionCheck = null;
+    }
 
     // Alternative: Check if events table exists and has session_month
     const { data: eventsSample } = await supabase
@@ -54,20 +60,32 @@ async function verifyArchitecture() {
 
     // 2. Check Realtime
     console.log('\n⚡ 2. Realtime Engine Check...');
-    const { data: realtimeCheck } = await supabase.rpc('exec_sql', {
-      query: `SELECT EXISTS (
-        SELECT 1 FROM pg_publication 
-        WHERE pubname = 'supabase_realtime'
-      ) as exists;`
-    }).catch(() => ({ data: null }));
+    let realtimeCheck = null;
+    try {
+      const res = await supabase.rpc('exec_sql', {
+        query: `SELECT EXISTS (
+          SELECT 1 FROM pg_publication 
+          WHERE pubname = 'supabase_realtime'
+        ) as exists;`,
+      });
+      realtimeCheck = res?.data ?? null;
+    } catch {
+      realtimeCheck = null;
+    }
 
     // Check REPLICA IDENTITY
-    const { data: replicaCheck } = await supabase.rpc('exec_sql', {
-      query: `SELECT relreplident 
-        FROM pg_class 
-        WHERE relname = 'events' 
-        LIMIT 1;`
-    }).catch(() => ({ data: null }));
+    let replicaCheck = null;
+    try {
+      const res = await supabase.rpc('exec_sql', {
+        query: `SELECT relreplident 
+          FROM pg_class 
+          WHERE relname = 'events' 
+          LIMIT 1;`,
+      });
+      replicaCheck = res?.data ?? null;
+    } catch {
+      replicaCheck = null;
+    }
 
     if (realtimeCheck || replicaCheck) {
       checks.realtime = true;
@@ -78,13 +96,19 @@ async function verifyArchitecture() {
 
     // 3. Check RLS
     console.log('\n🔐 3. Row Level Security Check...');
-    const { data: rlsCheck } = await supabase.rpc('exec_sql', {
-      query: `SELECT tablename, rowsecurity 
-        FROM pg_tables 
-        WHERE schemaname = 'public' 
-        AND tablename IN ('sites', 'sessions', 'events', 'calls')
-        ORDER BY tablename;`
-    }).catch(() => ({ data: null }));
+    let rlsCheck = null;
+    try {
+      const res = await supabase.rpc('exec_sql', {
+        query: `SELECT tablename, rowsecurity 
+          FROM pg_tables 
+          WHERE schemaname = 'public' 
+          AND tablename IN ('sites', 'sessions', 'events', 'calls')
+          ORDER BY tablename;`,
+      });
+      rlsCheck = res?.data ?? null;
+    } catch {
+      rlsCheck = null;
+    }
 
     if (rlsCheck && rlsCheck.length > 0) {
       checks.rls = true;
