@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError } from '@/lib/log';
 import * as Sentry from '@sentry/nextjs';
 
@@ -48,10 +49,10 @@ export async function POST(
       );
     }
 
-    // Verify user has access to this call's site
+    // Lookup site_id (do not trust client). Then validate access using server gate (owner/admin/member).
     const { data: call, error: callError } = await adminClient
       .from('calls')
-      .select('site_id, sites!inner(user_id)')
+      .select('id, site_id')
       .eq('id', callId)
       .single();
 
@@ -62,22 +63,10 @@ export async function POST(
       );
     }
 
-    // Check access: user must own the site or be admin
-    const siteUserId = (call.sites as any)?.user_id;
-    const { data: profile } = await adminClient
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    const isAdmin = profile?.role === 'admin';
-    const isOwner = siteUserId === user.id;
-
-    if (!isAdmin && !isOwner) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      );
+    const siteId = call.site_id;
+    const access = await validateSiteAccess(siteId, user.id, supabase);
+    if (!access.allowed) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Update call status

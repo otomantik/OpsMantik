@@ -394,7 +394,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
       const supabase = createClient();
       const { data, error: rpcError } = await supabase.rpc('get_kill_feed_v1', {
         p_site_id: siteId,
-        p_hours_back: 24,
+        // Show more than 24h so "yesterday" actions remain undoable.
+        p_hours_back: 72,
         p_limit: 50,
       });
       if (rpcError) {

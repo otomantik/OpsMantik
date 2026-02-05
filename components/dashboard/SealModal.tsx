@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,8 +10,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Star, Trash2 } from 'lucide-react';
+import { Star, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { strings } from '@/lib/i18n/en';
+import { useSfx } from '@/lib/hooks/use-sfx';
 
 export interface SealModalProps {
   open: boolean;
@@ -44,27 +45,72 @@ export function SealModal({
 }: SealModalProps) {
   const chips = chipValues.length > 0 ? chipValues : DEFAULT_CHIPS;
   const [leadScore, setLeadScore] = useState<number>(0);
-  const [showPrice, setShowPrice] = useState<boolean>(false);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [junking, setJunking] = useState(false);
+  const [muted, setMuted] = useState<boolean>(false);
+  const [sealSuccessPulse, setSealSuccessPulse] = useState(false);
+  const [starError, setStarError] = useState<string | null>(null);
+
+  const sfxSrc = useMemo(() => '/sounds/cha-ching.mp3', []);
+  const { play: playChaChing } = useSfx(sfxSrc);
+
+  // Persist mute preference locally (per device/browser)
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('opsmantik:sfx-muted');
+      if (saved === '1') setMuted(true);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('opsmantik:sfx-muted', muted ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [muted]);
 
   const customNum = customAmount.trim() ? Number(customAmount.trim()) : null;
   const effectiveAmount =
     selectedAmount ?? (customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null);
   const priceValid = effectiveAmount == null || (effectiveAmount >= 0 && Number.isFinite(effectiveAmount));
-  const canSave = leadScore >= 1 && leadScore <= 5 && priceValid;
+  // Price is optional; we only validate it if provided.
+  const canSave = priceValid;
 
   const handleConfirm = useCallback(async () => {
     if (!canSave) return;
+    if (!(leadScore >= 1 && leadScore <= 5)) {
+      setStarError('Please select a lead quality rating.');
+      return;
+    }
     setSaving(true);
     try {
       await onConfirm(effectiveAmount ?? null, currency, leadScore);
+
+      // Gamification feedback (success only)
+      try {
+        if (!muted) void playChaChing();
+      } catch {
+        // ignore
+      }
+      try {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          // light haptic
+          (navigator as any).vibrate?.(50);
+        }
+      } catch {
+        // ignore
+      }
+      setSealSuccessPulse(true);
+      window.setTimeout(() => setSealSuccessPulse(false), 420);
+
       onSuccess?.();
       onOpenChange(false);
       setLeadScore(0);
-      setShowPrice(false);
       setSelectedAmount(null);
       setCustomAmount('');
     } catch (err) {
@@ -73,7 +119,7 @@ export function SealModal({
     } finally {
       setSaving(false);
     }
-  }, [canSave, effectiveAmount, currency, leadScore, onConfirm, onSuccess, onError, onOpenChange]);
+  }, [canSave, effectiveAmount, currency, leadScore, muted, onConfirm, onSuccess, onError, onOpenChange, playChaChing]);
 
   const handleJunk = useCallback(async () => {
     if (!onJunk) return;
@@ -83,7 +129,6 @@ export function SealModal({
       onJunkSuccess?.();
       onOpenChange(false);
       setLeadScore(0);
-      setShowPrice(false);
       setSelectedAmount(null);
       setCustomAmount('');
     } catch (err) {
@@ -101,14 +146,28 @@ export function SealModal({
         data-testid="seal-modal"
         onPointerDownOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="pb-2">
+        <DialogHeader className="pb-2 relative">
           <DialogTitle className="text-xl font-semibold text-center">{strings.sealModalTitle}</DialogTitle>
+          <button
+            type="button"
+            className="absolute right-0 top-0 p-2 rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
+            onClick={() => setMuted((v) => !v)}
+            aria-label={muted ? 'Unmute' : 'Mute'}
+            title={muted ? 'Unmute' : 'Mute'}
+          >
+            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          </button>
         </DialogHeader>
         <div className="space-y-6 py-4">
           {/* Star rating (mandatory) — top */}
           <div className="flex flex-col items-center">
             <p className="text-sm font-semibold text-slate-700 mb-3">{strings.sealModalStarLabel}</p>
-            <div className="flex items-center justify-center gap-2">
+            <div
+              className={cn(
+                'flex items-center justify-center gap-2 rounded-lg px-2 py-1',
+                starError && 'ring-2 ring-red-200'
+              )}
+            >
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
@@ -120,7 +179,10 @@ export function SealModal({
                       ? 'text-amber-500 hover:text-amber-600 hover:scale-110'
                       : 'text-slate-300 hover:text-slate-400 hover:scale-105'
                   )}
-                  onClick={() => setLeadScore(star)}
+                  onClick={() => {
+                    setLeadScore(star);
+                    if (starError) setStarError(null);
+                  }}
                 >
                   <Star
                     className={cn('h-10 w-10', leadScore >= star ? 'fill-amber-500' : 'fill-transparent')}
@@ -132,70 +194,53 @@ export function SealModal({
             {leadScore >= 4 && (
               <p className="text-sm font-medium text-emerald-600 mt-2.5">{strings.sealModalStarQualified}</p>
             )}
+            {starError && (
+              <p className="text-sm font-medium text-red-600 mt-2">{starError}</p>
+            )}
           </div>
 
           {/* Price (optional) */}
           <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-            <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="mb-2">
               <label className="text-sm font-semibold text-slate-700">{strings.sealModalPriceLabel}</label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 px-3 text-xs font-medium hover:bg-slate-100"
-                onClick={() => {
-                  setShowPrice((v) => {
-                    const next = !v;
-                    // When hiding, clear entered price to keep the "lazy" flow clean.
-                    if (!next) {
-                      setSelectedAmount(null);
-                      setCustomAmount('');
-                    }
-                    return next;
-                  });
-                }}
-              >
-                {showPrice ? strings.sealModalHidePrice : strings.sealModalAddPrice}
-              </Button>
+              <p className="text-xs text-slate-500 mt-1">{strings.sealModalPriceHelper}</p>
             </div>
 
-            {showPrice && (
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {chips.map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      variant={selectedAmount === value ? 'default' : 'outline'}
-                      size="sm"
-                      className={cn(
-                        'min-w-[80px] font-medium',
-                        selectedAmount === value && 'ring-2 ring-primary ring-offset-2'
-                      )}
-                      onClick={() => {
-                        setSelectedAmount(value);
-                        setCustomAmount('');
-                      }}
-                    >
-                      <span suppressHydrationWarning>{value.toLocaleString()} {currency}</span>
-                    </Button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  placeholder={strings.sealModalPricePlaceholder}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-950 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                  value={customAmount}
-                  onChange={(e) => {
-                    setCustomAmount(e.target.value);
-                    setSelectedAmount(null);
-                  }}
-                  data-testid="seal-modal-custom-amount"
-                />
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 justify-center">
+                {chips.map((value) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant={selectedAmount === value ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn(
+                      'min-w-[80px] font-medium',
+                      selectedAmount === value && 'ring-2 ring-primary ring-offset-2'
+                    )}
+                    onClick={() => {
+                      setSelectedAmount(value);
+                      setCustomAmount('');
+                    }}
+                  >
+                    <span suppressHydrationWarning>{value.toLocaleString()} {currency}</span>
+                  </Button>
+                ))}
               </div>
-            )}
+              <input
+                type="number"
+                min={0}
+                step={1}
+                placeholder={strings.sealModalPricePlaceholder}
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-950 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                value={customAmount}
+                onChange={(e) => {
+                  setCustomAmount(e.target.value);
+                  setSelectedAmount(null);
+                }}
+                data-testid="seal-modal-custom-amount"
+              />
+            </div>
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200">
@@ -221,7 +266,6 @@ export function SealModal({
               className="flex-1 sm:flex-none font-medium"
               onClick={() => {
                 onOpenChange(false);
-                setShowPrice(false);
                 setSelectedAmount(null);
                 setCustomAmount('');
               }}
@@ -231,7 +275,10 @@ export function SealModal({
             <Button
               type="button"
               size="lg"
-              className="flex-1 sm:flex-none font-medium"
+              className={cn(
+                'flex-1 sm:flex-none font-medium transition-transform duration-200',
+                sealSuccessPulse && 'scale-[1.04]'
+              )}
               disabled={!canSave || saving || junking}
               onClick={handleConfirm}
               data-testid="seal-modal-confirm"
