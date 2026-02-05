@@ -91,6 +91,8 @@ function opsmantik_handle_call_event(WP_REST_Request $request) {
 
   $console = opsmantik_get_console_url();
   $url = $console . '/api/call-event/v2';
+  $proxyHost = parse_url(home_url(), PHP_URL_HOST);
+  if (!$proxyHost && isset($_SERVER['HTTP_HOST'])) $proxyHost = $_SERVER['HTTP_HOST'];
 
   $resp = wp_remote_post($url, array(
     'timeout' => 4,
@@ -100,6 +102,7 @@ function opsmantik_handle_call_event(WP_REST_Request $request) {
       'X-Ops-Ts' => strval($ts),
       'X-Ops-Signature' => $sig,
       'X-Ops-Proxy' => '1',
+      'X-Ops-Proxy-Host' => is_string($proxyHost) ? $proxyHost : '',
       'User-Agent' => 'OpsMantik-WP-Proxy/' . OPSMANTIK_PROXY_VERSION,
     ),
     'body' => $rawBody,

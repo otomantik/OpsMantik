@@ -345,6 +345,28 @@ export async function POST(req: NextRequest) {
         // We already validated existence via resolve_site_identifier_v1; use canonical UUID directly.
         const site = { id: site_id } as const;
 
+        // Per-site rate limiting (blast-radius isolation).
+        const siteRateLimit = await RateLimitService.checkWithMode(`${site_id}|${clientId}`, 80, 60 * 1000, {
+            mode: 'degraded',
+            namespace: 'call-event-site',
+            fallbackMaxRequests: 15,
+        });
+        if (!siteRateLimit.allowed) {
+            return NextResponse.json(
+                { error: 'Rate limit exceeded', retryAfter: Math.ceil((siteRateLimit.resetAt - Date.now()) / 1000) },
+                {
+                    status: 429,
+                    headers: {
+                        ...baseHeaders,
+                        'X-RateLimit-Limit': '80',
+                        'X-RateLimit-Remaining': '0',
+                        'X-RateLimit-Reset': siteRateLimit.resetAt.toString(),
+                        'Retry-After': Math.ceil((siteRateLimit.resetAt - Date.now()) / 1000).toString(),
+                    },
+                }
+            );
+        }
+
         // 2. Find most recent session for this fingerprint (within last 30 minutes)
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const recentMonths = getRecentMonths(2);

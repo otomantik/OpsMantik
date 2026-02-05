@@ -96,7 +96,7 @@ export async function OPTIONS(req: NextRequest) {
 
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Ops-Site-Id, X-Ops-Ts, X-Ops-Signature, X-Ops-Proxy',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Ops-Site-Id, X-Ops-Ts, X-Ops-Signature, X-Ops-Proxy, X-Ops-Proxy-Host',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
     'X-OpsMantik-Version': OPSMANTIK_VERSION,
@@ -130,6 +130,8 @@ export async function POST(req: NextRequest) {
     if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) {
       return NextResponse.json({ error: 'Payload too large' }, { status: 413, headers: baseHeaders });
     }
+
+    const clientId = RateLimitService.getClientId(req);
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -169,29 +171,6 @@ export async function POST(req: NextRequest) {
     if (sigErr || sigOk !== true) {
       logWarn('call-event-v2 signature rejected', { request_id: requestId, route: ROUTE, site_id: headerSiteId, error: sigErr?.message });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-    }
-
-    // Rate limit (critical): include site to isolate blast-radius.
-    const clientId = RateLimitService.getClientId(req);
-    const rl = await RateLimitService.checkWithMode(`${headerSiteId}|${clientId}`, 80, 60 * 1000, {
-      mode: 'degraded',
-      namespace: 'call-event-v2',
-      fallbackMaxRequests: 15,
-    });
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000) },
-        {
-          status: 429,
-          headers: {
-            ...baseHeaders,
-            'X-RateLimit-Limit': '80',
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': rl.resetAt.toString(),
-            'Retry-After': Math.ceil((rl.resetAt - Date.now()) / 1000).toString(),
-          },
-        }
-      );
     }
 
     // JSON parse + strict validation
@@ -252,6 +231,30 @@ export async function POST(req: NextRequest) {
 
     // We already validated existence via resolve_site_identifier_v1; use canonical UUID directly.
     const site = { id: site_id } as const;
+
+    // Per-site(+proxy host) rate limiting (blast-radius isolation).
+    const proxyHostRaw = (req.headers.get('x-ops-proxy-host') || '').trim().toLowerCase();
+    const proxyHost = proxyHostRaw && proxyHostRaw.length <= 255 ? proxyHostRaw.replace(/[^a-z0-9.-]/g, '').slice(0, 128) : 'unknown';
+    const rl = await RateLimitService.checkWithMode(`${site_id}|${proxyHost}|${clientId}`, 80, 60 * 1000, {
+      mode: 'degraded',
+      namespace: 'call-event-v2',
+      fallbackMaxRequests: 15,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000) },
+        {
+          status: 429,
+          headers: {
+            ...baseHeaders,
+            'X-RateLimit-Limit': '80',
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': rl.resetAt.toString(),
+            'Retry-After': Math.ceil((rl.resetAt - Date.now()) / 1000).toString(),
+          },
+        }
+      );
+    }
 
     // Find recent session by fingerprint
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
