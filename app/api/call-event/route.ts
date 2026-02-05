@@ -20,14 +20,19 @@ const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
 
-// Public site_id is a 32-hex public id (not a UUID).
+// Site identifier can be UUID or 32-hex public id.
 const SITE_PUBLIC_ID_RE = /^[a-f0-9]{32}$/i;
+const SITE_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const CallEventSchema = z
     .object({
         // V2 rollout: accept event_id but ignore until DB idempotency migration lands.
         event_id: z.string().uuid().optional(),
-        site_id: z.string().min(1).max(64).regex(SITE_PUBLIC_ID_RE),
+        site_id: z.string().min(1).max(64).refine(
+            (s) => SITE_PUBLIC_ID_RE.test(s) || SITE_UUID_RE.test(s),
+            'Invalid site_id'
+        ),
         fingerprint: z.string().min(1).max(128),
         phone_number: z.string().max(256).nullable().optional(),
         // V2 tracker context (accepted, not required)
@@ -183,6 +188,15 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!url || !anonKey) {
+            logError('call-event verifier misconfigured (missing supabase env)', { request_id: requestId, route: CALL_EVENT_ROUTE });
+            return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+        }
+        const { createClient } = await import('@supabase/supabase-js');
+        const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
+
         // --- 1) Auth boundary: verify signature BEFORE any service-role DB call ---
         // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
         const signingDisabled =
@@ -195,7 +209,12 @@ export async function POST(req: NextRequest) {
             const headerSig = (req.headers.get('x-ops-signature') || '').trim();
 
             // Fast validation (fail-closed)
-            if (!headerSiteId || !SITE_PUBLIC_ID_RE.test(headerSiteId) || !/^\d{9,12}$/.test(headerTs) || !/^[0-9a-f]{64}$/i.test(headerSig)) {
+            if (
+                !headerSiteId ||
+                !(SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId)) ||
+                !/^\d{9,12}$/.test(headerTs) ||
+                !/^[0-9a-f]{64}$/i.test(headerSig)
+            ) {
                 return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
             }
 
@@ -206,14 +225,6 @@ export async function POST(req: NextRequest) {
             }
 
             // Verify signature via DB (boolean only; secrets never leave DB).
-            const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-            const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-            if (!url || !anonKey) {
-                logError('call-event verifier misconfigured (missing supabase env)', { request_id: requestId, route: CALL_EVENT_ROUTE });
-                return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
-            }
-            const { createClient } = await import('@supabase/supabase-js');
-            const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
             const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
                 p_site_public_id: headerSiteId,
                 p_ts: tsNum,
@@ -264,15 +275,36 @@ export async function POST(req: NextRequest) {
         }
 
         const body = parsed.data;
-        // Enforce header/body site_id binding when signing is enabled (prevents cross-site signature reuse).
-        if (!signingDisabled && body.site_id !== headerSiteId) {
-            return NextResponse.json(
-                { error: 'Unauthorized' },
-                { status: 401, headers: baseHeaders }
-            );
+        // Resolve site identifier BEFORE service-role DB access (UUID or public_id -> canonical UUID).
+        const { data: resolvedBodySiteId, error: resolveBodyErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+            p_input: body.site_id,
+        });
+        if (resolveBodyErr) {
+            logError('call-event resolve_site_identifier_v1 failed', {
+                request_id: requestId,
+                route: CALL_EVENT_ROUTE,
+                message: resolveBodyErr.message,
+            });
+            return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+        }
+        if (!resolvedBodySiteId) {
+            return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
         }
 
-        const site_id = body.site_id;
+        // Enforce header/body binding when signing is enabled (prevents cross-site signature reuse).
+        if (!signingDisabled) {
+            const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+                p_input: headerSiteId,
+            });
+            if (resolveHeaderErr || !resolvedHeaderSiteId) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+            }
+            if (resolvedHeaderSiteId !== resolvedBodySiteId) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+            }
+        }
+
+        const site_id = resolvedBodySiteId;
         const fingerprint = body.fingerprint;
         const phone_number = (typeof body.phone_number === 'string' ? body.phone_number : null) ?? null;
         // Accept value=null/undefined without failing.
@@ -289,7 +321,7 @@ export async function POST(req: NextRequest) {
         const { data: site, error: siteError } = await adminClient
             .from('sites')
             .select('id')
-            .eq('public_id', site_id)
+            .eq('id', site_id)
             .single();
 
         if (siteError || !site) {

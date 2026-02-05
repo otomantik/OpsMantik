@@ -17,12 +17,18 @@ const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_BODY_BYTES = 64 * 1024;
 const SITE_PUBLIC_ID_RE = /^[a-f0-9]{32}$/i;
+const SITE_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // V2 payload is identical to V1 but adds event_id (for upcoming idempotency).
 const CallEventV2Schema = z
   .object({
     event_id: z.string().uuid().optional(),
-    site_id: z.string().min(1).max(64).regex(SITE_PUBLIC_ID_RE),
+    site_id: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((s) => SITE_PUBLIC_ID_RE.test(s) || SITE_UUID_RE.test(s), 'Invalid site_id'),
     fingerprint: z.string().min(1).max(128),
     phone_number: z.string().max(256).nullable().optional(),
     // Proxy/tracker context (accepted, not required)
@@ -124,12 +130,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Payload too large' }, { status: 413, headers: baseHeaders });
     }
 
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anonKey) {
+      logError('call-event-v2 verifier misconfigured (missing supabase env)', { request_id: requestId, route: ROUTE });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+    }
+    const { createClient } = await import('@supabase/supabase-js');
+    const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
+
     // Signature headers (fail-closed)
     const headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
     const headerTs = (req.headers.get('x-ops-ts') || '').trim();
     const headerSig = (req.headers.get('x-ops-signature') || '').trim();
 
-    if (!headerSiteId || !SITE_PUBLIC_ID_RE.test(headerSiteId) || !/^\d{9,12}$/.test(headerTs) || !/^[0-9a-f]{64}$/i.test(headerSig)) {
+    if (
+      !headerSiteId ||
+      !(SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId)) ||
+      !/^\d{9,12}$/.test(headerTs) ||
+      !/^[0-9a-f]{64}$/i.test(headerSig)
+    ) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
     }
 
@@ -139,15 +159,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
     }
 
-    // Verify signature via DB (boolean only; no secrets to browser).
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anonKey) {
-      logError('call-event-v2 verifier misconfigured (missing supabase env)', { request_id: requestId, route: ROUTE });
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
-    }
-    const { createClient } = await import('@supabase/supabase-js');
-    const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
     const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
       p_site_public_id: headerSiteId,
       p_ts: tsNum,
@@ -195,10 +206,23 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return NextResponse.json({ error: 'Invalid body' }, { status: 400, headers: baseHeaders });
 
     const body = parsed.data;
-    // Bind header/body site id
-    if (body.site_id !== headerSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+    // Resolve site identifier BEFORE service-role DB access (UUID or public_id -> canonical UUID).
+    const { data: resolvedBodySiteId, error: resolveBodyErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+      p_input: body.site_id,
+    });
+    if (resolveBodyErr) {
+      logError('call-event-v2 resolve_site_identifier_v1 failed', { request_id: requestId, route: ROUTE, message: resolveBodyErr.message });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+    }
+    if (!resolvedBodySiteId) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
 
-    const site_public_id = body.site_id;
+    const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+      p_input: headerSiteId,
+    });
+    if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+    if (resolvedHeaderSiteId !== resolvedBodySiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+
+    const site_id = resolvedBodySiteId;
     const fingerprint = body.fingerprint;
     const phone_number = typeof body.phone_number === 'string' ? body.phone_number : null;
     const value = parseValueAllowNull(body.value);
@@ -207,7 +231,7 @@ export async function POST(req: NextRequest) {
     const { data: site, error: siteError } = await adminClient
       .from('sites')
       .select('id')
-      .eq('public_id', site_public_id)
+      .eq('id', site_id)
       .single();
 
     if (siteError || !site) {
@@ -228,7 +252,7 @@ export async function POST(req: NextRequest) {
       .limit(1);
 
     if (eventsError) {
-      logError('call-event-v2 events query error', { request_id: requestId, route: ROUTE, site_id: site_public_id, message: eventsError.message, code: eventsError.code });
+      logError('call-event-v2 events query error', { request_id: requestId, route: ROUTE, site_id, message: eventsError.message, code: eventsError.code });
       return NextResponse.json({ error: 'Failed to query events' }, { status: 500, headers: baseHeaders });
     }
 
@@ -264,7 +288,7 @@ export async function POST(req: NextRequest) {
           .eq('session_month', sessionMonth);
 
         if (sessionEventsError) {
-          logError('call-event-v2 session events query error', { request_id: requestId, route: ROUTE, site_id: site_public_id, session_id: matchedSessionId, message: sessionEventsError.message, code: sessionEventsError.code });
+          logError('call-event-v2 session events query error', { request_id: requestId, route: ROUTE, site_id, session_id: matchedSessionId, message: sessionEventsError.message, code: sessionEventsError.code });
           return NextResponse.json({ error: 'Failed to query session events' }, { status: 500, headers: baseHeaders });
         }
 
@@ -325,7 +349,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError) {
-      logError('call-event-v2 insert failed', { request_id: requestId, route: ROUTE, site_id: site_public_id, message: insertError.message, code: insertError.code });
+      logError('call-event-v2 insert failed', { request_id: requestId, route: ROUTE, site_id, message: insertError.message, code: insertError.code });
       return NextResponse.json({ error: 'Failed to record call' }, { status: 500, headers: baseHeaders });
     }
 
