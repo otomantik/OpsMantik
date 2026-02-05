@@ -146,7 +146,7 @@ export function ActivityLogShell({
   return (
     <div className="om-dashboard-reset min-h-screen overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
-        <div className="mx-auto max-w-7xl px-6 py-4 w-full min-w-0">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 w-full min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <Link
@@ -220,7 +220,7 @@ export function ActivityLogShell({
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
             <div className="text-xs font-black uppercase tracking-widest text-slate-600">Recent actions</div>
@@ -249,24 +249,35 @@ export function ActivityLogShell({
                 const canUndo = r.is_latest_for_call && r.action_type.toLowerCase() !== 'undo';
                 const busy = busyCallIds.has(r.call_id);
                 return (
-                  <div key={r.id} className={cn('px-4 py-3 flex items-center justify-between gap-3', busy && 'opacity-60')}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-[76px] text-xs tabular-nums text-slate-500 shrink-0" suppressHydrationWarning>
+                  <div
+                    key={r.id}
+                    className={cn(
+                      'px-4 py-3 flex flex-col items-start gap-2',
+                      'sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+                      busy && 'opacity-60'
+                    )}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 w-full">
+                      {/* Keep time on desktop; on mobile it consumes too much horizontal space */}
+                      <div className="hidden sm:block w-[76px] text-xs tabular-nums text-slate-500 shrink-0" suppressHydrationWarning>
                         {formatRelativeTime(r.created_at)}
                       </div>
                       <Icon className="h-4 w-4 text-slate-500 shrink-0" />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold tabular-nums truncate">
                           {r.intent_target || '—'}
                         </div>
                         <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                          <span className="sm:hidden mr-2 normal-case font-semibold">
+                            {formatRelativeTime(r.created_at)}
+                          </span>
                           {r.action_type} • {r.actor_type}
                           {r.reason ? ` • ${r.reason}` : ''}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full sm:w-auto">
                       {r.sale_amount != null && (
                         <span className="text-xs font-black tabular-nums text-slate-700">
                           {r.sale_amount} {r.currency || ''}
@@ -279,9 +290,11 @@ export function ActivityLogShell({
                           className="h-8 px-2.5 text-xs font-bold border-slate-200"
                           onClick={() => undo(r.call_id)}
                           disabled={busy}
+                          aria-label="Undo last action"
+                          title="Undo last action"
                         >
-                          <Undo2 className="h-3.5 w-3.5 mr-2" />
-                          Undo
+                          <Undo2 className="h-3.5 w-3.5 sm:mr-2" />
+                          <span className="hidden sm:inline">Undo</span>
                         </Button>
                       )}
                     </div>

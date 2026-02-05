@@ -1013,13 +1013,16 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                     <div
                       key={`${h.id}-${h.at}`}
                       className={cn(
-                        'flex items-center justify-between gap-2',
+                        'flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-2',
                         faded && 'opacity-60',
                         isRestoring && 'opacity-50'
                       )}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className="text-xs tabular-nums text-muted-foreground w-[52px] shrink-0" suppressHydrationWarning>
+                        <div
+                          className="hidden sm:block text-xs tabular-nums text-muted-foreground w-[52px] shrink-0"
+                          suppressHydrationWarning
+                        >
                           {formatRelativeTime(h.at)}
                         </div>
                         <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -1029,8 +1032,11 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                         <div className="text-xs text-muted-foreground shrink-0">
                           {(h.action_type || '').toUpperCase()}
                         </div>
+                        <div className="sm:hidden text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
+                          {formatRelativeTime(h.at)}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-1.5 w-full sm:w-auto shrink-0">
                         {statusBadge(h.new_status)}
                         {canUndo && (
                           <button
