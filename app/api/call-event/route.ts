@@ -307,6 +307,7 @@ export async function POST(req: NextRequest) {
         const site_id = resolvedBodySiteId;
         const fingerprint = body.fingerprint;
         const phone_number = (typeof body.phone_number === 'string' ? body.phone_number : null) ?? null;
+        const event_id = body.event_id ?? null;
         // Accept value=null/undefined without failing.
         const value = parseValueAllowNull(body.value);
 
@@ -487,6 +488,7 @@ export async function POST(req: NextRequest) {
             .from('calls')
             .insert({
                 site_id: site.id,
+                event_id,
                 phone_number,
                 matched_session_id: matchedSessionId,
                 matched_fingerprint: fingerprint,
@@ -508,6 +510,35 @@ export async function POST(req: NextRequest) {
             .single();
 
         if (insertError) {
+            // Idempotency: treat unique conflicts as NOOP and return existing call.
+            if (insertError.code === '23505') {
+                const q = adminClient
+                    .from('calls')
+                    .select('id, matched_session_id, lead_score')
+                    .eq('site_id', site.id);
+                const { data: existing, error: existingErr } = event_id
+                    ? await q.eq('event_id', event_id).single()
+                    : await q.eq('intent_stamp', intent_stamp).single();
+
+                if (existing && !existingErr) {
+                    return NextResponse.json(
+                        {
+                            status: 'noop',
+                            call_id: existing.id,
+                            session_id: existing.matched_session_id ?? null,
+                            lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore,
+                        },
+                        {
+                            headers: {
+                                ...baseHeaders,
+                                'X-RateLimit-Limit': '50',
+                                'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+                            },
+                        }
+                    );
+                }
+            }
+
             logError('call-event insert failed', {
                 request_id: requestId,
                 route: CALL_EVENT_ROUTE,
