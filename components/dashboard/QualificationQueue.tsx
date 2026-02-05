@@ -15,7 +15,7 @@ import { HunterCard } from './HunterCard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { useSiteConfig } from '@/lib/hooks/use-site-config';
 import { SealModal } from './SealModal';
-import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon } from 'lucide-react';
+import { CheckCircle2, MessageCircle, Phone, FileText, XOctagon, Undo2 } from 'lucide-react';
 
 export interface QualificationQueueProps {
   siteId: string;
@@ -361,6 +361,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     }>
   >([]);
 
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
+
   const [toast, setToast] = useState<null | { kind: 'success' | 'danger'; text: string }>(null);
 
   const fetchIntentDetails = useCallback(async (callId: string): Promise<HunterIntent | null> => {
@@ -576,6 +578,35 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     },
     []
   );
+
+  const restoreFromHistory = useCallback(async (callId: string) => {
+    setRestoringIds((prev) => new Set(prev).add(callId));
+    try {
+      const res = await fetch(`/api/intents/${callId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'intent', lead_score: null }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error || res.statusText);
+      }
+      // Optimistically remove from history
+      setHistory((prev) => prev.filter((h) => h.id !== callId));
+      pushToast('success', 'Restored to queue.');
+      // Refresh to show it back in the queue
+      fetchUnscoredIntents();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to restore';
+      pushToast('danger', msg);
+    } finally {
+      setRestoringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(callId);
+        return next;
+      });
+    }
+  }, [fetchUnscoredIntents, pushToast]);
 
   if (loading) {
     return (
@@ -817,12 +848,15 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                 history.map((h, idx) => {
                   const Icon = iconForAction(h.intent_action);
                   const faded = idx >= 7;
+                  const isRestoring = restoringIds.has(h.id);
+                  const canRestore = h.status === 'junk';
                   return (
                     <div
                       key={`${h.id}-${h.at}`}
                       className={cn(
                         'flex items-center justify-between gap-3',
-                        faded && 'opacity-60'
+                        faded && 'opacity-60',
+                        isRestoring && 'opacity-50'
                       )}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -834,7 +868,20 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                           {h.identity || '—'}
                         </div>
                       </div>
-                      <div className="shrink-0">{statusBadge(h.status)}</div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {statusBadge(h.status)}
+                        {canRestore && (
+                          <button
+                            type="button"
+                            className="p-1 rounded hover:bg-slate-100 transition-colors disabled:opacity-50"
+                            onClick={() => restoreFromHistory(h.id)}
+                            disabled={isRestoring}
+                            title="Restore to queue"
+                          >
+                            <Undo2 className="h-3.5 w-3.5 text-slate-600" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })
