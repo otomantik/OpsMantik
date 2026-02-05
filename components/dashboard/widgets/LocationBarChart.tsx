@@ -18,6 +18,17 @@ function safeDecode(s: string): string {
   }
 }
 
+function fixMojibake(s: string): string {
+  if (!/[ÃÄÅ]/.test(s)) return s;
+  try {
+    const bytes = Uint8Array.from(s, (c) => c.charCodeAt(0));
+    const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    return decoded || s;
+  } catch {
+    return s;
+  }
+}
+
 interface LocationBarChartProps {
   items: { name: string; count: number; pct: number }[];
   /** Top N (default 8). */
@@ -30,7 +41,7 @@ export function LocationBarChart({ items, topN = 8 }: LocationBarChartProps) {
       items
         .slice(0, topN)
         .map((item) => ({
-          name: safeDecode(item.name),
+          name: fixMojibake(safeDecode(item.name)),
           count: item.count,
         })),
     [items, topN]

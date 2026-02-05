@@ -9,6 +9,19 @@ interface BreakdownBarRowProps {
   decodeLabel?: boolean;
 }
 
+function fixMojibake(s: string): string {
+  // Fix common mojibake like "Ä°zmir" when UTF-8 bytes were decoded as Latin1.
+  // Heuristic: presence of these characters often indicates the problem.
+  if (!/[ÃÄÅ]/.test(s)) return s;
+  try {
+    const bytes = Uint8Array.from(s, (c) => c.charCodeAt(0));
+    const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    return decoded || s;
+  } catch {
+    return s;
+  }
+}
+
 function safeDecode(s: string): string {
   try {
     return decodeURIComponent(s);
@@ -18,7 +31,8 @@ function safeDecode(s: string): string {
 }
 
 export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowProps) {
-  const label = decodeLabel ? safeDecode(item.name) : item.name;
+  const rawLabel = decodeLabel ? safeDecode(item.name) : item.name;
+  const label = fixMojibake(rawLabel);
   const pctNum = total > 0 ? Math.min(100, Math.max(0, item.pct)) : 0;
 
   return (
