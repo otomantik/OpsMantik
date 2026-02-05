@@ -137,7 +137,120 @@ test.describe('Dashboard Watchtower E2E-lite', () => {
     expect(res.status()).toBe(401);
   });
 
-  test('6) queue: undo or cancel button works when present', async ({ page }) => {
+  test('6) call-event v2 proxy signed request: happy path (site-id normalization)', async ({ request }) => {
+    if (!sitePublicId || !callEventSecret || !supabaseUrl || !serviceRoleKey) {
+      test.skip(true, 'Missing E2E_SITE_PUBLIC_ID / E2E_CALL_EVENT_SECRET / SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_URL');
+      return;
+    }
+
+    // Provision secret (service-role only).
+    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+    const rotate = await admin.rpc('rotate_site_secret_v1', {
+      p_site_public_id: sitePublicId,
+      p_current_secret: callEventSecret,
+      p_next_secret: null,
+    });
+    if (rotate.error) {
+      test.skip(true, `rotate_site_secret_v1 unavailable: ${rotate.error.message}`);
+      return;
+    }
+
+    const ts = Math.floor(Date.now() / 1000);
+    const eventId = (globalThis.crypto?.randomUUID?.() || `00000000-0000-0000-0000-${String(ts).padStart(12, '0')}`) as string;
+    const rawBody = JSON.stringify({
+      event_id: eventId,
+      // body can use public id, while header uses canonical UUID (normalization check)
+      site_id: sitePublicId,
+      fingerprint: `e2e_fp_v2_${ts}`,
+      phone_number: 'tel:+900000000000',
+      action: 'phone',
+      url: `${origin}/e2e`,
+      ua: 'playwright',
+    });
+    const sig = createHmac('sha256', callEventSecret).update(`${ts}.${rawBody}`, 'utf8').digest('hex');
+
+    const res = await request.post(`${origin}/api/call-event/v2`, {
+      data: rawBody,
+      headers: {
+        'Content-Type': 'application/json',
+        // normalized identifier support (UUID in header)
+        'x-ops-site-id': siteId,
+        'x-ops-ts': String(ts),
+        'x-ops-signature': sig,
+        'x-ops-proxy': '1',
+        'x-ops-proxy-host': 'e2e.local',
+      },
+    });
+
+    expect(res.status(), await res.text()).toBe(200);
+    const json = await res.json().catch(() => ({}));
+    expect(json).toMatchObject({ status: expect.stringMatching(/matched|noop/) });
+  });
+
+  test('7) call-event v2 proxy signed request: idempotency + replay cache returns noop', async ({ request }) => {
+    if (!sitePublicId || !callEventSecret || !supabaseUrl || !serviceRoleKey) {
+      test.skip(true, 'Missing E2E_SITE_PUBLIC_ID / E2E_CALL_EVENT_SECRET / SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_URL');
+      return;
+    }
+
+    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+    const rotate = await admin.rpc('rotate_site_secret_v1', {
+      p_site_public_id: sitePublicId,
+      p_current_secret: callEventSecret,
+      p_next_secret: null,
+    });
+    if (rotate.error) {
+      test.skip(true, `rotate_site_secret_v1 unavailable: ${rotate.error.message}`);
+      return;
+    }
+
+    const eventId = globalThis.crypto?.randomUUID?.() || '00000000-0000-0000-0000-000000000001';
+    const fp = `e2e_fp_v2_replay_${Date.now()}`;
+
+    // First request
+    const ts1 = Math.floor(Date.now() / 1000);
+    const body1 = JSON.stringify({
+      event_id: eventId,
+      site_id: sitePublicId,
+      fingerprint: fp,
+      phone_number: 'tel:+900000000000',
+    });
+    const sig1 = createHmac('sha256', callEventSecret).update(`${ts1}.${body1}`, 'utf8').digest('hex');
+    const r1 = await request.post(`${origin}/api/call-event/v2`, {
+      data: body1,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-ops-site-id': sitePublicId,
+        'x-ops-ts': String(ts1),
+        'x-ops-signature': sig1,
+        'x-ops-proxy': '1',
+        'x-ops-proxy-host': 'e2e.local',
+      },
+    });
+    expect(r1.status(), await r1.text()).toBe(200);
+
+    // Second request with same event_id but new ts/signature -> should NOOP
+    const ts2 = ts1 + 1;
+    const body2 = body1; // exact same rawBody (still a replay)
+    const sig2 = createHmac('sha256', callEventSecret).update(`${ts2}.${body2}`, 'utf8').digest('hex');
+    const r2 = await request.post(`${origin}/api/call-event/v2`, {
+      data: body2,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-ops-site-id': sitePublicId,
+        'x-ops-ts': String(ts2),
+        'x-ops-signature': sig2,
+        'x-ops-proxy': '1',
+        'x-ops-proxy-host': 'e2e.local',
+      },
+    });
+
+    expect(r2.status(), await r2.text()).toBe(200);
+    const json2 = await r2.json().catch(() => ({}));
+    expect(json2).toMatchObject({ status: 'noop' });
+  });
+
+  test('8) queue: undo or cancel button works when present', async ({ page }) => {
     await page.goto(`/dashboard/site/${siteId}`, { waitUntil: 'networkidle' });
     if (page.url().includes('/login')) {
       test.skip(true, 'Auth required for undo/cancel flow');

@@ -6,6 +6,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/RateLimitService';
 import { ReplayCacheService } from '@/lib/services/ReplayCacheService';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
+import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/siteIdentifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/log';
 
@@ -17,10 +18,6 @@ const OPSMANTIK_VERSION = '2.0.0-proxy';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_BODY_BYTES = 64 * 1024;
-const SITE_PUBLIC_ID_RE = /^[a-f0-9]{32}$/i;
-const SITE_UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 // V2 payload is identical to V1 but adds event_id (for upcoming idempotency).
 const CallEventV2Schema = z
   .object({
@@ -29,7 +26,7 @@ const CallEventV2Schema = z
       .string()
       .min(1)
       .max(64)
-      .refine((s) => SITE_PUBLIC_ID_RE.test(s) || SITE_UUID_RE.test(s), 'Invalid site_id'),
+      .refine(isValidSiteIdentifier, 'Invalid site_id'),
     fingerprint: z.string().min(1).max(128),
     phone_number: z.string().max(256).nullable().optional(),
     // Proxy/tracker context (accepted, not required)

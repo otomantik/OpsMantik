@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/RateLimitService';
 import { ReplayCacheService } from '@/lib/services/ReplayCacheService';
 import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
+import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/siteIdentifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/log';
 import * as Sentry from '@sentry/nextjs';
@@ -21,19 +22,11 @@ const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
 
-// Site identifier can be UUID or 32-hex public id.
-const SITE_PUBLIC_ID_RE = /^[a-f0-9]{32}$/i;
-const SITE_UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 const CallEventSchema = z
     .object({
         // V2 rollout: accept event_id but ignore until DB idempotency migration lands.
         event_id: z.string().uuid().optional(),
-        site_id: z.string().min(1).max(64).refine(
-            (s) => SITE_PUBLIC_ID_RE.test(s) || SITE_UUID_RE.test(s),
-            'Invalid site_id'
-        ),
+        site_id: z.string().min(1).max(64).refine(isValidSiteIdentifier, 'Invalid site_id'),
         fingerprint: z.string().min(1).max(128),
         phone_number: z.string().max(256).nullable().optional(),
         // V2 tracker context (accepted, not required)
