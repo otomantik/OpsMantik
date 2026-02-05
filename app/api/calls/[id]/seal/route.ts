@@ -110,14 +110,15 @@ export async function POST(
       updatePayload.lead_score = leadScore;
     }
 
-    const { data: updated, error: updateError } = await userClient
-      .from('calls')
-      .update(updatePayload)
-      .eq('id', callId)
-      .eq('site_id', siteId)
-      .in('status', ['intent', null])
-      .select('id, sale_amount, currency, status, confirmed_at')
-      .single();
+    // Apply via DB RPC to guarantee audit log + revert snapshot
+    const { data: updated, error: updateError } = await userClient.rpc('apply_call_action_v1', {
+      p_call_id: callId,
+      p_action_type: 'seal',
+      p_payload: updatePayload,
+      p_actor_type: 'user',
+      p_actor_id: null,
+      p_metadata: { route, request_id: requestId },
+    });
 
     if (updateError) {
       return NextResponse.json(
@@ -132,14 +133,17 @@ export async function POST(
       );
     }
 
+    // RPC returns jsonb → normalize shape for response
+    const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
+
     return NextResponse.json({
       success: true,
       call: {
-        id: updated.id,
-        sale_amount: updated.sale_amount,
-        currency: updated.currency,
-        status: updated.status,
-        confirmed_at: updated.confirmed_at,
+        id: callObj.id,
+        sale_amount: callObj.sale_amount,
+        currency: callObj.currency,
+        status: callObj.status,
+        confirmed_at: callObj.confirmed_at,
       },
     });
   } catch (err: unknown) {

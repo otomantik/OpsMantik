@@ -112,6 +112,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             </div>
 
             <div className="flex items-center gap-3 shrink-0 min-w-0">
+              <Link
+                href={`/dashboard/site/${siteId}/activity`}
+                className={cn(
+                  buttonVariants({ variant: 'outline' }),
+                  'h-9 px-3 text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50'
+                )}
+              >
+                Activity Log
+              </Link>
               <div className="shrink-0 flex flex-col items-end">
                 {(() => {
                   const status = getBadgeStatus({

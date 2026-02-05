@@ -353,13 +353,18 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
   const [history, setHistory] = useState<
     Array<{
-      id: string;
-      at: string;
-      status: 'confirmed' | 'junk' | 'cancelled';
+      id: string; // call_actions.id
+      call_id: string; // calls.id
+      at: string; // created_at
+      action_type: string;
+      actor_type: string;
+      previous_status: string | null;
+      new_status: string | null;
       intent_action: string | null;
       identity: string | null;
-      sale_amount?: number | null;
-      currency?: string | null;
+      sale_amount: number | null;
+      currency: string | null;
+      is_latest_for_call: boolean;
     }>
   >([]);
 
@@ -392,29 +397,92 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const fetchKillFeed = useCallback(async () => {
     try {
       const supabase = createClient();
-      const { data, error: rpcError } = await supabase.rpc('get_kill_feed_v1', {
+      const { data, error: rpcError } = await supabase.rpc('get_activity_feed_v1', {
         p_site_id: siteId,
         // Show more than 24h so "yesterday" actions remain undoable.
         p_hours_back: 72,
         p_limit: 50,
       });
       if (rpcError) {
+        const msg = String(rpcError.message || rpcError.details || '').toLowerCase();
+        // Backward compatibility: older DBs may not have activity feed RPC yet.
+        if (msg.includes('not found') || msg.includes('does not exist')) {
+          const legacy = await supabase.rpc('get_kill_feed_v1', {
+            p_site_id: siteId,
+            p_hours_back: 72,
+            p_limit: 50,
+          });
+          if (legacy.error) {
+            console.warn('[fetchKillFeed] legacy RPC error:', legacy.error);
+            return;
+          }
+          const legacyRows = Array.isArray(legacy.data) ? (legacy.data as any[]) : [];
+          const feed = legacyRows
+            .map((r: any) => ({
+              id: String(r.id ?? '') + '-legacy',
+              call_id: String(r.id ?? ''),
+              at: String(r.action_at || r.created_at || ''),
+              action_type: 'legacy',
+              actor_type: 'system',
+              previous_status: null,
+              new_status: (r.status ?? null) as string | null,
+              intent_action: (r.intent_action ?? null) as string | null,
+              identity: (r.intent_target ?? null) as string | null,
+              sale_amount:
+                typeof r.sale_amount === 'number'
+                  ? r.sale_amount
+                  : r.sale_amount != null && r.sale_amount !== ''
+                    ? Number(r.sale_amount)
+                    : null,
+              currency: (r.currency ?? null) as string | null,
+              is_latest_for_call: true,
+            }))
+            .filter((x) => x.id && x.call_id && x.at);
+          setHistory(feed);
+          return;
+        }
+
         console.warn('[fetchKillFeed] RPC error:', rpcError);
         return;
       }
       if (!data) return;
       
       // Parse jsonb array
-      const rows = Array.isArray(data) ? data : [];
-      const feed = rows.map((r: any) => ({
-        id: r.id,
-        at: r.action_at || r.created_at,
-        status: r.status as 'confirmed' | 'junk' | 'cancelled',
-        intent_action: r.intent_action ?? null,
-        identity: r.intent_target ?? null,
-        sale_amount: r.sale_amount ?? null,
-        currency: r.currency ?? null,
-      }));
+      let rows: any[] = [];
+      if (Array.isArray(data)) rows = data as any[];
+      else if (typeof data === 'string') {
+        try {
+          const parsed = JSON.parse(data) as unknown;
+          rows = Array.isArray(parsed) ? (parsed as any[]) : [];
+        } catch {
+          rows = [];
+        }
+      }
+
+      const feed = rows
+        .map((r: any) => {
+          const saleAmount =
+            typeof r.sale_amount === 'number'
+              ? r.sale_amount
+              : r.sale_amount != null && r.sale_amount !== ''
+                ? Number(r.sale_amount)
+                : null;
+          return {
+            id: String(r.id ?? ''),
+            call_id: String(r.call_id ?? ''),
+            at: String(r.created_at ?? r.action_at ?? ''),
+            action_type: String(r.action_type ?? ''),
+            actor_type: String(r.actor_type ?? ''),
+            previous_status: (r.previous_status ?? null) as string | null,
+            new_status: (r.new_status ?? null) as string | null,
+            intent_action: (r.intent_action ?? null) as string | null,
+            identity: (r.intent_target ?? null) as string | null,
+            sale_amount: Number.isFinite(saleAmount as any) ? (saleAmount as number) : null,
+            currency: (r.currency ?? null) as string | null,
+            is_latest_for_call: Boolean(r.is_latest_for_call),
+          };
+        })
+        .filter((x) => x.id && x.call_id && x.at);
       setHistory(feed);
     } catch (err) {
       console.warn('[fetchKillFeed] Error:', err);
@@ -574,7 +642,8 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   const handleQualified = useCallback(() => {
     // Intent was qualified, refresh the list
     fetchUnscoredIntents();
-  }, [fetchUnscoredIntents]);
+    fetchKillFeed();
+  }, [fetchUnscoredIntents, fetchKillFeed]);
 
   // Modal qualification hook (must be after handleQualified definition)
   const { qualify: qualifyModalIntent } = useIntentQualification(
@@ -618,30 +687,30 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   }, []);
 
   const pushHistoryRow = useCallback(
-    (row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => {
-      setHistory((prev) => [{ ...row, at: new Date().toISOString() }, ...prev].slice(0, 12));
+    (_row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => {
+      // History is DB-backed now; refresh instead of optimistic local rows.
+      fetchKillFeed();
     },
-    []
+    [fetchKillFeed]
   );
 
-  const restoreFromHistory = useCallback(async (callId: string) => {
+  const undoLastAction = useCallback(async (callId: string) => {
     setRestoringIds((prev) => new Set(prev).add(callId));
     try {
-      const res = await fetch(`/api/intents/${callId}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'intent', lead_score: null }),
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc('undo_last_action_v1', {
+        p_call_id: callId,
+        p_actor_type: 'user',
+        p_actor_id: null,
+        p_metadata: { ui: 'QualificationQueue', site_id: siteId },
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error || res.statusText);
-      }
-      pushToast('success', 'Restored to queue.');
-      // Refresh both queue and kill feed
+      if (rpcError) throw rpcError;
+      pushToast('success', 'Undone.');
+      // Refresh both queue and activity feed
       fetchUnscoredIntents();
       fetchKillFeed();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to restore';
+      const msg = err instanceof Error ? err.message : 'Failed to undo';
       pushToast('danger', msg);
     } finally {
       setRestoringIds((prev) => {
@@ -650,7 +719,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         return next;
       });
     }
-  }, [fetchUnscoredIntents, fetchKillFeed, pushToast]);
+  }, [fetchUnscoredIntents, fetchKillFeed, pushToast, siteId]);
 
   const cancelDeal = useCallback(async (callId: string) => {
     setRestoringIds((prev) => new Set(prev).add(callId));
@@ -807,8 +876,9 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
     return Icons.circleDot;
   }
 
-  function statusBadge(status: 'confirmed' | 'junk' | 'cancelled') {
-    if (status === 'confirmed') {
+  function statusBadge(status: string | null) {
+    const s = (status || 'intent').toLowerCase();
+    if (s === 'confirmed' || s === 'qualified' || s === 'real') {
       return (
         <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
           <CheckCircle2 className="h-3 w-3" />
@@ -816,7 +886,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         </span>
       );
     }
-    if (status === 'cancelled') {
+    if (s === 'cancelled') {
       return (
         <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
           <XOctagon className="h-3 w-3" />
@@ -824,10 +894,18 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
         </span>
       );
     }
+    if (s === 'junk') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
+          <XOctagon className="h-3 w-3" />
+          Junk
+        </span>
+      );
+    }
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
-        <XOctagon className="h-3 w-3" />
-        Junk
+      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+        <Icons.circleDot className="h-3 w-3" />
+        Intent
       </span>
     );
   }
@@ -916,9 +994,9 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
           </Button>
         </div>
 
-        {/* Kill Feed */}
+        {/* Activity Log (Kill Feed) */}
         <div className="relative rounded-lg border border-border bg-background p-3">
-          <div className="text-sm font-medium">Kill Feed</div>
+          <div className="text-sm font-medium">Activity Log</div>
           <div className="mt-2 relative max-h-44 overflow-hidden">
             <div className="space-y-2">
               {history.length === 0 ? (
@@ -927,9 +1005,10 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                 history.map((h, idx) => {
                   const Icon = iconForAction(h.intent_action);
                   const faded = idx >= 7;
-                  const isRestoring = restoringIds.has(h.id);
-                  const canRestore = h.status === 'junk';
-                  const canCancel = h.status === 'confirmed';
+                  const isRestoring = restoringIds.has(h.call_id);
+                  const s = (h.new_status || 'intent').toLowerCase();
+                  const canUndo = h.is_latest_for_call && (h.action_type || '').toLowerCase() !== 'undo';
+                  const canCancel = h.is_latest_for_call && s === 'confirmed';
                   return (
                     <div
                       key={`${h.id}-${h.at}`}
@@ -947,16 +1026,19 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                         <div className="text-sm font-medium tabular-nums truncate">
                           {h.identity || '—'}
                         </div>
+                        <div className="text-xs text-muted-foreground shrink-0">
+                          {(h.action_type || '').toUpperCase()}
+                        </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {statusBadge(h.status)}
-                        {canRestore && (
+                        {statusBadge(h.new_status)}
+                        {canUndo && (
                           <button
                             type="button"
                             className="p-1 rounded hover:bg-slate-100 transition-colors disabled:opacity-50"
-                            onClick={() => restoreFromHistory(h.id)}
+                            onClick={() => undoLastAction(h.call_id)}
                             disabled={isRestoring}
-                            title="Restore to queue"
+                            title="Undo last action"
                           >
                             <Undo2 className="h-3.5 w-3.5 text-slate-600" />
                           </button>
@@ -965,7 +1047,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
                           <button
                             type="button"
                             className="p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
-                            onClick={() => cancelDeal(h.id)}
+                            onClick={() => cancelDeal(h.call_id)}
                             disabled={isRestoring}
                             title="Cancel deal"
                           >

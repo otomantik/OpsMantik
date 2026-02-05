@@ -69,35 +69,35 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Update call status
-    const updateData: any = {
-      status: status || null,
-    };
+    // Route through apply_call_action_v1 to guarantee audit log + revert snapshot.
+    // This endpoint is primarily used for junk/restore/cancel flows; seal happens via /api/calls/[id]/seal.
+    const actionType =
+      status === 'junk'
+        ? 'junk'
+        : status === 'cancelled'
+          ? 'cancel'
+          : status === 'intent'
+            ? 'restore'
+            : null;
 
-    // Set confirmed_at if status is confirmed/qualified/real
-    if (['confirmed', 'qualified', 'real'].includes(status)) {
-      updateData.confirmed_at = new Date().toISOString();
-      updateData.cancelled_at = null;
-    } else if (status === 'cancelled') {
-      // Set cancelled_at for cancelled status
-      updateData.cancelled_at = new Date().toISOString();
-    } else {
-      // Clear both for other statuses (junk, intent, etc.)
-      updateData.confirmed_at = null;
-      updateData.cancelled_at = null;
+    if (!actionType) {
+      return NextResponse.json(
+        { error: 'Unsupported status for this endpoint (use /api/calls/[id]/seal for confirmations)' },
+        { status: 400 }
+      );
     }
 
-    // Update lead_score if provided
-    if (lead_score !== undefined) {
-      updateData.lead_score = lead_score;
-    }
+    const payload: Record<string, unknown> = {};
+    if (lead_score !== undefined) payload.lead_score = lead_score;
 
-    const { data: updatedCall, error: updateError } = await adminClient
-      .from('calls')
-      .update(updateData)
-      .eq('id', callId)
-      .select()
-      .single();
+    const { data: updatedCall, error: updateError } = await supabase.rpc('apply_call_action_v1', {
+      p_call_id: callId,
+      p_action_type: actionType,
+      p_payload: payload,
+      p_actor_type: 'user',
+      p_actor_id: null,
+      p_metadata: { route, request_id: requestId },
+    });
 
     if (updateError) {
       logError('intent status update failed', { request_id: requestId, route, error: updateError.message });
@@ -107,9 +107,11 @@ export async function POST(
       );
     }
 
+    const callObj = Array.isArray(updatedCall) && updatedCall.length === 1 ? updatedCall[0] : updatedCall;
+
     return NextResponse.json({
       success: true,
-      call: updatedCall,
+      call: callObj,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error';
