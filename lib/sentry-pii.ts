@@ -7,6 +7,7 @@ import type { Event } from '@sentry/nextjs';
 
 const IP_PLACEHOLDER = '[IP]';
 const FINGERPRINT_PLACEHOLDER = '[FINGERPRINT]';
+const REDACTED = '[REDACTED]';
 // Match E.164-like and common local formats (digits, optional + prefix)
 const PHONE_REGEX = /\+?\d[\d\s\-.]{6,20}\d/g;
 
@@ -51,10 +52,31 @@ export function scrubEventPii(event: Event | null): Event | null {
   // Request headers / env often contain IP, fingerprint
   if (event.request) {
     if (event.request.headers && typeof event.request.headers === 'object') {
-      const h = event.request.headers as Record<string, string>;
-      if (h['x-forwarded-for']) h['x-forwarded-for'] = IP_PLACEHOLDER;
-      if (h['x-real-ip']) h['x-real-ip'] = IP_PLACEHOLDER;
-      if (h['x-fingerprint']) h['x-fingerprint'] = FINGERPRINT_PLACEHOLDER;
+      const h = event.request.headers as Record<string, unknown>;
+
+      // Normalize lookups, but preserve original keys if present.
+      const keys = Object.keys(h);
+      for (const k of keys) {
+        const lk = k.toLowerCase();
+
+        // Strip sensitive auth/session headers entirely.
+        if (lk === 'cookie' || lk === 'set-cookie' || lk === 'authorization') {
+          (h as Record<string, unknown>)[k] = REDACTED;
+          continue;
+        }
+
+        // Mask IP headers
+        if (lk === 'x-forwarded-for' || lk === 'x-real-ip' || lk === 'true-client-ip' || lk === 'cf-connecting-ip') {
+          (h as Record<string, unknown>)[k] = IP_PLACEHOLDER;
+          continue;
+        }
+
+        // Mask fingerprint-like headers (project-specific)
+        if (lk === 'x-fingerprint') {
+          (h as Record<string, unknown>)[k] = FINGERPRINT_PLACEHOLDER;
+          continue;
+        }
+      }
     }
   }
 
