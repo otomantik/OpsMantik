@@ -145,7 +145,11 @@ export async function POST(req: NextRequest) {
 
         // Rate limiting: 50 requests per minute per IP (calls are less frequent)
         const clientId = RateLimitService.getClientId(req);
-        const rateLimitResult = await RateLimitService.check(clientId, 50, 60 * 1000);
+        const rateLimitResult = await RateLimitService.checkWithMode(clientId, 50, 60 * 1000, {
+            mode: 'degraded',
+            namespace: 'call-event',
+            fallbackMaxRequests: 10,
+        });
 
         if (!rateLimitResult.allowed) {
             return NextResponse.json(

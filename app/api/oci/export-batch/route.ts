@@ -24,7 +24,10 @@ export async function GET(req: NextRequest) {
     if (!authed) {
       // Stricter throttling on auth failures (response stays generic 401).
       const clientId = RateLimitService.getClientId(req);
-      await RateLimitService.check(`oci-authfail:${clientId}`, 10, 60 * 1000);
+      await RateLimitService.checkWithMode(clientId, 10, 60 * 1000, {
+        mode: 'fail-closed',
+        namespace: 'oci-authfail',
+      });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
