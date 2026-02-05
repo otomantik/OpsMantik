@@ -23,8 +23,9 @@
   }
 
   // Get site ID from script tag (LiteSpeed/deferred: currentScript can be null)
-  const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
-  let siteId = scriptTag ? (scriptTag.getAttribute('data-site-id') || '') : '';
+  // Preferred attribute: data-ops-site-id (V2). Back-compat: data-site-id.
+  const scriptTag = document.currentScript || document.querySelector('script[data-ops-site-id], script[data-site-id]');
+  let siteId = scriptTag ? (scriptTag.getAttribute('data-ops-site-id') || scriptTag.getAttribute('data-site-id') || '') : '';
   if (!siteId && typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.siteId) {
     siteId = String(window.opmantikConfig.siteId);
   }
@@ -33,8 +34,8 @@
     for (var i = 0; i < allScripts.length; i++) {
       var s = allScripts[i];
       var src = (s.src || '').toLowerCase();
-      if ((src.indexOf('core.js') !== -1 || src.indexOf('ux-core.js') !== -1) && s.getAttribute('data-site-id')) {
-        siteId = s.getAttribute('data-site-id') || '';
+      if ((src.indexOf('core.js') !== -1 || src.indexOf('ux-core.js') !== -1) && (s.getAttribute('data-ops-site-id') || s.getAttribute('data-site-id'))) {
+        siteId = s.getAttribute('data-ops-site-id') || s.getAttribute('data-site-id') || '';
         break;
       }
     }
@@ -328,19 +329,46 @@
     var session = getOrCreateSession();
     var callEventUrl = window.location.origin + '/api/call-event';
 
-    // Signed request (HMAC-SHA256): requires data-ops-secret on script tag
+    var proxyUrl =
+      (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-proxy-url')) ||
+      (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsProxyUrl) ||
+      '';
+
+    var eventId = generateUUID();
+    var payload = JSON.stringify({
+      event_id: eventId,
+      site_id: siteId,
+      phone_number: phoneNumber,
+      fingerprint: session.fingerprint,
+      action: (typeof phoneNumber === 'string' && (phoneNumber.indexOf('wa.me') !== -1 || phoneNumber.indexOf('whatsapp') !== -1)) ? 'whatsapp' : 'phone',
+      url: window.location.href,
+      ua: navigator.userAgent
+    });
+
+    // V2 preferred: first-party proxy (no secret in browser)
+    if (proxyUrl) {
+      fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).catch(function() { /* silent */ });
+      return;
+    }
+
+    // V1 fallback: Signed request (HMAC-SHA256): requires data-ops-secret on script tag
     var secret =
       (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-secret')) ||
       (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsSecret) ||
       '';
-    if (!secret || !window.crypto || !window.crypto.subtle) return;
+    var debug = localStorage.getItem('opsmantik_debug') === '1' || localStorage.getItem('WARROOM_DEBUG') === 'true';
+    if (!secret || !window.crypto || !window.crypto.subtle) {
+      if (debug) console.warn('[OPSMANTIK] call-event disabled (no proxy-url or secret)');
+      return;
+    }
 
     var ts = Math.floor(Date.now() / 1000);
-    var rawBody = JSON.stringify({
-      site_id: siteId,
-      phone_number: phoneNumber,
-      fingerprint: session.fingerprint
-    });
+    var rawBody = payload;
 
     var enc = new TextEncoder();
     var msg = ts + '.' + rawBody;

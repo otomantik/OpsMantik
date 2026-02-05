@@ -24,13 +24,14 @@ define('OPSMANTIK_CONSOLE_URL', 'https://console.opsmantik.com'); // optional
 ```html
 <script
   src="https://console.opsmantik.com/assets/core.js"
-  data-site-id="YOUR_SITE_PUBLIC_ID_32HEX"
+  data-ops-site-id="YOUR_SITE_PUBLIC_ID_32HEX"
   data-ops-proxy-url="https://YOURDOMAIN.com/wp-json/opsmantik/v1/call-event"
 ></script>
 ```
 
 ### Backward compatibility
 - If `data-ops-proxy-url` is not set, the tracker can still use V1 (`data-ops-secret`) until V1 sunset.
+- `data-site-id` is still supported, but **deprecated** in favor of `data-ops-site-id`.
 
 ### Proof / How to verify
 - From your site (same-origin), run:

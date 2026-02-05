@@ -12,8 +12,9 @@
   }
 
   // Get site ID and API URL from script tag (LiteSpeed/deferred load: currentScript can be null)
-  const scriptTag = document.currentScript || document.querySelector('script[data-site-id]');
-  let siteId = scriptTag?.getAttribute('data-site-id') || '';
+  // Preferred attribute: data-ops-site-id (V2). Back-compat: data-site-id.
+  const scriptTag = document.currentScript || document.querySelector('script[data-ops-site-id], script[data-site-id]');
+  let siteId = scriptTag?.getAttribute('data-ops-site-id') || scriptTag?.getAttribute('data-site-id') || '';
   if (!siteId && typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.siteId) {
     siteId = String(window.opmantikConfig.siteId);
   }
@@ -22,8 +23,8 @@
     for (var i = 0; i < scripts.length; i++) {
       var s = scripts[i];
       var src = (s.src || '').toLowerCase();
-      if ((src.indexOf('core.js') !== -1 || src.indexOf('ux-core.js') !== -1) && s.getAttribute('data-site-id')) {
-        siteId = s.getAttribute('data-site-id') || '';
+      if ((src.indexOf('core.js') !== -1 || src.indexOf('ux-core.js') !== -1) && (s.getAttribute('data-ops-site-id') || s.getAttribute('data-site-id'))) {
+        siteId = s.getAttribute('data-ops-site-id') || s.getAttribute('data-site-id') || '';
         break;
       }
     }
@@ -332,23 +333,47 @@
   // Call Event API — Phone/WhatsApp tıklamalarını calls tablosuna kaydet
   function sendCallEvent(phoneNumber) {
     const session = getOrCreateSession();
-    const callEventUrl = isLocalhost
-      ? window.location.origin + '/api/call-event'
-      : 'https://console.opsmantik.com/api/call-event';
+    const proxyUrl =
+      (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-proxy-url')) ||
+      (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsProxyUrl) ||
+      '';
+    const callEventUrl = isLocalhost ? window.location.origin + '/api/call-event' : 'https://console.opsmantik.com/api/call-event';
 
-    // Signed request (HMAC-SHA256): requires data-ops-secret on script tag
+    const eventId = generateUUID();
+    const payload = {
+      event_id: eventId,
+      site_id: siteId,
+      fingerprint: session.fingerprint,
+      phone_number: phoneNumber,
+      action: (typeof phoneNumber === 'string' && (phoneNumber.includes('wa.me') || phoneNumber.includes('whatsapp'))) ? 'whatsapp' : 'phone',
+      url: window.location.href,
+      ua: navigator.userAgent,
+    };
+    const rawBody = JSON.stringify(payload);
+
+    // V2 preferred: first-party proxy (no secret in browser)
+    if (proxyUrl) {
+      fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: rawBody,
+        keepalive: true,
+      }).catch(() => { /* silent */ });
+      return;
+    }
+
+    // V1 fallback: Signed request (HMAC-SHA256): requires data-ops-secret on script tag
     const secret =
       (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-secret')) ||
       (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsSecret) ||
       '';
-    if (!secret || !window.crypto || !window.crypto.subtle) return;
+    const debug = localStorage.getItem('opsmantik_debug') === '1';
+    if (!secret || !window.crypto || !window.crypto.subtle) {
+      if (debug) console.warn('[OPSMANTIK] call-event disabled (no proxy-url or secret)');
+      return;
+    }
 
     const ts = Math.floor(Date.now() / 1000);
-    const rawBody = JSON.stringify({
-      site_id: siteId,
-      phone_number: phoneNumber,
-      fingerprint: session.fingerprint,
-    });
 
     const enc = new TextEncoder();
     const msg = ts + '.' + rawBody;

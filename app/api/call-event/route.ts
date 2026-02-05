@@ -25,9 +25,15 @@ const SITE_PUBLIC_ID_RE = /^[a-f0-9]{32}$/i;
 
 const CallEventSchema = z
     .object({
+        // V2 rollout: accept event_id but ignore until DB idempotency migration lands.
+        event_id: z.string().uuid().optional(),
         site_id: z.string().min(1).max(64).regex(SITE_PUBLIC_ID_RE),
         fingerprint: z.string().min(1).max(128),
         phone_number: z.string().max(256).nullable().optional(),
+        // V2 tracker context (accepted, not required)
+        action: z.string().max(32).nullable().optional(),
+        url: z.string().max(2048).nullable().optional(),
+        ua: z.string().max(512).nullable().optional(),
         value: z.union([z.number(), z.string(), z.null()]).optional(),
         intent_action: z.string().max(32).nullable().optional(),
         intent_target: z.string().max(512).nullable().optional(),
