@@ -24,6 +24,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify DB RPCs/triggers (CI guard)
+        run: node scripts/ci/verify-db.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
       - name: Build
         run: npm run build
 
@@ -55,4 +62,12 @@ jobs:
           path: |
             test-results/
             playwright-report/
+          retention-days: 7
+
+      - name: Upload DB verify report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-verify-report
+          path: ci-reports/db-verify.json
           retention-days: 7
