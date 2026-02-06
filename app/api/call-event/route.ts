@@ -99,7 +99,10 @@ function parseValueAllowNull(v: unknown): number | null {
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
+    const signingDisabledCors =
+        process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
     const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+    const allowAnyOrigin = !signingDisabledCors;
 
     const headers: Record<string, string> = {
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -107,16 +110,17 @@ export async function OPTIONS(req: NextRequest) {
         'Access-Control-Max-Age': '86400',
         'Vary': 'Origin',
         'X-OpsMantik-Version': OPSMANTIK_VERSION,
-        'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
-        'X-CORS-Reason': reason || 'ok',
+        'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
+        'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
     };
 
-    if (isAllowed && origin) {
+    // For signed call-event endpoint, allow any origin by reflecting it (still protected by HMAC).
+    if ((allowAnyOrigin || isAllowed) && origin) {
         headers['Access-Control-Allow-Origin'] = origin;
     }
 
     return new NextResponse(null, {
-        status: isAllowed ? 200 : 403,
+        status: (allowAnyOrigin || isAllowed) ? 200 : 403,
         headers,
     });
 }
@@ -141,6 +145,15 @@ function isMissingEventIdColumnError(err: unknown): boolean {
     return false;
 }
 
+function isMissingResolveRpcError(err: unknown): boolean {
+    const e = err as { code?: string; message?: string } | null;
+    const code = (e?.code || '').toString();
+    const msg = (e?.message || '').toString().toLowerCase();
+    if (code.startsWith('PGRST') && msg.includes('resolve_site_identifier_v1')) return true;
+    if (msg.includes('resolve_site_identifier_v1') && (msg.includes('does not exist') || msg.includes('not found'))) return true;
+    return false;
+}
+
 export async function POST(req: NextRequest) {
     const requestId = req.headers.get('x-request-id') ?? undefined;
     try {
@@ -148,18 +161,24 @@ export async function POST(req: NextRequest) {
         const origin = req.headers.get('origin');
         const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
 
+        // If signing is enabled, CORS allowlist is not required: the HMAC signature is the auth boundary.
+        const signingDisabledCors =
+            process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
+        const allowAnyOrigin = !signingDisabledCors;
+
         const baseHeaders: Record<string, string> = {
             'Vary': 'Origin',
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
-            'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
-            'X-CORS-Reason': reason || 'ok',
+            'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
+            'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
         };
 
-        if (isAllowed && origin) {
+        if ((allowAnyOrigin || isAllowed) && origin) {
             baseHeaders['Access-Control-Allow-Origin'] = origin;
         }
 
-        if (!isAllowed) {
+        // Only enforce allowlist when unsigned rollback mode is enabled.
+        if (!allowAnyOrigin && !isAllowed) {
             return NextResponse.json(
                 { error: 'Origin not allowed', reason },
                 { status: 403, headers: baseHeaders }
@@ -289,35 +308,54 @@ export async function POST(req: NextRequest) {
 
         const body = parsed.data;
         // Resolve site identifier BEFORE service-role DB access (UUID or public_id -> canonical UUID).
+        // Back-compat: if the resolver RPC isn't deployed yet, fall back to legacy public_id-only flow.
+        let resolvedSiteUuid: string | null = null;
+        let legacyPublicId: string | null = null;
+
         const { data: resolvedBodySiteId, error: resolveBodyErr } = await anonClient.rpc('resolve_site_identifier_v1', {
             p_input: body.site_id,
         });
         if (resolveBodyErr) {
-            logError('call-event resolve_site_identifier_v1 failed', {
-                request_id: requestId,
-                route: CALL_EVENT_ROUTE,
-                message: resolveBodyErr.message,
-            });
-            return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
-        }
-        if (!resolvedBodySiteId) {
-            return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
+            if (!isMissingResolveRpcError(resolveBodyErr)) {
+                logError('call-event resolve_site_identifier_v1 failed', {
+                    request_id: requestId,
+                    route: CALL_EVENT_ROUTE,
+                    message: resolveBodyErr.message,
+                });
+                return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+            }
+            if (!SITE_PUBLIC_ID_RE.test(body.site_id)) {
+                return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
+            }
+            legacyPublicId = body.site_id;
+        } else {
+            if (!resolvedBodySiteId) {
+                return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
+            }
+            resolvedSiteUuid = resolvedBodySiteId;
         }
 
         // Enforce header/body binding when signing is enabled (prevents cross-site signature reuse).
         if (!signingDisabled) {
-            const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
-                p_input: headerSiteId,
-            });
-            if (resolveHeaderErr || !resolvedHeaderSiteId) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-            }
-            if (resolvedHeaderSiteId !== resolvedBodySiteId) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+            if (legacyPublicId) {
+                if (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== legacyPublicId) {
+                    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+                }
+            } else {
+                const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+                    p_input: headerSiteId,
+                });
+                if (resolveHeaderErr || !resolvedHeaderSiteId) {
+                    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+                }
+                if (resolvedHeaderSiteId !== resolvedSiteUuid) {
+                    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+                }
             }
         }
 
-        const site_id = resolvedBodySiteId;
+        // site_id is canonical UUID when resolver exists; otherwise derived later in legacy mode.
+        let site_id: string | null = resolvedSiteUuid;
         const fingerprint = body.fingerprint;
         const phone_number = (typeof body.phone_number === 'string' ? body.phone_number : null) ?? null;
         const eventIdMode = getEventIdMode();
@@ -326,7 +364,7 @@ export async function POST(req: NextRequest) {
         // Accept value=null/undefined without failing.
         const value = parseValueAllowNull(body.value);
 
-        if (!site_id || !fingerprint) {
+        if (!fingerprint) {
             return NextResponse.json(
                 { error: 'Missing required fields' },
                 { status: 400, headers: baseHeaders }
@@ -334,15 +372,16 @@ export async function POST(req: NextRequest) {
         }
 
         // Replay cache (stronger than timestamp window). Degraded mode falls back locally on redis errors.
-        const replayKey = ReplayCacheService.makeReplayKey({ siteId: site_id, eventId: event_id, signature: headerSig || null });
+        const replaySiteKey = resolvedSiteUuid ?? legacyPublicId ?? 'unknown';
+        const replayKey = ReplayCacheService.makeReplayKey({ siteId: replaySiteKey, eventId: event_id, signature: headerSig || null });
         const replay = await ReplayCacheService.checkAndStore(replayKey, 10 * 60 * 1000, { mode: 'degraded', namespace: 'call-event' });
         if (replay.isReplay) {
             // Best-effort: if event_id is present, return existing call id to help client-side correlation.
-            if (event_id && eventIdColumnOk) {
+            if (event_id && eventIdColumnOk && resolvedSiteUuid) {
                 const { data: existing } = await adminClient
                     .from('calls')
                     .select('id, matched_session_id, lead_score')
-                    .eq('site_id', site_id)
+                    .eq('site_id', resolvedSiteUuid)
                     .eq('event_id', event_id)
                     .single();
                 if (existing?.id) {
@@ -355,11 +394,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: 'noop' }, { status: 200, headers: baseHeaders });
         }
 
-        // We already validated existence via resolve_site_identifier_v1; use canonical UUID directly.
-        const site = { id: site_id } as const;
+        // Canonical site UUID for DB operations.
+        let siteUuid = resolvedSiteUuid;
+        if (!siteUuid) {
+            const { data: s, error: sErr } = await adminClient
+                .from('sites')
+                .select('id')
+                .eq('public_id', legacyPublicId)
+                .single();
+            if (sErr || !s?.id) {
+                logWarn('call-event site not found (legacy public_id)', { request_id: requestId, route: CALL_EVENT_ROUTE, site_id: legacyPublicId ?? undefined });
+                return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
+            }
+            siteUuid = s.id;
+        }
+        // TS: ensure non-null canonical UUID from here.
+        if (!siteUuid) {
+            return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
+        }
+        const siteUuidFinal: string = siteUuid;
+
+        const site = { id: siteUuidFinal } as const;
+        // Ensure downstream logs/queries use canonical UUID.
+        site_id = siteUuidFinal;
 
         // Per-site rate limiting (blast-radius isolation).
-        const siteRateLimit = await RateLimitService.checkWithMode(`${site_id}|${clientId}`, 80, 60 * 1000, {
+        const siteRateLimit = await RateLimitService.checkWithMode(`${siteUuidFinal}|${clientId}`, 80, 60 * 1000, {
             mode: 'degraded',
             namespace: 'call-event-site',
             fallbackMaxRequests: 15,
@@ -398,7 +458,7 @@ export async function POST(req: NextRequest) {
             logError('call-event events query error', {
                 request_id: requestId,
                 route: CALL_EVENT_ROUTE,
-                site_id,
+                site_id: site_id ?? undefined,
                 fingerprint,
                 code: eventsError.code,
                 details: eventsError.details,
@@ -434,7 +494,7 @@ export async function POST(req: NextRequest) {
                 logWarn('call-event session not found for match', {
                     request_id: requestId,
                     route: CALL_EVENT_ROUTE,
-                    site_id,
+                    site_id: site_id ?? undefined,
                     session_id: matchedSessionId,
                     error: sessionError?.message,
                 });
@@ -450,7 +510,7 @@ export async function POST(req: NextRequest) {
                     logWarn('call-event suspicious match detected', {
                         request_id: requestId,
                         route: CALL_EVENT_ROUTE,
-                        site_id,
+                        site_id: site_id ?? undefined,
                         session_id: matchedSessionId,
                         session_created_at: session.created_at,
                         matched_at: matchedAt,
@@ -472,7 +532,7 @@ export async function POST(req: NextRequest) {
                     logError('call-event session events query error', {
                         request_id: requestId,
                         route: CALL_EVENT_ROUTE,
-                        site_id,
+                        site_id: site_id ?? undefined,
                         session_id: matchedSessionId,
                         code: sessionEventsError.code,
                         message: sessionEventsError.message,
@@ -567,7 +627,7 @@ export async function POST(req: NextRequest) {
                 logWarn('call-event: calls.event_id missing; retrying insert without event_id', {
                     request_id: requestId,
                     route: CALL_EVENT_ROUTE,
-                    site_id,
+                    site_id: site.id,
                 });
                 const r2 = await adminClient.from('calls').insert(baseInsert).select().single();
                 callRecord = r2.data;

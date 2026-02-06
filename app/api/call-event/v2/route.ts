@@ -35,6 +35,15 @@ function isMissingEventIdColumnError(err: unknown): boolean {
   if (msg.includes('does not exist') || msg.includes('could not find') || msg.includes('not found')) return true;
   return false;
 }
+
+function isMissingResolveRpcError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  const code = (e?.code || '').toString();
+  const msg = (e?.message || '').toString().toLowerCase();
+  if (code.startsWith('PGRST') && msg.includes('resolve_site_identifier_v1')) return true;
+  if (msg.includes('resolve_site_identifier_v1') && (msg.includes('does not exist') || msg.includes('not found'))) return true;
+  return false;
+}
 // V2 payload is identical to V1 but adds event_id (for upcoming idempotency).
 const CallEventV2Schema = z
   .object({
@@ -201,22 +210,34 @@ export async function POST(req: NextRequest) {
 
     const body = parsed.data;
     // Resolve site identifier BEFORE service-role DB access (UUID or public_id -> canonical UUID).
+    // Back-compat: if resolver RPC isn't deployed yet, fall back to legacy public_id-only flow.
+    let resolvedSiteUuid: string | null = null;
+    let legacyPublicId: string | null = null;
+
     const { data: resolvedBodySiteId, error: resolveBodyErr } = await anonClient.rpc('resolve_site_identifier_v1', {
       p_input: body.site_id,
     });
     if (resolveBodyErr) {
-      logError('call-event-v2 resolve_site_identifier_v1 failed', { request_id: requestId, route: ROUTE, message: resolveBodyErr.message });
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+      if (!isMissingResolveRpcError(resolveBodyErr)) {
+        logError('call-event-v2 resolve_site_identifier_v1 failed', { request_id: requestId, route: ROUTE, message: resolveBodyErr.message });
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+      }
+      if (!SITE_PUBLIC_ID_RE.test(body.site_id)) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
+      if (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== body.site_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      legacyPublicId = body.site_id;
+    } else {
+      if (!resolvedBodySiteId) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
+      resolvedSiteUuid = resolvedBodySiteId;
+
+      const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+        p_input: headerSiteId,
+      });
+      if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      if (resolvedHeaderSiteId !== resolvedSiteUuid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
     }
-    if (!resolvedBodySiteId) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
 
-    const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
-      p_input: headerSiteId,
-    });
-    if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-    if (resolvedHeaderSiteId !== resolvedBodySiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-
-    const site_id = resolvedBodySiteId;
+    // site_id is canonical UUID when resolver exists; otherwise derived later in legacy mode.
+    let site_id: string | null = resolvedSiteUuid;
     const fingerprint = body.fingerprint;
     const phone_number = typeof body.phone_number === 'string' ? body.phone_number : null;
     const eventIdMode = getEventIdMode();
@@ -225,14 +246,15 @@ export async function POST(req: NextRequest) {
     const value = parseValueAllowNull(body.value);
 
     // Replay cache (stronger than timestamp window). Degraded mode falls back locally on redis errors.
-    const replayKey = ReplayCacheService.makeReplayKey({ siteId: site_id, eventId: event_id, signature: headerSig || null });
+    const replaySiteKey = resolvedSiteUuid ?? legacyPublicId ?? 'unknown';
+    const replayKey = ReplayCacheService.makeReplayKey({ siteId: replaySiteKey, eventId: event_id, signature: headerSig || null });
     const replay = await ReplayCacheService.checkAndStore(replayKey, 10 * 60 * 1000, { mode: 'degraded', namespace: 'call-event-v2' });
     if (replay.isReplay) {
-      if (event_id && eventIdColumnOk) {
+      if (event_id && eventIdColumnOk && resolvedSiteUuid) {
         const { data: existing } = await adminClient
           .from('calls')
           .select('id, matched_session_id, lead_score')
-          .eq('site_id', site_id)
+          .eq('site_id', resolvedSiteUuid)
           .eq('event_id', event_id)
           .single();
         if (existing?.id) {
@@ -245,13 +267,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'noop' }, { status: 200, headers: baseHeaders });
     }
 
-    // We already validated existence via resolve_site_identifier_v1; use canonical UUID directly.
-    const site = { id: site_id } as const;
+    // Canonical site UUID for DB operations.
+    let siteUuid = resolvedSiteUuid;
+    if (!siteUuid) {
+      const { data: s, error: sErr } = await adminClient.from('sites').select('id').eq('public_id', legacyPublicId).single();
+      if (sErr || !s?.id) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
+      siteUuid = s.id;
+    }
+    if (!siteUuid) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
+    const siteUuidFinal: string = siteUuid;
+    site_id = siteUuidFinal;
+    const site = { id: siteUuidFinal } as const;
 
     // Per-site(+proxy host) rate limiting (blast-radius isolation).
     const proxyHostRaw = (req.headers.get('x-ops-proxy-host') || '').trim().toLowerCase();
     const proxyHost = proxyHostRaw && proxyHostRaw.length <= 255 ? proxyHostRaw.replace(/[^a-z0-9.-]/g, '').slice(0, 128) : 'unknown';
-    const rl = await RateLimitService.checkWithMode(`${site_id}|${proxyHost}|${clientId}`, 80, 60 * 1000, {
+    const rl = await RateLimitService.checkWithMode(`${siteUuidFinal}|${proxyHost}|${clientId}`, 80, 60 * 1000, {
       mode: 'degraded',
       namespace: 'call-event-v2',
       fallbackMaxRequests: 15,
