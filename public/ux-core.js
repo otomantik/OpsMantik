@@ -362,38 +362,45 @@
       (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsSecret) ||
       '';
     var debug = localStorage.getItem('opsmantik_debug') === '1' || localStorage.getItem('WARROOM_DEBUG') === 'true';
-    if (!secret || !window.crypto || !window.crypto.subtle) {
-      if (debug) console.warn('[OPSMANTIK] call-event disabled (no proxy-url or secret)');
+
+    // If secret exists and crypto available, use signed flow (V1).
+    if (secret && window.crypto && window.crypto.subtle) {
+      var ts = Math.floor(Date.now() / 1000);
+      var rawBody = payload;
+      var enc = new TextEncoder();
+      var msg = ts + '.' + rawBody;
+
+      window.crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+        .then(function(key) { return window.crypto.subtle.sign('HMAC', key, enc.encode(msg)); })
+        .then(function(sigBuf) {
+          var bytes = new Uint8Array(sigBuf);
+          var hex = '';
+          for (var i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+
+          return fetch(callEventUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Ops-Site-Id': siteId,
+              'X-Ops-Ts': String(ts),
+              'X-Ops-Signature': hex
+            },
+            body: rawBody,
+            keepalive: true
+          });
+        })
+        .catch(function() { /* silent */ });
       return;
     }
 
-    var ts = Math.floor(Date.now() / 1000);
-    var rawBody = payload;
-
-    var enc = new TextEncoder();
-    var msg = ts + '.' + rawBody;
-
-    // Fire-and-forget async call (non-blocking)
-    window.crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-      .then(function(key) { return window.crypto.subtle.sign('HMAC', key, enc.encode(msg)); })
-      .then(function(sigBuf) {
-        var bytes = new Uint8Array(sigBuf);
-        var hex = '';
-        for (var i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
-
-        return fetch(callEventUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Ops-Site-Id': siteId,
-            'X-Ops-Ts': String(ts),
-            'X-Ops-Signature': hex
-          },
-          body: rawBody,
-          keepalive: true
-        });
-      })
-      .catch(function() { /* silent */ });
+    // Unsigned fallback (GTM-like): no secret/proxy → send unsigned POST (requires CORS allowlist).
+    if (debug) console.log('[OPSMANTIK] call-event unsigned mode');
+    fetch(callEventUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).catch(function() { /* silent */ });
   }
 
   // Auto-tracking
