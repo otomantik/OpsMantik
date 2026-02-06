@@ -4,21 +4,27 @@ Load tests for OpsMantik using [k6](https://k6.io/).
 
 ## Prerequisites
 
-**Option 1: npx (recommended)**
-```bash
-# No installation needed
-npx k6 run tests/load/smoke-load.js
-```
+You need k6 installed to run load tests. Choose one option:
 
-**Option 2: Install k6**
-```bash
-# macOS
-brew install k6
+### Option 1: Install k6 (recommended)
 
-# Windows (via Chocolatey)
+**Windows (PowerShell as Admin):**
+```powershell
+# Via Chocolatey
 choco install k6
 
-# Linux
+# Or download installer from: https://k6.io/docs/get-started/installation/
+# Then run: npm run load:smoke
+```
+
+**macOS:**
+```bash
+brew install k6
+```
+
+**Linux:**
+```bash
+# Debian/Ubuntu
 sudo gpg -k
 sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
 echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
@@ -26,9 +32,10 @@ sudo apt-get update
 sudo apt-get install k6
 ```
 
-**Option 3: Docker**
+### Option 2: Docker (no install needed)
 ```bash
-docker run --rm -i grafana/k6 run - < tests/load/smoke-load.js
+# Works on any platform with Docker
+npm run load:docker
 ```
 
 ## Available Tests
@@ -50,14 +57,20 @@ docker run --rm -i grafana/k6 run - < tests/load/smoke-load.js
 
 **Run:**
 ```bash
-# Local development
-npx k6 run tests/load/smoke-load.js
+# Local development (after npm run dev)
+npm run load:smoke
+
+# Or with k6 directly
+k6 run tests/load/smoke-load.js
 
 # Against staging
-BASE_URL=https://staging.opsmantik.com npx k6 run tests/load/smoke-load.js
+BASE_URL=https://staging.opsmantik.com k6 run tests/load/smoke-load.js
 
 # Against production (use carefully, with test site)
-BASE_URL=https://console.opsmantik.com TEST_SITE_ID=test_site_5186339e npx k6 run tests/load/smoke-load.js
+$env:BASE_URL="https://console.opsmantik.com"; $env:TEST_SITE_ID="test_site_5186339e"; k6 run tests/load/smoke-load.js
+
+# Docker (any platform, no k6 install)
+npm run load:docker
 ```
 
 ## Interpreting Results
@@ -86,7 +99,7 @@ http_req_failed................: 0.00%   ✓ 0         ✗ 8432
 **Before production deploy:**
 ```bash
 # Smoke test against staging
-BASE_URL=https://staging.opsmantik.com npx k6 run tests/load/smoke-load.js
+BASE_URL=https://staging.opsmantik.com k6 run tests/load/smoke-load.js
 ```
 
 **After critical changes:**

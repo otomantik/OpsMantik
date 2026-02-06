@@ -9,16 +9,26 @@
  * - Validates 200 OK responses
  * - Checks p95 latency < 500ms
  * 
+ * Prerequisites:
+ *   Install k6: https://k6.io/docs/get-started/installation/
+ *   
+ *   Windows: choco install k6
+ *   macOS:   brew install k6
+ *   Docker:  No install needed (see below)
+ * 
  * How to run:
  * 
- *   # Via npx (no install needed):
- *   npx k6 run tests/load/smoke-load.js
+ *   # Local (default: http://localhost:3000):
+ *   npm run load:smoke
+ *   # OR: k6 run tests/load/smoke-load.js
  * 
- *   # Via Docker:
- *   docker run --rm -i grafana/k6 run - < tests/load/smoke-load.js
+ *   # Via Docker (no k6 install):
+ *   npm run load:docker
  * 
- *   # With custom target (default: http://localhost:3000):
- *   BASE_URL=https://console.opsmantik.com npx k6 run tests/load/smoke-load.js
+ *   # Against production (PowerShell):
+ *   $env:BASE_URL="https://console.opsmantik.com"
+ *   $env:TEST_SITE_ID="test_site_5186339e"
+ *   k6 run tests/load/smoke-load.js
  * 
  * Success criteria:
  * - http_req_failed < 1% (at least 99% success rate)
