@@ -18,6 +18,23 @@ const OPSMANTIK_VERSION = '2.0.0-proxy';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_BODY_BYTES = 64 * 1024;
+type EventIdMode = 'off' | 'on' | 'auto';
+function getEventIdMode(): EventIdMode {
+  const raw = (process.env.CALL_EVENT_EVENT_ID_COLUMN_ENABLED || '').trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'off') return 'off';
+  if (raw === '1' || raw === 'true' || raw === 'on') return 'on';
+  return 'auto';
+}
+
+function isMissingEventIdColumnError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  const code = (e?.code || '').toString();
+  const msg = (e?.message || '').toString().toLowerCase();
+  if (!msg.includes('event_id')) return false;
+  if (code === '42703' || code === 'PGRST204') return true;
+  if (msg.includes('does not exist') || msg.includes('could not find') || msg.includes('not found')) return true;
+  return false;
+}
 // V2 payload is identical to V1 but adds event_id (for upcoming idempotency).
 const CallEventV2Schema = z
   .object({
@@ -202,14 +219,16 @@ export async function POST(req: NextRequest) {
     const site_id = resolvedBodySiteId;
     const fingerprint = body.fingerprint;
     const phone_number = typeof body.phone_number === 'string' ? body.phone_number : null;
-    const event_id = body.event_id ?? null;
+    const eventIdMode = getEventIdMode();
+    const event_id = eventIdMode !== 'off' ? (body.event_id ?? null) : null;
+    let eventIdColumnOk = eventIdMode === 'on';
     const value = parseValueAllowNull(body.value);
 
     // Replay cache (stronger than timestamp window). Degraded mode falls back locally on redis errors.
     const replayKey = ReplayCacheService.makeReplayKey({ siteId: site_id, eventId: event_id, signature: headerSig || null });
     const replay = await ReplayCacheService.checkAndStore(replayKey, 10 * 60 * 1000, { mode: 'degraded', namespace: 'call-event-v2' });
     if (replay.isReplay) {
-      if (event_id) {
+      if (event_id && eventIdColumnOk) {
         const { data: existing } = await adminClient
           .from('calls')
           .select('id, matched_session_id, lead_score')
@@ -340,29 +359,52 @@ export async function POST(req: NextRequest) {
       typeof body.intent_page_url === 'string' && body.intent_page_url.trim() !== '' ? body.intent_page_url.trim() : (req.headers.get('referer') || null);
     const click_id = typeof body.click_id === 'string' && body.click_id.trim() !== '' ? body.click_id.trim() : null;
 
-    const { data: callRecord, error: insertError } = await adminClient
-      .from('calls')
-      .insert({
-        site_id: site.id,
-        event_id,
-        phone_number,
-        matched_session_id: matchedSessionId,
-        matched_fingerprint: fingerprint,
-        lead_score: leadScore,
-        lead_score_at_match: matchedSessionId ? leadScore : null,
-        score_breakdown: scoreBreakdown,
-        matched_at: matchedSessionId ? matchedAt : null,
-        status: callStatus,
-        source: 'click',
-        intent_action,
-        intent_target,
-        intent_stamp,
-        intent_page_url,
-        click_id,
-        ...(value !== null ? { _client_value: value } : {}),
-      })
-      .select()
-      .single();
+    const baseInsert: Record<string, unknown> = {
+      site_id: site.id,
+      phone_number,
+      matched_session_id: matchedSessionId,
+      matched_fingerprint: fingerprint,
+      lead_score: leadScore,
+      lead_score_at_match: matchedSessionId ? leadScore : null,
+      score_breakdown: scoreBreakdown,
+      matched_at: matchedSessionId ? matchedAt : null,
+      status: callStatus,
+      source: 'click',
+      intent_action,
+      intent_target,
+      intent_stamp,
+      intent_page_url,
+      click_id,
+      ...(value !== null ? { _client_value: value } : {}),
+    };
+
+    const insertWithEventId = {
+      ...baseInsert,
+      ...(event_id ? { event_id } : {}),
+    };
+
+    let callRecord: any = null;
+    let insertError: any = null;
+    if (eventIdMode !== 'off' && event_id) {
+      const r1 = await adminClient.from('calls').insert(insertWithEventId).select().single();
+      callRecord = r1.data;
+      insertError = r1.error;
+      if (insertError && isMissingEventIdColumnError(insertError)) {
+        eventIdColumnOk = false;
+        logWarn('call-event-v2: calls.event_id missing; retrying insert without event_id', {
+          request_id: requestId,
+          route: ROUTE,
+          site_id,
+        });
+        const r2 = await adminClient.from('calls').insert(baseInsert).select().single();
+        callRecord = r2.data;
+        insertError = r2.error;
+      }
+    } else {
+      const r0 = await adminClient.from('calls').insert(baseInsert).select().single();
+      callRecord = r0.data;
+      insertError = r0.error;
+    }
 
     if (insertError) {
       if (insertError.code === '23505') {
@@ -370,7 +412,7 @@ export async function POST(req: NextRequest) {
           .from('calls')
           .select('id, matched_session_id, lead_score')
           .eq('site_id', site.id);
-        const { data: existing, error: existingErr } = event_id
+        const { data: existing, error: existingErr } = event_id && eventIdColumnOk
           ? await q.eq('event_id', event_id).single()
           : await q.eq('intent_stamp', intent_stamp).single();
 

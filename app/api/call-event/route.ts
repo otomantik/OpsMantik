@@ -122,6 +122,24 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 const CALL_EVENT_ROUTE = '/api/call-event';
+type EventIdMode = 'off' | 'on' | 'auto';
+function getEventIdMode(): EventIdMode {
+    const raw = (process.env.CALL_EVENT_EVENT_ID_COLUMN_ENABLED || '').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'off') return 'off';
+    if (raw === '1' || raw === 'true' || raw === 'on') return 'on';
+    return 'auto';
+}
+
+function isMissingEventIdColumnError(err: unknown): boolean {
+    const e = err as { code?: string; message?: string } | null;
+    const code = (e?.code || '').toString();
+    const msg = (e?.message || '').toString().toLowerCase();
+    if (!msg.includes('event_id')) return false;
+    // Postgres undefined_column: 42703. PostgREST can surface as PGRST204.
+    if (code === '42703' || code === 'PGRST204') return true;
+    if (msg.includes('does not exist') || msg.includes('could not find') || msg.includes('not found')) return true;
+    return false;
+}
 
 export async function POST(req: NextRequest) {
     const requestId = req.headers.get('x-request-id') ?? undefined;
@@ -302,7 +320,9 @@ export async function POST(req: NextRequest) {
         const site_id = resolvedBodySiteId;
         const fingerprint = body.fingerprint;
         const phone_number = (typeof body.phone_number === 'string' ? body.phone_number : null) ?? null;
-        const event_id = body.event_id ?? null;
+        const eventIdMode = getEventIdMode();
+        const event_id = eventIdMode !== 'off' ? (body.event_id ?? null) : null;
+        let eventIdColumnOk = eventIdMode === 'on';
         // Accept value=null/undefined without failing.
         const value = parseValueAllowNull(body.value);
 
@@ -318,7 +338,7 @@ export async function POST(req: NextRequest) {
         const replay = await ReplayCacheService.checkAndStore(replayKey, 10 * 60 * 1000, { mode: 'degraded', namespace: 'call-event' });
         if (replay.isReplay) {
             // Best-effort: if event_id is present, return existing call id to help client-side correlation.
-            if (event_id) {
+            if (event_id && eventIdColumnOk) {
                 const { data: existing } = await adminClient
                     .from('calls')
                     .select('id, matched_session_id, lead_score')
@@ -511,30 +531,53 @@ export async function POST(req: NextRequest) {
             : null;
 
         // 4. Insert call record
-        const { data: callRecord, error: insertError } = await adminClient
-            .from('calls')
-            .insert({
-                site_id: site.id,
-                event_id,
-                phone_number,
-                matched_session_id: matchedSessionId,
-                matched_fingerprint: fingerprint,
-                lead_score: leadScore,
-                lead_score_at_match: matchedSessionId ? leadScore : null,
-                score_breakdown: scoreBreakdown,
-                matched_at: matchedSessionId ? matchedAt : null,
-                status: callStatus, // 'intent', 'suspicious', or null
-                source: 'click',
-                intent_action,
-                intent_target,
-                intent_stamp,
-                intent_page_url,
-                click_id,
-                // value is accepted but not stored (calls table uses intent_* + lead_score)
-                ...(value !== null ? { _client_value: value } : {}),
-            })
-            .select()
-            .single();
+        const baseInsert: Record<string, unknown> = {
+            site_id: site.id,
+            phone_number,
+            matched_session_id: matchedSessionId,
+            matched_fingerprint: fingerprint,
+            lead_score: leadScore,
+            lead_score_at_match: matchedSessionId ? leadScore : null,
+            score_breakdown: scoreBreakdown,
+            matched_at: matchedSessionId ? matchedAt : null,
+            status: callStatus, // 'intent', 'suspicious', or null
+            source: 'click',
+            intent_action,
+            intent_target,
+            intent_stamp,
+            intent_page_url,
+            click_id,
+            ...(value !== null ? { _client_value: value } : {}),
+        };
+
+        const insertWithEventId = {
+            ...baseInsert,
+            ...(event_id ? { event_id } : {}),
+        };
+
+        let callRecord: any = null;
+        let insertError: any = null;
+        if (eventIdMode !== 'off' && event_id) {
+            const r1 = await adminClient.from('calls').insert(insertWithEventId).select().single();
+            callRecord = r1.data;
+            insertError = r1.error;
+            if (insertError && isMissingEventIdColumnError(insertError)) {
+                // DB migration not yet applied in this environment. Retry without event_id.
+                eventIdColumnOk = false;
+                logWarn('call-event: calls.event_id missing; retrying insert without event_id', {
+                    request_id: requestId,
+                    route: CALL_EVENT_ROUTE,
+                    site_id,
+                });
+                const r2 = await adminClient.from('calls').insert(baseInsert).select().single();
+                callRecord = r2.data;
+                insertError = r2.error;
+            }
+        } else {
+            const r0 = await adminClient.from('calls').insert(baseInsert).select().single();
+            callRecord = r0.data;
+            insertError = r0.error;
+        }
 
         if (insertError) {
             // Idempotency: treat unique conflicts as NOOP and return existing call.
@@ -543,7 +586,7 @@ export async function POST(req: NextRequest) {
                     .from('calls')
                     .select('id, matched_session_id, lead_score')
                     .eq('site_id', site.id);
-                const { data: existing, error: existingErr } = event_id
+                const { data: existing, error: existingErr } = event_id && eventIdColumnOk
                     ? await q.eq('event_id', event_id).single()
                     : await q.eq('intent_stamp', intent_stamp).single();
 
