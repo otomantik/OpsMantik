@@ -20,6 +20,8 @@ import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
 import { LiveClock } from './LiveClock';
+import { useFunnelAnalytics } from '@/lib/hooks/use-funnel-analytics';
+import { CROInsights } from './widgets/CROInsights';
 import './reset.css';
 
 interface DashboardShellProps {
@@ -76,6 +78,9 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   // Real-time signals for the Shell
   // Holistic View: always show ALL traffic (no ads-only filter).
   const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: false });
+
+  // Funnel analytics and CRO insights
+  const { metrics, loading: analyticsLoading } = useFunnelAnalytics(siteId);
 
   const initialFrom = initialTodayRange?.fromIso?.trim();
   const initialTo = initialTodayRange?.toIso?.trim();
@@ -239,6 +244,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
       {/* Desktop: Live Queue first (left), then Reports; full-width Breakdown below */}
       <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
+        {/* CRO INSIGHTS TOP BAR */}
+        <div className="mb-8">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-slate-800">CRO Optimizer</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Automated behavioral insights and AI recommendations.</p>
+          </div>
+          <CROInsights metrics={metrics} loading={analyticsLoading} />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7">
             <div className="mb-3">
