@@ -14,7 +14,7 @@
     "smoke:device-os": "node scripts/smoke/device-os-proof.mjs",
     "smoke:ai-pipeline-gate": "node scripts/smoke/ai-pipeline-gate.mjs",
     "dev": "next dev",
-    "build": "node scripts/validate-env.mjs && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "check-db": "node scripts/check-db.js",

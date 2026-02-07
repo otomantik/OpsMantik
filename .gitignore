@@ -76,3 +76,5 @@ GCLID_*.sql
 GOOGLE_ADS_*.md
 TRACKING_DROP_*.sql
 TRACKING_DROP_*.md
+
+.vercel

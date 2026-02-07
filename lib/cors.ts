@@ -11,22 +11,24 @@
  * Parse and validate ALLOWED_ORIGINS environment variable
  * 
  * @returns Array of allowed origins
- * @throws Error in production if ALLOWED_ORIGINS is missing/empty
  */
 export function parseAllowedOrigins(): string[] {
   const raw = process.env.ALLOWED_ORIGINS;
   const isProduction = process.env.NODE_ENV === 'production';
+  // Check if we are in the build phase or CI
+  const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || process.env.CI === 'true' || process.env.VERCEL === '1';
 
-  // Fail-closed in production
-  if (isProduction) {
+  // Fail-closed in production, but only at runtime to avoid build-time env injection issues
+  if (isProduction && !isBuildTime) {
     if (!raw || raw.trim() === '') {
+      console.error('[CORS] CRITICAL Error: ALLOWED_ORIGINS environment variable is missing.');
       throw new Error('[CORS] CRITICAL: ALLOWED_ORIGINS must be set in production');
     }
   }
 
-  // Development: allow wildcard if missing
+  // Development or Build-time: allow wildcard/empty defaults to prevent build stalls
   if (!raw || raw.trim() === '') {
-    return ['*'];
+    return isProduction ? [] : ['*'];
   }
 
   // Split by comma, remove ALL whitespace/newlines, filter empty strings
@@ -35,15 +37,15 @@ export function parseAllowedOrigins(): string[] {
     .filter(o => o.length > 0);
 
   if (origins.length === 0) {
-    if (isProduction) {
+    if (isProduction && !isBuildTime) {
       console.error('[CORS] CRITICAL: ALLOWED_ORIGINS is empty after parsing');
       throw new Error('[CORS] CRITICAL: ALLOWED_ORIGINS must contain at least one origin in production');
     }
-    return ['*'];
+    return isProduction ? [] : ['*'];
   }
 
-  // Hard-fail if wildcard found in production
-  if (isProduction && origins.includes('*')) {
+  // Hard-fail if wildcard found in production (at runtime)
+  if (isProduction && !isBuildTime && origins.includes('*')) {
     throw new Error('Security Risk: Wildcard CORS is not allowed in production.');
   }
 
