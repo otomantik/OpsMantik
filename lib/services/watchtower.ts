@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import { TelegramService } from './telegram-service';
 
 export interface WatchtowerHealth {
     status: 'ok' | 'alarm';
@@ -117,21 +118,38 @@ export class WatchtowerService {
     }
 
     /**
-     * Dispatch alerts. Currently logs to console for aggregation.
-     * Future: Hook into Slack/Discord/PagerDuty.
+     * Dispatch alerts.
+     * Logs to console and sends Telegram notification for critical alarms.
      */
-    private static notify(health: WatchtowerHealth) {
-        const alertPayload = {
-            level: 'ALARM',
-            source: 'WATCHTOWER',
-            message: 'Data ingestion pipeline pipeline stall detected',
-            details: health
-        };
+    private static async notify(health: WatchtowerHealth) {
+        const issues: string[] = [];
+        if (health.checks.sessionsLastHour.status === 'alarm') {
+            issues.push(`- 📉 **ZERO Traffic:** No sessions recorded in last 1 hour.`);
+        }
+        if (health.checks.gclidLast3Hours.status === 'alarm') {
+            issues.push(`- 💸 **Ads Blindness:** No GCLID (ad click) recorded in last 3 hours.`);
+        }
 
-        // Log as error so it gets picked up by error tracking (Sentry, Datadog, etc.)
-        console.error(JSON.stringify(alertPayload, null, 2));
+        const alertMessage = `
+**WATCHTOWER DETECTED PIPELINE STALL**
 
-        // Placeholder for future webhook integration
-        // if (process.env.WATCHTOWER_WEBHOOK_URL) { ... }
+Environment: \`${health.details.environment}\`
+Time: ${health.details.timestamp}
+
+**Detected Issues:**
+${issues.join('\n')}
+
+**Diagnostics:**
+- Sessions (1h): ${health.checks.sessionsLastHour.count}
+- GCLIDs (3h): ${health.checks.gclidLast3Hours.count}
+
+_Immediate investigation required._
+        `.trim();
+
+        // 1. Log to console for Sentry/Logs
+        console.error('[WATCHTOWER] ALARM STATE:', JSON.stringify(health, null, 2));
+
+        // 2. Send Telegram Notification
+        await TelegramService.sendMessage(alertMessage, 'alarm');
     }
 }
