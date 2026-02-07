@@ -1,0 +1,8 @@
+{
+    "crons": [
+        {
+            "path": "/api/cron/watchtower",
+            "schedule": "0 * * * *"
+        }
+    ]
+}

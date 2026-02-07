@@ -133,7 +133,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
         <div className="mx-auto max-w-7xl px-6 py-4 w-full min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0 flex-shrink-0">
+            <div className="min-w-0 shrink-0">
               <Link
                 href="/dashboard"
                 className={cn(
