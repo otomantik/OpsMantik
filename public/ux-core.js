@@ -1,4 +1,4 @@
-(function() {
+(function () {
   'use strict';
 
   // Configuration
@@ -7,6 +7,7 @@
     sessionKey: 'opmantik_session_sid',
     fingerprintKey: 'opmantik_session_fp',
     contextKey: 'opmantik_session_context',
+    sessionStartKey: 'opmantik_session_start',
     heartbeatInterval: 60000, // 60 seconds
     sessionTimeout: 1800000, // 30 minutes
   };
@@ -55,7 +56,7 @@
     ctx.textBaseline = 'top';
     ctx.font = '14px Arial';
     ctx.fillText('Fingerprint', 2, 2);
-    
+
     const fingerprint = [
       navigator.userAgent,
       navigator.language,
@@ -63,7 +64,7 @@
       new Date().getTimezoneOffset(),
       canvas.toDataURL(),
     ].join('|');
-    
+
     // Simple hash
     let hash = 0;
     for (let i = 0; i < fingerprint.length; i++) {
@@ -76,7 +77,7 @@
 
   // UUID v4 generator (RFC 4122 compliant)
   function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
       const r = Math.random() * 16 | 0;
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
@@ -108,11 +109,11 @@
   // Hardware DNA + Network (backend: meta.lan, mem, con, sw, sh, dpr, gpu, con_type)
   function getHardwareMeta() {
     var o = {};
-    try { if (navigator.language) o.lan = navigator.language; } catch (e) {}
-    try { if (typeof navigator.deviceMemory === 'number') o.mem = navigator.deviceMemory; } catch (e) {}
-    try { if (typeof navigator.hardwareConcurrency === 'number') o.con = navigator.hardwareConcurrency; } catch (e) {}
-    try { if (typeof screen !== 'undefined') { o.sw = screen.width; o.sh = screen.height; } } catch (e) {}
-    try { if (typeof window.devicePixelRatio === 'number') o.dpr = window.devicePixelRatio; } catch (e) {}
+    try { if (navigator.language) o.lan = navigator.language; } catch (e) { }
+    try { if (typeof navigator.deviceMemory === 'number') o.mem = navigator.deviceMemory; } catch (e) { }
+    try { if (typeof navigator.hardwareConcurrency === 'number') o.con = navigator.hardwareConcurrency; } catch (e) { }
+    try { if (typeof screen !== 'undefined') { o.sw = screen.width; o.sh = screen.height; } } catch (e) { }
+    try { if (typeof window.devicePixelRatio === 'number') o.dpr = window.devicePixelRatio; } catch (e) { }
     try {
       var canvas = document.createElement('canvas');
       var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
@@ -120,11 +121,11 @@
         var ext = gl.getExtension('WEBGL_debug_renderer_info');
         if (ext) { var r = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL); if (r) o.gpu = r; }
       }
-    } catch (e) {}
+    } catch (e) { }
     try {
       var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
       if (conn && conn.effectiveType) o.con_type = conn.effectiveType;
-    } catch (e) {}
+    } catch (e) { }
     return o;
   }
 
@@ -142,6 +143,12 @@
     if (pulse.ctaHovers > 0) o.cta_hovers = pulse.ctaHovers;
     if (pulse.focusDur > 0) o.focus_dur = pulse.focusDur;
     if (pulse.activeSec > 0) o.active_sec = pulse.activeSec;
+    // Calculate total session duration
+    var startTs = 0;
+    try { startTs = parseInt(sessionStorage.getItem(CONFIG.sessionStartKey) || '0', 10); } catch (e) { }
+    if (startTs > 0) {
+      o.duration_sec = Math.round((Date.now() - startTs) / 1000);
+    }
     return o;
   }
 
@@ -169,7 +176,13 @@
     if (!sessionId) {
       sessionId = generateUUID();
       sessionStorage.setItem(CONFIG.sessionKey, sessionId);
+      sessionStorage.setItem(CONFIG.sessionStartKey, Date.now().toString());
       console.log('[OPSMANTIK] Created new session:', sessionId);
+    } else {
+      // Ensure start time exists for existing sessions (fallback to now if missing)
+      if (!sessionStorage.getItem(CONFIG.sessionStartKey)) {
+        sessionStorage.setItem(CONFIG.sessionStartKey, Date.now().toString());
+      }
     }
 
     // Extract GCLID from URL
@@ -352,7 +365,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: payload,
         keepalive: true
-      }).catch(function() { /* silent */ });
+      }).catch(function () { /* silent */ });
       return;
     }
 
@@ -371,8 +384,8 @@
       var msg = ts + '.' + rawBody;
 
       window.crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-        .then(function(key) { return window.crypto.subtle.sign('HMAC', key, enc.encode(msg)); })
-        .then(function(sigBuf) {
+        .then(function (key) { return window.crypto.subtle.sign('HMAC', key, enc.encode(msg)); })
+        .then(function (sigBuf) {
           var bytes = new Uint8Array(sigBuf);
           var hex = '';
           for (var i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
@@ -389,7 +402,7 @@
             keepalive: true
           });
         })
-        .catch(function() { /* silent */ });
+        .catch(function () { /* silent */ });
       return;
     }
 
@@ -400,13 +413,13 @@
       headers: { 'Content-Type': 'application/json' },
       body: payload,
       keepalive: true
-    }).catch(function() { /* silent */ });
+    }).catch(function () { /* silent */ });
   }
 
   // Auto-tracking
   function initAutoTracking() {
     console.log('[OPSMANTIK] Auto-tracking initialized');
-    
+
     // Page view
     sendEvent('interaction', 'view', document.title);
 
