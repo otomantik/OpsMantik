@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+
+import useSWR from 'swr';
 
 export interface CommandCenterP0Stats {
   site_id: string;
@@ -44,50 +46,56 @@ export function useCommandCenterP0Stats(
   rangeOverride?: CommandCenterRange,
   options?: UseCommandCenterP0StatsOptions
 ) {
-  const [stats, setStats] = useState<CommandCenterP0Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const scope = options?.scope ?? 'ads';
   const adsOnly = scope === 'ads';
 
   const dateRange = useMemo(() => {
     if (rangeOverride?.fromIso && rangeOverride?.toIso) return rangeOverride;
-    const { fromIso, toIso } = getTodayTrtUtcRange();
-    return { fromIso, toIso };
-  }, [rangeOverride?.fromIso, rangeOverride?.toIso]);
+    // Default to today
+    // Note: rangeOverride might be undefined initially, ensure stability
+    // Actually getTodayTrtUtcRange returns a new object every time, referential instability?
+    // The previous implementation used useMemo, so it was fine.
+    // We should keep stability logic.
+    return rangeOverride ?? getTodayTrtUtcRange();
+  }, [rangeOverride]);
 
-  const fetchStats = useCallback(async () => {
-    if (!siteId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const supabase = createClient();
-      const { data, error: rpcError } = await supabase.rpc('get_command_center_p0_stats_v2', {
-        p_site_id: siteId,
-        p_date_from: dateRange.fromIso,
-        p_date_to: dateRange.toIso,
-        p_ads_only: adsOnly,
-      });
-      if (rpcError) throw rpcError;
-      // Normalize: Supabase/PostgREST may return jsonb as single-element array or raw object
-      const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
-      const payload = raw && typeof raw === 'object' && 'sealed' in raw ? raw : null;
-      setStats((payload as CommandCenterP0Stats) ?? null);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load P0 stats');
-    } finally {
-      setLoading(false);
+  // Ensure primitives for SWR key
+  const fromIso = dateRange.fromIso;
+  const toIso = dateRange.toIso;
+
+  const fetcher = async () => {
+    if (!siteId) return null;
+    const supabase = createClient();
+    const { data, error: rpcError } = await supabase.rpc('get_command_center_p0_stats_v2', {
+      p_site_id: siteId,
+      p_date_from: fromIso,
+      p_date_to: toIso,
+      p_ads_only: adsOnly,
+    });
+
+    if (rpcError) throw rpcError;
+
+    const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
+    // Validate shape roughly
+    if (raw && typeof raw === 'object' && 'sealed' in raw) {
+      return raw as CommandCenterP0Stats;
     }
-  }, [dateRange.fromIso, dateRange.toIso, siteId, adsOnly]);
+    return null;
+  };
 
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+  const key = siteId ? ['get_command_center_p0_stats_v2', siteId, fromIso, toIso, adsOnly] : null;
 
-  // sealed, junk, total_leads, gclid_leads come ONLY from RPC (DB). Redis "captured" is event
-  // count, not sealed count — overlay was causing Capture to show inflated numbers (see DASHBOARD_METRICS_LOGIC_AUDIT.md).
+  const { data, error, isLoading, mutate } = useSWR(key, fetcher, {
+    revalidateOnFocus: false, // Don't revalidate on window focus to avoid partial UI jumps
+    keepPreviousData: true, // Keep showing old data while fetching new range
+  });
 
-  return { stats, loading, error, refetch: fetchStats, dateRange };
+  return {
+    stats: data ?? null,
+    loading: isLoading,
+    error: error ? (error instanceof Error ? error.message : String(error)) : null,
+    refetch: mutate,
+    dateRange
+  };
 }
 

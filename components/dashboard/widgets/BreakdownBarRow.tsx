@@ -42,7 +42,7 @@ export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowPro
           {label}
         </span>
         <span className="text-sm tabular-nums shrink-0 font-medium text-slate-600" suppressHydrationWarning>
-          {item.count.toLocaleString()} ({item.pct}%)
+          {item.count.toLocaleString('tr-TR')} ({item.pct}%)
         </span>
       </div>
       <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">

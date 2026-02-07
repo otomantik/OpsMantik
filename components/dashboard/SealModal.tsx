@@ -223,7 +223,7 @@ export function SealModal({
                       setCustomAmount('');
                     }}
                   >
-                    <span suppressHydrationWarning>{value.toLocaleString()} {currency}</span>
+                    <span suppressHydrationWarning>{value.toLocaleString('tr-TR')} {currency}</span>
                   </Button>
                 ))}
               </div>

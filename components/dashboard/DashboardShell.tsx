@@ -1,11 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './QualificationQueue';
-import { BreakdownWidgets } from './widgets/BreakdownWidgets';
-import { PulseProjectionWidgets } from './widgets/PulseProjectionWidgets';
-import { TrafficSourceBreakdown } from './widgets/TrafficSourceBreakdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +29,46 @@ interface DashboardShellProps {
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
 }
+
+const BreakdownWidgets = dynamic(
+  () => import('./widgets/BreakdownWidgets').then((mod) => mod.BreakdownWidgets),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-4">
+        <div className="h-6 w-32 bg-slate-100 rounded animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="h-[300px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
+          <div className="h-[300px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
+          <div className="h-[300px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
+        </div>
+      </div>
+    ),
+  }
+);
+
+const PulseProjectionWidgets = dynamic(
+  () => import('./widgets/PulseProjectionWidgets').then((mod) => mod.PulseProjectionWidgets),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="h-[180px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
+        <div className="h-[180px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
+      </div>
+    ),
+  }
+);
+
+const TrafficSourceBreakdown = dynamic(
+  () => import('./widgets/TrafficSourceBreakdown').then((mod) => mod.TrafficSourceBreakdown),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="bg-slate-50 rounded-xl border border-slate-200 h-[400px] animate-pulse" />
+    ),
+  }
+);
 
 export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
@@ -214,6 +252,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <h2 className="text-base font-semibold text-slate-800">{strings.reports}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{strings.reportsSubtitle}</p>
             </div>
+            {/* Wrap in Suspense? No, dynamic has loading */}
             <TrafficSourceBreakdown
               siteId={siteId}
               dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}

@@ -73,7 +73,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
     (whatsappIntents ?? 0) === 0 &&
     (stats.total_events || 0) === 0;
 
-  const fmt = (n: number | null) => (n === null ? '…' : n.toLocaleString());
+  const fmt = (n: number | null) => (n === null ? '…' : n.toLocaleString('tr-TR'));
 
   return (
     <div className="space-y-4">

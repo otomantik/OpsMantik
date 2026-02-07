@@ -120,7 +120,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                      {safeItem.count.toLocaleString()}
+                      {safeItem.count.toLocaleString('tr-TR')}
                     </span>
                     <span className="text-sm text-muted-foreground tabular-nums">
                       ({safeItem.percentage.toFixed(1)}%)
