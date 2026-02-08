@@ -1,5 +1,66 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { TelegramService } from './telegram-service';
+import { logError, logWarn } from '@/lib/logging/logger';
+
+function sanitizePii(text: string): string {
+    // Best-effort sanitization for outbound webhooks.
+    // The current Watchtower payload is non-PII, but we fail-safe for future additions.
+    return String(text || '')
+        // Emails
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+        // Phone-like sequences (very loose)
+        .replace(/\+?\d[\d\s().-]{7,}\d/g, '[redacted-phone]')
+        // Bearer tokens
+        .replace(/\bBearer\s+[A-Za-z0-9._-]+\b/gi, 'Bearer [redacted]');
+}
+
+function getWebhookConfig(): { url: string; kind: 'slack' | 'generic' } {
+    const url = (process.env.ALERT_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL || '').trim();
+    const kindEnv = (process.env.ALERT_WEBHOOK_KIND || '').trim().toLowerCase();
+    const kind = (kindEnv === 'slack' || url.includes('hooks.slack.com')) ? 'slack' : 'generic';
+    return { url, kind };
+}
+
+async function sendAlertWebhook(args: { level: 'alarm' | 'warning' | 'info'; message: string; health: WatchtowerHealth }): Promise<boolean> {
+    const { url, kind } = getWebhookConfig();
+    if (!url) return false;
+
+    const timeoutMs = Math.max(500, Number(process.env.ALERT_WEBHOOK_TIMEOUT_MS || 5000));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const safeMessage = sanitizePii(args.message);
+    const payload =
+        kind === 'slack'
+            ? { text: safeMessage }
+            : {
+                service: 'watchtower',
+                level: args.level,
+                message: safeMessage,
+                health: args.health, // current health payload is non-PII (counts/status/env)
+              };
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+            const txt = await res.text().catch(() => '');
+            logError('alert webhook failed', { status: res.status, body: txt.slice(0, 500), kind });
+            return false;
+        }
+        return true;
+    } catch (err) {
+        clearTimeout(timeoutId);
+        logError('alert webhook error', { error: String((err as Error)?.message ?? err), kind });
+        return false;
+    }
+}
 
 export interface WatchtowerHealth {
     status: 'ok' | 'alarm';
@@ -95,7 +156,8 @@ export class WatchtowerService {
             };
 
             if (overallStatus === 'alarm') {
-                this.notify(healthCheck);
+                // Fire-and-forget, but notify() is fail-closed (never throws).
+                void this.notify(healthCheck);
             }
 
             return healthCheck;
@@ -122,15 +184,16 @@ export class WatchtowerService {
      * Logs to console and sends Telegram notification for critical alarms.
      */
     private static async notify(health: WatchtowerHealth) {
-        const issues: string[] = [];
-        if (health.checks.sessionsLastHour.status === 'alarm') {
-            issues.push(`- 📉 **ZERO Traffic:** No sessions recorded in last 1 hour.`);
-        }
-        if (health.checks.gclidLast3Hours.status === 'alarm') {
-            issues.push(`- 💸 **Ads Blindness:** No GCLID (ad click) recorded in last 3 hours.`);
-        }
+        try {
+            const issues: string[] = [];
+            if (health.checks.sessionsLastHour.status === 'alarm') {
+                issues.push(`- 📉 **ZERO Traffic:** No sessions recorded in last 1 hour.`);
+            }
+            if (health.checks.gclidLast3Hours.status === 'alarm') {
+                issues.push(`- 💸 **Ads Blindness:** No GCLID (ad click) recorded in last 3 hours.`);
+            }
 
-        const alertMessage = `
+            const alertMessage = `
 **WATCHTOWER DETECTED PIPELINE STALL**
 
 Environment: \`${health.details.environment}\`
@@ -146,10 +209,28 @@ ${issues.join('\n')}
 _Immediate investigation required._
         `.trim();
 
-        // 1. Log to console for Sentry/Logs
-        console.error('[WATCHTOWER] ALARM STATE:', JSON.stringify(health, null, 2));
+            // 1) Structured log (fail-closed: never throws, but logs loudly)
+            logError('watchtower alarm', { health });
 
-        // 2. Send Telegram Notification
-        await TelegramService.sendMessage(alertMessage, 'alarm');
+            // 2) Deliver notifications concurrently; never block Telegram on webhook latency.
+            const webhookP = sendAlertWebhook({ level: 'alarm', message: alertMessage, health });
+            const telegramP = TelegramService.sendMessage(alertMessage, 'alarm');
+            const [webhookRes, telegramRes] = await Promise.allSettled([webhookP, telegramP]);
+
+            if (webhookRes.status === 'fulfilled' && webhookRes.value === false) {
+                logWarn('watchtower webhook not delivered', { environment: health.details.environment });
+            } else if (webhookRes.status === 'rejected') {
+                logWarn('watchtower webhook threw', { environment: health.details.environment });
+            }
+
+            if (telegramRes.status === 'fulfilled' && telegramRes.value === false) {
+                logWarn('watchtower telegram not delivered', { environment: health.details.environment });
+            } else if (telegramRes.status === 'rejected') {
+                logWarn('watchtower telegram threw', { environment: health.details.environment });
+            }
+        } catch (err) {
+            // Never throw from notify — avoid unhandled rejections and keep endpoint stable.
+            logError('watchtower notify failed', { error: String((err as Error)?.message ?? err) });
+        }
     }
 }
