@@ -1,7 +1,11 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { afterEach, test, expect } from 'vitest';
 
-import { RateLimitService } from '@/lib/services/RateLimitService';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
+
+afterEach(() => {
+  // Ensure no cross-test leakage
+  RateLimitService._setRedisForTests(null);
+});
 
 function makeFakeRedis() {
   const counts = new Map<string, number>();
@@ -34,7 +38,7 @@ test('RateLimitService.checkWithMode: fail-open allows on redis error', async ()
   });
 
   const res = await RateLimitService.checkWithMode('c1', 1, 1000, { mode: 'fail-open', namespace: 't' });
-  assert.equal(res.allowed, true);
+  expect(res.allowed).toBe(true);
 });
 
 test('RateLimitService.checkWithMode: fail-closed denies on redis error', async () => {
@@ -47,7 +51,7 @@ test('RateLimitService.checkWithMode: fail-closed denies on redis error', async 
   });
 
   const res = await RateLimitService.checkWithMode('c2', 1, 1000, { mode: 'fail-closed', namespace: 't' });
-  assert.equal(res.allowed, false);
+  expect(res.allowed).toBe(false);
 });
 
 test('RateLimitService.checkWithMode: degraded uses local fallback with lower limits', async () => {
@@ -64,9 +68,9 @@ test('RateLimitService.checkWithMode: degraded uses local fallback with lower li
   const b = await RateLimitService.checkWithMode(cid, 50, 60_000, { mode: 'degraded', namespace: 't', fallbackMaxRequests: 2 });
   const c = await RateLimitService.checkWithMode(cid, 50, 60_000, { mode: 'degraded', namespace: 't', fallbackMaxRequests: 2 });
 
-  assert.equal(a.allowed, true);
-  assert.equal(b.allowed, true);
-  assert.equal(c.allowed, false);
+  expect(a.allowed).toBe(true);
+  expect(b.allowed).toBe(true);
+  expect(c.allowed).toBe(false);
 });
 
 test('RateLimitService.checkWithMode: normal redis path enforces maxRequests', async () => {
@@ -78,8 +82,8 @@ test('RateLimitService.checkWithMode: normal redis path enforces maxRequests', a
   const r2 = await RateLimitService.checkWithMode(cid, 2, 60_000, { mode: 'fail-closed', namespace: 't' });
   const r3 = await RateLimitService.checkWithMode(cid, 2, 60_000, { mode: 'fail-closed', namespace: 't' });
 
-  assert.equal(r1.allowed, true);
-  assert.equal(r2.allowed, true);
-  assert.equal(r3.allowed, false);
+  expect(r1.allowed).toBe(true);
+  expect(r2.allowed).toBe(true);
+  expect(r3.allowed).toBe(false);
 });
 

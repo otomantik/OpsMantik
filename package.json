@@ -10,6 +10,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:unit:cov": "vitest run --coverage",
     "check-db": "node scripts/check-db.js",
     "verify-arch": "node scripts/verify-architecture.js",
     "create-test-site": "node scripts/create-test-site.js",
@@ -50,12 +53,14 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ua-parser-js": "^0.7.39",
+    "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "playwright": "^1.58.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }

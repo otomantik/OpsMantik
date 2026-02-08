@@ -1,7 +1,10 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { afterEach, test, expect } from 'vitest';
 
-import { ReplayCacheService } from '@/lib/services/ReplayCacheService';
+import { ReplayCacheService } from '@/lib/services/replay-cache-service';
+
+afterEach(() => {
+  ReplayCacheService._resetForTests();
+});
 
 function makeFakeRedis() {
   const counts = new Map<string, number>();
@@ -23,9 +26,9 @@ test('ReplayCacheService.checkAndStore: redis path blocks second use', async () 
   const a = await ReplayCacheService.checkAndStore(key, 60_000, { mode: 'degraded', namespace: 't' });
   const b = await ReplayCacheService.checkAndStore(key, 60_000, { mode: 'degraded', namespace: 't' });
 
-  assert.equal(a.isReplay, false);
-  assert.equal(b.isReplay, true);
-  assert.equal(a.degraded, false);
+  expect(a.isReplay).toBe(false);
+  expect(b.isReplay).toBe(true);
+  expect(a.degraded).toBe(false);
 });
 
 test('ReplayCacheService.checkAndStore: degraded local fallback blocks second use on redis error', async () => {
@@ -41,9 +44,9 @@ test('ReplayCacheService.checkAndStore: degraded local fallback blocks second us
   const a = await ReplayCacheService.checkAndStore(key, 60_000, { mode: 'degraded', namespace: 't' });
   const b = await ReplayCacheService.checkAndStore(key, 60_000, { mode: 'degraded', namespace: 't' });
 
-  assert.equal(a.isReplay, false);
-  assert.equal(b.isReplay, true);
-  assert.equal(a.degraded, true);
-  assert.equal(b.degraded, true);
+  expect(a.isReplay).toBe(false);
+  expect(b.isReplay).toBe(true);
+  expect(a.degraded).toBe(true);
+  expect(b.degraded).toBe(true);
 });
 

@@ -1,20 +1,19 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { test, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
 
-import { timingSafeCompare } from '@/lib/security/timingSafeCompare';
-import { verifySignedRequest } from '@/lib/security/verifySignedRequest';
+import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { verifySignedRequest } from '@/lib/security/verify-signed-request';
 
 test('timingSafeCompare: equal strings', () => {
-  assert.equal(timingSafeCompare('abc', 'abc'), true);
+  expect(timingSafeCompare('abc', 'abc')).toBe(true);
 });
 
 test('timingSafeCompare: different strings (same length)', () => {
-  assert.equal(timingSafeCompare('abc', 'abd'), false);
+  expect(timingSafeCompare('abc', 'abd')).toBe(false);
 });
 
 test('timingSafeCompare: different lengths', () => {
-  assert.equal(timingSafeCompare('short', 'a much longer string'), false);
+  expect(timingSafeCompare('short', 'a much longer string')).toBe(false);
 });
 
 test('verifySignedRequest: accepts correct signature', () => {
@@ -30,10 +29,10 @@ test('verifySignedRequest: accepts correct signature', () => {
   });
 
   const res = verifySignedRequest({ rawBody, headers, secrets: [secret], nowSec: ts + 10 });
-  assert.equal(res.ok, true);
+  expect(res.ok).toBe(true);
   if (res.ok) {
-    assert.equal(res.siteId, 'site_public_id');
-    assert.equal(res.ts, ts);
+    expect(res.siteId).toBe('site_public_id');
+    expect(res.ts).toBe(ts);
   }
 });
 
@@ -49,8 +48,8 @@ test('verifySignedRequest: rejects replay (expired ts)', () => {
   });
 
   const res = verifySignedRequest({ rawBody, headers, secrets: [secret], nowSec: ts + 301 });
-  assert.equal(res.ok, false);
-  if (!res.ok) assert.equal(res.error, 'Signature expired');
+  expect(res.ok).toBe(false);
+  if (!res.ok) expect(res.error).toBe('Signature expired');
 });
 
 test('verifySignedRequest: rejects invalid signature', () => {
@@ -63,7 +62,7 @@ test('verifySignedRequest: rejects invalid signature', () => {
   });
 
   const res = verifySignedRequest({ rawBody, headers, secrets: [secret], nowSec: 1700000001 });
-  assert.equal(res.ok, false);
-  if (!res.ok) assert.equal(res.error, 'Invalid signature');
+  expect(res.ok).toBe(false);
+  if (!res.ok) expect(res.error).toBe('Invalid signature');
 });
 
