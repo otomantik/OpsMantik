@@ -1,0 +1,32 @@
+name: Watchtower (Hourly)
+
+on:
+  schedule:
+    # Hourly at minute 0 (GitHub-hosted schedule)
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Watchtower endpoint
+        env:
+          WATCHTOWER_BASE_URL: ${{ secrets.WATCHTOWER_BASE_URL }}
+          WATCHTOWER_CRON_SECRET: ${{ secrets.WATCHTOWER_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WATCHTOWER_BASE_URL:-}" ]; then
+            echo "Missing GitHub Secret: WATCHTOWER_BASE_URL"
+            exit 1
+          fi
+          if [ -z "${WATCHTOWER_CRON_SECRET:-}" ]; then
+            echo "Missing GitHub Secret: WATCHTOWER_CRON_SECRET"
+            exit 1
+          fi
+
+          echo "Triggering: ${WATCHTOWER_BASE_URL%/}/api/cron/watchtower"
+          curl -fsS \
+            -H "Authorization: Bearer ${WATCHTOWER_CRON_SECRET}" \
+            "${WATCHTOWER_BASE_URL%/}/api/cron/watchtower"
+
