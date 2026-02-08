@@ -1,5 +1,5 @@
 import { redis } from '@/lib/upstash';
-import { logError } from '@/lib/log';
+import { logError } from '@/lib/logging/logger';
 
 /**
  * Enterprise Rate Limit Service (Distributed via Upstash Redis)
@@ -8,10 +8,17 @@ export class RateLimitService {
     // In-memory fallback for degraded mode (best-effort per instance).
     private static localBuckets = new Map<string, { count: number; resetAt: number }>();
     // Test seam
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private static redisClient: any = redis;
+    private static redisClient: {
+        incr: (k: string) => Promise<number>;
+        pexpire: (k: string, ms: number) => Promise<boolean | number | unknown>;
+        pttl: (k: string) => Promise<number>
+    } | null = redis as any;
 
-    static _setRedisForTests(r: { incr: (k: string) => Promise<number>; pexpire: (k: string, ms: number) => Promise<unknown>; pttl: (k: string) => Promise<number> } | null) {
+    static _setRedisForTests(r: {
+        incr: (k: string) => Promise<number>;
+        pexpire: (k: string, ms: number) => Promise<boolean | number | unknown>;
+        pttl: (k: string) => Promise<number>
+    } | null) {
         RateLimitService.redisClient = r;
     }
 

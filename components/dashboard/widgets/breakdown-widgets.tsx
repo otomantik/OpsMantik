@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboardBreakdown } from '@/lib/hooks/use-dashboard-breakdown';
 import { strings } from '@/lib/i18n/en';
-import { SourceBreakdownCard } from './SourceBreakdownCard';
-import { LocationBreakdownCard } from './LocationBreakdownCard';
-import { DeviceBreakdownCard } from './DeviceBreakdownCard';
+import { SourceBreakdownCard } from './source-breakdown-card';
+import { LocationBreakdownCard } from './location-breakdown-card';
+import { DeviceBreakdownCard } from './device-breakdown-card';
 
 export interface BreakdownWidgetsProps {
   siteId: string;

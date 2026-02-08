@@ -4,11 +4,11 @@ import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { BreakdownItem } from '@/lib/hooks/use-dashboard-breakdown';
 import { strings } from '@/lib/i18n/en';
-import { BreakdownBarRow } from './BreakdownBarRow';
+import { BreakdownBarRow } from './breakdown-bar-row';
 import { ENABLE_CHARTS } from './charts-config';
 
 const SourceDonutChart = dynamic(
-  () => import('./SourceDonutChart').then((m) => ({ default: m.SourceDonutChart })),
+  () => import('./source-donut-chart').then((m) => ({ default: m.SourceDonutChart })),
   { ssr: false }
 );
 

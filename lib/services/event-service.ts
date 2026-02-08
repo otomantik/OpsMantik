@@ -1,6 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
-import { computeLeadScore } from '@/lib/scoring';
+import { computeLeadScore } from '@/lib/security/scoring';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import type { IngestMeta } from '@/lib/types/ingest';
 
@@ -64,33 +64,33 @@ export class EventService {
         );
 
         const insertPayload: Record<string, unknown> = {
-                session_id: session.id,
-                // NOTE: session_month will be set by trigger (trg_events_set_session_month_from_session)
-                // Trigger ensures it matches session.created_month (which is also trigger-set)
-                session_month: session.created_month,
-                site_id: siteId,
-                url: url,
-                event_category: finalCategory,
-                event_action: event_action || 'view',
-                event_label: event_label,
-                // Preserve 0; only null/undefined should map to null.
-                event_value: event_value != null ? Number(event_value) : null,
-                metadata: {
-                    referrer,
-                    ...meta,
-                    client_sid,
-                    fingerprint: fingerprint,
-                    user_agent: userAgent,
-                    ...deviceInfo,
-                    ...geoInfo,
-                    lead_score: leadScore,
-                    attribution_source: attributionSource,
-                    intelligence_summary: summary,
-                    is_attributed_to_ads: !!currentGclid,
-                    gclid: currentGclid,
-                    ip_anonymized: ip.replace(/\.\d+$/, '.0')
-                }
-            };
+            session_id: session.id,
+            // NOTE: session_month will be set by trigger (trg_events_set_session_month_from_session)
+            // Trigger ensures it matches session.created_month (which is also trigger-set)
+            session_month: session.created_month,
+            site_id: siteId,
+            url: url,
+            event_category: finalCategory,
+            event_action: event_action || 'view',
+            event_label: event_label,
+            // Preserve 0; only null/undefined should map to null.
+            event_value: event_value != null ? Number(event_value) : null,
+            metadata: {
+                referrer,
+                ...meta,
+                client_sid,
+                fingerprint: fingerprint,
+                user_agent: userAgent,
+                ...deviceInfo,
+                ...geoInfo,
+                lead_score: leadScore,
+                attribution_source: attributionSource,
+                intelligence_summary: summary,
+                is_attributed_to_ads: !!currentGclid,
+                gclid: currentGclid,
+                ip_anonymized: ip.replace(/\.\d+$/, '.0')
+            }
+        };
         if (ingestDedupId) insertPayload.ingest_dedup_id = ingestDedupId;
 
         const { error: eError } = await adminClient

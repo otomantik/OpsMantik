@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
-import { DashboardShell } from '@/components/dashboard/DashboardShell';
-import { isAdmin } from '@/lib/auth/isAdmin';
+import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { isAdmin } from '@/lib/auth/is-admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.

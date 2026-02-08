@@ -1,11 +1,11 @@
 import { Redis } from '@upstash/redis';
-import { logger } from '@/lib/logging/logger';
+import { logError } from '@/lib/logging/logger';
 
 const url = process.env.UPSTASH_REDIS_REST_URL;
 const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 if (!url || !token) {
-  logger.warn('UPSTASH redis credentials missing in environment variables');
+  logError('UPSTASH redis credentials missing in environment variables');
 }
 
 function missingCredsError(): Error {
@@ -32,14 +32,14 @@ function makeFailingPipeline() {
 export const redis: Redis = url && token
   ? new Redis({ url, token })
   : (({
-      incr: async () => {
-        throw missingCredsError();
-      },
-      pexpire: async () => {
-        throw missingCredsError();
-      },
-      pttl: async () => {
-        throw missingCredsError();
-      },
-      pipeline: () => makeFailingPipeline(),
-    } as unknown) as Redis);
+    incr: async () => {
+      throw missingCredsError();
+    },
+    pexpire: async () => {
+      throw missingCredsError();
+    },
+    pttl: async () => {
+      throw missingCredsError();
+    },
+    pipeline: () => makeFailingPipeline(),
+  } as unknown) as Redis);

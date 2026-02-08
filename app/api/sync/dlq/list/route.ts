@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdmin } from '@/lib/auth/isAdmin';
+import { isAdmin } from '@/lib/auth/is-admin';
 import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';

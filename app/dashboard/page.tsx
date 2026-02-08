@@ -6,7 +6,7 @@ import { SiteSwitcher } from '@/components/dashboard/site-switcher';
 import { MonthBoundaryBanner } from '@/components/dashboard/month-boundary-banner';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { isAdmin } from '@/lib/auth/isAdmin';
+import { isAdmin } from '@/lib/auth/is-admin';
 
 async function signOut() {
   'use server';

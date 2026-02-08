@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { QualificationQueue } from './QualificationQueue';
+import { QualificationQueue } from './qualification-queue';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,9 +19,9 @@ import { strings } from '@/lib/i18n/en';
 import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
-import { LiveClock } from './LiveClock';
+import { LiveClock } from './live-clock';
 import { useFunnelAnalytics } from '@/lib/hooks/use-funnel-analytics';
-import { CROInsights } from './widgets/CROInsights';
+import { CROInsights } from './widgets/cro-insights';
 import './reset.css';
 
 interface DashboardShellProps {
@@ -33,7 +33,7 @@ interface DashboardShellProps {
 }
 
 const BreakdownWidgets = dynamic(
-  () => import('./widgets/BreakdownWidgets').then((mod) => mod.BreakdownWidgets),
+  () => import('./widgets/breakdown-widgets').then((mod) => mod.BreakdownWidgets),
   {
     ssr: false,
     loading: () => (
@@ -50,7 +50,7 @@ const BreakdownWidgets = dynamic(
 );
 
 const PulseProjectionWidgets = dynamic(
-  () => import('./widgets/PulseProjectionWidgets').then((mod) => mod.PulseProjectionWidgets),
+  () => import('./widgets/pulse-projection-widgets').then((mod) => mod.PulseProjectionWidgets),
   {
     ssr: false,
     loading: () => (
@@ -63,7 +63,7 @@ const PulseProjectionWidgets = dynamic(
 );
 
 const TrafficSourceBreakdown = dynamic(
-  () => import('./widgets/TrafficSourceBreakdown').then((mod) => mod.TrafficSourceBreakdown),
+  () => import('./widgets/traffic-source-breakdown').then((mod) => mod.TrafficSourceBreakdown),
   {
     ssr: false,
     loading: () => (
@@ -121,7 +121,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   return (
     <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
       {/* ENTERPRISE GLOBAL STATUS BAR */}
-      <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-[60] relative">
+      <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-60 relative">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />

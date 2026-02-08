@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { BreakdownItem } from '@/lib/hooks/use-dashboard-breakdown';
 import { strings } from '@/lib/i18n/en';
-import { BreakdownBarRow } from './BreakdownBarRow';
+import { BreakdownBarRow } from './breakdown-bar-row';
 
 interface DeviceBreakdownCardProps {
   items: BreakdownItem[];

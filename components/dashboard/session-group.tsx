@@ -6,9 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
 import { debugLog } from '@/lib/utils'; // Assuming formatTimestamp is used via props or updated import
 import { logger } from '@/lib/logging/logger';
-import { SessionCardHeader } from './session-group/SessionCardHeader';
-import { SessionCardExpanded } from './session-group/SessionCardExpanded';
-import { VisitorHistoryDrawer } from './session-group/VisitorHistoryDrawer';
+import { SessionCardHeader } from './session-group/session-card-header';
+import { SessionCardExpanded } from './session-group/session-card-expanded';
+import { VisitorHistoryDrawer } from './session-group/visitor-history-drawer';
 
 interface Event {
   id: string;

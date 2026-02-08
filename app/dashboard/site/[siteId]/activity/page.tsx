@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
-import { isAdmin } from '@/lib/auth/isAdmin';
-import { ActivityLogShell } from '@/components/dashboard/ActivityLogShell';
+import { isAdmin } from '@/lib/auth/is-admin';
+import { ActivityLogShell } from '@/components/dashboard/activity-log-shell';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

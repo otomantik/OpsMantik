@@ -3,8 +3,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Copy, Clock, CheckCircle2, ChevronUp, ChevronDown, History } from 'lucide-react';
-import { formatTimestamp } from '@/lib/utils';
-import { formatLocation } from '@/lib/utils/format-location';
+import { formatTimestamp, formatLocation } from '@/lib/utils';
 
 interface SessionCardHeaderProps {
     sessionId: string;

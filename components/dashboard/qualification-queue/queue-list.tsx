@@ -4,9 +4,9 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Icons } from '@/components/icons';
 import { formatTimestamp } from '@/lib/utils';
-import { QueueDeck } from './QueueDeck';
-import { ActivityLogInline } from './ActivityLogInline';
-import type { QueueControllerActions, QueueControllerState } from '@/lib/hooks/useQueueController';
+import { QueueDeck } from './queue-deck';
+import { ActivityLogInline } from './activity-log-inline';
+import type { QueueControllerActions, QueueControllerState } from '@/lib/hooks/use-queue-controller';
 
 export function QueueList({
   siteId,

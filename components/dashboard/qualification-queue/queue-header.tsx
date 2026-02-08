@@ -3,7 +3,7 @@
 import React from 'react';
 
 /**
- * QueueHeader placeholder for future filters/tabs.
+ * queue-header placeholder for future filters/tabs.
  * For now, it renders the queue meta test hooks (sr-only) and an optional toast.
  */
 export function QueueHeader({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdmin } from '@/lib/auth/isAdmin';
+import { isAdmin } from '@/lib/auth/is-admin';
 import { adminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { qstash } from '@/lib/qstash/client';

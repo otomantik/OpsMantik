@@ -4,7 +4,7 @@ import * as Sentry from '@sentry/nextjs';
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
-import { logError } from '@/lib/log';
+import { logError } from '@/lib/logging/logger';
 import { assertQstashEnv } from '@/lib/qstash/env';
 import { getFinalUrl, isRecord, parseValidWorkerJobData, type IngestMeta } from '@/lib/types/ingest';
 
@@ -203,7 +203,7 @@ async function handler(req: NextRequest) {
         const params = urlObj.searchParams;
         const currentGclid = params.get('gclid') || meta?.gclid || null;
         const fingerprint = meta?.fp || null;
-        
+
         // CRITICAL: dbMonth must match trigger logic (TRT timezone, month from created_at UTC)
         // Trigger: date_trunc('month', (created_at AT TIME ZONE 'utc'))::date
         // Since created_at will be NOW() in UTC, we compute month from UTC now, matching trigger

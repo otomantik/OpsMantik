@@ -7,8 +7,8 @@ import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { useSiteConfig } from '@/lib/hooks/use-site-config';
 import { strings } from '@/lib/i18n/en';
 import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
-import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/QualificationQueue/parsers';
-import type { ActivityRow } from '@/components/dashboard/QualificationQueue/ActivityLogInline';
+import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/qualification-queue/parsers';
+import type { ActivityRow } from '@/components/dashboard/qualification-queue/activity-log-inline';
 import { logger } from '@/lib/logging/logger';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
@@ -560,21 +560,21 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
 
   const mergedTop: HunterIntent | null = top?.id && detailsById[top.id]
     ? (() => {
-        const detail = detailsById[top.id];
-        const sid = detail.matched_session_id;
-        return {
-          ...detail,
-          ...(sid ? sessionEvidence[sid] : {}),
-        };
-      })()
+      const detail = detailsById[top.id];
+      const sid = detail.matched_session_id;
+      return {
+        ...detail,
+        ...(sid ? sessionEvidence[sid] : {}),
+      };
+    })()
     : null;
 
   const mergedNext: HunterIntentLite | null = next
     ? {
-        ...next,
-        // keep existing lightweight session evidence (optional)
-        matched_session_id: next.matched_session_id ?? null,
-      }
+      ...next,
+      // keep existing lightweight session evidence (optional)
+      matched_session_id: next.matched_session_id ?? null,
+    }
     : null;
 
   const state: QueueControllerState = {

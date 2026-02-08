@@ -2,8 +2,8 @@
 
 import React from 'react';
 import { LazySessionDrawer } from '@/components/dashboard/lazy-session-drawer';
-import { SealModal } from '../SealModal';
-import type { QueueControllerActions, QueueControllerState } from '@/lib/hooks/useQueueController';
+import { SealModal } from '../seal-modal';
+import type { QueueControllerActions, QueueControllerState } from '@/lib/hooks/use-queue-controller';
 
 export function ActionModals({
   siteId,
@@ -20,7 +20,7 @@ export function ActionModals({
       {state.intentForSeal && (
         <SealModal
           open={state.sealModalOpen}
-          onOpenChange={(open) => {
+          onOpenChange={(open: boolean) => {
             actions.setSealModalOpen(open);
             if (!open) actions.clearSealIntent();
           }}

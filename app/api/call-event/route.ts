@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { RateLimitService } from '@/lib/services/RateLimitService';
-import { ReplayCacheService } from '@/lib/services/ReplayCacheService';
-import { parseAllowedOrigins, isOriginAllowed } from '@/lib/cors';
-import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/siteIdentifier';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { ReplayCacheService } from '@/lib/services/replay-cache-service';
+import { parseAllowedOrigins, isOriginAllowed } from '@/lib/security/cors';
+import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
 import { getRecentMonths } from '@/lib/sync-utils';
-import { logError, logWarn } from '@/lib/log';
+import { logError, logWarn } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 

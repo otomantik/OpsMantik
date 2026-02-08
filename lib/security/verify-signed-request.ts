@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto';
-import { timingSafeCompare } from './timingSafeCompare';
+import { timingSafeCompare } from './timing-safe-compare';
 
 export type VerifySignedRequestOk = { ok: true; siteId: string; ts: number };
 export type VerifySignedRequestFail = { ok: false; error: string };

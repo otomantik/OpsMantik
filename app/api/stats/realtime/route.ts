@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { StatsService } from '@/lib/services/stats-service';
-import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
+import { isOriginAllowed, parseAllowedOrigins } from '@/lib/security/cors';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 
 export const runtime = 'nodejs';

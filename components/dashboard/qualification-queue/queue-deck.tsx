@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { cn, formatTimestamp } from '@/lib/utils';
-import { HunterCard } from '../HunterCard';
+import { HunterCard } from '../hunter-card';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { peekBorderClass } from './utils';
 
@@ -66,7 +66,7 @@ function ActiveDeckCard({
     fireQualify({ score: s, status: 'confirmed' });
   };
 
-  const handleJunk = ({ id, stars }: { id: string; stars: number }) => {
+  const handleJunk = ({ id }: { id: string; stars: number }) => {
     onOptimisticRemove(id);
     pushHistoryRow({
       id,
@@ -119,8 +119,8 @@ function LiteDeckCard({
   const actionsLine =
     phoneClicks > 0 || waClicks > 0
       ? [phoneClicks > 0 ? `${phoneClicks}× phone` : null, waClicks > 0 ? `${waClicks}× WhatsApp` : null]
-          .filter(Boolean)
-          .join(' · ')
+        .filter(Boolean)
+        .join(' · ')
       : null;
 
   return (

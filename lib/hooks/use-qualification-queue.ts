@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { useQueueController, type QueueRange } from './useQueueController';
+import { useQueueController, type QueueRange } from './use-queue-controller';
 
 export type QualificationQueueFilters = {
   range: QueueRange;

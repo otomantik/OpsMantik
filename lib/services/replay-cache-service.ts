@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { redis } from '@/lib/upstash';
-import { logWarn } from '@/lib/log';
+import { logWarn } from '@/lib/logging/logger';
 
 type RedisLike = {
   incr: (key: string) => Promise<number>;
@@ -12,7 +12,6 @@ export class ReplayCacheService {
   // Best-effort local fallback for degraded mode.
   private static localKeys = new Map<string, number>(); // key -> expiresAtMs
   // Test seam
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private static redisClient: any = redis;
 
   static _setRedisForTests(r: RedisLike | null) {

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
-import { RateLimitService } from '@/lib/services/RateLimitService';
-import { isOriginAllowed, parseAllowedOrigins } from '@/lib/cors';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { isOriginAllowed, parseAllowedOrigins } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
-import { logError } from '@/lib/log';
+import { logError } from '@/lib/logging/logger';
 import { qstash } from '@/lib/qstash/client';
 import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdmin } from '@/lib/auth/isAdmin';
+import { isAdmin } from '@/lib/auth/is-admin';
 import { StatsService } from '@/lib/services/stats-service';
 import { SiteService } from '@/lib/services/site-service';
 import { adminClient } from '@/lib/supabase/admin';

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { calculateLeadValue } from '@/lib/valuation/calculator';
-import { RateLimitService } from '@/lib/services/RateLimitService';
-import { timingSafeCompare } from '@/lib/security/timingSafeCompare';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

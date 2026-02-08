@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { timingSafeCompare } from '@/lib/security/timingSafeCompare';
-import { logWarn, logError } from '@/lib/log';
+import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { logWarn, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 
 export const runtime = 'nodejs';

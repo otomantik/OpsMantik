@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { QueueHeader } from './QualificationQueue/QueueHeader';
-import { QueueErrorState, QueueLoadingState, QueueToast } from './QualificationQueue/QueueStates';
-import { QueueEmptyState } from './QualificationQueue/QueueEmptyState';
-import { QueueList } from './QualificationQueue/QueueList';
-import { ActionModals } from './QualificationQueue/ActionModals';
-import { useQualificationQueue } from '@/lib/hooks/useQualificationQueue';
+import { QueueHeader } from './qualification-queue/queue-header';
+import { QueueErrorState, QueueLoadingState, QueueToast } from './qualification-queue/queue-states';
+import { QueueEmptyState } from './qualification-queue/queue-empty-state';
+import { QueueList } from './qualification-queue/queue-list';
+import { ActionModals } from './qualification-queue/action-modals';
+import { useQualificationQueue } from '@/lib/hooks/use-qualification-queue';
 
 export interface QualificationQueueProps {
   siteId: string;

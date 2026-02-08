@@ -4,7 +4,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
-import { scrubEventPii } from "@/lib/sentry-pii";
+import { scrubEventPii } from "@/lib/security/sentry-pii";
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
 const tracesSampleRate = (() => {

@@ -3,7 +3,7 @@
  * Loaded via Next.js instrumentation; beforeSend scrubs PII (IP, fingerprint, phone).
  */
 import * as Sentry from '@sentry/nextjs';
-import { scrubEventPii } from '@/lib/sentry-pii';
+import { scrubEventPii } from '@/lib/security/sentry-pii';
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 const release = process.env.NEXT_PUBLIC_OPSMANTIK_RELEASE || process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA;

@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
-import { logInfo, logError } from '@/lib/log';
+import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 
 export const dynamic = 'force-dynamic';

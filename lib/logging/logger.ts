@@ -16,6 +16,28 @@ export type LogContext = Record<string, unknown> & {
   user_id?: string;
 };
 
+/**
+ * Check if debug logging is enabled.
+ * Debug logs are shown when NODE_ENV !== "production" OR NEXT_PUBLIC_WARROOM_DEBUG is true.
+ */
+export function isDebugEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_WARROOM_DEBUG === 'true';
+}
+
+/** Only logs in dev or when NEXT_PUBLIC_WARROOM_DEBUG=1. */
+export function debugLog(...args: unknown[]): void {
+  if (isDebugEnabled()) {
+    console.log(...args);
+  }
+}
+
+/** Only warns in dev or when NEXT_PUBLIC_WARROOM_DEBUG=1. */
+export function debugWarn(...args: unknown[]): void {
+  if (isDebugEnabled()) {
+    console.warn(...args);
+  }
+}
+
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
@@ -44,7 +66,6 @@ function writeLine(level: LogLevel, msg: string, context?: LogContext): void {
   if (isBrowser()) {
     // Browser: keep human-readable logs (still centralized).
     const payload = context ? { ...context } : undefined;
-    // eslint-disable-next-line no-console
     const sink = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
     sink(`[${level.toUpperCase()}] ${msg}`, payload ?? '');
     return;
@@ -69,4 +90,24 @@ export const logger = {
     writeLine('error', msg, context);
   },
 };
+
+/** Info-level log. Always emitted. */
+export function logInfo(msg: string, context?: LogContext): void {
+  logger.info(msg, context);
+}
+
+/** Error-level log. Always emitted. */
+export function logError(msg: string, context?: LogContext): void {
+  logger.error(msg, context);
+}
+
+/** Debug-level log. Only when OPSMANTIK_DEBUG=1 or LOG_LEVEL=debug. */
+export function logDebug(msg: string, context?: LogContext): void {
+  logger.debug(msg, context);
+}
+
+/** Warn-level log. Always emitted. */
+export function logWarn(msg: string, context?: LogContext): void {
+  logger.warn(msg, context);
+}
 

@@ -11,8 +11,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { formatTimestamp } from '@/lib/utils';
-import { formatLocation } from '@/lib/utils/format-location';
+import { formatTimestamp, formatLocation } from '@/lib/utils';
 import type { LiveInboxIntent } from '@/lib/types/dashboard';
 
 type SessionDetailsRow = {
