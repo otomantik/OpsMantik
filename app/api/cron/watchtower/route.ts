@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WatchtowerService } from '@/lib/services/watchtower';
 
-export async function GET(req: NextRequest) {
-    // 1. Authorization Check
-    // Allow if CRON_SECRET is set and matches header, OR if running locally in dev (optional convenience)
-    const authHeader = req.headers.get('authorization');
-    const expectedSecret = process.env.CRON_SECRET;
+export const runtime = 'nodejs'; // Force Node.js runtime for stability
 
-    if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+export async function GET(req: NextRequest) {
+    // 1. Authorization Check (Fail-Closed Architecture)
+    const authHeader = req.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Critical Security: In production, if CRON_SECRET is missing, 
+    // we must FAIL SAFE (500) rather than allowing public access.
+    if (isProduction && !cronSecret) {
+        console.error('[WATCHTOWER] CRITICAL SECURITY CONFIG ERROR: CRON_SECRET missing in production.');
+        return new NextResponse('Internal Server Config Error: Secure CRON setup required.', { status: 500 });
+    }
+
+    // Standard bearer token check
+    // If running logically (with secret present), check it.
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
         return new NextResponse('Unauthorized', { status: 401 });
     }
 
