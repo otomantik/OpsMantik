@@ -300,8 +300,16 @@ export async function POST(req: NextRequest) {
 
         const parsed = CallEventSchema.safeParse(bodyJson);
         if (!parsed.success) {
+            const first = parsed.error.issues[0];
+            const hint = first?.path?.length ? `${first.path.join('.')}: ${first.message}` : first?.message ?? 'Invalid body';
+            logWarn('call-event validation failed', {
+                request_id: requestId,
+                route: CALL_EVENT_ROUTE,
+                hint,
+                code: first?.code,
+            });
             return NextResponse.json(
-                { error: 'Invalid body' },
+                { error: 'Invalid body', hint },
                 { status: 400, headers: baseHeaders }
             );
         }

@@ -20,6 +20,7 @@
     "check-db": "node scripts/check-db.js",
     "verify-arch": "node scripts/verify-architecture.js",
     "create-test-site": "node scripts/create-test-site.js",
+    "tracker:embed": "node scripts/get-tracker-embed.mjs",
     "check:warroom": "node scripts/check-warroom.js",
     "check:attribution": "node scripts/check-attribution.js",
     "smoke:api": "node scripts/smoke/api.prod.mjs",
