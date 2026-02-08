@@ -18,7 +18,7 @@ import { EventService } from '@/lib/services/event-service';
 import { IntentService } from '@/lib/services/intent-service';
 import { StatsService } from '@/lib/services/stats-service';
 
-// Ensure QStash env is present in production (signature verification relies on signing key).
+// Ensure QStash env is present in production at runtime (not during build).
 assertQstashEnv();
 
 type ErrorLike = { code?: unknown; message?: unknown; status?: unknown };
@@ -337,5 +337,11 @@ async function handler(req: NextRequest) {
     }
 }
 
-// Fixed for App Router verification
-export const POST = verifySignatureAppRouter(handler);
+// Wrap with QStash signature verification only when keys exist (avoids build failure when env is unset).
+const hasQstashSigningKeys =
+  typeof process.env.QSTASH_CURRENT_SIGNING_KEY === 'string' &&
+  process.env.QSTASH_CURRENT_SIGNING_KEY.trim() !== '' &&
+  typeof process.env.QSTASH_NEXT_SIGNING_KEY === 'string' &&
+  process.env.QSTASH_NEXT_SIGNING_KEY.trim() !== '';
+
+export const POST = hasQstashSigningKeys ? verifySignatureAppRouter(handler) : handler;
