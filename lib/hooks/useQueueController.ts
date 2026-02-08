@@ -243,6 +243,17 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         data = lite.data;
         const liteErr = lite.error;
 
+        if (process.env.NODE_ENV === 'development') {
+          const count = Array.isArray(data) ? data.length : 0;
+          logger.info('Queue RPC get_recent_intents_lite_v1', {
+            siteId,
+            p_date_from: r.fromIso,
+            p_date_to: r.toIso,
+            rowCount: count,
+            error: liteErr?.message ?? null,
+          });
+        }
+
         // Fallback: if lite RPC doesn't exist in older DBs
         const liteMsg = String(liteErr?.message || liteErr?.details || '').toLowerCase();
         if (liteErr && (liteMsg.includes('not found') || liteMsg.includes('does not exist'))) {
@@ -269,7 +280,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         const fromMs = new Date(r.fromIso).getTime();
         const toMs = new Date(r.toIso).getTime();
 
-        return rows.filter((r) => {
+        const filtered = rows.filter((r) => {
           const ts = new Date(r.created_at || 0).getTime();
           if (!Number.isFinite(ts)) return false;
           // Status filter: pending only
@@ -277,6 +288,10 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
           const isPending = !s || s === 'intent';
           return isPending && ts >= fromMs && ts < toMs;
         });
+        if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {
+          logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, fromIso: r.fromIso, toIso: r.toIso });
+        }
+        return filtered;
       }
 
       const rows = await fetchRange();
