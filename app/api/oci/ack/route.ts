@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,13 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = req.headers.get('x-api-key');
-    const envKey = process.env.OCI_API_KEY;
+    const apiKey = (req.headers.get('x-api-key') || '').trim();
+    const envKey = (process.env.OCI_API_KEY || '').trim();
+    const authed = Boolean(envKey) && timingSafeCompare(apiKey, envKey);
 
-    if (!envKey || apiKey !== envKey) {
+    if (!authed) {
       return NextResponse.json(
-        { error: 'Unauthorized: Invalid or missing API Key' },
+        { error: 'Unauthorized' },
         { status: 401 }
       );
     }
