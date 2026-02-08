@@ -6,6 +6,10 @@
  */
 
 function isProductionRuntime(): boolean {
+  // If we are in the build phase (collecting data), we may not have the secrets.
+  if (process.env.NEXT_PHASE === 'phase-production-build' || process.env.IS_BUILDING === 'true') {
+    return false;
+  }
   return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 }
 
