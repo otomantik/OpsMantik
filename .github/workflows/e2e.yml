@@ -26,6 +26,7 @@ jobs:
 
       - name: Verify DB RPCs/triggers (CI guard)
         # Secrets may not be configured on forks/new repos. Don't block PRs on missing env.
+        id: db_verify
         if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && (secrets.SUPABASE_SERVICE_ROLE_KEY != '' || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '') }}
         run: node scripts/ci/verify-db.mjs
         env:
@@ -48,6 +49,9 @@ jobs:
         run: timeout 60 bash -c 'until curl -sf http://localhost:3000/api/health; do sleep 2; done'
 
       - name: Run Playwright tests
+        # Avoid failing master/PR runs when auth + Supabase secrets aren't configured.
+        # When secrets exist, this runs the real dashboard E2E-lite suite.
+        if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' && secrets.E2E_SITE_ID != '' }}
         env:
           CI: true
           BASE_URL: http://localhost:3000
@@ -67,7 +71,7 @@ jobs:
           retention-days: 7
 
       - name: Upload DB verify report
-        if: always()
+        if: ${{ always() && hashFiles('ci-reports/db-verify.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: db-verify-report
