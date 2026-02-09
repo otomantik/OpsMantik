@@ -35,4 +35,5 @@ jobs:
           SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL || 'https://console.opsmantik.com' }}
           SMOKE_SITE_ID: ${{ secrets.SMOKE_SITE_ID }}
           SMOKE_ORIGIN_ALLOWED: ${{ secrets.SMOKE_ORIGIN_ALLOWED || 'https://www.sosreklam.com' }}
+          SMOKE_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
         run: npm run smoke:api

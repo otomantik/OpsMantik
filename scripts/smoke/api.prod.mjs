@@ -1,14 +1,18 @@
 /**
  * API Smoke Tests - Production Endpoint Validation
- * 
+ *
  * Tests:
  * - CORS allow/deny
  * - Input validation (site_id, url)
  * - Happy path
- * 
+ *
+ * Modes:
+ * - SMOKE_MODE=full (default): run all tests (intended for nightly / push-to-main)
+ * - SMOKE_MODE=pr: run ONLY CORS tests (informational, avoids blocking PRs on prod drift)
+ *
  * Environment Variables:
  * - SMOKE_BASE_URL (default: https://console.opsmantik.com)
- * - SMOKE_SITE_ID (required)
+ * - SMOKE_SITE_ID (required for URL validation + happy path)
  * - SMOKE_ORIGIN_ALLOWED (default: https://www.sosreklam.com)
  */
 
@@ -16,6 +20,7 @@ const BASE_URL = process.env.SMOKE_BASE_URL || 'https://console.opsmantik.com';
 const SITE_ID = process.env.SMOKE_SITE_ID;
 const ORIGIN_ALLOWED = process.env.SMOKE_ORIGIN_ALLOWED || 'https://www.sosreklam.com';
 const ORIGIN_DENIED = 'https://evil-example.com';
+const SMOKE_MODE = (process.env.SMOKE_MODE || 'full').toLowerCase().trim();
 
 // Colors for terminal output
 const colors = {
@@ -198,10 +203,17 @@ async function runTests() {
   log(`   Allowed Origin: ${ORIGIN_ALLOWED}`, 'reset');
   log(`   Denied Origin: ${ORIGIN_DENIED}`, 'reset');
   log(`   Site ID: ${SITE_ID || 'NOT SET (some tests will be skipped)'}`, SITE_ID ? 'reset' : 'yellow');
+  log(`   Mode: ${SMOKE_MODE}`, SMOKE_MODE === 'pr' ? 'yellow' : 'reset');
 
   try {
     await testCORSAllow();
     await testCORSDeny();
+    if (SMOKE_MODE === 'pr') {
+      log('\nℹ️  PR mode: skipping input-validation + happy-path tests (prod drift must not block PRs).', 'yellow');
+      log('\n✅ PR smoke checks passed (CORS only).', 'green');
+      process.exit(0);
+    }
+
     await testInputValidationSiteId();
     await testInputValidationUrl();
     await testHappyPath();
