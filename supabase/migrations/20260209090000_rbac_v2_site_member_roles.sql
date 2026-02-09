@@ -62,6 +62,7 @@ ALTER TABLE public.customer_invite_audit
 -- Replace broad "owners can manage" with: site owner OR site member admin OR platform admin.
 DROP POLICY IF EXISTS "Site owners can manage members" ON public.site_members;
 DROP POLICY IF EXISTS "Admins can manage all site members" ON public.site_members;
+DROP POLICY IF EXISTS "Site owners and site admins can manage members" ON public.site_members;
 
 CREATE POLICY "Site owners and site admins can manage members"
   ON public.site_members FOR ALL
@@ -103,6 +104,7 @@ COMMENT ON POLICY "Site owners and site admins can manage members" ON public.sit
 
 -- 4) RLS: sites UPDATE (config edits) — owner OR admin/operator OR platform admin
 DROP POLICY IF EXISTS "Site owners and editors can update sites" ON public.sites;
+DROP POLICY IF EXISTS "Site owners and operators can update sites" ON public.sites;
 
 CREATE POLICY "Site owners and operators can update sites"
   ON public.sites FOR UPDATE
@@ -135,6 +137,9 @@ DROP POLICY IF EXISTS "calls_update_own_site_members" ON public.calls;
 DROP POLICY IF EXISTS "calls_update_owner_editor_admin" ON public.calls;
 DROP POLICY IF EXISTS "calls_insert_owner_editor_admin" ON public.calls;
 DROP POLICY IF EXISTS "calls_delete_owner_editor_admin" ON public.calls;
+DROP POLICY IF EXISTS "calls_update_owner_operator_admin" ON public.calls;
+DROP POLICY IF EXISTS "calls_insert_owner_operator_admin" ON public.calls;
+DROP POLICY IF EXISTS "calls_delete_owner_operator_admin" ON public.calls;
 
 CREATE POLICY "calls_update_owner_operator_admin"
   ON public.calls FOR UPDATE
@@ -218,6 +223,7 @@ COMMENT ON POLICY "calls_delete_owner_operator_admin" ON public.calls IS
 
 -- 6) RLS: call_actions INSERT (append-only) — owner OR admin/operator OR platform admin
 DROP POLICY IF EXISTS "call_actions_insert_owner_editor_admin" ON public.call_actions;
+DROP POLICY IF EXISTS "call_actions_insert_owner_operator_admin" ON public.call_actions;
 
 CREATE POLICY "call_actions_insert_owner_operator_admin"
   ON public.call_actions FOR INSERT
