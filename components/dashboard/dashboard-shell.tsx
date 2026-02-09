@@ -23,6 +23,7 @@ import { LiveClock } from './live-clock';
 import { useFunnelAnalytics } from '@/lib/hooks/use-funnel-analytics';
 import { CROInsights } from './widgets/cro-insights';
 import './reset.css';
+import type { SiteRole } from '@/lib/auth/rbac';
 
 interface DashboardShellProps {
   siteId: string;
@@ -30,6 +31,7 @@ interface DashboardShellProps {
   siteDomain?: string;
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
+  siteRole: SiteRole;
 }
 
 const BreakdownWidgets = dynamic(
@@ -72,7 +74,7 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange }: DashboardShellProps) {
+export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole }: DashboardShellProps) {
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
   // Real-time signals for the Shell
@@ -259,7 +261,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <h2 className="text-base font-semibold text-slate-800">{strings.liveQueue}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{strings.liveQueueSubtitle}</p>
             </div>
-            <QualificationQueue siteId={siteId} range={queueRange} />
+            <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
           </div>
           <div className="lg:col-span-5 space-y-6">
             <div className="mb-1">

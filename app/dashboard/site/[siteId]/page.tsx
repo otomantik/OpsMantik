@@ -3,6 +3,7 @@ import { redirect, notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import type { SiteRole } from '@/lib/auth/rbac';
 
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
 
   const { data: site, error: siteError } = await supabase
     .from('sites')
-    .select('id, name, domain, public_id')
+    .select('id, name, domain, public_id, user_id')
     .eq('id', siteId)
     .single();
 
@@ -80,6 +81,29 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     }
   }
 
+  // Site role (for client-side capability mapping)
+  let siteRole: SiteRole = 'analyst';
+  if (userIsAdmin) {
+    siteRole = 'admin';
+  } else {
+    // Owner → highest privilege
+    const isOwner = site.user_id === user.id;
+    if (isOwner) {
+      siteRole = 'owner';
+    } else {
+      const { data: membership } = await supabase
+        .from('site_members')
+        .select('role')
+        .eq('site_id', siteId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      const r = (membership?.role || '').toString();
+      if (r === 'admin' || r === 'operator' || r === 'analyst' || r === 'billing') {
+        siteRole = r as SiteRole;
+      }
+    }
+  }
+
   // Yayındaki ekran: DashboardShell (today range URL ile; hydration uyumu için)
   return (
     <DashboardShell
@@ -87,6 +111,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
       siteName={site.name || undefined}
       siteDomain={site.domain || undefined}
       initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
+      siteRole={siteRole}
     />
   );
 }

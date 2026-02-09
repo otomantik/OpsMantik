@@ -7,14 +7,18 @@ import { QueueEmptyState } from './qualification-queue/queue-empty-state';
 import { QueueList } from './qualification-queue/queue-list';
 import { ActionModals } from './qualification-queue/action-modals';
 import { useQualificationQueue } from '@/lib/hooks/use-qualification-queue';
+import type { SiteRole } from '@/lib/auth/rbac';
+import { hasCapability } from '@/lib/auth/rbac';
 
 export interface QualificationQueueProps {
   siteId: string;
   range: { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
+  siteRole: SiteRole;
 }
 
-export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range }) => {
+export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, siteRole }) => {
   const { data: state, handlers: actions, isLoading, error } = useQualificationQueue({ siteId, range });
+  const readOnly = !hasCapability(siteRole, 'queue:operate');
 
   const queueMeta = useMemo(
     () => (
@@ -55,7 +59,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
   return (
     <>
       <QueueHeader queueMeta={queueMeta} toast={<QueueToast toast={state.toast} />} />
-      <QueueList siteId={siteId} state={state} actions={actions} />
+      <QueueList siteId={siteId} state={state} actions={actions} readOnly={readOnly} />
       <ActionModals siteId={siteId} state={state} actions={actions} />
     </>
   );

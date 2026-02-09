@@ -15,7 +15,7 @@ import { headers } from 'next/headers';
 
 export interface SiteAccessResult {
   allowed: boolean;
-  role?: 'owner' | 'admin' | 'viewer' | 'editor';
+  role?: 'owner' | 'admin' | 'operator' | 'analyst' | 'billing';
   reason?: string;
 }
 
@@ -94,7 +94,7 @@ export async function validateSiteAccess(
     if (membership) {
       return {
         allowed: true,
-        role: membership.role as 'viewer' | 'editor' | 'owner'
+        role: membership.role as 'admin' | 'operator' | 'analyst' | 'billing'
       };
     }
 

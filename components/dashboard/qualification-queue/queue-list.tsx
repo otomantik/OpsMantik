@@ -12,10 +12,12 @@ export function QueueList({
   siteId,
   state,
   actions,
+  readOnly,
 }: {
   siteId: string;
   state: QueueControllerState;
   actions: QueueControllerActions;
+  readOnly: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -24,12 +26,17 @@ export function QueueList({
         mergedTop={state.mergedTop}
         topLite={state.top}
         mergedNext={state.mergedNext}
+        readOnly={readOnly}
         onOpenDetails={actions.openDrawerWithLazyDetails}
         onOptimisticRemove={actions.optimisticRemove}
         onQualified={actions.handleQualified}
         onSkip={actions.rotateSkip}
         onSealDeal={() => {
           if (!state.mergedTop) return;
+          if (readOnly) {
+            actions.pushToast('danger', 'Read-only role: cannot seal/junk.');
+            return;
+          }
           actions.openSealModal(state.mergedTop);
         }}
         pushToast={actions.pushToast}
@@ -52,8 +59,15 @@ export function QueueList({
       <ActivityLogInline
         history={state.history}
         restoringIds={state.restoringIds}
-        onUndo={actions.undoLastAction}
-        onCancel={actions.cancelDeal}
+        onUndo={(id) => {
+          if (readOnly) return;
+          actions.undoLastAction(id);
+        }}
+        onCancel={(id) => {
+          if (readOnly) return;
+          actions.cancelDeal(id);
+        }}
+        readOnly={readOnly}
       />
     </div>
   );
