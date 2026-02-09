@@ -9,6 +9,17 @@ import { parseAllowedOrigins, isOriginAllowed } from '@/lib/security/cors';
 import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/logging/logger';
+import {
+  getEventIdModeFromEnv,
+  inferIntentAction,
+  isMissingEventIdColumnError,
+  isMissingResolveRpcError,
+  isRecord,
+  makeIntentStamp,
+  normalizePhoneTarget,
+  parseValueAllowNull,
+  type EventIdMode,
+} from '@/lib/api/call-event/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,31 +29,8 @@ const OPSMANTIK_VERSION = '2.0.0-proxy';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_BODY_BYTES = 64 * 1024;
-type EventIdMode = 'off' | 'on' | 'auto';
 function getEventIdMode(): EventIdMode {
-  const raw = (process.env.CALL_EVENT_EVENT_ID_COLUMN_ENABLED || '').trim().toLowerCase();
-  if (raw === '0' || raw === 'false' || raw === 'off') return 'off';
-  if (raw === '1' || raw === 'true' || raw === 'on') return 'on';
-  return 'auto';
-}
-
-function isMissingEventIdColumnError(err: unknown): boolean {
-  const e = err as { code?: string; message?: string } | null;
-  const code = (e?.code || '').toString();
-  const msg = (e?.message || '').toString().toLowerCase();
-  if (!msg.includes('event_id')) return false;
-  if (code === '42703' || code === 'PGRST204') return true;
-  if (msg.includes('does not exist') || msg.includes('could not find') || msg.includes('not found')) return true;
-  return false;
-}
-
-function isMissingResolveRpcError(err: unknown): boolean {
-  const e = err as { code?: string; message?: string } | null;
-  const code = (e?.code || '').toString();
-  const msg = (e?.message || '').toString().toLowerCase();
-  if (code.startsWith('PGRST') && msg.includes('resolve_site_identifier_v1')) return true;
-  if (msg.includes('resolve_site_identifier_v1') && (msg.includes('does not exist') || msg.includes('not found'))) return true;
-  return false;
+  return getEventIdModeFromEnv();
 }
 // V2 payload is identical to V1 but adds event_id (for upcoming idempotency).
 const CallEventV2Schema = z
@@ -67,51 +55,6 @@ const CallEventV2Schema = z
     click_id: z.string().max(256).nullable().optional(),
   })
   .strict();
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function normalizePhoneTarget(raw: string): string {
-  const t = raw.trim();
-  if (t.toLowerCase().startsWith('tel:')) return t.slice(4).replace(/[^\d+]/g, '');
-  if (/^\+?\d[\d\s().-]{6,}$/.test(t)) return t.replace(/[^\d+]/g, '');
-  return t;
-}
-
-function inferIntentAction(phoneOrHref: string): 'phone' | 'whatsapp' {
-  const v = phoneOrHref.toLowerCase();
-  if (v.includes('wa.me') || v.includes('whatsapp.com')) return 'whatsapp';
-  if (v.startsWith('tel:')) return 'phone';
-  return 'phone';
-}
-
-function rand4(): string {
-  return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
-}
-function hash6(str: string): string {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = (h * 31 + str.charCodeAt(i)) | 0;
-  }
-  const out = Math.abs(h).toString(36);
-  return out.slice(0, 6).padEnd(6, '0');
-}
-function makeIntentStamp(actionShort: string, target: string): string {
-  const ts = Date.now();
-  const tHash = hash6((target || '').toLowerCase());
-  return `${ts}-${rand4()}-${actionShort}-${tHash}`;
-}
-
-function parseValueAllowNull(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string') {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get('origin');
