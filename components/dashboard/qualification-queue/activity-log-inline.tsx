@@ -25,11 +25,13 @@ export function ActivityLogInline({
   restoringIds,
   onUndo,
   onCancel,
+  readOnly,
 }: {
   history: ActivityRow[];
   restoringIds: Set<string>;
   onUndo: (callId: string) => void;
   onCancel: (callId: string) => void;
+  readOnly: boolean;
 }) {
   return (
     <div className="relative rounded-lg border border-border bg-background p-3">
@@ -76,7 +78,7 @@ export function ActivityLogInline({
                         type="button"
                         className="p-1 rounded hover:bg-slate-100 transition-colors disabled:opacity-50"
                         onClick={() => onUndo(h.call_id)}
-                        disabled={isRestoring}
+                        disabled={isRestoring || readOnly}
                         title="Undo last action"
                       >
                         <Undo2 className="h-3.5 w-3.5 text-slate-600" />
@@ -87,7 +89,7 @@ export function ActivityLogInline({
                         type="button"
                         className="p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
                         onClick={() => onCancel(h.call_id)}
-                        disabled={isRestoring}
+                        disabled={isRestoring || readOnly}
                         title="Cancel deal"
                       >
                         <XOctagon className="h-3.5 w-3.5 text-red-600" />
