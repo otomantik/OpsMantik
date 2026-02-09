@@ -68,6 +68,9 @@ export async function OPTIONS(req: NextRequest) {
         'X-OpsMantik-Version': OPSMANTIK_VERSION,
         'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
         'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
+        'X-Ops-Deprecated': '1',
+        'X-Ops-Deprecated-Use': CALL_EVENT_V2_ROUTE,
+        'Sunset': DEPRECATION_SUNSET,
     };
 
     // For signed call-event endpoint, allow any origin by reflecting it (still protected by HMAC).
@@ -82,6 +85,8 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 const CALL_EVENT_ROUTE = '/api/call-event';
+const CALL_EVENT_V2_ROUTE = '/api/call-event/v2';
+const DEPRECATION_SUNSET = '2026-05-10'; // yyyy-mm-dd (informational; v2 is canonical)
 function getEventIdMode(): EventIdMode {
     return getEventIdModeFromEnv();
 }
@@ -103,6 +108,9 @@ export async function POST(req: NextRequest) {
             'X-OpsMantik-Version': OPSMANTIK_VERSION,
             'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
             'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
+            'X-Ops-Deprecated': '1',
+            'X-Ops-Deprecated-Use': CALL_EVENT_V2_ROUTE,
+            'Sunset': DEPRECATION_SUNSET,
         };
 
         if ((allowAnyOrigin || isAllowed) && origin) {

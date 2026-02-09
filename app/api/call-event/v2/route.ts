@@ -58,7 +58,12 @@ const CallEventV2Schema = z
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get('origin');
+  const signingDisabledCors =
+    process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
   const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+
+  // If signing is enabled, CORS allowlist is not required: the HMAC signature is the auth boundary.
+  const allowAnyOrigin = !signingDisabledCors;
 
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -66,30 +71,40 @@ export async function OPTIONS(req: NextRequest) {
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
     'X-OpsMantik-Version': OPSMANTIK_VERSION,
-    'X-CORS-Status': isAllowed ? 'allowed' : 'rejected',
-    'X-CORS-Reason': reason || 'ok',
+    'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
+    'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
   };
-  if (isAllowed && origin) headers['Access-Control-Allow-Origin'] = origin;
-  return new NextResponse(null, { status: isAllowed ? 200 : 403, headers });
+
+  // For signed call-event endpoint, allow any origin by reflecting it (still protected by HMAC).
+  if ((allowAnyOrigin || isAllowed) && origin) headers['Access-Control-Allow-Origin'] = origin;
+  return new NextResponse(null, { status: (allowAnyOrigin || isAllowed) ? 200 : 403, headers });
 }
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get('x-request-id') ?? undefined;
 
   try {
-    // CORS: V2 is intended for server-to-server proxy calls.
-    // If Origin is present, enforce allowlist; if missing, allow (server-to-server).
+    // CORS:
+    // - If signing is enabled: allow any origin (HMAC is the auth boundary).
+    // - If signing is disabled (rollback): enforce allowlist for browser requests.
+    // - If Origin is missing: allow (server-to-server / proxy).
     const origin = req.headers.get('origin');
-    const cors = origin ? isOriginAllowed(origin, ALLOWED_ORIGINS) : { isAllowed: true, reason: 'no_origin' as const };
+    const signingDisabledCors =
+      process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
+    const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
+    const allowAnyOrigin = !signingDisabledCors;
+    const allowByCors = !origin ? true : (allowAnyOrigin || isAllowed);
 
     const baseHeaders: Record<string, string> = {
       Vary: 'Origin',
       'X-OpsMantik-Version': OPSMANTIK_VERSION,
-      'X-CORS-Status': cors.isAllowed ? 'allowed' : 'rejected',
-      'X-CORS-Reason': cors.reason || 'ok',
+      'X-CORS-Status': !origin ? 'no_origin' : (allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected')),
+      'X-CORS-Reason': !origin ? 'no_origin' : (allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok')),
     };
-    if (cors.isAllowed && origin) baseHeaders['Access-Control-Allow-Origin'] = origin;
-    if (!cors.isAllowed) return NextResponse.json({ error: 'Origin not allowed', reason: cors.reason }, { status: 403, headers: baseHeaders });
+    if (allowByCors && origin) baseHeaders['Access-Control-Allow-Origin'] = origin;
+    if (!allowByCors) {
+      return NextResponse.json({ error: 'Origin not allowed', reason }, { status: 403, headers: baseHeaders });
+    }
 
     // Read raw body for signature + size guard
     const rawBody = await req.text();
@@ -108,35 +123,46 @@ export async function POST(req: NextRequest) {
     const { createClient } = await import('@supabase/supabase-js');
     const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
 
-    // Signature headers (fail-closed)
-    const headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
-    const headerTs = (req.headers.get('x-ops-ts') || '').trim();
-    const headerSig = (req.headers.get('x-ops-signature') || '').trim();
+    // Auth boundary: verify signature BEFORE any service-role DB call.
+    // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
+    const signingDisabled =
+      process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
 
-    if (
-      !headerSiteId ||
-      !(SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId)) ||
-      !/^\d{9,12}$/.test(headerTs) ||
-      !/^[0-9a-f]{64}$/i.test(headerSig)
-    ) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-    }
+    let headerSiteId = '';
+    let headerSig = '';
+    if (!signingDisabled) {
+      // Signature headers (fail-closed)
+      headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
+      const headerTs = (req.headers.get('x-ops-ts') || '').trim();
+      headerSig = (req.headers.get('x-ops-signature') || '').trim();
 
-    const tsNum = Number(headerTs);
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (!Number.isFinite(tsNum) || nowSec - tsNum > 300 || tsNum - nowSec > 60) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-    }
+      if (
+        !headerSiteId ||
+        !(SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId)) ||
+        !/^\d{9,12}$/.test(headerTs) ||
+        !/^[0-9a-f]{64}$/i.test(headerSig)
+      ) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      }
 
-    const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
-      p_site_public_id: headerSiteId,
-      p_ts: tsNum,
-      p_raw_body: rawBody,
-      p_signature: headerSig,
-    });
-    if (sigErr || sigOk !== true) {
-      logWarn('call-event-v2 signature rejected', { request_id: requestId, route: ROUTE, site_id: headerSiteId, error: sigErr?.message });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      const tsNum = Number(headerTs);
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (!Number.isFinite(tsNum) || nowSec - tsNum > 300 || tsNum - nowSec > 60) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      }
+
+      const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
+        p_site_public_id: headerSiteId,
+        p_ts: tsNum,
+        p_raw_body: rawBody,
+        p_signature: headerSig,
+      });
+      if (sigErr || sigOk !== true) {
+        logWarn('call-event-v2 signature rejected', { request_id: requestId, route: ROUTE, site_id: headerSiteId, error: sigErr?.message });
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      }
+    } else {
+      logWarn('call-event-v2 signing disabled (rollback mode)', { request_id: requestId, route: ROUTE });
     }
 
     // JSON parse + strict validation
@@ -172,11 +198,14 @@ export async function POST(req: NextRequest) {
       if (!resolvedBodySiteId) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
       resolvedSiteUuid = resolvedBodySiteId;
 
-      const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
-        p_input: headerSiteId,
-      });
-      if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-      if (resolvedHeaderSiteId !== resolvedSiteUuid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      // Enforce header/body binding when signing is enabled (prevents cross-site signature reuse).
+      if (!signingDisabled) {
+        const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+          p_input: headerSiteId,
+        });
+        if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+        if (resolvedHeaderSiteId !== resolvedSiteUuid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      }
     }
 
     // site_id is canonical UUID when resolver exists; otherwise derived later in legacy mode.
