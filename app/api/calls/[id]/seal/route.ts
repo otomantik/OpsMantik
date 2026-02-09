@@ -10,6 +10,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
+import { hasCapability } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,9 @@ export async function POST(
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, userClient);
     if (!access.allowed) {
+      return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
+    }
+    if (!access.role || !hasCapability(access.role, 'queue:operate')) {
       return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
     }
 

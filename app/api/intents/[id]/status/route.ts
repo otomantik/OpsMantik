@@ -13,6 +13,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
+import { hasCapability } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,9 @@ export async function POST(
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, supabase);
     if (!access.allowed) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+    if (!access.role || !hasCapability(access.role, 'queue:operate')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

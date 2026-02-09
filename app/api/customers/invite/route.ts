@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { validateSiteAccess } from '@/lib/security/validate-site-access';
+import { hasCapability } from '@/lib/auth/rbac';
 
 async function findUserIdByEmailLc(emailLc: string): Promise<string | null> {
   const { data, error } = await adminClient
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { email, site_id, role = 'viewer' } = body;
+    const { email, site_id, role = 'analyst' } = body;
     const emailNorm = typeof email === 'string' ? email.trim() : '';
     const emailLc = emailNorm.toLowerCase();
 
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate role
-    const validRoles = ['viewer', 'editor', 'owner'];
+    const validRoles = ['admin', 'operator', 'analyst', 'billing'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -84,7 +86,7 @@ export async function POST(req: NextRequest) {
     // Check if user is admin
     const userIsAdmin = await isAdmin();
 
-    // Verify site access: user must be site owner OR admin
+    // Verify site access: user must be site owner OR site admin OR platform admin
     const { data: site, error: siteError } = await supabase
       .from('sites')
       .select('id, user_id, name, domain')
@@ -98,8 +100,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If not admin, verify user owns the site
-    if (!userIsAdmin && site.user_id !== currentUser.id) {
+    const access = await validateSiteAccess(site_id, currentUser.id, supabase);
+    const canManageMembers = access.allowed && access.role && hasCapability(access.role, 'members:manage');
+
+    // If not platform admin, require owner/site-admin capability
+    if (!userIsAdmin && !canManageMembers) {
       return NextResponse.json(
         { error: 'You must be the site owner or an admin to invite customers' },
         { status: 403 }

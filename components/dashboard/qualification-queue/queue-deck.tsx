@@ -11,6 +11,7 @@ import { peekBorderClass } from './utils';
 function ActiveDeckCard({
   siteId,
   intent,
+  readOnly,
   onOpenDetails,
   onOptimisticRemove,
   onQualified,
@@ -21,6 +22,7 @@ function ActiveDeckCard({
 }: {
   siteId: string;
   intent: HunterIntent; // full intent preferred for the heavy HunterCard view
+  readOnly: boolean;
   onOpenDetails: (callId: string) => void;
   onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
@@ -97,6 +99,7 @@ function ActiveDeckCard({
           onSealDeal={onSealDeal}
           onJunk={({ id, stars }) => handleJunk({ id, stars })}
           onSkip={() => onSkip()}
+          readOnly={readOnly}
         />
       </div>
     </div>
@@ -162,6 +165,7 @@ export function QueueDeck({
   mergedTop,
   topLite,
   mergedNext,
+  readOnly,
   onOpenDetails,
   onOptimisticRemove,
   onQualified,
@@ -174,6 +178,7 @@ export function QueueDeck({
   mergedTop: HunterIntent | null;
   topLite: HunterIntentLite | null;
   mergedNext: HunterIntentLite | null;
+  readOnly: boolean;
   onOpenDetails: (callId: string) => void;
   onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
@@ -199,6 +204,7 @@ export function QueueDeck({
           <ActiveDeckCard
             siteId={siteId}
             intent={mergedTop}
+            readOnly={readOnly}
             onOpenDetails={onOpenDetails}
             onOptimisticRemove={onOptimisticRemove}
             onQualified={onQualified}

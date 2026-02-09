@@ -161,6 +161,7 @@ export function HunterCard({
   onSealDeal,
   onJunk,
   onSkip,
+  readOnly,
 }: {
   intent: HunterIntent;
   traffic_source?: string | null;
@@ -169,6 +170,7 @@ export function HunterCard({
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
+  readOnly?: boolean;
 }) {
   const t = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[t] || ICON_MAP.other;
@@ -272,6 +274,8 @@ export function HunterCard({
             size="sm"
             className="h-9 border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs"
             onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
+            disabled={Boolean(readOnly)}
+            title={readOnly ? 'Read-only role' : 'Mark as junk'}
           >
             JUNK
           </Button>
@@ -287,6 +291,8 @@ export function HunterCard({
             size="sm"
             className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
+            disabled={Boolean(readOnly)}
+            title={readOnly ? 'Read-only role' : 'Seal lead'}
           >
             SEAL
           </Button>
