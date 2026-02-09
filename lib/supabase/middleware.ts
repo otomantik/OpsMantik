@@ -8,12 +8,28 @@ export async function updateSession(request: NextRequest) {
         },
     })
 
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const allowMissingEnv = process.env.CI === 'true' || process.env.NEXT_PHASE === 'phase-production-build'
+
+    // In CI/build, Supabase secrets may be intentionally missing.
+    // Do not crash the middleware (would break /api/health and CI e2e workflow).
+    // In runtime, we still want a loud failure if auth is misconfigured.
+    if (!supabaseUrl || !anonKey) {
+        if (allowMissingEnv) {
+            return response
+        }
+        throw new Error(
+            'Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set'
+        )
+    }
+
     // Retain existing headers (like x-request-id from the main middleware)
     // The main middleware passes the request, and we build response on top of it.
 
     const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        supabaseUrl,
+        anonKey,
         {
             cookies: {
                 getAll() {
