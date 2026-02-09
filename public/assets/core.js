@@ -337,7 +337,7 @@
       (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-proxy-url')) ||
       (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsProxyUrl) ||
       '';
-    const callEventUrl = isLocalhost ? window.location.origin + '/api/call-event' : 'https://console.opsmantik.com/api/call-event';
+    const callEventUrl = isLocalhost ? window.location.origin + '/api/call-event/v2' : 'https://console.opsmantik.com/api/call-event/v2';
 
     const eventId = generateUUID();
     const payload = {
