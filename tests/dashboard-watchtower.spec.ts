@@ -11,7 +11,9 @@ import { test, expect } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
-const siteId = process.env.E2E_SITE_ID || process.env.PLAYWRIGHT_SITE_ID || '00000000-0000-0000-0000-000000000000';
+const configuredSiteId = process.env.E2E_SITE_ID || process.env.PLAYWRIGHT_SITE_ID || '';
+const hasSiteId = configuredSiteId.trim() !== '';
+const siteId = hasSiteId ? configuredSiteId : '00000000-0000-0000-0000-000000000000';
 const sitePublicId = process.env.E2E_SITE_PUBLIC_ID || process.env.PLAYWRIGHT_SITE_PUBLIC_ID || '';
 const callEventSecret = process.env.E2E_CALL_EVENT_SECRET || process.env.PLAYWRIGHT_CALL_EVENT_SECRET || '';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -20,6 +22,9 @@ const baseUrl = process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http
 const origin = new URL(baseUrl).origin;
 
 test.describe('Dashboard Watchtower E2E-lite', () => {
+  test.beforeAll(() => {
+    test.skip(!hasSiteId, 'Missing E2E_SITE_ID / PLAYWRIGHT_SITE_ID (skip non-prod PR checks)');
+  });
   test('1) dashboard/site/[siteId] or login loads without console errors', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
