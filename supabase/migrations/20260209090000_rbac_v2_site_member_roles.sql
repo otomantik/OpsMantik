@@ -9,6 +9,14 @@
 
 BEGIN;
 
+-- IMPORTANT: drop legacy CHECK constraints BEFORE rewriting role values.
+-- Otherwise UPDATEs to 'operator'/'analyst' will violate the old constraint ('viewer'/'editor'/'owner').
+ALTER TABLE public.site_members
+  DROP CONSTRAINT IF EXISTS site_members_role_check;
+
+ALTER TABLE public.customer_invite_audit
+  DROP CONSTRAINT IF EXISTS customer_invite_audit_role_check;
+
 -- 1) Normalize roles (data migration)
 -- Legacy mapping:
 --   viewer  -> analyst (read-only)
@@ -26,10 +34,6 @@ WHERE role IN ('viewer', 'editor', 'owner');
 -- 2) Enforce new role set (schema constraint + default)
 ALTER TABLE public.site_members
   ALTER COLUMN role SET DEFAULT 'analyst';
-
--- Drop legacy check constraint (name depends on auto-generation).
-ALTER TABLE public.site_members
-  DROP CONSTRAINT IF EXISTS site_members_role_check;
 
 ALTER TABLE public.site_members
   ADD CONSTRAINT site_members_role_check
@@ -49,9 +53,6 @@ WHERE role IN ('viewer', 'editor', 'owner');
 
 ALTER TABLE public.customer_invite_audit
   ALTER COLUMN role SET DEFAULT 'analyst';
-
-ALTER TABLE public.customer_invite_audit
-  DROP CONSTRAINT IF EXISTS customer_invite_audit_role_check;
 
 ALTER TABLE public.customer_invite_audit
   ADD CONSTRAINT customer_invite_audit_role_check
