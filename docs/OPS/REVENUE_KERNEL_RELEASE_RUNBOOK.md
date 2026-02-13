@@ -152,6 +152,23 @@ LIMIT 5;
 
 **Beklenen:** reject satır → `billable=false`
 
+**Reconciliation kanıt (COMPLETED job vs idempotency/site_usage_monthly):**
+
+```sql
+SELECT
+  j.site_id, j.year_month, j.updated_at AS job_time,
+  (SELECT COUNT(*) FROM ingest_idempotency i
+   WHERE i.site_id = j.site_id AND i.year_month = j.year_month AND i.billable = true) AS billable_total_now,
+  (SELECT event_count FROM site_usage_monthly u
+   WHERE u.site_id = j.site_id AND u.year_month = j.year_month) AS monthly_event_count
+FROM billing_reconciliation_jobs j
+WHERE j.status = 'COMPLETED'
+ORDER BY j.updated_at DESC
+LIMIT 5;
+```
+
+`billable_total_now` = `monthly_event_count` ise reconciliation doğru çalışıyor.
+
 ### 🔎 4. Overage testi (soft limit)
 
 **Beklenen:**
