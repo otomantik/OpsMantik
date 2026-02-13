@@ -8,8 +8,8 @@ Proves call-event matching (and thus tenant isolation) is site-scoped: same fing
 
 - `SUPABASE_URL` – Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` – Service role key (bypasses RLS)
-- `SITE_A_ID` – UUID of an existing site (sites.id)
-- `SITE_B_ID` – UUID of another existing site (sites.id)
+- `SITE_A_ID` – Existing site: **sites.id** (UUID) or **sites.public_id** (32-char hex). Script resolves public_id to id for DB inserts.
+- `SITE_B_ID` – Another existing site: same (UUID or public_id).
 
 ### Optional (API mode, preferred)
 

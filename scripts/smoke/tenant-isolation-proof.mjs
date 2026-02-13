@@ -3,7 +3,9 @@
  * Smoke script: Prove call-event matching and attribution are site-scoped (tenant isolation).
  *
  * Requires:
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SITE_A_ID, SITE_B_ID (UUIDs of two existing sites).
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SITE_A_ID, SITE_B_ID.
+ *   SITE_A_ID / SITE_B_ID can be either sites.id (UUID) or sites.public_id (32-char hex);
+ *   script resolves public_id to id for inserts (sessions FK references sites.id).
  * For API mode (preferred): CALL_EVENT_BASE_URL, CALL_EVENT_SECRET.
  *
  * Inserts sessions/events with same fingerprint for site A and B, then asserts that when
@@ -35,95 +37,51 @@ function currentMonth() {
   return n.toISOString().slice(0, 7) + '-01';
 }
 
+// UUID is 36 chars with dashes; public_id is 32 hex chars.
+function looksLikePublicId(value) {
+  const s = String(value).trim();
+  return s.length === 32 && /^[0-9a-fA-F]+$/.test(s);
+}
+
+async function resolveSiteId(admin, siteIdOrPublicId) {
+  const v = siteIdOrPublicId.trim();
+  if (!looksLikePublicId(v)) {
+    return v;
+  }
+  const { data, error } = await admin.from('sites').select('id').eq('public_id', v).limit(1).maybeSingle();
+  if (error || !data?.id) {
+    throw new Error(`SITE_A_ID/SITE_B_ID: could not resolve public_id "${v}" to sites.id (not found or invalid). Use sites.id (UUID) or existing public_id.`);
+  }
+  return data.id;
+}
+
 async function main() {
   const supabaseUrl = env('SUPABASE_URL');
   const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
-  const siteAId = env('SITE_A_ID').trim();
-  const siteBId = env('SITE_B_ID').trim();
+  const siteAIdRaw = env('SITE_A_ID').trim();
+  const siteBIdRaw = env('SITE_B_ID').trim();
   const baseUrl = envOpt('CALL_EVENT_BASE_URL');
   const callEventSecret = envOpt('CALL_EVENT_SECRET');
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  const siteAId = await resolveSiteId(admin, siteAIdRaw);
+  const siteBId = await resolveSiteId(admin, siteBIdRaw);
+
+  if (siteAId === siteBId) {
+    throw new Error('SITE_A_ID and SITE_B_ID must be different sites (resolved to same UUID).');
+  }
+
+  console.log('[smoke] Resolved site UUIDs: A=%s B=%s', siteAId, siteBId);
   const createdMonth = currentMonth();
   const now = new Date().toISOString();
+  console.log('[smoke] created_month=%s', createdMonth);
 
   const sessionAId = crypto.randomUUID();
   const sessionBId = crypto.randomUUID();
 
-  console.log('[smoke] SITE_A_ID=%s SITE_B_ID=%s created_month=%s', siteAId, siteBId, createdMonth);
-
-  // 1) Optionally set site A secret so we can sign (API mode)
-  if (callEventSecret && baseUrl) {
-    const { data: siteA } = await admin.from('sites').select('public_id').eq('id', siteAId).single();
-    if (!siteA?.public_id) {
-      console.error('FAIL: Could not resolve site A public_id for rotate_site_secret_v1');
-      process.exit(1);
-    }
-    // Script sets site A secret so the signed request validates; leave as-is after run (user can re-rotate if needed)
-    const { error: rotErr } = await admin.rpc('rotate_site_secret_v1', {
-      p_site_public_id: siteA.public_id,
-      p_current_secret: callEventSecret,
-      p_next_secret: null,
-    });
-    if (rotErr) {
-      console.error('FAIL: rotate_site_secret_v1 failed:', rotErr.message);
-      process.exit(1);
-    }
-    console.log('[smoke] Site A secret set for signing');
-  }
-
-  // 2) Insert session A and B (minimal required columns + label in a field we can filter later)
-  const sessionPayload = (id, siteId) => ({
-    id,
-    site_id: siteId,
-    created_month: createdMonth,
-    created_at: now,
-    entry_page: '/',
-    event_count: 0,
-    total_duration_sec: 0,
-    attribution_source: LABEL,
-  });
-
-  const { error: insSA } = await admin.from('sessions').insert(sessionPayload(sessionAId, siteAId));
-  if (insSA) {
-    console.error('FAIL: Session A insert:', insSA.message);
-    process.exit(1);
-  }
-  const { error: insSB } = await admin.from('sessions').insert(sessionPayload(sessionBId, siteBId));
-  if (insSB) {
-    console.error('FAIL: Session B insert:', insSB.message);
-    await admin.from('sessions').delete().eq('id', sessionAId).eq('created_month', createdMonth);
-    process.exit(1);
-  }
-  console.log('[smoke] Sessions inserted: A=%s B=%s', sessionAId, sessionBId);
-
-  // 3) Insert one event per session with same fingerprint in metadata (and label for cleanup)
-  const eventPayload = (sessionId, siteId) => ({
-    session_id: sessionId,
-    session_month: createdMonth,
-    site_id: siteId,
-    url: 'https://example.com/',
-    event_category: 'interaction',
-    event_action: 'view',
-    metadata: { fingerprint: FP, [LABEL]: true },
-    created_at: now,
-  });
-
-  const { data: evA, error: insEA } = await admin.from('events').insert(eventPayload(sessionAId, siteAId)).select('id').single();
-  if (insEA) {
-    console.error('FAIL: Event A insert:', insEA.message);
-    await cleanup();
-    process.exit(1);
-  }
-  const { error: insEB } = await admin.from('events').insert(eventPayload(sessionBId, siteBId)).select('id').single();
-  if (insEB) {
-    console.error('FAIL: Event B insert:', insEB.message);
-    await cleanup();
-    process.exit(1);
-  }
-  console.log('[smoke] Events inserted for A and B with metadata.fingerprint=%s', FP);
-
   async function cleanup() {
+    if (!sessionAId || !sessionBId) return;
     const { error: delE } = await admin.from('events').delete().eq('session_id', sessionAId).eq('session_month', createdMonth);
     if (delE) console.warn('[smoke] Cleanup events A:', delE.message);
     const { error: delE2 } = await admin.from('events').delete().eq('session_id', sessionBId).eq('session_month', createdMonth);
@@ -135,82 +93,120 @@ async function main() {
     console.log('[smoke] Cleanup done');
   }
 
-  let matchedSessionId = null;
-  let assertionOk = false;
+  let exitCode = 1;
+  try {
+    // 1) Optionally set site A secret so we can sign (API mode)
+    if (callEventSecret && baseUrl) {
+      const { data: siteA } = await admin.from('sites').select('public_id').eq('id', siteAId).single();
+      if (!siteA?.public_id) throw new Error('Could not resolve site A public_id for rotate_site_secret_v1');
+      const { error: rotErr } = await admin.rpc('rotate_site_secret_v1', {
+        p_site_public_id: siteA.public_id,
+        p_current_secret: callEventSecret,
+        p_next_secret: null,
+      });
+      if (rotErr) throw new Error('rotate_site_secret_v1 failed: ' + rotErr.message);
+      console.log('[smoke] Site A secret set for signing');
+    }
 
-  if (baseUrl && callEventSecret) {
-    // 4a) Call /api/call-event/v2 with site_id = A and fingerprint = fp_same (signed)
-    const body = { site_id: siteAId, fingerprint: FP, phone_number: null };
-    const rawBody = JSON.stringify(body);
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = hmacHex(callEventSecret, `${ts}.${rawBody}`);
-
-    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/call-event/v2`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-ops-site-id': siteAId,
-        'x-ops-ts': String(ts),
-        'x-ops-signature': sig,
-      },
-      body: rawBody,
+    // 2) Insert session A and B
+    const sessionPayload = (id, siteId) => ({
+      id,
+      site_id: siteId,
+      created_month: createdMonth,
+      created_at: now,
+      entry_page: '/',
+      event_count: 0,
+      total_duration_sec: 0,
+      attribution_source: LABEL,
     });
 
-    const text = await res.text();
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = {};
+    const { error: insSA } = await admin.from('sessions').insert(sessionPayload(sessionAId, siteAId));
+    if (insSA) throw new Error('Session A insert: ' + insSA.message);
+    const { error: insSB } = await admin.from('sessions').insert(sessionPayload(sessionBId, siteBId));
+    if (insSB) throw new Error('Session B insert: ' + insSB.message);
+    console.log('[smoke] Sessions inserted: A=%s B=%s', sessionAId, sessionBId);
+
+    // 3) Insert one event per session with same fingerprint
+    const eventPayload = (sessionId, siteId) => ({
+      session_id: sessionId,
+      session_month: createdMonth,
+      site_id: siteId,
+      url: 'https://example.com/',
+      event_category: 'interaction',
+      event_action: 'view',
+      metadata: { fingerprint: FP, [LABEL]: true },
+      created_at: now,
+    });
+
+    const { error: insEA } = await admin.from('events').insert(eventPayload(sessionAId, siteAId)).select('id').single();
+    if (insEA) throw new Error('Event A insert: ' + insEA.message);
+    const { error: insEB } = await admin.from('events').insert(eventPayload(sessionBId, siteBId)).select('id').single();
+    if (insEB) throw new Error('Event B insert: ' + insEB.message);
+    console.log('[smoke] Events inserted for A and B with metadata.fingerprint=%s', FP);
+
+    let matchedSessionId = null;
+    let assertionOk = false;
+
+    if (baseUrl && callEventSecret) {
+      const body = { site_id: siteAId, fingerprint: FP, phone_number: null };
+      const rawBody = JSON.stringify(body);
+      const ts = Math.floor(Date.now() / 1000);
+      const sig = hmacHex(callEventSecret, `${ts}.${rawBody}`);
+      const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/call-event/v2`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ops-site-id': siteAId,
+          'x-ops-ts': String(ts),
+          'x-ops-signature': sig,
+        },
+        body: rawBody,
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = {};
+      }
+      if (res.status !== 200) throw new Error('API returned ' + res.status + ': ' + text);
+      matchedSessionId = json.session_id ?? null;
+      assertionOk =
+        matchedSessionId === sessionAId &&
+        matchedSessionId !== sessionBId &&
+        (json.status === 'matched' || json.status === 'noop');
+    } else {
+      const { data: rows, error: qErr } = await admin
+        .from('events')
+        .select('session_id')
+        .eq('site_id', siteAId)
+        .eq('metadata->>fingerprint', FP)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (qErr) throw new Error('Direct query error: ' + qErr.message);
+      matchedSessionId = rows?.[0]?.session_id ?? null;
+      assertionOk = matchedSessionId === sessionAId && matchedSessionId !== sessionBId;
     }
 
-    if (res.status !== 200) {
-      console.error('FAIL: API returned', res.status, text);
-      await cleanup();
-      process.exit(1);
+    if (assertionOk) {
+      console.log('');
+      console.log('PASS: Tenant isolation verified.');
+      console.log('  - Request/match for site A with fingerprint "%s" returned only site A session.', FP);
+      console.log('  - Matched session_id: %s (expected %s). Site B session %s was never returned.', matchedSessionId, sessionAId, sessionBId);
+      exitCode = 0;
+    } else {
+      console.error('');
+      console.error('FAIL: Tenant isolation broken.');
+      console.error('  - Matched session_id: %s', matchedSessionId);
+      console.error('  - Expected (site A): %s', sessionAId);
+      console.error('  - Site B session (must never be returned for site A request): %s', sessionBId);
     }
-
-    matchedSessionId = json.session_id ?? null;
-    // Must match site A session only; must never return site B session
-    assertionOk =
-      matchedSessionId === sessionAId &&
-      matchedSessionId !== sessionBId &&
-      (json.status === 'matched' || json.status === 'noop');
-  } else {
-    // 4b) Direct DB proof: query events for site_id=A and fingerprint=fp_same, get session_id
-    const { data: rows, error: qErr } = await admin
-      .from('events')
-      .select('session_id')
-      .eq('site_id', siteAId)
-      .eq('metadata->>fingerprint', FP)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (qErr) {
-      console.error('FAIL: Direct query error:', qErr.message);
-      await cleanup();
-      process.exit(1);
-    }
-    matchedSessionId = rows?.[0]?.session_id ?? null;
-    assertionOk = matchedSessionId === sessionAId && matchedSessionId !== sessionBId;
+  } catch (err) {
+    console.error('FAIL:', err.message);
+  } finally {
+    await cleanup();
   }
-
-  await cleanup();
-
-  if (assertionOk) {
-    console.log('');
-    console.log('PASS: Tenant isolation verified.');
-    console.log('  - Request/match for site A with fingerprint "%s" returned only site A session.', FP);
-    console.log('  - Matched session_id: %s (expected %s). Site B session %s was never returned.', matchedSessionId, sessionAId, sessionBId);
-    process.exit(0);
-  } else {
-    console.error('');
-    console.error('FAIL: Tenant isolation broken.');
-    console.error('  - Matched session_id: %s', matchedSessionId);
-    console.error('  - Expected (site A): %s', sessionAId);
-    console.error('  - Site B session (must never be returned for site A request): %s', sessionBId);
-    process.exit(1);
-  }
+  process.exit(exitCode);
 }
 
 main().catch((err) => {
