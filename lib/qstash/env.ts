@@ -1,8 +1,16 @@
 /**
  * QStash runtime environment guard (fail-fast).
  *
- * Goal: In production, do NOT allow the server to boot if critical QStash env vars
- * are missing. This prevents silent message loss / signature verification failure.
+ * Required in production:
+ * - QSTASH_TOKEN: Publisher token for enqueueing messages.
+ * - QSTASH_CURRENT_SIGNING_KEY: Current signing key; required to verify request signatures.
+ *
+ * Optional (key rotation):
+ * - QSTASH_NEXT_SIGNING_KEY: Next signing key. If missing, current is used for both;
+ *   set both during rotation to avoid 403s.
+ *
+ * Local dev bypass for /api/sync/worker only:
+ * - NODE_ENV != production and ALLOW_INSECURE_DEV_WORKER=true to skip verification (insecure).
  */
 
 function isProductionRuntime(): boolean {
@@ -22,16 +30,13 @@ function requireNonEmptyEnv(name: string): string {
 }
 
 /**
- * Enforces presence of QStash secrets in production.
- * Throws a hard error immediately if missing.
+ * Enforces presence of QStash secrets in production (500 on startup if missing).
+ * Signature verification is enforced by requireQstashSignature in the worker route.
  */
 export function assertQstashEnv(): void {
   if (!isProductionRuntime()) return;
 
-  // Producer/publisher token
   requireNonEmptyEnv('QSTASH_TOKEN');
-
-  // Consumer/verification key (used by @upstash/qstash/nextjs verifySignatureAppRouter)
   requireNonEmptyEnv('QSTASH_CURRENT_SIGNING_KEY');
 }
 

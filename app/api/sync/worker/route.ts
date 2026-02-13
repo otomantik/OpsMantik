@@ -1,11 +1,19 @@
+/**
+ * Sync worker: consumes QStash payloads (ingest events). Must only accept signed requests in production.
+ *
+ * Env (see lib/qstash/env.ts and lib/qstash/require-signature.ts):
+ * - Production: QSTASH_TOKEN + QSTASH_CURRENT_SIGNING_KEY required; QSTASH_NEXT_SIGNING_KEY optional (rotation).
+ * - Signature is always verified in prod; missing keys -> 503. Invalid/missing signature -> 403.
+ * - Local bypass: NODE_ENV != production and ALLOW_INSECURE_DEV_WORKER=true only.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { extractGeoInfo } from '@/lib/geo';
 import * as Sentry from '@sentry/nextjs';
-import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
 import { logError } from '@/lib/logging/logger';
 import { assertQstashEnv } from '@/lib/qstash/env';
+import { requireQstashSignature } from '@/lib/qstash/require-signature';
 import { getFinalUrl, isRecord, parseValidWorkerJobData, type IngestMeta } from '@/lib/types/ingest';
 
 export const runtime = 'nodejs';
@@ -16,9 +24,9 @@ import { AttributionService } from '@/lib/services/attribution-service';
 import { SessionService } from '@/lib/services/session-service';
 import { EventService } from '@/lib/services/event-service';
 import { IntentService } from '@/lib/services/intent-service';
-import { StatsService } from '@/lib/services/stats-service';
+import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
 
-// Ensure QStash env is present in production at runtime (not during build).
+// Fail-fast in production if QStash env is missing (500 on startup).
 assertQstashEnv();
 
 type ErrorLike = { code?: unknown; message?: unknown; status?: unknown };
@@ -173,10 +181,10 @@ async function handler(req: NextRequest) {
             throw dedupError;
         }
 
-        // --- 2. Real-time Aggr (only after dedup) ---
+        // --- 2. Real-time Aggr (only after dedup). Best-effort: Redis failure must not fail the job. ---
         if (event_action !== 'heartbeat') {
             const hasGclid = !!(new URL(url).searchParams.get('gclid') || meta?.gclid);
-            await StatsService.incrementCaptured(site_id, hasGclid);
+            await incrementCapturedSafe(site_id, hasGclid);
         }
 
         // --- 2. Context Layer ---
@@ -215,7 +223,7 @@ async function handler(req: NextRequest) {
         })();
 
         // --- 3. Attribution & Session ---
-        const { attribution, utm } = await AttributionService.resolveAttribution(currentGclid, fingerprint, url, referrer);
+        const { attribution, utm } = await AttributionService.resolveAttribution(site.id, currentGclid, fingerprint, url, referrer);
 
         const attributionSource = attribution.source;
         const deviceType = (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device))
@@ -337,11 +345,5 @@ async function handler(req: NextRequest) {
     }
 }
 
-// Wrap with QStash signature verification only when keys exist (avoids build failure when env is unset).
-const hasQstashSigningKeys =
-  typeof process.env.QSTASH_CURRENT_SIGNING_KEY === 'string' &&
-  process.env.QSTASH_CURRENT_SIGNING_KEY.trim() !== '' &&
-  typeof process.env.QSTASH_NEXT_SIGNING_KEY === 'string' &&
-  process.env.QSTASH_NEXT_SIGNING_KEY.trim() !== '';
-
-export const POST = hasQstashSigningKeys ? verifySignatureAppRouter(handler) : handler;
+// In prod: always verify QStash signature; no bypass. Missing keys -> 503. Dev bypass only with ALLOW_INSECURE_DEV_WORKER=true.
+export const POST = requireQstashSignature(handler);

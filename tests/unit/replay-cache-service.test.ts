@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ReplayCacheService } from '@/lib/services/ReplayCacheService';
+import { ReplayCacheService } from '@/lib/services/replay-cache-service';
 
 function makeFakeRedis() {
   const counts = new Map<string, number>();

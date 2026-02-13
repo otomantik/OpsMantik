@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { RateLimitService } from '@/lib/services/RateLimitService';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
 
 function makeFakeRedis() {
   const counts = new Map<string, number>();

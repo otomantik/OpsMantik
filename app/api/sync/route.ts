@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
+import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { isOriginAllowed, parseAllowedOrigins } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
@@ -8,6 +9,8 @@ import { qstash } from '@/lib/qstash/client';
 import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
 
 export const runtime = 'nodejs';
+
+const ERROR_MESSAGE_MAX_LEN = 500;
 
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
@@ -171,14 +174,33 @@ export async function POST(req: NextRequest) {
             { headers: baseHeaders }
         );
     } catch (err) {
-        logError('QSTASH_PUBLISH_ERROR', {
+        const errorMessage = String((err as Error)?.message ?? err);
+        const errorShort = errorMessage.slice(0, ERROR_MESSAGE_MAX_LEN);
+
+        logError('QSTASH_PUBLISH_FAILED', {
+            code: 'QSTASH_PUBLISH_FAILED',
             route: 'sync',
             ingest_id: ingestId,
             site_id: body.s,
-            error: String((err as Error)?.message ?? err),
+            error: errorMessage,
         });
         Sentry.captureException(err);
-        // Fallback: If QStash fails, we still return 200 to client to not break their page, but log the loss.
-        return NextResponse.json(createSyncResponse(true, 0, { status: 'degraded', ingest_id: ingestId }), { headers: baseHeaders });
+
+        // Best-effort: record failure in DB for observability (no throw).
+        try {
+            await adminClient.from('ingest_publish_failures').insert({
+                site_public_id: body.s,
+                error_code: 'QSTASH_PUBLISH_FAILED',
+                error_message_short: errorShort || null,
+            });
+        } catch {
+            /* ignore */
+        }
+
+        const degradedHeaders = { ...baseHeaders, 'x-opsmantik-degraded': 'qstash_publish_failed' };
+        return NextResponse.json(
+            createSyncResponse(true, 0, { status: 'degraded', ingest_id: ingestId }),
+            { headers: degradedHeaders }
+        );
     }
 }
