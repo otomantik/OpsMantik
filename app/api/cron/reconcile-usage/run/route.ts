@@ -9,6 +9,7 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { adminClient } from '@/lib/supabase/admin';
 import { reconcileUsageForMonth } from '@/lib/reconciliation';
 import { logInfo, logError } from '@/lib/logging/logger';
+import { incrementBillingReconciliationRunOk, incrementBillingReconciliationRunFailed } from '@/lib/billing-metrics';
 
 export const runtime = 'nodejs';
 
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq('id', job.id);
+        incrementBillingReconciliationRunOk();
         completed++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq('id', job.id);
+        incrementBillingReconciliationRunFailed();
         failed++;
       }
     }

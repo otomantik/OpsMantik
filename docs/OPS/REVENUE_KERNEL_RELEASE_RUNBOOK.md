@@ -76,6 +76,38 @@ Aşağıdakiler kodda bulunmalı:
 
 ---
 
+## 4.5 Cron auth doğrulama (CRON_FORBIDDEN önlemi)
+
+Cron smoke geçerli sayılmadan önce auth 200 dönmeli. PowerShell’de `$CRON_SECRET` boşsa header `Bearer ` gider → 403.
+
+**1) Secret’ın set olduğunu kontrol et**
+
+```powershell
+# PowerShell: değişkeni göster (boş olmamalı)
+$env:CRON_SECRET
+# veya tek seferlik set:
+$env:CRON_SECRET = "gercek-secret-deger"
+```
+
+**2) Watchtower ile hızlı test (200 → secret doğru)**
+
+```powershell
+$CONSOLE_URL = "https://console.opsmantik.com"   # prod
+curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/watchtower" -H "Authorization: Bearer $env:CRON_SECRET"
+```
+
+- **200** → secret doğru, cron smoke geçerli.
+- **403** → secret yanlış veya prod env’de `CRON_SECRET` yok/değişti.
+
+**3) Header escaping şüphesi varsa (güvenli)**
+
+```powershell
+$h = @("Authorization: Bearer $env:CRON_SECRET")
+curl.exe -s -X GET "$CONSOLE_URL/api/cron/reconcile-usage/enqueue" -H $h
+```
+
+---
+
 ## 5️⃣ Post-Deploy Smoke (5 Dakika)
 
 ### 🔎 1. Duplicate testi
@@ -163,6 +195,21 @@ LIMIT 5;
 - `billing.ingest.overage`
 - `ingestPublishFailuresLast15m`
 - (PR-4 sonrası) `billing.reconciliation.drift`
+
+---
+
+## 7.1 Reconciliation cron (PR-4 / PR-4.1)
+
+**Unified endpoint (önerilen):** `GET /api/cron/reconcile-usage`  
+Auth: `requireCronAuth` (Vercel Cron veya `Authorization: Bearer CRON_SECRET`).
+
+Tek istekte: (1) enqueue (aktif siteler, bu + önceki ay), (2) claim+run (RPC `claim_billing_reconciliation_jobs(50)`).  
+Yanıt: `{ ok, enqueued, processed, completed, failed, request_id }`.  
+Idempotent; sık schedule için güvenli. Invoice SoT değişmez.
+
+**Cron önerisi:** 5–15 dakikada bir GET `/api/cron/reconcile-usage`.
+
+**Invoice freeze (PR-6):** `POST /api/cron/invoice-freeze` — önceki ay (UTC) için `site_usage_monthly` → `invoice_snapshot` freeze. ON CONFLICT DO NOTHING. Cron önerisi: ayın ilk günlerinde (örn. günde bir). **Dispute-proof:** Fatura için önce `invoice_snapshot` varsa o kullanılır; yoksa COUNT(ingest_idempotency) fallback.
 
 ---
 

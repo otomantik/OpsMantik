@@ -34,6 +34,22 @@
 | `lib/services/watchtower.ts` | PR-4: billingReconciliationDriftLast1h check (sites with drift_pct > 1% in last 1h). |
 | `tests/unit/reconciliation.test.ts` | PR-4: reconcile shape, Redis best-effort, drift calculation. |
 | `tests/unit/revenue-kernel-gates.test.ts` | PR-4: reconciliation authority ingest_idempotency; job runner SKIP LOCKED. |
+| `app/api/cron/reconcile-usage/route.ts` | PR-4.1: Unified GET — enqueue then claim+run (50), idempotent; response: ok, enqueued, processed, completed, failed, request_id. |
+| `app/api/cron/invoice-freeze/route.ts` | PR-6: POST invoice-freeze; freeze previous month (UTC) from site_usage_monthly; snapshot_hash=sha256(...); ON CONFLICT DO NOTHING. |
+| `app/api/billing/dispute-export/route.ts` | PR-7: GET dispute-export?site_id=&year_month=; RBAC billing:view; CSV created_at, idempotency_key, idempotency_version, billing_state, billable; headers x-opsmantik-snapshot-hash, x-opsmantik-export-hash; log BILLING_DISPUTE_EXPORT. |
+| `lib/billing-metrics.ts` | PR-8: In-memory counters + BILLING_METRIC log; ingest allowed/duplicate/rejected_quota/rate_limited/overage/degraded; reconciliation runs ok/failed. |
+| `app/api/sync/route.ts` | PR-8: Increment billing metrics on each path (rate limit, duplicate, rejected_quota, allowed, overage, degraded). |
+| `app/api/cron/reconcile-usage/route.ts`, `run/route.ts` | PR-8: Increment billing_reconciliation_runs_ok_total / billing_reconciliation_runs_failed_total. |
+| `app/api/metrics/route.ts` | PR-8: GET /api/metrics (cron or admin); JSON with billing counters + billing_reconciliation_drift_sites_last1h from DB. |
+| `app/api/cron/watchtower/route.ts` | PR-8: Response includes billing_metrics (counters + drift_sites_last1h). |
+| `tests/unit/billing-metrics.test.ts` | PR-8: Unit tests for counter increments and code-path assertions. |
+| `app/api/cron/reconcile-usage/backfill/route.ts` | Backfill: POST backfill; body `{ site_id?, from, to }` (YYYY-MM); validate range ≤12 months; enqueue missing jobs (UPSERT DO NOTHING); return `{ enqueued, months, sites }`. |
+| `tests/unit/reconcile-backfill.test.ts` | Backfill: Unit tests for date validation, cron auth, UPSERT DO NOTHING, response shape, active-sites query. |
+| `supabase/migrations/20260217000000_pr9_ingest_idempotency_partitioning.sql` | PR-9: ingest_idempotency monthly RANGE(created_at) partitioning; PK (site_id, idempotency_key, created_at); copy under lock + swap; `ingest_idempotency_ensure_next_partition()`. |
+| `supabase/migrations/20260217000001_pr9_ingest_idempotency_brin_fallback.sql` | PR-9 Option B: BRIN on created_at if partitioning postponed. |
+| `docs/BILLING/PR9_IDEMPOTENCY_SCALING.md` | PR-9: Migration plan, EXPLAIN query plans, rollback plan. |
+| `app/api/sync/route.ts` | PR-10: Optional SyncHandlerDeps (validateSite, checkRateLimit, getQuotaDecision, updateIdempotencyBillableFalse, publish, insertFallback, incrementUsageRedis) for financial gate tests. |
+| `tests/unit/sync-financial-gate.test.ts` | PR-10: Integration tests for (1) duplicate → 200+dedup no publish, (2) db down → 500+billing_gate_closed no publish/fallback/redis, (3) quota reject → 429+quota-exceeded billable=false, (4) fallback → idempotency before fallback. |
 
 ---
 
@@ -206,23 +222,34 @@ For requests that returned 429 with `status: rejected_quota`, the corresponding 
 
 ### How to enqueue and run cron in prod
 
-1. **Enqueue** (e.g. daily or before run): call the enqueue endpoint so jobs exist for active sites (current + previous month).
+**Recommended (PR-4.1):** Single GET — enqueue then claim+run in one call. Idempotent, safe for frequent schedules.
 
 ```bash
-# Enqueue jobs (active = any ingest in last 24h or any row in current month)
-curl -s -X GET "https://YOUR_DOMAIN/api/cron/reconcile-usage/enqueue" \
+# Unified: enqueue + run (up to 50 jobs per request)
+curl -s -X GET "https://YOUR_DOMAIN/api/cron/reconcile-usage" \
   -H "Authorization: Bearer YOUR_CRON_SECRET"
 # Or with Vercel Cron: x-vercel-cron: 1
 ```
 
-2. **Run worker** (e.g. every 5–15 min): claim and process up to 50 jobs per run.
+Response: `{ ok: true, enqueued, processed, completed, failed, request_id }`.
 
-```bash
-curl -s -X POST "https://YOUR_DOMAIN/api/cron/reconcile-usage/run" \
-  -H "Authorization: Bearer YOUR_CRON_SECRET"
-```
+**Optional (split endpoints):**  
+- GET `/api/cron/reconcile-usage/enqueue` — enqueue only.  
+- POST `/api/cron/reconcile-usage/run` — claim+run only (limit 50).
 
-Responses: `{ ok: true, enqueued: N }` (enqueue) or `{ ok: true, processed, completed, failed }` (run).
+### Backfill (reconciliation jobs for a date range)
+
+**Route:** `POST /api/cron/reconcile-usage/backfill`  
+**Auth:** Same as above (requireCronAuth: `x-vercel-cron: 1` or `Authorization: Bearer CRON_SECRET`).
+
+**Body:** `{ site_id?: uuid, from: 'YYYY-MM', to: 'YYYY-MM' }`
+
+- `from`, `to`: required; must be valid YYYY-MM; `from` ≤ `to`; range length ≤ 12 months.
+- `site_id`: optional; if omitted, “active” sites are those with at least one row in `ingest_idempotency` with `year_month` in `[from, to]`.
+
+**Behavior:** For each month in `[from, to]` and each site (the given site or all active sites), inserts into `billing_reconciliation_jobs` with **UPSERT ON CONFLICT (site_id, year_month) DO NOTHING** so only missing jobs are enqueued.
+
+**Response:** `{ ok: true, enqueued: number, months: string[], sites: number }` (or 400 for invalid body/range, 500 on DB error).
 
 ### DB query: verify site_usage_monthly matches COUNT(ingest_idempotency)
 
@@ -269,23 +296,16 @@ $YEAR_MONTH = "2026-02"
 
 ### 1) Cron endpoint’leri manuel çalıştır
 
-**1A) Enqueue**
+**1) Unified cron (önerilen)**
 
 ```powershell
-curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/reconcile-usage/enqueue" `
+curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/reconcile-usage" `
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-Beklenen: **200**, body’de `enqueued` veya `ok: true`.
+Beklenen: **200**, body: `{ ok: true, enqueued, processed, completed, failed, request_id }`.
 
-**1B) Run**
-
-```powershell
-curl.exe -s -D - -X POST "$CONSOLE_URL/api/cron/reconcile-usage/run" `
-  -H "Authorization: Bearer $CRON_SECRET"
-```
-
-Beklenen: **200**, body’de `processed`, `completed`, `failed`.
+**Alternatif (ayrık):** GET `/api/cron/reconcile-usage/enqueue` sonra POST `/api/cron/reconcile-usage/run`.
 
 ### 2) DB proof (canary site)
 
@@ -336,15 +356,10 @@ Canary temizse aşağıyı doldurup ilgili kişiye at; “✅ GO — Full Rollou
 ```
 --- PR-4 Canary proof ---
 
-Enqueue:
+Unified GET /api/cron/reconcile-usage:
   Status: 
   Headers (ilk birkaç satır): 
-  Body (kısa): 
-
-Run:
-  Status: 
-  Headers (ilk birkaç satır): 
-  Body (kısa): 
+  Body (kısa): enqueued=…, processed=…, completed=…, failed=… 
 
 DB (A) billable count: 
 DB (B) site_usage_monthly: event_count=..., overage_count=..., last_synced_at=...
@@ -356,4 +371,60 @@ Watchtower billingReconciliationDriftLast1h:
 --- End proof ---
 ```
 
-**Önerilen cron:** enqueue 15 dk, run 5 dk (veya ikisi de 15 dk).
+**Önerilen cron:** GET `/api/cron/reconcile-usage` tek endpoint, 5–15 dk aralıkla (unified: enqueue + run tek istekte).
+
+---
+
+## PR-6: Invoice snapshot freeze
+
+**Route:** `POST /api/cron/invoice-freeze` — auth: `requireCronAuth`. Freezes **previous month only (UTC)** from `site_usage_monthly`. For each site with activity: INSERT into `invoice_snapshot` (site_id, year_month, event_count, overage_count, snapshot_hash, generated_at, generated_by). **snapshot_hash** = SHA256(site_id + year_month + event_count + overage_count + commit_sha). **Idempotency:** ON CONFLICT (site_id, year_month) DO NOTHING. Response: `{ ok, year_month, inserted, skipped, total_sites, request_id }`.
+
+**Dispute-proof (invoice authority):**  
+- **Invoice uses snapshot if it exists:** For a given (site_id, year_month), if a row exists in `invoice_snapshot`, that row is the authoritative billable count for dispute and export.  
+- **Else falls back to COUNT(ingest_idempotency):** If no snapshot exists (e.g. freeze not yet run), the canonical source remains `COUNT(*) FROM ingest_idempotency WHERE site_id = ? AND year_month = ? AND billable = true`.  
+- `invoice_snapshot` is immutable (trigger blocks UPDATE/DELETE); snapshot_hash ties the frozen numbers to the deployment (commit_sha) for audit.
+
+---
+
+## PR-7: Dispute export
+
+**Route:** `GET /api/billing/dispute-export?site_id=...&year_month=YYYY-MM`  
+**Auth:** RBAC — user must have `billing:view` (owner, admin, or billing role) and access to the site. Tenant-scoped: export only for sites the user owns or is a member of.
+
+**Output:** CSV (stream) with columns: `created_at`, `idempotency_key`, `idempotency_version`, `billing_state`, `billable`. Deterministic ordering: `ORDER BY created_at ASC, id ASC`.
+
+**Headers:**  
+- `x-opsmantik-snapshot-hash`: set when an `invoice_snapshot` row exists for (site_id, year_month).  
+- `x-opsmantik-export-hash`: SHA256 of the CSV bytes (UTF-8).
+
+**Log:** `BILLING_DISPUTE_EXPORT` with `site_id`, `year_month`, `row_count`, `export_hash`.
+
+---
+
+## PR-8: Billing observability
+
+**Sync counters (in-memory + BILLING_METRIC log):**  
+`billing_ingest_allowed_total`, `billing_ingest_duplicate_total`, `billing_ingest_rejected_quota_total`, `billing_ingest_rate_limited_total`, `billing_ingest_overage_total`, `billing_ingest_degraded_total`.
+
+**Reconciliation counters:**  
+`billing_reconciliation_runs_ok_total`, `billing_reconciliation_runs_failed_total`.  
+**Drift:** `billing_reconciliation_drift_sites_last1h` (from DB: sites with last_drift_pct > 1% in last 1h).
+
+**Exposure:**  
+- **GET /api/metrics** — cron or admin auth; returns JSON with all counters + `billing_reconciliation_drift_sites_last1h`.  
+- **Watchtower** — GET /api/cron/watchtower response includes `billing_metrics` (same counters + drift).
+
+---
+
+## PR-8: Billing observability
+
+**Sync counters (in-memory + BILLING_METRIC log):**  
+`billing_ingest_allowed_total`, `billing_ingest_duplicate_total`, `billing_ingest_rejected_quota_total`, `billing_ingest_rate_limited_total`, `billing_ingest_overage_total`, `billing_ingest_degraded_total`.
+
+**Reconciliation counters:**  
+`billing_reconciliation_runs_ok_total`, `billing_reconciliation_runs_failed_total`.  
+**Drift:** `billing_reconciliation_drift_sites_last1h` (from DB: sites with last_drift_pct > 1% in last 1h).
+
+**Exposure:**  
+- **GET /api/metrics** — cron or admin auth; returns JSON with all counters + `billing_reconciliation_drift_sites_last1h`.  
+- **Watchtower** — GET /api/cron/watchtower response includes `billing_metrics` (same counters + drift).

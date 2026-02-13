@@ -9,9 +9,17 @@ import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/logging/logger';
 import { qstash } from '@/lib/qstash/client';
 import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs, tryInsertIdempotencyKey, updateIdempotencyBillableFalse, setOverageOnIdempotencyRow, type TryInsertIdempotencyResult } from '@/lib/idempotency';
-import { getCurrentYearMonthUTC, getSitePlan, getUsage, evaluateQuota, computeRetryAfterToMonthRollover, incrementUsageRedis } from '@/lib/quota';
+import { getCurrentYearMonthUTC, getSitePlan, getUsage, evaluateQuota, computeRetryAfterToMonthRollover, incrementUsageRedis, type QuotaDecision } from '@/lib/quota';
 import { buildFallbackRow } from '@/lib/sync-fallback';
 import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
+import {
+    incrementBillingIngestAllowed,
+    incrementBillingIngestDuplicate,
+    incrementBillingIngestRejectedQuota,
+    incrementBillingIngestRateLimited,
+    incrementBillingIngestOverage,
+    incrementBillingIngestDegraded,
+} from '@/lib/billing-metrics';
 
 /**
  * Revenue Kernel (frozen order): Auth → Rate limit → Idempotency → Quota → Publish.
@@ -104,8 +112,23 @@ export async function OPTIONS(req: NextRequest) {
     return new NextResponse(null, { status: isAllowed ? 200 : 403, headers });
 }
 
+/** Optional deps for tests: inject to assert no publish/fallback/redis on gate failure, or to force quota/fallback paths. */
 export type SyncHandlerDeps = {
   tryInsert?: (siteIdUuid: string, idempotencyKey: string) => Promise<TryInsertIdempotencyResult>;
+  /** When set, used instead of SiteService.validateSite (for tests without real site). */
+  validateSite?: (publicId: string) => Promise<{ valid: boolean; site?: { id: string } }>;
+  /** When set, used instead of getSitePlan + getUsage + evaluateQuota (for quota-reject tests). */
+  getQuotaDecision?: (siteIdUuid: string, yearMonth: string) => Promise<QuotaDecision>;
+  /** When set, used instead of updateIdempotencyBillableFalse (for assertions). */
+  updateIdempotencyBillableFalse?: (siteIdUuid: string, idempotencyKey: string) => Promise<{ updated?: boolean }>;
+  /** When set, used instead of QStash publish (for fallback tests: throw to trigger fallback). */
+  publish?: (args: { url: string; body: unknown; retries: number }) => Promise<void>;
+  /** When set, used instead of fallback buffer insert (for assertions). */
+  insertFallback?: (row: unknown) => Promise<{ error: unknown }>;
+  /** When set, used instead of incrementUsageRedis (for assertions: not called on db down). */
+  incrementUsageRedis?: (siteIdUuid: string, yearMonth: string) => Promise<void>;
+  /** When set, used instead of RateLimitService.check (for tests: avoid 429). */
+  checkRateLimit?: () => Promise<{ allowed: boolean }>;
 };
 
 /**
@@ -135,9 +158,11 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     }
 
     // --- 1. Rate Limit (abuse/DoS). Order: Auth → Rate limit → Idempotency → Publish. 429 = non-billable. ---
-    const clientId = RateLimitService.getClientId(req);
-    const rl = await RateLimitService.check(clientId, 100, 60000);
+    const rl = deps?.checkRateLimit
+        ? await deps.checkRateLimit()
+        : await RateLimitService.check(RateLimitService.getClientId(req), 100, 60000);
     if (!rl.allowed) {
+        incrementBillingIngestRateLimited();
         const rateLimitHeaders = { ...baseHeaders, 'x-opsmantik-ratelimit': '1' };
         return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: rateLimitHeaders });
     }
@@ -151,7 +176,8 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const body = parsed.data;
 
     // --- 2.5 Site resolution (required for idempotency + fallback site_id) ---
-    const { valid: siteValid, site } = await SiteService.validateSite(body.s);
+    const validateSiteFn = deps?.validateSite ?? SiteService.validateSite;
+    const { valid: siteValid, site } = await validateSiteFn(body.s);
     if (!siteValid || !site) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Site not found or invalid' }), { status: 400, headers: baseHeaders });
     }
@@ -173,6 +199,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     }
 
     if (idempotencyResult.duplicate) {
+        incrementBillingIngestDuplicate();
         const dedupHeaders = { ...baseHeaders, 'x-opsmantik-dedup': '1' };
         return NextResponse.json(
             createSyncResponse(true, 10, { status: 'duplicate', captured: true, v: OPSMANTIK_VERSION }),
@@ -184,15 +211,24 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
 
     // --- 2.7 Quota (PR-3). After idempotency insert success, before publish. Reject → 429, billable=false; overage → header + billing_state. ---
     const yearMonth = getCurrentYearMonthUTC();
+    const updateBillableFalse = deps?.updateIdempotencyBillableFalse ?? updateIdempotencyBillableFalse;
     if (idempotencyInserted) {
-        const plan = await getSitePlan(siteIdUuid);
-        const { usage, source: usageSource } = await getUsage(siteIdUuid, yearMonth);
-        // Usage from Redis is pre-increment; we're about to allow this request so effective usage for gating = usage + 1
-        const usageAfterThis = usage + 1;
-        const decision = evaluateQuota(plan, usageAfterThis);
+        let decision: QuotaDecision;
+        if (deps?.getQuotaDecision) {
+            decision = await deps.getQuotaDecision(siteIdUuid, yearMonth);
+        } else {
+            const plan = await getSitePlan(siteIdUuid);
+            const { usage, source: usageSource } = await getUsage(siteIdUuid, yearMonth);
+            const usageAfterThis = usage + 1;
+            decision = evaluateQuota(plan, usageAfterThis);
+            if (usageSource !== 'redis' && usageAfterThis >= plan.monthly_limit * 0.95) {
+                baseHeaders['x-opsmantik-degraded'] = 'quota_pg_conservative';
+            }
+        }
 
         if (decision.reject) {
-            await updateIdempotencyBillableFalse(siteIdUuid, idempotencyKey);
+            incrementBillingIngestRejectedQuota();
+            await updateBillableFalse(siteIdUuid, idempotencyKey);
             const retryAfter = computeRetryAfterToMonthRollover();
             const quotaHeaders = {
                 ...baseHeaders,
@@ -212,10 +248,6 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         // Apply quota headers to successful response (set below before publish return)
         baseHeaders['x-opsmantik-quota-remaining'] = decision.headers['x-opsmantik-quota-remaining'];
         if (decision.headers['x-opsmantik-overage']) baseHeaders['x-opsmantik-overage'] = decision.headers['x-opsmantik-overage'];
-        // When Redis is down and usage is close to limit, allow but mark degraded (pro tier choice)
-        if (usageSource !== 'redis' && usageAfterThis >= plan.monthly_limit * 0.95) {
-            baseHeaders['x-opsmantik-degraded'] = 'quota_pg_conservative';
-        }
     }
 
     // --- 3. Offload to QStash (with server-side fallback on publish failure) ---
@@ -248,14 +280,23 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         is_proxy_detected: geoInfo.is_proxy_detected ?? undefined,
     };
 
+    const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; retries: number }) => {
+        await qstash.publishJSON({ url: args.url, body: args.body, retries: args.retries });
+    });
+    const doInsertFallback = deps?.insertFallback ?? (async (row: unknown) => {
+        const { error } = await adminClient.from('ingest_fallback_buffer').insert(row as Record<string, unknown>);
+        return { error };
+    });
+    const doIncrementRedis = deps?.incrementUsageRedis ?? incrementUsageRedis;
+
     try {
         const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
-        await qstash.publishJSON({
-            url: workerUrl,
-            body: workerPayload,
-            retries: 3,
-        });
-        if (idempotencyInserted) await incrementUsageRedis(siteIdUuid, yearMonth);
+        await doPublish({ url: workerUrl, body: workerPayload, retries: 3 });
+        if (idempotencyInserted) {
+            await doIncrementRedis(siteIdUuid, yearMonth);
+            incrementBillingIngestAllowed();
+            if (baseHeaders['x-opsmantik-overage']) incrementBillingIngestOverage();
+        }
         return NextResponse.json(
             createSyncResponse(true, 10, { status: 'queued', v: OPSMANTIK_VERSION, ingest_id: ingestId }),
             { headers: baseHeaders }
@@ -285,10 +326,8 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         }
 
         try {
-            await adminClient.from('ingest_fallback_buffer').insert(
-                buildFallbackRow(siteIdUuid, workerPayload, errorShort || null)
-            );
-            if (idempotencyInserted) await incrementUsageRedis(siteIdUuid, yearMonth);
+            await doInsertFallback(buildFallbackRow(siteIdUuid, workerPayload, errorShort || null));
+            if (idempotencyInserted) await doIncrementRedis(siteIdUuid, yearMonth);
         } catch (fallbackErr) {
             logError('INGEST_FALLBACK_INSERT_FAILED', {
                 route: 'sync',
@@ -298,6 +337,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
             });
         }
 
+        incrementBillingIngestDegraded();
         // 200 OK (degraded): we captured the data; client should not retry
         const degradedHeaders = {
             ...baseHeaders,
