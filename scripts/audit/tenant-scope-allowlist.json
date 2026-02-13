@@ -1,0 +1,33 @@
+[
+  {
+    "file": "lib/services/watchtower.ts",
+    "table": "sessions",
+    "reason": "Global health check counts all sessions (not tenant scoped)."
+  },
+  {
+    "file": "lib/services/watchtower.ts",
+    "table": "ingest_publish_failures",
+    "reason": "Global health check counts all publish failures for last-15m window."
+  },
+  {
+    "file": "app/api/sync/route.ts",
+    "table": "ingest_publish_failures",
+    "reason": "Observability insert keyed by site_public_id (no site_id column)."
+  },
+  {
+    "file": "app/api/sync/dlq/replay/route.ts",
+    "table": "sync_dlq",
+    "reason": "Admin-only replay by DLQ row id; table is API-only (RLS no policies)."
+  },
+  {
+    "file": "app/api/sync/dlq/replay/route.ts",
+    "table": "sync_dlq_replay_audit",
+    "reason": "Admin-only audit log insert keyed by dlq_id."
+  },
+  {
+    "file": "app/api/customers/invite/route.ts",
+    "table": "customer_invite_audit",
+    "reason": "Global audit log (not tenant scoped by site_id)."
+  }
+]
+

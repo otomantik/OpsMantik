@@ -19,6 +19,8 @@
     "diagnostics": "node scripts/run-diagnostics.mjs",
     "load:smoke": "k6 run tests/load/smoke-load.js",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:rls": "node --import tsx --test tests/rls/*.test.ts",
+    "audit:tenant-scope": "node scripts/audit/require-tenant-scope.mjs",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui"
   },
