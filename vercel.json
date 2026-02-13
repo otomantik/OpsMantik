@@ -1,8 +1,1 @@
-{
-    "crons": [
-        {
-            "path": "/api/cron/watchtower",
-            "schedule": "*/15 * * * *"
-        }
-    ]
-}
+{"crons":[{"path":"/api/cron/watchtower","schedule":"*/15 * * * *"},{"path":"/api/cron/recover","schedule":"*/5 * * * *"}]}

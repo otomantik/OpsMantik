@@ -18,6 +18,11 @@ export interface WatchtowerHealth {
             status: 'ok' | 'degraded' | 'critical' | 'unknown';
             count: number;
         };
+        /** PR-4: sites with reconciliation drift_pct > 1% in last 1h */
+        billingReconciliationDriftLast1h: {
+            status: 'ok' | 'degraded';
+            count: number;
+        };
     };
     details: {
         timestamp: string;
@@ -45,6 +50,26 @@ export class WatchtowerService {
         }
 
         return count ?? 0;
+    }
+
+    /**
+     * PR-4: Count of sites with reconciliation drift > 1% in last 1h (from billing_reconciliation_jobs last_drift_pct).
+     */
+    static async checkBillingReconciliationDriftLast1h(): Promise<number> {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data, error } = await adminClient
+            .from('billing_reconciliation_jobs')
+            .select('site_id')
+            .eq('status', 'COMPLETED')
+            .gte('updated_at', oneHourAgo)
+            .gt('last_drift_pct', 0.01);
+
+        if (error) {
+            console.error('[WATCHTOWER] Billing reconciliation drift check failed:', error);
+            return -1;
+        }
+        const siteIds = new Set((data ?? []).map((r: { site_id?: string }) => r.site_id).filter(Boolean));
+        return siteIds.size;
     }
 
     /**
@@ -92,22 +117,26 @@ export class WatchtowerService {
      */
     static async runDiagnostics(): Promise<WatchtowerHealth> {
         try {
-            const [sessionsCount, gclidCount, failureCount] = await Promise.all([
+            const [sessionsCount, gclidCount, failureCount, driftCount] = await Promise.all([
                 this.checkSessionVitality(),
                 this.checkAttributionLiveness(),
                 this.checkIngestPublishFailuresLast15m(),
+                this.checkBillingReconciliationDriftLast1h(),
             ]);
 
             const sessionStatus = sessionsCount > 0 ? 'ok' : 'alarm';
             const gclidStatus = gclidCount > 0 ? 'ok' : 'alarm';
             const ingestFailureStatus: 'ok' | 'degraded' | 'critical' | 'unknown' =
                 failureCount === -1 ? 'unknown' : failureCount === 0 ? 'ok' : failureCount > 5 ? 'critical' : 'degraded';
+            const driftStatus: 'ok' | 'degraded' =
+                driftCount === -1 ? 'ok' : driftCount > 0 ? 'degraded' : 'ok';
 
             let overallStatus: WatchtowerStatus =
                 sessionStatus === 'ok' && gclidStatus === 'ok' ? 'ok' : 'alarm';
             if (failureCount > 5) overallStatus = 'critical';
             else if (failureCount > 0) overallStatus = overallStatus === 'ok' ? 'degraded' : overallStatus;
             else if (failureCount === -1) overallStatus = overallStatus === 'ok' ? 'degraded' : overallStatus;
+            if (driftCount > 0 && overallStatus === 'ok') overallStatus = 'degraded';
 
             const healthCheck: WatchtowerHealth = {
                 status: overallStatus,
@@ -123,6 +152,10 @@ export class WatchtowerService {
                     ingestPublishFailuresLast15m: {
                         status: ingestFailureStatus,
                         count: failureCount
+                    },
+                    billingReconciliationDriftLast1h: {
+                        status: driftStatus,
+                        count: driftCount === -1 ? 0 : driftCount
                     }
                 },
                 details: {
@@ -145,7 +178,8 @@ export class WatchtowerService {
                 checks: {
                     sessionsLastHour: { status: 'alarm', count: -1 },
                     gclidLast3Hours: { status: 'alarm', count: -1 },
-                    ingestPublishFailuresLast15m: { status: 'unknown', count: -1 }
+                    ingestPublishFailuresLast15m: { status: 'unknown', count: -1 },
+                    billingReconciliationDriftLast1h: { status: 'ok', count: 0 }
                 },
                 details: {
                     timestamp: new Date().toISOString(),
