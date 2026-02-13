@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isValidSiteIdentifier } from '@/lib/security/siteIdentifier';
+import { isValidSiteIdentifier } from '@/lib/security/site-identifier';
 
 test('isValidSiteIdentifier: accepts UUID', () => {
   assert.equal(isValidSiteIdentifier('01d24667-ca9a-44e3-ab7a-7cd171ae653f'), true);

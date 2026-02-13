@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
-import { timingSafeCompare } from '@/lib/security/timingSafeCompare';
-import { verifySignedRequest } from '@/lib/security/verifySignedRequest';
+import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { verifySignedRequest } from '@/lib/security/verify-signed-request';
 
 test('timingSafeCompare: equal strings', () => {
   assert.equal(timingSafeCompare('abc', 'abc'), true);

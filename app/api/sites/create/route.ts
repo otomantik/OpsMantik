@@ -48,6 +48,70 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const trimmedName = String(name).trim();
+    if (!trimmedName) {
+      return NextResponse.json(
+        { error: 'Name cannot be empty' },
+        { status: 400 }
+      );
+    }
+
+    // Guardrail: if this user already has a matching site, update it instead of creating a new row.
+    // This prevents accidental duplicate sites during domain/brand changes.
+    // Matching rules (in order):
+    // 1) Exact domain match for this user
+    // 2) Exact name match (case-insensitive) for this user
+    const { data: existingSites, error: listErr } = await adminClient
+      .from('sites')
+      .select('id, name, domain, public_id')
+      .eq('user_id', user.id);
+
+    if (listErr) {
+      console.error('[SITES_CREATE] Failed to list sites for upsert:', listErr);
+      return NextResponse.json(
+        { error: 'Failed to validate existing sites' },
+        { status: 500 }
+      );
+    }
+
+    const domainLower = normalizedDomain.toLowerCase();
+    const nameLower = trimmedName.toLowerCase();
+    const matchByDomain = (existingSites || []).find((s) =>
+      typeof s?.domain === 'string' && s.domain.trim().toLowerCase() === domainLower
+    );
+    const matchByName = (existingSites || []).find((s) =>
+      typeof s?.name === 'string' && s.name.trim().toLowerCase() === nameLower
+    );
+    const matched = matchByDomain || matchByName;
+
+    if (matched?.id) {
+      const { data: updated, error: updateErr } = await adminClient
+        .from('sites')
+        .update({
+          name: trimmedName,
+          domain: normalizedDomain,
+        })
+        .eq('id', matched.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        console.error('[SITES_CREATE] Update existing site failed:', updateErr);
+        return NextResponse.json(
+          { error: 'Failed to update site', details: updateErr.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        site: updated,
+        message: 'Site updated successfully',
+        updated: true,
+      });
+    }
+
     // Generate public_id using crypto.randomUUID() without dashes
     // Edge Runtime compatible: crypto is available globally
     let publicId: string;
@@ -84,7 +148,7 @@ export async function POST(req: NextRequest) {
       .from('sites')
       .insert({
         user_id: user.id, // Security: Always use authenticated user's ID
-        name: name.trim(),
+        name: trimmedName,
         domain: normalizedDomain,
         public_id: publicId,
       })

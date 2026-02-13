@@ -68,9 +68,19 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Admin protection (basic check, more granular checks should be in RLS or pages)
-    if (path.startsWith('/admin') && !user) {
-        return NextResponse.redirect(new URL('/login', request.url))
+    // Admin protection: require both logged-in AND profile.role = 'admin' (is_admin). Non-admins get 403.
+    if (path.startsWith('/admin')) {
+        if (!user) {
+            return NextResponse.redirect(new URL('/login', request.url))
+        }
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+        if (profile?.role !== 'admin') {
+            return NextResponse.redirect(new URL('/dashboard', request.url))
+        }
     }
 
     // Redirect to dashboard if logged in and trying to access login

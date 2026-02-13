@@ -1,32 +1,44 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase/admin';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { computeAttribution, extractUTM } from '@/lib/attribution';
 
+export interface ResolveAttributionOptions {
+    /** For tests: inject a mock client so past-GCLID lookup is site-scoped in the test double. */
+    client?: SupabaseClient;
+}
+
 export class AttributionService {
+    /**
+     * Resolve attribution for the current request. All event lookups are scoped by site_id
+     * to prevent cross-tenant attribution bleed (same fingerprint on another site must not
+     * influence this site's attribution).
+     */
     static async resolveAttribution(
+        siteId: string,
         currentGclid: string | null,
         fingerprint: string | null,
         url: string,
-        referrer: string | null
+        referrer: string | null,
+        options?: ResolveAttributionOptions
     ) {
-        // 1. Check for past GCLID (Multi-touch)
+        const client = options?.client ?? adminClient;
+
+        // 1. Check for past GCLID (Multi-touch) — MUST be site-scoped + fingerprint in SQL
         let hasPastGclid = false;
         if (!currentGclid && fingerprint) {
             const recentMonths = getRecentMonths(6);
-            const { data: pastEvents } = await adminClient
+            const { data: pastEvents } = await client
                 .from('events')
-                .select('metadata, created_at, session_month')
+                .select('id')
+                .eq('site_id', siteId)
+                .eq('metadata->>fingerprint', fingerprint)
                 .not('metadata->gclid', 'is', null)
-                .in('session_month', recentMonths) // Partition filter
+                .in('session_month', recentMonths)
                 .order('created_at', { ascending: false })
-                .limit(50);
+                .limit(1);
 
-            if (pastEvents && pastEvents.length > 0) {
-                hasPastGclid = pastEvents.some((e: unknown) => {
-                    const event = e as { metadata?: { fp?: string; gclid?: string } };
-                    return event.metadata?.fp === fingerprint && event.metadata?.gclid;
-                });
-            }
+            hasPastGclid = !!(pastEvents && pastEvents.length > 0);
         }
 
         // 2. Extract UTM

@@ -20,6 +20,7 @@ import {
   parseValueAllowNull,
   type EventIdMode,
 } from '@/lib/api/call-event/shared';
+import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -275,75 +276,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Find recent session by fingerprint
+    // Find recent session by fingerprint (site-scoped; see match-session-by-fingerprint.ts)
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const recentMonths = getRecentMonths(2);
-    const { data: recentEvents, error: eventsError } = await adminClient
-      .from('events')
-      .select('session_id, session_month, metadata, created_at')
-      .eq('metadata->>fingerprint', fingerprint)
-      .in('session_month', recentMonths)
-      .gte('created_at', thirtyMinutesAgo)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(1);
-
-    if (eventsError) {
-      logError('call-event-v2 events query error', { request_id: requestId, route: ROUTE, site_id, message: eventsError.message, code: eventsError.code });
-      return NextResponse.json({ error: 'Failed to query events' }, { status: 500, headers: baseHeaders });
-    }
-
-    let matchedSessionId: string | null = null;
-    let leadScore = 0;
-    let scoreBreakdown: any = null;
-    let callStatus: string | null = null;
     const matchedAt = new Date().toISOString();
+    const matchResult = await findRecentSessionByFingerprint(adminClient, {
+      siteId: siteUuidFinal,
+      fingerprint,
+      recentMonths,
+      thirtyMinutesAgo,
+    });
 
-    if (recentEvents && recentEvents.length > 0) {
-      matchedSessionId = recentEvents[0].session_id;
-      const sessionMonth = recentEvents[0].session_month;
-
-      const { data: session, error: sessionError } = await adminClient
-        .from('sessions')
-        .select('id, created_at, created_month')
-        .eq('id', matchedSessionId)
-        .eq('created_month', sessionMonth)
-        .single();
-
-      if (sessionError || !session) {
-        matchedSessionId = null;
-      } else {
-        const sessionCreatedAt = new Date(session.created_at);
-        const matchTime = new Date(matchedAt);
-        const timeDiffMinutes = (sessionCreatedAt.getTime() - matchTime.getTime()) / (1000 * 60);
-        callStatus = timeDiffMinutes > 2 ? 'suspicious' : 'intent';
-
-        const { data: sessionEvents, error: sessionEventsError } = await adminClient
-          .from('events')
-          .select('event_category, event_action, metadata')
-          .eq('session_id', matchedSessionId)
-          .eq('session_month', sessionMonth);
-
-        if (sessionEventsError) {
-          logError('call-event-v2 session events query error', { request_id: requestId, route: ROUTE, site_id, session_id: matchedSessionId, message: sessionEventsError.message, code: sessionEventsError.code });
-          return NextResponse.json({ error: 'Failed to query session events' }, { status: 500, headers: baseHeaders });
-        }
-
-        if (sessionEvents && sessionEvents.length > 0) {
-          const conversionCount = sessionEvents.filter(e => e.event_category === 'conversion').length;
-          const interactionCount = sessionEvents.filter(e => e.event_category === 'interaction').length;
-          const scores = sessionEvents.map(e => Number((e.metadata as any)?.lead_score) || 0);
-          const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
-          const conversionPoints = conversionCount * 20;
-          const interactionPoints = interactionCount * 5;
-          const bonuses = maxScore;
-          const rawScore = conversionPoints + interactionPoints + bonuses;
-          const cappedAt100 = rawScore > 100;
-          leadScore = Math.min(rawScore, 100);
-          scoreBreakdown = { conversionPoints, interactionPoints, bonuses, cappedAt100, rawScore, finalScore: leadScore };
-        }
-      }
-    }
+    const matchedSessionId = matchResult.matchedSessionId;
+    const leadScore = matchResult.leadScore;
+    const scoreBreakdown = matchResult.scoreBreakdown;
+    const callStatus = matchResult.callStatus;
 
     const inferredAction = inferIntentAction(phone_number ?? '');
     const intent_action =

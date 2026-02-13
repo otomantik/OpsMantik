@@ -1,38 +1,36 @@
-import { describe, expect, test } from 'vitest';
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import { capabilitiesForRole, hasCapability, type SiteRole } from '@/lib/auth/rbac';
 
-describe('RBAC v2 capability mapping', () => {
-  test('owner has all capabilities', () => {
-    const caps = capabilitiesForRole('owner');
-    expect(caps.has('members:manage')).toBe(true);
-    expect(caps.has('site:write')).toBe(true);
-    expect(caps.has('queue:operate')).toBe(true);
-    expect(caps.has('billing:view')).toBe(true);
-  });
-
-  test('admin has members + site write + queue operate', () => {
-    expect(hasCapability('admin', 'members:manage')).toBe(true);
-    expect(hasCapability('admin', 'site:write')).toBe(true);
-    expect(hasCapability('admin', 'queue:operate')).toBe(true);
-  });
-
-  test('operator can operate queue only', () => {
-    expect(hasCapability('operator', 'queue:operate')).toBe(true);
-    expect(hasCapability('operator', 'members:manage')).toBe(false);
-    expect(hasCapability('operator', 'site:write')).toBe(false);
-    expect(hasCapability('operator', 'billing:view')).toBe(false);
-  });
-
-  test('analyst is read-only', () => {
-    const role: SiteRole = 'analyst';
-    expect(hasCapability(role, 'queue:operate')).toBe(false);
-    expect(hasCapability(role, 'members:manage')).toBe(false);
-    expect(hasCapability(role, 'site:write')).toBe(false);
-  });
-
-  test('billing can only view billing', () => {
-    expect(hasCapability('billing', 'billing:view')).toBe(true);
-    expect(hasCapability('billing', 'queue:operate')).toBe(false);
-  });
+test('RBAC v2: owner has all capabilities', () => {
+  const caps = capabilitiesForRole('owner');
+  assert.equal(caps.has('members:manage'), true);
+  assert.equal(caps.has('site:write'), true);
+  assert.equal(caps.has('queue:operate'), true);
+  assert.equal(caps.has('billing:view'), true);
 });
 
+test('RBAC v2: admin has members + site write + queue operate', () => {
+  assert.equal(hasCapability('admin', 'members:manage'), true);
+  assert.equal(hasCapability('admin', 'site:write'), true);
+  assert.equal(hasCapability('admin', 'queue:operate'), true);
+});
+
+test('RBAC v2: operator can operate queue only', () => {
+  assert.equal(hasCapability('operator', 'queue:operate'), true);
+  assert.equal(hasCapability('operator', 'members:manage'), false);
+  assert.equal(hasCapability('operator', 'site:write'), false);
+  assert.equal(hasCapability('operator', 'billing:view'), false);
+});
+
+test('RBAC v2: analyst is read-only', () => {
+  const role: SiteRole = 'analyst';
+  assert.equal(hasCapability(role, 'queue:operate'), false);
+  assert.equal(hasCapability(role, 'members:manage'), false);
+  assert.equal(hasCapability(role, 'site:write'), false);
+});
+
+test('RBAC v2: billing can only view billing', () => {
+  assert.equal(hasCapability('billing', 'billing:view'), true);
+  assert.equal(hasCapability('billing', 'queue:operate'), false);
+});
