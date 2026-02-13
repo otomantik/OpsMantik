@@ -1,8 +1,10 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { TelegramService } from './telegram-service';
 
+export type WatchtowerStatus = 'ok' | 'degraded' | 'alarm' | 'critical';
+
 export interface WatchtowerHealth {
-    status: 'ok' | 'alarm';
+    status: WatchtowerStatus;
     checks: {
         sessionsLastHour: {
             status: 'ok' | 'alarm';
@@ -10,6 +12,10 @@ export interface WatchtowerHealth {
         };
         gclidLast3Hours: {
             status: 'ok' | 'alarm';
+            count: number;
+        };
+        ingestPublishFailuresLast15m: {
+            status: 'ok' | 'degraded' | 'critical' | 'unknown';
             count: number;
         };
     };
@@ -42,6 +48,24 @@ export class WatchtowerService {
     }
 
     /**
+     * Count of ingest_publish_failures in the last 15 minutes (QStash publish failures from /api/sync).
+     * Returns -1 on error (DB/query failure) so caller can set status "unknown" — we do not report 0 when we couldn't check.
+     */
+    static async checkIngestPublishFailuresLast15m(): Promise<number> {
+        const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { count, error } = await adminClient
+            .from('ingest_publish_failures')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', fifteenMinAgo);
+
+        if (error) {
+            console.error('[WATCHTOWER] Ingest publish failures check failed:', error);
+            return -1;
+        }
+        return count ?? 0;
+    }
+
+    /**
      * Checks if any GCLID (Google Click ID) records have been ingested in the last 3 hours.
      * "Dead Man's Switch" for ad attribution.
      */
@@ -68,13 +92,22 @@ export class WatchtowerService {
      */
     static async runDiagnostics(): Promise<WatchtowerHealth> {
         try {
-            const sessionsCount = await this.checkSessionVitality();
-            const gclidCount = await this.checkAttributionLiveness();
+            const [sessionsCount, gclidCount, failureCount] = await Promise.all([
+                this.checkSessionVitality(),
+                this.checkAttributionLiveness(),
+                this.checkIngestPublishFailuresLast15m(),
+            ]);
 
             const sessionStatus = sessionsCount > 0 ? 'ok' : 'alarm';
             const gclidStatus = gclidCount > 0 ? 'ok' : 'alarm';
+            const ingestFailureStatus: 'ok' | 'degraded' | 'critical' | 'unknown' =
+                failureCount === -1 ? 'unknown' : failureCount === 0 ? 'ok' : failureCount > 5 ? 'critical' : 'degraded';
 
-            const overallStatus = (sessionStatus === 'ok' && gclidStatus === 'ok') ? 'ok' : 'alarm';
+            let overallStatus: WatchtowerStatus =
+                sessionStatus === 'ok' && gclidStatus === 'ok' ? 'ok' : 'alarm';
+            if (failureCount > 5) overallStatus = 'critical';
+            else if (failureCount > 0) overallStatus = overallStatus === 'ok' ? 'degraded' : overallStatus;
+            else if (failureCount === -1) overallStatus = overallStatus === 'ok' ? 'degraded' : overallStatus;
 
             const healthCheck: WatchtowerHealth = {
                 status: overallStatus,
@@ -86,6 +119,10 @@ export class WatchtowerService {
                     gclidLast3Hours: {
                         status: gclidStatus,
                         count: gclidCount
+                    },
+                    ingestPublishFailuresLast15m: {
+                        status: ingestFailureStatus,
+                        count: failureCount
                     }
                 },
                 details: {
@@ -107,7 +144,8 @@ export class WatchtowerService {
                 status: 'alarm',
                 checks: {
                     sessionsLastHour: { status: 'alarm', count: -1 },
-                    gclidLast3Hours: { status: 'alarm', count: -1 }
+                    gclidLast3Hours: { status: 'alarm', count: -1 },
+                    ingestPublishFailuresLast15m: { status: 'unknown', count: -1 }
                 },
                 details: {
                     timestamp: new Date().toISOString(),

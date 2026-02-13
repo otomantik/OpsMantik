@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
+import { getBuildInfoHeaders } from '@/lib/build-info';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { isOriginAllowed, parseAllowedOrigins } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     if (url.searchParams.get('diag') !== '1') {
         return NextResponse.json(
             { error: 'Method not allowed. Use POST.', diag: 'Add ?diag=1 for header diagnostics.' },
-            { status: 405, headers: { 'Allow': 'POST, OPTIONS' } }
+            { status: 405, headers: { ...getBuildInfoHeaders(), 'Allow': 'POST, OPTIONS' } }
         );
     }
 
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
             cf,
             vercel,
         },
-        { headers: { 'Cache-Control': 'no-store' } }
+        { headers: { ...getBuildInfoHeaders(), 'Cache-Control': 'no-store' } }
     );
 }
 
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
     const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
 
     const baseHeaders: Record<string, string> = {
+        ...getBuildInfoHeaders(),
         'Vary': 'Origin',
         'X-OpsMantik-Version': OPSMANTIK_VERSION,
     };
@@ -122,10 +124,10 @@ export async function POST(req: NextRequest) {
 
     // --- 2. Request Validation ---
     let json: unknown;
-    try { json = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400 }); }
+    try { json = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400, headers: getBuildInfoHeaders() }); }
 
     const parsed = parseValidIngestPayload(json);
-    if (parsed.kind === 'invalid') return NextResponse.json({ ok: false }, { status: 400 });
+    if (parsed.kind === 'invalid') return NextResponse.json({ ok: false }, { status: 400, headers: getBuildInfoHeaders() });
     const body = parsed.data;
 
     // --- 3. Offload to QStash ---
