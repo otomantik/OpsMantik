@@ -3,6 +3,7 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { WatchtowerService } from '@/lib/services/watchtower';
+import { getBillingMetrics } from '@/lib/billing-metrics';
 
 export const runtime = 'nodejs'; // Force Node.js runtime for stability
 
@@ -51,6 +52,9 @@ export async function GET(req: NextRequest) {
       critical: 'WATCHTOWER_CRITICAL',
     };
 
+    const billing = getBillingMetrics();
+    const driftCount = health.checks.billingReconciliationDriftLast1h.count;
+
     return NextResponse.json(
       {
         ok: health.status === 'ok' || health.status === 'degraded',
@@ -60,6 +64,10 @@ export async function GET(req: NextRequest) {
         failure_count: failureCount,
         checks: health.checks,
         details: health.details,
+        billing_metrics: {
+          ...billing,
+          billing_reconciliation_drift_sites_last1h: driftCount,
+        },
       },
       { headers: getBuildInfoHeaders() }
     );
