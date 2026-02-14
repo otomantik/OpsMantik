@@ -25,6 +25,8 @@ Bu runbook'un amacı:
 - **Invoice SoT = ingest_idempotency WHERE billable=true**
 - Redis asla finansal otorite değildir
 - Quota 429 ve rate-limit 429 ayrı kalmalıdır
+- **Dispute Evidence = CSV Export from `ingest_idempotency`**
+- **Invoice Finality = `invoice_snapshot` table (immutable)**
 
 ---
 
@@ -36,6 +38,7 @@ Deploy edebilmek için:
 
 ```bash
 node --import tsx --test tests/unit/revenue-kernel-gates.test.ts
+node --import tsx --test tests/billing/financial-proofing.test.ts
 npm run test:unit
 ```
 
@@ -44,6 +47,7 @@ npm run test:unit
 - 0 fail
 - PR gate testleri green
 - Idempotency + Quota testleri green
+- Financial Proofing (Dispute/Freeze) testleri green
 
 ### ✅ B. Static Invariant Check
 
@@ -76,7 +80,45 @@ Aşağıdakiler kodda bulunmalı:
 
 ---
 
+## 4.1 Release'i canlıya alma planı (en güvenlisi)
+
+Canlıya “şimdi almayalım” dense bile, release için standart prosedür:
+
+### A) PR aç
+
+GitHub’da:
+
+- **base:** `master`
+- **compare:** `release/revenue-kernel-pr1-4`
+
+PR merge edildikten sonra prod deploy (Vercel) tetiklenir.
+
+### B) Merge sonrası prod deploy doğrulaması
+
+Deploy commit prod’a çıkınca:
+
+1. **Commit hash doğrula:** Response header’dan `x-opsmantik-commit` ile deploy edilen commit’i kontrol et.
+2. **Cron smoke (2 endpoint):**
+
+```powershell
+$CONSOLE_URL = "https://console.opsmantik.com"
+# Secret'ı set et (boşsa CRON_FORBIDDEN alırsın)
+$env:CRON_SECRET = "..."   # gerçek secret (Vercel env’den)
+
+curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/watchtower" -H "Authorization: Bearer $env:CRON_SECRET"
+curl.exe -s -D - -X POST "$CONSOLE_URL/api/cron/reconcile-usage/run" -H "Authorization: Bearer $env:CRON_SECRET"
+```
+
+**Beklenen:**
+
+- **watchtower** → 200, body “ok”
+- **reconcile run** → 200, body’de `processed` (aktif site varsa > 0)
+
+---
+
 ## 4.5 Cron auth doğrulama (CRON_FORBIDDEN önlemi)
+
+CRON_FORBIDDEN genelde shell'de CRON_SECRET boş/yanlış olduğunda olur. Kalıcı çözüm: `$env:CRON_SECRET` set et (profil veya çağrıdan önce), çağrıda `-H "Authorization: Bearer $env:CRON_SECRET"` kullan.
 
 Cron smoke geçerli sayılmadan önce auth 200 dönmeli. PowerShell’de `$CRON_SECRET` boşsa header `Bearer ` gider → 403.
 
@@ -177,6 +219,19 @@ LIMIT 5;
 - `x-opsmantik-overage: true`
 - DB → `billing_state=OVERAGE`
 
+### 🔎 5. Financial Finality Testi (Phase 1)
+
+**Dispute Export:**
+
+- Tarayıcıda `https://console.opsmantik.com/api/billing/dispute-export?site_id=...&year_month=...`
+- Beklenen: CSV dosyası iner.
+- `idempotency_key` sütunu var mı?
+
+**Invoice Freeze:**
+
+- `curl -X POST https://console.opsmantik.com/api/cron/invoice-freeze -H "Authorization: Bearer $CRON_SECRET"`
+- Beklenen: `{ ok: true, frozen: ... }`
+
 ---
 
 ## 6️⃣ Emergency Rollback Plan
@@ -187,6 +242,7 @@ LIMIT 5;
 - Duplicate publish şüphesi
 - 429 header ayrımı bozulmuş
 - Idempotency insert bypass edilmiş
+- Dispute export yanlış veri sızdırıyor
 
 **Rollback Adımları**
 
@@ -215,34 +271,18 @@ LIMIT 5;
 
 ---
 
-## 7.1 Reconciliation cron (PR-4 / PR-4.1)
+## 7.1 Cron Schedules
 
-**Unified endpoint (önerilen):** `GET /api/cron/reconcile-usage`  
-Auth: `requireCronAuth` (Vercel Cron veya `Authorization: Bearer CRON_SECRET`).
-
-Tek istekte: (1) enqueue (aktif siteler, bu + önceki ay), (2) claim+run (RPC `claim_billing_reconciliation_jobs(50)`).  
-Yanıt: `{ ok, enqueued, processed, completed, failed, request_id }`.  
-Idempotent; sık schedule için güvenli. Invoice SoT değişmez.
-
-**Cron önerisi:** 5–15 dakikada bir GET `/api/cron/reconcile-usage`.
-
-**Invoice freeze (PR-6):** `POST /api/cron/invoice-freeze` — önceki ay (UTC) için `site_usage_monthly` → `invoice_snapshot` freeze. ON CONFLICT DO NOTHING. Cron önerisi: ayın ilk günlerinde (örn. günde bir). **Dispute-proof:** Fatura için önce `invoice_snapshot` varsa o kullanılır; yoksa COUNT(ingest_idempotency) fallback.
+| Cron Job | Endpoint | Schedule | Amaç |
+| :--- | :--- | :--- | :--- |
+| **Reconcile Usage** | `GET /api/cron/reconcile-usage` | Her 15 dk | Usage sayıcılarını (Redis vs PG) eşitler. SoT'yi (ingest_idempotency) baz alır. |
+| **Invoice Freeze** | `POST /api/cron/invoice-freeze` | Ayın 1. günü 00:00 UTC | Önceki ayın usage'ını `invoice_snapshot` tablosuna kilitler (immutable). |
+| **Idempotency Cleanup** | `POST /api/cron/idempotency-cleanup` | Her gün 03:00 UTC | 90 günden eski rowları batch (max 10k/run) siler; büyük backlog’ta birkaç run gerekebilir. `?dry_run=true` ile önizleme. |
+| **Watchtower** | `GET /api/cron/watchtower` | Her 15 dk | Sistem sağlığı ve "Dead Man Switch" kontrolü. |
 
 ---
 
-## 8️⃣ Forbidden Changes (Without CTO Approval)
-
-Aşağıdakiler doğrudan prod'da değiştirilemez:
-
-- Idempotency key format
-- Invoice SoT tablosu
-- `billable` alan mantığı
-- `billing_state` enum semantics
-- 429 header contract
-
----
-
-## 9️⃣ Definition of Done (Revenue PR)
+## 8️⃣ Definition of Done
 
 Bir Revenue PR ancak şu durumda DONE sayılır:
 
@@ -251,15 +291,14 @@ Bir Revenue PR ancak şu durumda DONE sayılır:
 - Smoke testi tamam
 - Evidence doc güncel
 - Runbook checklist işaretli
+- **Dispute Export yetki kontrolü doğrulanmış**
+- **Invoice Snapshot hash doğrulanmış**
 
 ---
 
-## 🔐 Final Principle
+## 9️⃣ Post-deploy (ilk deploy / migration sonrası)
 
-**Revenue Kernel is a financial boundary, not just a feature.**
+Deploy veya yeni migration (örn. idempotency cleanup RPC) sonrası adımlar için: **`docs/OPS/DEPLOY_CHECKLIST_REVENUE_KERNEL.md`**.  
+Migration, Redis/CRON_SECRET env, lifecycle test, cron schedule, dry_run ve metrics smoke orada listelenir.
 
-Bu dosya repo'da olduğu sürece:
-
-- Takımın disiplini korunur
-- Enterprise audit'e hazır olunur
-- "Bu event neden faturada yok?" tartışması teknik olarak kapanır
+---

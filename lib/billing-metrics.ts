@@ -1,24 +1,34 @@
 /**
- * PR-8: Billing observability — in-memory counters + structured log emission.
- * Counters are per-instance (reset on cold start in serverless); also emit log lines for aggregation.
+ * PR-8: Billing observability — in-memory + Redis (persistent) counters.
+ * Ingest path: INCR to both in-memory and Redis (best-effort). GET /api/metrics reads from Redis when available for cross-instance totals.
  */
 
 import { logInfo } from '@/lib/logging/logger';
+import { redis } from '@/lib/upstash';
 
-const counters: Record<string, number> = {
-  billing_ingest_allowed_total: 0,
-  billing_ingest_duplicate_total: 0,
-  billing_ingest_rejected_quota_total: 0,
-  billing_ingest_rate_limited_total: 0,
-  billing_ingest_overage_total: 0,
-  billing_ingest_degraded_total: 0,
-  billing_reconciliation_runs_ok_total: 0,
-  billing_reconciliation_runs_failed_total: 0,
-};
+const BILLING_REDIS_PREFIX = 'billing:';
+
+const counterNames = [
+  'billing_ingest_allowed_total',
+  'billing_ingest_duplicate_total',
+  'billing_ingest_rejected_quota_total',
+  'billing_ingest_rate_limited_total',
+  'billing_ingest_overage_total',
+  'billing_ingest_degraded_total',
+  'billing_reconciliation_runs_ok_total',
+  'billing_reconciliation_runs_failed_total',
+] as const;
+
+const counters: Record<string, number> = Object.fromEntries(counterNames.map((k) => [k, 0]));
+
+function redisKey(metric: string): string {
+  return BILLING_REDIS_PREFIX + metric;
+}
 
 function emit(metric: string, value: number = 1): void {
   counters[metric] = (counters[metric] ?? 0) + value;
   logInfo('BILLING_METRIC', { metric, value, total: counters[metric] });
+  redis.incr(redisKey(metric)).catch(() => { /* best-effort; do not fail request */ });
 }
 
 export function incrementBillingIngestAllowed(): void {
@@ -53,11 +63,32 @@ export function incrementBillingReconciliationRunFailed(): void {
   emit('billing_reconciliation_runs_failed_total');
 }
 
+/** Sync: in-memory only (per-instance). Use getBillingMetricsFromRedis for cross-instance totals. */
 export function getBillingMetrics(): Record<string, number> {
   return { ...counters };
 }
 
-/** Reset all counters (for tests only). */
+/**
+ * Async: read billing counters from Redis (persistent, cross-instance). Falls back to null if Redis unavailable.
+ * GET /api/metrics uses this as the primary source when available.
+ */
+export async function getBillingMetricsFromRedis(): Promise<Record<string, number> | null> {
+  const keys = counterNames.map(redisKey);
+  try {
+    const values = await redis.mget(...keys);
+    const out: Record<string, number> = {};
+    counterNames.forEach((name, i) => {
+      const v = values?.[i];
+      const n = typeof v === 'number' ? v : Number(v);
+      out[name] = Number.isFinite(n) ? n : 0;
+    });
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** Reset all counters (for tests only). Does not clear Redis. */
 export function resetBillingMetrics(): void {
   for (const key of Object.keys(counters)) {
     counters[key] = 0;

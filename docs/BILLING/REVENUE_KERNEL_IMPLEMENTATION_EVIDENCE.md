@@ -37,7 +37,7 @@
 | `app/api/cron/reconcile-usage/route.ts` | PR-4.1: Unified GET — enqueue then claim+run (50), idempotent; response: ok, enqueued, processed, completed, failed, request_id. |
 | `app/api/cron/invoice-freeze/route.ts` | PR-6: POST invoice-freeze; freeze previous month (UTC) from site_usage_monthly; snapshot_hash=sha256(...); ON CONFLICT DO NOTHING. |
 | `app/api/billing/dispute-export/route.ts` | PR-7: GET dispute-export?site_id=&year_month=; RBAC billing:view; CSV created_at, idempotency_key, idempotency_version, billing_state, billable; headers x-opsmantik-snapshot-hash, x-opsmantik-export-hash; log BILLING_DISPUTE_EXPORT. |
-| `lib/billing-metrics.ts` | PR-8: In-memory counters + BILLING_METRIC log; ingest allowed/duplicate/rejected_quota/rate_limited/overage/degraded; reconciliation runs ok/failed. |
+| `lib/billing-metrics.ts` | PR-8: In-memory + Redis counters (key prefix `billing:`). Each increment INCRs Redis best-effort; GET /api/metrics reads from Redis when available (`ingest_source: redis \| memory`). |
 | `app/api/sync/route.ts` | PR-8: Increment billing metrics on each path (rate limit, duplicate, rejected_quota, allowed, overage, degraded). |
 | `app/api/cron/reconcile-usage/route.ts`, `run/route.ts` | PR-8: Increment billing_reconciliation_runs_ok_total / billing_reconciliation_runs_failed_total. |
 | `app/api/metrics/route.ts` | PR-8: GET /api/metrics (cron or admin); JSON with billing counters + billing_reconciliation_drift_sites_last1h from DB. |
