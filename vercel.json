@@ -1,1 +1,9 @@
-{"crons":[{"path":"/api/cron/watchtower","schedule":"*/15 * * * *"},{"path":"/api/cron/recover","schedule":"*/5 * * * *"}]}
+{
+  "crons": [
+    {"path": "/api/cron/watchtower", "schedule": "*/15 * * * *"},
+    {"path": "/api/cron/recover", "schedule": "*/5 * * * *"},
+    {"path": "/api/cron/reconcile-usage", "schedule": "*/15 * * * *"},
+    {"path": "/api/cron/idempotency-cleanup", "schedule": "0 3 * * *"},
+    {"path": "/api/cron/invoice-freeze", "schedule": "0 0 1 * *"}
+  ]
+}
