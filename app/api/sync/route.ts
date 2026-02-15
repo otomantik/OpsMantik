@@ -112,6 +112,29 @@ export async function OPTIONS(req: NextRequest) {
     return new NextResponse(null, { status: isAllowed ? 200 : 403, headers });
 }
 
+/**
+ * Extract siteId from raw sync body for rate-limit key (no DB).
+ * Single payload: body.s. Batch: events[0].s. Returns null if missing/invalid.
+ */
+export function extractSiteIdForRateLimit(json: unknown): string | null {
+  if (typeof json !== 'object' || json === null) return null;
+  const rec = json as Record<string, unknown>;
+  const s = rec.s;
+  if (typeof s === 'string') {
+    const t = s.trim();
+    return t.length > 0 ? t : null;
+  }
+  const events = rec.events;
+  if (Array.isArray(events) && events.length > 0) {
+    const first = events[0];
+    if (typeof first === 'object' && first !== null && typeof (first as Record<string, unknown>).s === 'string') {
+      const t = ((first as Record<string, unknown>).s as string).trim();
+      return t.length > 0 ? t : null;
+    }
+  }
+  return null;
+}
+
 /** Optional deps for tests: inject to assert no publish/fallback/redis on gate failure, or to force quota/fallback paths. */
 export type SyncHandlerDeps = {
   tryInsert?: (siteIdUuid: string, idempotencyKey: string) => Promise<TryInsertIdempotencyResult>;
@@ -128,7 +151,7 @@ export type SyncHandlerDeps = {
   /** When set, used instead of incrementUsageRedis (for assertions: not called on db down). */
   incrementUsageRedis?: (siteIdUuid: string, yearMonth: string) => Promise<void>;
   /** When set, used instead of RateLimitService.check (for tests: avoid 429). */
-  checkRateLimit?: () => Promise<{ allowed: boolean }>;
+  checkRateLimit?: () => Promise<{ allowed: boolean; resetAt?: number }>;
 };
 
 /**
@@ -157,20 +180,46 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Origin not allowed', reason }), { status: 403, headers: baseHeaders });
     }
 
-    // --- 1. Rate Limit (abuse/DoS). Order: Auth → Rate limit → Idempotency → Publish. 429 = non-billable. ---
+    const contentLength = req.headers.get('content-length');
+    if (contentLength !== null && contentLength !== undefined) {
+        const len = parseInt(contentLength, 10);
+        if (!Number.isNaN(len) && len > 256 * 1024) {
+            return NextResponse.json(createSyncResponse(false, null, { error: 'Payload too large' }), { status: 413, headers: baseHeaders });
+        }
+    }
+
+    // --- 1. Parse body once (needed for site-scoped rate limit key and later validation) ---
+    let json: unknown;
+    try {
+        json = await req.json();
+    } catch {
+        const clientId = RateLimitService.getClientId(req);
+        const rl = deps?.checkRateLimit
+            ? await deps.checkRateLimit()
+            : await RateLimitService.check(clientId, 100, 60000);
+        if (!rl.allowed) {
+            incrementBillingIngestRateLimited();
+            const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
+            return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
+        }
+        return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: baseHeaders });
+    }
+
+    // --- 2. Rate Limit (abuse/DoS). Key = siteId:clientId when siteId present, else clientId. 429 = non-billable. ---
+    const siteIdForRl = extractSiteIdForRateLimit(json);
+    const clientId = RateLimitService.getClientId(req);
+    const rateLimitKey = siteIdForRl ? `${siteIdForRl}:${clientId}` : clientId;
     const rl = deps?.checkRateLimit
         ? await deps.checkRateLimit()
-        : await RateLimitService.check(RateLimitService.getClientId(req), 100, 60000);
+        : await RateLimitService.check(rateLimitKey, 100, 60000);
     if (!rl.allowed) {
         incrementBillingIngestRateLimited();
-        const rateLimitHeaders = { ...baseHeaders, 'x-opsmantik-ratelimit': '1' };
+        const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
+        const rateLimitHeaders = { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) };
         return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: rateLimitHeaders });
     }
 
-    // --- 2. Request Validation ---
-    let json: unknown;
-    try { json = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400, headers: getBuildInfoHeaders() }); }
-
+    // --- 3. Request Validation ---
     const parsed = parseValidIngestPayload(json);
     if (parsed.kind === 'invalid') return NextResponse.json({ ok: false }, { status: 400, headers: getBuildInfoHeaders() });
     const body = parsed.data;

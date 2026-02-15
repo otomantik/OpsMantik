@@ -5,9 +5,11 @@
 (function () {
   'use strict';
 
-  // Prevent duplicate initialization
-  if (window.opmantik && window.opmantik._initialized) {
-    console.warn('[OPSMANTIK] Tracker already initialized, skipping...');
+  // P0-2: Prevent duplicate initialization (single guard, no second heartbeat/outbox/autotracking)
+  if (window.__opsmantikTrackerInitialized) {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('opsmantik_debug') === '1') {
+      console.warn('[OPSMANTIK_DEBUG] tracker init skipped (duplicate)', { ts: Date.now() });
+    }
     return;
   }
 
@@ -71,8 +73,11 @@
     console.warn('[OPSMANTIK] ❌ Site ID not found');
     return;
   }
-
+  window.__opsmantikTrackerInitialized = true;
   console.log('[OPSMANTIK] ✅ Tracker initializing for site:', siteId);
+  if (localStorage.getItem('opsmantik_debug') === '1') {
+    console.log('[OPSMANTIK_DEBUG] tracker init', { siteId: siteId, ts: Date.now() });
+  }
 
   // Fingerprint generation
   function generateFingerprint() {
@@ -211,8 +216,53 @@
   }
 
   /* --- SECTOR BRAVO: STORE & FORWARD ENGINE (Tank Tracker) --- */
+  /* P0: Status-aware backoff with jitter to stop 429 retry storms */
 
   const QUEUE_KEY = 'opsmantik_outbox_v2';
+  const DEAD_LETTER_KEY = 'opsmantik_dead_letters';
+  const MAX_DEAD_LETTERS = 20;
+  const JITTER_MS = 3000;
+  const MAX_BATCH = 20;
+  const MIN_FLUSH_INTERVAL_MS = 2000;
+  const PAYLOAD_CAP_BYTES = 50 * 1024;
+  const BATCH_RETRY_AFTER_MS = 5 * 60 * 1000;
+
+  function appendDeadLetter(envelope, status) {
+    try {
+      var payload = envelope.payload || {};
+      var ec = payload.ec;
+      var ea = payload.ea;
+      var attempts = envelope.attempts != null ? envelope.attempts : 0;
+      var list = [];
+      try {
+        list = JSON.parse(localStorage.getItem(DEAD_LETTER_KEY) || '[]');
+      } catch (_) { list = []; }
+      list.push({ ts: Date.now(), status: status, ec: ec, ea: ea, attempts: attempts });
+      if (list.length > MAX_DEAD_LETTERS) list = list.slice(-MAX_DEAD_LETTERS);
+      localStorage.setItem(DEAD_LETTER_KEY, JSON.stringify(list));
+    } catch (_) { /* never break tracker */ }
+  }
+
+  function getRetryDelayMs(status, attempts) {
+    if (typeof status === 'number' && status >= 400 && status < 500 && status !== 429) {
+      return { delayMs: 0, retry: false };
+    }
+    var jitter = Math.floor(Math.random() * (JITTER_MS + 1));
+    if (status === 429) {
+      var base429 = Math.min(600000, Math.max(30000, 30000 * Math.pow(2, attempts)));
+      return { delayMs: base429 + jitter, retry: true };
+    }
+    var base5xx = Math.min(120000, Math.max(5000, 5000 * Math.pow(2, attempts)));
+    return { delayMs: base5xx + jitter, retry: true };
+  }
+
+  function parseStatusFromError(err) {
+    if (err && typeof err.message === 'string') {
+      var m = err.message.match(/Server status: (\d+)/);
+      if (m) return parseInt(m[1], 10);
+    }
+    return undefined;
+  }
 
   function getQueue() {
     try {
@@ -231,58 +281,184 @@
     const envelopeId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : generateUUID();
-    const envelope = { id: envelopeId, ts: Date.now(), payload: payload, attempts: 0 };
+    const envelope = { id: envelopeId, ts: Date.now(), payload: payload, attempts: 0, nextAttemptAt: 0, lastStatus: undefined };
     queue.push(envelope);
     if (queue.length > 100) queue.splice(0, queue.length - 80);
     saveQueue(queue);
+    if (localStorage.getItem('opsmantik_debug') === '1') {
+      console.log('[OPSMANTIK_DEBUG] enqueue', { ea: payload.ea, ec: payload.ec, queueLength: queue.length });
+    }
     processOutbox();
   }
 
   let isProcessing = false;
+  var batchSupported = true;
+  var batchRetryAt = 0;
+  var lastFlushAt = 0;
 
   async function processOutbox() {
     if (isProcessing) return;
-    const queue = getQueue();
+    var queue = getQueue();
     if (queue.length === 0) return;
+    var currentEnvelope = queue[0];
+    var nextAt = currentEnvelope.nextAttemptAt;
+    var now = Date.now();
+    if (nextAt != null && nextAt > 0 && nextAt > now) {
+      var waitMs = nextAt - now;
+      setTimeout(processOutbox, waitMs);
+      return;
+    }
     isProcessing = true;
-    const currentEnvelope = queue[0];
+    var batch = [];
     try {
-      if (currentEnvelope.attempts > 10 && (Date.now() - currentEnvelope.ts > 86400000)) {
+      while (queue.length && queue[0].attempts > 10 && (now - (queue[0].ts || now)) > 86400000) {
+        appendDeadLetter(queue[0], queue[0].lastStatus);
         queue.shift();
+      }
+      if (queue.length === 0) {
         saveQueue(queue);
         isProcessing = false;
         processOutbox();
         return;
       }
-      const controller = new AbortController();
-      const timeoutId = setTimeout(function () { controller.abort(); }, 5000);
-      const syncUrl = new URL(CONFIG.apiUrl);
+      saveQueue(queue);
+      if (batchRetryAt > 0 && now >= batchRetryAt) {
+        batchSupported = true;
+        batchRetryAt = 0;
+      }
+      if (lastFlushAt > 0 && now - lastFlushAt < MIN_FLUSH_INTERVAL_MS) {
+        var delayMsThrottle = lastFlushAt + MIN_FLUSH_INTERVAL_MS - now;
+        isProcessing = false;
+        if (localStorage.getItem('opsmantik_debug') === '1') {
+          console.log('[OPSMANTIK_DEBUG] throttle scheduled', { delayMs: delayMsThrottle, lastFlushAt: lastFlushAt, now: now });
+        }
+        setTimeout(processOutbox, delayMsThrottle);
+        return;
+      }
+      var maxBatch = batchSupported ? MAX_BATCH : 1;
+      var payloadBytes = 0;
+      for (var i = 0; i < queue.length && batch.length < maxBatch; i++) {
+        var env = queue[i];
+        if (env.nextAttemptAt != null && env.nextAttemptAt > 0 && env.nextAttemptAt > now) break;
+        if (env.attempts > 10 && (now - (env.ts || now)) > 86400000) continue;
+        var envSize = JSON.stringify(env.payload).length;
+        var addSize = batch.length === 0 ? envSize : envSize + 2;
+        if (payloadBytes + addSize > PAYLOAD_CAP_BYTES) break;
+        batch.push(env);
+        payloadBytes += addSize;
+      }
+      if (batch.length === 0) {
+        isProcessing = false;
+        return;
+      }
+      var body = batch.length > 1
+        ? JSON.stringify({ events: batch.map(function (e) { return e.payload; }) })
+        : JSON.stringify(batch[0].payload);
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
+      lastFlushAt = now;
+      var syncUrl = new URL(CONFIG.apiUrl);
       syncUrl.searchParams.set('_ts', Date.now().toString());
-      const response = await fetch(syncUrl.toString(), {
+      var response = await fetch(syncUrl.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentEnvelope.payload),
+        body: body,
         keepalive: true,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      if (response.ok) {
-        queue.shift();
-        saveQueue(queue);
-        if (localStorage.getItem('opsmantik_debug') === '1') {
-          console.log('[TankTracker] Delivered:', currentEnvelope.payload.ea);
+      var throttled = false;
+      var debug = localStorage.getItem('opsmantik_debug') === '1';
+      var batchNotSupported = false;
+      if (batch.length > 1 && !response.ok) {
+        var st = response.status;
+        if (st === 400 || st === 415) batchNotSupported = true;
+        else if (st >= 400 && st < 500) {
+          try {
+            var j = await response.clone().json();
+            if (j && typeof j === 'object') {
+              if (j.error === 'batch_not_supported' || j.code === 'BATCH_NOT_SUPPORTED') batchNotSupported = true;
+            }
+          } catch (_) { /* ignore */ }
         }
+      }
+      if (batchNotSupported) {
+        batchSupported = false;
+        batchRetryAt = now + BATCH_RETRY_AFTER_MS;
+        isProcessing = false;
+        if (debug) console.log('[OPSMANTIK_DEBUG] batch not supported', { batchRetryAt: batchRetryAt });
+        processOutbox();
+        return;
+      }
+      if (response.ok) {
+        queue.splice(0, batch.length);
+        saveQueue(queue);
+        isProcessing = false;
+        if (debug) {
+          console.log('[OPSMANTIK_DEBUG] flush', { sentCount: batch.length, remainingQueueLength: queue.length, batchSupported: batchSupported, throttled: throttled });
+        }
+        processOutbox();
+        return;
+      }
+      var status = response.status;
+      var first = batch[0];
+      var result = getRetryDelayMs(status, first.attempts);
+      if (!result.retry) {
+        first.dead = true;
+        first.deadReason = '4xx';
+        first.lastStatus = status;
+        appendDeadLetter(first, status);
+        if (debug) {
+          console.warn('[OPSMANTIK_DEBUG] dead-letter', { status: status, ec: first.payload && first.payload.ec, ea: first.payload && first.payload.ea });
+        }
+        queue.splice(0, 1);
+        saveQueue(queue);
+        isProcessing = false;
+        if (debug) {
+          console.log('[OPSMANTIK_DEBUG] flush', { sentCount: 0, remainingQueueLength: queue.length, batchSupported: batchSupported, throttled: throttled });
+        }
+        processOutbox();
+        return;
+      }
+      first.attempts++;
+      first.nextAttemptAt = now + result.delayMs;
+      first.lastStatus = status;
+      saveQueue(queue);
+      if (debug) {
+        console.log('[OPSMANTIK_DEBUG] backoff', { status: status, attempts: first.attempts, delayMs: result.delayMs, nextAttemptAt: first.nextAttemptAt });
+        console.log('[OPSMANTIK_DEBUG] flush', { sentCount: 0, remainingQueueLength: queue.length, batchSupported: batchSupported, throttled: throttled });
+      }
+      isProcessing = false;
+      setTimeout(processOutbox, result.delayMs);
+    } catch (err) {
+      var firstCatch = batch && batch.length ? batch[0] : queue[0];
+      var statusErr = parseStatusFromError(err);
+      var resultErr = getRetryDelayMs(statusErr, firstCatch.attempts);
+      if (!resultErr.retry) {
+        firstCatch.dead = true;
+        firstCatch.deadReason = '4xx';
+        firstCatch.lastStatus = statusErr;
+        appendDeadLetter(firstCatch, statusErr);
+        if (localStorage.getItem('opsmantik_debug') === '1') {
+          console.warn('[OPSMANTIK_DEBUG] dead-letter', { status: statusErr != null ? statusErr : 'parse-fail', ec: firstCatch.payload && firstCatch.payload.ec, ea: firstCatch.payload && firstCatch.payload.ea });
+        }
+        queue.splice(0, 1);
+        saveQueue(queue);
         isProcessing = false;
         processOutbox();
-      } else {
-        throw new Error('Server status: ' + response.status);
+        return;
       }
-    } catch (err) {
       console.warn('[TankTracker] Network Fail - Retrying later:', err.message);
-      currentEnvelope.attempts++;
+      firstCatch.attempts++;
+      firstCatch.nextAttemptAt = now + resultErr.delayMs;
+      firstCatch.lastStatus = statusErr;
       saveQueue(queue);
+      if (localStorage.getItem('opsmantik_debug') === '1') {
+        console.log('[OPSMANTIK_DEBUG] backoff', { status: statusErr != null ? statusErr : 'network', attempts: firstCatch.attempts, delayMs: resultErr.delayMs, nextAttemptAt: firstCatch.nextAttemptAt });
+        console.log('[OPSMANTIK_DEBUG] flush', { sentCount: 0, remainingQueueLength: queue.length, batchSupported: batchSupported, throttled: false });
+      }
       isProcessing = false;
-      setTimeout(processOutbox, 5000);
+      setTimeout(processOutbox, resultErr.delayMs);
     }
   }
 
@@ -486,17 +662,27 @@
       }
     });
 
-    // Active seconds (Intent Pulse)
+    // Active seconds (Intent Pulse) + P0-2: one immediate heartbeat on visible
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1000);
       } else {
         pulse.lastActiveAt = Date.now();
+        if (localStorage.getItem('opsmantik_debug') === '1') {
+          console.log('[OPSMANTIK_DEBUG] heartbeat resumed (one immediate)');
+        }
+        sendEvent('system', 'heartbeat', 'session_active');
       }
     });
 
-    // Heartbeat
-    setInterval(() => {
+    // Heartbeat: only when tab visible (P0-2); single setInterval
+    setInterval(function () {
+      if (document.hidden) {
+        if (localStorage.getItem('opsmantik_debug') === '1') {
+          console.log('[OPSMANTIK_DEBUG] heartbeat skipped due to hidden');
+        }
+        return;
+      }
       sendEvent('system', 'heartbeat', 'session_active');
     }, CONFIG.heartbeatInterval);
 
