@@ -189,11 +189,16 @@ export async function POST(req: NextRequest) {
     });
     if (resolveBodyErr) {
       if (!isMissingResolveRpcError(resolveBodyErr)) {
-        logError('call-event-v2 resolve_site_identifier_v1 failed', { request_id: requestId, route: ROUTE, message: resolveBodyErr.message });
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
+        logWarn('call-event-v2 resolve_site_identifier_v1 failed, using legacy path', {
+          request_id: requestId,
+          route: ROUTE,
+          message: resolveBodyErr.message,
+        });
       }
       if (!SITE_PUBLIC_ID_RE.test(body.site_id)) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
-      if (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== body.site_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      if (!signingDisabled && (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== body.site_id)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+      }
       legacyPublicId = body.site_id;
     } else {
       if (!resolvedBodySiteId) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
@@ -400,7 +405,10 @@ export async function POST(req: NextRequest) {
     const msg = e instanceof Error ? e.message : String(e);
     logError('call-event-v2 unhandled error', { request_id: requestId, route: ROUTE, message: msg });
     Sentry.captureException(e, { tags: { route: ROUTE, request_id: requestId } });
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: { Vary: 'Origin' } });
+    const origin = req.headers.get('origin');
+    const errHeaders: Record<string, string> = { Vary: 'Origin', 'X-OpsMantik-Version': OPSMANTIK_VERSION };
+    if (origin) errHeaders['Access-Control-Allow-Origin'] = origin;
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: errHeaders });
   }
 }
 

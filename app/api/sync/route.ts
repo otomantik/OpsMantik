@@ -32,6 +32,24 @@ const ERROR_MESSAGE_MAX_LEN = 500;
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
+const DEFAULT_RL_LIMIT = 100;
+const RL_WINDOW_MS = 60000;
+
+/** Parse OPSMANTIK_SYNC_RL_SITE_OVERRIDE e.g. "siteId1:500,siteId2:300" → Map(siteId -> limit). Temporary relief for a site hitting 429. */
+function getSiteRateLimitOverrides(): Map<string, number> {
+  const raw = process.env.OPSMANTIK_SYNC_RL_SITE_OVERRIDE;
+  if (!raw || typeof raw !== 'string') return new Map();
+  const map = new Map<string, number>();
+  for (const part of raw.split(',')) {
+    const [siteId, limitStr] = part.trim().split(':');
+    if (siteId && limitStr) {
+      const limit = parseInt(limitStr, 10);
+      if (Number.isInteger(limit) && limit > 0) map.set(siteId.trim(), limit);
+    }
+  }
+  return map;
+}
+
 export async function GET(req: NextRequest) {
     // NOTE: /api/sync is designed for POST ingestion. A browser-open GET should return 405.
     // For production debugging of Cloudflare vs Vercel geo headers, we expose an explicit
@@ -171,9 +189,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         'X-OpsMantik-Version': OPSMANTIK_VERSION,
     };
 
-    if (isAllowed && origin) {
+    if (origin) {
         baseHeaders['Access-Control-Allow-Origin'] = origin;
-        baseHeaders['Access-Control-Allow-Credentials'] = 'true';
+        if (isAllowed) baseHeaders['Access-Control-Allow-Credentials'] = 'true';
     }
 
     if (!isAllowed) {
@@ -209,9 +227,11 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const siteIdForRl = extractSiteIdForRateLimit(json);
     const clientId = RateLimitService.getClientId(req);
     const rateLimitKey = siteIdForRl ? `${siteIdForRl}:${clientId}` : clientId;
+    const limitOverrides = getSiteRateLimitOverrides();
+    const rlLimit = (siteIdForRl && limitOverrides.has(siteIdForRl)) ? limitOverrides.get(siteIdForRl)! : DEFAULT_RL_LIMIT;
     const rl = deps?.checkRateLimit
         ? await deps.checkRateLimit()
-        : await RateLimitService.check(rateLimitKey, 100, 60000);
+        : await RateLimitService.check(rateLimitKey, rlLimit, RL_WINDOW_MS);
     if (!rl.allowed) {
         incrementBillingIngestRateLimited();
         const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
