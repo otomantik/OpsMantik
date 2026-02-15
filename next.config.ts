@@ -4,7 +4,6 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  /* config options here */
   compiler: {
     // Remove console.log/warn/info in production, keep console.error for critical issues
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
