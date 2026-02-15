@@ -4,6 +4,7 @@
     {"path": "/api/cron/recover", "schedule": "*/5 * * * *"},
     {"path": "/api/cron/reconcile-usage", "schedule": "*/15 * * * *"},
     {"path": "/api/cron/idempotency-cleanup", "schedule": "0 3 * * *"},
-    {"path": "/api/cron/invoice-freeze", "schedule": "0 0 1 * *"}
+    {"path": "/api/cron/invoice-freeze", "schedule": "0 0 1 * *"},
+    {"path": "/api/cron/process-offline-conversions", "schedule": "*/10 * * * *"}
   ]
 }
