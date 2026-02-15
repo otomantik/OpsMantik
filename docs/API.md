@@ -9,7 +9,7 @@ All tracking endpoints enforce a strict "Fail-Closed" CORS policy to prevent una
 - **Vary Header**: Success responses always include `Vary: Origin`.
 
 ### Rate Limiting
-Endpoints are protected by Redis-backed rate limiting to prevent DoS attacks.
+Endpoints are protected by Redis-backed rate limiting to prevent DoS attacks. For `/api/sync`, the rate limit key is **site-scoped** when the body includes a valid `siteId` (`${siteId}:${clientId}`), so one busy site cannot exhaust the limit for other sites on the same client.
 - `/api/sync`: 100 requests per minute per IP.
 - `/api/call-event`: 50 requests per minute per IP.
 
@@ -88,5 +88,5 @@ Monitoring endpoint for uptime verification and system diagnostics.
 | `400` | Validation Fail | Check payload structure or missing required fields. |
 | `401` | Unauthorized | Signature verification failed (Call-Event only). |
 | `403` | Forbidden | Domain not on CORS allowlist. |
-| `429` | Rate Limit | Too many requests from this IP. |
+| `429` | Rate Limit | Too many requests for this client (per-site bucket when siteId present). Response includes `Retry-After` (seconds). |
 | `500` | Server Error | Check Sentry logs for underlying exception. |
