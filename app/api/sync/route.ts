@@ -241,7 +241,13 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
 
     // --- 3. Request Validation ---
     const parsed = parseValidIngestPayload(json);
-    if (parsed.kind === 'invalid') return NextResponse.json({ ok: false }, { status: 400, headers: getBuildInfoHeaders() });
+    if (parsed.kind === 'invalid') {
+        // IMPORTANT: Always include CORS headers, otherwise browsers surface this as a CORS error.
+        return NextResponse.json(
+            { ok: false, error: 'invalid_payload' },
+            { status: 400, headers: baseHeaders }
+        );
+    }
     const body = parsed.data;
 
     // --- 2.5 Site resolution (required for idempotency + fallback site_id) ---
