@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logInfo, logError } from '@/lib/logging/logger';
+import { appendAuditLog } from '@/lib/audit/audit-log';
 import crypto from 'node:crypto';
 
 export const runtime = 'nodejs';
@@ -111,6 +112,14 @@ export async function POST(req: NextRequest) {
     }
 
     logInfo('INVOICE_FREEZE_COMPLETE', { year_month: yearMonth, frozen, failed });
+
+    await appendAuditLog(adminClient, {
+        actor_type: 'cron',
+        action: 'invoice_freeze',
+        resource_type: 'invoice_snapshot',
+        resource_id: yearMonth,
+        payload: { year_month: yearMonth, frozen, failed },
+    });
 
     return NextResponse.json(
         { ok: true, year_month: yearMonth, frozen, failed },

@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logError, logInfo } from '@/lib/logging/logger';
+import { appendAuditLog } from '@/lib/audit/audit-log';
 
 export const runtime = 'nodejs'; // Required for streaming CSV
 
@@ -97,6 +98,16 @@ export async function GET(req: NextRequest) {
         user_id: user.id,
         year_month: yearMonth,
         snapshot_hash: snapshotHash
+    });
+
+    await appendAuditLog(adminClient, {
+        actor_type: 'user',
+        actor_id: user.id,
+        action: 'dispute_export',
+        resource_type: 'ingest_idempotency',
+        resource_id: `${siteId}:${yearMonth}`,
+        site_id: siteId,
+        payload: { year_month: yearMonth },
     });
 
     // Create a TransformStream to format as CSV on the fly
