@@ -182,20 +182,71 @@ export type IdempotencyInsertArgs = {
   createdAt: string;
   expiresAt: string;
   idempotencyVersion: number;
+  billable?: boolean;
+  billingReason?: string | null;
+  eventCategory?: string | null;
+  eventAction?: string | null;
+  eventLabel?: string | null;
 };
 
 /** Dependency: performs the insert and returns raw result. Used for DI in tests. */
 export type IdempotencyInserter = (args: IdempotencyInsertArgs) => Promise<{ error?: unknown }>;
 
 async function defaultInserter(args: IdempotencyInsertArgs): Promise<{ error?: unknown }> {
-  const { error } = await adminClient.from('ingest_idempotency').insert({
+  // Insert is intentionally drift-tolerant: older DBs might not have newer optional columns yet.
+  // We retry by stripping unknown columns on undefined_column / schema cache errors.
+  let payload: Record<string, unknown> = {
     site_id: args.siteIdUuid,
     idempotency_key: args.idempotencyKey,
     idempotency_version: args.idempotencyVersion,
     created_at: args.createdAt,
     expires_at: args.expiresAt,
-  });
-  return { error };
+    ...(typeof args.billable === 'boolean' ? { billable: args.billable } : {}),
+    ...(typeof args.billingReason === 'string' ? { billing_reason: args.billingReason } : {}),
+    ...(typeof args.eventCategory === 'string' ? { event_category: args.eventCategory } : {}),
+    ...(typeof args.eventAction === 'string' ? { event_action: args.eventAction } : {}),
+    ...(typeof args.eventLabel === 'string' ? { event_label: args.eventLabel } : {}),
+  };
+
+  const stripped = new Set<string>();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { error } = await adminClient.from('ingest_idempotency').insert(payload);
+    if (!error) return { error: undefined };
+
+    const e = error as { code?: string; message?: string; details?: string } | null;
+    const code = (e?.code || '').toString();
+    const msg = (e?.message || '').toString();
+    const details = (e?.details || '').toString();
+    const hay = `${msg}\n${details}`.toLowerCase();
+
+    const isMissingCol =
+      code === '42703' ||
+      code === 'PGRST204' ||
+      (hay.includes('does not exist') && hay.includes('column')) ||
+      hay.includes('schema cache');
+    if (!isMissingCol) return { error };
+
+    // Extract column name
+    let col: string | null = null;
+    const m1 = /column\s+"([^"]+)"/i.exec(msg) || /column\s+'([^']+)'/i.exec(msg);
+    if (m1?.[1]) col = m1[1];
+    const m2 = /could not find the '([^']+)' column/i.exec(msg);
+    if (!col && m2?.[1]) col = m2[1];
+    const m3 = /column\s+"([^"]+)"/i.exec(details) || /column\s+'([^']+)'/i.exec(details);
+    if (!col && m3?.[1]) col = m3[1];
+    if (!col) return { error };
+
+    if (col === 'site_id' || col === 'idempotency_key') return { error };
+    if (stripped.has(col)) return { error };
+    if (!Object.prototype.hasOwnProperty.call(payload, col)) return { error };
+
+    stripped.add(col);
+    const { [col]: _removed, ...rest } = payload;
+    payload = rest;
+  }
+
+  const { error: lastErr } = await adminClient.from('ingest_idempotency').insert(payload);
+  return { error: lastErr };
 }
 
 /**
@@ -208,7 +259,14 @@ async function defaultInserter(args: IdempotencyInsertArgs): Promise<{ error?: u
 export async function tryInsertIdempotencyKey(
   siteIdUuid: string,
   idempotencyKey: string,
-  opts?: { inserter?: IdempotencyInserter }
+  opts?: {
+    inserter?: IdempotencyInserter;
+    billable?: boolean;
+    billingReason?: string | null;
+    eventCategory?: string | null;
+    eventAction?: string | null;
+    eventLabel?: string | null;
+  }
 ): Promise<TryInsertIdempotencyResult> {
   const now = new Date();
   const expiresAt = computeIdempotencyExpiresAt(now);
@@ -221,6 +279,11 @@ export async function tryInsertIdempotencyKey(
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
     idempotencyVersion: version,
+    billable: opts?.billable,
+    billingReason: opts?.billingReason ?? null,
+    eventCategory: opts?.eventCategory ?? null,
+    eventAction: opts?.eventAction ?? null,
+    eventLabel: opts?.eventLabel ?? null,
   });
 
   if (error) {
@@ -239,11 +302,15 @@ export async function tryInsertIdempotencyKey(
  */
 export async function updateIdempotencyBillableFalse(
   siteIdUuid: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  opts?: { reason?: string }
 ): Promise<{ updated: boolean; error?: unknown }> {
+  const update: Record<string, unknown> = { billable: false };
+  if (opts?.reason) update.billing_reason = opts.reason;
+
   const { error } = await adminClient
     .from('ingest_idempotency')
-    .update({ billable: false })
+    .update(update)
     .eq('site_id', siteIdUuid)
     .eq('idempotency_key', idempotencyKey);
 

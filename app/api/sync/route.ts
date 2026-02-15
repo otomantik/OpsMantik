@@ -12,6 +12,7 @@ import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs, tryInse
 import { getCurrentYearMonthUTC, getSitePlan, getUsage, evaluateQuota, computeRetryAfterToMonthRollover, incrementUsageRedis, type QuotaDecision } from '@/lib/quota';
 import { buildFallbackRow } from '@/lib/sync-fallback';
 import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
+import { classifyIngestBillable } from '@/lib/billing/ingest-billable';
 import {
     incrementBillingIngestAllowed,
     incrementBillingIngestDuplicate,
@@ -259,11 +260,18 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const siteIdUuid = site.id;
 
     // --- 2.6 Idempotency (gatekeeper). Fail-secure: billable = successfully inserted row only. ---
+    const billableDecision = classifyIngestBillable(body);
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const idempotencyKey = idempotencyVersion === '2'
       ? await computeIdempotencyKeyV2(siteIdUuid, body, getServerNowMs())
       : await computeIdempotencyKey(siteIdUuid, body);
-    const idempotencyResult = await tryInsert(siteIdUuid, idempotencyKey);
+    const idempotencyResult = await tryInsert(siteIdUuid, idempotencyKey, {
+      billable: billableDecision.billable,
+      billingReason: billableDecision.reason,
+      eventCategory: (body as any).ec,
+      eventAction: (body as any).ea,
+      eventLabel: (body as any).el,
+    });
 
     if (idempotencyResult.error && !idempotencyResult.duplicate) {
         logError('BILLING_GATE_CLOSED', { route: 'sync', site_id: body.s, error: String(idempotencyResult.error) });
@@ -274,7 +282,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     }
 
     if (idempotencyResult.duplicate) {
-        incrementBillingIngestDuplicate();
+        if (billableDecision.billable) incrementBillingIngestDuplicate();
         const dedupHeaders = { ...baseHeaders, 'x-opsmantik-dedup': '1' };
         return NextResponse.json(
             createSyncResponse(true, 10, { status: 'duplicate', captured: true, v: OPSMANTIK_VERSION }),
@@ -287,7 +295,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     // --- 2.7 Quota (PR-3). After idempotency insert success, before publish. Reject → 429, billable=false; overage → header + billing_state. ---
     const yearMonth = getCurrentYearMonthUTC();
     const updateBillableFalse = deps?.updateIdempotencyBillableFalse ?? updateIdempotencyBillableFalse;
-    if (idempotencyInserted) {
+    if (idempotencyInserted && billableDecision.billable) {
         let decision: QuotaDecision;
         if (deps?.getQuotaDecision) {
             decision = await deps.getQuotaDecision(siteIdUuid, yearMonth);
@@ -303,7 +311,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
 
         if (decision.reject) {
             incrementBillingIngestRejectedQuota();
-            await updateBillableFalse(siteIdUuid, idempotencyKey);
+            await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'rejected_quota' });
             const retryAfter = computeRetryAfterToMonthRollover();
             const quotaHeaders = {
                 ...baseHeaders,
@@ -367,7 +375,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     try {
         const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
         await doPublish({ url: workerUrl, body: workerPayload, retries: 3 });
-        if (idempotencyInserted) {
+        if (idempotencyInserted && billableDecision.billable) {
             await doIncrementRedis(siteIdUuid, yearMonth);
             incrementBillingIngestAllowed();
             if (baseHeaders['x-opsmantik-overage']) incrementBillingIngestOverage();
@@ -402,7 +410,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
 
         try {
             await doInsertFallback(buildFallbackRow(siteIdUuid, workerPayload, errorShort || null));
-            if (idempotencyInserted) await doIncrementRedis(siteIdUuid, yearMonth);
+            if (idempotencyInserted && billableDecision.billable) await doIncrementRedis(siteIdUuid, yearMonth);
         } catch (fallbackErr) {
             logError('INGEST_FALLBACK_INSERT_FAILED', {
                 route: 'sync',

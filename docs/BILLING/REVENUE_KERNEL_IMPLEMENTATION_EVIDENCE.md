@@ -242,10 +242,10 @@ Response: `{ ok: true, enqueued, processed, completed, failed, request_id }`.
 **Route:** `POST /api/cron/reconcile-usage/backfill`  
 **Auth:** Same as above (requireCronAuth: `x-vercel-cron: 1` or `Authorization: Bearer CRON_SECRET`).
 
-**Body:** `{ site_id?: uuid, from: 'YYYY-MM', to: 'YYYY-MM' }`
+**Body:** `{ site_id: uuid, from: 'YYYY-MM', to: 'YYYY-MM' }`
 
 - `from`, `to`: required; must be valid YYYY-MM; `from` ≤ `to`; range length ≤ 12 months.
-- `site_id`: optional; if omitted, “active” sites are those with at least one row in `ingest_idempotency` with `year_month` in `[from, to]`.
+- `site_id`: required (tenant-safety; avoids scanning sites table without explicit scope).
 
 **Behavior:** For each month in `[from, to]` and each site (the given site or all active sites), inserts into `billing_reconciliation_jobs` with **UPSERT ON CONFLICT (site_id, year_month) DO NOTHING** so only missing jobs are enqueued.
 

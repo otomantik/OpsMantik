@@ -21,6 +21,7 @@ import {
   type EventIdMode,
 } from '@/lib/api/call-event/shared';
 import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
+import { extractMissingColumnName, stripColumnFromInsertPayload } from '@/lib/api/call-event/schema-drift';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -340,25 +341,49 @@ export async function POST(req: NextRequest) {
 
     let callRecord: any = null;
     let insertError: any = null;
-    if (eventIdMode !== 'off' && event_id) {
-      const r1 = await adminClient.from('calls').insert(insertWithEventId).select().single();
-      callRecord = r1.data;
-      insertError = r1.error;
+    // Insert with drift tolerance:
+    // - Handle missing calls.event_id (older schema) by retrying without event_id.
+    // - Handle missing optional columns by stripping them iteratively (schema cache / migration lag).
+    let insertPayload: Record<string, unknown> = (eventIdMode !== 'off' && event_id) ? insertWithEventId : baseInsert;
+    const strippedCols = new Set<string>();
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      // Tenant-scope audit: ensure site_id is explicitly present in the insert payload.
+      const r = await adminClient.from('calls').insert({ ...insertPayload, site_id: site.id }).select().single();
+      callRecord = r.data;
+      insertError = r.error;
+      if (!insertError) break;
+
+      // Back-compat: event_id column may not exist in some DBs yet.
       if (insertError && isMissingEventIdColumnError(insertError)) {
         eventIdColumnOk = false;
+        strippedCols.add('event_id');
+        insertPayload = { ...insertPayload };
+        delete (insertPayload as Record<string, unknown>).event_id;
         logWarn('call-event-v2: calls.event_id missing; retrying insert without event_id', {
           request_id: requestId,
           route: ROUTE,
           site_id,
         });
-        const r2 = await adminClient.from('calls').insert(baseInsert).select().single();
-        callRecord = r2.data;
-        insertError = r2.error;
+        continue;
       }
-    } else {
-      const r0 = await adminClient.from('calls').insert(baseInsert).select().single();
-      callRecord = r0.data;
-      insertError = r0.error;
+
+      const missingCol = extractMissingColumnName(insertError);
+      if (missingCol && !strippedCols.has(missingCol)) {
+        const { next, stripped } = stripColumnFromInsertPayload(insertPayload, missingCol);
+        if (stripped) {
+          strippedCols.add(missingCol);
+          insertPayload = next;
+          logWarn('call-event-v2: missing calls column; retrying insert with reduced payload', {
+            request_id: requestId,
+            route: ROUTE,
+            site_id,
+            missing_column: missingCol,
+          });
+          continue;
+        }
+      }
+
+      break;
     }
 
     if (insertError) {
@@ -386,8 +411,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      logError('call-event-v2 insert failed', { request_id: requestId, route: ROUTE, site_id, message: insertError.message, code: insertError.code });
-      return NextResponse.json({ error: 'Failed to record call' }, { status: 500, headers: baseHeaders });
+      const missingCol = extractMissingColumnName(insertError);
+      logError('call-event-v2 insert failed', {
+        request_id: requestId,
+        route: ROUTE,
+        site_id,
+        message: insertError.message,
+        code: insertError.code,
+        missing_column: missingCol ?? undefined,
+      });
+      return NextResponse.json(
+        { error: 'Failed to record call', code: missingCol ? 'CALLS_SCHEMA_DRIFT' : 'CALL_EVENT_INSERT_FAILED' },
+        { status: 500, headers: { ...baseHeaders, 'x-opsmantik-error-code': missingCol ? 'CALLS_SCHEMA_DRIFT' : 'CALL_EVENT_INSERT_FAILED' } }
+      );
     }
 
     return NextResponse.json(

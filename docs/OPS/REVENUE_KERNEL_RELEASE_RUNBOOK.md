@@ -64,6 +64,14 @@ Aşağıdakiler kodda bulunmalı:
 - Migration additive olmalı
 - Enum değişiklikleri backward compatible olmalı
 - DROP / destructive değişiklik prod'da yasak
+- Yeni “billing proof” kolonları gibi değişikliklerde **önce migration**, sonra deploy (schema drift toleransı olsa bile evidence için şart).
+
+---
+
+## 3.1 Quota incident hızlı müdahale linkleri
+
+- Temporary unblock SQL: `docs/OPS/TEMP_QUOTA_UNBLOCK_SITES_2026-02-15.md`
+- Incident runbook (quota + call-event): `docs/OPS/QUOTA_CALL_EVENT_INCIDENT_RUNBOOK.md`
 
 ---
 

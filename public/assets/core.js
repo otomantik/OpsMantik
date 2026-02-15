@@ -162,6 +162,8 @@
   // Intent Pulse (Prompt 2.1)
   const pulse = {
     maxScroll: 0,
+    sentScroll50: false,
+    sentScroll90: false,
     ctaHovers: 0,
     focusDur: 0,
     activeSec: 0,
@@ -226,6 +228,8 @@
   const MIN_FLUSH_INTERVAL_MS = 2000;
   const PAYLOAD_CAP_BYTES = 50 * 1024;
   const BATCH_RETRY_AFTER_MS = 5 * 60 * 1000;
+  // Quota pause: when server returns 429 + x-opsmantik-quota-exceeded, stop retry storms.
+  var quotaPausedUntil = 0;
 
   function appendDeadLetter(envelope, status) {
     try {
@@ -277,6 +281,14 @@
   }
 
   function addToOutbox(payload) {
+    // If quota is exceeded, avoid spamming the queue with low-value events.
+    // Keep conversions so we can flush them after quota is lifted (temporary unblock or next month).
+    if (quotaPausedUntil > Date.now() && payload && payload.ec !== 'conversion') {
+      if (localStorage.getItem('opsmantik_debug') === '1') {
+        console.warn('[OPSMANTIK_DEBUG] drop due to quota pause', { ec: payload.ec, ea: payload.ea, until: quotaPausedUntil });
+      }
+      return;
+    }
     const queue = getQueue();
     const envelopeId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -303,6 +315,10 @@
     var currentEnvelope = queue[0];
     var nextAt = currentEnvelope.nextAttemptAt;
     var now = Date.now();
+    if (quotaPausedUntil > now) {
+      setTimeout(processOutbox, quotaPausedUntil - now);
+      return;
+    }
     if (nextAt != null && nextAt > 0 && nextAt > now) {
       var waitMs = nextAt - now;
       setTimeout(processOutbox, waitMs);
@@ -402,6 +418,28 @@
       }
       var status = response.status;
       var first = batch[0];
+      // Quota exceeded (not rate limit): pause until Retry-After.
+      if (status === 429) {
+        try {
+          var qx = response.headers && response.headers.get ? response.headers.get('x-opsmantik-quota-exceeded') : null;
+          if (qx === '1') {
+            var ra = response.headers.get('retry-after');
+            var raSec = ra ? parseInt(ra, 10) : 0;
+            // Fallback: if Retry-After missing, pause 10 minutes to stop storms.
+            var pauseMs = (raSec && !isNaN(raSec) && raSec > 0) ? Math.min(raSec * 1000, 32 * 24 * 3600 * 1000) : 10 * 60 * 1000;
+            quotaPausedUntil = now + pauseMs;
+            first.nextAttemptAt = quotaPausedUntil;
+            first.lastStatus = status;
+            saveQueue(queue);
+            if (localStorage.getItem('opsmantik_debug') === '1') {
+              console.warn('[OPSMANTIK_DEBUG] quota pause', { retryAfterSec: raSec, pauseMs: pauseMs, until: quotaPausedUntil });
+            }
+            isProcessing = false;
+            setTimeout(processOutbox, pauseMs);
+            return;
+          }
+        } catch (_) { /* ignore */ }
+      }
       var result = getRetryDelayMs(status, first.attempts);
       if (!result.retry) {
         first.dead = true;
@@ -634,9 +672,13 @@
       const scrollPercent = Math.round(((window.scrollY + window.innerHeight) / doc.scrollHeight) * 100);
       if (scrollPercent > pulse.maxScroll) {
         pulse.maxScroll = scrollPercent;
-        if (scrollPercent >= 50 && scrollPercent < 90) {
+        // Send scroll thresholds only once per session (prevents spam/quota burn)
+        if (!pulse.sentScroll50 && scrollPercent >= 50) {
+          pulse.sentScroll50 = true;
           sendEvent('interaction', 'scroll_depth', '50%', scrollPercent);
-        } else if (scrollPercent >= 90) {
+        }
+        if (!pulse.sentScroll90 && scrollPercent >= 90) {
+          pulse.sentScroll90 = true;
           sendEvent('interaction', 'scroll_depth', '90%', scrollPercent);
         }
       }
