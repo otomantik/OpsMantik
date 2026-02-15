@@ -43,7 +43,7 @@
 | `app/api/metrics/route.ts` | PR-8: GET /api/metrics (cron or admin); JSON with billing counters + billing_reconciliation_drift_sites_last1h from DB. |
 | `app/api/cron/watchtower/route.ts` | PR-8: Response includes billing_metrics (counters + drift_sites_last1h). |
 | `tests/unit/billing-metrics.test.ts` | PR-8: Unit tests for counter increments and code-path assertions. |
-| `app/api/cron/reconcile-usage/backfill/route.ts` | Backfill: POST backfill; body `{ site_id?, from, to }` (YYYY-MM); validate range ≤12 months; enqueue missing jobs (UPSERT DO NOTHING); return `{ enqueued, months, sites }`. |
+| `app/api/cron/reconcile-usage/backfill/route.ts` | Backfill: POST backfill; body `{ site_id, from, to }` (YYYY-MM); validate range ≤12 months; enqueue missing jobs (UPSERT DO NOTHING); return `{ enqueued, months, sites }`. |
 | `tests/unit/reconcile-backfill.test.ts` | Backfill: Unit tests for date validation, cron auth, UPSERT DO NOTHING, response shape, active-sites query. |
 | `supabase/migrations/20260217000000_pr9_ingest_idempotency_partitioning.sql` | PR-9: ingest_idempotency monthly RANGE(created_at) partitioning; PK (site_id, idempotency_key, created_at); copy under lock + swap; `ingest_idempotency_ensure_next_partition()`. |
 | `supabase/migrations/20260217000001_pr9_ingest_idempotency_brin_fallback.sql` | PR-9 Option B: BRIN on created_at if partitioning postponed. |

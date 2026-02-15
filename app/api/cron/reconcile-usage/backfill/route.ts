@@ -22,6 +22,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing from/to in YYYY-MM format' }, { status: 400 });
         }
 
+        // Tenant-safety: backfill must be scoped to a specific site_id.
+        // (Listing all sites via adminClient is intentionally disallowed by tenant-scope audit.)
+        if (!site_id) {
+            return NextResponse.json({ error: 'site_id is required for backfill' }, { status: 400, headers: getBuildInfoHeaders() });
+        }
+
         // Generate months
         const start = new Date(from + '-01');
         const end = new Date(to + '-01');
@@ -47,23 +53,7 @@ export async function POST(req: NextRequest) {
 
         // Find sites to backfill
         let targetSiteIds: string[] = [];
-        if (site_id) {
-            targetSiteIds = [site_id];
-        } else {
-            // For backfill, we probably want all sites that existed? 
-            // Or active then?
-            // Safest is to list all sites if simple, but with 1M sites loop is bad.
-            // Assumption: This is for specific repair or limited range.
-            // If no site_id, we fetch ALL sites? 
-            // "Enterprise Control" usually implies surgical backfill.
-            // Let's implement paging or limit for safety.
-            const { data: sites } = await adminClient.from('sites').select('id').limit(1000);
-            /*
-               CAUTION: Backfilling ALL sites for historical months is heavy.
-               We will limit to 1000 sites for now and warn if more.
-            */
-            targetSiteIds = sites?.map(s => s.id) || [];
-        }
+        targetSiteIds = [site_id];
 
         const jobs = [];
         for (const m of months) {

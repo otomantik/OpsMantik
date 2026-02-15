@@ -9,7 +9,7 @@
 
 | Konu | Ne yapıldı | Nerede |
 |------|------------|--------|
-| **Backfill endpoint** | POST `/api/cron/reconcile-usage/backfill`, cron auth, body `from`/`to` (≤12 ay), UPSERT DO NOTHING, `{ enqueued, months, sites }` | `app/api/cron/reconcile-usage/backfill/`, unit test, evidence doc |
+| **Backfill endpoint** | POST `/api/cron/reconcile-usage/backfill`, cron auth, body `site_id` + `from`/`to` (≤12 ay), UPSERT DO NOTHING, `{ enqueued, months, sites }` | `app/api/cron/reconcile-usage/backfill/`, unit test, evidence doc |
 | **PR-9 scaling** | `ingest_idempotency` için RANGE(created_at) partition migration + BRIN fallback migration, maintenance fonksiyonu, EXPLAIN + rollback doc | `supabase/migrations/20260217*`, `docs/BILLING/PR9_IDEMPOTENCY_SCALING.md` |
 | **PR-10 financial gate testleri** | createSyncHandler’a optional deps (tryInsert, validateSite, getQuotaDecision, publish, fallback, redis…). 4 senaryo: duplicate, db down, quota reject, fallback | `app/api/sync/route.ts` deps, `tests/unit/sync-financial-gate.test.ts` |
 | **Release branch** | Sadece PR-1..PR-4 + fail-secure + runbook (+ billing-metrics build fix) | `release/revenue-kernel-pr1-4` |
