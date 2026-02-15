@@ -180,9 +180,30 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Origin not allowed', reason }), { status: 403, headers: baseHeaders });
     }
 
+    const contentLength = req.headers.get('content-length');
+    if (contentLength !== null && contentLength !== undefined) {
+        const len = parseInt(contentLength, 10);
+        if (!Number.isNaN(len) && len > 256 * 1024) {
+            return NextResponse.json(createSyncResponse(false, null, { error: 'Payload too large' }), { status: 413, headers: baseHeaders });
+        }
+    }
+
     // --- 1. Parse body once (needed for site-scoped rate limit key and later validation) ---
     let json: unknown;
-    try { json = await req.json(); } catch { return NextResponse.json({ ok: false }, { status: 400, headers: getBuildInfoHeaders() }); }
+    try {
+        json = await req.json();
+    } catch {
+        const clientId = RateLimitService.getClientId(req);
+        const rl = deps?.checkRateLimit
+            ? await deps.checkRateLimit()
+            : await RateLimitService.check(clientId, 100, 60000);
+        if (!rl.allowed) {
+            incrementBillingIngestRateLimited();
+            const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
+            return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
+        }
+        return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: baseHeaders });
+    }
 
     // --- 2. Rate Limit (abuse/DoS). Key = siteId:clientId when siteId present, else clientId. 429 = non-billable. ---
     const siteIdForRl = extractSiteIdForRateLimit(json);

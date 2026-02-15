@@ -225,6 +225,7 @@
   const MAX_BATCH = 20;
   const MIN_FLUSH_INTERVAL_MS = 2000;
   const PAYLOAD_CAP_BYTES = 50 * 1024;
+  const BATCH_RETRY_AFTER_MS = 5 * 60 * 1000;
 
   function appendDeadLetter(envelope, status) {
     try {
@@ -292,6 +293,7 @@
 
   let isProcessing = false;
   var batchSupported = true;
+  var batchRetryAt = 0;
   var lastFlushAt = 0;
 
   async function processOutbox() {
@@ -320,6 +322,10 @@
         return;
       }
       saveQueue(queue);
+      if (batchRetryAt > 0 && now >= batchRetryAt) {
+        batchSupported = true;
+        batchRetryAt = 0;
+      }
       if (lastFlushAt > 0 && now - lastFlushAt < MIN_FLUSH_INTERVAL_MS) {
         var delayMsThrottle = lastFlushAt + MIN_FLUSH_INTERVAL_MS - now;
         isProcessing = false;
@@ -363,6 +369,27 @@
       clearTimeout(timeoutId);
       var throttled = false;
       var debug = localStorage.getItem('opsmantik_debug') === '1';
+      var batchNotSupported = false;
+      if (batch.length > 1 && !response.ok) {
+        var st = response.status;
+        if (st === 400 || st === 415) batchNotSupported = true;
+        else if (st >= 400 && st < 500) {
+          try {
+            var j = await response.clone().json();
+            if (j && typeof j === 'object') {
+              if (j.error === 'batch_not_supported' || j.code === 'BATCH_NOT_SUPPORTED') batchNotSupported = true;
+            }
+          } catch (_) { /* ignore */ }
+        }
+      }
+      if (batchNotSupported) {
+        batchSupported = false;
+        batchRetryAt = now + BATCH_RETRY_AFTER_MS;
+        isProcessing = false;
+        if (debug) console.log('[OPSMANTIK_DEBUG] batch not supported', { batchRetryAt: batchRetryAt });
+        processOutbox();
+        return;
+      }
       if (response.ok) {
         queue.splice(0, batch.length);
         saveQueue(queue);
@@ -374,13 +401,6 @@
         return;
       }
       var status = response.status;
-      if (batch.length > 1 && (status === 400 || status === 415)) {
-        batchSupported = false;
-        isProcessing = false;
-        if (debug) console.log('[OPSMANTIK_DEBUG] batch not supported', { status: status, batchSupported: batchSupported });
-        processOutbox();
-        return;
-      }
       var first = batch[0];
       var result = getRetryDelayMs(status, first.attempts);
       if (!result.retry) {
