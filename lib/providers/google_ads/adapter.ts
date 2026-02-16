@@ -1,5 +1,7 @@
 /**
  * Google Ads provider adapter. PR-G3: real upload via REST uploadClickConversions.
+ * Batching: max 200 conversions per request (Google allows up to 2000; 200 keeps partial_failure
+ * chunks small and avoids timeouts. Retries are controlled by the queue, not this layer.)
  */
 
 import type { IAdsProvider, UploadConversionsArgs, UploadResult } from '../types';
@@ -15,6 +17,12 @@ import { getAccessToken } from './auth';
 import { mapJobsToClickConversions } from './mapper';
 
 const PROVIDER_KEY = 'google_ads';
+
+/** Max conversions per uploadClickConversions request. 200 is conservative for partial_failure and timeouts. */
+const BATCH_SIZE = 200;
+
+/** Request timeout (ms). We control retries via queue; no internal retry here. */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 function isGoogleAdsCredentials(c: unknown): c is GoogleAdsCredentials {
   const o = c as Record<string, unknown>;
@@ -44,6 +52,20 @@ function assertCredentials(creds: unknown): asserts creds is GoogleAdsCredential
   }
 }
 
+/** Returns true if partial_failure error message indicates transient (RETRY), else permanent (FAILED). */
+function isTransientPartialError(message: string): boolean {
+  const m = message.toUpperCase();
+  return (
+    m.includes('RESOURCE_EXHAUSTED') ||
+    m.includes('UNAVAILABLE') ||
+    m.includes('DEADLINE_EXCEEDED') ||
+    m.includes('RATE_LIMIT') ||
+    m.includes('RATE LIMIT') ||
+    m.includes('TEMPORARILY') ||
+    m.includes('BACKEND_ERROR')
+  );
+}
+
 async function uploadClickConversions(
   accessToken: string,
   customerId: string,
@@ -63,11 +85,16 @@ async function uploadClickConversions(
     headers['login-customer-id'] = loginCustomerId.replace(/-/g, '');
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   const res = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    signal: controller.signal,
   });
+  clearTimeout(timeoutId);
 
   if (res.status === 401 || res.status === 403) {
     const text = await res.text();
@@ -159,56 +186,63 @@ export class GoogleAdsAdapter implements IAdsProvider {
       );
     }
 
-    const customerIdNoHyphens = credentials.customer_id.replace(/-/g, '');
     const loginCustomerId = credentials.login_customer_id?.trim() || undefined;
+    const conversionsArr = conversions as Record<string, unknown>[];
 
-    const apiResponse = await uploadClickConversions(
-      accessToken,
-      credentials.customer_id,
-      credentials.developer_token,
-      loginCustomerId,
-      { conversions, partial_failure: true }
-    );
+    for (let offset = 0; offset < conversionsArr.length; offset += BATCH_SIZE) {
+      const batch = conversionsArr.slice(offset, offset + BATCH_SIZE);
+      const batchJobIds = jobIdByIndex.slice(offset, offset + batch.length);
 
-    const responseResults = (apiResponse.results ?? []) as Array<{ order_id?: string | null }>;
-    const partialFailure = apiResponse.partial_failure_error as {
-      details?: Array<{
-        errors?: Array<{
-          message?: string;
-          location?: { field_path_elements?: Array<{ index?: number }> };
+      const apiResponse = await uploadClickConversions(
+        accessToken,
+        credentials.customer_id,
+        credentials.developer_token,
+        loginCustomerId,
+        { conversions: batch, partial_failure: true }
+      );
+
+      const responseResults = (apiResponse.results ?? []) as Array<{ order_id?: string | null }>;
+      const partialFailure = apiResponse.partial_failure_error as {
+        details?: Array<{
+          errors?: Array<{
+            message?: string;
+            location?: { field_path_elements?: Array<{ index?: number }> };
+          }>;
         }>;
-      }>;
-    } | undefined;
+      } | undefined;
 
-    const failedIndices = new Set<number>();
-    const failureMessages: Record<number, string> = {};
-    if (partialFailure?.details) {
-      for (const detail of partialFailure.details) {
-        for (const err of detail.errors ?? []) {
-          const index = err.location?.field_path_elements?.[0]?.index;
-          if (typeof index === 'number' && index >= 0 && index < jobIdByIndex.length) {
-            failedIndices.add(index);
-            if (err.message) failureMessages[index] = err.message;
+      const failedIndices = new Set<number>();
+      const failureMessages: Record<number, string> = {};
+      if (partialFailure?.details) {
+        for (const detail of partialFailure.details) {
+          for (const err of detail.errors ?? []) {
+            const index = err.location?.field_path_elements?.[0]?.index;
+            if (typeof index === 'number' && index >= 0 && index < batchJobIds.length) {
+              failedIndices.add(index);
+              if (err.message) failureMessages[index] = err.message;
+            }
           }
         }
       }
-    }
 
-    for (let i = 0; i < jobIdByIndex.length; i++) {
-      const jobId = jobIdByIndex[i];
-      if (failedIndices.has(i)) {
-        resultsByJobId.set(jobId, {
-          job_id: jobId,
-          status: 'RETRY',
-          error_code: 'PARTIAL_FAILURE',
-          error_message: failureMessages[i] ?? partialFailure?.details?.[0]?.errors?.[0]?.message ?? 'Upload failed',
-        });
-      } else {
-        resultsByJobId.set(jobId, {
-          job_id: jobId,
-          status: 'COMPLETED',
-          provider_ref: responseResults[i]?.order_id ?? null,
-        });
+      for (let i = 0; i < batchJobIds.length; i++) {
+        const jobId = batchJobIds[i];
+        if (failedIndices.has(i)) {
+          const msg = failureMessages[i] ?? partialFailure?.details?.[0]?.errors?.[0]?.message ?? 'Upload failed';
+          const status = isTransientPartialError(msg) ? 'RETRY' : 'FAILED';
+          resultsByJobId.set(jobId, {
+            job_id: jobId,
+            status,
+            error_code: 'PARTIAL_FAILURE',
+            error_message: msg,
+          });
+        } else {
+          resultsByJobId.set(jobId, {
+            job_id: jobId,
+            status: 'COMPLETED',
+            provider_ref: responseResults[i]?.order_id ?? null,
+          });
+        }
       }
     }
 

@@ -24,6 +24,8 @@ async function decryptCredentials(ciphertext: string): Promise<unknown> {
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
+/** After this many attempts, mark job FAILED instead of RETRY. */
+const MAX_RETRY_ATTEMPTS = 7;
 
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
@@ -40,6 +42,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let bySiteAndProvider: Map<string, QueueRow[]> = new Map();
+  let writtenMetricsKeys: Set<string> = new Set();
   try {
     const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
       p_limit: limit,
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const bySiteAndProvider = new Map<string, QueueRow[]>();
+    bySiteAndProvider = new Map<string, QueueRow[]>();
     for (const row of claimed) {
       const key = `${row.site_id}:${row.provider_key}`;
       const list = bySiteAndProvider.get(key) ?? [];
@@ -73,10 +77,36 @@ export async function POST(req: NextRequest) {
     let failed = 0;
     let retry = 0;
 
+    async function writeProviderMetrics(
+      siteId: string,
+      providerKey: string,
+      attempts: number,
+      completedDelta: number,
+      failedDelta: number,
+      retryDelta: number
+    ) {
+      try {
+        await adminClient.rpc('increment_provider_upload_metrics', {
+          p_site_id: siteId,
+          p_provider_key: providerKey,
+          p_attempts_delta: attempts,
+          p_completed_delta: completedDelta,
+          p_failed_delta: failedDelta,
+          p_retry_delta: retryDelta,
+        });
+        writtenMetricsKeys.add(`${siteId}:${providerKey}`);
+      } catch (e) {
+        console.warn('[process-offline-conversions] increment_provider_upload_metrics failed:', e);
+      }
+    }
+
     for (const [, siteRows] of bySiteAndProvider) {
       const first = siteRows[0];
       const siteId = first.site_id;
       const providerKey = first.provider_key;
+      let groupCompleted = 0;
+      let groupFailed = 0;
+      let groupRetry = 0;
 
       let credentials: unknown = null;
       let encryptedPayload: string | null = null;
@@ -97,40 +127,38 @@ export async function POST(req: NextRequest) {
         try {
           credentials = await decryptCredentials(encryptedPayload);
         } catch {
-          // Mark all in group as RETRY
+          // Missing or invalid credentials => FAILED (no retry; fix creds and re-enqueue manually if needed).
+          groupFailed = siteRows.length;
           for (const row of siteRows) {
-            const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
             await adminClient
               .from('offline_conversion_queue')
               .update({
-                status: 'RETRY',
-                retry_count: (row.retry_count ?? 0) + 1,
-                next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                status: 'FAILED',
                 last_error: 'Failed to decrypt credentials',
                 updated_at: new Date().toISOString(),
               })
               .eq('id', row.id);
-            retry++;
+            failed++;
           }
+          await writeProviderMetrics(siteId, providerKey, siteRows.length, 0, groupFailed, 0);
           continue;
         }
       }
 
       if (!credentials) {
+        groupFailed = siteRows.length;
         for (const row of siteRows) {
-          const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
           await adminClient
             .from('offline_conversion_queue')
             .update({
-              status: 'RETRY',
-              retry_count: (row.retry_count ?? 0) + 1,
-              next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+              status: 'FAILED',
               last_error: 'No credentials for site and provider',
               updated_at: new Date().toISOString(),
             })
             .eq('id', row.id);
-          retry++;
+          failed++;
         }
+        await writeProviderMetrics(siteId, providerKey, siteRows.length, 0, groupFailed, 0);
         continue;
       }
 
@@ -142,19 +170,37 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         for (const row of siteRows) {
+          const count = (row.retry_count ?? 0) + 1;
+          const isFinal = count >= MAX_RETRY_ATTEMPTS;
           const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
           await adminClient
             .from('offline_conversion_queue')
-            .update({
-              status: 'RETRY',
-              retry_count: (row.retry_count ?? 0) + 1,
-              next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-              last_error: msg.slice(0, 1000),
-              updated_at: new Date().toISOString(),
-            })
+            .update(
+              isFinal
+                ? {
+                    status: 'FAILED',
+                    retry_count: count,
+                    last_error: msg.slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                  }
+                : {
+                    status: 'RETRY',
+                    retry_count: count,
+                    next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                    last_error: msg.slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                  }
+            )
             .eq('id', row.id);
-          retry++;
+          if (isFinal) {
+            failed++;
+            groupFailed++;
+          } else {
+            retry++;
+            groupRetry++;
+          }
         }
+        await writeProviderMetrics(siteId, providerKey, siteRows.length, 0, groupFailed, groupRetry);
         continue;
       }
 
@@ -174,20 +220,37 @@ export async function POST(req: NextRequest) {
             })
             .eq('id', row.id);
           completed++;
+          groupCompleted++;
         } else if (result.status === 'RETRY') {
           const count = (row.retry_count ?? 0) + 1;
+          const isFinal = count >= MAX_RETRY_ATTEMPTS;
           const delay = nextRetryDelaySeconds(count);
           await adminClient
             .from('offline_conversion_queue')
-            .update({
-              status: 'RETRY',
-              retry_count: count,
-              next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-              last_error: (result.error_message ?? '').slice(0, 1000),
-              updated_at: new Date().toISOString(),
-            })
+            .update(
+              isFinal
+                ? {
+                    status: 'FAILED',
+                    retry_count: count,
+                    last_error: (result.error_message ?? '').slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                  }
+                : {
+                    status: 'RETRY',
+                    retry_count: count,
+                    next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                    last_error: (result.error_message ?? '').slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                  }
+            )
             .eq('id', row.id);
-          retry++;
+          if (isFinal) {
+            failed++;
+            groupFailed++;
+          } else {
+            retry++;
+            groupRetry++;
+          }
         } else {
           await adminClient
             .from('offline_conversion_queue')
@@ -198,8 +261,10 @@ export async function POST(req: NextRequest) {
             })
             .eq('id', row.id);
           failed++;
+          groupFailed++;
         }
       }
+      await writeProviderMetrics(siteId, providerKey, siteRows.length, groupCompleted, groupFailed, groupRetry);
     }
 
     return NextResponse.json(
@@ -208,6 +273,23 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Guarantee metrics for groups not yet written (e.g. crash during a group).
+    for (const [key, siteRows] of bySiteAndProvider) {
+        if (writtenMetricsKeys.has(key)) continue;
+        const first = siteRows[0];
+        try {
+          await adminClient.rpc('increment_provider_upload_metrics', {
+            p_site_id: first.site_id,
+            p_provider_key: first.provider_key,
+            p_attempts_delta: siteRows.length,
+            p_completed_delta: 0,
+            p_failed_delta: 0,
+            p_retry_delta: 0,
+          });
+        } catch (e) {
+          console.warn('[process-offline-conversions] crash-path increment_provider_upload_metrics failed:', e);
+        }
+      }
     return NextResponse.json(
       { ok: false, error: msg },
       { status: 500, headers: getBuildInfoHeaders() }

@@ -159,7 +159,7 @@ test('uploadConversions: jobs without click id get FAILED with MISSING_CLICK_ID'
   }
 });
 
-test('uploadConversions: partial_failure response sets RETRY for failed index and COMPLETED for success', async () => {
+test('uploadConversions: partial_failure permanent error (e.g. Conversion not found) sets FAILED', async () => {
   const origFetch = globalThis.fetch;
   globalThis.fetch = async (url: unknown) => {
     const u = String(url);
@@ -199,8 +199,50 @@ test('uploadConversions: partial_failure response sets RETRY for failed index an
     assert.equal(results.length, 2);
     const r1 = results.find((r) => r.job_id === 'j1');
     const r2 = results.find((r) => r.job_id === 'j2');
-    assert.ok(r1 && r1.status === 'RETRY' && r1.error_message?.includes('Conversion not found'));
+    assert.ok(r1 && r1.status === 'FAILED' && r1.error_message?.includes('Conversion not found'));
     assert.ok(r2 && r2.status === 'COMPLETED');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('uploadConversions: partial_failure transient error (RESOURCE_EXHAUSTED) sets RETRY', async () => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url: unknown) => {
+    const u = String(url);
+    if (u.includes('oauth2.googleapis.com')) {
+      return new Response(JSON.stringify({ access_token: 'at' }), { status: 200 });
+    }
+    if (u.includes('uploadClickConversions')) {
+      return new Response(
+        JSON.stringify({
+          partial_failure_error: {
+            details: [
+              {
+                errors: [
+                  {
+                    message: 'RESOURCE_EXHAUSTED: Quota exceeded',
+                    location: { field_path_elements: [{ index: 0 }] },
+                  },
+                ],
+              },
+            ],
+          },
+          results: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+  try {
+    const results = await googleAdsAdapter.uploadConversions({
+      jobs: [job('j1', 'gclid1')],
+      credentials: validCreds,
+    });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].status, 'RETRY');
+    assert.ok(results[0].error_message?.includes('RESOURCE_EXHAUSTED'));
   } finally {
     globalThis.fetch = origFetch;
   }
