@@ -33,7 +33,8 @@ const ERROR_MESSAGE_MAX_LEN = 500;
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 const ALLOWED_ORIGINS = parseAllowedOrigins();
 
-const DEFAULT_RL_LIMIT = 100;
+/** 100/min was too low for sites with 40–50 intents/day burst; 300/min reduces 429s while still limiting abuse. Use OPSMANTIK_SYNC_RL_SITE_OVERRIDE for specific sites if needed. */
+const DEFAULT_RL_LIMIT = 300;
 const RL_WINDOW_MS = 60000;
 
 /** Parse OPSMANTIK_SYNC_RL_SITE_OVERRIDE e.g. "siteId1:500,siteId2:300" → Map(siteId -> limit). Temporary relief for a site hitting 429. */
