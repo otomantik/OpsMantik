@@ -33,11 +33,12 @@ test('process-offline-conversions route: uses requireCronAuth', () => {
   assert.ok(src.includes('requireCronAuth'), 'route uses cron auth');
 });
 
-test('process-offline-conversions route: calls claim_offline_conversion_jobs_v2 with limit and provider_key', () => {
+test('process-offline-conversions route: PR6 per-group claim via list_offline_conversion_groups and claim_offline_conversion_jobs_v2', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
   assert.ok(src.includes('claim_offline_conversion_jobs_v2'), 'route calls v2 RPC');
-  assert.ok(src.includes('p_limit') && src.includes('p_provider_key'), 'passes limit and provider_key');
+  assert.ok(src.includes('list_offline_conversion_groups'), 'lists groups');
+  assert.ok(src.includes('p_site_id') && src.includes('p_provider_key') && src.includes('p_limit'), 'per-group claim params');
 });
 
 test('G4 migration: defines claim_offline_conversion_jobs_v2 and next_retry_at', () => {

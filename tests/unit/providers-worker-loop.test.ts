@@ -77,3 +77,26 @@ test('worker route: circuit OPEN gate and HALF_OPEN probe_limit', () => {
   assert.ok(src.includes('record_provider_outcome'), 'records outcome');
   assert.ok(src.includes('CIRCUIT_OPEN'), 'gating error code');
 });
+
+// PR6: Claim v2 by site+provider, ordering, HALF_OPEN uses probe_limit
+test('PR6 migration: claim by site+provider has ordering and scoping', () => {
+  const migrationPath = join(
+    process.cwd(),
+    'supabase',
+    'migrations',
+    '20260220110000_claim_offline_conversions_by_site_provider.sql'
+  );
+  const src = readFileSync(migrationPath, 'utf8');
+  assert.ok(src.includes('list_offline_conversion_groups'), 'lists groups');
+  assert.ok(src.includes('claim_offline_conversion_jobs_v2') && src.includes('p_site_id') && src.includes('p_provider_key'), 'per-group claim');
+  assert.ok(src.includes('next_retry_at ASC NULLS FIRST') && src.includes('created_at ASC'), 'deterministic ordering');
+  assert.ok(src.includes('oq.site_id = p_site_id') && src.includes('oq.provider_key = p_provider_key'), 'site_id+provider_key scoping');
+  assert.ok(src.includes('claimed_at'), 'claimed_at column');
+});
+
+test('PR6 worker: HALF_OPEN uses probe_limit for claim', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('state === \'HALF_OPEN\'') && src.includes('probeLimit'), 'HALF_OPEN branch');
+  assert.ok(src.includes('claimLimit') && (src.includes('probeLimit') || src.includes('fairShare')), 'claim limit from probe or fair share');
+});

@@ -42,35 +42,67 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let bySiteAndProvider: Map<string, QueueRow[]> = new Map();
+  const bySiteAndProvider: Map<string, QueueRow[]> = new Map();
   const writtenMetricsKeys: Set<string> = new Set();
   try {
-    const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
-      p_limit: limit,
-      p_provider_key: providerKeyParam,
+    // PR6: Per-group claim via list_offline_conversion_groups + claim_offline_conversion_jobs_v2(site_id, provider_key, limit).
+    const { data: groups, error: listError } = await adminClient.rpc('list_offline_conversion_groups', {
+      p_limit_groups: 50,
     });
-
-    if (claimError) {
+    if (listError) {
       return NextResponse.json(
-        { ok: false, error: claimError.message },
+        { ok: false, error: listError.message },
         { status: 500, headers: getBuildInfoHeaders() }
       );
     }
+    const groupList = (groups ?? []) as { site_id: string; provider_key: string }[];
+    const filteredGroups = providerKeyParam
+      ? groupList.filter((g) => g.provider_key === providerKeyParam)
+      : groupList;
 
-    const claimed = (rows ?? []) as QueueRow[];
+    let remainingJobs = limit;
+    const maxGroups = Math.min(filteredGroups.length, 100);
+    for (let i = 0; i < maxGroups && remainingJobs > 0; i++) {
+      const g = filteredGroups[i];
+      const siteId = g.site_id;
+      const providerKey = g.provider_key;
+
+      type HealthRow = { state: string; next_probe_at: string | null; probe_limit: number };
+      const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
+        p_site_id: siteId,
+        p_provider_key: providerKey,
+      });
+      const health: HealthRow | null = (healthRows as HealthRow[] | null)?.[0] ?? null;
+      const state = health?.state ?? 'CLOSED';
+      if (state === 'OPEN') continue;
+
+      const probeLimit = health?.probe_limit ?? 5;
+      const remainingGroups = maxGroups - i;
+      // Enterprise guard: floor so no group starves others; min 1 to make progress.
+      const fairShare = Math.max(1, Math.floor(remainingJobs / remainingGroups));
+      const claimLimit =
+        state === 'HALF_OPEN' ? Math.min(probeLimit, remainingJobs) : Math.min(fairShare, remainingJobs);
+
+      const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
+        p_site_id: siteId,
+        p_provider_key: providerKey,
+        p_limit: claimLimit,
+      });
+      if (claimError) continue;
+      const claimedRows = (rows ?? []) as QueueRow[];
+      if (claimedRows.length === 0) continue;
+
+      remainingJobs -= claimedRows.length;
+      const key = `${siteId}:${providerKey}`;
+      bySiteAndProvider.set(key, claimedRows);
+    }
+
+    const claimed = Array.from(bySiteAndProvider.values()).flat();
     if (claimed.length === 0) {
       return NextResponse.json(
         { ok: true, processed: 0, completed: 0, failed: 0, retry: 0 },
         { status: 200, headers: getBuildInfoHeaders() }
       );
-    }
-
-    bySiteAndProvider = new Map<string, QueueRow[]>();
-    for (const row of claimed) {
-      const key = `${row.site_id}:${row.provider_key}`;
-      const list = bySiteAndProvider.get(key) ?? [];
-      list.push(row);
-      bySiteAndProvider.set(key, list);
     }
 
     let completed = 0;
