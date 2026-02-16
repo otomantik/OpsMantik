@@ -23,14 +23,12 @@
    Yani: yeni route’lar ve audit log kodu prod’da var.
 
 2. **Veritabanı (Supabase)**  
-   Master’daki migration’lar **Supabase’de çalıştırılmış olmalı**:
+   ✅ **Uygulandı** — `supabase db push` ile remote’a alındı:
    - `20260218140000_process_offline_conversions_worker.sql` (queue v2 + claim RPC)
-   - `20260219100000_audit_log_g5.sql` (audit_log tablosu)  
-   Bunlar çalıştırılmadıysa prod DB güncel değildir.
+   - `20260219100000_audit_log_g5.sql` (audit_log tablosu)
 
 3. **G4 cron tetiklemesi**  
-   `POST /api/cron/process-offline-conversions` şu an **vercel.json crons listesinde yok**.  
-   Eklenmeden otomatik schedule ile çalışmaz; manuel curl veya başka scheduler gerekir.
+   ✅ **vercel.json** crons’a eklendi: `process-offline-conversions` schedule `*/10 * * * *` (her 10 dk).
 
 4. **G4’ün gerçekten çalışması**  
    Worker’ın upload yapabilmesi için:
@@ -42,13 +40,11 @@
 
 - **Bitti sayılan:** G0, G4, G5 master’da; merge/push yapıldı.
 - **Prod’da kod:** Master’dan deploy alıyorsan G0, G4, G5 kodu prod’da.
-- **Prod’da tam “uygulandı” demek için:**  
-  - Supabase’de yukarıdaki iki migration çalıştırılmış olmalı.  
-  - G4 cron’u kullanacaksan `vercel.json` crons’a eklenmeli.  
-  - G4’ün upload’ı için G1 + G3 master’a alınıp deploy ve ilgili migration’lar prod’da uygulanmalı.
+- **Prod DB:** G4 + G5 migration’ları remote’a push edildi ✅
+- **G4 cron:** vercel.json’da tanımlı ✅
+- **Eksik (upload için):** G1 (vault + provider_credentials) ve G3 (Google Ads adapter) master’da yok; merge + deploy edilmeden G4 worker Google’a upload yapamaz.
 
 ## Sonraki adımlar (isteğe bağlı)
 
-1. G1 ve G3 branch’lerini master’a merge edip deploy.
-2. Supabase’de migration’ları çalıştır (henüz yapılmadıysa).
-3. `vercel.json` crons’a `process-offline-conversions` ekle (eklendiği varsayılıyor; kontrol et).
+1. G1 ve G3 branch’lerini master’a merge edip deploy → G4 worker tam çalışır.
+2. G1 migration’ı (provider_credentials tablosu + vault) varsa remote’a push.

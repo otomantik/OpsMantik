@@ -51,3 +51,29 @@ test('seed-credentials route: hard-blocked in production (403)', () => {
     'seed-credentials returns 403 in production'
   );
 });
+
+// PR5: Circuit breaker
+test('circuit migration: threshold 5 and OPEN/HALF_OPEN/CLOSED', () => {
+  const migrationPath = join(
+    process.cwd(),
+    'supabase',
+    'migrations',
+    '20260220100000_provider_health_state_circuit.sql'
+  );
+  const src = readFileSync(migrationPath, 'utf8');
+  assert.ok(src.includes("'CLOSED'") && src.includes("'OPEN'") && src.includes("'HALF_OPEN'"), 'enum states');
+  assert.ok(src.includes('v_threshold int := 5') || src.includes('failure_count >= v_threshold'), 'open at 5');
+  assert.ok(src.includes('record_provider_outcome') && src.includes('p_is_success') && src.includes('p_is_transient'), 'outcome RPC');
+  assert.ok(src.includes('state = \'CLOSED\'') && src.includes('failure_count = 0'), 'success resets');
+});
+
+test('worker route: circuit OPEN gate and HALF_OPEN probe_limit', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('get_provider_health_state'), 'fetches health');
+  assert.ok(src.includes("state === 'OPEN'") && src.includes('nextProbeAt'), 'OPEN gate');
+  assert.ok(src.includes('set_provider_state_half_open'), 'transition to HALF_OPEN');
+  assert.ok(src.includes("state === 'HALF_OPEN'") && src.includes('probeLimit') && src.includes('slice(0, limit)'), 'HALF_OPEN probe limit');
+  assert.ok(src.includes('record_provider_outcome'), 'records outcome');
+  assert.ok(src.includes('CIRCUIT_OPEN'), 'gating error code');
+});

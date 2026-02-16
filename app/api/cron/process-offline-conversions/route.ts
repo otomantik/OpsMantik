@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   }
 
   let bySiteAndProvider: Map<string, QueueRow[]> = new Map();
-  let writtenMetricsKeys: Set<string> = new Set();
+  const writtenMetricsKeys: Set<string> = new Set();
   try {
     const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
       p_limit: limit,
@@ -162,14 +162,61 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      // PR5: Circuit breaker — get health state (upserts default row if missing).
+      type HealthRow = { state: string; next_probe_at: string | null; probe_limit: number };
+      const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
+        p_site_id: siteId,
+        p_provider_key: providerKey,
+      });
+      const health: HealthRow | null = (healthRows as HealthRow[] | null)?.[0] ?? null;
+      const state = health?.state ?? 'CLOSED';
+      const nextProbeAt = health?.next_probe_at ? new Date(health.next_probe_at).getTime() : 0;
+      const probeLimit = health?.probe_limit ?? 5;
+
+      if (state === 'OPEN') {
+        if (nextProbeAt > Date.now()) {
+          const jitterMs = Math.floor(Math.random() * 31 * 1000);
+          const nextRetryAt = new Date(nextProbeAt + jitterMs).toISOString();
+          for (const row of siteRows) {
+            const count = (row.retry_count ?? 0) + 1;
+            const isFinal = count >= MAX_RETRY_ATTEMPTS;
+            await adminClient
+              .from('offline_conversion_queue')
+              .update(
+                isFinal
+                  ? { status: 'FAILED', retry_count: count, last_error: 'CIRCUIT_OPEN', updated_at: new Date().toISOString() }
+                  : { status: 'RETRY', retry_count: count, next_retry_at: nextRetryAt, last_error: 'CIRCUIT_OPEN', updated_at: new Date().toISOString() }
+              )
+              .eq('id', row.id);
+            if (isFinal) failed++;
+            else retry++;
+          }
+          continue;
+        }
+        await adminClient.rpc('set_provider_state_half_open', { p_site_id: siteId, p_provider_key: providerKey });
+      }
+
+      let rowsToProcess = siteRows;
+      if (state === 'HALF_OPEN') {
+        const limit = Math.max(1, Math.min(probeLimit, siteRows.length));
+        rowsToProcess = siteRows.slice(0, limit);
+        const remainder = siteRows.slice(limit);
+        for (const row of remainder) {
+          await adminClient
+            .from('offline_conversion_queue')
+            .update({ status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() })
+            .eq('id', row.id);
+        }
+      }
+
       const adapter = getProvider(providerKey);
-      const jobs = siteRows.map(queueRowToConversionJob);
+      const jobs = rowsToProcess.map(queueRowToConversionJob);
       let results: { job_id: string; status: string; provider_ref?: string | null; error_message?: string | null }[];
       try {
         results = await adapter.uploadConversions({ jobs, credentials });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        for (const row of siteRows) {
+        for (const row of rowsToProcess) {
           const count = (row.retry_count ?? 0) + 1;
           const isFinal = count >= MAX_RETRY_ATTEMPTS;
           const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
@@ -200,11 +247,21 @@ export async function POST(req: NextRequest) {
             groupRetry++;
           }
         }
-        await writeProviderMetrics(siteId, providerKey, siteRows.length, 0, groupFailed, groupRetry);
+        await writeProviderMetrics(siteId, providerKey, rowsToProcess.length, 0, groupFailed, groupRetry);
+        try {
+          await adminClient.rpc('record_provider_outcome', {
+            p_site_id: siteId,
+            p_provider_key: providerKey,
+            p_is_success: false,
+            p_is_transient: true,
+          });
+        } catch (e) {
+          console.warn('[process-offline-conversions] record_provider_outcome failed:', e);
+        }
         continue;
       }
 
-      const rowById = new Map(siteRows.map((r) => [r.id, r]));
+      const rowById = new Map(rowsToProcess.map((r) => [r.id, r]));
       for (const result of results) {
         const row = rowById.get(result.job_id);
         if (!row) continue;
@@ -264,7 +321,17 @@ export async function POST(req: NextRequest) {
           groupFailed++;
         }
       }
-      await writeProviderMetrics(siteId, providerKey, siteRows.length, groupCompleted, groupFailed, groupRetry);
+      await writeProviderMetrics(siteId, providerKey, rowsToProcess.length, groupCompleted, groupFailed, groupRetry);
+      try {
+        await adminClient.rpc('record_provider_outcome', {
+          p_site_id: siteId,
+          p_provider_key: providerKey,
+          p_is_success: groupCompleted > 0,
+          p_is_transient: groupRetry > 0,
+        });
+      } catch (e) {
+        console.warn('[process-offline-conversions] record_provider_outcome failed:', e);
+      }
     }
 
     return NextResponse.json(
