@@ -1,7 +1,7 @@
 # Providers upload runbook (Google Ads OCI)
 
-- **Worker:** `POST /api/cron/process-offline-conversions` (claim → decrypt creds → upload → update status). Vercel: every 10 min (`vercel.json`). **PR6:** Claim is per (site_id, provider_key) via `list_offline_conversion_groups` + `claim_offline_conversion_jobs_v2(site_id, provider_key, limit)`; ordering `next_retry_at ASC NULLS FIRST`, `created_at ASC`; OPEN groups are skipped, HALF_OPEN uses `probe_limit`, CLOSED uses fair share of request limit.
-- **Recovery:** `POST /api/cron/providers/recover-processing` (requeue stuck PROCESSING jobs). Vercel: every 30 min (`vercel.json`).
+- **Worker:** `POST /api/cron/process-offline-conversions` (claim → decrypt creds → upload → update status). Vercel: every 10 min (`vercel.json`). **PR6:** Claim is per (site_id, provider_key) via `list_offline_conversion_groups` + `claim_offline_conversion_jobs_v2(site_id, provider_key, limit)`; ordering `next_retry_at ASC NULLS FIRST`, `created_at ASC`. **PR7:** `list_offline_conversion_groups` returns `queued_count`, `min_next_retry_at`, `min_created_at`; CLOSED groups use **backlog-weighted fair share** (claim limit ∝ queued_count / totalQueued, min 1, cap sum ≤ limit, leftover round-robin); OPEN skipped, HALF_OPEN uses `probe_limit`.
+- **Recovery:** `POST /api/cron/providers/recover-processing` (requeue stuck PROCESSING jobs). Vercel: every 30 min (`vercel.json`). **PR7:** Recovery RPC uses `claimed_at < now() - interval` (fallback `updated_at` when `claimed_at` is null); moves to QUEUED; service_role only.
 - **Seed (staging only):** `POST /api/cron/providers/seed-credentials` — **hard-blocked in production** (`NODE_ENV === 'production'` returns 403). Use only in staging.
 
 ## Required env vars
@@ -53,11 +53,12 @@ curl.exe -X POST "$baseUrl/api/cron/providers/recover-processing?min_age_minutes
 - **Stuck PROCESSING:** Run recover-processing to move them back to QUEUED, or manually `UPDATE offline_conversion_queue SET status = 'QUEUED' WHERE status = 'PROCESSING'` (with caution).
 - **Bad credentials:** Fix or replace credentials for the site (re-seed or admin flow); failed rows stay FAILED until manually re-queued if desired.
 
-## Claim (PR6)
+## Claim (PR6 + PR7)
 
 - **Per-group claim:** Worker calls `list_offline_conversion_groups(p_limit_groups)` then for each group `claim_offline_conversion_jobs_v2(p_site_id, p_provider_key, p_limit)`. Only rows with `site_id` and `provider_key` matching the group are claimed; strict tenant isolation.
-- **Ordering:** Eligible rows (status IN QUEUED/RETRY, next_retry_at IS NULL OR next_retry_at <= now()) are selected with `ORDER BY next_retry_at ASC NULLS FIRST, created_at ASC` for deterministic, fair processing.
-- **Limit per group:** HALF_OPEN → claim up to `probe_limit` (from provider_health_state); CLOSED → fair share of the request `limit` (floor(remaining/remainingGroups), min 1 so no group starves others); OPEN → skip (no claim).
+- **PR7 list_offline_conversion_groups returns:** `site_id`, `provider_key`, `queued_count`, `min_next_retry_at`, `min_created_at`. `queued_count` = count of eligible rows (status IN QUEUED/RETRY, next_retry_at IS NULL OR next_retry_at <= now()). Ordering deterministic: `ORDER BY min_next_retry_at ASC NULLS FIRST, min_created_at ASC`.
+- **Limit per group (PR7 backlog-weighted):** OPEN → skip. HALF_OPEN → claim up to `probe_limit`. CLOSED → **backlog-weighted fair share:** `totalQueued = sum(queued_count)` of CLOSED groups; per group `claimLimit = max(1, floor(limit * (queued_count / totalQueued)))`; if sum > limit decrement from largest until sum ≤ limit (tie-break: min_next_retry_at ASC NULLS FIRST, min_created_at ASC for determinism); distribute leftover round-robin so total claimed ≤ limit; min 1 per group when remaining allows (no starvation).
+- **Ordering:** Eligible rows selected with `ORDER BY next_retry_at ASC NULLS FIRST, created_at ASC` for deterministic, fair processing.
 - **Status set:** QUEUED and RETRY are both first-class (G4 schema); eligible = status IN (QUEUED, RETRY) and (next_retry_at IS NULL OR next_retry_at <= now()).
 
 ## Circuit breaker (PR5)
@@ -75,7 +76,8 @@ curl.exe -X POST "$baseUrl/api/cron/providers/recover-processing?min_age_minutes
 - **Circuit state:** Table `provider_health_state` (site_id, provider_key, state, failure_count, next_probe_at, probe_limit). Use for debugging OPEN/HALF_OPEN.
 - Optional: Watchtower can include queue backlog (QUEUED+RETRY count) and failed last 1h (log only). See docs if implemented.
 
-## Backlog (PR7+)
+## PR7 (Performance + determinism)
 
-- **list_offline_conversion_groups:** Return `queued_count` per group so worker can weight fair-share by backlog size.
-- **Recovery RPC:** Use `claimed_at` (e.g. `claimed_at < now() - interval`) for stuck PROCESSING detection instead of or in addition to `updated_at`; more deterministic for requeue.
+- **list_offline_conversion_groups:** Returns `queued_count`, `min_next_retry_at`, `min_created_at` per group; worker uses backlog-weighted fair share (see Claim above).
+- **Recovery RPC:** `recover_stuck_offline_conversion_jobs(p_min_age_minutes)` selects PROCESSING rows where `claimed_at < now() - interval` (or `claimed_at IS NULL AND updated_at < now() - interval`); moves to **RETRY**, `next_retry_at = NULL` (state semantics: recovery = retry; eligible immediately). Auth: `auth.role() IS DISTINCT FROM 'service_role'` → deny (service_role only).
+- **Indexes:** `idx_offline_conversion_queue_eligible_scan` on (site_id, provider_key, status, next_retry_at) WHERE status IN ('QUEUED','RETRY'); `idx_offline_conversion_queue_processing_claimed_at` on (claimed_at) WHERE status = 'PROCESSING'.

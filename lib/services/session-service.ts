@@ -20,7 +20,12 @@ interface IncomingData {
     attributionSource: string;
     deviceType: string;
     fingerprint?: string | null;
-    utm?: { source?: string; medium?: string; campaign?: string; term?: string; content?: string; matchtype?: string; device?: string; network?: string; placement?: string } | null;
+    utm?: {
+        source?: string; medium?: string; campaign?: string; term?: string; content?: string;
+        adgroup?: string; matchtype?: string; device?: string; device_model?: string;
+        network?: string; placement?: string; adposition?: string;
+        target_id?: string; feed_item_id?: string; loc_interest_ms?: string; loc_physical_ms?: string;
+    } | null;
     referrer?: string | null;
 }
 
@@ -84,8 +89,9 @@ export class SessionService {
         const { geoInfo, deviceInfo } = context;
 
         const hasNewUTM = Boolean(
-            utm?.source || utm?.medium || utm?.campaign || utm?.term || utm?.content
-            || utm?.matchtype || utm?.device || utm?.network || utm?.placement
+            utm?.source || utm?.medium || utm?.campaign || utm?.term || utm?.content || utm?.adgroup
+            || utm?.matchtype || utm?.device || utm?.device_model || utm?.network || utm?.placement || utm?.adposition
+            || utm?.target_id || utm?.feed_item_id || utm?.loc_interest_ms || utm?.loc_physical_ms
         );
         const hasNewClickId = Boolean(currentGclid || params.get('wbraid') || params.get('gbraid') || meta?.wbraid || meta?.gbraid);
         const shouldUpdate = hasNewUTM || hasNewClickId || !session.attribution_source;
@@ -128,8 +134,15 @@ export class SessionService {
             updates.utm_medium = utm?.medium ?? null;
             updates.utm_campaign = utm?.campaign ?? null;
             updates.utm_content = utm?.content ?? null;
+            updates.utm_adgroup = utm?.adgroup ?? null;
             updates.ads_network = utm?.network ?? null;
             updates.ads_placement = utm?.placement ?? null;
+            updates.ads_adposition = utm?.adposition ?? null;
+            updates.device_model = utm?.device_model ?? null;
+            updates.ads_target_id = utm?.target_id ?? null;
+            updates.ads_feed_item_id = utm?.feed_item_id ?? null;
+            updates.loc_interest_ms = utm?.loc_interest_ms ?? null;
+            updates.loc_physical_ms = utm?.loc_physical_ms ?? null;
             updates.telco_carrier = geoInfo.telco_carrier ?? null;
             updates.browser = deviceInfo.browser || null;
             updates.isp_asn = geoInfo.isp_asn ?? null;
@@ -232,8 +245,15 @@ export class SessionService {
             utm_medium: utm?.medium || null,
             utm_campaign: utm?.campaign || null,
             utm_content: utm?.content || null,
+            utm_adgroup: utm?.adgroup || null,
             ads_network: utm?.network || null,
             ads_placement: utm?.placement || null,
+            ads_adposition: utm?.adposition || null,
+            device_model: utm?.device_model || null,
+            ads_target_id: utm?.target_id || null,
+            ads_feed_item_id: utm?.feed_item_id || null,
+            loc_interest_ms: utm?.loc_interest_ms || null,
+            loc_physical_ms: utm?.loc_physical_ms || null,
             telco_carrier: geoInfo.telco_carrier || null,
             browser: deviceInfo.browser || null,
             isp_asn: geoInfo.isp_asn ?? null,

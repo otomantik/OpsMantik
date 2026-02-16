@@ -98,5 +98,11 @@ test('PR6 worker: HALF_OPEN uses probe_limit for claim', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
   assert.ok(src.includes('state === \'HALF_OPEN\'') && src.includes('probeLimit'), 'HALF_OPEN branch');
-  assert.ok(src.includes('claimLimit') && (src.includes('probeLimit') || src.includes('fairShare')), 'claim limit from probe or fair share');
+  assert.ok(src.includes('claimLimit') && (src.includes('probeLimit') || src.includes('claimLimits')), 'claim limit from probe or fair share');
+});
+
+test('PR7 worker: no starvation — min 1 when remaining allows', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('Math.max(1,') && src.includes('totalQueued'), 'weighted share gives at least 1');
 });

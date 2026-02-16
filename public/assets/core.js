@@ -54,12 +54,14 @@
     apiSource = 'prod-default';
   }
 
-  // Configuration
+  // Configuration (neutral key names for ad-blocker avoidance)
   const CONFIG = {
     apiUrl: apiUrl,
     sessionKey: 'opmantik_session_sid',
     fingerprintKey: 'opmantik_session_fp',
     contextKey: 'opmantik_session_context',
+    contextWbraidKey: 'opmantik_session_wbraid',
+    contextGbraidKey: 'opmantik_session_gbraid',
     heartbeatInterval: 60000, // 60 seconds
     sessionTimeout: 1800000, // 30 minutes
   };
@@ -178,6 +180,32 @@
     return o;
   }
 
+  // Build URLSearchParams from search + hash (e.g. #?utm_term=x)
+  function getUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    if (window.location.hash) {
+      var raw = window.location.hash.replace(/^#\??/, '');
+      var afterQ = raw.indexOf('?') !== -1 ? raw.slice(raw.indexOf('?') + 1) : raw;
+      if (afterQ.indexOf('=') !== -1) {
+        try {
+          var hashParams = new URLSearchParams(afterQ);
+          hashParams.forEach(function (value, key) { params.set(key, value); });
+        } catch (_) {}
+      }
+    }
+    return params;
+  }
+  function getTemplateParams(params) {
+    var p = function (k) { return params.get(k) || undefined; };
+    return {
+      utm_source: p('utm_source'), utm_medium: p('utm_medium'), utm_campaign: p('utm_campaign'),
+      utm_adgroup: p('utm_adgroup'), utm_content: p('utm_content'), utm_term: p('utm_term'),
+      device: p('device'), devicemodel: p('devicemodel'), targetid: p('targetid'), network: p('network'),
+      adposition: p('adposition'), feeditemid: p('feeditemid'),
+      loc_interest_ms: p('loc_interest_ms'), loc_physical_ms: p('loc_physical_ms'), matchtype: p('matchtype'),
+    };
+  }
+
   // Session management
   function getOrCreateSession() {
     let sessionId = sessionStorage.getItem(CONFIG.sessionKey);
@@ -190,10 +218,8 @@
       console.log('[OPSMANTIK] Generated fingerprint:', fingerprint);
     }
 
-    // Validate existing sessionId is UUID format, regenerate if not
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (sessionId && !uuidRegex.test(sessionId)) {
-      // Old format detected, migrate to UUID
       console.log('[OPSMANTIK] Migrating session ID to UUID format');
       sessionId = null;
       sessionStorage.removeItem(CONFIG.sessionKey);
@@ -205,16 +231,19 @@
       console.log('[OPSMANTIK] Created new session:', sessionId);
     }
 
-    // Extract GCLID from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const gclid = urlParams.get('gclid') || context;
+    var urlParams = getUrlParams();
+    var gclid = urlParams.get('gclid') || context;
+    var wbraid = urlParams.get('wbraid') || sessionStorage.getItem(CONFIG.contextWbraidKey);
+    var gbraid = urlParams.get('gbraid') || sessionStorage.getItem(CONFIG.contextGbraidKey);
     if (gclid) {
       sessionStorage.setItem(CONFIG.contextKey, gclid);
       context = gclid;
-      console.log('[OPSMANTIK] GCLID detected:', gclid);
     }
+    if (wbraid) sessionStorage.setItem(CONFIG.contextWbraidKey, wbraid);
+    if (gbraid) sessionStorage.setItem(CONFIG.contextGbraidKey, gbraid);
 
-    return { sessionId, fingerprint, context };
+    var urlParamsObj = getTemplateParams(urlParams);
+    return { sessionId: sessionId, fingerprint: fingerprint, context: context, wbraid: wbraid || null, gbraid: gbraid || null, urlParams: urlParamsObj };
   }
 
   /* --- SECTOR BRAVO: STORE & FORWARD ENGINE (Tank Tracker) --- */
@@ -509,7 +538,18 @@
     const url = window.location.href;
     const referrer = document.referrer || '';
     const sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
-    const meta = { fp: fingerprint, gclid: context, ...getHardwareMeta() };
+    const meta = {
+      fp: fingerprint,
+      gclid: context,
+      wbraid: session.wbraid || undefined,
+      gbraid: session.gbraid || undefined
+    };
+    if (session.urlParams && typeof session.urlParams === 'object') {
+      Object.keys(session.urlParams).forEach(function (k) {
+        if (session.urlParams[k] != null) meta[k] = session.urlParams[k];
+      });
+    }
+    Object.assign(meta, getHardwareMeta());
     if (scriptTag) {
       var dc = scriptTag.getAttribute('data-geo-city');
       var dd = scriptTag.getAttribute('data-geo-district');

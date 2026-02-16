@@ -48,3 +48,35 @@ test('G4 migration: defines claim_offline_conversion_jobs_v2 and next_retry_at',
   assert.ok(src.includes('next_retry_at'), 'uses next_retry_at');
   assert.ok(src.includes('QUEUED') && src.includes('RETRY'), 'claims QUEUED and RETRY');
 });
+
+test('PR7 migration: list_offline_conversion_groups returns queued_count and min times', () => {
+  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260222100000_pr7_offline_conversion_perf.sql');
+  const src = readFileSync(migrationPath, 'utf8');
+  assert.ok(src.includes('queued_count'), 'returns queued_count');
+  assert.ok(src.includes('min_next_retry_at') && src.includes('min_created_at'), 'returns min times');
+  assert.ok(src.includes('count(*)::bigint'), 'queued_count is count of eligible rows');
+});
+
+test('PR7 migration: recover_stuck uses claimed_at with updated_at fallback', () => {
+  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260222100000_pr7_offline_conversion_perf.sql');
+  const src = readFileSync(migrationPath, 'utf8');
+  assert.ok(src.includes('claimed_at') && src.includes('v_cutoff'), 'recovery uses claimed_at');
+  assert.ok(src.includes('claimed_at IS NULL AND') && src.includes('updated_at'), 'fallback to updated_at when claimed_at null');
+  assert.ok(src.includes("auth.role() IS DISTINCT FROM 'service_role'"), 'service_role guard');
+});
+
+test('PR7 migration: indexes for eligible scan and processing claimed_at', () => {
+  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260222100000_pr7_offline_conversion_perf.sql');
+  const src = readFileSync(migrationPath, 'utf8');
+  assert.ok(src.includes('idx_offline_conversion_queue_eligible_scan'), 'eligible scan index');
+  assert.ok(src.includes('idx_offline_conversion_queue_processing_claimed_at'), 'stuck recovery index');
+  assert.ok(src.includes("WHERE status = 'PROCESSING'"), 'partial index on PROCESSING');
+});
+
+test('PR7 worker: consumes queued_count and backlog-weighted fair share', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('queued_count'), 'uses queued_count from groups');
+  assert.ok(src.includes('totalQueued') && src.includes('closedGroups'), 'backlog-weighted share');
+  assert.ok(src.includes('claimLimits') && src.includes('lim'), 'per-group claim limits');
+});

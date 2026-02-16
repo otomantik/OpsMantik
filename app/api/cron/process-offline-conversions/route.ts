@@ -55,10 +55,66 @@ export async function POST(req: NextRequest) {
         { status: 500, headers: getBuildInfoHeaders() }
       );
     }
-    const groupList = (groups ?? []) as { site_id: string; provider_key: string }[];
+    type GroupRow = { site_id: string; provider_key: string; queued_count: number; min_next_retry_at: string | null; min_created_at: string };
+    const groupList = (groups ?? []) as GroupRow[];
     const filteredGroups = providerKeyParam
       ? groupList.filter((g) => g.provider_key === providerKeyParam)
       : groupList;
+
+    type HealthRow = { state: string; next_probe_at: string | null; probe_limit: number };
+    const healthByKey = new Map<string, HealthRow | null>();
+    for (const g of filteredGroups) {
+      const key = `${g.site_id}:${g.provider_key}`;
+      const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
+        p_site_id: g.site_id,
+        p_provider_key: g.provider_key,
+      });
+      healthByKey.set(key, (healthRows as HealthRow[] | null)?.[0] ?? null);
+    }
+
+    // PR7: Backlog-weighted fair share for CLOSED; HALF_OPEN => probe_limit; OPEN => skip.
+    const closedGroups = filteredGroups.filter((g) => {
+      const h = healthByKey.get(`${g.site_id}:${g.provider_key}`);
+      return (h?.state ?? 'CLOSED') === 'CLOSED';
+    });
+    const totalQueued = closedGroups.reduce((s, g) => s + Number(g.queued_count ?? 0), 0);
+    const claimLimits = new Map<string, number>();
+    if (totalQueued > 0) {
+      let sum = 0;
+      const raw: { key: string; lim: number; qc: number; min_next_retry_at: string | null; min_created_at: string }[] = closedGroups.map((g) => {
+        const key = `${g.site_id}:${g.provider_key}`;
+        const qc = Number(g.queued_count ?? 0);
+        const lim = Math.max(1, Math.floor(limit * (qc / totalQueued)));
+        sum += lim;
+        return { key, lim, qc, min_next_retry_at: g.min_next_retry_at ?? null, min_created_at: g.min_created_at ?? '' };
+      });
+      // Deterministic tie-break when decrementing: same lim → order by min_next_retry_at ASC NULLS FIRST, min_created_at ASC.
+      while (sum > limit && raw.length > 0) {
+        raw.sort((a, b) => {
+          if (b.lim !== a.lim) return b.lim - a.lim;
+          const an = a.min_next_retry_at ?? '';
+          const bn = b.min_next_retry_at ?? '';
+          if (an !== bn) return an.localeCompare(bn);
+          return (a.min_created_at ?? '').localeCompare(b.min_created_at ?? '');
+        });
+        const r = raw[0];
+        if (r.lim <= 1) break;
+        r.lim--;
+        sum--;
+      }
+      let leftover = limit - sum;
+      let ri = 0;
+      while (leftover > 0 && raw.length > 0) {
+        const r = raw[ri % raw.length];
+        if (r.lim < r.qc) {
+          r.lim++;
+          leftover--;
+        }
+        ri++;
+        if (ri > raw.length * 2) break;
+      }
+      raw.forEach((r) => claimLimits.set(r.key, r.lim));
+    }
 
     let remainingJobs = limit;
     const maxGroups = Math.min(filteredGroups.length, 100);
@@ -66,22 +122,16 @@ export async function POST(req: NextRequest) {
       const g = filteredGroups[i];
       const siteId = g.site_id;
       const providerKey = g.provider_key;
-
-      type HealthRow = { state: string; next_probe_at: string | null; probe_limit: number };
-      const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
-        p_site_id: siteId,
-        p_provider_key: providerKey,
-      });
-      const health: HealthRow | null = (healthRows as HealthRow[] | null)?.[0] ?? null;
+      const key = `${siteId}:${providerKey}`;
+      const health = healthByKey.get(key) ?? null;
       const state = health?.state ?? 'CLOSED';
       if (state === 'OPEN') continue;
 
       const probeLimit = health?.probe_limit ?? 5;
-      const remainingGroups = maxGroups - i;
-      // Enterprise guard: floor so no group starves others; min 1 to make progress.
-      const fairShare = Math.max(1, Math.floor(remainingJobs / remainingGroups));
       const claimLimit =
-        state === 'HALF_OPEN' ? Math.min(probeLimit, remainingJobs) : Math.min(fairShare, remainingJobs);
+        state === 'HALF_OPEN'
+          ? Math.min(probeLimit, remainingJobs)
+          : Math.min(claimLimits.get(key) ?? Math.max(1, Math.floor(remainingJobs / (maxGroups - i))), remainingJobs);
 
       const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
         p_site_id: siteId,
@@ -93,7 +143,6 @@ export async function POST(req: NextRequest) {
       if (claimedRows.length === 0) continue;
 
       remainingJobs -= claimedRows.length;
-      const key = `${siteId}:${providerKey}`;
       bySiteAndProvider.set(key, claimedRows);
     }
 

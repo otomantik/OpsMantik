@@ -5,6 +5,7 @@
  * Priority order: S1 (GCLID) > S2 (UTM) > S3 (Ads Assisted) > S4 (Paid Social) > S5 (Organic)
  */
 
+/** Google Ads tracking template params: utm_*, device, devicemodel, targetid, network, adposition, feeditemid, loc_interest_ms, loc_physical_ms, matchtype */
 export interface AttributionInput {
   gclid?: string | null;
   utm?: {
@@ -13,10 +14,17 @@ export interface AttributionInput {
     campaign?: string;
     term?: string;
     content?: string;
-    matchtype?: string; // Google Ads: e=Exact, p=Phrase, b=Broad
-    device?: string;   // Google Ads {device}: mobile, desktop, tablet
-    network?: string;  // Google Ads {network}: Search, Display, YouTube, etc.
+    adgroup?: string;   // Google Ads {adgroupid} → utm_adgroup
+    matchtype?: string; // Google Ads {matchtype}: e=Exact, p=Phrase, b=Broad
+    device?: string;    // Google Ads {device}: mobile, desktop, tablet
+    device_model?: string; // Google Ads {devicemodel}
+    network?: string;   // Google Ads {network}: Search, Display, YouTube, etc.
     placement?: string; // Google Ads {placement}
+    adposition?: string;  // Google Ads {adposition}: ad position on page
+    target_id?: string;   // Google Ads {targetid}
+    feed_item_id?: string; // Google Ads {feeditemid}
+    loc_interest_ms?: string; // Google Ads {loc_interest_ms}
+    loc_physical_ms?: string; // Google Ads {loc_physical_ms}
   } | null;
   referrer?: string | null;
   fingerprint?: string | null;
@@ -114,10 +122,10 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
 
       // Find where known keys start (sometimes hash has a prefix like "4" or route tokens).
       const keyStart = (() => {
-        const re = /(?:^|[&#?])(utm_source|utm_medium|utm_campaign|utm_term|utm_content|matchtype|device|network|placement)=/i;
+        const re = /(?:^|[&#?])(utm_source|utm_medium|utm_campaign|utm_adgroup|utm_term|utm_content|matchtype|device|devicemodel|targetid|network|placement|adposition|feeditemid|loc_interest_ms|loc_physical_ms)=/i;
         const m1 = re.exec(afterQuestion);
         if (m1?.index != null) return m1.index;
-        const m2 = /(utm_source|utm_medium|utm_campaign|utm_term|utm_content|matchtype|device|network|placement)=/i.exec(afterQuestion);
+        const m2 = /(utm_source|utm_medium|utm_campaign|utm_adgroup|utm_term|utm_content|matchtype|device|devicemodel|targetid|network|placement|adposition|feeditemid|loc_interest_ms|loc_physical_ms)=/i.exec(afterQuestion);
         return m2?.index ?? -1;
       })();
 
@@ -138,14 +146,21 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
     const medium = params.get('utm_medium');
     const source = params.get('utm_source');
     const campaign = params.get('utm_campaign');
+    const adgroup = params.get('utm_adgroup');
     const term = params.get('utm_term');
     const content = params.get('utm_content');
     const matchtype = params.get('matchtype'); // e, p, b
     const device = params.get('device');   // Google Ads {device}
+    const devicemodel = params.get('devicemodel'); // Google Ads {devicemodel}
+    const targetid = params.get('targetid'); // Google Ads {targetid}
     const network = params.get('network'); // Google Ads {network}
     const placement = params.get('placement'); // Google Ads {placement}
+    const adposition = params.get('adposition'); // Google Ads {adposition}
+    const feeditemid = params.get('feeditemid'); // Google Ads {feeditemid}
+    const locInterestMs = params.get('loc_interest_ms');
+    const locPhysicalMs = params.get('loc_physical_ms');
 
-    if (!medium && !source && !campaign && !term && !content && !matchtype && !device && !network && !placement) {
+    if (!medium && !source && !campaign && !adgroup && !term && !content && !matchtype && !device && !devicemodel && !targetid && !network && !placement && !adposition && !feeditemid && !locInterestMs && !locPhysicalMs) {
       return null;
     }
 
@@ -153,12 +168,19 @@ export function extractUTM(url: string): AttributionInput['utm'] | null {
       medium: medium || undefined,
       source: source || undefined,
       campaign: campaign || undefined,
+      adgroup: adgroup || undefined,
       term: term || undefined,
       content: content || undefined,
       matchtype: matchtype || undefined,
       device: device || undefined,
+      device_model: devicemodel || undefined,
+      target_id: targetid || undefined,
       network: network || undefined,
       placement: placement || undefined,
+      adposition: adposition || undefined,
+      feed_item_id: feeditemid || undefined,
+      loc_interest_ms: locInterestMs || undefined,
+      loc_physical_ms: locPhysicalMs || undefined,
     };
   } catch {
     return null;

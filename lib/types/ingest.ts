@@ -17,6 +17,23 @@ export type IngestMeta = Record<string, unknown> & {
   ttclid?: string;
   msclkid?: string;
 
+  // Google Ads template params (optional; server also parses from URL)
+  utm_adgroup?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  utm_term?: string;
+  device?: string;
+  devicemodel?: string;
+  targetid?: string;
+  network?: string;
+  adposition?: string;
+  feeditemid?: string;
+  loc_interest_ms?: string;
+  loc_physical_ms?: string;
+  matchtype?: string;
+
   // Device DNA (compact tracker keys used in extractGeoInfo)
   lan?: string;
   mem?: string | number;
