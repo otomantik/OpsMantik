@@ -20,7 +20,7 @@ export class IntentService {
 
         // Goal: tel/wa clicks MUST create call intents regardless of acquisition/conversion rewrites.
         const PHONE_ACTIONS = new Set(['phone_call', 'phone_click', 'call_click', 'tel_click']);
-        const WHATSAPP_ACTIONS = new Set(['whatsapp', 'whatsapp_click', 'wa_click']);
+        const WHATSAPP_ACTIONS = new Set(['whatsapp', 'whatsapp_click', 'wa_click', 'joinchat']);
 
         const rawAction = (meta?.intent_action || event_action || '').toString().trim().toLowerCase();
         const action = rawAction;
@@ -35,7 +35,9 @@ export class IntentService {
         const legacyWaSignal =
             ((event_action || '').toString().toLowerCase() === 'whatsapp') ||
             labelLc.includes('wa.me') ||
-            labelLc.includes('whatsapp.com');
+            labelLc.includes('whatsapp.com') ||
+            labelLc.includes('chat.whatsapp.com') ||
+            labelLc.includes('joinchat');
 
         const shouldCreateIntent = !!session && (!!fingerprint || !!session.id) && (isPhone || isWa || legacyPhoneSignal || legacyWaSignal);
 
@@ -91,6 +93,10 @@ export class IntentService {
     private static normalizeWaTarget(v: string): string {
         const raw = (v || '').toString().trim();
         if (!raw) return 'wa:unknown';
+        if (raw.toLowerCase().startsWith('whatsapp://')) {
+            const rest = raw.slice(12).replace(/^\/+/, '') || 'unknown';
+            return `wa:${rest}`;
+        }
         const candidate = raw.replace(/^https?:\/\//i, '');
 
         let url: URL | null = null;
@@ -112,15 +118,26 @@ export class IntentService {
             if (phone) return `wa:${phone}`;
         }
 
+        const host = url?.hostname ? url.hostname.toLowerCase() : '';
+        const path = (url?.pathname || '').replace(/^\/+/, '') || '';
+        if (host === 'chat.whatsapp.com') {
+            const inviteCode = path.split('/')[0] || path || 'unknown';
+            return `wa:chat/${inviteCode}`;
+        }
+        if (host === 'api.whatsapp.com' && path.startsWith('joinchat/')) {
+            const code = path.replace(/^joinchat\/?/, '') || 'unknown';
+            return `wa:joinchat/${code}`;
+        }
+
         const pathDigits = (url?.pathname || '').replace(/[^\d]/g, '');
         if (pathDigits && pathDigits.length >= 10) {
             const phone = this.canonicalizePhoneDigits(pathDigits);
             if (phone) return `wa:${phone}`;
         }
 
-        const host = url?.hostname ? url.hostname.toLowerCase() : candidate.split('/')[0].toLowerCase();
-        const path = url?.pathname ? url.pathname : ('/' + candidate.split('/').slice(1).join('/'));
-        const safe = `${host}${path}`.replace(/\/+$/, '');
+        const hostFinal = url?.hostname ? url.hostname.toLowerCase() : candidate.split('/')[0].toLowerCase();
+        const pathFinal = url?.pathname ? url.pathname : ('/' + candidate.split('/').slice(1).join('/'));
+        const safe = `${hostFinal}${pathFinal}`.replace(/\/+$/, '');
         return `wa:${safe || 'unknown'}`;
     }
 

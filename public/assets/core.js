@@ -684,16 +684,23 @@
       }
     });
 
-    // WhatsApp links
+    // WhatsApp links: wa.me, whatsapp.com, chat.whatsapp.com (groups), joinchat, whatsapp://, and data-om-whatsapp
     document.addEventListener('click', (e) => {
-      const target = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"]');
+      const dataWa = e.target.closest && e.target.closest('[data-om-whatsapp]');
+      if (dataWa && dataWa.getAttribute('data-om-whatsapp')) {
+        const href = dataWa.getAttribute('data-om-whatsapp');
+        const intent_stamp = makeIntentStamp('wa', href);
+        sendEvent('conversion', 'whatsapp', href, null, { intent_stamp, intent_action: 'whatsapp' });
+        sendCallEvent(href);
+        return;
+      }
+      const target = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"]');
       if (target) {
         const intent_stamp = makeIntentStamp('wa', target.href);
         sendEvent('conversion', 'whatsapp', target.href, null, {
           intent_stamp,
           intent_action: 'whatsapp',
         });
-        // Also record to calls table via /api/call-event
         sendCallEvent(target.href);
       }
     });
@@ -726,7 +733,7 @@
 
     // CTA hover count (Intent Pulse)
     document.addEventListener('mouseenter', (e) => {
-      const t = e.target.closest && e.target.closest('a[href^="tel:"], a[href*="wa.me"], a[href*="whatsapp.com"], [data-om-cta="true"]');
+      const t = e.target.closest && e.target.closest('a[href^="tel:"], a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], [data-om-whatsapp], [data-om-cta="true"]');
       if (t) pulse.ctaHovers += 1;
     }, true);
 

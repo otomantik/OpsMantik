@@ -72,3 +72,51 @@
 - Shared constants in `lib/oci/constants.ts` (MAX_RETRY_ATTEMPTS, batch/limit caps).
 - Unit tests updated to assert runner (and constants) for behavior; routes for auth and runner usage.
 - Enables PR11/PR12 to be applied in one place (runner) without duplicating logic.
+
+---
+
+## PR-C4 Prod Proof Checklist
+
+### 1) Endpoint smoke (prod)
+
+**A) Worker**  
+`POST /api/workers/google-ads-oci`  
+- Beklenen: 200, JSON `ok: true`, log’da `run_complete mode=worker ...`
+
+**B) Cron**  
+`POST /api/cron/process-offline-conversions?limit=10` + `Authorization: Bearer $CRON_SECRET`  
+- Beklenen: 200, log’da `run_complete mode=cron ...`
+
+### 2) Log kanıtı
+
+Prod log’larda görülecek satırlar:
+
+- `[google-ads-oci] run_complete mode=worker processed=X completed=Y failed=Z retry=R`
+- `[process-offline-conversions] run_complete mode=cron processed=X completed=Y failed=Z retry=R`
+
+(X=0 queue boşsa da runner’ın çalıştığını kanıtlar.)
+
+### 3) Processed > 0 kanıtı (opsiyonel)
+
+Normal akıştan 1 offline conversion job oluştur → worker tetikle → `processed >= 1`, ledger/metrics ve `uploaded_at` veya error alanları dolu.
+
+### Anormallik taraması
+
+- 200 ama log yok → logPrefix/wiring
+- Cron 401/403 → CRON_SECRET / auth
+- Worker "providerKey required" → route options
+- processed>0 ama completed/failed tutarsız → sayım mantığı
+
+---
+
+## Prod deploy & smoke (doldurulacak)
+
+| Öğe | Durum |
+|-----|--------|
+| Prod deploy | _(tarih/saat)_ |
+| Prod smoke worker | ☐ |
+| Prod smoke cron | ☐ |
+| Prod logs run_complete | ☐ |
+| Result | No behavior change confirmed in production ☐ |
+
+Prod smoke yapıldıktan sonra yukarıdaki satırları ✅ ile doldurup bu raporu mühürleyin.

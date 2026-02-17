@@ -46,9 +46,8 @@ export function normalizePhoneTarget(raw: string): string {
 
 export function inferIntentAction(phoneOrHref: string): 'phone' | 'whatsapp' {
   const v = phoneOrHref.toLowerCase();
-  if (v.includes('wa.me') || v.includes('whatsapp.com')) return 'whatsapp';
+  if (v.includes('wa.me') || v.includes('whatsapp.com') || v.includes('chat.whatsapp.com') || v.includes('joinchat') || v.startsWith('whatsapp://')) return 'whatsapp';
   if (v.startsWith('tel:')) return 'phone';
-  // Fallback: treat numeric-ish as phone
   return 'phone';
 }
 
