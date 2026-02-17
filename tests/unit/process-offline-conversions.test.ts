@@ -36,9 +36,12 @@ test('process-offline-conversions route: uses requireCronAuth', () => {
 test('process-offline-conversions route: PR6 per-group claim via list_offline_conversion_groups and claim_offline_conversion_jobs_v2', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('claim_offline_conversion_jobs_v2'), 'route calls v2 RPC');
-  assert.ok(src.includes('list_offline_conversion_groups'), 'lists groups');
-  assert.ok(src.includes('p_site_id') && src.includes('p_provider_key') && src.includes('p_limit'), 'per-group claim params');
+  assert.ok(src.includes('runOfflineConversionRunner'), 'route uses OCI runner (PR-C4)');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerSrc = readFileSync(runnerPath, 'utf8');
+  assert.ok(runnerSrc.includes('claim_offline_conversion_jobs_v2'), 'runner calls v2 RPC');
+  assert.ok(runnerSrc.includes('list_offline_conversion_groups'), 'runner lists groups');
+  assert.ok(runnerSrc.includes('p_site_id') && runnerSrc.includes('p_provider_key') && runnerSrc.includes('p_limit'), 'per-group claim params');
 });
 
 test('G4 migration: defines claim_offline_conversion_jobs_v2 and next_retry_at', () => {
@@ -74,8 +77,8 @@ test('PR7 migration: indexes for eligible scan and processing claimed_at', () =>
 });
 
 test('PR7 worker: consumes queued_count and backlog-weighted fair share', () => {
-  const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('queued_count'), 'uses queued_count from groups');
   assert.ok(src.includes('totalQueued') && src.includes('closedGroups'), 'backlog-weighted share');
   assert.ok(src.includes('claimLimits') && src.includes('lim'), 'per-group claim limits');
