@@ -27,12 +27,19 @@ export interface ConversionJob {
 /** Result for one job after upload attempt. */
 export type UploadJobStatus = 'COMPLETED' | 'FAILED' | 'RETRY';
 
+/** PR9: Error category for upload proof (provider_error_category). */
+export type ProviderErrorCategory = 'VALIDATION' | 'AUTH' | 'TRANSIENT' | 'RATE_LIMIT';
+
 export interface UploadResult {
   job_id: string;
   status: UploadJobStatus;
   provider_ref?: string | null;
+  /** PR9: Provider request/correlation id if available (e.g. from response headers). */
+  provider_request_id?: string | null;
   error_code?: string | null;
   error_message?: string | null;
+  /** PR9: Standardized category for FAILED/RETRY (VALIDATION, AUTH, TRANSIENT, RATE_LIMIT). */
+  provider_error_category?: ProviderErrorCategory | null;
 }
 
 export interface UploadConversionsArgs {
