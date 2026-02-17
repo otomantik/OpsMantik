@@ -76,6 +76,53 @@ curl.exe -X POST "$baseUrl/api/cron/providers/recover-processing?min_age_minutes
 - **Circuit state:** Table `provider_health_state` (site_id, provider_key, state, failure_count, next_probe_at, probe_limit). Use for debugging OPEN/HALF_OPEN.
 - Optional: Watchtower can include queue backlog (QUEUED+RETRY count) and failed last 1h (log only). See docs if implemented.
 
+## Error classification (PR8A)
+
+- **Strict classification:** The Google Ads adapter classifies API responses so that validation errors do not trigger retries; only transient/rate-limit do.
+- **400 (validation):** Treated as **FAILED** (no retry). The adapter returns `UploadResult[]` with `status: 'FAILED'` and provider error details (e.g. `INVALID_ARGUMENT`, message). Worker updates queue rows to `FAILED` and does not increment retry.
+- **401 / 403 (auth):** Treated as **FAILED** (no retry). Adapter returns batch failure with `status: 'FAILED'`; worker sets rows to `FAILED`.
+- **429 (rate limit):** Adapter throws `ProviderRateLimitError` → worker sets rows to **RETRY** (with `next_retry_at`). After max retries, worker sets **FAILED**.
+- **500–599 (server error):** Adapter throws `ProviderTransientError` → worker sets **RETRY**. After max retries, worker sets **FAILED**.
+- **Timeout / network:** Adapter throws `ProviderTransientError` → **RETRY**.
+- **Partial failure (200 + partial_failure_error):** Per-item errors are classified in the adapter:
+  - **FAILED:** e.g. `INVALID_ARGUMENT`, `INVALID_GCLID`, `UNPARSEABLE_GCLID`, `RESOURCE_NOT_FOUND` (conversion action).
+  - **RETRY:** e.g. `RESOURCE_EXHAUSTED`, `UNAVAILABLE`, `DEADLINE_EXCEEDED`, `RATE_LIMIT`, `BACKEND_ERROR`.
+- **Source of truth:** Postgres queue; no silent success. Worker only interprets `UploadResult.status`; classification is done in the adapter (`classifyGoogleAdsError` and per-item partial-failure rules).
+
+## Upload proof fields (PR9)
+
+- **Columns on `offline_conversion_queue`:** `uploaded_at` (timestamptz), `provider_request_id` (text), `provider_error_code` (text), `provider_error_category` (text). All nullable.
+- **COMPLETED:** Worker sets `uploaded_at = now()`, `provider_request_id` from adapter result (e.g. from API response header `x-goog-request-id`), and clears `provider_error_code` and `provider_error_category`.
+- **FAILED / RETRY:** Worker sets `provider_error_code` and `provider_error_category` from adapter result; `uploaded_at` remains null. Categories: `VALIDATION`, `AUTH`, `TRANSIENT`, `RATE_LIMIT`.
+- **Adapter throw (system error):** Worker sets `provider_error_category = 'TRANSIENT'`, `provider_error_code = null`.
+- **How to query:**  
+  - Rows successfully sent: `WHERE uploaded_at IS NOT NULL` (and `status = 'COMPLETED'`).  
+  - By error category: `WHERE provider_error_category = 'VALIDATION'` or `'TRANSIENT'`, etc.  
+  - By site and upload time: `WHERE site_id = $1 AND uploaded_at >= $2` (index `idx_offline_conversion_queue_uploaded_at` on `(site_id, provider_key, uploaded_at)` WHERE `uploaded_at IS NOT NULL`).
+
+## Attempt ledger (PR10)
+
+- **Table:** `public.provider_upload_attempts` (append-only). **Access:** service_role only (RLS enabled, no policies). No secrets stored; multi-tenant by `site_id`.
+- **Shape:** Each logical attempt = one **STARTED** row + one **FINISHED** row with the same `batch_id`. STARTED: `claimed_count`. FINISHED: `completed_count`, `failed_count`, `retry_count`, `duration_ms`, `provider_request_id`, `error_code`, `error_category`.
+- **When:** Worker writes STARTED before calling `provider.uploadConversions`, then FINISHED after the call returns or throws (so every STARTED has a matching FINISHED, including on transient failure).
+- **How to query (service_role / backend only):**
+  - By site: `SELECT * FROM provider_upload_attempts WHERE site_id = $1 ORDER BY created_at DESC LIMIT 100;`
+  - By batch: `SELECT * FROM provider_upload_attempts WHERE batch_id = $1 ORDER BY phase;` (STARTED then FINISHED).
+  - Recent attempts with outcome: `SELECT * FROM provider_upload_attempts WHERE phase = 'FINISHED' AND site_id = $1 ORDER BY created_at DESC;`
+  - Indexes: `(site_id, provider_key, created_at DESC)`, `(batch_id)`.
+
+## Concurrency limits (PR11)
+
+- **Redis semaphore** limits concurrent provider uploads per (site_id, provider_key) and optionally globally per provider. Prevents 429/5xx storms when many workers or crons run at once.
+- **Keys:** `conc:{siteId}:{providerKey}` (per site+provider), `conc:global:{providerKey}` (optional global).
+- **Env (defaults):**
+  - `CONCURRENCY_PER_SITE_PROVIDER` = 2
+  - `CONCURRENCY_GLOBAL_PER_PROVIDER` = 10 (set to 0 to disable global cap)
+  - `SEMAPHORE_TTL_MS` = 120000 (2 min; expired tokens purged on acquire, crash-safe)
+- **Flow:** Worker acquires site key, then global key (if enabled). If either fails → do **not** call provider; mark group **RETRY** with `next_retry_at = now + 30s + jitter(0..10s)`, `last_error = 'CONCURRENCY_LIMIT: Semaphore full'`, `provider_error_code = 'CONCURRENCY_LIMIT'`, `provider_error_category = 'TRANSIENT'`; write ledger STARTED+FINISHED; `record_provider_outcome(transient=true)`; then continue. On success, after upload (and in all cases) **finally** release both tokens.
+- **Fail-open:** If Redis is unavailable, `acquireSemaphore` returns null → same CONCURRENCY_LIMIT path (no upload).
+- **Smoke:** Set `CONCURRENCY_PER_SITE_PROVIDER=1`, trigger worker twice in parallel; second run should get RETRY with CONCURRENCY_LIMIT and no provider call.
+
 ## PR7 (Performance + determinism)
 
 - **list_offline_conversion_groups:** Returns `queued_count`, `min_next_retry_at`, `min_created_at` per group; worker uses backlog-weighted fair share (see Claim above).

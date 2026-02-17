@@ -6,16 +6,16 @@
 import type { ConversionJob } from '../types';
 import type { GoogleAdsCredentials, ClickConversionRequest } from './types';
 
-/** conversion_date_time format: "yyyy-mm-dd hh:mm:ss+|-hh:mm" (e.g. "2024-01-15 12:30:00+00:00"). */
+/** conversion_date_time format: "yyyy-mm-dd hh:mm:ss+|-hh:mm" (no milliseconds; e.g. "2024-01-15 12:30:00+00:00"). */
 function toConversionDateTime(isoOrUnknown: unknown): string {
-  if (typeof isoOrUnknown !== 'string') {
-    return new Date().toISOString().replace('T', ' ').replace('Z', '+00:00').slice(0, 22);
-  }
-  const d = new Date(isoOrUnknown);
+  const d =
+    typeof isoOrUnknown === 'string'
+      ? new Date(isoOrUnknown)
+      : new Date();
   if (Number.isNaN(d.getTime())) {
-    return new Date().toISOString().replace('T', ' ').replace('Z', '+00:00').slice(0, 22);
+    return new Date().toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
   }
-  return d.toISOString().replace('T', ' ').replace('Z', '+00:00').slice(0, 22);
+  return d.toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
 }
 
 /**

@@ -8,11 +8,17 @@ import { GOOGLE_ADS } from './types';
 import { ProviderAuthError } from '../errors';
 
 export async function getAccessToken(creds: GoogleAdsCredentials): Promise<string> {
+  const clientId = creds.client_id?.trim() ?? '';
+  const clientSecret = creds.client_secret?.trim() ?? '';
+  const refreshToken = creds.refresh_token?.trim() ?? '';
+  if (!refreshToken) {
+    throw new ProviderAuthError('Google Ads: refresh_token is empty', 'google_ads');
+  }
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
-    client_id: creds.client_id,
-    client_secret: creds.client_secret,
-    refresh_token: creds.refresh_token,
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
   });
 
   const res = await fetch(GOOGLE_ADS.OAUTH_TOKEN_URL, {
@@ -23,8 +29,12 @@ export async function getAccessToken(creds: GoogleAdsCredentials): Promise<strin
 
   if (!res.ok) {
     const text = await res.text();
+    const hint =
+      res.status === 400 && text.includes('invalid_grant')
+        ? ' (Refresh token expired/revoked or wrong Client ID/Secret — regenerate with node get-refresh-token.js using the same OAuth client)'
+        : '';
     throw new ProviderAuthError(
-      `Google OAuth token refresh failed: ${res.status} ${text}`,
+      `Google OAuth token refresh failed: ${res.status} ${text}${hint}`,
       'google_ads'
     );
   }

@@ -1,10 +1,11 @@
 /**
  * Google Ads provider adapter. PR-G3: real upload via REST uploadClickConversions.
+ * PR8A: Strict error classification — 400/validation => FAILED (no retry); 429/5xx/timeout => RETRY.
  * Batching: max 200 conversions per request (Google allows up to 2000; 200 keeps partial_failure
  * chunks small and avoids timeouts. Retries are controlled by the queue, not this layer.)
  */
 
-import type { IAdsProvider, UploadConversionsArgs, UploadResult } from '../types';
+import type { IAdsProvider, UploadConversionsArgs, UploadResult, ProviderErrorCategory } from '../types';
 import {
   ProviderAuthError,
   ProviderRateLimitError,
@@ -23,6 +24,98 @@ const BATCH_SIZE = 200;
 
 /** Request timeout (ms). We control retries via queue; no internal retry here. */
 const REQUEST_TIMEOUT_MS = 30_000;
+
+/** PR8A: Classification result for Google Ads API errors. */
+export interface GoogleAdsErrorClassification {
+  errorClass: 'ProviderAuthError' | 'ProviderRateLimitError' | 'ProviderValidationError' | 'ProviderTransientError';
+  retryable: boolean;
+  errorCode?: string;
+  message: string;
+}
+
+/**
+ * PR8A: Central error classification for Google Ads API responses.
+ * - 429 => ProviderRateLimitError => RETRY
+ * - 500-599 => ProviderTransientError => RETRY
+ * - 400 => ProviderValidationError => FAILED (include provider error details)
+ * - 401/403 => ProviderAuthError => FAILED (no retry)
+ * - other 4xx => ProviderValidationError => FAILED unless explicitly retryable
+ */
+export function classifyGoogleAdsError(
+  httpStatus: number,
+  body: string,
+  headers?: Headers
+): GoogleAdsErrorClassification {
+  const truncatedBody = body.slice(0, 500);
+  let errorCode: string | undefined;
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: number; message?: string; status?: string }; message?: string };
+    const msg = parsed?.error?.message ?? parsed?.message ?? truncatedBody;
+    if (parsed?.error?.status) errorCode = parsed.error.status;
+    if (msg && msg !== truncatedBody) {
+      const detail = typeof msg === 'string' ? msg : truncatedBody;
+      return classifyByStatus(httpStatus, detail, errorCode, headers);
+    }
+  } catch {
+    // non-JSON body
+  }
+  return classifyByStatus(httpStatus, truncatedBody || `HTTP ${httpStatus}`, errorCode, headers);
+}
+
+function classifyByStatus(
+  httpStatus: number,
+  message: string,
+  errorCode?: string,
+  headers?: Headers
+): GoogleAdsErrorClassification {
+  if (httpStatus === 429) {
+    const retryAfter = headers?.get('retry-after');
+    return {
+      errorClass: 'ProviderRateLimitError',
+      retryable: true,
+      errorCode: errorCode ?? 'RATE_LIMIT',
+      message: `Google Ads API rate limit: ${message}`,
+    };
+  }
+  if (httpStatus >= 500 && httpStatus <= 599) {
+    return {
+      errorClass: 'ProviderTransientError',
+      retryable: true,
+      errorCode: errorCode ?? 'SERVER_ERROR',
+      message: `Google Ads API server error ${httpStatus}: ${message}`,
+    };
+  }
+  if (httpStatus === 401 || httpStatus === 403) {
+    return {
+      errorClass: 'ProviderAuthError',
+      retryable: false,
+      errorCode: errorCode ?? 'AUTH_ERROR',
+      message: `Google Ads API auth failed: ${httpStatus} ${message}`,
+    };
+  }
+  if (httpStatus === 400) {
+    return {
+      errorClass: 'ProviderValidationError',
+      retryable: false,
+      errorCode: errorCode ?? 'INVALID_ARGUMENT',
+      message: `Google Ads API validation error: ${message}`,
+    };
+  }
+  if (httpStatus >= 400 && httpStatus < 500) {
+    return {
+      errorClass: 'ProviderValidationError',
+      retryable: false,
+      errorCode: errorCode ?? `HTTP_${httpStatus}`,
+      message: `Google Ads API client error ${httpStatus}: ${message}`,
+    };
+  }
+  return {
+    errorClass: 'ProviderTransientError',
+    retryable: true,
+    errorCode: errorCode ?? 'UNKNOWN',
+    message: message || `HTTP ${httpStatus}`,
+  };
+}
 
 function isGoogleAdsCredentials(c: unknown): c is GoogleAdsCredentials {
   const o = c as Record<string, unknown>;
@@ -52,8 +145,11 @@ function assertCredentials(creds: unknown): asserts creds is GoogleAdsCredential
   }
 }
 
-/** Returns true if partial_failure error message indicates transient (RETRY), else permanent (FAILED). */
-function isTransientPartialError(message: string): boolean {
+/**
+ * PR8A: Classify per-item partial_failure error. RETRY only for transient/rate-limit;
+ * INVALID_ARGUMENT, INVALID_GCLID, UNPARSEABLE_GCLID, RESOURCE_NOT_FOUND => FAILED.
+ */
+function isRetryablePartialError(message: string): boolean {
   const m = message.toUpperCase();
   return (
     m.includes('RESOURCE_EXHAUSTED') ||
@@ -66,13 +162,38 @@ function isTransientPartialError(message: string): boolean {
   );
 }
 
+/** Result of a single batch upload: success with payload, or PR8A batch failure (400/401/403/4xx => FAILED). PR9: request_id from response headers when success. */
+type BatchUploadResult =
+  | { success: true; results?: unknown[]; partial_failure_error?: unknown; request_id?: string | null }
+  | { success: false; classification: GoogleAdsErrorClassification };
+
+/** PR9: Map classifier errorClass to provider_error_category. */
+function errorClassToCategory(errorClass: string): ProviderErrorCategory {
+  switch (errorClass) {
+    case 'ProviderAuthError':
+      return 'AUTH';
+    case 'ProviderRateLimitError':
+      return 'RATE_LIMIT';
+    case 'ProviderValidationError':
+      return 'VALIDATION';
+    default:
+      return 'TRANSIENT';
+  }
+}
+
+/**
+ * Upload click conversions to Google Ads REST API.
+ * PR8A: Non-retryable (400, 401, 403, 4xx) return batch failure; retryable (429, 5xx) throw. Timeout/network throw ProviderTransientError.
+ * Auth: callers must obtain access_token via refresh_token at https://oauth2.googleapis.com/token.
+ * Headers: Authorization (Bearer), developer-token, login-customer-id (critical for MCC).
+ */
 async function uploadClickConversions(
   accessToken: string,
   customerId: string,
   developerToken: string,
   loginCustomerId: string | undefined,
   body: { conversions: unknown[]; partial_failure?: boolean }
-): Promise<{ results?: unknown[]; partial_failure_error?: unknown }> {
+): Promise<BatchUploadResult> {
   const customerIdNoHyphens = customerId.replace(/-/g, '');
   const url = `${GOOGLE_ADS.GOOGLE_ADS_API_BASE}/${GOOGLE_ADS.API_VERSION}/customers/${customerIdNoHyphens}:uploadClickConversions`;
 
@@ -88,45 +209,56 @@ async function uploadClickConversions(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const msg = err instanceof Error ? err.message : String(err);
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    const isNetwork = /fetch|network|ECONNREFUSED|ETIMEDOUT/i.test(msg);
+    if (isAbort || isNetwork) {
+      throw new ProviderTransientError(
+        `Google Ads API request failed (timeout/network): ${msg}`,
+        PROVIDER_KEY
+      );
+    }
+    throw new ProviderTransientError(
+      err instanceof Error ? err.message : 'Google Ads API request failed',
+      PROVIDER_KEY
+    );
+  }
   clearTimeout(timeoutId);
 
-  if (res.status === 401 || res.status === 403) {
-    const text = await res.text();
-    throw new ProviderAuthError(
-      `Google Ads API auth failed: ${res.status} ${text}`,
-      PROVIDER_KEY
-    );
-  }
-  if (res.status === 429) {
-    const retryAfter = res.headers.get('retry-after');
-    throw new ProviderRateLimitError(
-      'Google Ads API rate limit',
-      PROVIDER_KEY,
-      retryAfter ? parseInt(retryAfter, 10) : undefined
-    );
-  }
-  if (res.status >= 400 && res.status < 500) {
-    const text = await res.text();
-    throw new ProviderValidationError(
-      `Google Ads API client error: ${res.status} ${text}`,
-      PROVIDER_KEY
-    );
-  }
-  if (res.status >= 500) {
-    const text = await res.text();
-    throw new ProviderTransientError(
-      `Google Ads API server error: ${res.status} ${text}`,
-      PROVIDER_KEY
-    );
+  const text = await res.text();
+  if (!res.ok) {
+    const classification = classifyGoogleAdsError(res.status, text, res.headers);
+    if (classification.retryable) {
+      if (classification.errorClass === 'ProviderRateLimitError') {
+        const retryAfter = res.headers.get('retry-after');
+        throw new ProviderRateLimitError(
+          classification.message,
+          PROVIDER_KEY,
+          retryAfter ? parseInt(retryAfter, 10) : undefined
+        );
+      }
+      throw new ProviderTransientError(classification.message, PROVIDER_KEY);
+    }
+    return { success: false, classification };
   }
 
-  return (await res.json()) as { results?: unknown[]; partial_failure_error?: unknown };
+  const data = JSON.parse(text || '{}') as { results?: unknown[]; partial_failure_error?: unknown };
+  const requestId =
+    res.headers.get('x-request-id') ||
+    res.headers.get('x-goog-request-id') ||
+    res.headers.get('request-id') ||
+    null;
+  return { success: true, results: data.results, partial_failure_error: data.partial_failure_error, request_id: requestId };
 }
 
 export class GoogleAdsAdapter implements IAdsProvider {
@@ -167,12 +299,20 @@ export class GoogleAdsAdapter implements IAdsProvider {
           status: 'FAILED',
           error_code: 'MISSING_CLICK_ID',
           error_message: 'No gclid, wbraid, or gbraid for this job',
+          provider_error_category: 'VALIDATION',
         });
       }
     }
 
     if (conversions.length === 0) {
-      return jobs.map((j) => resultsByJobId.get(j.id) ?? { job_id: j.id, status: 'FAILED' as const, error_message: 'No conversions to upload' });
+      return jobs.map((j) =>
+        resultsByJobId.get(j.id) ?? {
+          job_id: j.id,
+          status: 'FAILED' as const,
+          error_message: 'No conversions to upload',
+          provider_error_category: 'VALIDATION',
+        }
+      );
     }
 
     let accessToken: string;
@@ -201,6 +341,22 @@ export class GoogleAdsAdapter implements IAdsProvider {
         { conversions: batch, partial_failure: true }
       );
 
+      if (!apiResponse.success) {
+        const category = errorClassToCategory(apiResponse.classification.errorClass);
+        for (const jobId of batchJobIds) {
+          resultsByJobId.set(jobId, {
+            job_id: jobId,
+            status: 'FAILED',
+            error_code: apiResponse.classification.errorCode ?? 'BATCH_ERROR',
+            error_message: apiResponse.classification.message,
+            provider_error_category: category,
+          });
+        }
+        break;
+      }
+
+      const batchRequestId = 'request_id' in apiResponse ? apiResponse.request_id ?? null : null;
+
       const responseResults = (apiResponse.results ?? []) as Array<{ order_id?: string | null }>;
       const partialFailure = apiResponse.partial_failure_error as {
         details?: Array<{
@@ -213,6 +369,7 @@ export class GoogleAdsAdapter implements IAdsProvider {
 
       const failedIndices = new Set<number>();
       const failureMessages: Record<number, string> = {};
+      const loggedCodes = new Set<string>();
       if (partialFailure?.details) {
         for (const detail of partialFailure.details) {
           for (const err of detail.errors ?? []) {
@@ -220,6 +377,15 @@ export class GoogleAdsAdapter implements IAdsProvider {
             if (typeof index === 'number' && index >= 0 && index < batchJobIds.length) {
               failedIndices.add(index);
               if (err.message) failureMessages[index] = err.message;
+              const msg = (err.message ?? '').toUpperCase();
+              if (msg.includes('INVALID_GCLID') && !loggedCodes.has('INVALID_GCLID')) {
+                console.warn('[google_ads] INVALID_GCLID:', err.message);
+                loggedCodes.add('INVALID_GCLID');
+              }
+              if (msg.includes('RESOURCE_NOT_FOUND') && !loggedCodes.has('RESOURCE_NOT_FOUND')) {
+                console.warn('[google_ads] RESOURCE_NOT_FOUND:', err.message);
+                loggedCodes.add('RESOURCE_NOT_FOUND');
+              }
             }
           }
         }
@@ -229,18 +395,21 @@ export class GoogleAdsAdapter implements IAdsProvider {
         const jobId = batchJobIds[i];
         if (failedIndices.has(i)) {
           const msg = failureMessages[i] ?? partialFailure?.details?.[0]?.errors?.[0]?.message ?? 'Upload failed';
-          const status = isTransientPartialError(msg) ? 'RETRY' : 'FAILED';
+          const status = isRetryablePartialError(msg) ? 'RETRY' : 'FAILED';
+          const category: ProviderErrorCategory = status === 'RETRY' ? 'TRANSIENT' : 'VALIDATION';
           resultsByJobId.set(jobId, {
             job_id: jobId,
             status,
             error_code: 'PARTIAL_FAILURE',
             error_message: msg,
+            provider_error_category: category,
           });
         } else {
           resultsByJobId.set(jobId, {
             job_id: jobId,
             status: 'COMPLETED',
             provider_ref: responseResults[i]?.order_id ?? null,
+            provider_request_id: batchRequestId,
           });
         }
       }

@@ -3,14 +3,29 @@
  * PR-G3: Real upload via REST (uploadClickConversions).
  */
 
-/** Credentials stored in vault; used by auth + adapter. */
+/**
+ * Credentials for Google Ads API (vault or env). Used by auth + adapter.
+ *
+ * **MCC (Manager) structure:**
+ * - `login_customer_id`: The MCC (Manager) account ID — required when managing a client account.
+ *   Sent as the `login-customer-id` header. Example: `854-075-5158`.
+ * - `customer_id`: The target client account ID where conversions are uploaded.
+ *   Example: `525-429-9323`.
+ */
 export interface GoogleAdsCredentials {
+  /** Target Google Ads customer ID (client account; e.g. 525-429-9323). */
   customer_id: string;
+  /** Google Ads API developer token (Test or Basic access). */
   developer_token: string;
+  /** OAuth2 client ID (Google Cloud Console). */
   client_id: string;
+  /** OAuth2 client secret. */
   client_secret: string;
+  /** OAuth2 refresh token (from one-time OAuth flow; used to obtain access tokens). */
   refresh_token: string;
+  /** MCC account ID (e.g. 854-075-5158). Sent as `login-customer-id` header; critical for MCC. */
   login_customer_id?: string | null;
+  /** Resource name for the conversion action (e.g. customers/5254299323/conversionActions/123456789). */
   conversion_action_resource_name?: string | null;
 }
 
