@@ -230,13 +230,13 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         const events = (json as Record<string, unknown>).events as unknown[];
         if (events.length === 0) {
             return NextResponse.json(
-                { ok: false, error: 'invalid_payload' },
+                { ok: false, error: 'invalid_payload', code: 'events_empty' },
                 { status: 400, headers: baseHeaders }
             );
         }
         if (events.length > 1) {
             return NextResponse.json(
-                { ok: false, error: 'batch_not_supported' },
+                { ok: false, error: 'batch_not_supported', code: 'batch_not_supported' },
                 { status: 400, headers: baseHeaders }
             );
         }
@@ -262,9 +262,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     // --- 3. Request Validation ---
     const parsed = parseValidIngestPayload(json);
     if (parsed.kind === 'invalid') {
-        // IMPORTANT: Always include CORS headers, otherwise browsers surface this as a CORS error.
+        // IMPORTANT: Always include CORS headers. Return code so client can see reason in Network tab.
         return NextResponse.json(
-            { ok: false, error: 'invalid_payload' },
+            { ok: false, error: 'invalid_payload', code: parsed.error },
             { status: 400, headers: baseHeaders }
         );
     }
@@ -274,7 +274,10 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const validateSiteFn = deps?.validateSite ?? SiteService.validateSite;
     const { valid: siteValid, site } = await validateSiteFn(body.s);
     if (!siteValid || !site) {
-        return NextResponse.json(createSyncResponse(false, null, { error: 'Site not found or invalid' }), { status: 400, headers: baseHeaders });
+        return NextResponse.json(
+            createSyncResponse(false, null, { error: 'Site not found or invalid', code: 'site_not_found' }),
+            { status: 400, headers: baseHeaders }
+        );
     }
     const siteIdUuid = site.id;
 

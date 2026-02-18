@@ -447,6 +447,14 @@
       }
       var status = response.status;
       var first = batch[0];
+      if (status === 400) {
+        try {
+          var errBody = await response.clone().json();
+          if (errBody && (errBody.code || errBody.error)) {
+            console.warn('[OPSMANTIK] sync 400:', errBody.code || errBody.error, errBody.error || '');
+          }
+        } catch (_) { /* ignore */ }
+      }
       // Quota exceeded (not rate limit): pause until Retry-After.
       if (status === 429) {
         try {
@@ -535,7 +543,8 @@
     const sessionId = session.sessionId;
     const fingerprint = session.fingerprint;
     const context = session.context;
-    const url = window.location.href;
+    var url = (window.location && window.location.href) || (typeof document !== 'undefined' && document.URL) || '';
+    if (!url || typeof url !== 'string') url = 'unknown';
     const referrer = document.referrer || '';
     const sessionMonth = new Date().toISOString().slice(0, 7) + '-01';
     const meta = {
