@@ -7,7 +7,7 @@ import { useVisitorHistory } from '@/lib/hooks/use-visitor-history';
 import { debugLog } from '@/lib/utils'; // Assuming formatTimestamp is used via props or updated import
 import { logger } from '@/lib/logging/logger';
 import { SessionCardHeader } from './session-group/session-card-header';
-import { SessionCardExpanded } from './session-group/session-card-expanded';
+import { SessionCardExpanded, type CompressedEvent, type EnrichedEvent } from './session-group/session-card-expanded';
 import { VisitorHistoryDrawer } from './session-group/visitor-history-drawer';
 
 interface Event {
@@ -147,8 +147,10 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
       return { ...event, timeDiff };
     });
 
-    const result: any[] = [];
+    const result: CompressedEvent[] = [];
     if (eventsWithTimeDiff.length === 0) return result;
+
+    const getPrevTime = (last: CompressedEvent): string => last.lastTime ?? (last.type === 'single' && last.event ? last.event.created_at : '');
 
     let i = 0;
     while (i < eventsWithTimeDiff.length) {
@@ -184,15 +186,14 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
         result.push({
           type: 'group' as const,
           id: groupKey,
-          events: group,
+          events: group as EnrichedEvent[],
           count: group.length,
           firstTime: group[0].created_at,
           lastTime: group[group.length - 1].created_at,
           timeDiff:
             result.length > 0
               ? Math.round(
-                (new Date(group[0].created_at).getTime() -
-                  new Date(result[result.length - 1].lastTime || (result[result.length - 1] as any).event!.created_at).getTime()) /
+                (new Date(group[0].created_at).getTime() - new Date(getPrevTime(result[result.length - 1])).getTime()) /
                 1000
               )
               : 0,
@@ -201,14 +202,13 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
         result.push({
           type: 'single' as const,
           id: currentEvent.id,
-          event: currentEvent,
+          event: currentEvent as EnrichedEvent,
           firstTime: currentEvent.created_at,
           lastTime: currentEvent.created_at,
           timeDiff:
             result.length > 0
               ? Math.round(
-                (new Date(currentEvent.created_at).getTime() -
-                  new Date(result[result.length - 1].lastTime || (result[result.length - 1] as any).event!.created_at).getTime()) /
+                (new Date(currentEvent.created_at).getTime() - new Date(getPrevTime(result[result.length - 1])).getTime()) /
                 1000
               )
               : 0,

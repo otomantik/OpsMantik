@@ -46,7 +46,10 @@ function normStr(v: unknown): string | null {
   return t.length ? t : null;
 }
 
-function getParamFromObj(params: any, key: string): string | null {
+/** UTM / click-id params (URL query or meta object). */
+type ParamsObject = Record<string, unknown> | null | undefined;
+
+function getParamFromObj(params: ParamsObject, key: string): string | null {
   if (!params || typeof params !== 'object') return null;
   // common casing variations
   const direct = normStr(params[key]);
@@ -59,13 +62,13 @@ function getParamFromObj(params: any, key: string): string | null {
   return normStr(params[camel]);
 }
 
-function getParam(url: URL | null, params: any, key: string): string | null {
+function getParam(url: URL | null, params: ParamsObject, key: string): string | null {
   const fromUrl = url?.searchParams?.get?.(key);
   if (fromUrl && fromUrl.trim()) return fromUrl.trim();
   return getParamFromObj(params, key);
 }
 
-function hasAny(url: URL | null, params: any, keys: string[]): boolean {
+function hasAny(url: URL | null, params: ParamsObject, keys: string[]): boolean {
   return keys.some((k) => Boolean(getParam(url, params, k)));
 }
 
@@ -116,7 +119,7 @@ function isSocialRef(host: string): { platform: string } | null {
  * @param referrer - document.referrer (can be empty)
  * @param params - additional params/metadata (utm_*, click ids, etc). Optional.
  */
-export function determineTrafficSource(url: string, referrer: string, params: any): TrafficClassification {
+export function determineTrafficSource(url: string, referrer: string, params: ParamsObject): TrafficClassification {
   const pageUrl = safeUrl(url);
   const pageHost = pageUrl?.hostname?.toLowerCase?.() || null;
 

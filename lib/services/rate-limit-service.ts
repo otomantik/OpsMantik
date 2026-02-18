@@ -12,7 +12,7 @@ export class RateLimitService {
         incr: (k: string) => Promise<number>;
         pexpire: (k: string, ms: number) => Promise<boolean | number | unknown>;
         pttl: (k: string) => Promise<number>
-    } | null = redis as any;
+    } | null = redis;
 
     static _setRedisForTests(r: {
         incr: (k: string) => Promise<number>;

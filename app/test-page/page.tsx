@@ -6,11 +6,12 @@ import { debugLog } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import type { IngestMeta } from '@/lib/types/ingest';
 
 declare global {
   interface Window {
     opmantik?: {
-      send: (category: string, action: string, label?: string, value?: number, metadata?: any) => void;
+      send: (category: string, action: string, label?: string, value?: number, metadata?: IngestMeta) => void;
       session: () => { sessionId: string; fingerprint: string; context: string };
     };
   }
@@ -136,7 +137,7 @@ export default function TestPage() {
     window.location.reload();
   };
 
-  const sendEvent = (category: string, action: string, label?: string, value?: number, metadata?: any) => {
+  const sendEvent = (category: string, action: string, label?: string, value?: number, metadata?: IngestMeta) => {
     if (!window.opmantik) {
       console.error('[TEST_PAGE] ❌ Tracker not loaded');
       alert('Tracker yüklenmedi! Console\'u kontrol edin.');

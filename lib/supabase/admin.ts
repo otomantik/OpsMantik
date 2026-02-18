@@ -31,7 +31,7 @@ function getAdminClient(): SupabaseClient {
 export const adminClient = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getAdminClient();
-    const value = (client as any)[prop];
-    return typeof value === 'function' ? value.bind(client) : value;
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value;
   },
 }) as SupabaseClient;

@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
-import { BillingReconciliationService } from '@/lib/services/billing-reconciliation';
+import { BillingReconciliationService, type EnqueueResult, type ProcessResult } from '@/lib/services/billing-reconciliation';
 import { logError } from '@/lib/logging/logger';
 
 export const runtime = 'nodejs';
+
+/** Response shape for GET /api/cron/reconcile-usage */
+interface ReconcileCronResponse {
+    ok: boolean;
+    request_id?: string;
+    enqueue?: EnqueueResult;
+    run?: ProcessResult;
+}
 
 /**
  * GET /api/cron/reconcile-usage
@@ -21,7 +29,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '50', 10);
     const requestId = req.headers.get('x-request-id') ?? undefined;
 
-    const result: any = { ok: true, request_id: requestId };
+    const result: ReconcileCronResponse = { ok: true, request_id: requestId };
 
     try {
         // 1. Enqueue

@@ -77,8 +77,8 @@ export async function POST(req: NextRequest) {
             sites_count: targetSiteIds.length
         }, { headers: getBuildInfoHeaders() });
 
-    } catch (err: any) {
-        const msg = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err));
         return NextResponse.json(
             { ok: false, error: msg },
             { status: 500, headers: getBuildInfoHeaders() }

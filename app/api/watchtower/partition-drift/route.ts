@@ -32,8 +32,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Failed to run check' }, { status: 500 });
     }
 
-    const payload = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch { return { ok: false }; } })() : data;
-    const ok = Boolean((payload as any)?.ok);
+    type PartitionDriftPayload = { ok?: boolean; [key: string]: unknown };
+    const payload: PartitionDriftPayload = typeof data === 'string' ? (() => { try { return JSON.parse(data) as PartitionDriftPayload; } catch { return { ok: false }; } })() : (data as PartitionDriftPayload);
+    const ok = Boolean(payload?.ok);
     if (!ok) {
       logWarn('watchtower partition drift check failed', { request_id: requestId, route: ROUTE, details: payload });
       Sentry.captureMessage('watchtower_partition_drift_failed', { level: 'warning', tags: { route: ROUTE, request_id: requestId } });

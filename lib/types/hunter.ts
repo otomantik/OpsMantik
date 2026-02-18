@@ -25,6 +25,9 @@ export interface HunterIntentLite {
   phone_clicks?: number | null;
   whatsapp_clicks?: number | null;
   intent_events?: number | null;
+  /** Traffic source/medium (from sessions join in RPC). */
+  traffic_source?: string | null;
+  traffic_medium?: string | null;
 }
 
 /** Unified Hunter Intent (v3) - Single source of truth */
@@ -113,6 +116,9 @@ export interface HunterIntent {
   gclid?: string | null;
   wbraid?: string | null;
   gbraid?: string | null;
+  /** Traffic source/medium (from sessions join in RPC). */
+  traffic_source?: string | null;
+  traffic_medium?: string | null;
 }
 
 export interface HunterCardV3Props {

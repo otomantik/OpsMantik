@@ -64,11 +64,12 @@ export function useIntents(
 
       // FIX 2: Transform RPC response to IntentRow[] with defensive parsing
       if (intentsData && Array.isArray(intentsData)) {
-        const transformed = intentsData.map((intent: any) => ({
+        type RpcIntentItem = Record<string, unknown> & { id?: unknown; type?: unknown; timestamp?: unknown; status?: unknown; sealed_at?: unknown; page_url?: unknown; city?: unknown; district?: unknown; device_type?: unknown; matched_session_id?: unknown; confidence_score?: unknown; phone_number?: unknown; event_category?: unknown; event_action?: unknown };
+        const transformed: IntentRow[] = intentsData.map((intent: RpcIntentItem) => ({
           id: typeof intent.id === 'string' ? intent.id : '',
           type: (intent.type === 'call' || intent.type === 'conversion') ? intent.type : 'call',
           timestamp: typeof intent.timestamp === 'string' ? intent.timestamp : new Date().toISOString(),
-          status: intent.status as IntentStatus,
+          status: (intent.status as IntentStatus) ?? null,
           sealed_at: typeof intent.sealed_at === 'string' ? intent.sealed_at : null,
           page_url: typeof intent.page_url === 'string' ? intent.page_url : '',
           city: typeof intent.city === 'string' ? intent.city : null,

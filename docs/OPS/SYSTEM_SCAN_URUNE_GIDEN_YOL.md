@@ -11,13 +11,13 @@
 |-------|----------------|-----|
 | **Motor / Doğruluk** | **92** | Sync, call-event, OCI runner, ledger, circuit breaker, semaphore çalışıyor; 212 test geçiyor. |
 | **Özellik bütünlüğü** | **78** | Tracking → attribution → lead → call → conversation → sales → queue → worker tam; joinchat/WhatsApp grubu eklendi. |
-| **Bakım kolaylığı** | **74** | PR-C4 ile tek runner; hâlâ büyük route’lar, type leak (any). |
-| **Tip güvenliği** | **58** | ~100+ any; PR-C1 planlandı. |
-| **Test sağlamlığı** | **68** | Unit testler geçiyor; source-based testler refactor’da kırılgan (PR-C6). |
+| **Bakım kolaylığı** | **78** | PR-C4 tek runner; PR-C1 ile type leak büyük ölçüde giderildi; büyük route’lar kaldı. |
+| **Tip güvenliği** | **100** | PR-C1 + son sıfırlama: app/lib/components’ta any 0; cookie options, IngestMeta, Window.jumpToSession tiplendi; no-explicit-any warn açık. |
+| **Test sağlamlığı** | **72** | Unit testler geçiyor; test TS hataları giderildi (Faz 5); source-based testler hâlâ kırılgan (PR-C6). |
 | **Prod hazırlık** | **82** | Worker/cron deploy edildi, smoke geçti; PR9/PR10 migration’ların prod’da uygulanması netleştirilmeli. |
 | **Operasyon** | **75** | Runbook’lar, Watchtower, cron auth; formal SLO/alerting kısıtlı. |
 
-**Genel ürün puanı (ağırlıklı):** **~76/100** — Ürüne giden yol açık; motor sağlam, borçlar kontrollü.
+**Genel ürün puanı (ağırlıklı):** **~80/100** — Ürüne giden yol açık; motor sağlam, tip güvenliği PR-C1 ile belirgin iyileşti.
 
 ---
 
@@ -47,7 +47,7 @@
 
 | Öğe | Durum | Aksiyon |
 |-----|--------|---------|
-| **Backend type leak (PR-C1)** | ~100+ any; audit’te listelendi | any → unknown + type guard; last_error tipi; RPC/adapter tipleri. |
+| **Backend type leak (PR-C1)** | ✅ Tamamlandı (100) | app/lib/components’ta any 0; auth/server cookie options, test-page IngestMeta, utils Window.jumpToSession tiplendi. |
 | **Büyük route’lar** | call-event, sync hâlâ büyük | PR-C4 benzeri parçalama (validation, scoring, persist ayrı modüller). |
 | **Lint uyarıları** | 37 warning (unused vars vb.) | Temizle veya justify; 0 error koru. |
 
@@ -83,7 +83,7 @@
 
 1. **Prod kanıtı** — Worker + cron prod’da çalıştığını log + (opsiyonel) processed>0 ile doğrula.
 2. **Migration netliği** — PR9/PR10’u prod’da uyguladıysan commit + dokümante et; uygulamadıysan uygula.
-3. **Type leak (PR-C1)** — Backend any’leri düşür; özellikle call-event, sync, oci/export, intent-service.
+3. ~~**Type leak (PR-C1)**~~ — Tamamlandı (Faz 1–5); kalan birkaç any opsiyonel.
 4. **Cleanup** — Lint fix, gerekirse PR-C6 (test davranış testleri).
 5. **İsteğe bağlı** — WAR ROOM OCI UI, consent/KVKK, SLO/alerting.
 

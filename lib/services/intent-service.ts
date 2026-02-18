@@ -9,7 +9,7 @@ export class IntentService {
             fingerprint: string | null,
             event_action: string,
             event_label: string,
-            meta: any,
+            meta: Record<string, unknown>,
             url: string,
             currentGclid: string | null,
             params: URLSearchParams,
@@ -45,15 +45,18 @@ export class IntentService {
 
         // 1. Normalize Action & Target
         const canonicalAction: 'phone' | 'whatsapp' = (isPhone || legacyPhoneSignal) ? 'phone' : 'whatsapp';
+        const phoneFromMeta = typeof meta?.phone_number === 'string' ? meta.phone_number : '';
         const canonicalTarget = canonicalAction === 'phone'
-            ? this.normalizeTelTarget(event_label || meta?.phone_number || '')
+            ? this.normalizeTelTarget(event_label || phoneFromMeta || '')
             : this.normalizeWaTarget(event_label || '');
 
         // 2. Prepare Intent Data
         const intentPageUrl = (typeof url === 'string' && url.length > 0) ? url.slice(0, 2048) : null;
+        const wbraid = typeof meta?.wbraid === 'string' ? meta.wbraid : null;
+        const gbraid = typeof meta?.gbraid === 'string' ? meta.gbraid : null;
         const clickId = currentGclid
-            || params.get('wbraid') || meta?.wbraid
-            || params.get('gbraid') || meta?.gbraid
+            || params.get('wbraid') || wbraid
+            || params.get('gbraid') || gbraid
             || null;
 
         // Server fallback stamp

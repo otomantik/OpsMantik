@@ -86,9 +86,10 @@ export function ActivityLogShell({
       }
 
       const data = res.data;
-      const arr = Array.isArray(data) ? (data as any[]) : typeof data === 'string' ? (JSON.parse(data) as any[]) : [];
+      type ActivityLogRpcRow = Record<string, unknown> & { id?: unknown; call_id?: unknown; created_at?: unknown; action_type?: unknown; actor_type?: unknown; actor_id?: unknown; previous_status?: unknown; new_status?: unknown; intent_action?: unknown; intent_target?: unknown; lead_score?: unknown; sale_amount?: unknown; currency?: unknown; reason?: unknown; is_latest_for_call?: unknown };
+      const arr: ActivityLogRpcRow[] = Array.isArray(data) ? (data as ActivityLogRpcRow[]) : typeof data === 'string' ? (JSON.parse(data) as ActivityLogRpcRow[]) : [];
       const parsed: ActivityRow[] = (arr || [])
-        .map((r: any) => ({
+        .map((r: ActivityLogRpcRow) => ({
           id: String(r.id ?? ''),
           call_id: String(r.call_id ?? ''),
           created_at: String(r.created_at ?? ''),
@@ -186,7 +187,7 @@ export function ActivityLogShell({
                 <select
                   className="h-7 text-xs font-bold bg-transparent outline-none"
                   value={actionType}
-                  onChange={(e) => setActionType(e.target.value as any)}
+                  onChange={(e) => setActionType(e.target.value as 'all' | 'seal' | 'junk' | 'cancel' | 'restore' | 'undo')}
                 >
                   <option value="all">ALL</option>
                   <option value="seal">SEAL</option>

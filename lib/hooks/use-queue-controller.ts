@@ -112,7 +112,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         });
         if (rpcError) return null;
         // get_intent_details_v1 returns a single jsonb object
-        const rows = parseHunterIntentsFull(data ? [data as any] : []);
+        const rows = parseHunterIntentsFull(data ? [data] : []);
         const full = rows[0] || null;
         if (!full) return null;
         setDetailsById((prev) => ({ ...prev, [callId]: full }));
@@ -147,9 +147,10 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
             logger.warn('fetchKillFeed legacy RPC error', { error: legacy.error });
             return;
           }
-          const legacyRows = Array.isArray(legacy.data) ? (legacy.data as any[]) : [];
+          type LegacyKillRow = Record<string, unknown> & { id?: unknown; action_at?: unknown; created_at?: unknown; status?: unknown; intent_action?: unknown; intent_target?: unknown; sale_amount?: unknown; currency?: unknown };
+          const legacyRows: LegacyKillRow[] = Array.isArray(legacy.data) ? (legacy.data as LegacyKillRow[]) : [];
           const feed = legacyRows
-            .map((r: any) => ({
+            .map((r: LegacyKillRow) => ({
               id: String(r.id ?? '') + '-legacy',
               call_id: String(r.id ?? ''),
               at: String(r.action_at || r.created_at || ''),
@@ -168,7 +169,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
               currency: (r.currency ?? null) as string | null,
               is_latest_for_call: true,
             }))
-            .filter((x: any) => x.id && x.call_id && x.at);
+            .filter((x) => Boolean(x.id && x.call_id && x.at)) as ActivityRow[];
           setHistory(feed);
           return;
         }
@@ -178,20 +179,20 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       }
       if (!data) return;
 
-      // Parse jsonb array
-      let rows: any[] = [];
-      if (Array.isArray(data)) rows = data as any[];
+      type ActivityFeedRpcRow = Record<string, unknown> & { id?: unknown; call_id?: unknown; created_at?: unknown; action_at?: unknown; action_type?: unknown; actor_type?: unknown; previous_status?: unknown; new_status?: unknown; intent_action?: unknown; intent_target?: unknown; sale_amount?: unknown; currency?: unknown; is_latest_for_call?: unknown };
+      let rows: ActivityFeedRpcRow[] = [];
+      if (Array.isArray(data)) rows = data as ActivityFeedRpcRow[];
       else if (typeof data === 'string') {
         try {
           const parsed = JSON.parse(data) as unknown;
-          rows = Array.isArray(parsed) ? (parsed as any[]) : [];
+          rows = Array.isArray(parsed) ? (parsed as ActivityFeedRpcRow[]) : [];
         } catch {
           rows = [];
         }
       }
 
       const feed = rows
-        .map((r: any) => {
+        .map((r: ActivityFeedRpcRow) => {
           const saleAmount =
             typeof r.sale_amount === 'number'
               ? r.sale_amount
@@ -208,12 +209,12 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
             new_status: (r.new_status ?? null) as string | null,
             intent_action: (r.intent_action ?? null) as string | null,
             identity: (r.intent_target ?? null) as string | null,
-            sale_amount: Number.isFinite(saleAmount as any) ? (saleAmount as number) : null,
+            sale_amount: typeof saleAmount === 'number' && Number.isFinite(saleAmount) ? saleAmount : null,
             currency: (r.currency ?? null) as string | null,
             is_latest_for_call: Boolean(r.is_latest_for_call),
           } satisfies ActivityRow;
         })
-        .filter((x: any) => x.id && x.call_id && x.at);
+        .filter((x) => Boolean(x.id && x.call_id && x.at)) as ActivityRow[];
       setHistory(feed);
     } catch (err) {
       logger.warn('fetchKillFeed error', { error: String((err as Error)?.message ?? err) });

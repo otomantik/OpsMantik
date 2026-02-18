@@ -100,7 +100,7 @@ export function SealModal({
       try {
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
           // light haptic
-          (navigator as any).vibrate?.(50);
+          (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(50);
         }
       } catch {
         // ignore

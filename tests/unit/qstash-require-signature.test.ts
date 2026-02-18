@@ -27,7 +27,7 @@ test('requireQstashSignature: prod + missing keys => 503', async () => {
   const envKeys = ['NODE_ENV', 'VERCEL_ENV', 'QSTASH_CURRENT_SIGNING_KEY', 'QSTASH_NEXT_SIGNING_KEY', 'ALLOW_INSECURE_DEV_WORKER'];
   const saved = stashEnv(envKeys);
   try {
-    process.env.NODE_ENV = 'production';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     delete process.env.QSTASH_CURRENT_SIGNING_KEY;
     delete process.env.QSTASH_NEXT_SIGNING_KEY;
@@ -50,7 +50,7 @@ test('requireQstashSignature: prod + missing signature header => 403 (code missi
   const envKeys = ['NODE_ENV', 'VERCEL_ENV', 'QSTASH_CURRENT_SIGNING_KEY', 'QSTASH_NEXT_SIGNING_KEY', 'ALLOW_INSECURE_DEV_WORKER'];
   const saved = stashEnv(envKeys);
   try {
-    process.env.NODE_ENV = 'production';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     process.env.QSTASH_CURRENT_SIGNING_KEY = FAKE_KEY;
     process.env.QSTASH_NEXT_SIGNING_KEY = FAKE_KEY;
@@ -78,7 +78,7 @@ test('requireQstashSignature: prod + invalid signature header "fake" => 403 (cod
   const envKeys = ['NODE_ENV', 'VERCEL_ENV', 'QSTASH_CURRENT_SIGNING_KEY', 'QSTASH_NEXT_SIGNING_KEY', 'ALLOW_INSECURE_DEV_WORKER'];
   const saved = stashEnv(envKeys);
   try {
-    process.env.NODE_ENV = 'production';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     process.env.QSTASH_CURRENT_SIGNING_KEY = FAKE_KEY;
     process.env.QSTASH_NEXT_SIGNING_KEY = FAKE_KEY;
@@ -107,7 +107,7 @@ test('requireQstashSignature: dev + ALLOW_INSECURE_DEV_WORKER=true => handler ru
   const envKeys = ['NODE_ENV', 'VERCEL_ENV', 'QSTASH_CURRENT_SIGNING_KEY', 'ALLOW_INSECURE_DEV_WORKER'];
   const saved = stashEnv(envKeys);
   try {
-    process.env.NODE_ENV = 'development';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'development';
     delete process.env.VERCEL_ENV;
     delete process.env.QSTASH_CURRENT_SIGNING_KEY;
     process.env.ALLOW_INSECURE_DEV_WORKER = 'true';
@@ -130,7 +130,7 @@ test('requireQstashSignature: dev without allow flag + missing keys => 503', asy
   const envKeys = ['NODE_ENV', 'VERCEL_ENV', 'QSTASH_CURRENT_SIGNING_KEY', 'ALLOW_INSECURE_DEV_WORKER'];
   const saved = stashEnv(envKeys);
   try {
-    process.env.NODE_ENV = 'development';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'development';
     delete process.env.VERCEL_ENV;
     delete process.env.QSTASH_CURRENT_SIGNING_KEY;
     delete process.env.ALLOW_INSECURE_DEV_WORKER;

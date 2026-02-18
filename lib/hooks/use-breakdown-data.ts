@@ -47,7 +47,8 @@ export function useBreakdownData(
 
       // FIX 2: Transform RPC response with defensive parsing
       if (breakdownData && Array.isArray(breakdownData)) {
-        const transformed = breakdownData.map((item: any) => ({
+        type RpcBreakdownItem = Record<string, unknown> & { dimension_value?: unknown; count?: unknown; percentage?: unknown };
+        const transformed = breakdownData.map((item: RpcBreakdownItem) => ({
           dimension_value: typeof item.dimension_value === 'string' ? item.dimension_value : 'Unknown',
           count: typeof item.count === 'number' ? item.count : 0,
           percentage: typeof item.percentage === 'number' ? item.percentage : 0,

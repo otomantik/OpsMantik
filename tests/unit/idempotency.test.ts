@@ -21,7 +21,7 @@ import type { ValidIngestPayload } from '@/lib/types/ingest';
 const SITE_UUID = 'a0000000-0000-0000-0000-000000000001';
 
 function payload(overrides: Partial<ValidIngestPayload> = {}): ValidIngestPayload {
-  return {
+  const base = {
     s: 'test_site',
     url: 'https://example.com/page',
     ec: 'cat',
@@ -31,6 +31,7 @@ function payload(overrides: Partial<ValidIngestPayload> = {}): ValidIngestPayloa
     meta: { fp: 'fingerprint-1' },
     ...overrides,
   };
+  return base as ValidIngestPayload;
 }
 
 test('computeIdempotencyKey: same payload + site => same key (deterministic)', async () => {

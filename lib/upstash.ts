@@ -12,18 +12,28 @@ function missingCredsError(): Error {
   return new Error('upstash_missing_credentials');
 }
 
-function makeFailingPipeline() {
-  // Minimal chainable pipeline stub to satisfy typing in build-time checks.
-  const self: any = {};
-  const chain = () => self;
-  self.hincrby = chain;
-  self.hincrbyfloat = chain;
-  self.hset = chain;
-  self.expire = chain;
-  self.pexpire = chain;
-  self.incr = chain;
-  self.exec = async () => {
-    throw missingCredsError();
+type FailingPipeline = {
+  hincrby: () => FailingPipeline;
+  hincrbyfloat: () => FailingPipeline;
+  hset: () => FailingPipeline;
+  expire: () => FailingPipeline;
+  pexpire: () => FailingPipeline;
+  incr: () => FailingPipeline;
+  exec: () => Promise<never>;
+};
+
+function makeFailingPipeline(): FailingPipeline {
+  const chain = (): FailingPipeline => self;
+  const self: FailingPipeline = {
+    hincrby: chain,
+    hincrbyfloat: chain,
+    hset: chain,
+    expire: chain,
+    pexpire: chain,
+    incr: chain,
+    exec: async () => {
+      throw missingCredsError();
+    },
   };
   return self;
 }

@@ -55,7 +55,8 @@ export function useTimelineData(
 
       // FIX 2: Transform RPC response to TimelinePoint[] with defensive parsing
       if (timelineData && Array.isArray(timelineData)) {
-        const transformed = timelineData.map((point: any) => ({
+        type RpcTimelinePoint = Record<string, unknown> & { date?: unknown; label?: unknown; visitors?: unknown; events?: unknown; calls?: unknown; intents?: unknown; conversions?: unknown };
+        const transformed = timelineData.map((point: RpcTimelinePoint) => ({
           date: typeof point.date === 'string' ? point.date : new Date().toISOString(),
           label: typeof point.label === 'string' ? point.label : '',
           visitors: typeof point.visitors === 'number' ? point.visitors : 0,

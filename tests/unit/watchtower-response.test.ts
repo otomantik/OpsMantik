@@ -13,6 +13,7 @@ test('WatchtowerHealth.checks always includes ingestPublishFailuresLast15m', () 
       sessionsLastHour: { status: 'ok', count: 1 },
       gclidLast3Hours: { status: 'ok', count: 0 },
       ingestPublishFailuresLast15m: { status: 'ok', count: 0 },
+      billingReconciliationDriftLast1h: { status: 'ok', count: 0 },
     },
     details: { timestamp: new Date().toISOString(), environment: 'test' },
   };
@@ -35,6 +36,7 @@ test('Watchtower JSON response shape includes failure_count and checks.ingestPub
       sessionsLastHour: { status: 'ok', count: 10 },
       gclidLast3Hours: { status: 'ok', count: 2 },
       ingestPublishFailuresLast15m: { status: 'degraded', count: 3 },
+      billingReconciliationDriftLast1h: { status: 'ok', count: 0 },
     },
     details: { timestamp: new Date().toISOString(), environment: 'test' },
   };

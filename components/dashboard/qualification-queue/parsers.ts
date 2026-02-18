@@ -1,6 +1,64 @@
 import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 
-type RpcIntentRow = Record<string, unknown>;
+/** Raw row shape from RPC (get_recent_intents_v2, etc.). All fields optional. */
+interface RpcIntentRow {
+  id?: unknown;
+  created_at?: unknown;
+  intent_action?: unknown;
+  intent_target?: unknown;
+  summary?: unknown;
+  intent_page_url?: unknown;
+  page_url?: unknown;
+  matched_session_id?: unknown;
+  lead_score?: unknown;
+  status?: unknown;
+  click_id?: unknown;
+  intent_stamp?: unknown;
+  utm_term?: unknown;
+  utm_campaign?: unknown;
+  utm_source?: unknown;
+  matchtype?: unknown;
+  city?: unknown;
+  district?: unknown;
+  device_type?: unknown;
+  device_os?: unknown;
+  ads_network?: unknown;
+  ads_placement?: unknown;
+  risk_level?: unknown;
+  risk_reasons?: unknown;
+  ai_score?: unknown;
+  ai_summary?: unknown;
+  ai_tags?: unknown;
+  total_duration_sec?: unknown;
+  estimated_value?: unknown;
+  currency?: unknown;
+  oci_stage?: unknown;
+  oci_status?: unknown;
+  attribution_source?: unknown;
+  gclid?: unknown;
+  wbraid?: unknown;
+  gbraid?: unknown;
+  event_count?: unknown;
+  phone_clicks?: unknown;
+  whatsapp_clicks?: unknown;
+  traffic_source?: unknown;
+  traffic_medium?: unknown;
+  intent_events?: unknown;
+}
+
+function rowStr(r: RpcIntentRow, key: keyof RpcIntentRow): string | null {
+  const v = r[key];
+  if (v == null) return null;
+  return String(v);
+}
+function rowNum(r: RpcIntentRow, key: keyof RpcIntentRow): number | null {
+  const v = r[key];
+  return typeof v === 'number' ? v : null;
+}
+function rowArr(r: RpcIntentRow, key: keyof RpcIntentRow): string[] | null {
+  const v = r[key];
+  return Array.isArray(v) ? (v as string[]) : null;
+}
 
 export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
   if (!data) return [];
@@ -31,62 +89,47 @@ export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
   }
 
   // Basic shape validation: need id for card key
-  return rows.filter((r) => r != null && (r as any).id != null).map((r) => ({
-    id: (r as any).id,
-    created_at: (r as any).created_at,
-    intent_action: (r as any).intent_action ?? null,
-    // Lite list may provide 'summary' instead of full intent_target
-    intent_target: ((r as any).intent_target ?? (r as any).summary) ?? null,
-    intent_page_url: (r as any).intent_page_url ?? null,
-    page_url: (r as any).page_url ?? (r as any).intent_page_url ?? null,
-    matched_session_id: (r as any).matched_session_id ?? null,
-    lead_score: (r as any).lead_score ?? null,
-    status: (r as any).status ?? null,
-    click_id: (r as any).click_id ?? null,
-    intent_stamp: (r as any).intent_stamp ?? null,
-
-    // Intel
-    utm_term: (r as any).utm_term ?? null,
-    utm_campaign: (r as any).utm_campaign ?? null,
-    utm_source: (r as any).utm_source ?? null,
-    matchtype: (r as any).matchtype ?? null,
-
-    // Geo/Device
-    city: (r as any).city ?? null,
-    district: (r as any).district ?? null,
-    device_type: (r as any).device_type ?? null,
-    device_os: (r as any).device_os ?? null,
-    ads_network: (r as any).ads_network ?? null,
-    ads_placement: (r as any).ads_placement ?? null,
-
-    // AI/Risk
-    risk_level: (r as any).risk_level ?? null,
-    risk_reasons: Array.isArray((r as any).risk_reasons) ? (r as any).risk_reasons : null,
-    ai_score: typeof (r as any).ai_score === 'number' ? (r as any).ai_score : null,
-    ai_summary: typeof (r as any).ai_summary === 'string' ? (r as any).ai_summary : null,
-    ai_tags: Array.isArray((r as any).ai_tags) ? (r as any).ai_tags : null,
-    total_duration_sec: typeof (r as any).total_duration_sec === 'number' ? (r as any).total_duration_sec : null,
-    estimated_value: typeof (r as any).estimated_value === 'number' ? (r as any).estimated_value : null,
-    currency: (r as any).currency ?? null,
-
-    // OCI
-    oci_stage: (r as any).oci_stage ?? null,
-    oci_status: (r as any).oci_status ?? null,
-
-    // Evidence
-    attribution_source: (r as any).attribution_source ?? null,
-    gclid: (r as any).gclid ?? null,
-    wbraid: (r as any).wbraid ?? null,
-    gbraid: (r as any).gbraid ?? null,
-    event_count: typeof (r as any).event_count === 'number' ? (r as any).event_count : null,
-
-    // Session-based action evidence (single card)
-    phone_clicks: typeof (r as any).phone_clicks === 'number' ? (r as any).phone_clicks : null,
-    whatsapp_clicks: typeof (r as any).whatsapp_clicks === 'number' ? (r as any).whatsapp_clicks : null,
-
-    // Traffic source (from sessions join)
-    traffic_source: typeof (r as any).traffic_source === 'string' ? (r as any).traffic_source : null,
-    traffic_medium: typeof (r as any).traffic_medium === 'string' ? (r as any).traffic_medium : null,
+  return rows.filter((r): r is RpcIntentRow => r != null && r.id != null).map((r) => ({
+    id: String(r.id),
+    created_at: String(r.created_at),
+    intent_action: r.intent_action ?? null,
+    intent_target: (r.intent_target ?? r.summary) ?? null,
+    intent_page_url: r.intent_page_url ?? null,
+    page_url: r.page_url ?? r.intent_page_url ?? null,
+    matched_session_id: r.matched_session_id ?? null,
+    lead_score: r.lead_score ?? null,
+    status: r.status ?? null,
+    click_id: r.click_id ?? null,
+    intent_stamp: r.intent_stamp ?? null,
+    utm_term: r.utm_term ?? null,
+    utm_campaign: r.utm_campaign ?? null,
+    utm_source: r.utm_source ?? null,
+    matchtype: r.matchtype ?? null,
+    city: r.city ?? null,
+    district: r.district ?? null,
+    device_type: r.device_type ?? null,
+    device_os: r.device_os ?? null,
+    ads_network: r.ads_network ?? null,
+    ads_placement: r.ads_placement ?? null,
+    risk_level: r.risk_level ?? null,
+    risk_reasons: rowArr(r, 'risk_reasons'),
+    ai_score: rowNum(r, 'ai_score'),
+    ai_summary: typeof r.ai_summary === 'string' ? r.ai_summary : null,
+    ai_tags: rowArr(r, 'ai_tags'),
+    total_duration_sec: rowNum(r, 'total_duration_sec'),
+    estimated_value: rowNum(r, 'estimated_value'),
+    currency: r.currency ?? null,
+    oci_stage: r.oci_stage ?? null,
+    oci_status: r.oci_status ?? null,
+    attribution_source: r.attribution_source ?? null,
+    gclid: r.gclid ?? null,
+    wbraid: r.wbraid ?? null,
+    gbraid: r.gbraid ?? null,
+    event_count: rowNum(r, 'event_count'),
+    phone_clicks: rowNum(r, 'phone_clicks'),
+    whatsapp_clicks: rowNum(r, 'whatsapp_clicks'),
+    traffic_source: typeof r.traffic_source === 'string' ? r.traffic_source : null,
+    traffic_medium: typeof r.traffic_medium === 'string' ? r.traffic_medium : null,
   })) as HunterIntent[];
 }
 
@@ -119,23 +162,19 @@ export function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
   }
 
   return rows
-    .filter((r) => r != null && (r as any).id != null && (r as any).created_at != null)
+    .filter((r): r is RpcIntentRow => r != null && r.id != null && r.created_at != null)
     .map((r) => ({
-      id: String((r as any).id),
-      created_at: String((r as any).created_at),
-      status: ((r as any).status as string | null | undefined) ?? null,
-      matched_session_id: ((r as any).matched_session_id as string | null | undefined) ?? null,
-      intent_action: ((r as any).intent_action as string | null | undefined) ?? null,
-      summary: ((r as any).summary as string | null | undefined) ?? null,
-
-      // Session-based action evidence (from get_recent_intents_lite_v1)
-      phone_clicks: typeof (r as any).phone_clicks === 'number' ? (r as any).phone_clicks : null,
-      whatsapp_clicks: typeof (r as any).whatsapp_clicks === 'number' ? (r as any).whatsapp_clicks : null,
-      intent_events: typeof (r as any).intent_events === 'number' ? (r as any).intent_events : null,
-
-      // Traffic source (from sessions join)
-      traffic_source: typeof (r as any).traffic_source === 'string' ? (r as any).traffic_source : null,
-      traffic_medium: typeof (r as any).traffic_medium === 'string' ? (r as any).traffic_medium : null,
+      id: String(r.id),
+      created_at: String(r.created_at),
+      status: (r.status as string | null | undefined) ?? null,
+      matched_session_id: (r.matched_session_id as string | null | undefined) ?? null,
+      intent_action: (r.intent_action as string | null | undefined) ?? null,
+      summary: (r.summary as string | null | undefined) ?? null,
+      phone_clicks: rowNum(r, 'phone_clicks'),
+      whatsapp_clicks: rowNum(r, 'whatsapp_clicks'),
+      intent_events: rowNum(r, 'intent_events'),
+      traffic_source: typeof r.traffic_source === 'string' ? r.traffic_source : null,
+      traffic_medium: typeof r.traffic_medium === 'string' ? r.traffic_medium : null,
     })) as HunterIntentLite[];
 }
 

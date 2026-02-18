@@ -181,5 +181,17 @@ export async function GET(req: NextRequest) {
         headers.set('x-opsmantik-snapshot-hash', snapshotHash);
     }
 
-    return new NextResponse(makeIterator() as any, { headers });
+    const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+            try {
+                for await (const chunk of makeIterator()) {
+                    controller.enqueue(chunk);
+                }
+                controller.close();
+            } catch (err) {
+                controller.error(err);
+            }
+        },
+    });
+    return new NextResponse(stream, { headers });
 }

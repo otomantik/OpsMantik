@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import type { OciCallRow, OciSessionRow, SiteWithCurrency } from '@/lib/types/oci';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const currency = (site as any)?.currency || 'TRY';
+    const siteWithCurrency = site as SiteWithCurrency;
+    const currency = siteWithCurrency.currency ?? 'TRY';
     const { fromIso, toIso } = getTodayTrtUtcRange();
 
     // Fetch sealed calls that are not yet exported (today window)
@@ -72,9 +74,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to load sealed calls', details: callsError.message }, { status: 500 });
     }
 
-    const rows = Array.isArray(calls) ? calls : [];
+    const rows: OciCallRow[] = Array.isArray(calls) ? calls : [];
     const sessionIds = Array.from(
-      new Set(rows.map((r: any) => r.matched_session_id).filter((v: any) => typeof v === 'string' && v.length > 0))
+      new Set(rows.map((r) => r.matched_session_id).filter((v): v is string => typeof v === 'string' && v.length > 0))
     );
 
     // Pull click-ids from sessions (best effort; ids are globally unique UUIDs)
@@ -88,7 +90,8 @@ export async function GET(req: NextRequest) {
       if (sessError) {
         return NextResponse.json({ error: 'Failed to load sessions', details: sessError.message }, { status: 500 });
       }
-      for (const s of (sessions || []) as any[]) {
+      const sessionRows: OciSessionRow[] = Array.isArray(sessions) ? sessions : [];
+      for (const s of sessionRows) {
         sessionMap.set(String(s.id), { gclid: s.gclid ?? null, wbraid: s.wbraid ?? null, gbraid: s.gbraid ?? null });
       }
     }
@@ -114,7 +117,7 @@ export async function GET(req: NextRequest) {
     const exportedCallIds: string[] = [];
     const lines: string[] = [header.map(csvEscape).join(',')];
 
-    for (const c of rows as any[]) {
+    for (const c of rows) {
       const sid = c.matched_session_id ? String(c.matched_session_id) : '';
       const sess = sid ? sessionMap.get(sid) : undefined;
 

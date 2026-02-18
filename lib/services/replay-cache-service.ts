@@ -12,7 +12,7 @@ export class ReplayCacheService {
   // Best-effort local fallback for degraded mode.
   private static localKeys = new Map<string, number>(); // key -> expiresAtMs
   // Test seam
-  private static redisClient: any = redis;
+  private static redisClient: RedisLike | null = redis;
 
   static _setRedisForTests(r: RedisLike | null) {
     ReplayCacheService.redisClient = r;

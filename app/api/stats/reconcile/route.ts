@@ -78,7 +78,8 @@ export async function GET(req: NextRequest) {
 
       if (sessions.error) throw sessions.error;
 
-      const sessionIds = (sessions.data || []).map((s: any) => s.id).filter(Boolean);
+      const sessionRows = (sessions.data || []) as { id: string }[];
+      const sessionIds = sessionRows.map((s) => s.id).filter(Boolean);
       if (sessionIds.length === 0) {
         dbCaptured = 0;
         dbMethod = 'sessions->events';
@@ -98,9 +99,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const drift = typeof dbCaptured === 'number'
+    const drift: { captured: number | null } = typeof dbCaptured === 'number'
       ? { captured: redis.captured - dbCaptured }
-      : { captured: null as any };
+      : { captured: null };
 
     return NextResponse.json({
       ok: true,

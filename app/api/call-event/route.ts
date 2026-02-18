@@ -19,6 +19,7 @@ import {
     parseValueAllowNull,
     type EventIdMode,
 } from '@/lib/api/call-event/shared';
+import type { CallInsertError, CallRecord, EventMetadata, ScoreBreakdown } from '@/lib/types/call-event';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -421,7 +422,7 @@ export async function POST(req: NextRequest) {
 
         let matchedSessionId: string | null = null;
         let leadScore = 0;
-        let scoreBreakdown: any = null;
+        let scoreBreakdown: ScoreBreakdown | null = null;
         let callStatus: string | null = null;
         const matchedAt = new Date().toISOString();
 
@@ -495,7 +496,7 @@ export async function POST(req: NextRequest) {
                 if (sessionEvents && sessionEvents.length > 0) {
                     const conversionCount = sessionEvents.filter(e => e.event_category === 'conversion').length;
                     const interactionCount = sessionEvents.filter(e => e.event_category === 'interaction').length;
-                    const scores = sessionEvents.map(e => Number((e.metadata as any)?.lead_score) || 0);
+                    const scores = sessionEvents.map(e => Number((e.metadata as EventMetadata | null)?.lead_score) || 0);
                     const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
 
                     const conversionPoints = conversionCount * 20;
@@ -563,8 +564,8 @@ export async function POST(req: NextRequest) {
             ...(event_id ? { event_id } : {}),
         };
 
-        let callRecord: any = null;
-        let insertError: any = null;
+        let callRecord: CallRecord | null = null;
+        let insertError: CallInsertError = null;
         if (eventIdMode !== 'off' && event_id) {
             const r1 = await adminClient.from('calls').insert(insertWithEventId).select().single();
             callRecord = r1.data;
@@ -635,7 +636,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
             {
                 status: 'matched',
-                call_id: callRecord.id,
+                call_id: callRecord!.id,
                 session_id: matchedSessionId,
                 lead_score: leadScore,
             },

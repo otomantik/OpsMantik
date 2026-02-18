@@ -43,6 +43,11 @@ export function jumpToSession(sessionId: string): boolean {
 }
 
 // Global exposure for non-React call sites
+declare global {
+  interface Window {
+    jumpToSession?: typeof jumpToSession;
+  }
+}
 if (typeof window !== 'undefined') {
-    (window as any).jumpToSession = jumpToSession;
+  window.jumpToSession = jumpToSession;
 }

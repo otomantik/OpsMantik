@@ -22,6 +22,7 @@ import {
 } from '@/lib/api/call-event/shared';
 import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
 import { extractMissingColumnName, stripColumnFromInsertPayload } from '@/lib/api/call-event/schema-drift';
+import type { CallInsertError, CallRecord } from '@/lib/types/call-event';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -339,8 +340,8 @@ export async function POST(req: NextRequest) {
       ...(event_id ? { event_id } : {}),
     };
 
-    let callRecord: any = null;
-    let insertError: any = null;
+    let callRecord: CallRecord | null = null;
+    let insertError: CallInsertError = null;
     // Insert with drift tolerance:
     // - Handle missing calls.event_id (older schema) by retrying without event_id.
     // - Handle missing optional columns by stripping them iteratively (schema cache / migration lag).
@@ -427,7 +428,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { status: 'matched', call_id: callRecord.id, session_id: matchedSessionId, lead_score: leadScore },
+      { status: 'matched', call_id: callRecord!.id, session_id: matchedSessionId, lead_score: leadScore },
       {
         headers: {
           ...baseHeaders,

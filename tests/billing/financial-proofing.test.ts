@@ -55,9 +55,9 @@ test('Financial Proofing: Dispute Export & Invoice Freeze', async (t) => {
         email: TEST_USER_EMAIL,
         password: TEST_USER_PASSWORD
     });
-    if (loginError) {
+    if (loginError || !session) {
         // Skip if auth fails (local env issue)
-        console.warn('Skipping test: Auth failed', loginError.message);
+        console.warn('Skipping test: Auth failed', loginError?.message ?? 'No session');
         return;
     }
     const userId = session.user.id;

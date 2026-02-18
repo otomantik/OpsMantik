@@ -94,7 +94,7 @@ test('requireCronAuth: production without ALLOW_BEARER_CRON => Bearer rejected e
   const saved = stashEnv(envKeys);
   try {
     process.env.CRON_SECRET = CRON_SECRET;
-    process.env.NODE_ENV = 'production';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
     delete process.env.ALLOW_BEARER_CRON;
     const req = requestWithHeaders({ authorization: `Bearer ${CRON_SECRET}` });
     const result = requireCronAuth(req);
@@ -113,7 +113,7 @@ test('requireCronAuth: production with ALLOW_BEARER_CRON=true => Bearer allowed'
   const saved = stashEnv(envKeys);
   try {
     process.env.CRON_SECRET = CRON_SECRET;
-    process.env.NODE_ENV = 'production';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
     process.env.ALLOW_BEARER_CRON = 'true';
     const req = requestWithHeaders({ authorization: `Bearer ${CRON_SECRET}` });
     const result = requireCronAuth(req);

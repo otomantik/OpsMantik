@@ -65,10 +65,10 @@ function readRequiredEnv(): { ok: true; env: Env } | { ok: false; missing: strin
   return {
     ok: true,
     env: {
-      SUPABASE_URL: supabaseUrl,
-      SUPABASE_ANON_KEY: supabaseAnonKey,
-      TEST_USER_EMAIL: testUserEmail,
-      TEST_USER_PASSWORD: testUserPassword,
+      SUPABASE_URL: supabaseUrl as string,
+      SUPABASE_ANON_KEY: supabaseAnonKey as string,
+      TEST_USER_EMAIL: testUserEmail as string,
+      TEST_USER_PASSWORD: testUserPassword as string,
       TEST_USER_EMAIL_B: testUserEmailB,
       TEST_USER_PASSWORD_B: testUserPasswordB,
     },

@@ -225,6 +225,24 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: baseHeaders });
     }
 
+    // --- 1.5 Batch wrapper: client may send { events: [ payload ] } or { events: [ p1, p2, ... ] }. We accept single payload only.
+    if (typeof json === 'object' && json !== null && Array.isArray((json as Record<string, unknown>).events)) {
+        const events = (json as Record<string, unknown>).events as unknown[];
+        if (events.length === 0) {
+            return NextResponse.json(
+                { ok: false, error: 'invalid_payload' },
+                { status: 400, headers: baseHeaders }
+            );
+        }
+        if (events.length > 1) {
+            return NextResponse.json(
+                { ok: false, error: 'batch_not_supported' },
+                { status: 400, headers: baseHeaders }
+            );
+        }
+        json = events[0];
+    }
+
     // --- 2. Rate Limit (abuse/DoS). Key = siteId:clientId when siteId present, else clientId. 429 = non-billable. ---
     const siteIdForRl = extractSiteIdForRateLimit(json);
     const clientId = RateLimitService.getClientId(req);
@@ -269,9 +287,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const idempotencyResult = await tryInsert(siteIdUuid, idempotencyKey, {
       billable: billableDecision.billable,
       billingReason: billableDecision.reason,
-      eventCategory: (body as any).ec,
-      eventAction: (body as any).ea,
-      eventLabel: (body as any).el,
+      eventCategory: body.ec,
+      eventAction: body.ea,
+      eventLabel: body.el,
     });
 
     if (idempotencyResult.error && !idempotencyResult.duplicate) {

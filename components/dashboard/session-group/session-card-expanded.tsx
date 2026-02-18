@@ -23,7 +23,7 @@ export interface EnrichedEvent extends Event {
     timeDiff: number; // Required in compressed events
 }
 
-interface CompressedEvent {
+export interface CompressedEvent {
     type: 'single' | 'group';
     id: string;
     event?: EnrichedEvent;

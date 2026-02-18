@@ -143,7 +143,7 @@ function SourceBadge({ traffic_source, traffic_medium }: { traffic_source?: stri
             ? { cls: 'border-slate-200 bg-slate-50 text-slate-700', icon: Compass }
             : { cls: 'border-slate-200 bg-slate-50 text-slate-700', icon: Icons.circleDot };
 
-  const Icon = theme.icon as any;
+  const Icon = theme.icon as React.ComponentType<{ className?: string }>;
 
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold', theme.cls)}>
@@ -174,8 +174,8 @@ export function HunterCard({
 }) {
   const t = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[t] || ICON_MAP.other;
-  const trafficSource = traffic_source ?? (intent as any).traffic_source ?? null;
-  const trafficMedium = traffic_medium ?? (intent as any).traffic_medium ?? null;
+  const trafficSource = traffic_source ?? intent.traffic_source ?? null;
+  const trafficMedium = traffic_medium ?? intent.traffic_medium ?? null;
   const displayScore = useMemo(() => {
     const raw = intent.ai_score;
     if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;

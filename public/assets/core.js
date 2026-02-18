@@ -670,8 +670,9 @@
     // Page view
     sendEvent('interaction', 'view', document.title);
 
-    // Phone links
+    // Phone links (skip if inside JoinChat widget — handled by JoinChat listener)
     document.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.joinchat, [class*="joinchat"]')) return;
       const target = e.target.closest('a[href^="tel:"]');
       if (target) {
         const intent_stamp = makeIntentStamp('tel', target.href);
@@ -684,8 +685,9 @@
       }
     });
 
-    // WhatsApp links: wa.me, whatsapp.com, chat.whatsapp.com (groups), joinchat, whatsapp://, and data-om-whatsapp
+    // WhatsApp links: wa.me, whatsapp.com, chat.whatsapp.com (groups), joinchat, whatsapp://, and data-om-whatsapp (skip if inside JoinChat — handled by JoinChat listener)
     document.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.joinchat, [class*="joinchat"]')) return;
       const dataWa = e.target.closest && e.target.closest('[data-om-whatsapp]');
       if (dataWa && dataWa.getAttribute('data-om-whatsapp')) {
         const href = dataWa.getAttribute('data-om-whatsapp');
@@ -704,6 +706,27 @@
         sendCallEvent(target.href);
       }
     });
+
+    // JoinChat widget: button is div (role=button), not <a>. Root has data-settings with telephone and whatsapp_web.
+    document.addEventListener('click', (e) => {
+      var widget = e.target.closest && e.target.closest('.joinchat, [class*="joinchat"]');
+      if (!widget) return;
+      var raw = widget.getAttribute && widget.getAttribute('data-settings');
+      if (!raw) return;
+      try {
+        var settings = JSON.parse(raw);
+        var tel = settings.telephone;
+        if (!tel || typeof tel !== 'string') return;
+        tel = String(tel).trim().replace(/\D/g, '');
+        if (tel.length < 10) return;
+        var isWa = settings.whatsapp_web === true;
+        var href = isWa ? 'https://wa.me/' + tel : 'tel:' + tel;
+        var action = isWa ? 'whatsapp' : 'phone_call';
+        var intent_stamp = makeIntentStamp(isWa ? 'wa' : 'tel', href);
+        sendEvent('conversion', action, href, null, { intent_stamp: intent_stamp, intent_action: action });
+        sendCallEvent(href);
+      } catch (err) { /* ignore */ }
+    }, true);
 
     // Form submissions
     document.addEventListener('submit', (e) => {

@@ -93,8 +93,8 @@ function ActiveDeckCard({
       >
         <HunterCard
           intent={intent}
-          traffic_source={(intent as any).traffic_source ?? null}
-          traffic_medium={(intent as any).traffic_medium ?? null}
+          traffic_source={intent.traffic_source ?? null}
+          traffic_medium={intent.traffic_medium ?? null}
           onSeal={({ id, stars }) => handleSeal({ id, stars })}
           onSealDeal={onSealDeal}
           onJunk={({ id, stars }) => handleJunk({ id, stars })}
@@ -117,8 +117,8 @@ function LiteDeckCard({
 }) {
   const action = (intent.intent_action || 'intent').toString();
   const summary = intent.summary || 'Loading details…';
-  const phoneClicks = typeof (intent as any).phone_clicks === 'number' ? (intent as any).phone_clicks : 0;
-  const waClicks = typeof (intent as any).whatsapp_clicks === 'number' ? (intent as any).whatsapp_clicks : 0;
+  const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;
+  const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
   const actionsLine =
     phoneClicks > 0 || waClicks > 0
       ? [phoneClicks > 0 ? `${phoneClicks}× phone` : null, waClicks > 0 ? `${waClicks}× WhatsApp` : null]
