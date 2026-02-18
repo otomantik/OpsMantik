@@ -262,10 +262,11 @@ export async function POST(req: NextRequest) {
     // Per-site(+proxy host) rate limiting (blast-radius isolation).
     const proxyHostRaw = (req.headers.get('x-ops-proxy-host') || '').trim().toLowerCase();
     const proxyHost = proxyHostRaw && proxyHostRaw.length <= 255 ? proxyHostRaw.replace(/[^a-z0-9.-]/g, '').slice(0, 128) : 'unknown';
-    const rl = await RateLimitService.checkWithMode(`${siteUuidFinal}|${proxyHost}|${clientId}`, 80, 60 * 1000, {
+    const CALL_EVENT_RL_LIMIT = 150; // per site|proxy|client per minute (burst: multiple clicks + retries)
+    const rl = await RateLimitService.checkWithMode(`${siteUuidFinal}|${proxyHost}|${clientId}`, CALL_EVENT_RL_LIMIT, 60 * 1000, {
       mode: 'degraded',
       namespace: 'call-event-v2',
-      fallbackMaxRequests: 15,
+      fallbackMaxRequests: 30,
     });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -274,7 +275,7 @@ export async function POST(req: NextRequest) {
           status: 429,
           headers: {
             ...baseHeaders,
-            'X-RateLimit-Limit': '80',
+            'X-RateLimit-Limit': String(CALL_EVENT_RL_LIMIT),
             'X-RateLimit-Remaining': '0',
             'X-RateLimit-Reset': rl.resetAt.toString(),
             'Retry-After': Math.ceil((rl.resetAt - Date.now()) / 1000).toString(),
