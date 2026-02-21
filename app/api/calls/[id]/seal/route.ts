@@ -139,15 +139,38 @@ export async function POST(
 
     // RPC returns jsonb → normalize shape for response
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
+    const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
+
+    // Last-mile OCI: enqueue sealed call for Google Ads if it has a click ID (gclid/wbraid/gbraid)
+    try {
+      const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
+      const result = await enqueueSealConversion({
+        callId,
+        siteId,
+        confirmedAt,
+        saleAmount,
+        currency,
+        leadScore,
+      });
+      if (result.enqueued) {
+        logInfo('seal_oci_enqueued', { call_id: callId });
+      }
+    } catch (enqueueErr) {
+      logError('seal_oci_enqueue_failed', {
+        call_id: callId,
+        error: String((enqueueErr as Error)?.message ?? enqueueErr),
+      });
+      // Non-fatal: seal succeeded; OCI enqueue is best-effort
+    }
 
     return NextResponse.json({
       success: true,
       call: {
-        id: callObj.id,
-        sale_amount: callObj.sale_amount,
-        currency: callObj.currency,
-        status: callObj.status,
-        confirmed_at: callObj.confirmed_at,
+        id: (callObj as { id?: string }).id,
+        sale_amount: (callObj as { sale_amount?: number | null }).sale_amount,
+        currency: (callObj as { currency?: string }).currency,
+        status: (callObj as { status?: string }).status,
+        confirmed_at: confirmedAt,
       },
     });
   } catch (err: unknown) {
