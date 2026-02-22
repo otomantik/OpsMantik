@@ -9,6 +9,7 @@ import { logger } from '@/lib/logging/logger';
 import { SessionCardHeader } from './session-group/session-card-header';
 import { SessionCardExpanded, type CompressedEvent, type EnrichedEvent } from './session-group/session-card-expanded';
 import { VisitorHistoryDrawer } from './session-group/visitor-history-drawer';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface Event {
   id: string;
@@ -30,6 +31,7 @@ interface SessionGroupProps {
 }
 
 export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, events, adsOnly = false }: SessionGroupProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVisitorHistory, setShowVisitorHistory] = useState(false);
   const [matchedCall, setMatchedCall] = useState<{ id: string; phone_number?: string; matched_session_id?: string | null; lead_score?: number | null; created_at?: string } | null>(null);
@@ -91,7 +93,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
   }, [siteId, sessionId, adsOnly]);
 
   const attributionSource = (sessionData?.attribution_source ?? metadata.attribution_source ?? null) as string | null;
-  const intelligenceSummary = (typeof metadata.intelligence_summary === 'string' ? metadata.intelligence_summary : 'Standard Traffic');
+  const intelligenceSummary = (typeof metadata.intelligence_summary === 'string' ? metadata.intelligence_summary : t('intelligence.standardTraffic'));
   const gclid = (sessionData?.gclid ?? metadata.gclid ?? null) as string | null;
 
   const fingerprint = (sessionData?.fingerprint ?? metadata.fingerprint ?? metadata.fp ?? null) as string | null;

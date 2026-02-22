@@ -3,8 +3,8 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OPSMANTIK - Google Ads Attribution & Lead Intelligence",
-  description: "Real-time tracking and multi-touch attribution platform",
+  title: "OPSMANTIK | Console",
+  description: "Real-time Tracking & Lead Intelligence",
 };
 
 export default function RootLayout({

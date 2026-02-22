@@ -169,6 +169,15 @@ export const en = {
   'toast.undone': 'Undone.',
   'toast.dealCancelled': 'Deal cancelled.',
 
+  'meta.title': 'OPSMANTIK - Google Ads Attribution & Lead Intelligence',
+  'meta.description': 'Real-time tracking and multi-touch attribution platform',
+
+  'login.title': 'OPSMANTIK',
+  'login.subtitle': 'Google Ads Attribution & Lead Intelligence',
+  'login.signInWithGoogle': 'Sign in with Google',
+  'login.redirecting': 'Redirecting...',
+
+  'intelligence.standardTraffic': 'Standard Traffic',
   'kpi.criticalFailure': 'Critical failure',
   'kpi.retryConnection': 'Retry Connection',
   'kpi.noActivityYet': 'No activity yet',

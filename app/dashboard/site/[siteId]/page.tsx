@@ -6,6 +6,8 @@ import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { resolveLocale } from '@/lib/i18n/locale';
+import { translate } from '@/lib/i18n/t';
+import type { Metadata } from 'next';
 import type { SiteRole } from '@/lib/auth/rbac';
 
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
@@ -15,6 +17,31 @@ export const revalidate = 0;
 interface SitePageProps {
   params: Promise<{ siteId: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export async function generateMetadata({ params }: SitePageProps): Promise<Metadata> {
+  const { siteId } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: site } = await supabase
+    .from('sites')
+    .select('name, domain, locale')
+    .eq('id', siteId)
+    .single();
+
+  const headersList = await headers();
+  const acceptLanguage = headersList.get('accept-language') ?? null;
+  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
+
+  const siteName = site?.name || site?.domain || 'OpsMantik';
+  const metaTitle = translate('meta.title', resolvedLocale);
+  const metaDesc = translate('meta.description', resolvedLocale);
+
+  return {
+    title: `${siteName} | ${metaTitle}`,
+    description: metaDesc,
+  };
 }
 
 export default async function SiteDashboardPage({ params, searchParams }: SitePageProps) {

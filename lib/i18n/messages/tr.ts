@@ -167,7 +167,7 @@ export const tr = {
   'kpi.noActivityYet': 'Henüz aktivite yok',
   'kpi.sendEventsToSeeMetrics': 'Metrikleri görmek için sitenizden olay gönderin',
 
-  'cro.title': 'CRO Optimizer',
+  'cro.title': 'CRO Optimizasyonu',
   'cro.subtitle': 'Otomatik davranışsal içgörüler ve AI önerileri.',
   'cro.peakIntentHour': 'Tepe Niyet Saati',
   'cro.highestActivity': 'En yüksek telefon/WA aktivitesi tespit edildi.',
@@ -303,4 +303,14 @@ export const tr = {
   'queue.trt': 'TRT',
   'queue.readOnlyJunk': 'Salt okunur rol: onaylama/reddetme yapılamaz.',
   'misc.na': 'Yok',
+
+  'meta.title': 'OPSMANTIK - Google Ads İlişkilendirme ve Lead Zekası',
+  'meta.description': 'Gerçek zamanlı takip ve çok kanallı ilişkilendirme platformu',
+
+  'login.title': 'OPSMANTIK',
+  'login.subtitle': 'Google Ads İlişkilendirme ve Lead Zekası',
+  'login.signInWithGoogle': 'Google ile Giriş Yap',
+  'login.redirecting': 'Yönlendiriliyor...',
+
+  'intelligence.standardTraffic': 'Standart Trafik',
 } as const;
