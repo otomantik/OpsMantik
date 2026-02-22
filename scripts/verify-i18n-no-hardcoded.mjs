@@ -52,6 +52,23 @@ const ALLOW_PROP_NAMES = new Set([
     "data-testid",
 ]);
 
+// PR-2: Legacy prefix ban — deprecated keys must not be used
+const BANNED_I18N_KEY_PREFIXES = [
+    "table.",
+    "meta.",
+    "setup.",
+    "technical.",
+];
+const BANNED_I18N_EXACT_KEYS = new Set([
+    "intent.whatsapp",
+]);
+
+function isBannedKey(key) {
+    if (!key || typeof key !== "string") return false;
+    if (BANNED_I18N_EXACT_KEYS.has(key)) return true;
+    return BANNED_I18N_KEY_PREFIXES.some((p) => key.startsWith(p));
+}
+
 function isUrlLike(s) {
     return /^https?:\/\/|^mailto:|^tel:/.test(s);
 }
@@ -213,8 +230,12 @@ function scanFile(fileAbs) {
                 if (firstArg) {
                     // Check if first arg is t(key) or translate(locale, key)
                     const keyNode = isTranslate ? node.arguments[1] : firstArg;
-                    if (keyNode && !ts.isStringLiteral(keyNode)) {
-                        violations.push(reportNode(sourceFile, keyNode, "dynamic-key", `Forbidden dynamic key in ${expr.text}(): keys must be string literals.`));
+                    if (keyNode) {
+                        if (!ts.isStringLiteral(keyNode)) {
+                            violations.push(reportNode(sourceFile, keyNode, "dynamic-key", `Forbidden dynamic key in ${expr.text}(): keys must be string literals.`));
+                        } else if (isBannedKey(keyNode.text)) {
+                            violations.push(reportNode(sourceFile, keyNode, "deprecated-i18n-key", `Deprecated i18n key used: "${keyNode.text}"`));
+                        }
                     }
                 }
             }

@@ -338,7 +338,7 @@ export function SitesManager() {
               {error}
             </p>
             <p className="text-sm text-slate-500">
-              {t('setup.checkConsole')}
+              {t('dashboard.setup.checkConsole')}
             </p>
           </div>
         )}

@@ -53,23 +53,23 @@ export function SiteSetup() {
   return (
     <Card className="border-2 border-dashed">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">{t('setup.noSitesFound')}</CardTitle>
+        <CardTitle className="text-base font-semibold">{t('dashboard.setup.noSitesFound')}</CardTitle>
         <CardDescription className="text-sm text-muted-foreground mt-2">
-          {t('setup.description')}
+          {t('dashboard.setup.description')}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           <div className="bg-muted p-4 rounded border border-border">
             <p className="text-sm text-foreground mb-2">
-              <strong className="text-emerald-700">{t('setup.testSiteDetails')}:</strong>
+              <strong className="text-emerald-700">{t('dashboard.setup.testSiteDetails')}:</strong>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-              <li>{t('setup.publicId')} <code className="text-foreground">{t('setup.testSiteId')}</code></li>
+              <li>{t('dashboard.setup.publicId')} <code className="text-foreground">{t('dashboard.setup.testSiteId')}</code></li>
               {process.env.NODE_ENV === 'development' && (
-                <li>{t('setup.domain')} <code className="text-foreground">{t('setup.testDomain')}</code></li>
+                <li>{t('dashboard.setup.domain')} <code className="text-foreground">{t('dashboard.setup.testDomain')}</code></li>
               )}
-              <li>{t('setup.useThisInTracker')} <code className="text-foreground">{t('setup.testAttr')}</code></li>
+              <li>{t('dashboard.setup.useThisInTracker')} <code className="text-foreground">{t('dashboard.setup.testAttr')}</code></li>
             </ul>
           </div>
 
@@ -77,7 +77,7 @@ export function SiteSetup() {
             <div className="bg-destructive/10 border border-destructive/20 p-3 rounded">
               <p className="text-sm text-destructive mb-2">{t('misc.errorLabel', { msg: error })}</p>
               <p className="text-sm text-muted-foreground">
-                {t('setup.checkConsole')}
+                {t('dashboard.setup.checkConsole')}
               </p>
             </div>
           )}
@@ -86,15 +86,15 @@ export function SiteSetup() {
             {`<script defer src="https://assets.yourdomain.com/assets/core.js" data-ops-site-id="test_site_123" data-ops-consent="analytics" data-api="https://console.yourdomain.com/api/sync"></script>`}
           </code>
           <p className="text-xs text-muted-foreground mt-2">
-            {t('setup.replaceDomain', { domain: 'localhost:3000', production: 'opsmantik.com' })}
+            {t('dashboard.setup.replaceDomain', { domain: 'localhost:3000', production: 'opsmantik.com' })}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {t('setup.ensureSiteId', { attr: 'data-site-id="test_site_123"' })}
+            {t('dashboard.setup.ensureSiteId', { attr: 'data-site-id="test_site_123"' })}
           </p>
 
           {success && (
             <div className="bg-emerald-50 border border-emerald-200 p-3 rounded">
-              <p className="text-sm text-emerald-700">{t('setup.createdReloading')}</p>
+              <p className="text-sm text-emerald-700">{t('dashboard.setup.createdReloading')}</p>
             </div>
           )}
 
@@ -107,7 +107,7 @@ export function SiteSetup() {
           </Button>
 
           <p className="text-sm text-muted-foreground text-center">
-            {t('setup.afterCreating')}{' '}
+            {t('dashboard.setup.afterCreating')}{' '}
             <a href="/test-page" className="text-emerald-700 hover:text-emerald-800 underline">
               {t('dashboard.setup.testPage')}
             </a>

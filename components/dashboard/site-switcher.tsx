@@ -86,7 +86,7 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
         <CardHeader>
           <CardTitle className="text-base font-semibold">{t('sites.yourSites')}</CardTitle>
           <CardDescription className="text-sm text-muted-foreground">
-            {isAdmin ? t('setup.noSitesFound') : t('setup.description')}
+            {isAdmin ? t('dashboard.setup.noSitesFound') : t('dashboard.setup.description')}
           </CardDescription>
         </CardHeader>
         <CardContent>

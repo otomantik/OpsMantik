@@ -34,3 +34,9 @@ jobs:
 
       - name: Audit i18n (dictionary symmetry)
         run: npm run audit:i18n
+
+      - name: Verify i18n keys exist (en/tr/it)
+        run: npm run verify:i18n:keys
+
+      - name: Build
+        run: npm run build

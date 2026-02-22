@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "verify": "npm run verify-rpcs && npm run verify:partition-triggers && npm run verify:i18n && npm run audit:i18n",
+    "verify": "npm run verify-rpcs && npm run verify:partition-triggers && npm run verify:i18n && npm run audit:i18n && npm run verify:i18n:keys",
     "lint:i18n": "node scripts/verify-i18n-no-hardcoded.mjs --mode=baseline --baseline=i18n-baseline.json",
     "lint:i18n:report": "node scripts/verify-i18n-no-hardcoded.mjs --mode=report",
     "lint:i18n:strict": "node scripts/verify-i18n-no-hardcoded.mjs",
@@ -11,6 +11,7 @@
     "verify:partition-triggers": "node scripts/verify-partition-triggers.mjs",
     "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs",
     "audit:i18n": "node --import tsx scripts/audit-i18n-dictionaries.mjs",
+    "verify:i18n:keys": "node scripts/verify-i18n-keys.mjs",
     "sync:i18n": "node --import tsx scripts/sync-i18n.mjs",
     "proof:i18n": "node scripts/generate-i18n-proof.mjs",
     "dev": "next dev",

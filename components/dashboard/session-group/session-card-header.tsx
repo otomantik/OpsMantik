@@ -200,7 +200,7 @@ export function SessionCardHeader({
                     <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
                         {t('session.locationLabel')}:{' '}
                         <span className="text-foreground font-medium">
-                            {locationLabel && locationLabel !== 'Unknown' && locationLabel !== t('misc.unknown') ? locationLabel : t('misc.na')}
+                            {locationLabel && locationLabel !== 'Unknown' && locationLabel !== t('misc.unknown') ? locationLabel : t('common.na')}
                         </span>
                     </span>
                     <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">

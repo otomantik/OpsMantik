@@ -247,11 +247,11 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                   </div>
                   <div>
                     <span className="text-muted-foreground">{t('sessionDrawer.ip')}:</span>
-                    <span className="ml-2 text-muted-foreground">{t('misc.na')}</span>
+                    <span className="ml-2 text-muted-foreground">{t('common.na')}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">{t('sessionDrawer.userAgent')}:</span>
-                    <span className="ml-2 text-muted-foreground truncate block">{t('misc.na')}</span>
+                    <span className="ml-2 text-muted-foreground truncate block">{t('common.na')}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">{t('sessionDrawer.duration')}:</span>
@@ -264,7 +264,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                             1000
                           )
                         )
-                        : t('misc.na')}
+                        : t('common.na')}
                     </span>
                   </div>
                   <div>
