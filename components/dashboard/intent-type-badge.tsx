@@ -2,18 +2,19 @@
 
 import { Phone, TrendingUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface IntentTypeBadgeProps {
   type: 'call' | 'conversion';
 }
 
 export function IntentTypeBadge({ type }: IntentTypeBadgeProps) {
+  const { t } = useTranslation();
   if (type === 'call') {
     return (
       <Badge variant="secondary" className="gap-1">
         <Phone className="h-4 w-4" />
-        {strings.typeCall}
+        {t('intent.call')}
       </Badge>
     );
   }
@@ -21,7 +22,7 @@ export function IntentTypeBadge({ type }: IntentTypeBadgeProps) {
   return (
     <Badge variant="secondary" className="gap-1">
       <TrendingUp className="h-4 w-4" />
-      {strings.typeConversion}
+      {t('intent.conversion')}
     </Badge>
   );
 }

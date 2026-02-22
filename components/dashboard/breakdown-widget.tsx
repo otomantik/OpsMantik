@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useBreakdownData, BreakdownDimension } from '@/lib/hooks/use-breakdown-data';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { TrendingUp, Smartphone, MapPin, Loader2, AlertCircle } from 'lucide-react';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface BreakdownWidgetProps {
   siteId: string;
@@ -19,6 +19,7 @@ interface BreakdownWidgetProps {
 }
 
 export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
+  const { t, formatNumber } = useTranslation();
   const [dimension, setDimension] = useState<BreakdownDimension>('source');
   const { data, loading, error } = useBreakdownData(siteId, dateRange, dimension);
 
@@ -32,9 +33,9 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
 
   const getDimensionLabel = (dim: BreakdownDimension) => {
     switch (dim) {
-      case 'source': return strings.dimensionSource;
-      case 'device': return strings.dimensionDevice;
-      case 'city': return strings.dimensionCity;
+      case 'source': return t('dimension.source');
+      case 'device': return t('dimension.device');
+      case 'city': return t('dimension.city');
     }
   };
 
@@ -51,7 +52,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
       <CardHeader className="pb-3 border-b border-border">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold tracking-tight">
-            {strings.breakdown}
+            {t('misc.breakdown')}
           </CardTitle>
 
           {/* Dimension Selector */}
@@ -80,7 +81,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
         {error ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <AlertCircle className="w-8 h-8 text-destructive mb-2" />
-            <p className="text-destructive text-sm mb-2">{strings.errorLabel(error)}</p>
+            <p className="text-destructive text-sm mb-2">{t('misc.error')}: {error}</p>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-8">
@@ -89,7 +90,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
         ) : data.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-sm text-muted-foreground uppercase tracking-wider">
-              {strings.noData}
+              {t('misc.noData')}
             </p>
           </div>
         ) : (
@@ -120,7 +121,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                      {safeItem.count.toLocaleString('tr-TR')}
+                      {formatNumber(safeItem.count)}
                     </span>
                     <span className="text-sm text-muted-foreground tabular-nums">
                       ({safeItem.percentage.toFixed(1)}%)

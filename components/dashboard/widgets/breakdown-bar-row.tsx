@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { BreakdownItem } from '@/lib/hooks/use-dashboard-breakdown';
 
 interface BreakdownBarRowProps {
@@ -31,6 +32,7 @@ function safeDecode(s: string): string {
 }
 
 export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowProps) {
+  const { formatNumber } = useTranslation();
   const rawLabel = decodeLabel ? safeDecode(item.name) : item.name;
   const label = fixMojibake(rawLabel);
   const pctNum = total > 0 ? Math.min(100, Math.max(0, item.pct)) : 0;
@@ -42,7 +44,7 @@ export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowPro
           {label}
         </span>
         <span className="text-sm tabular-nums shrink-0 font-medium text-slate-600" suppressHydrationWarning>
-          {item.count.toLocaleString('tr-TR')} ({item.pct}%)
+          {formatNumber(item.count)} ({item.pct}%)
         </span>
       </div>
       <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">

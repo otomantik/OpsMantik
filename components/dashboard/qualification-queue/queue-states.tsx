@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Icons } from '@/components/icons';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
 
 export function QueueLoadingState({ queueMeta }: { queueMeta: React.ReactNode }) {
@@ -65,6 +65,7 @@ export function QueueEmptyState({
   day: 'today' | 'yesterday';
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {queueMeta}
@@ -72,15 +73,15 @@ export function QueueEmptyState({
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
           <Icons.check className="w-16 h-16 text-green-500 mb-4" />
           <h3 className="text-xl font-semibold mb-2" data-testid="queue-empty-state">
-            {day === 'yesterday' ? strings.queueEmptyYesterday : strings.queueEmptyTitle}
+            {day === 'yesterday' ? t('empty.noDataYesterday') : t('empty.queueMissionAccomplished')}
           </h3>
           <p className="text-muted-foreground max-w-md">
-            {day === 'yesterday' ? strings.queueEmptyYesterdayDesc : strings.queueEmptyTodayDesc}
+            {day === 'yesterday' ? t('empty.noDataYesterdayDesc') : t('empty.noDataTodayDesc')}
           </p>
-          <p className="text-muted-foreground text-xs mt-2 max-w-md">{strings.queueEmptyUseRefresh}</p>
+          <p className="text-muted-foreground text-xs mt-2 max-w-md">{t('empty.useRefresh')}</p>
           <Button variant="ghost" size="sm" onClick={() => onRefresh()} className="mt-4">
             <Icons.refresh className="w-4 h-4 mr-2" />
-            {strings.refresh}
+            {t('button.refresh')}
           </Button>
         </CardContent>
       </Card>

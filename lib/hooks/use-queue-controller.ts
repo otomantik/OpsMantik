@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { useSiteConfig } from '@/lib/hooks/use-site-config';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/qualification-queue/parsers';
 import type { ActivityRow } from '@/components/dashboard/qualification-queue/activity-log-inline';
@@ -74,6 +74,7 @@ export type QueueControllerActions = {
 };
 
 export function useQueueController(siteId: string): { state: QueueControllerState; actions: QueueControllerActions } {
+  const { t } = useTranslation();
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
 
   const [range, setRangeState] = useState<QueueRange | null>(null);
@@ -531,11 +532,11 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       intent_action: intentForSeal.intent_action ?? null,
       identity: intentForSeal.intent_target ?? null,
     });
-    pushToast('success', strings.sealModalDealSealed);
+    pushToast('success', t('seal.dealSealed'));
     setSealModalOpen(false);
     setIntentForSeal(null);
     handleQualified();
-  }, [handleQualified, intentForSeal, optimisticRemove, pushHistoryRow, pushToast]);
+  }, [handleQualified, intentForSeal, optimisticRemove, pushHistoryRow, pushToast, t]);
 
   const onSealJunkSuccess = useCallback(() => {
     if (!intentForSeal) return;
@@ -546,11 +547,11 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       intent_action: intentForSeal.intent_action ?? null,
       identity: intentForSeal.intent_target ?? null,
     });
-    pushToast('success', strings.sealModalMarkedJunk);
+    pushToast('success', t('seal.markedJunk'));
     setSealModalOpen(false);
     setIntentForSeal(null);
     handleQualified();
-  }, [handleQualified, intentForSeal, optimisticRemove, pushHistoryRow, pushToast]);
+  }, [handleQualified, intentForSeal, optimisticRemove, pushHistoryRow, pushToast, t]);
 
   const onSealError = useCallback(
     (message: string) => {

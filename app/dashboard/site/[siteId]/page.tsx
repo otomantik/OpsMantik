@@ -1,8 +1,11 @@
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { resolveLocale } from '@/lib/i18n/locale';
 import type { SiteRole } from '@/lib/auth/rbac';
 
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
@@ -51,7 +54,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
 
   const { data: site, error: siteError } = await supabase
     .from('sites')
-    .select('id, name, domain, public_id, user_id')
+    .select('id, name, domain, public_id, user_id, currency, timezone, locale')
     .eq('id', siteId)
     .single();
 
@@ -104,14 +107,27 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     }
   }
 
-  // Yayındaki ekran: DashboardShell (today range URL ile; hydration uyumu için)
+  // Locale resolution: site.locale -> user.user_metadata.locale -> Accept-Language -> en-US
+  const headersList = await headers();
+  const acceptLanguage = headersList.get('accept-language') ?? null;
+  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
+
   return (
-    <DashboardShell
-      siteId={siteId}
-      siteName={site.name || undefined}
-      siteDomain={site.domain || undefined}
-      initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
-      siteRole={siteRole}
-    />
+    <I18nProvider
+      locale={resolvedLocale}
+      siteConfig={{
+        currency: site.currency ?? undefined,
+        timezone: site.timezone ?? undefined,
+      }}
+    >
+      <DashboardShell
+        siteId={siteId}
+        siteName={site.name || undefined}
+        siteDomain={site.domain || undefined}
+        siteConfig={{ currency: site.currency ?? undefined, timezone: site.timezone ?? undefined, locale: resolvedLocale }}
+        initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
+        siteRole={siteRole}
+      />
+    </I18nProvider>
   );
 }

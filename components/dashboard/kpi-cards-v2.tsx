@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useDashboardStats } from '@/lib/hooks/use-dashboard-stats';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,7 @@ interface KPICardsV2Props {
 }
 
 export function KPICardsV2({ siteId }: KPICardsV2Props) {
+  const { formatNumber } = useTranslation();
   // Always use TODAY range for Command Center
   const dateRange = useMemo(() => {
     const { fromIso, toIso } = getTodayTrtUtcRange();
@@ -73,7 +75,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
     (whatsappIntents ?? 0) === 0 &&
     (stats.total_events || 0) === 0;
 
-  const fmt = (n: number | null) => (n === null ? '…' : n.toLocaleString('tr-TR'));
+  const fmt = (n: number | null) => (n === null ? '…' : formatNumber(n));
 
   return (
     <div className="space-y-4">

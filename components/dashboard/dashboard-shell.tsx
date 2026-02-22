@@ -15,7 +15,7 @@ import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { getBadgeStatus } from '@/lib/realtime-badge-status';
 import { cn } from '@/lib/utils';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
@@ -29,6 +29,8 @@ interface DashboardShellProps {
   siteId: string;
   siteName?: string;
   siteDomain?: string;
+  /** Site i18n config (currency, timezone, locale) for formatting. */
+  siteConfig?: { currency?: string; timezone?: string; locale?: string };
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
   siteRole: SiteRole;
@@ -74,7 +76,8 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole }: DashboardShellProps) {
+export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initialTodayRange, siteRole }: DashboardShellProps) {
+  const { t } = useTranslation();
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
   // Real-time signals for the Shell
@@ -127,7 +130,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
-            {strings.operationsCenter.toUpperCase()} {' // OCI ACTIVE'}
+            {t('sidebar.operationsCenter').toUpperCase()} {' // OCI ACTIVE'}
           </div>
           <div className="hidden sm:block opacity-70 text-slate-500">
             LATENCY: {loading ? '...' : '12ms'}
@@ -153,7 +156,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   {siteName || siteDomain || 'OpsMantik'}
                 </span>
               </Link>
-              <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{strings.p0CommandCenter}</div>
+              <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{t('sidebar.p0CommandCenter')}</div>
             </div>
 
             <div className="flex items-center gap-3 shrink-0 min-w-0">
@@ -258,15 +261,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7">
             <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{strings.liveQueue}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{strings.liveQueueSubtitle}</p>
+              <h2 className="text-base font-semibold text-slate-800">{t('sidebar.liveQueue')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.liveQueueSubtitle')}</p>
             </div>
             <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
           </div>
           <div className="lg:col-span-5 space-y-6">
             <div className="mb-1">
-              <h2 className="text-base font-semibold text-slate-800">{strings.reports}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{strings.reportsSubtitle}</p>
+              <h2 className="text-base font-semibold text-slate-800">{t('sidebar.reports')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.reportsSubtitle')}</p>
             </div>
             {/* Wrap in Suspense? No, dynamic has loading */}
             <TrafficSourceBreakdown
