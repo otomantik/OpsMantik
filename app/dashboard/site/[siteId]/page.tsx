@@ -151,7 +151,6 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
         siteId={siteId}
         siteName={site.name || undefined}
         siteDomain={site.domain || undefined}
-        siteConfig={{ currency: site.currency ?? undefined, timezone: site.timezone ?? undefined, locale: resolvedLocale }}
         initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
         siteRole={siteRole}
       />
