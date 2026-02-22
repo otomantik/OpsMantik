@@ -234,7 +234,7 @@ export function HunterCard({
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-slate-800 truncate">
-                {sourceType === 'whatsapp' ? 'WhatsApp Direct' : sourceType === 'phone' ? 'Phone Inquiry' : sourceType === 'form' ? 'Lead Form' : 'General Intent'}
+                {sourceType === 'whatsapp' ? translate('hunter.intentWhatsApp') : sourceType === 'phone' ? translate('hunter.intentPhone') : sourceType === 'form' ? translate('hunter.intentForm') : translate('hunter.intentGeneral')}
               </div>
               <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                 <Clock className="h-3.5 w-3.5" />
@@ -254,7 +254,7 @@ export function HunterCard({
 
       <CardContent className="p-4 flex-1">
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
-          <Row label="Session Actions" value={actionsDisplay} icon={Clock} />
+          <Row label={translate('hunter.sessionActions')} value={actionsDisplay} icon={Clock} />
           <Row label={translate('hunter.keyword')} value={keywordDisplay} icon={FileText} />
           <Row label={translate('hunter.location')} value={locationDisplay} icon={MapPin} />
           <Row label={translate('hunter.page')} value={pageDisplay} icon={FileText} />
@@ -276,7 +276,7 @@ export function HunterCard({
             className="h-9 border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs"
             onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
             disabled={Boolean(readOnly)}
-            title={readOnly ? 'Read-only role' : 'Mark as junk'}
+            title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
             JUNK
           </Button>
@@ -293,7 +293,7 @@ export function HunterCard({
             className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
             disabled={Boolean(readOnly)}
-            title={readOnly ? 'Read-only role' : 'Seal lead'}
+            title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
           >
             SEAL
           </Button>

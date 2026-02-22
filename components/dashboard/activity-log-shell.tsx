@@ -111,7 +111,7 @@ export function ActivityLogShell({
         .filter((x) => x.id && x.call_id && x.created_at);
       setRows(parsed);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load activity log');
+      setError(e instanceof Error ? e.message : t('activity.failedToLoad'));
       setRows([]);
     } finally {
       setLoading(false);
@@ -171,7 +171,7 @@ export function ActivityLogShell({
 
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Hours</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('activity.hours')}</span>
                 <select
                   className="h-7 text-xs font-bold bg-transparent outline-none"
                   value={hoursBack}
@@ -185,18 +185,18 @@ export function ActivityLogShell({
               </div>
 
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Action</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('activity.action')}</span>
                 <select
                   className="h-7 text-xs font-bold bg-transparent outline-none"
                   value={actionType}
                   onChange={(e) => setActionType(e.target.value as 'all' | 'seal' | 'junk' | 'cancel' | 'restore' | 'undo')}
                 >
-                  <option value="all">ALL</option>
-                  <option value="seal">SEAL</option>
-                  <option value="junk">JUNK</option>
-                  <option value="cancel">CANCEL</option>
-                  <option value="restore">RESTORE</option>
-                  <option value="undo">UNDO</option>
+                  <option value="all">{t('activity.filterAll')}</option>
+                  <option value="seal">{t('activity.filterSeal')}</option>
+                  <option value="junk">{t('activity.filterJunk')}</option>
+                  <option value="cancel">{t('activity.filterCancel')}</option>
+                  <option value="restore">{t('activity.filterRestore')}</option>
+                  <option value="undo">{t('activity.filterUndo')}</option>
                 </select>
               </div>
 
@@ -207,7 +207,7 @@ export function ActivityLogShell({
                   checked={onlyUndoable}
                   onChange={(e) => setOnlyUndoable(e.target.checked)}
                 />
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Only undoable</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">{t('activity.onlyUndoable')}</span>
               </label>
 
               <Button
@@ -216,7 +216,7 @@ export function ActivityLogShell({
                 onClick={() => fetchRows()}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {t('button.refresh')}
               </Button>
             </div>
           </div>
@@ -226,8 +226,8 @@ export function ActivityLogShell({
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-            <div className="text-xs font-black uppercase tracking-widest text-slate-600">Recent actions</div>
-            <div className="text-xs text-slate-500 tabular-nums">{rows.length} rows</div>
+            <div className="text-xs font-black uppercase tracking-widest text-slate-600">{t('activity.recentActions')}</div>
+            <div className="text-xs text-slate-500 tabular-nums">{rows.length} {t('activity.rows')}</div>
           </div>
 
           {error && (
@@ -237,9 +237,9 @@ export function ActivityLogShell({
           )}
 
           {loading ? (
-            <div className="p-6 text-sm text-slate-600">Loading…</div>
+            <div className="p-6 text-sm text-slate-600">{t('misc.loading')}</div>
           ) : rows.length === 0 ? (
-            <div className="p-6 text-sm text-slate-600">No actions in this window.</div>
+            <div className="p-6 text-sm text-slate-600">{t('activity.noActionsInWindow')}</div>
           ) : (
             <div className="divide-y divide-slate-100">
               {rows
@@ -248,62 +248,62 @@ export function ActivityLogShell({
                   return r.is_latest_for_call && r.action_type.toLowerCase() !== 'undo';
                 })
                 .map((r) => {
-                const Icon = iconForIntentAction(r.intent_action);
-                const canUndo = r.is_latest_for_call && r.action_type.toLowerCase() !== 'undo';
-                const busy = busyCallIds.has(r.call_id);
-                return (
-                  <div
-                    key={r.id}
-                    className={cn(
-                      'px-4 py-3 flex flex-col items-start gap-2',
-                      'sm:flex-row sm:items-center sm:justify-between sm:gap-3',
-                      busy && 'opacity-60'
-                    )}
-                  >
-                    <div className="flex items-center gap-3 min-w-0 w-full">
-                      {/* Keep time on desktop; on mobile it consumes too much horizontal space */}
-                      <div className="hidden sm:block w-[76px] text-xs tabular-nums text-slate-500 shrink-0" suppressHydrationWarning>
-                        {formatRelativeTime(r.created_at)}
-                      </div>
-                      <Icon className="h-4 w-4 text-slate-500 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold tabular-nums truncate">
-                          {r.intent_target || '—'}
+                  const Icon = iconForIntentAction(r.intent_action);
+                  const canUndo = r.is_latest_for_call && r.action_type.toLowerCase() !== 'undo';
+                  const busy = busyCallIds.has(r.call_id);
+                  return (
+                    <div
+                      key={r.id}
+                      className={cn(
+                        'px-4 py-3 flex flex-col items-start gap-2',
+                        'sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+                        busy && 'opacity-60'
+                      )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 w-full">
+                        {/* Keep time on desktop; on mobile it consumes too much horizontal space */}
+                        <div className="hidden sm:block w-[76px] text-xs tabular-nums text-slate-500 shrink-0" suppressHydrationWarning>
+                          {formatRelativeTime(r.created_at)}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                          <span className="sm:hidden mr-2 normal-case font-semibold">
-                            {formatRelativeTime(r.created_at)}
-                          </span>
-                          {r.action_type} • {r.actor_type}
-                          {r.reason ? ` • ${r.reason}` : ''}
+                        <Icon className="h-4 w-4 text-slate-500 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold tabular-nums truncate">
+                            {r.intent_target || '—'}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                            <span className="sm:hidden mr-2 normal-case font-semibold">
+                              {formatRelativeTime(r.created_at)}
+                            </span>
+                            {r.action_type} • {r.actor_type}
+                            {r.reason ? ` • ${r.reason}` : ''}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full sm:w-auto">
-                      {r.sale_amount != null && (
-                        <span className="text-xs font-black tabular-nums text-slate-700">
-                          {r.sale_amount} {r.currency || ''}
-                        </span>
-                      )}
-                      {statusPill(r.new_status)}
-                      {canUndo && (
-                        <Button
-                          variant="outline"
-                          className="h-8 px-2.5 text-xs font-bold border-slate-200"
-                          onClick={() => undo(r.call_id)}
-                          disabled={busy}
-                          aria-label="Undo last action"
-                          title="Undo last action"
-                        >
-                          <Undo2 className="h-3.5 w-3.5 sm:mr-2" />
-                          <span className="hidden sm:inline">Undo</span>
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full sm:w-auto">
+                        {r.sale_amount != null && (
+                          <span className="text-xs font-black tabular-nums text-slate-700">
+                            {r.sale_amount} {r.currency || ''}
+                          </span>
+                        )}
+                        {statusPill(r.new_status)}
+                        {canUndo && (
+                          <Button
+                            variant="outline"
+                            className="h-8 px-2.5 text-xs font-bold border-slate-200"
+                            onClick={() => undo(r.call_id)}
+                            disabled={busy}
+                            aria-label={t('activity.undoTitle')}
+                            title={t('activity.undoTitle')}
+                          >
+                            <Undo2 className="h-3.5 w-3.5 sm:mr-2" />
+                            <span className="hidden sm:inline">{t('activity.undo')}</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           )}
         </div>

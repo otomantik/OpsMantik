@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatTimestamp } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface Site {
   id: string;
@@ -14,6 +15,7 @@ interface Site {
 }
 
 export function SitesManager() {
+  const { t } = useTranslation();
   const [sites, setSites] = useState<Site[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -249,7 +251,7 @@ export function SitesManager() {
     // Always include data-api with console domain
     const apiUrl = `https://console.${domain}/api/sync`;
     const snippet = `<script defer src="https://assets.${domain}/assets/core.js" data-ops-site-id="${newSite.public_id}" data-ops-consent="analytics" data-api="${apiUrl}"></script>`;
-    
+
     try {
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
@@ -272,7 +274,7 @@ export function SitesManager() {
     return (
       <Card>
         <CardContent className="p-6">
-          <p className="text-sm text-muted-foreground">Loading sites...</p>
+          <p className="text-sm text-muted-foreground">{t('sites.loading')}</p>
         </CardContent>
       </Card>
     );
@@ -283,18 +285,18 @@ export function SitesManager() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Sites</CardTitle>
+          <CardTitle className="text-base font-semibold">{t('sites.title')}</CardTitle>
         </CardHeader>
         <CardContent className="p-6">
           <div className="bg-destructive/10 border border-destructive/20 p-4 rounded space-y-3">
             <p className="text-sm text-destructive font-semibold">
-              ⚠️ Database Schema Mismatch
+              {t('sites.schemaMismatch')}
             </p>
             <p className="text-sm text-destructive">
               {error}
             </p>
             <div className="mt-3 pt-3 border-t border-destructive/20">
-              <p className="text-sm text-muted-foreground mb-2">To fix this:</p>
+              <p className="text-sm text-muted-foreground mb-2">{t('sites.fixSchemaHelp')}</p>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
                 <li>Check your Supabase migrations are applied</li>
                 <li>Verify the <code className="text-foreground">sites</code> table has columns: <code className="text-foreground">name</code>, <code className="text-foreground">domain</code>, <code className="text-foreground">public_id</code></li>
@@ -312,16 +314,16 @@ export function SitesManager() {
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle className="text-base font-semibold">Sites</CardTitle>
+            <CardTitle className="text-base font-semibold">{t('sites.title')}</CardTitle>
             <CardDescription className="text-sm text-muted-foreground mt-1">
-              Manage your tracking sites
+              {t('sites.manageDescription')}
             </CardDescription>
           </div>
           <Button
             onClick={() => setShowAddForm(!showAddForm)}
             size="sm"
           >
-            {showAddForm ? '✕ Cancel' : '+ Add Site'}
+            {showAddForm ? t('sites.cancel') : t('sites.addSite')}
           </Button>
         </div>
       </CardHeader>
@@ -330,13 +332,13 @@ export function SitesManager() {
         {error && !error.includes('Database schema mismatch') && (
           <div className="bg-destructive/10 border border-destructive/20 p-4 rounded space-y-2">
             <p className="text-sm text-destructive font-semibold">
-              Error loading sites
+              {t('sites.errorLoading')}
             </p>
             <p className="text-sm text-destructive break-words">
               {error}
             </p>
             <p className="text-sm text-muted-foreground">
-              Check browser console for detailed error information.
+              {t('sites.checkConsole')}
             </p>
           </div>
         )}
@@ -345,7 +347,7 @@ export function SitesManager() {
           <form onSubmit={handleSubmit} className="bg-muted/40 p-4 rounded border border-border space-y-3">
             <div>
               <label htmlFor="site-name" className="block text-sm text-muted-foreground mb-1">
-                Site Name *
+                {t('sites.siteName')}
               </label>
               <input
                 id="site-name"
@@ -354,12 +356,12 @@ export function SitesManager() {
                 onChange={(e) => setSiteName(e.target.value)}
                 required
                 className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="My Website"
+                placeholder={t('sites.siteNamePlaceholder')}
               />
             </div>
             <div>
               <label htmlFor="domain" className="block text-sm text-muted-foreground mb-1">
-                Domain *
+                {t('sites.domain')}
               </label>
               <input
                 id="domain"
@@ -368,10 +370,10 @@ export function SitesManager() {
                 onChange={(e) => setDomain(e.target.value)}
                 required
                 className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="example.com"
+                placeholder={t('sites.domainPlaceholder')}
               />
               <p className="text-sm text-muted-foreground mt-1">
-                Protocol and path will be stripped automatically
+                {t('sites.domainHelp')}
               </p>
             </div>
             {error && (
@@ -384,7 +386,7 @@ export function SitesManager() {
               disabled={isCreating}
               className="w-full"
             >
-              {isCreating ? '⏳ Creating...' : '🚀 Create Site'}
+              {isCreating ? t('sites.creating') : t('sites.createSite')}
             </Button>
           </form>
         )}
@@ -392,7 +394,7 @@ export function SitesManager() {
         {/* Success Message with Snippet */}
         {newSite && (
           <div className="bg-emerald-50 border border-emerald-200 p-4 rounded space-y-3">
-            <p className="text-sm text-emerald-700">Site created successfully!</p>
+            <p className="text-sm text-emerald-700">{t('sites.createdSuccess')}</p>
             {isUsingFallback && (
               <div className="bg-amber-50 border border-amber-200 p-2 rounded">
                 <p className="text-sm text-amber-800">
@@ -405,7 +407,7 @@ export function SitesManager() {
             )}
             <div>
               <label className="block text-sm text-muted-foreground mb-2">
-                Install Snippet:
+                {t('sites.installSnippet')}
               </label>
               <div className="flex gap-2">
                 <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-sm break-all">
@@ -415,7 +417,7 @@ export function SitesManager() {
                   onClick={copySnippet}
                   size="sm"
                 >
-                  {copied ? '✓ Copied' : '📋 Copy'}
+                  {copied ? t('sites.copied') : t('sites.copy')}
                 </Button>
               </div>
             </div>
@@ -425,8 +427,8 @@ export function SitesManager() {
         {/* Sites List */}
         {sites.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">No sites yet</p>
-            <p className="text-sm text-muted-foreground mt-2">Add your first site to start tracking</p>
+            <p className="text-sm text-muted-foreground">{t('sites.noSites')}</p>
+            <p className="text-sm text-muted-foreground mt-2">{t('sites.addFirstSite')}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -438,7 +440,7 @@ export function SitesManager() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <p className="text-sm text-foreground font-semibold">
-                      {site.name || 'Unnamed Site'}
+                      {site.name || t('sites.unnamedSite')}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {site.domain}
@@ -463,19 +465,18 @@ export function SitesManager() {
                       {statusLoading[site.id] ? '⏳' : '🔍 Verify Install'}
                     </Button>
                   </div>
-                  
+
                   {siteStatus[site.id] && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className={`text-sm ${
-                          siteStatus[site.id].status === 'Receiving events' 
-                            ? 'text-emerald-700' 
-                            : 'text-muted-foreground'
-                        }`}>
+                        <span className={`text-sm ${siteStatus[site.id].status === 'Receiving events'
+                          ? 'text-emerald-700'
+                          : 'text-muted-foreground'
+                          }`}>
                           {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status}
                         </span>
                       </div>
-                      
+
                       {siteStatus[site.id].last_event_at ? (
                         <div className="text-sm space-y-1">
                           <p className="text-muted-foreground tabular-nums">
@@ -511,7 +512,7 @@ export function SitesManager() {
 
                   {/* Install Instructions */}
                   <div className="mt-3 pt-3 border-t border-border">
-                    <p className="text-sm text-muted-foreground mb-2">Install Snippet:</p>
+                    <p className="text-sm text-muted-foreground mb-2">{t('sites.installSnippet')}</p>
                     <code className="block px-2 py-1 bg-muted/40 border border-border rounded text-foreground text-sm break-all">
                       {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-ops-site-id="${site.public_id}" data-ops-consent="analytics" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
@@ -545,7 +546,7 @@ export function SitesManager() {
                       {inviteLoading[site.id] ? '⏳' : '📧 Invite'}
                     </Button>
                   </div>
-                  
+
                   {inviteError[site.id] && (
                     <div className="mt-2 bg-destructive/10 border border-destructive/20 p-2 rounded">
                       <p className="text-sm text-destructive">{inviteError[site.id]}</p>

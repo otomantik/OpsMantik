@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatTimestamp, formatLocation } from '@/lib/utils';
 import type { LiveInboxIntent } from '@/lib/types/dashboard';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 type SessionDetailsRow = {
   id: string;
@@ -47,6 +48,7 @@ export function LazySessionDrawer({
   onClose: () => void;
 }) {
   const sessionId = intent.matched_session_id;
+  const { t } = useTranslation();
   const [details, setDetails] = useState<SessionDetailsRow | null>(null);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,7 @@ export function LazySessionDrawer({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {loading ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">Loading session…</div>
+            <div className="p-6 text-center text-sm text-muted-foreground">{t('session.loading')}</div>
           ) : error ? (
             <div className="p-4 border border-rose-200 bg-rose-50 text-sm text-rose-900">{error}</div>
           ) : (
@@ -126,25 +128,25 @@ export function LazySessionDrawer({
               <div className="p-4 rounded border border-slate-200 bg-white shadow-sm">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Created</div>
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.created')}</div>
                     <div className="text-sm text-foreground tabular-nums" suppressHydrationWarning>
                       {details?.created_at ? formatTimestamp(details.created_at, { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Device</div>
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.device')}</div>
                     <div className="text-sm text-foreground">
                       {details?.device_type || '—'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Location</div>
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.location')}</div>
                     <div className="text-sm text-foreground">
                       {formatLocation(details?.city ?? null, details?.district ?? null)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground uppercase tracking-wider">Attribution</div>
+                    <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.attribution')}</div>
                     <div className="text-sm text-foreground truncate">
                       {details?.attribution_source || '—'}
                     </div>
@@ -157,7 +159,7 @@ export function LazySessionDrawer({
                   Timeline ({events.length})
                 </div>
                 {events.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No events</div>
+                  <div className="text-sm text-muted-foreground">{t('session.noEvents')}</div>
                 ) : (
                   <div className="space-y-2">
                     {events.slice(0, 100).map((e) => (
@@ -185,7 +187,7 @@ export function LazySessionDrawer({
 
           {!sessionId && (
             <div className="p-4 border border-slate-200 bg-white text-sm text-muted-foreground">
-              No matched session for this intent.
+              {t('session.noMatchedSession')}
             </div>
           )}
         </div>

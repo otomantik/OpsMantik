@@ -41,7 +41,7 @@ export function ActivityLogInline({
       <div className="mt-2 relative max-h-44 overflow-hidden">
         <div className="space-y-2">
           {history.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No actions yet.</div>
+            <div className="text-sm text-muted-foreground">{t('activity.noActionsYet')}</div>
           ) : (
             history.map((h, idx) => {
               const Icon = iconForAction(h.intent_action);
@@ -81,7 +81,7 @@ export function ActivityLogInline({
                         className="p-1 rounded hover:bg-slate-100 transition-colors disabled:opacity-50"
                         onClick={() => onUndo(h.call_id)}
                         disabled={isRestoring || readOnly}
-                        title="Undo last action"
+                        title={t('activity.undoTitle')}
                       >
                         <Undo2 className="h-3.5 w-3.5 text-slate-600" />
                       </button>
@@ -92,7 +92,7 @@ export function ActivityLogInline({
                         className="p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
                         onClick={() => onCancel(h.call_id)}
                         disabled={isRestoring || readOnly}
-                        title="Cancel deal"
+                        title={t('activity.cancelDealTitle')}
                       >
                         <XOctagon className="h-3.5 w-3.5 text-red-600" />
                       </button>

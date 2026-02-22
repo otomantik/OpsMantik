@@ -7,6 +7,7 @@ import { cn, formatTimestamp } from '@/lib/utils';
 import { HunterCard } from '../hunter-card';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { peekBorderClass } from './utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 function ActiveDeckCard({
   siteId,
@@ -116,7 +117,8 @@ function LiteDeckCard({
   onSkip: () => void;
 }) {
   const action = (intent.intent_action || 'intent').toString();
-  const summary = intent.summary || 'Loading details…';
+  const { t } = useTranslation();
+  const summary = intent.summary || t('queue.loadingDetails');
   const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;
   const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
   const actionsLine =
@@ -145,13 +147,13 @@ function LiteDeckCard({
 
       <div className="p-3 pt-0">
         <div className="grid grid-cols-3 gap-2 w-full">
-          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title="Loading details…">
+          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('queue.loadingDetails')}>
             JUNK
           </Button>
           <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" onClick={() => onSkip()}>
             SKIP
           </Button>
-          <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title="Loading details…">
+          <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('queue.loadingDetails')}>
             SEAL
           </Button>
         </div>

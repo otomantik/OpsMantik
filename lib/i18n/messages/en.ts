@@ -20,6 +20,15 @@ export const en = {
   'kpi.redacted': 'Redacted',
   'kpi.gclidRatio': 'GCLID Ratio',
   'kpi.avgScroll': 'Avg Scroll',
+  // KPI Cards v2
+  'kpi.adsSessions': 'Ads Sessions',
+  'kpi.phoneIntents': 'Phone Intents',
+  'kpi.whatsappIntents': 'WhatsApp Intents',
+  'kpi.forms': 'Forms',
+  'kpi.clicks': 'Clicks',
+  'kpi.conversions': 'Conversions',
+  'kpi.todayTrt': 'Today (TRT)',
+  'kpi.hidden': 'Hidden',
 
   // Dashboard
   'dashboard.title': 'Operations Center',
@@ -33,6 +42,11 @@ export const en = {
   'dashboard.yesterdayPerformance': 'Yesterday Performance',
   'dashboard.realtimeToday': 'Real-Time (Today)',
   'dashboard.timeline': 'Timeline',
+  'dashboard.adsCommandCenter': 'Ads Command Center',
+
+  // Status
+  'status.live': 'Live',
+  'status.offline': 'Offline',
 
   // Queue
   'queue.sealed': 'Sealed',
@@ -41,6 +55,7 @@ export const en = {
   'queue.pending': 'Pending',
   'queue.intentQualificationQueue': 'Intent Qualification Queue',
   'queue.failedToLoad': 'Failed to load intents',
+  'queue.loadingDetails': 'Loading details…',
 
   // Empty states
   'empty.queueMissionAccomplished': 'Mission Accomplished',
@@ -56,6 +71,8 @@ export const en = {
   'button.confirm': 'Confirm',
   'button.retry': 'Retry',
   'button.refresh': 'Refresh',
+  'button.refreshKpis': 'Refresh KPIs',
+  'button.copy': 'Copy',
 
   // Intent types
   'intent.call': 'Call',
@@ -74,6 +91,9 @@ export const en = {
   'seal.sealing': 'Saving…',
   'seal.dealSealed': 'Deal sealed.',
   'seal.markedJunk': 'Marked as junk.',
+  'seal.mute': 'Mute',
+  'seal.unmute': 'Unmute',
+  'seal.starAria': '{star} star',
 
   // Dimension labels
   'dimension.source': 'Source',
@@ -82,6 +102,10 @@ export const en = {
 
   'traffic.title': 'Traffic Sources',
   'traffic.whereVisitorsCameFrom': 'Where visitors came from',
+  'traffic.noSessionsInRange': 'No sessions in this range.',
+  'traffic.insightLabel': 'Insight:',
+  'traffic.total': 'Total',
+
   'pulse.revenueProjection': 'Revenue Projection',
   'pulse.basedOnDeals': 'Based on {count} sealed deals in this period.',
   'pulse.conversionPulse': 'Conversion Pulse',
@@ -133,6 +157,14 @@ export const en = {
   'hunter.homepage': 'Homepage',
   'hunter.locationUnknown': 'Unknown',
   'hunter.aiConfidence': 'AI Confidence',
+  'hunter.sessionActions': 'Session Actions',
+  'hunter.intentWhatsApp': 'WhatsApp Direct',
+  'hunter.intentPhone': 'Phone Inquiry',
+  'hunter.intentForm': 'Lead Form',
+  'hunter.intentGeneral': 'General Intent',
+  'hunter.readOnlyRole': 'Read-only role',
+  'hunter.markJunk': 'Mark as junk',
+  'hunter.sealLead': 'Seal lead',
 
   'toast.undone': 'Undone.',
   'toast.dealCancelled': 'Deal cancelled.',
@@ -144,6 +176,13 @@ export const en = {
 
   'cro.title': 'CRO Optimizer',
   'cro.subtitle': 'Automated behavioral insights and AI recommendations.',
+  'cro.peakIntentHour': 'Peak Intent Hour',
+  'cro.highestActivity': 'Highest phone/WA activity detected.',
+  'cro.adsSessionAvg': 'Ads Session Avg.',
+  'cro.engagementTime': 'Engagement time for paid traffic.',
+  'cro.croAction': 'CRO Action',
+  'cro.suggestionSticky': '💡 Suggestion: Enable Sticky Call Button at {peakHour} for max CRO.',
+  'cro.basedOnEvents': 'Based on {n} recent intent events.',
 
   'misc.loading': 'Loading…',
   'misc.error': 'Error',
@@ -151,4 +190,57 @@ export const en = {
   'misc.breakdown': 'Breakdown',
   'misc.noDataInRange': 'No data in selected range',
   'misc.errorLabel': 'Error: {msg}',
+
+  // Activity
+  'activity.hours': 'Hours',
+  'activity.action': 'Action',
+  'activity.recentActions': 'Recent actions',
+  'activity.rows': 'rows',
+  'activity.onlyUndoable': 'Only undoable',
+  'activity.noActionsInWindow': 'No actions in this window.',
+  'activity.noActionsYet': 'No actions yet.',
+  'activity.undo': 'Undo',
+  'activity.undoTitle': 'Undo last action',
+  'activity.cancelDealTitle': 'Cancel deal',
+  'activity.failedToLoad': 'Failed to load activity log',
+  'activity.filterAll': 'ALL',
+  'activity.filterSeal': 'SEAL',
+  'activity.filterJunk': 'JUNK',
+  'activity.filterCancel': 'CANCEL',
+  'activity.filterRestore': 'RESTORE',
+  'activity.filterUndo': 'UNDO',
+
+  // Sites Manager
+  'sites.loading': 'Loading sites...',
+  'sites.title': 'Sites',
+  'sites.manageDescription': 'Manage your tracking sites',
+  'sites.addSite': '+ Add Site',
+  'sites.cancel': '✕ Cancel',
+  'sites.errorLoading': 'Error loading sites',
+  'sites.checkConsole': 'Check browser console for detailed error information.',
+  'sites.siteName': 'Site Name *',
+  'sites.domain': 'Domain *',
+  'sites.siteNamePlaceholder': 'My Website',
+  'sites.domainPlaceholder': 'example.com',
+  'sites.domainHelp': 'Protocol and path will be stripped automatically',
+  'sites.creating': '⏳ Creating...',
+  'sites.createSite': '🚀 Create Site',
+  'sites.createdSuccess': 'Site created successfully!',
+  'sites.installSnippet': 'Install Snippet:',
+  'sites.copied': '✓ Copied',
+  'sites.copy': '📋 Copy',
+  'sites.noSites': 'No sites yet',
+  'sites.addFirstSite': 'Add your first site to start tracking',
+  'sites.unnamedSite': 'Unnamed Site',
+  'sites.schemaMismatch': '⚠️ Database Schema Mismatch',
+  'sites.fixSchemaHelp': 'To fix this:',
+
+  // Session
+  'session.loading': 'Loading session…',
+  'session.created': 'Created',
+  'session.device': 'Device',
+  'session.location': 'Location',
+  'session.attribution': 'Attribution',
+  'session.noEvents': 'No events',
+  'session.noMatchedSession': 'No matched session for this intent.',
 } as const;

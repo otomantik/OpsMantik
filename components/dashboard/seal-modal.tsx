@@ -153,8 +153,8 @@ export function SealModal({
             type="button"
             className="absolute right-0 top-0 p-2 rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
             onClick={() => setMuted((v) => !v)}
-            aria-label={muted ? 'Unmute' : 'Mute'}
-            title={muted ? 'Unmute' : 'Mute'}
+            aria-label={muted ? t('seal.unmute') : t('seal.mute')}
+            title={muted ? t('seal.unmute') : t('seal.mute')}
           >
             {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
           </button>
@@ -173,7 +173,7 @@ export function SealModal({
                 <button
                   key={star}
                   type="button"
-                  aria-label={`${star} star`}
+                  aria-label={t('seal.starAria', { star })}
                   className={cn(
                     'p-1.5 rounded-lg transition-all',
                     leadScore >= star

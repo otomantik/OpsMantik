@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Icons, PulseIndicator } from '@/components/icons';
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface DashboardHeaderV2Props {
   siteId: string;
@@ -15,6 +16,7 @@ interface DashboardHeaderV2Props {
 
 export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHeaderV2Props) {
   const { isConnected, lastEventAt } = useRealtimeDashboard(siteId, undefined, { adsOnly: true });
+  const { t } = useTranslation();
   // Keep a ticking "now" value so render stays pure (no Date.now in render).
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -50,7 +52,7 @@ export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHea
                 {siteName || siteDomain || 'Site Dashboard'}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Ads Command Center
+                {t('dashboard.adsCommandCenter')}
               </p>
             </div>
             <Badge className="bg-amber-100 text-amber-800 border-amber-200 shrink-0">
@@ -64,7 +66,7 @@ export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHea
               <>
                 <div className="flex items-center gap-2">
                   <PulseIndicator status="online" />
-                  <span className="text-sm font-medium text-green-700">Live</span>
+                  <span className="text-sm font-medium text-green-700">{t('status.live')}</span>
                 </div>
                 {lastEventAt && (
                   <span className="text-sm text-muted-foreground">
@@ -75,7 +77,7 @@ export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHea
             ) : (
               <div className="flex items-center gap-2">
                 <PulseIndicator status="offline" />
-                <span className="text-sm font-medium text-red-700">Offline</span>
+                <span className="text-sm font-medium text-red-700">{t('status.offline')}</span>
               </div>
             )}
           </div>

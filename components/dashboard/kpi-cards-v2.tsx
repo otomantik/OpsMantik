@@ -94,14 +94,14 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
-                Ads Sessions
+                {t('kpi.adsSessions')}
               </CardTitle>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-muted-foreground hover:text-foreground"
                 onClick={() => refetch()}
-                title="Refresh KPIs"
+                title={t('button.refreshKpis')}
               >
                 <Icons.refresh className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
@@ -111,7 +111,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : fmt(adsSessions)}
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">Today (TRT)</div>
+            <div className="mt-1 text-sm text-muted-foreground">{t('kpi.todayTrt')}</div>
           </CardContent>
         </Card>
 
@@ -120,7 +120,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
-                Phone Intents
+                {t('kpi.phoneIntents')}
               </CardTitle>
               <Icons.phone className="h-4 w-4 text-blue-600" />
             </div>
@@ -129,7 +129,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : fmt(phoneIntents)}
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">Clicks</div>
+            <div className="mt-1 text-sm text-muted-foreground">{t('kpi.clicks')}</div>
           </CardContent>
         </Card>
 
@@ -138,7 +138,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
-                WhatsApp Intents
+                {t('kpi.whatsappIntents')}
               </CardTitle>
               <Icons.whatsappBrand className="h-4 w-4 text-green-600" />
             </div>
@@ -156,16 +156,16 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide">
-                Forms
+                {t('kpi.forms')}
               </CardTitle>
               <Icons.form className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
-              {loading ? <Skeleton className="h-9 w-20" /> : (formsEnabled ? fmt(forms) : 'Hidden')}
+              {loading ? <Skeleton className="h-9 w-20" /> : (formsEnabled ? fmt(forms) : t('kpi.hidden'))}
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">Conversions</div>
+            <div className="mt-1 text-sm text-muted-foreground">{t('kpi.conversions')}</div>
           </CardContent>
         </Card>
       </div>
