@@ -1,0 +1,905 @@
+[
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 105,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"ADMIN • All Sites\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 108,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Global site management •\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 108,
+    "col": 55,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"site\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 108,
+    "col": 91,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"total\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 117,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"← Dashboard\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 129,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Error loading sites\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 135,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Check profiles role + RPC function permissions\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 145,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"All Sites\""
+  },
+  {
+    "file": "app\\admin\\sites\\page.tsx",
+    "line": 147,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Click \"Open Dashboard\" to view site details\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 46,
+    "col": 11,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"Search by name, domain, public_id, or owner ID...\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 64,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Site Name\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 65,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Domain\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 66,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Public ID\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 67,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Owner ID\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 68,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Last Event\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 69,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Status\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 70,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Action\""
+  },
+  {
+    "file": "app\\admin\\sites\\sites-table.tsx",
+    "line": 111,
+    "col": 25,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Open Dashboard\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 30,
+    "col": 16,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"sentry-example-page\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 49,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"sentry-example-page\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 52,
+    "col": 11,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Click the button below, and view the sample error on the Sentry\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 58,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Issues Page\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 60,
+    "col": 11,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \". For more details about setting up Sentry,\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 66,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"read our docs\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 93,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Throw Sample Error\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 97,
+    "col": 34,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Error sent to Sentry.\""
+  },
+  {
+    "file": "app\\sentry-example-page\\page.tsx",
+    "line": 101,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"It looks like network requests to Sentry are being blocked, which\n              \""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 313,
+    "col": 53,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Test page\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 315,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Event tracker test sayfası • Dashboard'da anlık görünecek\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 321,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📊 DASHBOARD\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 329,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🗑️ CLEAR STORAGE\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 338,
+    "col": 62,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Tracker status\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 350,
+    "col": 67,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Tracker\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 358,
+    "col": 71,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Session ID\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 364,
+    "col": 71,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Fingerprint\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 370,
+    "col": 71,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"GCLID\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 378,
+    "col": 64,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Session bilgisi yükleniyor...\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 390,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🔄 Refresh Session\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 393,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"API Status:\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 406,
+    "col": 58,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Attribution scenarios\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 408,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Test source classification and context extraction. Check /dashboard/site/&lt;id&\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 419,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"💰 Simulate Paid Click\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 427,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📱 Simulate Paid Social\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 436,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🌱 Simulate Organic\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 444,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📍 Simulate Geo Override\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 449,
+    "col": 67,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Recent scenarios:\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 465,
+    "col": 58,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Event trigger status\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 467,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Test butonlarının tetiklenme durumu\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 505,
+    "col": 62,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Event log\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 507,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Son\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 507,
+    "col": 41,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"event • Dashboard'da görünecek\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 520,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Clear\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 527,
+    "col": 77,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Henüz event gönderilmedi\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 550,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"✅ CTA Click\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 558,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📝 Form Submit\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 566,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"👁️ Page Visit\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 574,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📥 Download\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 582,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🎥 Video Watch\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 589,
+    "col": 58,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🎯 Google Ads Test (GCLID)\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 591,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Simulate paid click tracking with GCLID and UTM parameters\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 598,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"GCLID *\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 605,
+    "col": 19,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"EAIaIQobChMI...\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 611,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Device Override\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 619,
+    "col": 43,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Desktop\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 620,
+    "col": 42,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Mobile\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 621,
+    "col": 42,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Tablet\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 626,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"UTM Source (Optional)\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 633,
+    "col": 19,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"google\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 639,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"UTM Campaign (Optional)\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 646,
+    "col": 19,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"test_campaign\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 657,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🎯 Simulate Paid Click\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 664,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"✅ Simulate Conversion\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 669,
+    "col": 28,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Tip:\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 669,
+    "col": 42,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"After clicking \"Simulate Paid Click\", check the dashboard. \n                The \""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 670,
+    "col": 73,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"SOURCE: First Click (Paid)\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 671,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"and\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 671,
+    "col": 55,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"GCLID\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 671,
+    "col": 68,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"chips.\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 682,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📞 Phone Call\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 683,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Tel link tıklama\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 689,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Yukarıdaki telefon numarasına tıklayın\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 696,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"💬 WhatsApp\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 697,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"WhatsApp link\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 701,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"WhatsApp ile İletişim\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 703,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Yukarıdaki WhatsApp linkine tıklayın\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 710,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📋 Form Submit\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 711,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Form gönderimi\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 722,
+    "col": 19,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"Email\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 726,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Gönder\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 735,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🎯 CTA Button\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 736,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Call-to-action\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 744,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Hemen Başla\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 752,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📥 Download\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 753,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Dosya indirme\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 761,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Broşür İndir\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 769,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🖱️ Pricing Hover\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 770,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"2 saniye hover\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 781,
+    "col": 56,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Hover me (2 seconds)\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 789,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"🎥 Video Watch\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 790,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Video izleme\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 798,
+    "col": 17,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Video İzle (30s)\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 806,
+    "col": 60,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"📧 Newsletter\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 807,
+    "col": 74,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Newsletter kaydı\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 818,
+    "col": 19,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"Email\""
+  },
+  {
+    "file": "app\\test-page\\page.tsx",
+    "line": 822,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Abone Ol\""
+  },
+  {
+    "file": "components\\dashboard\\breakdown-widget.tsx",
+    "line": 135,
+    "col": 37,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"daha\""
+  },
+  {
+    "file": "components\\dashboard\\dashboard-header-v2.tsx",
+    "line": 59,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"ADS ONLY\""
+  },
+  {
+    "file": "components\\dashboard\\lazy-session-drawer.tsx",
+    "line": 110,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Intent:\""
+  },
+  {
+    "file": "components\\dashboard\\lazy-session-drawer.tsx",
+    "line": 117,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Close\""
+  },
+  {
+    "file": "components\\dashboard\\lazy-session-drawer.tsx",
+    "line": 159,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Timeline (\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-deck.tsx",
+    "line": 141,
+    "col": 109,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"TRT\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-deck.tsx",
+    "line": 151,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"JUNK\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-deck.tsx",
+    "line": 154,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"SKIP\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-deck.tsx",
+    "line": 157,
+    "col": 13,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"SEAL\""
+  },
+  {
+    "file": "components\\dashboard\\session-group\\session-card-header.tsx",
+    "line": 105,
+    "col": 50,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"s\""
+  },
+  {
+    "file": "components\\dashboard\\site-setup.tsx",
+    "line": 68,
+    "col": 75,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"test_site_123\""
+  },
+  {
+    "file": "components\\dashboard\\site-setup.tsx",
+    "line": 70,
+    "col": 75,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"localhost:3000\""
+  },
+  {
+    "file": "components\\dashboard\\site-setup.tsx",
+    "line": 72,
+    "col": 83,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"data-site-id=\"test_site_123\"\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 401,
+    "col": 27,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Warning:\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 401,
+    "col": 45,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback domain:\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 404,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Set NEXT_PUBLIC_PRIMARY_DOMAIN in Vercel environment variables for production.\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 449,
+    "col": 23,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"ID:\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 538,
+    "col": 23,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"placeholder\": \"customer@example.com\""
+  },
+  {
+    "file": "components\\dashboard\\widgets\\cro-insights.tsx",
+    "line": 55,
+    "col": 108,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"s\""
+  },
+  {
+    "file": "lib\\hooks\\use-intent-qualification.ts",
+    "line": 146,
+    "col": 43,
+    "rule": "toast-literal",
+    "message": "Hardcoded toast string: \"İşlem Tamam\""
+  },
+  {
+    "file": "lib\\hooks\\use-intent-qualification.ts",
+    "line": 153,
+    "col": 29,
+    "rule": "toast-literal",
+    "message": "Hardcoded toast string: \"Geri alınıyor...\""
+  },
+  {
+    "file": "lib\\hooks\\use-intent-qualification.ts",
+    "line": 156,
+    "col": 31,
+    "rule": "toast-literal",
+    "message": "Hardcoded toast string: \"İşlem geri alındı\""
+  },
+  {
+    "file": "lib\\hooks\\use-intent-qualification.ts",
+    "line": 159,
+    "col": 29,
+    "rule": "toast-literal",
+    "message": "Hardcoded toast string: \"Geri alma başarısız\""
+  },
+  {
+    "file": "lib\\hooks\\use-intent-qualification.ts",
+    "line": 171,
+    "col": 21,
+    "rule": "toast-literal",
+    "message": "Hardcoded toast string: \"İşlem başarısız\""
+  }
+]
