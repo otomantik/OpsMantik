@@ -248,7 +248,7 @@ export function SitesManager() {
     const domain = getPrimaryDomain();
     // Always include data-api with console domain
     const apiUrl = `https://console.${domain}/api/sync`;
-    const snippet = `<script defer src="https://assets.${domain}/assets/core.js" data-site-id="${newSite.public_id}" data-api="${apiUrl}"></script>`;
+    const snippet = `<script defer src="https://assets.${domain}/assets/core.js" data-ops-site-id="${newSite.public_id}" data-ops-consent="analytics" data-api="${apiUrl}"></script>`;
     
     try {
       await navigator.clipboard.writeText(snippet);
@@ -409,7 +409,7 @@ export function SitesManager() {
               </label>
               <div className="flex gap-2">
                 <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-sm break-all">
-                  {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${newSite.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
+                  {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-ops-site-id="${newSite.public_id}" data-ops-consent="analytics" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                 </code>
                 <Button
                   onClick={copySnippet}
@@ -513,7 +513,7 @@ export function SitesManager() {
                   <div className="mt-3 pt-3 border-t border-border">
                     <p className="text-sm text-muted-foreground mb-2">Install Snippet:</p>
                     <code className="block px-2 py-1 bg-muted/40 border border-border rounded text-foreground text-sm break-all">
-                      {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-site-id="${site.public_id}" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
+                      {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-ops-site-id="${site.public_id}" data-ops-consent="analytics" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
                     <p className="text-sm text-muted-foreground mt-2">
                       📋 Copy this snippet and paste it in your WordPress header (Theme → Theme Editor → header.php) or use a plugin like "Insert Headers and Footers"

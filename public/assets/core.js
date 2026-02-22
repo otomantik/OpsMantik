@@ -585,6 +585,14 @@
       r: referrer,
       meta,
     };
+    var consent = [];
+    if (typeof window !== 'undefined' && window.opmantikConfig && 'consentScopes' in window.opmantikConfig) {
+      consent = Array.isArray(window.opmantikConfig.consentScopes) ? window.opmantikConfig.consentScopes : [];
+    } else {
+      var dc = (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-consent')) || '';
+      if (dc && dc.toLowerCase().indexOf('analytics') !== -1) consent = ['analytics']; else consent = ['analytics'];
+    }
+    payload.consent_scopes = consent;
     if (localStorage.getItem('opsmantik_debug') === '1') {
       console.log('[OPSMANTIK] Outbox:', category + '/' + action, sessionId.slice(0, 8) + '...');
     } else {
