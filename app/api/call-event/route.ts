@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
@@ -571,6 +572,11 @@ export async function POST(req: NextRequest) {
             : null;
 
         // 4. Insert call record
+        // DB idempotency: signature_hash = sha256(signature). UNIQUE(site_id, signature_hash) prevents duplicate when Redis replay cache is down.
+        const signatureHash = headerSig
+            ? createHash('sha256').update(headerSig, 'utf8').digest('hex')
+            : null;
+
         const baseInsert: Record<string, unknown> = {
             site_id: site.id,
             phone_number,
@@ -588,6 +594,7 @@ export async function POST(req: NextRequest) {
             intent_page_url,
             click_id,
             ...(value !== null ? { _client_value: value } : {}),
+            ...(signatureHash ? { signature_hash: signatureHash } : {}),
         };
 
         const insertWithEventId = {
@@ -622,22 +629,40 @@ export async function POST(req: NextRequest) {
         if (insertError) {
             // Idempotency: treat unique conflicts as NOOP and return existing call.
             if (insertError.code === '23505') {
-                const q = adminClient
-                    .from('calls')
-                    .select('id, matched_session_id, lead_score')
-                    .eq('site_id', site.id);
-                const { data: existing, error: existingErr } = event_id && eventIdColumnOk
-                    ? await q.eq('event_id', event_id).single()
-                    : await q.eq('intent_stamp', intent_stamp).single();
+                let existing: { id: string; matched_session_id?: string | null; lead_score?: number | null } | null = null;
+                if (signatureHash) {
+                    const { data: bySig } = await adminClient
+                        .from('calls')
+                        .select('id, matched_session_id, lead_score')
+                        .eq('site_id', site.id)
+                        .eq('signature_hash', signatureHash)
+                        .single();
+                    existing = bySig;
+                }
+                if (!existing && event_id && eventIdColumnOk) {
+                    const { data: byEventId } = await adminClient
+                        .from('calls')
+                        .select('id, matched_session_id, lead_score')
+                        .eq('site_id', site.id)
+                        .eq('event_id', event_id)
+                        .single();
+                    existing = byEventId;
+                }
+                if (!existing) {
+                    const { data: byIntent } = await adminClient
+                        .from('calls')
+                        .select('id, matched_session_id, lead_score')
+                        .eq('site_id', site.id)
+                        .eq('intent_stamp', intent_stamp)
+                        .single();
+                    existing = byIntent;
+                }
 
-                if (existing && !existingErr) {
+                if (existing) {
                     return NextResponse.json(
-                        {
-                            status: 'noop',
-                            call_id: existing.id,
-                            session_id: existing.matched_session_id ?? null,
-                            lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore,
-                        },
+                        signatureHash
+                            ? { status: 'noop', reason: 'idempotent_conflict', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore }
+                            : { status: 'noop', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore },
                         {
                             headers: {
                                 ...baseHeaders,

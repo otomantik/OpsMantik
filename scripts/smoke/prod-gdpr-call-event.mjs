@@ -7,7 +7,8 @@
  *   b) POST /api/sync with consent_scopes:['analytics'] -> 200
  *   c) POST /api/call-event/v2 with fingerprint (no session) -> 204 + header
  *   d) POST /api/call-event/v2 with payload containing consent_scopes -> 400
- *   e) Replay: send identical signed request twice; 2nd must return 200 + status: 'noop' (no duplicate)
+ *   e) Replay/DB idempotency: send identical signed request twice; 2nd must return 200 + status: 'noop'
+ *      (guaranteed by Redis replay + DB UNIQUE(site_id, signature_hash) even if replay cache bypassed)
  *
  * Env:
  *   BASE_URL or SMOKE_BASE_URL (default: https://console.opsmantik.com)
@@ -133,7 +134,7 @@ async function testD_callEventConsentPayloadRejected() {
 }
 
 async function testE_replaySecondReturnsNoop() {
-  log('\n[Test E] Replay: identical signed request twice -> 2nd returns 200 + status: noop', 'blue');
+  log('\n[Test E] Replay/DB idempotency: identical signed request twice -> 2nd returns 200 + status: noop', 'blue');
   if (!SITE_SECRET) {
     log('SKIP: SITE_SECRET/CALL_EVENT_SECRET not set', 'yellow');
     return;

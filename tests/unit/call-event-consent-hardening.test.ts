@@ -80,7 +80,8 @@ test('J) Route order: HMAC before Replay before Rate limit before Session lookup
   const hmacIdx = v2.indexOf('verify_call_event_signature_v1');
   const replayIdx = v2.indexOf('ReplayCacheService.checkAndStore');
   const rateLimitIdx = v2.indexOf('RateLimitService.checkWithMode');
-  const sessionIdx = v2.indexOf('findRecentSessionByFingerprint');
+  // Use lastIndexOf: findRecentSessionByFingerprint appears in import and in call; we need the call site.
+  const sessionIdx = v2.lastIndexOf('findRecentSessionByFingerprint');
   const consentIdx = v2.indexOf('hasAnalyticsConsent');
   assert.ok(hmacIdx < replayIdx, 'HMAC must run before Replay');
   assert.ok(replayIdx < rateLimitIdx, 'Replay must run before Rate limit');

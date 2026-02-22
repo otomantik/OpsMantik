@@ -21,6 +21,7 @@
 | 10 | Replay second attempt returns noop (no duplicate insert) | Smoke test E passes | [] |
 | 11 | Fingerprint rate limit 429 confirmed | Manual abuse test: >20 req/min per fingerprint → 429 | [] |
 | 12 | No unexpected 500s under abuse simulation | Phase 2 gate | [] |
+| 13 | calls_site_signature_hash_uq exists | Partial unique index on calls(site_id, signature_hash) WHERE signature_hash IS NOT NULL | [] |
 
 **idx_sessions_site_fingerprint verification SQL:**
 ```sql
@@ -31,6 +32,13 @@ WHERE schemaname = 'public'
   AND indexname = 'idx_sessions_site_fingerprint';
 ```
 Expected: 1 row; indexdef must include `(site_id, fingerprint)`. If missing, apply `supabase/migrations/OPTIONAL_idx_sessions_site_fingerprint.sql` manually. DO NOT auto-apply.
+
+**calls_site_signature_hash_uq verification:**
+```sql
+SELECT indexname, indexdef FROM pg_indexes
+WHERE schemaname = 'public' AND tablename = 'calls' AND indexname = 'calls_site_signature_hash_uq';
+```
+Expected: 1 row; indexdef must include `(site_id, signature_hash)` and `WHERE signature_hash IS NOT NULL`.
 
 **Call-event execution order (frozen):**
 1. HMAC verify → 2. Replay check → 3. Rate limit → 4. Session lookup → 5. Analytics consent gate → 6. Insert call → 7. Marketing enqueue check  
