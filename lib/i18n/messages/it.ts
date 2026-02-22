@@ -62,6 +62,7 @@ export const it = {
   "common.warning": "Attenzione",
   "common.id": "ID",
   "common.hover": "Passaggio del mouse",
+  "common.language": "Lingua",
   "common.envWarning": "NEXT_PUBLIC_PRIMARY_DOMAIN non impostato. Uso del dominio di fallback:",
   "common.envFix": "Imposta NEXT_PUBLIC_PRIMARY_DOMAIN nelle variabili d'ambiente Vercel per la produzione.",
   "common.backToDashboard": "Torna al Cruscotto",

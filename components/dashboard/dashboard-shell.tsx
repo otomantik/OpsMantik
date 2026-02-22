@@ -158,13 +158,16 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{t('sidebar.p0CommandCenter')}</div>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0 min-w-0">
-              <LocaleSwitcher />
+            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 min-w-0">
+              {/* Desktop: LocaleSwitcher visible; Mobile: moved into dropdown to free space */}
+              <div className="hidden sm:block shrink-0">
+                <LocaleSwitcher />
+              </div>
               <Link
                 href={`/dashboard/site/${siteId}/activity`}
                 className={cn(
                   buttonVariants({ variant: 'outline' }),
-                  'h-9 px-3 text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50'
+                  'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                 )}
               >
                 {t('dashboard.activityLog')}
@@ -178,7 +181,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   return (
                     <div
                       className={cn(
-                        'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-tighter transition-all duration-500',
+                        'inline-flex items-center gap-2 rounded-full border px-2 sm:px-3 py-1 text-[10px] font-black uppercase tracking-tighter transition-all duration-500 shrink-0',
                         status === 'active'
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                           : status === 'connected'
@@ -188,11 +191,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     >
                       <span
                         className={cn(
-                          'h-1.5 w-1.5 rounded-full',
+                          'h-1.5 w-1.5 rounded-full shrink-0',
                           status === 'active' ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
                         )}
                       />
-                      {status === 'disconnected' ? t('statusBar.offline') : t('statusBar.uptimeActive')}
+                      <span className="hidden min-[420px]:inline">
+                        {status === 'disconnected' ? t('statusBar.offline') : t('statusBar.uptimeActive')}
+                      </span>
                     </div>
                   );
                 })()}
@@ -200,7 +205,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full flex-shrink-0">
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -214,6 +219,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
                     {t('dashboard.realtimeToday')}
                   </DropdownMenuItem>
+                  {/* Mobile: LocaleSwitcher moved here to free header space */}
+                  <div className="sm:hidden mt-2 pt-2 border-t border-slate-700">
+                    <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('common.language')}</DropdownMenuLabel>
+                    <div className="mt-2">
+                      <LocaleSwitcher />
+                    </div>
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

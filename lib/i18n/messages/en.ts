@@ -66,6 +66,7 @@ export const en = {
   'common.warning': 'Warning',
   'common.id': 'ID',
   'common.hover': 'hover',
+  'common.language': 'Language',
   'common.envWarning': 'NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback domain:',
   'common.envFix': 'Set NEXT_PUBLIC_PRIMARY_DOMAIN in Vercel environment variables for production.',
 

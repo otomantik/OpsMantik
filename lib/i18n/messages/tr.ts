@@ -62,6 +62,7 @@ export const tr = {
   "common.warning": "Uyarı",
   "common.id": "ID",
   "common.hover": "üzerine gel",
+  "common.language": "Dil",
   "common.envWarning": "NEXT_PUBLIC_PRIMARY_DOMAIN ayarlanmamış. Yedek alan adı kullanılıyor:",
   "common.envFix": "Prodüksiyon için Vercel ortam değişkenlerinde NEXT_PUBLIC_PRIMARY_DOMAIN'i ayarlayın.",
   "common.backToDashboard": "Panele Geri Dön",
