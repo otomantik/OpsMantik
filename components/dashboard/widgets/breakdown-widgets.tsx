@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboardBreakdown } from '@/lib/hooks/use-dashboard-breakdown';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { SourceBreakdownCard } from './source-breakdown-card';
 import { LocationBreakdownCard } from './location-breakdown-card';
 import { DeviceBreakdownCard } from './device-breakdown-card';
@@ -16,6 +16,7 @@ export interface BreakdownWidgetsProps {
 }
 
 export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidgetsProps) {
+  const { t } = useTranslation();
   const { data, isLoading, error, refetch } = useDashboardBreakdown(
     siteId,
     { from: dateRange.from, to: dateRange.to },
@@ -25,7 +26,7 @@ export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidget
   if (isLoading) {
     return (
       <div className="space-y-4" data-testid="p4-breakdown">
-        <h2 className="text-base font-semibold text-slate-800">{strings.breakdown}</h2>
+        <h2 className="text-base font-semibold text-slate-800">{t('misc.breakdown')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="border-border bg-card">
@@ -47,7 +48,7 @@ export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidget
   if (error) {
     return (
       <div className="space-y-3" data-testid="p4-breakdown">
-        <h2 className="text-sm font-semibold">Breakdown</h2>
+        <h2 className="text-sm font-semibold">{t('misc.breakdown')}</h2>
         <Card className="border-border bg-card">
           <CardContent className="p-4">
             <p className="text-sm text-destructive">{error}</p>
@@ -58,7 +59,7 @@ export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidget
               onClick={() => refetch()}
               data-testid="breakdown-retry"
             >
-              Retry
+              {t('button.retry')}
             </Button>
           </CardContent>
         </Card>
@@ -77,10 +78,10 @@ export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidget
   if (isEmpty) {
     return (
       <div className="space-y-4" data-testid="p4-breakdown">
-        <h2 className="text-base font-semibold text-slate-800">{strings.breakdown}</h2>
+        <h2 className="text-base font-semibold text-slate-800">{t('misc.breakdown')}</h2>
         <Card className="border-border bg-card">
           <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{strings.noDataInRange}</p>
+            <p className="text-sm text-muted-foreground">{t('misc.noDataInRange')}</p>
           </CardContent>
         </Card>
       </div>
@@ -90,8 +91,8 @@ export function BreakdownWidgets({ siteId, dateRange, adsOnly }: BreakdownWidget
   return (
     <div className="space-y-4 min-w-0" data-testid="p4-breakdown">
       <div>
-        <h2 className="text-base font-semibold text-slate-800">{strings.breakdown}</h2>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">{strings.breakdownSubtitle}</p>
+        <h2 className="text-base font-semibold text-slate-800">{t('misc.breakdown')}</h2>
+        <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">{t('breakdown.subtitle')}</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
         <div className="min-w-0">

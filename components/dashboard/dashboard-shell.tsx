@@ -130,10 +130,10 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
-            {t('sidebar.operationsCenter').toUpperCase()} {' // OCI ACTIVE'}
+            {t('sidebar.operationsCenter').toUpperCase()} {' // '}{t('statusBar.ociActive')}
           </div>
           <div className="hidden sm:block opacity-70 text-slate-500">
-            LATENCY: {loading ? '...' : '12ms'}
+            {t('statusBar.latency')}: {loading ? '...' : '12ms'}
           </div>
         </div>
         <LiveClock />
@@ -167,7 +167,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
                   'h-9 px-3 text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50'
                 )}
               >
-                Activity Log
+                {t('dashboard.activityLog')}
               </Link>
               <div className="shrink-0 flex flex-col items-end">
                 {(() => {
@@ -192,7 +192,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
                           status === 'active' ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
                         )}
                       />
-                      {status === 'disconnected' ? 'OFFLINE' : 'UPLINK ACTIVE'}
+                      {status === 'disconnected' ? t('statusBar.offline') : t('statusBar.uptimeActive')}
                     </div>
                   );
                 })()}
@@ -205,14 +205,14 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-100 shadow-2xl">
-                  <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">Timeline</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('dashboard.timeline')}</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => setSelectedDay('yesterday')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
                     {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
-                    Yesterday Performance
+                    {t('dashboard.yesterdayPerformance')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSelectedDay('today')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
                     {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
-                    Real-Time (Today)
+                    {t('dashboard.realtimeToday')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -227,10 +227,10 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
           {/* Scoreboard */}
           <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Capture', value: captured, icon: Target, sub: 'Verified' },
-              { label: 'Shield', value: filtered, icon: Shield, sub: 'Redacted' },
-              { label: 'Efficiency', value: `${gclidRatio}%`, icon: Zap, sub: 'GCLID Ratio' },
-              { label: 'Interest', value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: 'Avg Scroll' }
+              { label: t('kpi.capture'), value: captured, icon: Target, sub: t('kpi.verified') },
+              { label: t('kpi.shield'), value: filtered, icon: Shield, sub: t('kpi.redacted') },
+              { label: t('kpi.efficiency'), value: `${gclidRatio}%`, icon: Zap, sub: t('kpi.gclidRatio') },
+              { label: t('kpi.interest'), value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: t('kpi.avgScroll') }
             ].map((item, idx) => (
               <div key={idx} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm flex flex-col justify-between min-h-[72px]">
                 <div className="flex items-center gap-2">
@@ -252,8 +252,8 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
         {/* CRO INSIGHTS TOP BAR */}
         <div className="mb-8">
           <div className="mb-3">
-            <h2 className="text-base font-semibold text-slate-800">CRO Optimizer</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Automated behavioral insights and AI recommendations.</p>
+            <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
           </div>
           <CROInsights metrics={metrics} loading={analyticsLoading} />
         </div>

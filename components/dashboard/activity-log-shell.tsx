@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { buttonVariants, Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { Home, RefreshCw, Undo2, Phone, MessageCircle, FileText, CircleDot } from 'lucide-react';
 
@@ -49,6 +50,7 @@ export function ActivityLogShell({
   siteId: string;
   siteName?: string;
 }) {
+  const { t } = useTranslation();
   const [hoursBack, setHoursBack] = useState(72);
   const [onlyUndoable, setOnlyUndoable] = useState(false);
   const [actionType, setActionType] = useState<'all' | 'seal' | 'junk' | 'cancel' | 'restore' | 'undo'>('all');
@@ -78,7 +80,7 @@ export function ActivityLogShell({
       if (res.error) {
         const msg = String(res.error.message || res.error.details || '').toLowerCase();
         if (msg.includes('not found') || msg.includes('does not exist')) {
-          setError('Activity Log is not available on this database yet. Run migrations first.');
+          setError(t('dashboard.activityNotAvailable'));
           setRows([]);
           return;
         }
@@ -163,7 +165,7 @@ export function ActivityLogShell({
                 </span>
               </Link>
               <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">
-                Activity Log / Kill Feed
+                {t('dashboard.activityLogKillFeed')}
               </div>
             </div>
 

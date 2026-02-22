@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { Undo2, XOctagon } from 'lucide-react';
 import { iconForAction, statusBadge } from './utils';
@@ -33,9 +34,10 @@ export function ActivityLogInline({
   onCancel: (callId: string) => void;
   readOnly: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative rounded-lg border border-border bg-background p-3">
-      <div className="text-sm font-medium">Activity Log</div>
+      <div className="text-sm font-medium">{t('dashboard.activityLog')}</div>
       <div className="mt-2 relative max-h-44 overflow-hidden">
         <div className="space-y-2">
           {history.length === 0 ? (

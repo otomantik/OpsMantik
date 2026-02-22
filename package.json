@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "verify": "npm run verify-rpcs && npm run verify:partition-triggers",
+    "verify": "npm run verify-rpcs && npm run verify:partition-triggers && npm run verify:i18n",
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
     "verify:partition-triggers": "node scripts/verify-partition-triggers.mjs",
+    "verify:i18n": "node scripts/verify-dashboard-i18n-clean.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

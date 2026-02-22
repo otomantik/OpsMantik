@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useTrafficSourceBreakdown } from '@/lib/hooks/use-traffic-source-breakdown';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
 
 const COLORS = [
@@ -29,6 +30,7 @@ export function TrafficSourceBreakdown({
   siteId: string;
   dateRange: { from: string; to: string };
 }) {
+  const { t } = useTranslation();
   const { data, isLoading, error, refetch } = useTrafficSourceBreakdown(siteId, {
     from: dateRange.from,
     to: dateRange.to,
@@ -83,7 +85,7 @@ export function TrafficSourceBreakdown({
     return (
       <div className="space-y-3" data-testid="traffic-source-breakdown">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-800">Traffic Sources</h3>
+          <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
@@ -109,12 +111,12 @@ export function TrafficSourceBreakdown({
   if (error) {
     return (
       <div className="space-y-3" data-testid="traffic-source-breakdown">
-        <h3 className="text-base font-semibold text-slate-800">Traffic Sources</h3>
+        <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4">
             <p className="text-sm text-rose-700">{error}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              Retry
+              {t('button.retry')}
             </Button>
           </CardContent>
         </Card>
@@ -125,7 +127,7 @@ export function TrafficSourceBreakdown({
   if (total === 0) {
     return (
       <div className="space-y-3" data-testid="traffic-source-breakdown">
-        <h3 className="text-base font-semibold text-slate-800">Traffic Sources</h3>
+        <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4">
             <p className="text-sm text-slate-500">No sessions in this range.</p>
@@ -138,8 +140,8 @@ export function TrafficSourceBreakdown({
   return (
     <div className="space-y-3 min-w-0" data-testid="traffic-source-breakdown">
       <div>
-        <h3 className="text-base font-semibold text-slate-800">Traffic Sources</h3>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">Where visitors came from</p>
+        <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
+        <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">{t('traffic.whereVisitorsCameFrom')}</p>
       </div>
 
       {insight && (

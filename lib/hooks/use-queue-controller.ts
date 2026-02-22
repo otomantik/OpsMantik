@@ -441,7 +441,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
           p_metadata: { ui: 'QualificationQueue', site_id: siteId },
         });
         if (rpcError) throw rpcError;
-        pushToast('success', 'Undone.');
+        pushToast('success', t('toast.undone'));
         // Refresh both queue and activity feed
         void fetchUnscoredIntents();
         void fetchKillFeed();
@@ -472,7 +472,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
           const j = await res.json().catch(() => ({}));
           throw new Error((j as { error?: string }).error || res.statusText);
         }
-        pushToast('success', 'Deal cancelled.');
+        pushToast('success', t('toast.dealCancelled'));
         // Refresh kill feed to show updated status
         void fetchKillFeed();
       } catch (err) {

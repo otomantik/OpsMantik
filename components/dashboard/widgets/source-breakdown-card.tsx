@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { BreakdownItem } from '@/lib/hooks/use-dashboard-breakdown';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { BreakdownBarRow } from './breakdown-bar-row';
 import { ENABLE_CHARTS } from './charts-config';
 
@@ -18,10 +18,11 @@ interface SourceBreakdownCardProps {
 }
 
 export function SourceBreakdownCard({ items, total }: SourceBreakdownCardProps) {
+  const { t } = useTranslation();
   return (
     <Card className="border border-slate-200 bg-white shadow-sm" data-testid="p4-source-card">
       <CardHeader className="p-5 pb-2">
-        <CardTitle className="text-base font-semibold text-slate-800">{strings.sources}</CardTitle>
+        <CardTitle className="text-base font-semibold text-slate-800">{t('breakdown.sources')}</CardTitle>
       </CardHeader>
       <CardContent className="p-5 pt-0 space-y-4 min-w-0">
         {ENABLE_CHARTS && items.length > 0 && total > 0 && (
@@ -30,7 +31,7 @@ export function SourceBreakdownCard({ items, total }: SourceBreakdownCardProps) 
           </div>
         )}
         {items.length === 0 ? (
-          <p className="text-sm text-slate-500">{strings.noSourcesInRange}</p>
+          <p className="text-sm text-slate-500">{t('breakdown.noSourcesInRange')}</p>
         ) : (
           <div className="space-y-2.5">
             {items.map((item) => (

@@ -1,6 +1,5 @@
-/** English messages — minimal key-value for pilot. */
+/** English messages — single source of truth for dashboard i18n. */
 export const en = {
-  // Sidebar
   'sidebar.operationsCenter': 'Operations Center',
   'sidebar.reports': 'Reports',
   'sidebar.liveQueue': 'Live Queue',
@@ -8,17 +7,40 @@ export const en = {
   'sidebar.reportsSubtitle': 'Revenue, conversion pulse',
   'sidebar.liveQueueSubtitle': 'Intent qualification — today / yesterday',
 
+  'statusBar.ociActive': 'OCI ACTIVE',
+  'statusBar.latency': 'LATENCY',
+  'statusBar.uptimeActive': 'UPTIME ACTIVE',
+  'statusBar.offline': 'OFFLINE',
+
+  'kpi.capture': 'Capture',
+  'kpi.shield': 'Shield',
+  'kpi.efficiency': 'Efficiency',
+  'kpi.interest': 'Interest',
+  'kpi.verified': 'Verified',
+  'kpi.redacted': 'Redacted',
+  'kpi.gclidRatio': 'GCLID Ratio',
+  'kpi.avgScroll': 'Avg Scroll',
+
   // Dashboard
   'dashboard.title': 'Operations Center',
   'dashboard.calls': 'Calls',
   'dashboard.sessions': 'Sessions',
   'dashboard.sales': 'Sales',
+  'dashboard.activityLog': 'Activity Log',
+  'dashboard.killFeed': 'Kill Feed',
+  'dashboard.activityLogKillFeed': 'Activity Log / Kill Feed',
+  'dashboard.activityNotAvailable': 'Activity Log is not available on this database yet. Run migrations first.',
+  'dashboard.yesterdayPerformance': 'Yesterday Performance',
+  'dashboard.realtimeToday': 'Real-Time (Today)',
+  'dashboard.timeline': 'Timeline',
 
-  // Queue states
+  // Queue
   'queue.sealed': 'Sealed',
   'queue.junk': 'Junk',
   'queue.suspicious': 'Suspicious',
   'queue.pending': 'Pending',
+  'queue.intentQualificationQueue': 'Intent Qualification Queue',
+  'queue.failedToLoad': 'Failed to load intents',
 
   // Empty states
   'empty.queueMissionAccomplished': 'Mission Accomplished',
@@ -58,9 +80,75 @@ export const en = {
   'dimension.device': 'Device',
   'dimension.city': 'City',
 
-  // Misc
-  'misc.loading': 'Loading...',
+  'traffic.title': 'Traffic Sources',
+  'traffic.whereVisitorsCameFrom': 'Where visitors came from',
+  'pulse.revenueProjection': 'Revenue Projection',
+  'pulse.basedOnDeals': 'Based on {count} sealed deals in this period.',
+  'pulse.conversionPulse': 'Conversion Pulse',
+  'pulse.qualifiedTotal': '{qualified} qualified / {total} total incoming intents.',
+
+  'health.now': 'Now',
+  'health.minutesAgo': '{n} min ago',
+  'health.hoursAgo': '{n} hr ago',
+  'health.healthy': 'Healthy',
+  'health.degraded': 'Degraded',
+  'health.critical': 'Critical',
+
+  'timeline.title': 'Timeline',
+  'timeline.traffic': 'Traffic',
+  'timeline.activity': 'Activity',
+  'timeline.calls': 'Calls',
+  'timeline.lastUpdate': 'Last update',
+  'timeline.updating': 'updating…',
+  'timeline.newDataAvailable': 'New data available',
+  'timeline.autoRefresh': 'Auto refresh: {label}',
+  'timeline.autoRefresh5m': '5 minutes',
+  'timeline.autoRefresh30m': '30 minutes',
+
+  'date.quickSelect': 'Quick select',
+  'date.customDateRange': 'Custom date range',
+  'date.customDateRangeComingSoon': 'Date picker coming soon',
+  'date.selectedRange': 'Selected range',
+  'date.maxDays': 'Max: {n} days',
+  'date.today': 'Today',
+  'date.yesterday': 'Yesterday',
+  'date.last7Days': 'Last 7 days',
+  'date.last30Days': 'Last 30 days',
+  'date.thisMonth': 'This month',
+
+  'breakdown.sources': 'Sources',
+  'breakdown.locations': 'Locations',
+  'breakdown.devices': 'Devices',
+  'breakdown.noSourcesInRange': 'No sources in range',
+  'breakdown.noLocationsInRange': 'No locations in range',
+  'breakdown.noDevicesInRange': 'No devices in range',
+  'breakdown.otherLocations': '+{n} other locations',
+  'breakdown.subtitle': 'Sessions — not Google Ads API clicks',
+
+  'hunter.keyword': 'Keyword',
+  'hunter.location': 'Location',
+  'hunter.page': 'Page',
+  'hunter.time': 'Time',
+  'hunter.device': 'Device',
+  'hunter.homepage': 'Homepage',
+  'hunter.locationUnknown': 'Unknown',
+  'hunter.aiConfidence': 'AI Confidence',
+
+  'toast.undone': 'Undone.',
+  'toast.dealCancelled': 'Deal cancelled.',
+
+  'kpi.criticalFailure': 'Critical failure',
+  'kpi.retryConnection': 'Retry Connection',
+  'kpi.noActivityYet': 'No activity yet',
+  'kpi.sendEventsToSeeMetrics': 'Send events from your site to see metrics here',
+
+  'cro.title': 'CRO Optimizer',
+  'cro.subtitle': 'Automated behavioral insights and AI recommendations.',
+
+  'misc.loading': 'Loading…',
   'misc.error': 'Error',
   'misc.noData': 'No data',
   'misc.breakdown': 'Breakdown',
+  'misc.noDataInRange': 'No data in selected range',
+  'misc.errorLabel': 'Error: {msg}',
 } as const;

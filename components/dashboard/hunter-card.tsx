@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button';
 import { cn, safeDecode, formatLocation } from '@/lib/utils';
 import type { HunterIntent } from '@/lib/types/hunter';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { Icons } from '@/components/icons';
 import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, type LucideIcon } from 'lucide-react';
 
@@ -87,12 +87,12 @@ function deviceLabel(
 }
 
 /** Path / or empty → Homepage; else show path or last segment */
-function getPageLabel(pageUrl: string | null | undefined): string {
+function getPageLabel(pageUrl: string | null | undefined, t: (k: string) => string): string {
   const raw = (pageUrl || '').trim();
-  if (!raw) return strings.homepage;
+  if (!raw) return t('hunter.homepage');
   try {
     const path = new URL(raw, 'https://x').pathname.replace(/\/$/, '') || '/';
-    if (path === '/') return strings.homepage;
+    if (path === '/') return t('hunter.homepage');
     const segment = path.split('/').filter(Boolean).pop();
     return segment ? decodeURIComponent(segment) : path;
   } catch {
@@ -172,8 +172,9 @@ export function HunterCard({
   onSkip: (params: { id: string }) => void;
   readOnly?: boolean;
 }) {
-  const t = sourceTypeOf(intent.intent_action);
-  const IntentIcon = ICON_MAP[t] || ICON_MAP.other;
+  const { t: translate } = useTranslation();
+  const sourceType = sourceTypeOf(intent.intent_action);
+  const IntentIcon = ICON_MAP[sourceType] || ICON_MAP.other;
   const trafficSource = traffic_source ?? intent.traffic_source ?? null;
   const trafficMedium = traffic_medium ?? intent.traffic_medium ?? null;
   const displayScore = useMemo(() => {
@@ -195,12 +196,12 @@ export function HunterCard({
 
   const locationDisplay = useMemo(() => {
     const out = formatLocation(intent.city ?? null, intent.district ?? null);
-    return out === '—' ? strings.locationUnknown : out;
-  }, [intent.city, intent.district]);
+    return out === '—' ? translate('hunter.locationUnknown') : out;
+  }, [intent.city, intent.district, translate]);
 
   const pageDisplay = useMemo(
-    () => getPageLabel(intent.intent_page_url || intent.page_url),
-    [intent.intent_page_url, intent.page_url]
+    () => getPageLabel(intent.intent_page_url || intent.page_url, translate),
+    [intent.intent_page_url, intent.page_url, translate]
   );
 
   const keywordDisplay = useMemo(() => safeDecode((intent.utm_term || '').trim()) || '—', [intent.utm_term]);
@@ -233,7 +234,7 @@ export function HunterCard({
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-slate-800 truncate">
-                {t === 'whatsapp' ? 'WhatsApp Direct' : t === 'phone' ? 'Phone Inquiry' : t === 'form' ? 'Lead Form' : 'General Intent'}
+                {sourceType === 'whatsapp' ? 'WhatsApp Direct' : sourceType === 'phone' ? 'Phone Inquiry' : sourceType === 'form' ? 'Lead Form' : 'General Intent'}
               </div>
               <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                 <Clock className="h-3.5 w-3.5" />
@@ -243,7 +244,7 @@ export function HunterCard({
           </div>
           <div className={cn('shrink-0 flex flex-col items-end gap-1', scoreTheme.text)}>
             <SourceBadge traffic_source={trafficSource} traffic_medium={trafficMedium} />
-            <span className="text-[10px] font-semibold uppercase tracking-wide">{strings.aiConfidence}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide">{translate('hunter.aiConfidence')}</span>
             <span className={cn('text-sm font-bold tabular-nums px-2 py-0.5 rounded-md border', scoreTheme.bg, scoreTheme.border)}>
               {displayScore}%
             </span>
@@ -254,11 +255,11 @@ export function HunterCard({
       <CardContent className="p-4 flex-1">
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
           <Row label="Session Actions" value={actionsDisplay} icon={Clock} />
-          <Row label={strings.hunterKeyword} value={keywordDisplay} icon={FileText} />
-          <Row label={strings.hunterLocation} value={locationDisplay} icon={MapPin} />
-          <Row label={strings.hunterPage} value={pageDisplay} icon={FileText} />
-          <Row label={strings.hunterTime} value={relativeTime(intent.created_at)} icon={Clock} />
-          <Row label={strings.hunterDevice} value={device.label} icon={device.icon} />
+          <Row label={translate('hunter.keyword')} value={keywordDisplay} icon={FileText} />
+          <Row label={translate('hunter.location')} value={locationDisplay} icon={MapPin} />
+          <Row label={translate('hunter.page')} value={pageDisplay} icon={FileText} />
+          <Row label={translate('hunter.time')} value={relativeTime(intent.created_at)} icon={Clock} />
+          <Row label={translate('hunter.device')} value={device.label} icon={device.icon} />
         </div>
         {intent.ai_summary && (
           <div className="mt-3 p-3 rounded-lg border border-blue-200 bg-blue-50">

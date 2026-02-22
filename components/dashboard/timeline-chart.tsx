@@ -24,8 +24,7 @@ import { RefreshCw, TrendingUp } from 'lucide-react';
 import { useTimelineData } from '@/lib/hooks/use-timeline-data';
 import { debugLog } from '@/lib/utils';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
-import { formatTimestamp } from '@/lib/utils';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface TimelineChartProps {
   siteId: string;
@@ -34,6 +33,7 @@ interface TimelineChartProps {
 }
 
 export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
+  const { t, formatTimestamp } = useTranslation();
   const { data, loading, error, refetch } = useTimelineData(siteId, dateRange);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -101,10 +101,10 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
           <div className="text-center">
             <TrendingUp className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground text-sm uppercase tracking-widest">
-              {strings.noData}
+              {t('misc.noData')}
             </p>
             <p className="text-muted-foreground text-sm mt-2 italic">
-              {strings.noDataInRange}
+              {t('misc.noDataInRange')}
             </p>
           </div>
         </div>
@@ -256,22 +256,22 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
     <Card>
       <CardHeader className="pb-3 border-b border-border">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Zaman çizelgesi</CardTitle>
+          <CardTitle className="text-sm font-semibold">{t('timeline.title')}</CardTitle>
           
           <div className="flex items-center gap-4">
             {/* Legend */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <span className="text-sm text-muted-foreground">{strings.traffic}</span>
+                <span className="text-sm text-muted-foreground">{t('timeline.traffic')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="text-sm text-muted-foreground">{strings.activity}</span>
+                <span className="text-sm text-muted-foreground">{t('timeline.activity')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-purple-500" />
-                <span className="text-sm text-muted-foreground">{strings.calls}</span>
+                <span className="text-sm text-muted-foreground">{t('timeline.calls')}</span>
               </div>
             </div>
 
@@ -293,13 +293,13 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
         {error ? (
           <div className="h-[400px] flex items-center justify-center">
             <div className="text-center">
-              <p className="text-destructive text-sm mb-2">{strings.errorLabel(error)}</p>
+              <p className="text-destructive text-sm mb-2">{t('misc.errorLabel', { msg: error })}</p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleRefresh(false)}
               >
-                {strings.retry}
+                {t('button.retry')}
               </Button>
             </div>
           </div>
@@ -307,7 +307,7 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
           <div className="h-[400px] flex items-center justify-center">
             <div className="text-center">
               <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground uppercase tracking-widest">{strings.loading}</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-widest">{t('misc.loading')}</p>
             </div>
           </div>
         ) : (
@@ -316,18 +316,18 @@ export function TimelineChart({ siteId, dateRange }: TimelineChartProps) {
             
             <div className="mt-4 flex items-center justify-between">
               <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                {strings.lastUpdate}: {formatTimestamp(lastUpdated.toISOString(), { 
+                {t('timeline.lastUpdate')}: {formatTimestamp(lastUpdated.toISOString(), { 
                   hour: '2-digit', 
                   minute: '2-digit',
                   second: '2-digit'
                 })}
-                {isRefreshing && ` (${strings.updating})`}
+                {isRefreshing && ` (${t('timeline.updating')})`}
                 {hasNewData && (
-                  <span className="ml-2 text-emerald-700">• {strings.newDataAvailable}</span>
+                  <span className="ml-2 text-emerald-700">• {t('timeline.newDataAvailable')}</span>
                 )}
               </div>
               <div className="text-sm text-muted-foreground italic">
-                {strings.autoRefresh(effectiveInterval === '5m' ? strings.autoRefresh5m : strings.autoRefresh30m)}
+                {t('timeline.autoRefresh', { label: effectiveInterval === '5m' ? t('timeline.autoRefresh5m') : t('timeline.autoRefresh30m') })}
               </div>
             </div>
           </>

@@ -14,7 +14,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useCallback } from 'react';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export interface DateRange {
   from: Date;
@@ -33,6 +33,7 @@ export interface DateRangePreset {
  * @returns Date range, presets, and update function
  */
 export function useDashboardDateRange(siteId: string) {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -71,12 +72,12 @@ export function useDashboardDateRange(siteId: string) {
   }, [fromParam, toParam]);
 
   const presets: DateRangePreset[] = useMemo(() => [
-    { label: strings.today, value: 'today' },
-    { label: strings.yesterday, value: 'yesterday' },
-    { label: strings.last7Days, value: '7d' },
-    { label: strings.last30Days, value: '30d' },
-    { label: strings.thisMonth, value: 'month' },
-  ], []);
+    { label: t('date.today'), value: 'today' },
+    { label: t('date.yesterday'), value: 'yesterday' },
+    { label: t('date.last7Days'), value: '7d' },
+    { label: t('date.last30Days'), value: '30d' },
+    { label: t('date.thisMonth'), value: 'month' },
+  ], [t]);
 
   // Apply preset
   const applyPreset = useCallback((presetValue: string) => {

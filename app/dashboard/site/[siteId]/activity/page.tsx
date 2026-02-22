@@ -1,5 +1,8 @@
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { resolveLocale } from '@/lib/i18n/locale';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { ActivityLogShell } from '@/components/dashboard/activity-log-shell';
 
@@ -21,7 +24,7 @@ export default async function ActivityLogPage({ params }: PageProps) {
 
   const { data: site, error: siteError } = await supabase
     .from('sites')
-    .select('id, name, domain')
+    .select('id, name, domain, currency, timezone, locale')
     .eq('id', siteId)
     .single();
 
@@ -47,11 +50,23 @@ export default async function ActivityLogPage({ params }: PageProps) {
     }
   }
 
+  const headersList = await headers();
+  const acceptLanguage = headersList.get('accept-language') ?? null;
+  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
+
   return (
-    <ActivityLogShell
-      siteId={siteId}
-      siteName={site.name || site.domain || undefined}
-    />
+    <I18nProvider
+      locale={resolvedLocale}
+      siteConfig={{
+        currency: site.currency ?? undefined,
+        timezone: site.timezone ?? undefined,
+      }}
+    >
+      <ActivityLogShell
+        siteId={siteId}
+        siteName={site.name || site.domain || undefined}
+      />
+    </I18nProvider>
   );
 }
 

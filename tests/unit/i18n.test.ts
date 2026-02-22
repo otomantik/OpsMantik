@@ -12,6 +12,7 @@ import {
 import { normalizeTimezone, resolveTimezone } from '@/lib/i18n/timezone';
 import { normalizeLocale, resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
+import { tr } from '@/lib/i18n/messages/tr';
 
 // --- Currency ---
 
@@ -124,4 +125,52 @@ test('guard: resolveTimezone default is UTC not Europe/Istanbul', () => {
   assert.equal(resolveTimezone(null), 'UTC');
   assert.equal(resolveTimezone({}), 'UTC');
   assert.notEqual(resolveTimezone(null), 'Europe/Istanbul');
+});
+
+// --- i18n unification: locale purity ---
+
+const ENGLISH_KPI_LABELS = [
+  'Capture',
+  'Shield',
+  'Efficiency',
+  'OCI ACTIVE',
+  'LATENCY',
+  'Traffic Sources',
+  'Revenue Projection',
+  'Conversion Pulse',
+  'Activity Log',
+];
+const KPI_KEYS = [
+  'kpi.capture',
+  'kpi.shield',
+  'kpi.efficiency',
+  'statusBar.ociActive',
+  'statusBar.latency',
+  'traffic.title',
+  'pulse.revenueProjection',
+  'pulse.conversionPulse',
+  'dashboard.activityLog',
+];
+const TURKISH_CHARS = /[şğıİöüçÇ]/;
+
+test('tr-TR: no known English KPI labels appear', () => {
+  for (const key of KPI_KEYS) {
+    const value = translate(key, 'tr-TR');
+    for (const eng of ENGLISH_KPI_LABELS) {
+      assert.ok(!value.includes(eng), `tr-TR should not render "${eng}" for ${key}, got: ${value}`);
+    }
+  }
+});
+
+test('en-US: no Turkish KPI labels (no Turkish chars in KPI/status keys)', () => {
+  for (const key of KPI_KEYS) {
+    const value = translate(key, 'en-US');
+    assert.ok(!TURKISH_CHARS.test(value), `en-US should not render Turkish chars for ${key}, got: ${value}`);
+  }
+});
+
+test('tr messages: at least one contains Turkish UTF-8 chars (ş, ğ, ı, İ, ö, ü)', () => {
+  const values = Object.values(tr);
+  const hasTurkish = values.some((v) => /[şğıİöü]/.test(v));
+  assert.ok(hasTurkish, 'Turkish messages must contain at least one of: ş, ğ, ı, İ, ö, ü');
 });

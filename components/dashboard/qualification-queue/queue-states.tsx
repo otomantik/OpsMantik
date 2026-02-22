@@ -9,12 +9,13 @@ import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
 
 export function QueueLoadingState({ queueMeta }: { queueMeta: React.ReactNode }) {
+  const { t } = useTranslation();
   return (
     <>
       {queueMeta}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Intent Qualification Queue</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t('queue.intentQualificationQueue')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Skeleton className="h-48 w-full" />
@@ -34,13 +35,14 @@ export function QueueErrorState({
   error: string;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {queueMeta}
       <Card className="border border-rose-200 bg-rose-50">
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
           <Icons.alert className="w-10 h-10 text-rose-600 mb-2" />
-          <p className="text-rose-800 text-sm mb-4">Failed to load intents: {error}</p>
+          <p className="text-rose-800 text-sm mb-4">{t('queue.failedToLoad')}: {error}</p>
           <Button
             variant="outline"
             size="sm"
@@ -48,7 +50,7 @@ export function QueueErrorState({
             className="bg-background border-rose-300 text-rose-800 hover:bg-rose-100"
           >
             <Icons.refresh className="w-3 h-3 mr-2" />
-            Retry
+            {t('button.retry')}
           </Button>
         </CardContent>
       </Card>

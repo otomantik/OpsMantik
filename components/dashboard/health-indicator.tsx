@@ -7,8 +7,7 @@
 'use client';
 
 import { Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { formatTimestamp } from '@/lib/utils';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export interface DashboardHealth {
   data_latency: string; // ISO timestamp
@@ -22,6 +21,8 @@ interface HealthIndicatorProps {
 }
 
 export function HealthIndicator({ health }: HealthIndicatorProps) {
+  const { t, formatTimestamp: fmtTs } = useTranslation();
+
   const getStatusColor = () => {
     switch (health.status) {
       case 'healthy':
@@ -56,11 +57,11 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
 
-    if (diffMins < 1) return strings.now;
-    if (diffMins < 60) return strings.minutesAgo(diffMins);
+    if (diffMins < 1) return t('health.now');
+    if (diffMins < 60) return t('health.minutesAgo', { n: diffMins });
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return strings.hoursAgo(diffHours);
-    return formatTimestamp(timestamp, { hour: '2-digit', minute: '2-digit' });
+    if (diffHours < 24) return t('health.hoursAgo', { n: diffHours });
+    return fmtTs(timestamp, { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -68,7 +69,7 @@ export function HealthIndicator({ health }: HealthIndicatorProps) {
       {getStatusIcon()}
       <div className="flex flex-col">
         <span className={`text-sm uppercase tracking-wider ${getStatusColor()}`}>
-          {health.status === 'healthy' ? strings.healthy : health.status === 'degraded' ? strings.degraded : strings.critical}
+          {health.status === 'healthy' ? t('health.healthy') : health.status === 'degraded' ? t('health.degraded') : t('health.critical')}
         </span>
         <span className="text-sm text-muted-foreground tabular-nums">
           {formatLatency(health.data_latency)}

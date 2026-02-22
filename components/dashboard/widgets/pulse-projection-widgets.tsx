@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats';
 import { TrendingUp, Activity, DollarSign, Zap } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
 
 export interface PulseProjectionWidgetsProps {
@@ -13,6 +14,7 @@ export interface PulseProjectionWidgetsProps {
 }
 
 export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjectionWidgetsProps) {
+    const { t, formatMoneyFromCents } = useTranslation();
     const { stats, loading } = useCommandCenterP0Stats(siteId, dateRange, { scope });
 
     if (loading) {
@@ -57,7 +59,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                 <CardHeader className="p-5 pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-600">
                         <TrendingUp className="h-4 w-4 text-blue-500" />
-                        Revenue Projection
+                        {t('pulse.revenueProjection')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
@@ -68,7 +70,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                         <span className="text-base font-medium text-slate-500">{currency}</span>
                     </div>
                     <p className="mt-2 text-xs text-slate-500">
-                        Based on {sealed} sealed deals in this period.
+                        {t('pulse.basedOnDeals', { count: sealed })}
                     </p>
                 </CardContent>
             </Card>
@@ -81,7 +83,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                 <CardHeader className="p-5 pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-600">
                         <Activity className="h-4 w-4 text-emerald-500" />
-                        Conversion Pulse
+                        {t('pulse.conversionPulse')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
@@ -98,7 +100,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                         </div>
                     </div>
                     <p className="mt-2 text-xs text-slate-500">
-                        {sealed} qualified / {total} total incoming intents.
+                        {t('pulse.qualifiedTotal', { qualified: sealed, total })}
                     </p>
                 </CardContent>
             </Card>

@@ -15,7 +15,7 @@ interface KPICardsV2Props {
 }
 
 export function KPICardsV2({ siteId }: KPICardsV2Props) {
-  const { formatNumber } = useTranslation();
+  const { formatNumber, t } = useTranslation();
   // Always use TODAY range for Command Center
   const dateRange = useMemo(() => {
     const { fromIso, toIso } = getTodayTrtUtcRange();
@@ -46,7 +46,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
       <Card className="border border-rose-200 bg-rose-50">
         <CardContent className="flex flex-col items-center justify-center py-8 text-center">
           <Icons.alert className="w-10 h-10 text-rose-600 mb-2" />
-          <p className="text-rose-800 text-sm mb-4">Critical failure: {error}</p>
+          <p className="text-rose-800 text-sm mb-4">{t('kpi.criticalFailure')}: {error}</p>
           <Button
             variant="outline"
             size="sm"
@@ -54,7 +54,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             className="bg-background border-rose-300 text-rose-800 hover:bg-rose-100"
           >
             <Icons.refresh className="w-3 h-3 mr-2" />
-            Retry Connection
+            {t('kpi.retryConnection')}
           </Button>
         </CardContent>
       </Card>
@@ -83,7 +83,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
       {hasNoActivity && (
         <div className="px-4 py-2 bg-muted border border-border rounded-lg">
           <p className="text-sm text-muted-foreground text-center">
-            No activity yet • Send events from your site to see metrics here
+            {t('kpi.noActivityYet')} • {t('kpi.sendEventsToSeeMetrics')}
           </p>
         </div>
       )}

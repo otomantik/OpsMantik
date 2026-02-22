@@ -12,8 +12,7 @@ import { Calendar, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
-import { formatTimestamp } from '@/lib/utils';
-import { strings } from '@/lib/i18n/en';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface DateRangePickerProps {
   value: DateRange;
@@ -47,6 +46,7 @@ export function DateRangePicker({
   presets,
   maxRange = 180,
 }: DateRangePickerProps) {
+  const { t, formatTimestamp } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const formatDate = (date: Date): string => {
@@ -85,7 +85,7 @@ export function DateRangePicker({
               {/* Presets */}
               <div className="space-y-1 mb-4">
                 <p className="text-sm text-muted-foreground uppercase tracking-widest mb-2">
-                  {strings.quickSelect}
+                  {t('date.quickSelect')}
                 </p>
                 {presets.map((preset) => (
                   <PresetButton
@@ -104,23 +104,23 @@ export function DateRangePicker({
               {/* Custom Range (Placeholder) */}
               <div className="pt-4 border-t border-border">
                 <p className="text-sm text-muted-foreground uppercase tracking-widest mb-2">
-                  {strings.customDateRange}
+                  {t('date.customDateRange')}
                 </p>
                 <p className="text-sm text-muted-foreground italic">
-                  {strings.customDateRangeComingSoon}
+                  {t('date.customDateRangeComingSoon')}
                 </p>
               </div>
 
               {/* Current Range Display */}
               <div className="pt-4 border-t border-border mt-4">
                 <p className="text-sm text-muted-foreground uppercase tracking-widest mb-1">
-                  {strings.selectedRange}
+                  {t('date.selectedRange')}
                 </p>
                 <p className="text-sm tabular-nums">
                   {displayText}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1 tabular-nums">
-                  {strings.maxDays(maxRange)}
+                  {t('date.maxDays', { n: maxRange })}
                 </p>
               </div>
             </CardContent>
