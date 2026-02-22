@@ -6,6 +6,7 @@ import { Icons } from '@/components/icons';
 import { formatTimestamp } from '@/lib/utils';
 import { QueueDeck } from './queue-deck';
 import { ActivityLogInline } from './activity-log-inline';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { QueueControllerActions, QueueControllerState } from '@/lib/hooks/use-queue-controller';
 
 export function QueueList({
@@ -19,6 +20,7 @@ export function QueueList({
   actions: QueueControllerActions;
   readOnly: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <QueueDeck
@@ -34,7 +36,7 @@ export function QueueList({
         onSealDeal={() => {
           if (!state.mergedTop) return;
           if (readOnly) {
-            actions.pushToast('danger', 'Read-only role: cannot seal/junk.');
+            actions.pushToast('danger', t('queue.readOnlyJunk'));
             return;
           }
           actions.openSealModal(state.mergedTop);
@@ -44,15 +46,15 @@ export function QueueList({
       />
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <div className="tabular-nums">{state.intents.length} in queue</div>
+        <div className="tabular-nums">{t('queue.inQueue', { n: state.intents.length })}</div>
         {state.mergedTop && (
           <div className="tabular-nums" suppressHydrationWarning>
-            {formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
+            {formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('queue.trt')}
           </div>
         )}
         <Button variant="ghost" size="sm" className="h-9" onClick={() => actions.fetchUnscoredIntents()}>
           <Icons.refresh className="h-4 w-4 mr-2" />
-          Refresh
+          {t('button.refresh')}
         </Button>
       </div>
 

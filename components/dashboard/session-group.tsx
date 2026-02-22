@@ -244,14 +244,7 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     e.event_action?.toLowerCase().includes('call')
   );
 
-  const handleCopySessionId = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(sessionId);
-    } catch (err) {
-      logger.error('SESSION_GROUP failed to copy session ID', { error: String((err as Error)?.message ?? err) });
-    }
-  };
+
 
   const handleCopyFingerprint = async (e: React.MouseEvent, fullFingerprint: string) => {
     e.stopPropagation();
@@ -286,31 +279,32 @@ export const SessionGroup = memo(function SessionGroup({ siteId, sessionId, even
     >
       <CardContent className="p-0">
         <SessionCardHeader
-          sessionId={sessionId}
+          session={{
+            id: sessionId,
+            first_event_created_at: firstEvent.created_at,
+            duration: sessionDuration,
+            events_count: events.length,
+            conversion_count: conversionCount,
+            has_phone_call: hasPhoneCall,
+            matched_call_number: matchedCall?.phone_number ?? null,
+            lead_score: leadScore,
+            intelligence_summary: intelligenceSummary,
+            attribution_source: attributionSource,
+            gclid: gclid,
+            fingerprint: fingerprint,
+            is_returning: isReturning,
+            session_count_24h: sessionCount24h,
+            site_id: siteId,
+            city: city,
+            district: district,
+            device_type: device,
+            os: os,
+            browser: browser,
+          }}
           isExpanded={isExpanded}
           onToggle={() => setIsExpanded(!isExpanded)}
-          onCopySessionId={handleCopySessionId}
           onCopyFingerprint={handleCopyFingerprint}
-          onToggleVisitorHistory={handleToggleVisitorHistory}
-          firstEventCreatedAt={firstEvent.created_at}
-          sessionDuration={sessionDuration}
-          eventCount={events.length}
-          conversionCount={conversionCount}
-          hasPhoneCall={hasPhoneCall}
-          matchedCall={matchedCall}
-          leadScore={leadScore}
-          intelligenceSummary={intelligenceSummary}
-          attributionSource={attributionSource}
-          gclid={gclid}
-          fingerprint={fingerprint}
-          isReturning={isReturning}
-          sessionCount24h={sessionCount24h}
-          siteId={siteId}
-          city={city}
-          district={district}
-          device={device}
-          os={os}
-          browser={browser}
+          onHistoryClick={handleToggleVisitorHistory}
         />
 
         {isExpanded && (

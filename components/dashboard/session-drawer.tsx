@@ -9,6 +9,7 @@ import { X, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { IntentRow } from '@/lib/hooks/use-intents';
 import { formatTimestamp, debugLog } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { SessionGroup } from './session-group';
 
 interface SessionDrawerProps {
@@ -44,6 +45,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLimitedView, setIsLimitedView] = useState(false);
   const [limitedReason, setLimitedReason] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!intent.matched_session_id) {
@@ -144,7 +146,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-base font-semibold tracking-tight">
-            Session Details
+            {t('sessionDrawer.title')}
           </h3>
           <button
             onClick={onClose}
@@ -166,19 +168,19 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm text-muted-foreground uppercase tracking-widest">
-                      Limited view
+                      {t('sessionDrawer.limitedView')}
                     </p>
                     <p className="text-sm text-foreground mt-1">
-                      Session details unavailable (permission/expired/missing).
+                      {t('sessionDrawer.unavailable')}
                     </p>
                   </div>
                   <div className="text-sm text-muted-foreground text-right tabular-nums">
-                    Site scope: <span className="text-muted-foreground">{siteId.slice(0, 8)}…</span>
+                    {t('sessionDrawer.siteScope')}: <span className="text-muted-foreground">{siteId.slice(0, 8)}…</span>
                   </div>
                 </div>
                 {limitedReason && (
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Reason: <span className="text-muted-foreground">{limitedReason}</span>
+                    {t('sessionDrawer.reason')}: <span className="text-muted-foreground">{limitedReason}</span>
                   </p>
                 )}
               </div>
@@ -186,7 +188,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
               {/* Keep UX: show intent-level info even if session fetch fails */}
               <div className="space-y-2">
                 <div className="p-3 rounded bg-white border border-slate-200">
-                  <p className="text-sm text-muted-foreground uppercase tracking-wider">Intent</p>
+                  <p className="text-sm text-muted-foreground uppercase tracking-wider">{t('sessionDrawer.intent')}</p>
                   <div className="mt-1 text-sm break-all tabular-nums">
                     {intent.id}
                   </div>
@@ -194,11 +196,11 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-3 rounded bg-white border border-slate-200">
-                    <p className="text-sm text-muted-foreground uppercase tracking-wider">Type</p>
+                    <p className="text-sm text-muted-foreground uppercase tracking-wider">{t('sessionDrawer.type')}</p>
                     <p className="mt-1 text-sm">{intent.type}</p>
                   </div>
                   <div className="p-3 rounded bg-white border border-slate-200">
-                    <p className="text-sm text-muted-foreground uppercase tracking-wider">Time</p>
+                    <p className="text-sm text-muted-foreground uppercase tracking-wider">{t('sessionDrawer.time')}</p>
                     <p className="mt-1 text-sm tabular-nums" suppressHydrationWarning>
                       {formatTimestamp(intent.timestamp, { hour: '2-digit', minute: '2-digit' })}
                     </p>
@@ -207,7 +209,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
 
                 {intent.matched_session_id && (
                   <div className="p-3 rounded bg-white border border-slate-200">
-                    <p className="text-sm text-muted-foreground uppercase tracking-wider">Matched session</p>
+                    <p className="text-sm text-muted-foreground uppercase tracking-wider">{t('sessionDrawer.matchedSession')}</p>
                     <div className="mt-1 text-sm break-all tabular-nums">
                       {intent.matched_session_id}
                     </div>
@@ -217,18 +219,18 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
             </div>
           ) : error ? (
             <div className="text-center py-12">
-              <p className="text-destructive text-sm mb-2">Error: {error}</p>
+              <p className="text-destructive text-sm mb-2">{t('misc.errorLabel', { msg: error })}</p>
             </div>
           ) : !session ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground text-sm">No matched session found</p>
+              <p className="text-muted-foreground text-sm">{t('sessionDrawer.noMatchedSession')}</p>
             </div>
           ) : (
             <>
               {/* Session Timeline */}
               <div className="mb-6">
                 <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">
-                  Session Timeline
+                  {t('sessionDrawer.sessionTimeline')}
                 </h4>
                 <SessionGroup siteId={siteId} sessionId={session.id} events={session.events.filter(e => e.event_category !== 'heartbeat')} />
               </div>
@@ -236,23 +238,23 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
               {/* Technical Details */}
               <div className="border-t border-border pt-6">
                 <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">
-                  Technical Details
+                  {t('sessionDrawer.technicalDetails')}
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Session ID:</span>
+                    <span className="text-muted-foreground">{t('sessionDrawer.sessionId')}:</span>
                     <code className="ml-2 text-muted-foreground break-all tabular-nums">{session.id}</code>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">IP:</span>
+                    <span className="text-muted-foreground">{t('sessionDrawer.ip')}:</span>
                     <span className="ml-2 text-muted-foreground">{'—'}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">User Agent:</span>
+                    <span className="text-muted-foreground">{t('sessionDrawer.userAgent')}:</span>
                     <span className="ml-2 text-muted-foreground truncate block">{'—'}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Duration:</span>
+                    <span className="text-muted-foreground">{t('sessionDrawer.duration')}:</span>
                     <span className="ml-2 text-muted-foreground tabular-nums">
                       {session.events.length > 1
                         ? formatDuration(
@@ -262,11 +264,11 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                             1000
                           )
                         )
-                        : 'N/A'}
+                        : t('misc.na')}
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Created:</span>
+                    <span className="text-muted-foreground">{t('sessionDrawer.created')}:</span>
                     <span className="ml-2 text-muted-foreground tabular-nums" suppressHydrationWarning>
                       {formatTimestamp(session.created_at, {
                         day: '2-digit',
@@ -278,7 +280,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Events:</span>
+                    <span className="text-muted-foreground">{t('sessionDrawer.events')}:</span>
                     <span className="ml-2 text-muted-foreground tabular-nums">{session.events.length}</span>
                   </div>
                 </div>

@@ -331,14 +331,14 @@ export function SitesManager() {
         {/* Error Display - Visible error box for fetch errors */}
         {error && !error.includes('Database schema mismatch') && (
           <div className="bg-destructive/10 border border-destructive/20 p-4 rounded space-y-2">
-            <p className="text-sm text-destructive font-semibold">
+            <p className="text-sm text-red-700 font-semibold">
               {t('sites.errorLoading')}
             </p>
-            <p className="text-sm text-destructive break-words">
+            <p className="text-sm text-red-700 wrap-break-word">
               {error}
             </p>
-            <p className="text-sm text-muted-foreground">
-              {t('sites.checkConsole')}
+            <p className="text-sm text-slate-500">
+              {t('setup.checkConsole')}
             </p>
           </div>
         )}

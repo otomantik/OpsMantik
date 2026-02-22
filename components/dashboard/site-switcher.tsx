@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface Site {
   id: string;
@@ -23,12 +24,13 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
   const [isLoading, setIsLoading] = useState(true);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(currentSiteId || null);
   const router = useRouter();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const fetchSites = async () => {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         setIsLoading(false);
         return;
@@ -69,10 +71,10 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Sites</CardTitle>
+          <CardTitle className="text-base font-semibold">{t('sites.yourSites')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Loading sites...</p>
+          <p className="text-sm text-muted-foreground">{t('misc.loading')}</p>
         </CardContent>
       </Card>
     );
@@ -82,9 +84,9 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Sites</CardTitle>
+          <CardTitle className="text-base font-semibold">{t('sites.yourSites')}</CardTitle>
           <CardDescription className="text-sm text-muted-foreground">
-            {isAdmin ? 'No sites found' : 'Create your first site to get started'}
+            {isAdmin ? t('setup.noSitesFound') : t('setup.description')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -92,7 +94,7 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
             onClick={() => router.push('/dashboard')}
             className="w-full"
           >
-            + Create Site
+            + {t('setup.createTestSite')}
           </Button>
         </CardContent>
       </Card>
@@ -103,10 +105,10 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
     <Card>
       <CardHeader>
         <CardTitle className="text-base font-semibold">
-          {isAdmin ? 'All Sites' : 'Your Sites'}
+          {isAdmin ? t('sites.allSites') : t('sites.yourSites')}
         </CardTitle>
         <CardDescription className="text-sm text-muted-foreground">
-          {sites.length} site{sites.length !== 1 ? 's' : ''} available
+          {t('sites.available', { count: sites.length })}
         </CardDescription>
       </CardHeader>
       <CardContent>

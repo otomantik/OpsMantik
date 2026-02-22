@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { X } from 'lucide-react';
 import { formatTimestamp } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 // Define the Session type here to avoid importing circular dependencies or redefine exactly what we need
 interface VisitorSession {
@@ -46,6 +47,7 @@ export function VisitorHistoryDrawer({
     onClose,
     currentSessionId,
 }: VisitorHistoryDrawerProps) {
+    const { t } = useTranslation();
 
     // Guard clause: if no fingerprint, we shouldn't even show this, but render gracefully
     if (!fingerprint) return null;
@@ -57,9 +59,9 @@ export function VisitorHistoryDrawer({
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-border">
                         <div>
-                            <h3 className="text-lg font-semibold text-foreground">Visitor History</h3>
+                            <h3 className="text-lg font-semibold text-foreground">{t('visitor.title')}</h3>
                             <p className="text-sm text-muted-foreground mt-1">
-                                Fingerprint: <span className="text-foreground tabular-nums">{fingerprint.slice(0, 10)}…</span>
+                                {t('visitor.fingerprint')}: <span className="text-foreground tabular-nums">{fingerprint.slice(0, 10)}…</span>
                             </p>
                         </div>
                         <Button
@@ -76,11 +78,11 @@ export function VisitorHistoryDrawer({
                     <div className="flex-1 overflow-y-auto p-4">
                         {isLoading ? (
                             <div className="text-center py-8">
-                                <p className="text-sm text-muted-foreground">Loading visitor history...</p>
+                                <p className="text-sm text-muted-foreground">{t('visitor.loading')}</p>
                             </div>
                         ) : !visitorSessions || visitorSessions.length === 0 ? (
                             <div className="text-center py-8">
-                                <p className="text-sm text-muted-foreground">No previous sessions found for this visitor</p>
+                                <p className="text-sm text-muted-foreground">{t('visitor.noSessions')}</p>
                             </div>
                         ) : (
                             <div className="space-y-2">
@@ -106,7 +108,7 @@ export function VisitorHistoryDrawer({
                                                     </span>
                                                     {session.id === currentSessionId && (
                                                         <span className="text-sm px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                                                            CURRENT
+                                                            {t('visitor.current')}
                                                         </span>
                                                     )}
                                                 </div>
@@ -128,7 +130,7 @@ export function VisitorHistoryDrawer({
                                                     )}
                                                     {session.lead_score !== null && session.lead_score !== undefined && (
                                                         <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
-                                                            Score: {session.lead_score}
+                                                            {t('visitor.score')}: {session.lead_score}
                                                         </span>
                                                     )}
                                                 </div>
@@ -147,7 +149,7 @@ export function VisitorHistoryDrawer({
                         {/* Other Calls Section - Fingerprint-only calls */}
                         {visitorCalls && visitorCalls.length > 0 && (
                             <div className="mt-4 pt-4 border-t border-border">
-                                <h4 className="text-sm font-semibold text-foreground mb-3">Other Calls (Same Fingerprint)</h4>
+                                <h4 className="text-sm font-semibold text-foreground mb-3">{t('visitor.otherCalls')}</h4>
                                 <div className="space-y-2">
                                     {(visitorCalls || []).map((call) => (
                                         <div
@@ -163,7 +165,7 @@ export function VisitorHistoryDrawer({
                                                         </span>
                                                         {call.matched_session_id && (
                                                             <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
-                                                                Matched to: {call.matched_session_id.slice(0, 8)}...
+                                                                {t('visitor.matchedTo')}: {call.matched_session_id.slice(0, 8)}...
                                                             </span>
                                                         )}
                                                     </div>
@@ -188,9 +190,11 @@ export function VisitorHistoryDrawer({
                     {/* Footer */}
                     <div className="p-4 border-t border-border bg-muted/30">
                         <p className="text-sm text-muted-foreground text-center tabular-nums">
-                            Showing {visitorSessions?.length ?? 0} session{(visitorSessions?.length ?? 0) !== 1 ? 's' : ''}
-                            {visitorCalls && visitorCalls.length > 0 && `, ${visitorCalls.length} other call${visitorCalls.length !== 1 ? 's' : ''}`}
-                            {sessionCount24h > 0 && ` • ${sessionCount24h} in last 24h`}
+                            {t('visitor.showing', {
+                                sessions: visitorSessions?.length ?? 0,
+                                calls: visitorCalls && visitorCalls.length > 0 ? `, ${visitorCalls.length} ${t('dashboard.calls').toLowerCase()}` : '',
+                                period: sessionCount24h > 0 ? ` • ${sessionCount24h} ${t('health.hoursAgo', { n: 24 }).toLowerCase()}` : ''
+                            })}
                         </p>
                     </div>
                 </CardContent>
