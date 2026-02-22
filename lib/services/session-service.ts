@@ -20,6 +20,8 @@ interface IncomingData {
     attributionSource: string;
     deviceType: string;
     fingerprint?: string | null;
+    /** KVKK/GDPR consent scopes (analytics, marketing). Set when sync passed consent check. */
+    consent_scopes?: string[];
     utm?: {
         source?: string; medium?: string; campaign?: string; term?: string; content?: string;
         adgroup?: string; matchtype?: string; device?: string; device_model?: string;
@@ -280,6 +282,10 @@ export class SessionService {
             visitor_rank: previousVisitCount >= 1 ? 'VETERAN_HUNTER' : null,
             previous_visit_count: previousVisitCount,
         };
+        if (data.consent_scopes && data.consent_scopes.length > 0) {
+            sessionPayload.consent_at = new Date().toISOString();
+            sessionPayload.consent_scopes = data.consent_scopes;
+        }
 
         const { data: newSession, error: sError } = await adminClient
             .from('sessions')

@@ -11,6 +11,7 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
+import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 
 export interface EnqueueSealParams {
@@ -24,7 +25,7 @@ export interface EnqueueSealParams {
 
 export interface EnqueueSealResult {
   enqueued: boolean;
-  reason?: 'no_click_id' | 'duplicate' | 'error';
+  reason?: 'no_click_id' | 'duplicate' | 'marketing_consent_required' | 'error';
   error?: string;
 }
 
@@ -62,6 +63,12 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   if (!hasClickId) {
     logInfo('enqueue_seal_skip', { call_id: callId, reason: 'no_click_id' });
     return { enqueued: false, reason: 'no_click_id' };
+  }
+
+  const hasMarketing = await hasMarketingConsentForCall(siteId, callId);
+  if (!hasMarketing) {
+    logInfo('enqueue_seal_skip', { call_id: callId, reason: 'marketing_consent_required' });
+    return { enqueued: false, reason: 'marketing_consent_required' };
   }
 
   const valueCents = computeValueCents(saleAmount, leadScore);

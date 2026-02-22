@@ -36,6 +36,17 @@ export interface CallRow {
   [key: string]: unknown;
 }
 
+/** Dynamic sector playbook stage (pipeline_stages JSONB) for Tier 1/2/3 funnel */
+export interface PipelineStage {
+  id: string; // e.g., 'intent', 'sealed', 'photo_received'
+  label: string; // UI display name (e.g., 'Satış Kapanışı')
+  value_cents: number; // Synthetic value to send to Google Ads API
+  is_macro: boolean; // True if this is the ultimate goal (e.g., Sale)
+  color: string; // Badge/Button color for the War Room UI
+  order: number; // Funnel rendering order (left to right)
+  is_system: boolean; // If true, the user cannot delete this stage from the UI
+}
+
 /** Per-site config (sites.config jsonb): bounty chip values, UI knobs */
 export interface SiteConfig {
   /** Bounty chip values: array e.g. [1000, 5000, 10000, 25000] or keyed object */
@@ -51,5 +62,7 @@ export interface SiteRow {
   config: SiteConfig;
   /** Average deal revenue; used for proxy value when sale_amount is not entered (Lazy Antiques Dealer). */
   default_deal_value?: number | null;
+  /** Dynamic sector playbook: macro/micro conversion stages for OCI */
+  pipeline_stages?: PipelineStage[] | null;
   [key: string]: unknown;
 }

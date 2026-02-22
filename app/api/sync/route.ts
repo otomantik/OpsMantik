@@ -23,7 +23,8 @@ import {
 } from '@/lib/billing-metrics';
 
 /**
- * Revenue Kernel (frozen order): Auth → Rate limit → Idempotency → Quota → Publish.
+ * Revenue Kernel (frozen order): Auth → Parse body → validateSite → Rate limit → Consent → Idempotency → Quota → Publish.
+ * Site invalid → 400/403. Consent missing → 204 + header (only when site valid). Idempotency untouched on consent fail.
  * Invoice authority: Postgres ingest_idempotency ONLY. Rate limit 429 = no idempotency row; Quota 429 = row inserted then billable=false.
  */
 export const runtime = 'nodejs';
@@ -243,7 +244,28 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         json = events[0];
     }
 
-    // --- 2. Rate Limit (abuse/DoS). Key = siteId:clientId when siteId present, else clientId. 429 = non-billable. ---
+    // --- 2. Request Validation (needed for siteId and body before validateSite) ---
+    const parsed = parseValidIngestPayload(json);
+    if (parsed.kind === 'invalid') {
+        return NextResponse.json(
+            { ok: false, error: 'invalid_payload', code: parsed.error },
+            { status: 400, headers: baseHeaders }
+        );
+    }
+    const body = parsed.data;
+
+    // --- 3. Site validation (MUST run before consent). Site invalid → 400/403, NOT 204. ---
+    const validateSiteFn = deps?.validateSite ?? SiteService.validateSite;
+    const { valid: siteValid, site } = await validateSiteFn(body.s);
+    if (!siteValid || !site) {
+        return NextResponse.json(
+            createSyncResponse(false, null, { error: 'Site not found or invalid', code: 'site_not_found' }),
+            { status: 400, headers: baseHeaders }
+        );
+    }
+    const siteIdUuid = site.id;
+
+    // --- 4. Rate Limit (abuse/DoS). Key = siteId:clientId when siteId present. ---
     const siteIdForRl = extractSiteIdForRateLimit(json);
     const clientId = RateLimitService.getClientId(req);
     const rateLimitKey = siteIdForRl ? `${siteIdForRl}:${clientId}` : clientId;
@@ -255,33 +277,26 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     if (!rl.allowed) {
         incrementBillingIngestRateLimited();
         const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
-        const rateLimitHeaders = { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) };
-        return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: rateLimitHeaders });
+        return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
     }
 
-    // --- 3. Request Validation ---
-    const parsed = parseValidIngestPayload(json);
-    if (parsed.kind === 'invalid') {
-        // IMPORTANT: Always include CORS headers. Return code so client can see reason in Network tab.
-        return NextResponse.json(
-            { ok: false, error: 'invalid_payload', code: parsed.error },
-            { status: 400, headers: baseHeaders }
-        );
+    // COMPLIANCE INVARIANT:
+    // Consent gate must execute AFTER site validation but BEFORE idempotency.
+    // Changing this order breaks GDPR compliance.
+    //
+    // --- 5. Consent gate: MUST execute AFTER site validation but BEFORE idempotency.
+    // analytics missing → 204 + header. Idempotency MUST NOT be touched. Publish MUST NOT be called.
+    const consentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
+        ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
+        : Array.isArray(body.meta?.consent_scopes)
+            ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+            : [];
+    if (!consentScopes.includes('analytics')) {
+        const consentHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' };
+        return new NextResponse(null, { status: 204, headers: consentHeaders });
     }
-    const body = parsed.data;
 
-    // --- 2.5 Site resolution (required for idempotency + fallback site_id) ---
-    const validateSiteFn = deps?.validateSite ?? SiteService.validateSite;
-    const { valid: siteValid, site } = await validateSiteFn(body.s);
-    if (!siteValid || !site) {
-        return NextResponse.json(
-            createSyncResponse(false, null, { error: 'Site not found or invalid', code: 'site_not_found' }),
-            { status: 400, headers: baseHeaders }
-        );
-    }
-    const siteIdUuid = site.id;
-
-    // --- 2.6 Idempotency (gatekeeper). Fail-secure: billable = successfully inserted row only. ---
+    // --- 6. Idempotency (gatekeeper). Fail-secure: billable = successfully inserted row only. ---
     const billableDecision = classifyIngestBillable(body);
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const idempotencyKey = idempotencyVersion === '2'
@@ -373,6 +388,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
 
     const workerPayload = {
         ...body,
+        consent_scopes: consentScopes,
         ingest_id: ingestId,
         ip,
         ua,

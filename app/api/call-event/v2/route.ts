@@ -126,6 +126,10 @@ export async function POST(req: NextRequest) {
     const { createClient } = await import('@supabase/supabase-js');
     const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
 
+    // COMPLIANCE INVARIANT — Route order (DO NOT change):
+    // 1) HMAC verify — MUST run first. Consent before HMAC = signature brute-force risk.
+    // 2) Replay check  3) Rate limit  4) Session lookup  5) Analytics consent gate  6) Insert  7) OCI enqueue (seal).
+    //
     // Auth boundary: verify signature BEFORE any service-role DB call.
     // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
     const signingDisabled =
@@ -177,6 +181,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: baseHeaders });
     }
     if (!isRecord(bodyJson)) return NextResponse.json({ error: 'Invalid body' }, { status: 400, headers: baseHeaders });
+    // COMPLIANCE: Reject consent escalation — call-event must NOT accept or modify consent.
+    if ('consent_scopes' in bodyJson || 'consent_at' in bodyJson) {
+      return NextResponse.json({ error: 'Invalid body', hint: 'consent_scopes and consent_at are not allowed' }, { status: 400, headers: baseHeaders });
+    }
     const parsed = CallEventV2Schema.safeParse(bodyJson);
     if (!parsed.success) return NextResponse.json({ error: 'Invalid body' }, { status: 400, headers: baseHeaders });
 
@@ -283,8 +291,33 @@ export async function POST(req: NextRequest) {
         }
       );
     }
+    // Per-fingerprint rate limit (brute-force session probing guard)
+    const FINGERPRINT_RL_LIMIT = 20;
+    const rlFp = await RateLimitService.checkWithMode(`fp:${siteUuidFinal}:${fingerprint}`, FINGERPRINT_RL_LIMIT, 60 * 1000, {
+      mode: 'degraded',
+      namespace: 'call-event-v2',
+      fallbackMaxRequests: 10,
+    });
+    if (!rlFp.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: Math.ceil((rlFp.resetAt - Date.now()) / 1000) },
+        {
+          status: 429,
+          headers: {
+            ...baseHeaders,
+            'X-RateLimit-Limit': String(FINGERPRINT_RL_LIMIT),
+            'Retry-After': Math.ceil((rlFp.resetAt - Date.now()) / 1000).toString(),
+          },
+        }
+      );
+    }
 
-    // Find recent session by fingerprint (site-scoped; see match-session-by-fingerprint.ts)
+    // COMPLIANCE INVARIANT:
+    // Call-event must not bypass analytics consent.
+    // No call insert without session analytics consent.
+    // Marketing consent required for OCI enqueue (enforce in enqueueSealConversion, PipelineService, confirm_sale_and_enqueue).
+    //
+    // Find recent session by fingerprint (site-scoped; indexed: sessions(site_id, id, created_month)).
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const recentMonths = getRecentMonths(2);
     const matchedAt = new Date().toISOString();
@@ -297,6 +330,15 @@ export async function POST(req: NextRequest) {
 
     const matchedSessionId = matchResult.matchedSessionId;
     const leadScore = matchResult.leadScore;
+
+    // COMPLIANCE: Analytics consent gate. No session OR analytics missing → 204, no insert, no OCI.
+    // Side-channel mitigation: 204 response identical for (no session) and (no analytics) — same body, same headers.
+    const CONSENT_MISSING_HEADERS = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' } as const;
+    const consentScopes = (matchResult.consentScopes ?? []).map((s) => String(s).toLowerCase());
+    const hasAnalyticsConsent = consentScopes.includes('analytics');
+    if (!matchedSessionId || !hasAnalyticsConsent) {
+      return new NextResponse(null, { status: 204, headers: CONSENT_MISSING_HEADERS });
+    }
     const scoreBreakdown = matchResult.scoreBreakdown;
     const callStatus = matchResult.callStatus;
 

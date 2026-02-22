@@ -22,11 +22,19 @@ export class ReplayCacheService {
     ReplayCacheService.localKeys.clear();
   }
 
+  /**
+   * Builds replay cache key. Prefer sha256(signature) when available to prevent replay bypass
+   * via client-generated eventId. Same signed payload → same key → replay detected.
+   */
   static makeReplayKey(input: { siteId: string; eventId?: string | null; signature?: string | null }): string {
-    const token = input.eventId ? `e:${input.eventId}` : input.signature ? `s:${input.signature}` : 'none';
+    const token = input.signature
+      ? createHash('sha256').update(input.signature, 'utf8').digest('hex')
+      : input.eventId
+        ? `e:${input.eventId}`
+        : 'none';
     const raw = `${input.siteId}:${token}`;
     const h = createHash('sha256').update(raw, 'utf8').digest('hex');
-    return `replay:${h}`;
+    return h;
   }
 
   static async checkAndStore(

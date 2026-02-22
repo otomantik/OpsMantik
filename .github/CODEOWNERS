@@ -1,0 +1,9 @@
+# GDPR Compliance — requires review
+/app/api/sync/
+/app/api/gdpr/
+/app/api/call-event/
+/supabase/migrations/
+/lib/security/verify-gdpr-consent-signature-v1.ts
+/lib/gdpr/
+/lib/audit/
+/lib/api/call-event/

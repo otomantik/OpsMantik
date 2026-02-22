@@ -7,6 +7,8 @@ import type { IngestMeta } from '@/lib/types/ingest';
 interface EventData {
     session: { id: string, created_month: string };
     siteId: string;
+    /** KVKK/GDPR consent scopes. Set when sync passed consent check. */
+    consent_scopes?: string[];
     url: string;
     event_category: string;
     event_action: string;
@@ -30,7 +32,7 @@ interface EventData {
 export class EventService {
     static async createEvent(data: EventData) {
         const {
-            session, siteId, url, event_category, event_action, event_label, event_value,
+            session, siteId, consent_scopes, url, event_category, event_action, event_label, event_value,
             meta, referrer, currentGclid, attributionSource, summary, fingerprint, ip,
             userAgent, geoInfo, deviceInfo, client_sid, ingestDedupId
         } = data;
@@ -92,6 +94,10 @@ export class EventService {
             }
         };
         if (ingestDedupId) insertPayload.ingest_dedup_id = ingestDedupId;
+        if (consent_scopes && consent_scopes.length > 0) {
+            insertPayload.consent_at = new Date().toISOString();
+            insertPayload.consent_scopes = consent_scopes;
+        }
 
         const { error: eError } = await adminClient
             .from('events')

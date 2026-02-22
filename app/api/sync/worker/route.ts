@@ -230,13 +230,18 @@ async function handler(req: NextRequest) {
             ? utm.device.toLowerCase()
             : deviceInfo.device_type;
 
+        const consentScopes = Array.isArray(job.consent_scopes)
+            ? (job.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+            : [];
+
         const session = await SessionService.handleSession(
             site.id,
             dbMonth,
             {
                 client_sid, url, currentGclid, meta, params,
                 attributionSource, deviceType, fingerprint, utm,
-                referrer
+                referrer,
+                consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
             },
             { ip, userAgent, geoInfo, deviceInfo }
         );
@@ -248,6 +253,7 @@ async function handler(req: NextRequest) {
         const { leadScore } = await EventService.createEvent({
             session: { id: session.id, created_month: session.created_month },
             siteId: site.id,
+            consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
             url, event_category, event_action, event_label, event_value,
             meta, referrer, currentGclid, attributionSource, summary,
             fingerprint, ip, userAgent, geoInfo, deviceInfo, client_sid,

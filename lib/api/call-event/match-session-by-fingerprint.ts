@@ -19,6 +19,8 @@ export interface MatchSessionResult {
   leadScore: number;
   scoreBreakdown: Record<string, unknown> | null;
   callStatus: string | null;
+  /** Consent scopes from session (for analytics gate). Indexed: sessions(site_id, id, created_month). */
+  consentScopes: string[] | null;
 }
 
 /**
@@ -37,6 +39,7 @@ export async function findRecentSessionByFingerprint(
     leadScore: 0,
     scoreBreakdown: null,
     callStatus: null,
+    consentScopes: null,
   };
 
   const { data: recentEvents, error: eventsError } = await client
@@ -60,7 +63,7 @@ export async function findRecentSessionByFingerprint(
 
   const { data: session, error: sessionError } = await client
     .from('sessions')
-    .select('id, created_at, created_month')
+    .select('id, created_at, created_month, consent_scopes')
     .eq('id', matchedSessionId)
     .eq('site_id', siteId)
     .eq('created_month', sessionMonth)
@@ -69,6 +72,9 @@ export async function findRecentSessionByFingerprint(
   if (sessionError || !session) {
     return result;
   }
+
+  const scopes = (session.consent_scopes ?? []) as string[];
+  result.consentScopes = scopes;
 
   const sessionCreatedAt = new Date(session.created_at);
   const matchTime = new Date(matchedAt);

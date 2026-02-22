@@ -169,6 +169,7 @@ export async function POST(req: NextRequest) {
         const { createClient } = await import('@supabase/supabase-js');
         const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
 
+        // COMPLIANCE: Route order — HMAC → Replay → Rate limit → Session lookup → Consent gate → Insert. Consent before HMAC = brute-force risk.
         // --- 1) Auth boundary: verify signature BEFORE any service-role DB call ---
         // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
         const signingDisabled =
@@ -235,6 +236,13 @@ export async function POST(req: NextRequest) {
         if (!isRecord(bodyJson)) {
             return NextResponse.json(
                 { error: 'Invalid body' },
+                { status: 400, headers: baseHeaders }
+            );
+        }
+        // COMPLIANCE: Reject consent escalation — call-event must NOT accept or modify consent.
+        if ('consent_scopes' in bodyJson || 'consent_at' in bodyJson) {
+            return NextResponse.json(
+                { error: 'Invalid body', hint: 'consent_scopes and consent_at are not allowed' },
                 { status: 400, headers: baseHeaders }
             );
         }
@@ -388,7 +396,20 @@ export async function POST(req: NextRequest) {
                 }
             );
         }
+        // Per-fingerprint rate limit (brute-force session probing guard)
+        const rlFp = await RateLimitService.checkWithMode(`fp:${siteUuidFinal}:${fingerprint}`, 20, 60 * 1000, {
+            mode: 'degraded',
+            namespace: 'call-event',
+            fallbackMaxRequests: 10,
+        });
+        if (!rlFp.allowed) {
+            return NextResponse.json(
+                { error: 'Rate limit exceeded', retryAfter: Math.ceil((rlFp.resetAt - Date.now()) / 1000) },
+                { status: 429, headers: { ...baseHeaders, 'Retry-After': Math.ceil((rlFp.resetAt - Date.now()) / 1000).toString() } }
+            );
+        }
 
+        // COMPLIANCE INVARIANT: No call insert without session analytics consent. Marketing consent required for OCI enqueue.
         // 2. Find most recent session for this fingerprint (within last 30 minutes)
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const recentMonths = getRecentMonths(2);
@@ -424,17 +445,19 @@ export async function POST(req: NextRequest) {
         let leadScore = 0;
         let scoreBreakdown: ScoreBreakdown | null = null;
         let callStatus: string | null = null;
+        let sessionConsentScopes: string[] = [];
         const matchedAt = new Date().toISOString();
 
         if (recentEvents && recentEvents.length > 0) {
             matchedSessionId = recentEvents[0].session_id;
             const sessionMonth = recentEvents[0].session_month;
 
-            // Validate: Check session exists and was created before match
+            // Validate: Check session exists and was created before match. Include consent_scopes for analytics gate.
             const { data: session, error: sessionError } = await adminClient
                 .from('sessions')
-                .select('id, created_at, created_month')
+                .select('id, created_at, created_month, consent_scopes')
                 .eq('id', matchedSessionId)
+                .eq('site_id', siteUuidFinal)
                 .eq('created_month', sessionMonth)
                 .single();
 
@@ -449,6 +472,7 @@ export async function POST(req: NextRequest) {
                 });
                 matchedSessionId = null;
             } else {
+                sessionConsentScopes = ((session as { consent_scopes?: string[] }).consent_scopes ?? []).map((s) => String(s).toLowerCase());
                 // Check if match is suspicious (session created after match by > 2 minutes)
                 const sessionCreatedAt = new Date(session.created_at);
                 const matchTime = new Date(matchedAt);
@@ -516,6 +540,13 @@ export async function POST(req: NextRequest) {
                     };
                 }
             }
+        }
+
+        // COMPLIANCE: Analytics consent gate. No session OR analytics missing → 204, no insert.
+        // Side-channel mitigation: 204 identical for (no session) and (no analytics).
+        const consentMissingHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' } as const;
+        if (!matchedSessionId || !sessionConsentScopes.includes('analytics')) {
+            return new NextResponse(null, { status: 204, headers: consentMissingHeaders });
         }
 
         // Derive intent fields required by DB invariants for click-sourced calls.

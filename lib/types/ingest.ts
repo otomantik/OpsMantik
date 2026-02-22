@@ -59,6 +59,9 @@ export type IngestMeta = Record<string, unknown> & {
 
   // Extended signals
   con_type?: string;
+
+  // KVKK/GDPR consent scopes (analytics, marketing)
+  consent_scopes?: string[];
 };
 
 /**
