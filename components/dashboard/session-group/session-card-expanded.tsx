@@ -4,6 +4,7 @@
 import React from 'react';
 import { formatTimestamp } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { formatEventType } from '@/lib/i18n/mapping';
 import { TrendingUp, Phone, MapPin, ChevronRight, CornerDownRight } from 'lucide-react';
 
 // Types from SessionGroup (need to be consistent)
@@ -96,7 +97,7 @@ export function SessionCardExpanded({
                                     {/* Tooltip */}
                                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                                         <div className="bg-popover text-popover-foreground text-sm px-2 py-1 rounded border border-border whitespace-nowrap shadow-sm">
-                                            {event.event_action}
+                                            {formatEventType(event.event_category, event.event_action, t)}
                                             {event.event_label && `: ${event.event_label}`}
                                         </div>
                                     </div>
@@ -176,7 +177,7 @@ export function SessionCardExpanded({
                                             </td>
                                             <td className="py-2 px-3 text-foreground flex items-center gap-2">
                                                 <Icon className="w-3 h-3" />
-                                                {event.event_action}
+                                                {formatEventType(event.event_category, event.event_action, t)}
                                             </td>
                                             <td className="py-2 px-3 text-muted-foreground">
                                                 {event.event_label || '—'}
@@ -237,12 +238,12 @@ export function SessionCardExpanded({
                                                         )}
                                                     </span>
                                                 </td>
-                                                <td className="py-2 px-3 text-foreground flex items-center gap-2">
+                                                    <td className="py-2 px-3 text-foreground flex items-center gap-2">
                                                     <ChevronRight
                                                         className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                                                     />
                                                     <Icon className="w-3 h-3" />
-                                                    {firstEvent.event_action}
+                                                    {formatEventType(firstEvent.event_category, firstEvent.event_action, t)}
                                                     <span className="ml-2 px-2 py-1 rounded bg-muted text-muted-foreground border border-border text-sm font-semibold tabular-nums">
                                                         ×{item.count}
                                                     </span>
@@ -290,7 +291,7 @@ export function SessionCardExpanded({
                                                     <td className="py-1.5 px-3 text-foreground text-sm flex items-center gap-2">
                                                         <CornerDownRight className="w-2.5 h-2.5 text-muted-foreground/30" />
                                                         <Icon className="w-2.5 h-2.5" />
-                                                        {event.event_action}
+                                                        {formatEventType(event.event_category, event.event_action, t)}
                                                     </td>
                                                     <td className="py-1.5 px-3 text-muted-foreground text-sm">
                                                         {event.event_label || '—'}

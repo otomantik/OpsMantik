@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client';
 import { formatTimestamp, formatLocation } from '@/lib/utils';
 import type { LiveInboxIntent } from '@/lib/types/dashboard';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel, formatEventType } from '@/lib/i18n/mapping';
 
 type SessionDetailsRow = {
   id: string;
@@ -55,8 +56,8 @@ export function LazySessionDrawer({
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => {
-    if (intent.intent_action === 'phone') return `${t('session.sessionLabel')} (phone)`;
-    if (intent.intent_action === 'whatsapp') return `${t('session.sessionLabel')} (whatsapp)`;
+    if (intent.intent_action === 'phone') return `${t('session.sessionLabel')} (${t('intent.call')})`;
+    if (intent.intent_action === 'whatsapp') return `${t('session.sessionLabel')} (${t('event.whatsapp')})`;
     return t('session.sessionLabel');
   }, [intent.intent_action, t]);
 
@@ -85,7 +86,7 @@ export function LazySessionDrawer({
         setEvents(Array.isArray(tData) ? (tData as TimelineEvent[]) : []);
       } catch (e: unknown) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Failed to load session');
+        setError(e instanceof Error ? e.message : t('session.loadFailed'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -136,7 +137,7 @@ export function LazySessionDrawer({
                   <div>
                     <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.device')}</div>
                     <div className="text-sm text-foreground">
-                      {details?.device_type || '—'}
+                      {getLocalizedLabel(details?.device_type, t)}
                     </div>
                   </div>
                   <div>
@@ -148,7 +149,7 @@ export function LazySessionDrawer({
                   <div>
                     <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.attribution')}</div>
                     <div className="text-sm text-foreground truncate">
-                      {details?.attribution_source || '—'}
+                      {getLocalizedLabel(details?.attribution_source, t)}
                     </div>
                   </div>
                 </div>
@@ -166,7 +167,7 @@ export function LazySessionDrawer({
                       <div key={e.id} className="p-3 rounded border border-slate-200 bg-white">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm text-foreground truncate">
-                            {e.event_category}/{e.event_action}
+                            {formatEventType(e.event_category, e.event_action, t)}
                           </div>
                           <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
                             {formatTimestamp(e.created_at, { hour: '2-digit', minute: '2-digit' })}

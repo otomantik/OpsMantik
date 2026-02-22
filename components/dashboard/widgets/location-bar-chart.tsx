@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel } from '@/lib/i18n/mapping';
 import {
   ResponsiveContainer,
   BarChart,
@@ -36,15 +38,16 @@ interface LocationBarChartProps {
 }
 
 export function LocationBarChart({ items, topN = 8 }: LocationBarChartProps) {
+  const { t } = useTranslation();
   const barData = useMemo(
     () =>
       items
         .slice(0, topN)
         .map((item) => ({
-          name: fixMojibake(safeDecode(item.name)),
+          name: getLocalizedLabel(fixMojibake(safeDecode(item.name)), t),
           count: item.count,
         })),
-    [items, topN]
+    [items, topN, t]
   );
 
   if (barData.length === 0) return null;

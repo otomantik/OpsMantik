@@ -214,6 +214,9 @@ export const en = {
   'event.scrollDepth': 'Scroll Depth',
   'event.whatsapp': 'WhatsApp',
   'event.view': 'View',
+  'event.system': 'System',
+  'event.sessionEnd': 'Session End',
+  'event.pageUnload': 'Page Unload',
 
   'dashboard.common.traffic.title': 'Traffic Sources',
   'dashboard.common.traffic.whereVisitorsCameFrom': 'Where visitors came from',
@@ -429,6 +432,7 @@ export const en = {
 
   // Session
   'session.loading': 'Loading session…',
+  'session.loadFailed': 'Failed to load session',
   'session.created': 'Created',
   'session.device': 'Device',
   'session.location': 'Location',

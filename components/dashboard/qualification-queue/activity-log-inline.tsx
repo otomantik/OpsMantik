@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { formatActionType } from '@/lib/i18n/mapping';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { Undo2, XOctagon } from 'lucide-react';
 import { iconForAction, statusBadge } from './utils';
@@ -68,7 +69,7 @@ export function ActivityLogInline({
                     </div>
                     <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
                     <div className="text-sm font-medium tabular-nums truncate">{h.identity || '—'}</div>
-                    <div className="text-xs text-muted-foreground shrink-0">{(h.action_type || '').toUpperCase()}</div>
+                    <div className="text-xs text-muted-foreground shrink-0">{formatActionType(h.action_type, t)}</div>
                     <div className="sm:hidden text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
                       {formatRelativeTime(h.at)}
                     </div>

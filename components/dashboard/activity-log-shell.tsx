@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { buttonVariants, Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { formatActionType } from '@/lib/i18n/mapping';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { Home, RefreshCw, Undo2, Phone, MessageCircle, FileText, CircleDot } from 'lucide-react';
 
@@ -277,7 +278,7 @@ export function ActivityLogShell({
                             <span className="sm:hidden mr-2 normal-case font-semibold">
                               {formatRelativeTime(r.created_at)}
                             </span>
-                            {r.action_type} • {r.actor_type}
+                            {formatActionType(r.action_type, t)} • {r.actor_type}
                             {r.reason ? ` • ${r.reason}` : ''}
                           </div>
                         </div>
