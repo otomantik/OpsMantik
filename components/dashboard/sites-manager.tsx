@@ -121,7 +121,7 @@ export function SitesManager() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create site');
+        throw new Error(data.error || t('sites.createFailed'));
       }
 
       // Add new site to list
@@ -132,7 +132,7 @@ export function SitesManager() {
       setShowAddForm(false);
     } catch (err: unknown) {
       console.error('[SITES_MANAGER] Error:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : t('common.unknownError'));
     } finally {
       setIsCreating(false);
     }
@@ -183,7 +183,7 @@ export function SitesManager() {
         ...prev,
         [siteId]: {
           loginUrl: data.login_url || null,
-          message: data.message || t('sites.inviteSuccess'),
+          message: t('sites.inviteSuccess'),
         },
       }));
       setInviteEmail((prev) => ({ ...prev, [siteId]: '' }));
@@ -193,7 +193,7 @@ export function SitesManager() {
       void fetchSites();
     } catch (err: unknown) {
       console.error('[SITES_MANAGER] Invite error:', err);
-      setInviteError((prev) => ({ ...prev, [siteId]: err instanceof Error ? err.message : 'Unknown error' }));
+      setInviteError((prev) => ({ ...prev, [siteId]: err instanceof Error ? err.message : t('common.unknownError') }));
     } finally {
       setInviteLoading((prev) => ({ ...prev, [siteId]: false }));
     }
@@ -555,7 +555,7 @@ export function SitesManager() {
 
                   {inviteSuccess[site.id] && (
                     <div className="mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded space-y-2">
-                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message === 'Customer invited successfully' ? t('sites.inviteSuccess') : inviteSuccess[site.id].message}</p>
+                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message}</p>
                       {inviteSuccess[site.id].loginUrl && (
                         <div>
                           <p className="text-sm text-muted-foreground mb-1">{t('sites.loginUrl')}</p>

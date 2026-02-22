@@ -28,7 +28,7 @@ export function getLocalizedLabel(raw: string | null | undefined, t: (key: strin
     if (l.includes('last click')) return t('attribution.lastClick');
 
     // Technical Events
-    if (l.includes('whatsapp')) return t('intent.whatsapp');
+    if (l.includes('whatsapp')) return t('event.whatsapp');
     if (l === 'scroll_depth') return t('event.scrollDepth');
     if (l === 'view') return t('event.view');
 

@@ -42,7 +42,14 @@ export const en = {
   'common.unit.hour.short': 'h',
   'common.unit.day.short': 'd',
   'common.unknown': 'Unknown',
+  'common.unknownError': 'Unknown error',
   'common.na': 'N/A',
+
+  'common.table.time': 'Time',
+  'common.table.action': 'Action',
+  'common.table.label': 'Label',
+  'common.table.value': 'Value',
+  'common.technical.clickId': 'Click ID',
   'common.noResults': 'No results found',
   'common.percentOfTraffic': '%{percent} traffic',
   'common.ofTraffic': 'of traffic',
@@ -115,6 +122,12 @@ export const en = {
   'dashboard.commandCenter.queue.seal': 'SEAL',
   'dashboard.commandCenter.queue.inQueue': '{n} in queue',
   'dashboard.commandCenter.queue.readOnlyJunk': 'Read-only role: cannot seal/junk.',
+
+  'dashboard.setup.createTestSite': 'Create test site',
+  'dashboard.setup.creating': 'Creating…',
+  'dashboard.setup.created': 'Created',
+  'dashboard.setup.testPage': 'Test page',
+  'dashboard.setup.createTestSiteFailed': 'Failed to create test site',
 
   // Empty states
   'empty.queueMissionAccomplished': 'Mission Accomplished',
@@ -359,6 +372,7 @@ export const en = {
   'sites.available': '{count} site(s) available',
   'sites.addSite': '+ Add Site',
   'sites.cancel': '✕ Cancel',
+  'sites.createFailed': 'Failed to create site',
   'sites.errorLoading': 'Error loading sites',
   'sites.checkConsole': 'Check browser console for detailed error information.',
   'sites.siteName': 'Site Name *',

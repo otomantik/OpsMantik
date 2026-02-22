@@ -27,7 +27,7 @@ export function SiteSetup() {
       if (!response.ok) {
         const errorMessage = data.details
           ? `${data.error}: ${data.details}`
-          : data.error || 'Failed to create test site';
+          : data.error || t('dashboard.setup.createTestSiteFailed');
         console.error('[SITE_SETUP] API Error:', data);
         throw new Error(errorMessage);
       }
@@ -44,7 +44,7 @@ export function SiteSetup() {
       }, 2000);
     } catch (err: unknown) {
       console.error('[SITE_SETUP] ❌ Error:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : t('common.unknownError'));
     } finally {
       setIsCreating(false);
     }
@@ -103,13 +103,13 @@ export function SiteSetup() {
             disabled={isCreating || success}
             className="w-full"
           >
-            {isCreating ? '⏳ ' + t('setup.creating') : success ? '✅ ' + t('setup.created') : '🚀 ' + t('setup.createTestSite')}
+            {isCreating ? '⏳ ' + t('dashboard.setup.creating') : success ? '✅ ' + t('dashboard.setup.created') : '🚀 ' + t('dashboard.setup.createTestSite')}
           </Button>
 
           <p className="text-sm text-muted-foreground text-center">
             {t('setup.afterCreating')}{' '}
             <a href="/test-page" className="text-emerald-700 hover:text-emerald-800 underline">
-              {t('setup.testPage')}
+              {t('dashboard.setup.testPage')}
             </a>
           </p>
         </div>

@@ -127,12 +127,12 @@ export function SessionCardExpanded({
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-border">
-                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.time')}</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">+{t('table.time')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('common.table.time')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">+{t('common.table.time')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('session.eventCategory')}</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.action')}</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.label')}</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.value')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('common.table.action')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('common.table.label')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('common.table.value')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('session.url')}</th>
                             </tr>
                         </thead>
@@ -320,7 +320,7 @@ export function SessionCardExpanded({
                         {t('session.phoneMatched')}: {matchedCall.phone_number}
                     </p>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground tabular-nums">
-                        <span>{t('table.value')}: {matchedCall.lead_score}</span>
+                        <span>{t('common.table.value')}: {matchedCall.lead_score}</span>
                         <span suppressHydrationWarning>{t('session.matchTime')}: {formatTimestamp(matchedCall.created_at)}</span>
                     </div>
                 </div>

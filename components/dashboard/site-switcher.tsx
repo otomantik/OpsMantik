@@ -94,7 +94,7 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
             onClick={() => router.push('/dashboard')}
             className="w-full"
           >
-            + {t('setup.createTestSite')}
+            + {t('dashboard.setup.createTestSite')}
           </Button>
         </CardContent>
       </Card>
