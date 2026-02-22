@@ -6,11 +6,12 @@
 
 import { en } from './messages/en';
 import { tr } from './messages/tr';
+import { it } from './messages/it';
 
-type Messages = Record<string, string>;
-const messages: Record<string, Messages> = {
-  en,
-  tr,
+const messages: Record<string, Record<string, string>> = {
+  en: en as Record<string, string>,
+  tr: tr as Record<string, string>,
+  it: it as Record<string, string>,
 };
 
 /** Resolve simple param placeholders: {name} -> params.name */
@@ -27,8 +28,8 @@ function interpolate(str: string, params?: Record<string, string | number>): str
  * Fallback order: exact locale -> locale prefix -> en -> key.
  */
 export function translate(
-  key: string,
   locale: string,
+  key: string,
   params?: Record<string, string | number>
 ): string {
   try {

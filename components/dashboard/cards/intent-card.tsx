@@ -378,7 +378,7 @@ export function IntentCard({
                 type="button"
                 className="text-rose-700 hover:text-rose-900"
                 onClick={clearError}
-                aria-label="Dismiss error"
+                aria-label={t('common.dismissError')}
               >
                 ×
               </button>

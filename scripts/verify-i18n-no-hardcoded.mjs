@@ -42,6 +42,7 @@ const VISIBLE_PROPS = new Set([
     "emptyText",
     "noDataText",
     "ctaText",
+    "aria-label",
 ]);
 
 const ALLOW_PROP_NAMES = new Set([
@@ -144,10 +145,29 @@ function scanFile(fileAbs) {
                         violations.push(reportNode(sourceFile, node, "visible-prop", `Hardcoded prop "${propName}": "${s.slice(0, 80)}"`));
                     }
                 }
-                if (init && ts.isJsxExpression(init) && init.expression && ts.isStringLiteral(init.expression)) {
-                    const s = init.expression.text;
-                    if (s.length > 0 && /[a-zA-Z]/.test(s) && !isUrlLike(s) && !isRouteLike(s)) {
-                        violations.push(reportNode(sourceFile, node, "visible-prop", `Hardcoded prop "${propName}": "${s.slice(0, 80)}"`));
+                if (init && ts.isJsxExpression(init) && init.expression) {
+                    const expr = init.expression;
+                    if (ts.isStringLiteral(expr)) {
+                        const s = expr.text;
+                        if (s.length > 0 && /[a-zA-Z]/.test(s) && !isUrlLike(s) && !isRouteLike(s)) {
+                            violations.push(reportNode(sourceFile, node, "visible-prop", `Hardcoded prop "${propName}": "${s.slice(0, 80)}"`));
+                        }
+                    } else if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+                        const s = expr.text;
+                        if (s.length > 0 && /[a-zA-Z]/.test(s)) {
+                            violations.push(reportNode(sourceFile, node, "visible-prop-template", `Hardcoded template in prop "${propName}": "${s.slice(0, 80)}"`));
+                        }
+                    } else if (ts.isTemplateExpression(expr)) {
+                        // Check head and spans for hardcoded text
+                        const checkText = (t) => t.length > 0 && /[a-zA-Z]/.test(t) && !isUrlLike(t);
+                        if (checkText(expr.head.text)) {
+                            violations.push(reportNode(sourceFile, node, "visible-prop-template", `Hardcoded template head in "${propName}": "${expr.head.text.slice(0, 80)}"`));
+                        }
+                        for (const span of expr.templateSpans) {
+                            if (checkText(span.literal.text)) {
+                                violations.push(reportNode(sourceFile, node, "visible-prop-template", `Hardcoded template span in "${propName}": "${span.literal.text.slice(0, 80)}"`));
+                            }
+                        }
                     }
                 }
             }
@@ -164,6 +184,21 @@ function scanFile(fileAbs) {
                         const s = arg.text;
                         if (s.length > 0 && /[a-zA-Z]/.test(s)) {
                             violations.push(reportNode(sourceFile, arg, "toast-literal", `Hardcoded toast string: "${s.slice(0, 80)}"`));
+                        }
+                    } else if (ts.isNoSubstitutionTemplateLiteral(arg)) {
+                        const s = arg.text;
+                        if (s.length > 0 && /[a-zA-Z]/.test(s)) {
+                            violations.push(reportNode(sourceFile, arg, "toast-template-literal", `Hardcoded toast template: "${s.slice(0, 80)}"`));
+                        }
+                    } else if (ts.isTemplateExpression(arg)) {
+                        const checkText = (t) => t.length > 0 && /[a-zA-Z]/.test(t);
+                        if (checkText(arg.head.text)) {
+                            violations.push(reportNode(sourceFile, arg, "toast-template-literal", `Hardcoded toast template head: "${arg.head.text.slice(0, 80)}"`));
+                        }
+                        for (const span of arg.templateSpans) {
+                            if (checkText(span.literal.text)) {
+                                violations.push(reportNode(sourceFile, arg, "toast-template-literal", `Hardcoded toast template span: "${span.literal.text.slice(0, 80)}"`));
+                            }
                         }
                     }
                 }

@@ -63,23 +63,23 @@ export default async function DashboardPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              {translate('dashboard.warRoom', resolvedLocale)}
+              {translate(resolvedLocale, 'dashboard.warRoom')}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {translate('dashboard.commandCenterSub', resolvedLocale)}
+              {translate(resolvedLocale, 'dashboard.commandCenterSub')}
             </p>
           </div>
           <div className="flex gap-2">
             {process.env.NODE_ENV === 'development' && (
               <Link href="/test-page">
                 <Button variant="outline">
-                  🧪 {translate('dashboard.testPage', resolvedLocale)}
+                  🧪 {translate(resolvedLocale, 'dashboard.testPage')}
                 </Button>
               </Link>
             )}
             <form action={signOut}>
               <Button type="submit" variant="outline">
-                🚪 {translate('dashboard.signOut', resolvedLocale)}
+                🚪 {translate(resolvedLocale, 'dashboard.signOut')}
               </Button>
             </form>
           </div>

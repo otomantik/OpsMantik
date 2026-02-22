@@ -55,10 +55,10 @@ export function LazySessionDrawer({
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => {
-    if (intent.intent_action === 'phone') return 'Session (phone)';
-    if (intent.intent_action === 'whatsapp') return 'Session (whatsapp)';
-    return 'Session';
-  }, [intent.intent_action]);
+    if (intent.intent_action === 'phone') return `${t('session.sessionLabel')} (phone)`;
+    if (intent.intent_action === 'whatsapp') return `${t('session.sessionLabel')} (whatsapp)`;
+    return t('session.sessionLabel');
+  }, [intent.intent_action, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,14 +107,14 @@ export function LazySessionDrawer({
           <div>
             <div className="text-base font-semibold">{title}</div>
             <div className="text-sm text-muted-foreground mt-1 tabular-nums">
-              Intent: <span className="text-foreground">{intent.id.slice(0, 8)}…</span>
+              {t('common.intent')}: <span className="text-foreground">{intent.id.slice(0, 8)}…</span>
             </div>
           </div>
           <button
             onClick={onClose}
             className="text-sm text-muted-foreground hover:text-foreground border border-border px-3 py-2 rounded"
           >
-            Close
+            {t('common.close')}
           </button>
         </div>
 
@@ -156,7 +156,7 @@ export function LazySessionDrawer({
 
               <div className="p-4 rounded border border-slate-200 bg-white shadow-sm">
                 <div className="text-sm text-muted-foreground uppercase tracking-wider mb-2">
-                  Timeline ({events.length})
+                  {t('common.timeline', { count: events.length })}
                 </div>
                 {events.length === 0 ? (
                   <div className="text-sm text-muted-foreground">{t('session.noEvents')}</div>

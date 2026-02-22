@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface SiteWithStatus {
   id: string;
@@ -20,6 +21,7 @@ interface SitesTableWithSearchProps {
 }
 
 export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredSites = useMemo(() => {
@@ -43,7 +45,7 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search by name, domain, public_id, or owner ID..."
+          placeholder={t('admin.sites.table.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full px-4 py-2 bg-background border border-border rounded text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -53,7 +55,7 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
       {filteredSites.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground">
-            {searchQuery ? 'No sites match your search' : 'No sites found'}
+            {searchQuery ? t('common.noResults') : t('admin.sites.empty')}
           </p>
         </div>
       ) : (
@@ -61,13 +63,13 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left p-3 text-xs text-muted-foreground">Site Name</th>
-                <th className="text-left p-3 text-xs text-muted-foreground">Domain</th>
-                <th className="text-left p-3 text-xs text-muted-foreground">Public ID</th>
-                <th className="text-left p-3 text-xs text-muted-foreground">Owner ID</th>
-                <th className="text-left p-3 text-xs text-muted-foreground">Last Event</th>
-                <th className="text-left p-3 text-xs text-muted-foreground">Status</th>
-                <th className="text-left p-3 text-xs text-muted-foreground">Action</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.name')}</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.domain')}</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.publicId')}</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.ownerId')}</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.lastEvent')}</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.status')}</th>
+                <th className="text-left p-3 text-xs text-muted-foreground">{t('admin.sites.table.action')}</th>
               </tr>
             </thead>
             <tbody>
@@ -86,17 +88,16 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
                     {site.owner_email || `${site.user_id.slice(0, 8)}...`}
                   </td>
                   <td className="p-3 text-xs text-muted-foreground tabular-nums">
-                    {site.last_event_at 
+                    {site.last_event_at
                       ? new Date(site.last_event_at).toLocaleString()
                       : '—'}
                   </td>
                   <td className="p-3">
                     <span
-                      className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
-                        site.status === 'Receiving events'
+                      className={`inline-flex items-center px-2 py-1 rounded text-xs border ${site.status === 'Receiving events'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : 'bg-muted text-muted-foreground border-border'
-                      }`}
+                        }`}
                     >
                       {site.status}
                     </span>
@@ -108,7 +109,7 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
                         size="sm"
                         className="text-xs"
                       >
-                        Open Dashboard
+                        {t('admin.sites.openDashboard')}
                       </Button>
                     </Link>
                   </td>

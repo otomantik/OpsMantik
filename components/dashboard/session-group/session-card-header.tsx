@@ -102,7 +102,7 @@ export function SessionCardHeader({
                         </div>
                         {sessionDuration > 0 && (
                             <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
-                                {sessionDuration}s
+                                {sessionDuration}{t('common.unit.second.short')}
                             </span>
                         )}
                         <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">

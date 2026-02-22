@@ -14,6 +14,7 @@
 import { useCallback, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export interface QualifyIntentParams {
   /** 0 = junk, 1-5 = lead quality (Lazy Antiques Dealer). */
@@ -27,11 +28,6 @@ export interface QualifyIntentResult {
   error?: string;
 }
 
-interface UndoState {
-  callId: string;
-  previousStatus: 'intent' | null;
-  action: 'seal' | 'junk';
-}
 
 export function useIntentQualification(
   siteId: string,
@@ -39,6 +35,7 @@ export function useIntentQualification(
   matchedSessionId?: string | null,
   onUndoSuccess?: () => void
 ) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,20 +104,20 @@ export function useIntentQualification(
 
         const updateQuery = doSessionUpdate
           ? supabase
-              .from('calls')
-              .update(updatePayload)
-              .eq('site_id', siteId)
-              .eq('matched_session_id', matchedSessionId as string)
-              .eq('source', 'click')
-              .in('status', ['intent', null])
-              .select('id')
+            .from('calls')
+            .update(updatePayload)
+            .eq('site_id', siteId)
+            .eq('matched_session_id', matchedSessionId as string)
+            .eq('source', 'click')
+            .in('status', ['intent', null])
+            .select('id')
           : supabase
-              .from('calls')
-              .update(updatePayload)
-              .eq('id', intentId)
-              .eq('site_id', siteId)
-              .in('status', ['intent', null]) // Only update if not already qualified
-              .select('id');
+            .from('calls')
+            .update(updatePayload)
+            .eq('id', intentId)
+            .eq('site_id', siteId)
+            .in('status', ['intent', null]) // Only update if not already qualified
+            .select('id');
 
         const { data: updatedRows, error: updateError } = await updateQuery;
 
@@ -142,22 +139,29 @@ export function useIntentQualification(
         }
 
         // Show success toast with undo button
-        const actionText = params.status === 'confirmed' ? 'sealed' : 'marked as junk';
-        const undoToastId = toast.success('İşlem Tamam', {
-          description: `Intent ${actionText}.`,
+        const actionType = params.status === 'confirmed' ? 'sealed' : 'marked as junk';
+        const undoToastId = toast.success(t('toast.success.done'), {
+          description: t('toast.description.intentAction', { action: actionType }),
           duration: 8000,
           action: {
-            label: 'Geri Al',
+            label: t('common.undo'),
             onClick: async () => {
               toast.dismiss(undoToastId);
-              toast.loading('Geri alınıyor...');
-              const result = await undoQualification(intentId);
-              if (result.success) {
-                toast.success('İşlem geri alındı');
-                onUndoSuccess?.();
-              } else {
-                toast.error('Geri alma başarısız', {
-                  description: result.error || 'Try again',
+              toast.info(t('toast.info.undoing'));
+              try {
+                const result = await undoQualification(intentId);
+                if (result.success) {
+                  toast.success(t('toast.success.undone'));
+                  onUndoSuccess?.();
+                } else {
+                  toast.error(t('toast.error.undoFailed'), {
+                    description: result.error || t('common.tryAgain'),
+                  });
+                }
+              } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : t('toast.error.undoFailed');
+                toast.error(t('toast.error.undoFailed'), {
+                  description: errorMessage,
                 });
               }
             },
@@ -168,7 +172,7 @@ export function useIntentQualification(
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to qualify intent';
         setError(errorMessage);
-        toast.error('İşlem başarısız', { description: errorMessage });
+        toast.error(t('toast.error.failed'));
         return { success: false, error: errorMessage };
       } finally {
         setSaving(false);

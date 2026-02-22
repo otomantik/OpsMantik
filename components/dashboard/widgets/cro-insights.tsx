@@ -52,7 +52,9 @@ export function CROInsights({ metrics, loading }: CROInsightsProps) {
                     <TrendingUp className="w-4 h-4 text-blue-500" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">{metrics.avg_gclid_session_duration}s</div>
+                    <div className="text-2xl font-bold text-slate-900">
+                        {metrics.avg_gclid_session_duration.toFixed(1)}{t('common.unit.second.short')}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">
                         {t('cro.engagementTime')}
                     </p>

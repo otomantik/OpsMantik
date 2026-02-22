@@ -56,7 +56,7 @@ export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHea
               </p>
             </div>
             <Badge className="bg-amber-100 text-amber-800 border-amber-200 shrink-0">
-              ADS ONLY
+              {t('dashboard.adsOnly')}
             </Badge>
           </div>
 

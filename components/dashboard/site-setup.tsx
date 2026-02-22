@@ -65,11 +65,11 @@ export function SiteSetup() {
               <strong className="text-emerald-700">{t('setup.testSiteDetails')}:</strong>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-              <li>{t('setup.publicId')} <code className="text-foreground">test_site_123</code></li>
+              <li>{t('setup.publicId')} <code className="text-foreground">{t('setup.testSiteId')}</code></li>
               {process.env.NODE_ENV === 'development' && (
-                <li>{t('setup.domain')} <code className="text-foreground">localhost:3000</code></li>
+                <li>{t('setup.domain')} <code className="text-foreground">{t('setup.testDomain')}</code></li>
               )}
-              <li>{t('setup.useThisInTracker')} <code className="text-foreground">data-site-id="test_site_123"</code></li>
+              <li>{t('setup.useThisInTracker')} <code className="text-foreground">{t('setup.testAttr')}</code></li>
             </ul>
           </div>
 
@@ -81,6 +81,16 @@ export function SiteSetup() {
               </p>
             </div>
           )}
+
+          <code className="block px-2 py-1 bg-background border border-border rounded text-foreground text-sm leading-relaxed break-all">
+            {`<script defer src="https://assets.yourdomain.com/assets/core.js" data-ops-site-id="test_site_123" data-ops-consent="analytics" data-api="https://console.yourdomain.com/api/sync"></script>`}
+          </code>
+          <p className="text-xs text-muted-foreground mt-2">
+            {t('setup.replaceDomain', { domain: 'localhost:3000', production: 'opsmantik.com' })}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t('setup.ensureSiteId', { attr: 'data-site-id="test_site_123"' })}
+          </p>
 
           {success && (
             <div className="bg-emerald-50 border border-emerald-200 p-3 rounded">

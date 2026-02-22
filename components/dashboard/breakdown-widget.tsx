@@ -132,7 +132,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
             })}
             {data.length > 10 && (
               <p className="text-sm text-muted-foreground text-center mt-2">
-                +{data.length - 10} daha
+                +{data.length - 10} {t('common.more')}
               </p>
             )}
           </div>

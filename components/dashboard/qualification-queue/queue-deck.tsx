@@ -138,7 +138,7 @@ function LiteDeckCard({
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">{action}</div>
           <div className="text-xs text-muted-foreground tabular-nums" suppressHydrationWarning>
-            {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} TRT
+            {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('queue.trt')}
           </div>
         </div>
         <div className="mt-2 text-sm font-medium truncate">{summary}</div>
@@ -148,13 +148,13 @@ function LiteDeckCard({
       <div className="p-3 pt-0">
         <div className="grid grid-cols-3 gap-2 w-full">
           <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('queue.loadingDetails')}>
-            JUNK
+            {t('queue.junk')}
           </Button>
           <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" onClick={() => onSkip()}>
-            SKIP
+            {t('queue.skip')}
           </Button>
           <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('queue.loadingDetails')}>
-            SEAL
+            {t('queue.seal')}
           </Button>
         </div>
       </div>

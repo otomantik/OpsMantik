@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { IngestMeta } from '@/lib/types/ingest';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 declare global {
   interface Window {
@@ -18,6 +19,7 @@ declare global {
 }
 
 export default function TestPage() {
+  const { t } = useTranslation();
   const [trackerLoaded, setTrackerLoaded] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<{ sessionId: string; fingerprint: string; gclid: string } | null>(null);
   const [eventLog, setEventLog] = useState<Array<{ time: string; event: string; status: string }>>([]);
@@ -25,7 +27,7 @@ export default function TestPage() {
   const [apiStatus, setApiStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [siteId, setSiteId] = useState<string>('test_site_123'); // Default fallback
   const [eventTriggerStatus, setEventTriggerStatus] = useState<Record<string, { triggered: boolean; time: string }>>({});
-  
+
   // Google Ads Test state
   const [gclid, setGclid] = useState<string>('EAIaIQobChMI...');
   const [utmSource, setUtmSource] = useState<string>('google');
@@ -87,7 +89,7 @@ export default function TestPage() {
     script.src = `/ux-core.js?v=${timestamp}`;
     script.setAttribute('data-site-id', siteId);
     script.setAttribute('id', 'opmantik-tracker-script');
-    
+
     script.onload = () => {
       debugLog('[TEST_PAGE] Tracker script loaded');
       setTimeout(() => {
@@ -99,12 +101,12 @@ export default function TestPage() {
         }
       }, 300);
     };
-    
+
     script.onerror = () => {
       console.error('[TEST_PAGE] ❌ Failed to load tracker script');
       setTrackerLoaded(false);
     };
-    
+
     document.head.appendChild(script);
     scriptRef.current = script;
 
@@ -133,49 +135,49 @@ export default function TestPage() {
     sessionStorage.removeItem('opmantik_session_context');
     localStorage.removeItem('opmantik_session_fp');
     debugLog('[TEST_PAGE] Storage cleared');
-    alert('Storage temizlendi! Sayfa yenilenecek...');
+    alert(t('test.page.storageCleared'));
     window.location.reload();
   };
 
   const sendEvent = (category: string, action: string, label?: string, value?: number, metadata?: IngestMeta) => {
     if (!window.opmantik) {
       console.error('[TEST_PAGE] ❌ Tracker not loaded');
-      alert('Tracker yüklenmedi! Console\'u kontrol edin.');
+      alert(t('test.page.trackerNotLoaded'));
       return;
     }
 
     setApiStatus('sending');
     const time = new Date().toLocaleTimeString('tr-TR');
     const eventKey = `${category}:${action}${label ? `:${label}` : ''}`;
-    
+
     // Mark event as triggered
     setEventTriggerStatus(prev => ({
       ...prev,
       [eventKey]: { triggered: true, time }
     }));
-    
+
     try {
       // Send event via tracker with metadata
       window.opmantik.send(category, action, label, value, metadata);
-      
+
       // Add to event log immediately (tracker handles API call asynchronously)
-      setEventLog(prev => [{ 
-        time, 
-        event: `${category}:${action}${label ? ` (${label})` : ''}`, 
-        status: '✅' 
+      setEventLog(prev => [{
+        time,
+        event: `${category}:${action}${label ? ` (${label})` : ''}`,
+        status: '✅'
       }, ...prev].slice(0, 30));
-      
+
       setApiStatus('success');
       debugLog('[TEST_PAGE] Event triggered:', { category, action, label, value, metadata });
-      
+
       setTimeout(() => setApiStatus('idle'), 2000);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       setApiStatus('error');
-      setEventLog(prev => [{ 
-        time, 
-        event: `${category}:${action} - ERROR: ${msg || 'Unknown'}`, 
-        status: '❌' 
+      setEventLog(prev => [{
+        time,
+        event: `${category}:${action} - ERROR: ${msg || 'Unknown'}`,
+        status: '❌'
       }, ...prev].slice(0, 30));
       console.error('[TEST_PAGE] ❌ Event send error:', error);
       setTimeout(() => setApiStatus('idle'), 2000);
@@ -184,29 +186,29 @@ export default function TestPage() {
 
   const simulatePaidClick = async () => {
     if (!gclid || !gclid.trim()) {
-      alert('GCLID gerekli!');
+      alert(t('test.page.gclid.label') + ' required!');
       return;
     }
 
     // Store GCLID in sessionStorage so tracker picks it up
     sessionStorage.setItem('opmantik_session_context', gclid);
     debugLog('[TEST_PAGE] GCLID stored in sessionStorage:', gclid);
-    
+
     // Build URL with GCLID and UTM params
     const url = new URL(window.location.href);
     url.searchParams.set('gclid', gclid);
     if (utmSource) url.searchParams.set('utm_source', utmSource);
     if (utmCampaign) url.searchParams.set('utm_campaign', utmCampaign);
-    
+
     // Update URL without reload (for testing)
     window.history.replaceState({}, '', url.toString());
     debugLog('[TEST_PAGE] URL updated with GCLID:', url.toString());
-    
+
     // Verify URL was updated
     const currentUrl = new URL(window.location.href);
     const urlGclid = currentUrl.searchParams.get('gclid');
     debugLog('[TEST_PAGE] Current URL GCLID:', urlGclid);
-    
+
     // Force tracker to re-read context by triggering a new session check
     // The tracker reads from URL params first, then sessionStorage
     if (window.opmantik?.session) {
@@ -214,7 +216,7 @@ export default function TestPage() {
       const session = window.opmantik.session();
       debugLog('[TEST_PAGE] Session context:', session.context);
     }
-    
+
     // Send event with GCLID in metadata (explicit override - this takes precedence)
     debugLog('[TEST_PAGE] Sending paid_click event with GCLID:', gclid);
     sendEvent('acquisition', 'paid_click', 'google_ads_test', undefined, {
@@ -223,7 +225,7 @@ export default function TestPage() {
       utm_campaign: utmCampaign || undefined,
       device_type: deviceOverride,
     });
-    
+
     // Also send a page view to create session (with GCLID in URL)
     setTimeout(() => {
       debugLog('[TEST_PAGE] Sending page view event');
@@ -248,13 +250,13 @@ export default function TestPage() {
     url.searchParams.set('utm_medium', 'cpc');
     url.searchParams.set('utm_source', 'google');
     window.history.replaceState({}, '', url.toString());
-    
+
     sendEvent('acquisition', 'paid_click', 'test_paid_scenario', undefined, {
       gclid: 'EAIaIQobChMI_test_paid_click',
       utm_medium: 'cpc',
       utm_source: 'google',
     });
-    
+
     addToEventLog('Paid Click (GCLID + UTM)', '✅');
   };
 
@@ -264,7 +266,7 @@ export default function TestPage() {
       ref: 'https://www.facebook.com/test',
       utm_source: 'facebook',
     });
-    
+
     // Note: Referrer is sent in payload, but we can't set document.referrer
     // The server will see it from the request
     addToEventLog('Paid Social (Facebook referrer)', '✅');
@@ -277,11 +279,11 @@ export default function TestPage() {
     url.searchParams.delete('utm_medium');
     url.searchParams.delete('utm_source');
     window.history.replaceState({}, '', url.toString());
-    
+
     sendEvent('interaction', 'organic_visit', 'test_organic_scenario', undefined, {
       // No gclid, no utm
     });
-    
+
     addToEventLog('Organic (no GCLID/UTM)', '✅');
   };
 
@@ -292,7 +294,7 @@ export default function TestPage() {
       district: 'Kadikoy',
       device_type: 'mobile',
     });
-    
+
     addToEventLog('Geo Override (Istanbul, Kadikoy)', '✅');
   };
 
@@ -310,23 +312,23 @@ export default function TestPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Test page</h1>
+            <h1 className="text-3xl font-bold mb-2">{t('test.page.title')}</h1>
             <p className="text-muted-foreground text-sm">
-              Event tracker test sayfası • Dashboard'da anlık görünecek
+              {t('test.page.subtitle')}
             </p>
           </div>
           <div className="flex gap-2">
             <Link href="/dashboard">
               <Button variant="outline">
-                📊 DASHBOARD
+                📊 {t('common.dashboard')}
               </Button>
             </Link>
-            <Button 
+            <Button
               onClick={clearStorage}
-              variant="outline" 
+              variant="outline"
               className="text-destructive border-destructive/20 hover:bg-destructive/10"
             >
-              🗑️ CLEAR STORAGE
+              🗑️ {t('test.page.clearStorage')}
             </Button>
           </div>
         </div>
@@ -335,11 +337,11 @@ export default function TestPage() {
         <Card className="mb-4">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold">Tracker status</CardTitle>
+              <CardTitle className="text-base font-semibold">{t('test.page.status.title')}</CardTitle>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${trackerLoaded ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
                 <span className={`text-xs ${trackerLoaded ? 'text-emerald-700' : 'text-destructive'}`}>
-                  {trackerLoaded ? 'ACTIVE' : 'INACTIVE'}
+                  {trackerLoaded ? t('test.page.status.active') : t('test.page.status.inactive')}
                 </span>
               </div>
             </div>
@@ -347,50 +349,50 @@ export default function TestPage() {
           <CardContent>
             <div className="grid grid-cols-4 gap-4 mb-4">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Tracker</p>
+                <p className="text-xs text-muted-foreground mb-1">{t('test.page.label.tracker')}</p>
                 <p className={`text-sm font-semibold ${trackerLoaded ? 'text-emerald-700' : 'text-destructive'}`}>
-                  {trackerLoaded ? '✅ LOADED' : '❌ NOT LOADED'}
+                  {trackerLoaded ? t('test.page.status.loaded') : t('test.page.status.notLoaded')}
                 </p>
               </div>
               {sessionInfo ? (
                 <>
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Session ID</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t('test.page.label.sessionId')}</p>
                     <p className="text-xs text-foreground truncate tabular-nums" title={sessionInfo.sessionId}>
                       {sessionInfo.sessionId.slice(0, 20)}...
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Fingerprint</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t('test.page.label.fingerprint')}</p>
                     <p className="text-xs text-foreground truncate tabular-nums" title={sessionInfo.fingerprint}>
                       {sessionInfo.fingerprint}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">GCLID</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t('test.page.label.gclid')}</p>
                     <p className="text-xs text-muted-foreground tabular-nums">
-                      {sessionInfo.gclid !== 'None' ? sessionInfo.gclid.slice(0, 15) + '...' : 'Yok'}
+                      {sessionInfo.gclid !== 'None' ? sessionInfo.gclid.slice(0, 15) + '...' : t('common.na')}
                     </p>
                   </div>
                 </>
               ) : (
                 <div className="col-span-3">
-                  <p className="text-xs text-muted-foreground">Session bilgisi yükleniyor...</p>
+                  <p className="text-xs text-muted-foreground">{t('test.page.session.loading')}</p>
                 </div>
               )}
             </div>
             <div className="pt-3 border-t border-border">
               <div className="flex items-center gap-4">
-                <Button 
+                <Button
                   onClick={updateSessionInfo}
                   variant="outline"
                   size="sm"
                   className="text-xs"
                 >
-                  🔄 Refresh Session
+                  🔄 {t('test.page.refreshSession')}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  API Status:{' '}
+                  {t('test.page.label.apiStatus')}{' '}
                   <span className={apiStatus === 'success' ? 'text-emerald-700' : apiStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
                     {apiStatus}
                   </span>
@@ -403,9 +405,9 @@ export default function TestPage() {
         {/* Attribution Scenarios */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold">Attribution scenarios</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t('test.page.attribution.title')}</CardTitle>
             <CardDescription className="text-sm text-muted-foreground mt-1">
-              Test source classification and context extraction. Check /dashboard/site/&lt;id&gt; after each scenario.
+              {t('test.page.attribution.desc', { siteId: siteId || '...' })}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -416,7 +418,7 @@ export default function TestPage() {
                 className="bg-emerald-600 hover:bg-emerald-700 text-sm"
                 disabled={!trackerLoaded}
               >
-                💰 Simulate Paid Click
+                💰 {t('test.page.simulate.paidClick')}
               </Button>
               <Button
                 onClick={simulatePaidSocialScenario}
@@ -424,7 +426,7 @@ export default function TestPage() {
                 className="bg-blue-600 hover:bg-blue-700 text-sm"
                 disabled={!trackerLoaded}
               >
-                📱 Simulate Paid Social
+                📱 {t('test.page.simulate.paidSocial')}
               </Button>
               <Button
                 onClick={simulateOrganicScenario}
@@ -433,7 +435,7 @@ export default function TestPage() {
                 className="text-sm"
                 disabled={!trackerLoaded}
               >
-                🌱 Simulate Organic
+                🌱 {t('test.page.simulate.organic')}
               </Button>
               <Button
                 onClick={simulateGeoOverrideScenario}
@@ -441,12 +443,12 @@ export default function TestPage() {
                 className="bg-purple-600 hover:bg-purple-700 text-sm"
                 disabled={!trackerLoaded}
               >
-                📍 Simulate Geo Override
+                📍 {t('test.page.simulate.geo')}
               </Button>
             </div>
             {eventLog.length > 0 && (
               <div className="mt-4 pt-3 border-t border-border">
-                <p className="text-sm text-muted-foreground mb-2">Recent scenarios:</p>
+                <p className="text-sm text-muted-foreground mb-2">{t('test.page.recentScenarios')}</p>
                 <div className="space-y-1">
                   {eventLog.map((log, idx) => (
                     <div key={idx} className="text-sm text-foreground">
@@ -462,9 +464,9 @@ export default function TestPage() {
         {/* Event Trigger Status */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold">Event trigger status</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t('test.page.triggerStatus.title')}</CardTitle>
             <CardDescription className="text-sm text-muted-foreground mt-1">
-              Test butonlarının tetiklenme durumu
+              {t('test.page.triggerStatus.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -478,13 +480,12 @@ export default function TestPage() {
               ].map(({ key, label }) => {
                 const status = eventTriggerStatus[key];
                 return (
-                  <div 
+                  <div
                     key={key}
-                    className={`p-2 rounded border text-center transition-all ${
-                      status?.triggered 
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                        : 'bg-muted border-border text-muted-foreground'
-                    }`}
+                    className={`p-2 rounded border text-center transition-all ${status?.triggered
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-muted border-border text-muted-foreground'
+                      }`}
                   >
                     <p className="text-sm font-semibold">{label}</p>
                     {status?.triggered && (
@@ -502,13 +503,13 @@ export default function TestPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-lg font-semibold">Event log</CardTitle>
+                <CardTitle className="text-lg font-semibold">{t('test.page.eventLog.title')}</CardTitle>
                 <CardDescription className="text-sm text-muted-foreground mt-1">
-                  Son {eventLog.length} event • Dashboard'da görünecek
+                  {t('test.page.eventLog.desc', { count: eventLog.length })}
                 </CardDescription>
               </div>
               {eventLog.length > 0 && (
-                <Button 
+                <Button
                   onClick={() => {
                     setEventLog([]);
                     setEventTriggerStatus({});
@@ -517,14 +518,14 @@ export default function TestPage() {
                   size="sm"
                   className="text-sm"
                 >
-                  Clear
+                  {t('common.close')}
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent>
             {eventLog.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-4">Henüz event gönderilmedi</p>
+              <p className="text-muted-foreground text-sm text-center py-4">{t('test.page.eventLog.empty')}</p>
             ) : (
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {eventLog.map((log, idx) => (
@@ -547,7 +548,7 @@ export default function TestPage() {
             className="bg-emerald-600 hover:bg-emerald-700 text-sm"
             disabled={!trackerLoaded}
           >
-            ✅ CTA Click
+            ✅ {t('test.page.events.cta')}
           </Button>
           <Button
             onClick={() => sendEvent('conversion', 'form_submit', 'quick_test')}
@@ -555,7 +556,7 @@ export default function TestPage() {
             className="bg-blue-600 hover:bg-blue-700 text-sm"
             disabled={!trackerLoaded}
           >
-            📝 Form Submit
+            📝 {t('test.page.events.formSubmit')}
           </Button>
           <Button
             onClick={() => sendEvent('interaction', 'page_visit', 'test_page')}
@@ -563,7 +564,7 @@ export default function TestPage() {
             className="bg-purple-600 hover:bg-purple-700 text-sm"
             disabled={!trackerLoaded}
           >
-            👁️ Page Visit
+            👁️ {t('test.page.events.newsletter')}
           </Button>
           <Button
             onClick={() => sendEvent('conversion', 'download', 'test.pdf')}
@@ -571,7 +572,7 @@ export default function TestPage() {
             className="bg-rose-600 hover:bg-rose-700 text-sm"
             disabled={!trackerLoaded}
           >
-            📥 Download
+            📥 {t('test.page.events.download')}
           </Button>
           <Button
             onClick={() => sendEvent('interaction', 'video_watch', 'test_video', 30)}
@@ -579,36 +580,36 @@ export default function TestPage() {
             className="bg-yellow-600 hover:bg-yellow-700 text-sm"
             disabled={!trackerLoaded}
           >
-            🎥 Video Watch
+            🎥 {t('test.page.events.videoWatch')}
           </Button>
         </div>
 
         {/* Google Ads Test Module */}
         <Card className="mb-6 border-2 border-blue-200">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold">🎯 Google Ads Test (GCLID)</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t('test.page.gclid.title')}</CardTitle>
             <CardDescription className="text-sm text-muted-foreground mt-1">
-              Simulate paid click tracking with GCLID and UTM parameters
+              {t('test.page.gclid.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="gclid" className="text-sm text-muted-foreground mb-2 block">
-                  GCLID *
+                  {t('test.page.gclid.label')}
                 </label>
                 <input
                   id="gclid"
                   type="text"
                   value={gclid}
                   onChange={(e) => setGclid(e.target.value)}
-                  placeholder="EAIaIQobChMI..."
+                  placeholder={t('test.page.gclid.label')}
                   className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div>
                 <label htmlFor="device" className="text-sm text-muted-foreground mb-2 block">
-                  Device Override
+                  {t('test.page.device.label')}
                 </label>
                 <select
                   id="device"
@@ -616,34 +617,34 @@ export default function TestPage() {
                   onChange={(e) => setDeviceOverride(e.target.value)}
                   className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="desktop">Desktop</option>
-                  <option value="mobile">Mobile</option>
-                  <option value="tablet">Tablet</option>
+                  <option value="desktop">{t('device.desktop')}</option>
+                  <option value="mobile">{t('device.mobile')}</option>
+                  <option value="tablet">{t('device.tablet')}</option>
                 </select>
               </div>
               <div>
                 <label htmlFor="utm_source" className="text-sm text-muted-foreground mb-2 block">
-                  UTM Source (Optional)
+                  {t('test.page.utmSource.label')}
                 </label>
                 <input
                   id="utm_source"
                   type="text"
                   value={utmSource}
                   onChange={(e) => setUtmSource(e.target.value)}
-                  placeholder="google"
+                  placeholder={t('test.page.utmSource.placeholder')}
                   className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div>
                 <label htmlFor="utm_campaign" className="text-sm text-muted-foreground mb-2 block">
-                  UTM Campaign (Optional)
+                  {t('test.page.utmCampaign.label')}
                 </label>
                 <input
                   id="utm_campaign"
                   type="text"
                   value={utmCampaign}
                   onChange={(e) => setUtmCampaign(e.target.value)}
-                  placeholder="test_campaign"
+                  placeholder={t('test.page.utmCampaign.placeholder')}
                   className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
@@ -654,21 +655,19 @@ export default function TestPage() {
                 className="bg-blue-600 hover:bg-blue-700 text-sm flex-1"
                 disabled={!trackerLoaded || !gclid.trim()}
               >
-                🎯 Simulate Paid Click
+                🎯 {t('test.page.simulate.paidClick')}
               </Button>
               <Button
                 onClick={simulateConversion}
                 className="bg-emerald-600 hover:bg-emerald-700 text-sm flex-1"
                 disabled={!trackerLoaded}
               >
-                ✅ Simulate Conversion
+                ✅ {t('test.page.simulate.conversion')}
               </Button>
             </div>
             <div className="pt-2 border-t border-border">
               <p className="text-sm text-muted-foreground">
-                💡 <strong>Tip:</strong> After clicking "Simulate Paid Click", check the dashboard. 
-                The session should show <span className="text-blue-700">SOURCE: First Click (Paid)</span> 
-                and <span className="text-foreground">GCLID</span> chips.
+                💡 <strong>{t('test.page.tip.title')}</strong> {t('test.page.tip.body', { source: 'SOURCE: First Click (Paid)', gclid: 'GCLID' })}
               </p>
             </div>
           </CardContent>
@@ -679,36 +678,36 @@ export default function TestPage() {
           {/* Phone Call */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📞 Phone Call</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">Tel link tıklama</CardDescription>
+              <CardTitle className="text-sm font-semibold">📞 {t('test.page.events.phone')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.phone')}</CardDescription>
             </CardHeader>
             <CardContent>
               <a href="tel:+905551234567" className="text-blue-700 hover:text-blue-800 text-sm block mb-2">
                 +90 555 123 45 67
               </a>
-              <p className="text-sm text-muted-foreground">Yukarıdaki telefon numarasına tıklayın</p>
+              <p className="text-sm text-muted-foreground">{t('test.page.instruction.clickPhone')}</p>
             </CardContent>
           </Card>
 
           {/* WhatsApp */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">💬 WhatsApp</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">WhatsApp link</CardDescription>
+              <CardTitle className="text-sm font-semibold">💬 {t('test.page.events.whatsapp')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.whatsapp')}</CardDescription>
             </CardHeader>
             <CardContent>
               <a href="https://wa.me/905551234567" target="_blank" className="text-emerald-700 hover:text-emerald-800 text-sm block mb-2">
-                WhatsApp ile İletişim
+                {t('test.page.events.whatsappContact')}
               </a>
-              <p className="text-sm text-muted-foreground">Yukarıdaki WhatsApp linkine tıklayın</p>
+              <p className="text-sm text-muted-foreground">{t('test.page.instruction.clickWhatsapp')}</p>
             </CardContent>
           </Card>
 
           {/* Form Submit */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📋 Form Submit</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">Form gönderimi</CardDescription>
+              <CardTitle className="text-sm font-semibold">📋 {t('test.page.events.formSubmit')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.formSubmit')}</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -719,11 +718,11 @@ export default function TestPage() {
               >
                 <input
                   type="email"
-                  placeholder="Email"
+                  placeholder={t('common.email')}
                   className="w-full px-3 py-2 border border-border bg-background rounded mb-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={!trackerLoaded}>
-                  Gönder
+                  {t('test.page.submit')}
                 </Button>
               </form>
             </CardContent>
@@ -732,8 +731,8 @@ export default function TestPage() {
           {/* CTA Button */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">🎯 CTA Button</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">Call-to-action</CardDescription>
+              <CardTitle className="text-sm font-semibold">🎯 {t('test.page.events.cta')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.cta')}</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
@@ -741,7 +740,7 @@ export default function TestPage() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700"
                 disabled={!trackerLoaded}
               >
-                Hemen Başla
+                {t('test.page.startNow')}
               </Button>
             </CardContent>
           </Card>
@@ -749,8 +748,8 @@ export default function TestPage() {
           {/* Download */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📥 Download</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">Dosya indirme</CardDescription>
+              <CardTitle className="text-sm font-semibold">📥 {t('test.page.events.download')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.download')}</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
@@ -758,7 +757,7 @@ export default function TestPage() {
                 className="w-full bg-purple-600 hover:bg-purple-700"
                 disabled={!trackerLoaded}
               >
-                Broşür İndir
+                {t('test.page.downloadBrochure')}
               </Button>
             </CardContent>
           </Card>
@@ -766,8 +765,8 @@ export default function TestPage() {
           {/* Pricing Hover */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">🖱️ Pricing Hover</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">2 saniye hover</CardDescription>
+              <CardTitle className="text-sm font-semibold">🖱️ {t('test.page.events.pricingHover')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">2 {t('common.unit.second.short')} {t('common.hover')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div
@@ -778,7 +777,7 @@ export default function TestPage() {
                   }, 2000);
                 }}
               >
-                <p className="text-foreground text-sm">Hover me (2 seconds)</p>
+                <p className="text-foreground text-sm">{t('test.page.hoverMe')}</p>
               </div>
             </CardContent>
           </Card>
@@ -786,8 +785,8 @@ export default function TestPage() {
           {/* Video Watch */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">🎥 Video Watch</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">Video izleme</CardDescription>
+              <CardTitle className="text-sm font-semibold">🎥 {t('test.page.events.videoWatch')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.videoWatch')}</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
@@ -795,7 +794,7 @@ export default function TestPage() {
                 className="w-full bg-rose-600 hover:bg-rose-700"
                 disabled={!trackerLoaded}
               >
-                Video İzle (30s)
+                {t('test.page.watchVideo')}
               </Button>
             </CardContent>
           </Card>
@@ -803,8 +802,8 @@ export default function TestPage() {
           {/* Newsletter Signup */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📧 Newsletter</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">Newsletter kaydı</CardDescription>
+              <CardTitle className="text-sm font-semibold">📧 {t('test.page.events.newsletter')}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.newsletter')}</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -815,11 +814,11 @@ export default function TestPage() {
               >
                 <input
                   type="email"
-                  placeholder="Email"
+                  placeholder={t('common.email')}
                   className="w-full px-3 py-2 border border-border bg-background rounded mb-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={!trackerLoaded}>
-                  Abone Ol
+                  {t('test.page.subscribe')}
                 </Button>
               </form>
             </CardContent>

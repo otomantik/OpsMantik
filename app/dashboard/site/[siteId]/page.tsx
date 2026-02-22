@@ -35,8 +35,8 @@ export async function generateMetadata({ params }: SitePageProps): Promise<Metad
   const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
 
   const siteName = site?.name || site?.domain || 'OpsMantik';
-  const metaTitle = translate('meta.title', resolvedLocale);
-  const metaDesc = translate('meta.description', resolvedLocale);
+  const metaTitle = translate(resolvedLocale, 'meta.title');
+  const metaDesc = translate(resolvedLocale, 'meta.description');
 
   return {
     title: `${siteName} | ${metaTitle}`,

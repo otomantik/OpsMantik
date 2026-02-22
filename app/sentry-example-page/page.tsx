@@ -1,3 +1,4 @@
+// i18n-ignore: Sentry diagnostic page, internal use only.
 "use client";
 
 import * as Sentry from "@sentry/nextjs";

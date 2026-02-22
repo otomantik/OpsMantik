@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SitesTableWithSearch } from './sites-table';
+import { headers } from 'next/headers';
+import { resolveLocale } from '@/lib/i18n/locale';
+import { translate } from '@/lib/i18n/t';
 
 interface SiteWithStatus {
   id: string;
@@ -38,7 +41,7 @@ interface GetSitesResult {
 
 async function getSitesWithStatus(search?: string): Promise<GetSitesResult> {
   const supabase = await createClient();
-  
+
   // Call RPC function - single query eliminates N+1
   const { data: rpcResults, error: rpcError } = await supabase
     .rpc('admin_sites_list', {
@@ -93,6 +96,11 @@ export default async function AdminSitesPage() {
     redirect('/dashboard');
   }
 
+  // Locale resolution for Admin
+  const headersList = await headers();
+  const acceptLanguage = headersList.get('accept-language') ?? null;
+  const resolvedLocale = resolveLocale(undefined, user?.user_metadata, acceptLanguage);
+
   const { sites, error } = await getSitesWithStatus();
 
   return (
@@ -102,19 +110,22 @@ export default async function AdminSitesPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              ADMIN • All Sites
+              {translate(resolvedLocale, 'admin.sites.title')}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Global site management • {sites.length} site{sites.length !== 1 ? 's' : ''} total
+              {translate(resolvedLocale, 'admin.sites.subtitle', {
+                count: sites.length,
+                plural: sites.length !== 1 ? 's' : ''
+              })}
             </p>
           </div>
           <div className="flex gap-2">
             <Link href="/dashboard">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="text-sm"
               >
-                ← Dashboard
+                ← {translate(resolvedLocale, 'common.dashboard')}
               </Button>
             </Link>
           </div>
@@ -126,13 +137,13 @@ export default async function AdminSitesPage() {
             <CardContent className="pt-6">
               <div className="bg-destructive/10 border border-destructive/20 rounded p-4">
                 <p className="text-sm text-destructive font-semibold mb-1">
-                  Error loading sites
+                  {translate(resolvedLocale, 'admin.sites.errorLoading')}
                 </p>
                 <p className="text-sm text-destructive">
                   {error}
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Check profiles role + RPC function permissions
+                  {translate(resolvedLocale, 'admin.sites.rpcHelp')}
                 </p>
               </div>
             </CardContent>
@@ -142,9 +153,11 @@ export default async function AdminSitesPage() {
         {/* Sites List */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-semibold">All Sites</CardTitle>
+            <CardTitle className="text-base font-semibold">
+              {translate(resolvedLocale, 'admin.sites.title')}
+            </CardTitle>
             <CardDescription className="text-sm text-muted-foreground">
-              Click "Open Dashboard" to view site details
+              {translate(resolvedLocale, 'admin.sites.openDashboardDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>

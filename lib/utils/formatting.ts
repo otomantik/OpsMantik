@@ -79,17 +79,17 @@ export function formatRelativeTime(ts: string | null | undefined, t?: (key: stri
 
         if (!t) {
             // Fallback to hardcoded Turkish if t is not provided (legacy support)
-            if (diffSec < 60) return 'az önce';
-            if (diffMin < 60) return `${diffMin}dk önce`;
-            if (diffHour < 24) return `${diffHour}sa önce`;
-            if (diffDay < 7) return `${diffDay}g önce`;
+            if (diffSec < 60) return 'şimdi';
+            if (diffMin < 60) return `${diffMin}dk`;
+            if (diffHour < 24) return `${diffHour}sa`;
+            if (diffDay < 7) return `${diffDay}gün`;
             return formatTimestamp(ts, { month: 'short', day: 'numeric' });
         }
 
-        if (diffSec < 60) return t('time.justNow');
-        if (diffMin < 60) return t('time.minAgo', { n: diffMin });
-        if (diffHour < 24) return t('time.hourAgo', { n: diffHour });
-        if (diffDay < 7) return t('time.dayAgo', { n: diffDay });
+        if (diffSec < 60) return t('common.justNow');
+        if (diffMin < 60) return `${diffMin}${t('common.unit.minute.short')}`;
+        if (diffHour < 24) return `${diffHour}${t('common.unit.hour.short')}`;
+        if (diffDay < 7) return `${diffDay}${t('common.unit.day.short')}`;
         return formatTimestamp(ts, { month: 'short', day: 'numeric' });
     } catch {
         return '—';

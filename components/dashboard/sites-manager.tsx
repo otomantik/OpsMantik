@@ -398,10 +398,10 @@ export function SitesManager() {
             {isUsingFallback && (
               <div className="bg-amber-50 border border-amber-200 p-2 rounded">
                 <p className="text-sm text-amber-800">
-                  <strong>Warning:</strong> NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback domain: <code className="tabular-nums">{getPrimaryDomain()}</code>
+                  <strong>{t('common.warning')}:</strong> {t('common.envWarning')} <code className="tabular-nums">{getPrimaryDomain()}</code>
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Set NEXT_PUBLIC_PRIMARY_DOMAIN in Vercel environment variables for production.
+                  {t('common.envFix')}
                 </p>
               </div>
             )}
@@ -446,7 +446,7 @@ export function SitesManager() {
                       {site.domain}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1 tabular-nums">
-                      ID: <code className="text-foreground">{site.public_id}</code>
+                      {t('common.id')}: <code className="text-foreground">{site.public_id}</code>
                     </p>
                   </div>
                 </div>
@@ -535,7 +535,7 @@ export function SitesManager() {
                       type="email"
                       value={inviteEmail[site.id] || ''}
                       onChange={(e) => setInviteEmail((prev) => ({ ...prev, [site.id]: e.target.value }))}
-                      placeholder="customer@example.com"
+                      placeholder={t('common.email')}
                       className="flex-1 px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     <Button

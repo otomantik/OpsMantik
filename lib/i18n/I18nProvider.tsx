@@ -46,7 +46,7 @@ export function I18nProvider({ locale, siteConfig, children }: I18nProviderProps
     () => ({
       locale: loc,
       t: (key: string, params?: Record<string, string | number>) =>
-        translate(key, loc, params),
+        translate(loc, key, params),
       formatMoneyFromCents: (cents: number | null | undefined) =>
         formatMoneyFromCents(cents, currency, loc),
       formatTimestamp: (ts: string | null | undefined, options?: Intl.DateTimeFormatOptions) =>
