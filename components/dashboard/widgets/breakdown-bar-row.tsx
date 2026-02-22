@@ -32,9 +32,23 @@ function safeDecode(s: string): string {
 }
 
 export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowProps) {
-  const { formatNumber } = useTranslation();
+  const { formatNumber, t } = useTranslation();
   const rawLabel = decodeLabel ? safeDecode(item.name) : item.name;
-  const label = fixMojibake(rawLabel);
+
+  // Professional i18n: Map database-level dimension values to localized labels
+  const getLocalizedLabel = (raw: string) => {
+    const l = raw.toLowerCase().trim();
+    if (l === 'mobile') return t('device.mobile');
+    if (l === 'desktop') return t('device.desktop');
+    if (l === 'tablet') return t('device.tablet');
+    if (l === 'social') return t('dimension.social');
+    if (l === 'direct') return t('dimension.direct');
+    if (l === 'seo') return t('dimension.seo');
+    if (l === 'google ads') return t('dimension.googleAds');
+    return fixMojibake(raw);
+  };
+
+  const label = getLocalizedLabel(rawLabel);
   const pctNum = total > 0 ? Math.min(100, Math.max(0, item.pct)) : 0;
 
   return (

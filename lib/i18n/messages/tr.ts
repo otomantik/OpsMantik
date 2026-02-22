@@ -40,6 +40,7 @@ export const tr = {
   'common.unknown': 'Bilinmiyor',
   'common.na': 'YOK',
   'common.percentOfTraffic': '%{percent} trafik',
+  'common.ofTraffic': 'trafik',
 
   'dashboard.title': 'Operasyon Merkezi',
   'dashboard.calls': 'Aramalar',
@@ -58,10 +59,10 @@ export const tr = {
   'status.live': 'Canlı',
   'status.offline': 'Çevrimdışı',
 
-  'queue.sealed': 'Onaylandı',
-  'queue.junk': 'Değersiz',
-  'queue.suspicious': 'Şüpheli',
-  'queue.pending': 'Beklemede',
+  'queue.sealed': 'ONAYLANDI',
+  'queue.junk': 'DEĞERSİZ',
+  'queue.suspicious': 'ŞÜPHELİ',
+  'queue.pending': 'BEKLEMEDE',
   'queue.intentQualificationQueue': 'Niyet Nitelendirme Kuyruğu',
   'queue.failedToLoad': 'Niyetler yüklenemedi',
   'queue.loadingDetails': 'Detaylar yükleniyor…',
@@ -83,6 +84,7 @@ export const tr = {
 
   'intent.call': 'Arama',
   'intent.conversion': 'Dönüşüm',
+  'intent.general': 'Niyet',
 
   'seal.title': 'Anlaşmayı onayla',
   'seal.starLabel': 'Potansiyel kalitesi (zorunlu)',
@@ -146,8 +148,8 @@ export const tr = {
 
   'dimension.googleAds': 'Google Ads',
   'dimension.seo': 'SEO (Organik)',
-  'dimension.social': 'Sosyal Medya',
-  'dimension.direct': 'Doğrudan',
+  'dimension.social': 'Sosyal',
+  'dimension.direct': 'Direkt',
   'dimension.referral': 'Yönlendirme',
   'dimension.other': 'Diğer',
 
@@ -245,6 +247,12 @@ export const tr = {
   'activity.filterCancel': 'İPTAL',
   'activity.filterRestore': 'GERİ YÜKLE',
   'activity.filterUndo': 'GERİ AL',
+  'activity.statusConfirmed': 'ONAYLANDI',
+  'activity.statusQualified': 'NİTELİKLİ',
+  'activity.statusReal': 'GERÇEK',
+  'activity.statusJunk': 'DEĞERSİZ',
+  'activity.statusCancelled': 'İPTAL',
+  'activity.statusPending': 'BEKLEMEDE',
 
   // Sites Manager
   'sites.loading': 'Siteler yükleniyor...',
@@ -279,6 +287,14 @@ export const tr = {
   'sites.loginUrl': 'Giriş URL\'si:',
   'sites.shareLoginUrl': 'Bu URL\'yi müşteriyle paylaşın.',
   'sites.verifyHelp': 'Kodun doğru yerleştirildiğinden ve ALLOWED_ORIGINS ayarının yapıldığından emin olun.',
+  'sites.inviteEmailRequired': 'E-posta adresi gerekli',
+  'sites.inviteSuccess': 'Müşteri başarıyla davet edildi',
+  'sites.setupStep1': 'Supabase migration\'larınızın uygulandığından emin olun',
+  'sites.setupStep2': 'sites tablosunda name, domain, public_id sütunlarının olduğunu doğrulayın',
+  'sites.setupStep3': 'Şu komutu çalıştırın: supabase db push veya migration\'ları manuel uygulayın',
+  'sites.installInstructions': '📋 Bu kodu kopyalayıp WordPress sitenizin header bölümüne (Theme Editor -> header.php) yapıştırın veya "Insert Headers and Footers" eklentisini kullanın',
+  'sites.allowedOriginsWarning': '⚠️ ALLOWED_ORIGINS ayarına WordPress alan adınızı eklemeyi unutmayın.',
+  'sites.receivingEventsStatus': 'Olaylar alınıyor',
 
   // Session
   'session.loading': 'Oturum yükleniyor…',
@@ -359,6 +375,10 @@ export const tr = {
   'queue.trt': 'TRT',
   'queue.readOnlyJunk': 'Salt okunur rol: onaylama/reddetme yapılamaz.',
   'misc.na': 'Yok',
+  'setup.publicId': 'Genel Kimlik (Public ID):',
+  'setup.domain': 'Alan Adı:',
+  'setup.useThisInTracker': 'Takip kodunuzda bunu kullanın:',
+  'month.newMonthDetected': 'Yeni ay algılandı. Partisyonlar arası geçiş yapmak için sayfayı yenileyin.',
 
   'meta.title': 'OPSMANTIK - Google Ads İlişkilendirme ve Lead Zekası',
   'meta.description': 'Gerçek zamanlı takip ve çok kanallı ilişkilendirme platformu',

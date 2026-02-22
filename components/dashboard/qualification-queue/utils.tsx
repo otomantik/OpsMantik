@@ -18,13 +18,13 @@ export function iconForAction(a: string | null) {
   return Icons.circleDot;
 }
 
-export function statusBadge(status: string | null) {
+export function statusBadge(status: string | null, t: (k: string) => string) {
   const s = (status || 'intent').toLowerCase();
   if (s === 'confirmed' || s === 'qualified' || s === 'real') {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
         <CheckCircle2 className="h-3 w-3" />
-        Sealed
+        {t('queue.sealed')}
       </span>
     );
   }
@@ -32,7 +32,7 @@ export function statusBadge(status: string | null) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
         <XOctagon className="h-3 w-3" />
-        Cancelled
+        {t('activity.statusCancelled')}
       </span>
     );
   }
@@ -40,14 +40,14 @@ export function statusBadge(status: string | null) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
         <XOctagon className="h-3 w-3" />
-        Junk
+        {t('queue.junk')}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
       <Icons.circleDot className="h-3 w-3" />
-      Intent
+      {t('intent.general')}
     </span>
   );
 }

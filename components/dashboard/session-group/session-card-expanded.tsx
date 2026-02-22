@@ -166,7 +166,12 @@ export function SessionCardExpanded({
                                                         event.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
                                                             'bg-white text-muted-foreground border-slate-200'
                                                     }`}>
-                                                    {toLocaleUpperCase(event.event_category)}
+                                                    {toLocaleUpperCase(
+                                                        event.event_category === 'conversion' ? t('intent.conversion') :
+                                                            event.event_category === 'acquisition' ? 'ACQUISITION' :
+                                                                event.event_category === 'interaction' ? 'INTERACTION' :
+                                                                    event.event_category
+                                                    )}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-foreground flex items-center gap-2">

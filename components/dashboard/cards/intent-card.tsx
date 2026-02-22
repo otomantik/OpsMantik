@@ -158,10 +158,10 @@ export function IntentCard({
 
   const campaignLabel = useMemo(() => {
     if (intent.utm_campaign && intent.utm_campaign.trim()) return intent.utm_campaign.trim();
-    if (hasAnyClickId) return 'Google Ads';
+    if (hasAnyClickId) return t('dimension.googleAds');
     if (intent.attribution_source && intent.attribution_source.trim()) return intent.attribution_source.trim();
     return '—';
-  }, [hasAnyClickId, intent.attribution_source, intent.utm_campaign]);
+  }, [hasAnyClickId, intent.attribution_source, intent.utm_campaign, t]);
 
   const keywordLabel = useMemo(() => {
     if (intent.utm_term && intent.utm_term.trim()) return intent.utm_term.trim();

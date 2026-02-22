@@ -34,13 +34,16 @@ function iconForIntentAction(a: string | null) {
   return CircleDot;
 }
 
-function statusPill(status: string | null) {
-  const s = (status || 'intent').toLowerCase();
+function statusPill(status: string | null, t: (key: string) => string) {
+  const s = (status || 'pending').toLowerCase();
   const base = 'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold uppercase tracking-wider';
-  if (s === 'confirmed' || s === 'qualified' || s === 'real') return <span className={cn(base, 'border-emerald-200 bg-emerald-50 text-emerald-800')}>{s}</span>;
-  if (s === 'junk') return <span className={cn(base, 'border-red-200 bg-red-50 text-red-800')}>{s}</span>;
-  if (s === 'cancelled') return <span className={cn(base, 'border-slate-200 bg-slate-50 text-slate-700')}>{s}</span>;
-  return <span className={cn(base, 'border-slate-200 bg-white text-slate-700')}>{s}</span>;
+  if (s === 'confirmed' || s === 'qualified' || s === 'real') {
+    const label = s === 'confirmed' ? t('activity.statusConfirmed') : s === 'qualified' ? t('activity.statusQualified') : t('activity.statusReal');
+    return <span className={cn(base, 'border-emerald-200 bg-emerald-50 text-emerald-800')}>{label}</span>;
+  }
+  if (s === 'junk') return <span className={cn(base, 'border-red-200 bg-red-50 text-red-800')}>{t('activity.statusJunk')}</span>;
+  if (s === 'cancelled') return <span className={cn(base, 'border-slate-200 bg-slate-50 text-slate-700')}>{t('activity.statusCancelled')}</span>;
+  return <span className={cn(base, 'border-slate-200 bg-white text-slate-700')}>{t('activity.statusPending')}</span>;
 }
 
 export function ActivityLogShell({
@@ -286,7 +289,7 @@ export function ActivityLogShell({
                             {r.sale_amount} {r.currency || ''}
                           </span>
                         )}
-                        {statusPill(r.new_status)}
+                        {statusPill(r.new_status, t)}
                         {canUndo && (
                           <Button
                             variant="outline"

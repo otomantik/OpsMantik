@@ -60,16 +60,16 @@ export function TrafficSourceBreakdown({
     const other = Math.max(0, total - known);
 
     const rows = [
-      { name: 'Google Ads', count: googleAds },
-      { name: 'SEO', count: seo },
-      { name: 'Social', count: social },
-      { name: 'Direct', count: direct },
-      { name: 'Referral', count: referral },
-      { name: 'Other', count: other },
+      { name: t('dimension.googleAds'), count: googleAds },
+      { name: t('dimension.seo'), count: seo },
+      { name: t('dimension.social'), count: social },
+      { name: t('dimension.direct'), count: direct },
+      { name: t('dimension.referral'), count: referral },
+      { name: t('dimension.other'), count: other },
     ].filter((r) => r.count > 0 || total === 0);
 
     return { googleAds, seo, social, direct, referral, other, rows };
-  }, [sources, total]);
+  }, [sources, total, t]);
 
   const pieData = useMemo(() => rollup.rows.filter((r) => r.count > 0), [rollup.rows]);
 
@@ -163,7 +163,7 @@ export function TrafficSourceBreakdown({
             <CardContent className="p-4 pt-0">
               <div className="text-2xl font-bold tabular-nums text-slate-900">{c.value}</div>
               <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
-                {Math.round((c.value * 100) / Math.max(1, total))}% of traffic
+                {Math.round((c.value * 100) / Math.max(1, total))}% {t('common.ofTraffic')}
               </div>
             </CardContent>
           </Card>

@@ -65,11 +65,11 @@ export function SiteSetup() {
               <strong className="text-emerald-700">{t('setup.testSiteDetails')}:</strong>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-              <li>Public ID: <code className="text-foreground">test_site_123</code></li>
+              <li>{t('setup.publicId')} <code className="text-foreground">test_site_123</code></li>
               {process.env.NODE_ENV === 'development' && (
-                <li>Domain: <code className="text-foreground">localhost:3000</code></li>
+                <li>{t('setup.domain')} <code className="text-foreground">localhost:3000</code></li>
               )}
-              <li>Use this in your tracker script: <code className="text-foreground">data-site-id="test_site_123"</code></li>
+              <li>{t('setup.useThisInTracker')} <code className="text-foreground">data-site-id="test_site_123"</code></li>
             </ul>
           </div>
 

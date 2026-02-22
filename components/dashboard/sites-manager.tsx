@@ -153,7 +153,7 @@ export function SitesManager() {
   const handleInvite = async (siteId: string) => {
     const email = inviteEmail[siteId]?.trim();
     if (!email) {
-      setInviteError((prev) => ({ ...prev, [siteId]: 'Email is required' }));
+      setInviteError((prev) => ({ ...prev, [siteId]: t('sites.inviteEmailRequired') }));
       return;
     }
 
@@ -176,14 +176,14 @@ export function SitesManager() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to invite customer');
+        throw new Error(data.error || t('sites.errorLoading'));
       }
 
       setInviteSuccess((prev) => ({
         ...prev,
         [siteId]: {
           loginUrl: data.login_url || null,
-          message: data.message || 'Customer invited successfully',
+          message: data.message || t('sites.inviteSuccess'),
         },
       }));
       setInviteEmail((prev) => ({ ...prev, [siteId]: '' }));
@@ -298,9 +298,9 @@ export function SitesManager() {
             <div className="mt-3 pt-3 border-t border-destructive/20">
               <p className="text-sm text-muted-foreground mb-2">{t('sites.fixSchemaHelp')}</p>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>Check your Supabase migrations are applied</li>
-                <li>Verify the <code className="text-foreground">sites</code> table has columns: <code className="text-foreground">name</code>, <code className="text-foreground">domain</code>, <code className="text-foreground">public_id</code></li>
-                <li>Run: <code className="text-foreground">supabase db push</code> or apply migrations manually</li>
+                <li>{t('sites.setupStep1')}</li>
+                <li>{t('sites.setupStep2')}</li>
+                <li>{t('sites.setupStep3')}</li>
               </ol>
             </div>
           </div>
@@ -473,7 +473,7 @@ export function SitesManager() {
                           ? 'text-emerald-700'
                           : 'text-muted-foreground'
                           }`}>
-                          {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status === 'Receiving events' ? t('sites.receivingEvents') : siteStatus[site.id].status}
+                          {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status === 'Receiving events' ? t('sites.receivingEventsStatus') : siteStatus[site.id].status}
                         </span>
                       </div>
 
@@ -517,10 +517,10 @@ export function SitesManager() {
                       {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js" data-ops-site-id="${site.public_id}" data-ops-consent="analytics" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
                     <p className="text-sm text-muted-foreground mt-2">
-                      📋 Copy this snippet and paste it in your WordPress header (Theme → Theme Editor → header.php) or use a plugin like "Insert Headers and Footers"
+                      {t('sites.installInstructions')}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      ⚠️ Ensure <code className="text-foreground">ALLOWED_ORIGINS</code> includes your WordPress domain in server environment variables.
+                      {t('sites.allowedOriginsWarning')}
                     </p>
                   </div>
                 </div>

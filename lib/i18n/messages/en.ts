@@ -40,6 +40,7 @@ export const en = {
   'common.unknown': 'Unknown',
   'common.na': 'N/A',
   'common.percentOfTraffic': '%{percent} traffic',
+  'common.ofTraffic': 'of traffic',
 
   // Dashboard
   'dashboard.title': 'Operations Center',
@@ -88,6 +89,7 @@ export const en = {
   // Intent types
   'intent.call': 'Call',
   'intent.conversion': 'Conversion',
+  'intent.general': 'Intent',
 
   // Seal modal
   'seal.title': 'Seal deal',
@@ -261,6 +263,12 @@ export const en = {
   'activity.filterCancel': 'CANCEL',
   'activity.filterRestore': 'RESTORE',
   'activity.filterUndo': 'UNDO',
+  'activity.statusConfirmed': 'CONFIRMED',
+  'activity.statusQualified': 'QUALIFIED',
+  'activity.statusReal': 'REAL',
+  'activity.statusJunk': 'JUNK',
+  'activity.statusCancelled': 'CANCELLED',
+  'activity.statusPending': 'PENDING',
 
   // Sites Manager
   'sites.loading': 'Loading sites...',
@@ -295,6 +303,14 @@ export const en = {
   'sites.loginUrl': 'Login URL:',
   'sites.shareLoginUrl': 'Share this URL with your customer.',
   'sites.verifyHelp': 'Make sure the snippet is correctly placed and ALLOWED_ORIGINS is configured.',
+  'sites.inviteEmailRequired': 'Email is required',
+  'sites.inviteSuccess': 'Customer invited successfully',
+  'sites.setupStep1': 'Check your Supabase migrations are applied',
+  'sites.setupStep2': 'Verify the sites table has columns: name, domain, public_id',
+  'sites.setupStep3': 'Run: supabase db push or apply migrations manually',
+  'sites.installInstructions': '📋 Copy this snippet and paste it in your WordPress header (Theme Editor -> header.php) or use a plugin like "Insert Headers and Footers"',
+  'sites.allowedOriginsWarning': '⚠️ Ensure ALLOWED_ORIGINS includes your WordPress domain in server environment variables.',
+  'sites.receivingEventsStatus': 'Receiving events',
 
   // Session
   'session.loading': 'Loading session…',
@@ -390,4 +406,8 @@ export const en = {
   'error.undoFailed': 'Undo failed',
   'error.sessionQualified': 'This session was already qualified.',
   'misc.na': 'N/A',
+  'setup.publicId': 'Public ID:',
+  'setup.domain': 'Domain:',
+  'setup.useThisInTracker': 'Use this in your tracker script:',
+  'month.newMonthDetected': 'New month detected. Refresh to switch partitions.',
 } as const;

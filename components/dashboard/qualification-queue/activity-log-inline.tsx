@@ -74,7 +74,7 @@ export function ActivityLogInline({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-start sm:justify-end gap-1.5 w-full sm:w-auto shrink-0">
-                    {statusBadge(h.new_status)}
+                    {statusBadge(h.new_status, t)}
                     {canUndo && (
                       <button
                         type="button"

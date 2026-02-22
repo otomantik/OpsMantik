@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 /**
  * MonthBoundaryBanner - Shows banner when system month changes while dashboard is open
@@ -13,6 +14,8 @@ import { RefreshCw } from 'lucide-react';
 export function MonthBoundaryBanner() {
   const [showBanner, setShowBanner] = useState(false);
   const [initialMonth, setInitialMonth] = useState<string | null>(null);
+
+  const { t } = useTranslation();
 
   const getCurrentMonth = () => new Date().toISOString().slice(0, 7) + '-01';
 
@@ -49,7 +52,7 @@ export function MonthBoundaryBanner() {
           <div className="flex items-center gap-3">
             <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
             <p className="text-sm text-amber-900">
-              New month detected. Refresh to switch partitions.
+              {t('month.newMonthDetected')}
             </p>
           </div>
           <Button
@@ -59,7 +62,7 @@ export function MonthBoundaryBanner() {
             className="border-amber-300 text-amber-900 hover:bg-amber-100 text-sm"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            Refresh
+            {t('button.refresh')}
           </Button>
         </div>
       </div>
