@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SitesTableWithSearch } from './sites-table';
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 
@@ -17,7 +17,7 @@ interface SiteWithStatus {
   user_id: string;
   owner_email: string | null;
   last_event_at: string | null;
-  status: 'Receiving events' | 'No traffic';
+  status: 'RECEIVING' | 'NO_TRAFFIC';
 }
 
 interface RpcSiteResult {
@@ -73,7 +73,7 @@ async function getSitesWithStatus(locale: string, search?: string): Promise<GetS
     user_id: rpc.owner_user_id,
     owner_email: rpc.owner_email,
     last_event_at: rpc.last_event_at,
-    status: rpc.status === 'RECEIVING' ? 'Receiving events' : 'No traffic'
+    status: rpc.status
   }));
 
   return {
@@ -96,10 +96,11 @@ export default async function AdminSitesPage() {
     redirect('/dashboard');
   }
 
-  // Locale resolution for Admin
-  const headersList = await headers();
+  // Locale resolution for Admin (cookie > user metadata > header)
+  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;
-  const resolvedLocale = resolveLocale(undefined, user?.user_metadata, acceptLanguage);
+  const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
+  const resolvedLocale = resolveLocale(undefined, user?.user_metadata, acceptLanguage, cookieLocale);
 
   const { sites, error } = await getSitesWithStatus(resolvedLocale);
 

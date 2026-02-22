@@ -2,11 +2,19 @@
  * Lightweight translation — no heavy libs.
  * Fallback: locale exact -> locale prefix (tr-TR -> tr) -> en -> key.
  * Never throws.
+ *
+ * API:
+ * - translate(locale, key, params?) — low-level; accepts string (used by t/tUnsafe).
+ * - t(locale, key: TranslationKey, params?) — strict, IDE autocomplete.
+ * - tUnsafe(locale, key: string, params?) — for dynamic keys; use sparingly.
  */
 
 import { en } from './messages/en';
 import { tr } from './messages/tr';
 import { it } from './messages/it';
+
+/** Type-safe translation keys (flat dot-path from en). */
+export type TranslationKey = keyof typeof en;
 
 const messages: Record<string, Record<string, string>> = {
   en: en as Record<string, string>,
@@ -24,7 +32,7 @@ function interpolate(str: string, params?: Record<string, string | number>): str
 }
 
 /**
- * Translate key for locale.
+ * Low-level translate — accepts any string key.
  * Fallback order: exact locale -> locale prefix -> en -> key.
  */
 export function translate(
@@ -56,4 +64,22 @@ export function translate(
   } catch {
     return key;
   }
+}
+
+/** Type-safe translate (use for static keys). */
+export function t(
+  locale: string,
+  key: TranslationKey,
+  params?: Record<string, string | number>
+): string {
+  return translate(locale, key, params);
+}
+
+/** Dynamic-key translate (use only when map/switch not feasible). */
+export function tUnsafe(
+  locale: string,
+  key: string,
+  params?: Record<string, string | number>
+): string {
+  return translate(locale, key, params);
 }

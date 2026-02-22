@@ -81,9 +81,10 @@ test('normalizeLocale: invalid returns fallback', () => {
   assert.equal(normalizeLocale(null), 'en-US');
 });
 
-test('resolveLocale: site > user > Accept-Language > default', () => {
-  assert.equal(resolveLocale({ locale: 'tr-TR' }), 'tr-TR');
-  assert.equal(resolveLocale(null, { locale: 'de-DE' }), 'de-DE');
+test('resolveLocale: cookie > site > user > Accept-Language > default', () => {
+  assert.equal(resolveLocale(null, null, null, 'tr'), 'tr-TR');
+  assert.equal(resolveLocale({ locale: 'tr-TR' }, null, null, null), 'tr-TR');
+  assert.equal(resolveLocale(null, { locale: 'de-DE' }, null, null), 'de-DE');
   assert.equal(resolveLocale(null, null, 'tr,en;q=0.9'), 'tr-TR');
   assert.equal(resolveLocale(null, null, 'en,tr;q=0.9'), 'en-US');
   assert.equal(resolveLocale(null, null, null), 'en-US');

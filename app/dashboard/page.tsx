@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 
@@ -43,11 +43,12 @@ export default async function DashboardPage() {
   const sites = rawSites?.filter((s) => s.name !== E2E_SITE_NAME_FILTER) ?? [];
   const siteCount = sites.length;
 
-  // Locale resolution: use first site's locale or user metadata or header
-  const headersList = await headers();
+  // Locale resolution: cookie (user preference) > site > user metadata > header
+  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;
+  const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
   const firstSite = sites && sites.length > 0 ? sites[0] : null;
-  const resolvedLocale = resolveLocale(firstSite, user?.user_metadata, acceptLanguage);
+  const resolvedLocale = resolveLocale(firstSite, user?.user_metadata, acceptLanguage, cookieLocale);
 
   // Router logic:
   // 0 sites => show CTA + create site UI

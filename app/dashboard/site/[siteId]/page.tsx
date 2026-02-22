@@ -1,4 +1,4 @@
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
@@ -30,9 +30,10 @@ export async function generateMetadata({ params }: SitePageProps): Promise<Metad
     .eq('id', siteId)
     .single();
 
-  const headersList = await headers();
+  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;
-  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
+  const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
+  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
 
   const siteName = site?.name || site?.domain || 'OpsMantik';
   const metaTitle = translate(resolvedLocale, 'public.meta.title');
@@ -134,10 +135,11 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     }
   }
 
-  // Locale resolution: site.locale -> user.user_metadata.locale -> Accept-Language -> en-US
-  const headersList = await headers();
+  // Locale resolution: cookie (user preference) > site > user metadata > header
+  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;
-  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
+  const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
+  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
 
   return (
     <I18nProvider

@@ -13,7 +13,7 @@ interface SiteWithStatus {
   user_id: string;
   owner_email: string | null;
   last_event_at: string | null;
-  status: 'Receiving events' | 'No traffic';
+  status: 'RECEIVING' | 'NO_TRAFFIC';
 }
 
 interface SitesTableWithSearchProps {
@@ -94,12 +94,12 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
                   </td>
                   <td className="p-3">
                     <span
-                      className={`inline-flex items-center px-2 py-1 rounded text-xs border ${site.status === 'Receiving events'
+                      className={`inline-flex items-center px-2 py-1 rounded text-xs border ${site.status === 'RECEIVING'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-muted text-muted-foreground border-border'
                         }`}
                     >
-                      {site.status === 'Receiving events'
+                      {site.status === 'RECEIVING'
                         ? t('admin.sites.status.receiving')
                         : t('admin.sites.status.noTraffic')}
                     </span>

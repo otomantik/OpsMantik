@@ -388,6 +388,8 @@ export const it = {
   "sites.installInstructions": "📋 Copy this snippet and paste it in your WordPress header (Theme Editor -> header.php) or use a plugin like \"Insert Headers and Footers\"",
   "sites.allowedOriginsWarning": "⚠️ Ensure ALLOWED_ORIGINS includes your WordPress domain in server environment variables.",
   "sites.receivingEventsStatus": "Receiving events",
+  "sites.status.receiving": "Ricezione eventi",
+  "sites.status.noTraffic": "Nessun traffico",
   "session.loading": "Caricamento sessione…",
   "session.loadFailed": "Impossibile caricare la sessione",
   "session.created": "Created",

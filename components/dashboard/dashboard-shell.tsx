@@ -22,6 +22,7 @@ import Link from 'next/link';
 import { LiveClock } from './live-clock';
 import { useFunnelAnalytics } from '@/lib/hooks/use-funnel-analytics';
 import { CROInsights } from './widgets/cro-insights';
+import { LocaleSwitcher } from '@/components/locale-switcher';
 import './reset.css';
 import type { SiteRole } from '@/lib/auth/rbac';
 
@@ -158,6 +159,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             </div>
 
             <div className="flex items-center gap-3 shrink-0 min-w-0">
+              <LocaleSwitcher />
               <Link
                 href={`/dashboard/site/${siteId}/activity`}
                 className={cn(

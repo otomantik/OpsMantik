@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 import { getServerLocale } from "@/lib/i18n/getServerLocale";
 import { translate } from "@/lib/i18n/t";
+import { I18nProvider } from "@/lib/i18n/I18nProvider";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getServerLocale();
@@ -24,8 +25,10 @@ export default async function RootLayout({
     <html lang={lang} suppressHydrationWarning>
       {/* NOTE: Avoid next/font/google in offline/CI builds (network-restricted). */}
       <body className="antialiased" suppressHydrationWarning>
-        {children}
-        <Toaster position="bottom-right" richColors />
+        <I18nProvider locale={locale}>
+          {children}
+          <Toaster position="bottom-right" richColors />
+        </I18nProvider>
       </body>
     </html>
   );

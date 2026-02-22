@@ -18,7 +18,7 @@ export function iconForAction(a: string | null) {
   return Icons.circleDot;
 }
 
-export function statusBadge(status: string | null, t: (k: string) => string) {
+export function statusBadge(status: string | null, t: (k: import('@/lib/i18n/t').TranslationKey) => string) {
   const s = (status || 'intent').toLowerCase();
   if (s === 'confirmed' || s === 'qualified' || s === 'real') {
     return (

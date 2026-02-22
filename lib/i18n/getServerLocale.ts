@@ -12,5 +12,5 @@ export async function getServerLocale() {
     const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value;
     const acceptLanguage = headerList.get('accept-language');
 
-    return resolveLocale(null, null, cookieLocale || acceptLanguage);
+    return resolveLocale(null, null, acceptLanguage, cookieLocale);
 }

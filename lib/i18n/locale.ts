@@ -18,13 +18,21 @@ export function normalizeLocale(loc: string | null | undefined, fallback = 'en-U
   }
 }
 
-/** Resolve locale from site, user, or header. */
+/** Resolve locale from cookie, site, user, or header. Cookie (user preference) takes precedence. */
 export function resolveLocale(
   site: { locale?: string | null } | null | undefined,
   userMetadata?: { locale?: string } | null,
-  acceptLanguage?: string | null
+  acceptLanguage?: string | null,
+  cookieLocale?: string | null
 ): string {
   try {
+    if (cookieLocale && typeof cookieLocale === 'string' && cookieLocale.trim()) {
+      const base = cookieLocale.trim().split('-')[0]?.toLowerCase();
+      if (base === 'tr') return 'tr-TR';
+      if (base === 'en') return 'en-US';
+      if (base === 'it') return 'it-IT';
+      return normalizeLocale(cookieLocale, 'en-US');
+    }
     if (site?.locale && typeof site.locale === 'string') {
       return normalizeLocale(site.locale, 'en-US');
     }

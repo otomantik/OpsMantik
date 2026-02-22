@@ -35,7 +35,7 @@ function iconForIntentAction(a: string | null) {
   return CircleDot;
 }
 
-function statusPill(status: string | null, t: (key: string) => string) {
+function statusPill(status: string | null, t: (key: import('@/lib/i18n/t').TranslationKey) => string) {
   const s = (status || 'pending').toLowerCase();
   const base = 'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold uppercase tracking-wider';
   if (s === 'confirmed' || s === 'qualified' || s === 'real') {

@@ -139,8 +139,9 @@ export async function GET(
       .limit(1)
       .maybeSingle();
 
-    // Determine status based on last_event_at recency
-    let status = 'No traffic yet';
+    // Determine status based on last_event_at recency (enum for UI localization)
+    type SiteStatus = 'RECEIVING' | 'NO_TRAFFIC';
+    let status: SiteStatus = 'NO_TRAFFIC';
     let lastEventAt: string | null = null;
     let lastSessionId: string | null = null;
     let lastSource: string | null = null;
@@ -163,14 +164,14 @@ export async function GET(
         const minutesAgo = (now.getTime() - eventTime.getTime()) / (1000 * 60);
 
         if (minutesAgo <= 10) {
-          status = 'Receiving events';
+          status = 'RECEIVING';
         } else {
-          status = 'No traffic yet';
+          status = 'NO_TRAFFIC';
         }
       }
     } else if (lastSession) {
       // Has sessions but no events (unlikely but possible)
-      status = 'No traffic yet';
+      status = 'NO_TRAFFIC';
       lastSessionId = lastSession.id;
     }
 

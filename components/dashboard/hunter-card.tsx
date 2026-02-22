@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn, safeDecode, formatLocation } from '@/lib/utils';
 import type { HunterIntent } from '@/lib/types/hunter';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import type { TranslationKey } from '@/lib/i18n/t';
 import { Icons } from '@/components/icons';
 import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, type LucideIcon } from 'lucide-react';
 
@@ -18,7 +19,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   other: Icons.sparkles,
 };
 
-function relativeTime(ts: string, t: (key: string, params?: Record<string, string | number>) => string): string {
+function relativeTime(ts: string, t: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -51,7 +52,7 @@ function deviceLabel(
   deviceType: string | null | undefined,
   deviceOs: string | null | undefined,
   browser: string | null | undefined,
-  t: (key: string, params?: Record<string, string | number>) => string
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 ): { icon: LucideIcon; label: string } {
   const d = (deviceType || '').toLowerCase().trim();
   const os = (deviceOs || '').trim();
@@ -88,7 +89,7 @@ function deviceLabel(
 }
 
 /** Path / or empty → Homepage; else show path or last segment */
-function getPageLabel(pageUrl: string | null | undefined, t: (k: string) => string): string {
+function getPageLabel(pageUrl: string | null | undefined, t: (k: TranslationKey) => string): string {
   const raw = (pageUrl || '').trim();
   if (!raw) return t('hunter.homepage');
   try {
@@ -104,7 +105,7 @@ function getPageLabel(pageUrl: string | null | undefined, t: (k: string) => stri
 function normalizeTraffic(
   traffic_source: string | null | undefined,
   traffic_medium: string | null | undefined,
-  t: (key: string, params?: Record<string, string | number>) => string
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 ): { kind: 'google_ads' | 'seo' | 'social' | 'direct' | 'other'; label: string } {
   const src = (traffic_source || '').toString().trim();
   const med = (traffic_medium || '').toString().trim().toLowerCase();
@@ -130,7 +131,7 @@ function normalizeTraffic(
   return { kind: 'other', label: src || t('common.dimension.other') };
 }
 
-function SourceBadge({ traffic_source, traffic_medium, t_fn }: { traffic_source?: string | null; traffic_medium?: string | null; t_fn: (key: string, params?: Record<string, string | number>) => string }) {
+function SourceBadge({ traffic_source, traffic_medium, t_fn }: { traffic_source?: string | null; traffic_medium?: string | null; t_fn: (key: TranslationKey, params?: Record<string, string | number>) => string }) {
   const trk = normalizeTraffic(traffic_source, traffic_medium, t_fn);
   if (trk.kind === 'other' && (trk.label === '—' || !trk.label)) return null;
 

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { debugLog, debugWarn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { LocaleSwitcher } from '@/components/locale-switcher';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -111,6 +112,9 @@ export default function LoginPage() {
         >
           {isLoading ? t('auth.login.redirecting') : t('auth.login.signInWithGoogle')}
         </Button>
+        <div className="pt-6 flex justify-center">
+          <LocaleSwitcher />
+        </div>
       </div>
     </div>
   );

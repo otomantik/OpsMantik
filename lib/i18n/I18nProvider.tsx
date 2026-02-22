@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useMemo } from 'react';
-import { translate } from './t';
+import { translate, type TranslationKey } from './t';
 import { formatMoneyFromCents } from './currency';
 import { formatTimestamp as formatTimestampI18n } from './locale';
 
@@ -12,7 +12,8 @@ interface SiteConfig {
 
 interface I18nContextValue {
   locale: string;
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
+  tUnsafe: (key: string, params?: Record<string, string | number>) => string;
   formatMoneyFromCents: (cents: number | null | undefined) => string;
   formatTimestamp: (ts: string | null | undefined, options?: Intl.DateTimeFormatOptions) => string;
   formatNumber: (n: number) => string;
@@ -45,7 +46,9 @@ export function I18nProvider({ locale, siteConfig, children }: I18nProviderProps
   const value = useMemo(
     () => ({
       locale: loc,
-      t: (key: string, params?: Record<string, string | number>) =>
+      t: (key: TranslationKey, params?: Record<string, string | number>) =>
+        translate(loc, key, params),
+      tUnsafe: (key: string, params?: Record<string, string | number>) =>
         translate(loc, key, params),
       formatMoneyFromCents: (cents: number | null | undefined) =>
         formatMoneyFromCents(cents, currency, loc),
@@ -70,7 +73,8 @@ export function useI18nContext(): I18nContextValue {
   if (!ctx) {
     return {
       locale: 'en-US',
-      t: (key: string) => key,
+      t: (key: TranslationKey) => key,
+      tUnsafe: (key: string) => key,
       formatMoneyFromCents: (c: number | null | undefined) =>
         formatMoneyFromCents(c, 'USD', 'en-US'),
       formatTimestamp: (ts: string | null | undefined, opts?: Intl.DateTimeFormatOptions) =>

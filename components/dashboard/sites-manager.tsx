@@ -471,11 +471,11 @@ export function SitesManager() {
                   {siteStatus[site.id] && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className={`text-sm ${siteStatus[site.id].status === 'Receiving events'
+                        <span className={`text-sm ${siteStatus[site.id].status === 'RECEIVING'
                           ? 'text-emerald-700'
                           : 'text-muted-foreground'
                           }`}>
-                          {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status === 'Receiving events' ? t('sites.receivingEventsStatus') : siteStatus[site.id].status}
+                          {siteStatus[site.id].status === 'RECEIVING' ? '✅' : '⚠️'} {siteStatus[site.id].status === 'RECEIVING' ? t('sites.status.receiving') : siteStatus[site.id].status === 'NO_TRAFFIC' ? t('sites.status.noTraffic') : siteStatus[site.id].status}
                         </span>
                       </div>
 

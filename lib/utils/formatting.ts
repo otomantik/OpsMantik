@@ -2,6 +2,8 @@
  * Turkish character encoding utilities and formatters.
  */
 
+import type { TranslationKey } from '@/lib/i18n/t';
+
 const DOUBLE_ENCODING_FIXES: [string, string][] = [
     ['Ã‡', 'Ç'], ['Ã§', 'ç'], ['Äž', 'Ğ'], ['ÄŸ', 'ğ'],
     ['Ä°', 'İ'], ['Ä±', 'ı'], ['Ã–', 'Ö'], ['Ã¶', 'ö'],
@@ -66,7 +68,7 @@ export function formatTimestampWithTZ(
  * Format relative time (e.g., "5m ago").
  * Passing t() is preferred for proper i18n.
  */
-export function formatRelativeTime(ts: string | null | undefined, t?: (key: string, params?: Record<string, string | number>) => string): string {
+export function formatRelativeTime(ts: string | null | undefined, t?: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
     if (!ts) return '—';
     try {
         const date = new Date(ts);

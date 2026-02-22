@@ -1,4 +1,4 @@
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
@@ -50,9 +50,10 @@ export default async function ActivityLogPage({ params }: PageProps) {
     }
   }
 
-  const headersList = await headers();
+  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;
-  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage);
+  const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
+  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
 
   return (
     <I18nProvider

@@ -388,6 +388,8 @@ export const tr = {
   "sites.installInstructions": "📋 Bu kodu kopyalayıp WordPress sitenizin header bölümüne (Theme Editor -> header.php) yapıştırın veya \"Insert Headers and Footers\" eklentisini kullanın",
   "sites.allowedOriginsWarning": "⚠️ ALLOWED_ORIGINS ayarına WordPress alan adınızı eklemeyi unutmayın.",
   "sites.receivingEventsStatus": "Olaylar alınıyor",
+  "sites.status.receiving": "Etkinlik alınıyor",
+  "sites.status.noTraffic": "Trafik yok",
   "session.loading": "Oturum yükleniyor…",
   "session.loadFailed": "Oturum yüklenemedi",
   "session.created": "Oluşturuldu",

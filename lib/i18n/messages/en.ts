@@ -429,6 +429,8 @@ export const en = {
   'sites.installInstructions': '📋 Copy this snippet and paste it in your WordPress header (Theme Editor -> header.php) or use a plugin like "Insert Headers and Footers"',
   'sites.allowedOriginsWarning': '⚠️ Ensure ALLOWED_ORIGINS includes your WordPress domain in server environment variables.',
   'sites.receivingEventsStatus': 'Receiving events',
+  'sites.status.receiving': 'Receiving events',
+  'sites.status.noTraffic': 'No traffic',
 
   // Session
   'session.loading': 'Loading session…',

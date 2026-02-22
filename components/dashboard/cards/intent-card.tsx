@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn, formatTimestamp } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import type { TranslationKey } from '@/lib/i18n/t';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import {
   CheckCircle2,
@@ -55,7 +56,7 @@ function getKind(action: string | null | undefined): IntentCardKind {
   return 'other';
 }
 
-function formatRelative(ts: string, t: (key: string, params?: Record<string, string | number>) => string): string {
+function formatRelative(ts: string, t: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -96,7 +97,7 @@ function toPath(u: string | null | undefined): string {
   }
 }
 
-function secondsToHuman(sec: number | null | undefined, t: (key: string, params?: Record<string, string | number>) => string): string {
+function secondsToHuman(sec: number | null | undefined, t: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
   if (typeof sec !== 'number' || Number.isNaN(sec)) return '—';
   if (sec < 60) return `${sec}${t('common.sec')}`;
   const m = Math.floor(sec / 60);

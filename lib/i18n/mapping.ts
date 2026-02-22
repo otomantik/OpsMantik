@@ -1,4 +1,6 @@
-type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
+import type { TranslationKey } from './t';
+
+type TranslateFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 /**
  * formatEventType - Human-readable event category/action for timeline.
