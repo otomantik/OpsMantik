@@ -8,6 +8,24 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { IngestMeta } from '@/lib/types/ingest';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import {
+  CheckCircle2,
+  XCircle,
+  Trash2,
+  LayoutDashboard,
+  RotateCw,
+  FileEdit,
+  Eye,
+  Download,
+  Video,
+  Target,
+  Lightbulb,
+  Phone,
+  MessageCircle,
+  ClipboardList,
+  MousePointer,
+  Mail,
+} from 'lucide-react';
 
 declare global {
   interface Window {
@@ -164,7 +182,7 @@ export default function TestPage() {
       setEventLog(prev => [{
         time,
         event: `${category}:${action}${label ? ` (${label})` : ''}`,
-        status: '✅'
+        status: 'success'
       }, ...prev].slice(0, 30));
 
       setApiStatus('success');
@@ -177,7 +195,7 @@ export default function TestPage() {
       setEventLog(prev => [{
         time,
         event: `${category}:${action} - ERROR: ${msg || 'Unknown'}`,
-        status: '❌'
+        status: 'error'
       }, ...prev].slice(0, 30));
       console.error('[TEST_PAGE] ❌ Event send error:', error);
       setTimeout(() => setApiStatus('idle'), 2000);
@@ -257,7 +275,7 @@ export default function TestPage() {
       utm_source: 'google',
     });
 
-    addToEventLog('Paid Click (GCLID + UTM)', '✅');
+    addToEventLog('Paid Click (GCLID + UTM)', 'success');
   };
 
   const simulatePaidSocialScenario = () => {
@@ -269,7 +287,7 @@ export default function TestPage() {
 
     // Note: Referrer is sent in payload, but we can't set document.referrer
     // The server will see it from the request
-    addToEventLog('Paid Social (Facebook referrer)', '✅');
+    addToEventLog('Paid Social (Facebook referrer)', 'success');
   };
 
   const simulateOrganicScenario = () => {
@@ -284,7 +302,7 @@ export default function TestPage() {
       // No gclid, no utm
     });
 
-    addToEventLog('Organic (no GCLID/UTM)', '✅');
+    addToEventLog('Organic (no GCLID/UTM)', 'success');
   };
 
   const simulateGeoOverrideScenario = () => {
@@ -295,7 +313,7 @@ export default function TestPage() {
       device_type: 'mobile',
     });
 
-    addToEventLog('Geo Override (Istanbul, Kadikoy)', '✅');
+    addToEventLog('Geo Override (Istanbul, Kadikoy)', 'success');
   };
 
   const addToEventLog = (event: string, status: string) => {
@@ -320,7 +338,8 @@ export default function TestPage() {
           <div className="flex gap-2">
             <Link href="/dashboard">
               <Button variant="outline">
-                📊 {t('common.dashboard')}
+                <LayoutDashboard className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                {t('common.dashboard')}
               </Button>
             </Link>
             <Button
@@ -328,7 +347,8 @@ export default function TestPage() {
               variant="outline"
               className="text-destructive border-destructive/20 hover:bg-destructive/10"
             >
-              🗑️ {t('test.page.clearStorage')}
+              <Trash2 className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+              {t('test.page.clearStorage')}
             </Button>
           </div>
         </div>
@@ -350,7 +370,12 @@ export default function TestPage() {
             <div className="grid grid-cols-4 gap-4 mb-4">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">{t('test.page.label.tracker')}</p>
-                <p className={`text-sm font-semibold ${trackerLoaded ? 'text-emerald-700' : 'text-destructive'}`}>
+                <p className={`flex items-center gap-2 text-sm font-semibold ${trackerLoaded ? 'text-emerald-700' : 'text-destructive'}`}>
+                  {trackerLoaded ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                  ) : (
+                    <XCircle className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
                   {trackerLoaded ? t('test.page.status.loaded') : t('test.page.status.notLoaded')}
                 </p>
               </div>
@@ -389,7 +414,8 @@ export default function TestPage() {
                   size="sm"
                   className="text-xs"
                 >
-                  🔄 {t('test.page.refreshSession')}
+                  <RotateCw className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                  {t('test.page.refreshSession')}
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   {t('test.page.label.apiStatus')}{' '}
@@ -531,7 +557,11 @@ export default function TestPage() {
                 {eventLog.map((log, idx) => (
                   <div key={idx} className="flex items-center gap-3 text-sm py-1 border-b border-border">
                     <span className="text-muted-foreground w-20 tabular-nums">{log.time}</span>
-                    <span className={log.status === '✅' ? 'text-emerald-700' : 'text-destructive'}>{log.status}</span>
+                    {log.status === 'success' ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+                    ) : (
+                      <XCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+                    )}
                     <span className="text-foreground flex-1">{log.event}</span>
                   </div>
                 ))}
@@ -548,7 +578,8 @@ export default function TestPage() {
             className="bg-emerald-600 hover:bg-emerald-700 text-sm"
             disabled={!trackerLoaded}
           >
-            ✅ {t('test.page.events.cta')}
+            <Target className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+            {t('test.page.events.cta')}
           </Button>
           <Button
             onClick={() => sendEvent('conversion', 'form_submit', 'quick_test')}
@@ -556,7 +587,8 @@ export default function TestPage() {
             className="bg-blue-600 hover:bg-blue-700 text-sm"
             disabled={!trackerLoaded}
           >
-            📝 {t('test.page.events.formSubmit')}
+            <FileEdit className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+            {t('test.page.events.formSubmit')}
           </Button>
           <Button
             onClick={() => sendEvent('interaction', 'page_visit', 'test_page')}
@@ -564,7 +596,8 @@ export default function TestPage() {
             className="bg-purple-600 hover:bg-purple-700 text-sm"
             disabled={!trackerLoaded}
           >
-            👁️ {t('test.page.events.newsletter')}
+            <Eye className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+            {t('test.page.events.newsletter')}
           </Button>
           <Button
             onClick={() => sendEvent('conversion', 'download', 'test.pdf')}
@@ -572,7 +605,8 @@ export default function TestPage() {
             className="bg-rose-600 hover:bg-rose-700 text-sm"
             disabled={!trackerLoaded}
           >
-            📥 {t('test.page.events.download')}
+            <Download className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+            {t('test.page.events.download')}
           </Button>
           <Button
             onClick={() => sendEvent('interaction', 'video_watch', 'test_video', 30)}
@@ -580,7 +614,8 @@ export default function TestPage() {
             className="bg-yellow-600 hover:bg-yellow-700 text-sm"
             disabled={!trackerLoaded}
           >
-            🎥 {t('test.page.events.videoWatch')}
+            <Video className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+            {t('test.page.events.videoWatch')}
           </Button>
         </div>
 
@@ -655,19 +690,24 @@ export default function TestPage() {
                 className="bg-blue-600 hover:bg-blue-700 text-sm flex-1"
                 disabled={!trackerLoaded || !gclid.trim()}
               >
-                🎯 {t('test.page.simulate.paidClick')}
+                <Target className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.simulate.paidClick')}
               </Button>
               <Button
                 onClick={simulateConversion}
                 className="bg-emerald-600 hover:bg-emerald-700 text-sm flex-1"
                 disabled={!trackerLoaded}
               >
-                ✅ {t('test.page.simulate.conversion')}
+                <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.simulate.conversion')}
               </Button>
             </div>
             <div className="pt-2 border-t border-border">
-              <p className="text-sm text-muted-foreground">
-                💡 <strong>{t('test.page.tip.title')}</strong> {t('test.page.tip.body', { source: 'SOURCE: First Click (Paid)', gclid: 'GCLID' })}
+              <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  <strong>{t('test.page.tip.title')}</strong> {t('test.page.tip.body', { source: 'SOURCE: First Click (Paid)', gclid: 'GCLID' })}
+                </span>
               </p>
             </div>
           </CardContent>
@@ -678,7 +718,10 @@ export default function TestPage() {
           {/* Phone Call */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📞 {t('test.page.events.phone')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Phone className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.phone')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.phone')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -692,7 +735,10 @@ export default function TestPage() {
           {/* WhatsApp */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">💬 {t('test.page.events.whatsapp')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.whatsapp')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.whatsapp')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -706,7 +752,10 @@ export default function TestPage() {
           {/* Form Submit */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📋 {t('test.page.events.formSubmit')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <ClipboardList className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.formSubmit')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.formSubmit')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -731,7 +780,10 @@ export default function TestPage() {
           {/* CTA Button */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">🎯 {t('test.page.events.cta')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Target className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.cta')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.cta')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -748,7 +800,10 @@ export default function TestPage() {
           {/* Download */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📥 {t('test.page.events.download')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Download className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.download')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.download')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -765,7 +820,10 @@ export default function TestPage() {
           {/* Pricing Hover */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">🖱️ {t('test.page.events.pricingHover')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <MousePointer className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.pricingHover')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">2 {t('common.unit.second.short')} {t('common.hover')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -785,7 +843,10 @@ export default function TestPage() {
           {/* Video Watch */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">🎥 {t('test.page.events.videoWatch')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Video className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.videoWatch')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.videoWatch')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -802,7 +863,10 @@ export default function TestPage() {
           {/* Newsletter Signup */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">📧 {t('test.page.events.newsletter')}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Mail className="h-4 w-4 shrink-0" aria-hidden />
+                {t('test.page.events.newsletter')}
+              </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">{t('test.page.events.newsletter')}</CardDescription>
             </CardHeader>
             <CardContent>

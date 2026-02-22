@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SitesTableWithSearch } from './sites-table';
 import { headers, cookies } from 'next/headers';
@@ -126,6 +127,7 @@ export default async function AdminSitesPage() {
                 variant="outline"
                 className="text-sm"
               >
+                <ArrowLeft className="mr-2 h-4 w-4 shrink-0" aria-hidden />
                 {translate(resolvedLocale, 'common.backToDashboard')}
               </Button>
             </Link>

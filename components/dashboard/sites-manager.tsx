@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Copy, Check, AlertTriangle, Rocket, Search, Loader2, CheckCircle2, Mail } from 'lucide-react';
 import { formatTimestamp } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 
@@ -291,7 +292,8 @@ export function SitesManager() {
         </CardHeader>
         <CardContent className="p-6">
           <div className="bg-destructive/10 border border-destructive/20 p-4 rounded space-y-3">
-            <p className="text-sm text-destructive font-semibold">
+            <p className="flex items-center gap-2 text-sm text-destructive font-semibold">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
               {t('sites.schemaMismatch')}
             </p>
             <p className="text-sm text-destructive">
@@ -388,6 +390,7 @@ export function SitesManager() {
               disabled={isCreating}
               className="w-full"
             >
+              <Rocket className="mr-2 h-4 w-4 shrink-0" aria-hidden />
               {isCreating ? t('sites.creating') : t('sites.createSite')}
             </Button>
           </form>
@@ -419,7 +422,17 @@ export function SitesManager() {
                   onClick={copySnippet}
                   size="sm"
                 >
-                  {copied ? t('sites.copied') : t('sites.copy')}
+                  {copied ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                      {t('sites.copied')}
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                      {t('sites.copy')}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -464,18 +477,28 @@ export function SitesManager() {
                       disabled={statusLoading[site.id]}
                       size="sm"
                     >
-                      {statusLoading[site.id] ? '⏳' : `🔍 ${t('sites.verifyInstall')}`}
+                      {statusLoading[site.id] ? (
+                        <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      ) : (
+                        <Search className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                      )}
+                      {t('sites.verifyInstall')}
                     </Button>
                   </div>
 
                   {siteStatus[site.id] && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className={`text-sm ${siteStatus[site.id].status === 'RECEIVING'
+                        <span className={`flex items-center gap-2 text-sm ${siteStatus[site.id].status === 'RECEIVING'
                           ? 'text-emerald-700'
                           : 'text-muted-foreground'
                           }`}>
-                          {siteStatus[site.id].status === 'RECEIVING' ? '✅' : '⚠️'} {siteStatus[site.id].status === 'RECEIVING' ? t('sites.status.receiving') : siteStatus[site.id].status === 'NO_TRAFFIC' ? t('sites.status.noTraffic') : siteStatus[site.id].status}
+                          {siteStatus[site.id].status === 'RECEIVING' ? (
+                            <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                          ) : (
+                            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                          )}
+                          {siteStatus[site.id].status === 'RECEIVING' ? t('sites.status.receiving') : siteStatus[site.id].status === 'NO_TRAFFIC' ? t('sites.status.noTraffic') : siteStatus[site.id].status}
                         </span>
                       </div>
 
@@ -545,7 +568,12 @@ export function SitesManager() {
                       disabled={inviteLoading[site.id] || !inviteEmail[site.id]?.trim()}
                       size="sm"
                     >
-                      {inviteLoading[site.id] ? '⏳' : `📧 ${t('sites.inviteCustomer').split(':')[0]}`}
+                      {inviteLoading[site.id] ? (
+                        <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      ) : (
+                        <Mail className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                      )}
+                      {t('sites.inviteCustomer').split(':')[0]}
                     </Button>
                   </div>
 
@@ -557,7 +585,10 @@ export function SitesManager() {
 
                   {inviteSuccess[site.id] && (
                     <div className="mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded space-y-2">
-                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message}</p>
+                      <p className="flex items-center gap-2 text-sm text-emerald-700">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                        {inviteSuccess[site.id].message}
+                      </p>
                       {inviteSuccess[site.id].loginUrl && (
                         <div>
                           <p className="text-sm text-muted-foreground mb-1">{t('sites.loginUrl')}</p>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 
@@ -128,7 +129,7 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
                   {site.name || site.domain || site.public_id}
                 </span>
                 {isSelected && (
-                  <span className="ml-auto text-emerald-600">✓</span>
+                  <Check className="ml-auto h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
                 )}
               </Button>
             );

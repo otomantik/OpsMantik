@@ -209,13 +209,18 @@ export function IntentCard({
         >
           <div
             className={cn(
-              'rounded-xl border px-4 py-2 text-sm font-medium shadow-sm',
+              'flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium shadow-sm',
               flash === 'sealed'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                 : 'border-red-200 bg-red-50 text-red-800'
             )}
           >
-            {flash === 'sealed' ? t('hunter.successSealed') : t('hunter.successJunk')}
+            {flash === 'sealed' ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+            ) : (
+              <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+            )}
+            <span>{flash === 'sealed' ? t('hunter.successSealed') : t('hunter.successJunk')}</span>
           </div>
         </div>
       )}

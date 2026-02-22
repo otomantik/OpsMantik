@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { debugLog } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { Loader2, CheckCircle2, Rocket } from 'lucide-react';
 
 export function SiteSetup() {
   const [isCreating, setIsCreating] = useState(false);
@@ -103,7 +104,22 @@ export function SiteSetup() {
             disabled={isCreating || success}
             className="w-full"
           >
-            {isCreating ? '⏳ ' + t('dashboard.setup.creating') : success ? '✅ ' + t('dashboard.setup.created') : '🚀 ' + t('dashboard.setup.createTestSite')}
+            {isCreating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                {t('dashboard.setup.creating')}
+              </>
+            ) : success ? (
+              <>
+                <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                {t('dashboard.setup.created')}
+              </>
+            ) : (
+              <>
+                <Rocket className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                {t('dashboard.setup.createTestSite')}
+              </>
+            )}
           </Button>
 
           <p className="text-sm text-muted-foreground text-center">
