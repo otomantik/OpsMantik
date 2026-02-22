@@ -17,7 +17,7 @@ export function IntentStatusBadge({ status, sealedAt }: IntentStatusBadgeProps) 
       <div className="flex flex-col gap-1">
         <Badge variant="secondary" className="gap-1">
           <CheckCircle2 className="h-4 w-4" />
-          {t('queue.sealed')}
+          {t('dashboard.commandCenter.queue.sealed')}
         </Badge>
         {sealedAt && (
           <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
@@ -32,7 +32,7 @@ export function IntentStatusBadge({ status, sealedAt }: IntentStatusBadgeProps) 
     return (
       <Badge variant="destructive" className="gap-1">
         <XCircle className="h-4 w-4" />
-        {t('queue.junk')}
+        {t('dashboard.commandCenter.queue.junk')}
       </Badge>
     );
   }
@@ -41,7 +41,7 @@ export function IntentStatusBadge({ status, sealedAt }: IntentStatusBadgeProps) 
     return (
       <Badge variant="destructive" className="gap-1">
         <AlertTriangle className="h-4 w-4" />
-        {t('queue.suspicious')}
+        {t('dashboard.commandCenter.queue.suspicious')}
       </Badge>
     );
   }
@@ -50,7 +50,7 @@ export function IntentStatusBadge({ status, sealedAt }: IntentStatusBadgeProps) 
   return (
     <Badge variant="muted" className="gap-1">
       <Clock className="h-4 w-4" />
-      {t('queue.pending')}
+      {t('dashboard.commandCenter.queue.pending')}
     </Badge>
   );
 }

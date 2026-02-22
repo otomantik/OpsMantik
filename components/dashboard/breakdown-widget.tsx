@@ -33,9 +33,9 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
 
   const getDimensionLabel = (dim: BreakdownDimension) => {
     switch (dim) {
-      case 'source': return t('dimension.source');
-      case 'device': return t('dimension.device');
-      case 'city': return t('dimension.city');
+      case 'source': return t('common.dimension.source');
+      case 'device': return t('common.dimension.device');
+      case 'city': return t('common.dimension.city');
     }
   };
 

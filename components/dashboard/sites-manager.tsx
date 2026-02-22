@@ -74,9 +74,9 @@ export function SitesManager() {
         ));
 
       if (isSchemaMismatch) {
-        setError('Database schema mismatch: required columns missing on sites table (name/domain/public_id). Run migration.');
+        setError(t('sites.schemaMismatchFullDesc'));
       } else {
-        let errorMessage = 'Failed to load sites';
+        let errorMessage = t('sites.errorLoading');
         if (sitesError.message) {
           errorMessage = sitesError.message;
         }
@@ -92,7 +92,7 @@ export function SitesManager() {
       setSites(sitesData || []);
     }
     setIsLoading(false);
-  }, []);
+  }, [t]);
 
   // Fetch sites
   useEffect(() => {
@@ -176,7 +176,7 @@ export function SitesManager() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || t('sites.errorLoading'));
+        throw new Error(data.error || t('sites.inviteFailed'));
       }
 
       setInviteSuccess((prev) => ({
@@ -208,7 +208,7 @@ export function SitesManager() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to verify install');
+        throw new Error(data.error || t('sites.failedToVerifyInstall'));
       }
 
       setSiteStatus({
@@ -498,7 +498,7 @@ export function SitesManager() {
                           )}
                           {siteStatus[site.id].last_event_category && (
                             <p className="text-muted-foreground">
-                              {t('table.category')}: <span className="text-foreground">{siteStatus[site.id].last_event_category}</span>
+                              {t('session.eventCategory')}: <span className="text-foreground">{siteStatus[site.id].last_event_category}</span>
                             </p>
                           )}
                         </div>
@@ -555,7 +555,7 @@ export function SitesManager() {
 
                   {inviteSuccess[site.id] && (
                     <div className="mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded space-y-2">
-                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message === 'Customer invited successfully' ? t('sites.createdSuccess') : inviteSuccess[site.id].message}</p>
+                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message === 'Customer invited successfully' ? t('sites.inviteSuccess') : inviteSuccess[site.id].message}</p>
                       {inviteSuccess[site.id].loginUrl && (
                         <div>
                           <p className="text-sm text-muted-foreground mb-1">{t('sites.loginUrl')}</p>

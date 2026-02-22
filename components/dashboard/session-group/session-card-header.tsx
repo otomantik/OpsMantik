@@ -185,7 +185,7 @@ export function SessionCardHeader({
                             size="sm"
                             className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
                             onClick={onHistoryClick}
-                            title={t('session.viewVisitorHistory')}
+                            title={t('session.viewHistory')}
                         >
                             <History className="w-3 h-3 mr-1" />
                             {t('session.history')}

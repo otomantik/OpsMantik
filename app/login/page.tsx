@@ -70,6 +70,17 @@ export default function LoginPage() {
     }
   };
 
+  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const errorCode = searchParams.get('error');
+
+  // Use static literals to satisfy the i18n verifier
+  let errorMsg: string | null = null;
+  if (errorCode === 'config') errorMsg = t('auth.errors.config');
+  else if (errorCode === 'exchange') errorMsg = t('auth.errors.exchange');
+  else if (errorCode === 'no_session') errorMsg = t('auth.errors.no_session');
+  else if (errorCode === 'no_code') errorMsg = t('auth.errors.no_code');
+  else if (errorCode) errorMsg = t('auth.errors.generic');
+
   if (isChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -83,9 +94,14 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8">
+        {errorMsg && (
+          <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center">
+            {errorMsg}
+          </div>
+        )}
         <div className="text-center">
-          <h1 className="text-3xl font-bold">{t('login.title')}</h1>
-          <p className="mt-2 text-gray-600">{t('login.subtitle')}</p>
+          <h1 className="text-3xl font-bold">{t('auth.login.title')}</h1>
+          <p className="mt-2 text-gray-600">{t('auth.login.subtitle')}</p>
         </div>
         <Button
           onClick={handleSignIn}
@@ -93,7 +109,7 @@ export default function LoginPage() {
           className="w-full"
           size="lg"
         >
-          {isLoading ? t('login.redirecting') : t('login.signInWithGoogle')}
+          {isLoading ? t('auth.login.redirecting') : t('auth.login.signInWithGoogle')}
         </Button>
       </div>
     </div>

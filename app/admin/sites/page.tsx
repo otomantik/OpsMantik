@@ -39,7 +39,7 @@ interface GetSitesResult {
   error: string | null;
 }
 
-async function getSitesWithStatus(search?: string): Promise<GetSitesResult> {
+async function getSitesWithStatus(locale: string, search?: string): Promise<GetSitesResult> {
   const supabase = await createClient();
 
   // Call RPC function - single query eliminates N+1
@@ -53,7 +53,7 @@ async function getSitesWithStatus(search?: string): Promise<GetSitesResult> {
   if (rpcError) {
     return {
       sites: [],
-      error: rpcError.message || 'Failed to load sites. Check profiles role + RPC.'
+      error: rpcError.message || translate(locale, 'admin.sites.errors.failedToLoad')
     };
   }
 
@@ -101,7 +101,7 @@ export default async function AdminSitesPage() {
   const acceptLanguage = headersList.get('accept-language') ?? null;
   const resolvedLocale = resolveLocale(undefined, user?.user_metadata, acceptLanguage);
 
-  const { sites, error } = await getSitesWithStatus();
+  const { sites, error } = await getSitesWithStatus(resolvedLocale);
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
@@ -125,7 +125,7 @@ export default async function AdminSitesPage() {
                 variant="outline"
                 className="text-sm"
               >
-                ← {translate(resolvedLocale, 'common.dashboard')}
+                {translate(resolvedLocale, 'common.backToDashboard')}
               </Button>
             </Link>
           </div>

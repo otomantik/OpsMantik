@@ -20,6 +20,7 @@ const SCAN_DIRS = [
     "app",
     "components",
     path.join("lib", "hooks"),
+    path.join("lib", "services"),
 ];
 
 const EXCLUDE_DIRS = new Set([
@@ -203,12 +204,49 @@ function scanFile(fileAbs) {
                     }
                 }
             }
+
+            // STATIC KEY ENFORCEMENT for t() and translate()
+            const isT = ts.isIdentifier(expr) && expr.text === "t";
+            const isTranslate = ts.isIdentifier(expr) && expr.text === "translate";
+            if (isT || isTranslate) {
+                const firstArg = node.arguments[0];
+                if (firstArg) {
+                    // Check if first arg is t(key) or translate(locale, key)
+                    const keyNode = isTranslate ? node.arguments[1] : firstArg;
+                    if (keyNode && !ts.isStringLiteral(keyNode)) {
+                        violations.push(reportNode(sourceFile, keyNode, "dynamic-key", `Forbidden dynamic key in ${expr.text}(): keys must be string literals.`));
+                    }
+                }
+            }
         }
 
         if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
             const mod = node.moduleSpecifier.text;
             if (mod.includes("lib/i18n/en") || mod.endsWith("/lib/i18n/en.ts")) {
                 violations.push(reportNode(sourceFile, node, "legacy-import", `Legacy i18n import: "${mod}"`));
+            }
+        }
+
+        if (ts.isVariableDeclaration(node)) {
+            const typeName = node.type ? node.type.getText(sourceFile) : "";
+            if (typeName.includes("Metadata")) {
+                const init = node.initializer;
+                if (init && ts.isObjectLiteralExpression(init)) {
+                    for (const prop of init.properties) {
+                        if (ts.isPropertyAssignment(prop)) {
+                            const name = prop.name.getText(sourceFile);
+                            if (name === "title" || name === "description") {
+                                const val = prop.initializer;
+                                if (ts.isStringLiteral(val)) {
+                                    const s = val.text;
+                                    if (s.length > 0 && /[a-zA-Z]/.test(s)) {
+                                        violations.push(reportNode(sourceFile, val, "metadata-literal", `Hardcoded metadata ${name}: "${s.slice(0, 80)}"`));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

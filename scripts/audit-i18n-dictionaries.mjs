@@ -26,7 +26,10 @@ for (const [lang, messages] of Object.entries(locales)) {
     const missing = baseKeys.filter(k => !keys.includes(k));
     const extra = keys.filter(k => !baseKeys.includes(k));
     const empty = Object.entries(messages)
-        .filter(([k, v]) => baseKeys.includes(k) && (v === "" || v === null || v === undefined))
+        .filter(([k, v]) => baseKeys.includes(k) && (v === "" || v === null || v === undefined || v.trim().length === 0))
+        .map(([k]) => k);
+    const keyAsValue = Object.entries(messages)
+        .filter(([k, v]) => baseKeys.includes(k) && v === k)
         .map(([k]) => k);
 
     console.log(`Locale: ${lang}`);
@@ -47,8 +50,14 @@ for (const [lang, messages] of Object.entries(locales)) {
     }
 
     if (empty.length > 0) {
-        console.error(`- ❌ EMPTY VALUES (${empty.length}):`);
+        console.error(`- ❌ EMPTY/WHITESPACE VALUES (${empty.length}):`);
         empty.forEach(k => console.error(`    ${k}`));
+        exitCode = 1;
+    }
+
+    if (keyAsValue.length > 0) {
+        console.error(`- ❌ KEY-AS-VALUE DETECTED (${keyAsValue.length}):`);
+        keyAsValue.forEach(k => console.error(`    ${k}`));
         exitCode = 1;
     }
 

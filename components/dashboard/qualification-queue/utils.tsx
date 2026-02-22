@@ -24,7 +24,7 @@ export function statusBadge(status: string | null, t: (k: string) => string) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
         <CheckCircle2 className="h-3 w-3" />
-        {t('queue.sealed')}
+        {t('dashboard.commandCenter.queue.sealed')}
       </span>
     );
   }
@@ -40,7 +40,7 @@ export function statusBadge(status: string | null, t: (k: string) => string) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
         <XOctagon className="h-3 w-3" />
-        {t('queue.junk')}
+        {t('dashboard.commandCenter.queue.junk')}
       </span>
     );
   }

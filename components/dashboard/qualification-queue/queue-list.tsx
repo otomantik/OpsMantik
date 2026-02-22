@@ -36,7 +36,7 @@ export function QueueList({
         onSealDeal={() => {
           if (!state.mergedTop) return;
           if (readOnly) {
-            actions.pushToast('danger', t('queue.readOnlyJunk'));
+            actions.pushToast('danger', t('dashboard.commandCenter.queue.readOnlyJunk'));
             return;
           }
           actions.openSealModal(state.mergedTop);
@@ -46,10 +46,10 @@ export function QueueList({
       />
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <div className="tabular-nums">{t('queue.inQueue', { n: state.intents.length })}</div>
+        <div className="tabular-nums">{t('dashboard.commandCenter.queue.inQueue', { n: state.intents.length })}</div>
         {state.mergedTop && (
           <div className="tabular-nums" suppressHydrationWarning>
-            {formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('queue.trt')}
+            {formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('dashboard.commandCenter.queue.trt')}
           </div>
         )}
         <Button variant="ghost" size="sm" className="h-9" onClick={() => actions.fetchUnscoredIntents()}>

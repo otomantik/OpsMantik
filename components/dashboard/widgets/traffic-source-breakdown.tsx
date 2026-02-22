@@ -60,12 +60,12 @@ export function TrafficSourceBreakdown({
     const other = Math.max(0, total - known);
 
     const rows = [
-      { name: t('dimension.googleAds'), count: googleAds },
-      { name: t('dimension.seo'), count: seo },
-      { name: t('dimension.social'), count: social },
-      { name: t('dimension.direct'), count: direct },
-      { name: t('dimension.referral'), count: referral },
-      { name: t('dimension.other'), count: other },
+      { name: t('common.dimension.googleAds'), count: googleAds },
+      { name: t('common.dimension.seo'), count: seo },
+      { name: t('common.dimension.social'), count: social },
+      { name: t('common.dimension.direct'), count: direct },
+      { name: t('common.dimension.referral'), count: referral },
+      { name: t('common.dimension.other'), count: other },
     ].filter((r) => r.count > 0 || total === 0);
 
     return { googleAds, seo, social, direct, referral, other, rows };
@@ -76,16 +76,16 @@ export function TrafficSourceBreakdown({
   const insight = useMemo(() => {
     if (total <= 0) return null;
     if (rollup.googleAds === 0 && rollup.seo >= Math.max(3, Math.ceil(total * 0.4))) {
-      return 'Organic (SEO) is driving the business today. Keep an eye on Google Ads campaigns.';
+      return t('dashboard.common.traffic.insightOrganicDominant');
     }
     return null;
-  }, [rollup.googleAds, rollup.seo, total]);
+  }, [rollup.googleAds, rollup.seo, total, t]);
 
   if (isLoading) {
     return (
       <div className="space-y-3" data-testid="traffic-source-breakdown">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
+          <h3 className="text-base font-semibold text-slate-800">{t('dashboard.common.traffic.title')}</h3>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
@@ -111,7 +111,7 @@ export function TrafficSourceBreakdown({
   if (error) {
     return (
       <div className="space-y-3" data-testid="traffic-source-breakdown">
-        <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
+        <h3 className="text-base font-semibold text-slate-800">{t('dashboard.common.traffic.title')}</h3>
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4">
             <p className="text-sm text-rose-700">{error}</p>
@@ -127,10 +127,10 @@ export function TrafficSourceBreakdown({
   if (total === 0) {
     return (
       <div className="space-y-3" data-testid="traffic-source-breakdown">
-        <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
+        <h3 className="text-base font-semibold text-slate-800">{t('dashboard.common.traffic.title')}</h3>
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4">
-            <p className="text-sm text-slate-500">{t('traffic.noSessionsInRange')}</p>
+            <p className="text-sm text-slate-500">{t('dashboard.common.traffic.noSessionsInRange')}</p>
           </CardContent>
         </Card>
       </div>
@@ -140,21 +140,21 @@ export function TrafficSourceBreakdown({
   return (
     <div className="space-y-3 min-w-0" data-testid="traffic-source-breakdown">
       <div>
-        <h3 className="text-base font-semibold text-slate-800">{t('traffic.title')}</h3>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">{t('traffic.whereVisitorsCameFrom')}</p>
+        <h3 className="text-base font-semibold text-slate-800">{t('dashboard.common.traffic.title')}</h3>
+        <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">{t('dashboard.common.traffic.whereVisitorsCameFrom')}</p>
       </div>
 
       {insight && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          <span className="font-semibold">{t('traffic.insightLabel')}</span> {insight}
+          <span className="font-semibold">{t('dashboard.common.traffic.insightLabel')}</span> {insight}
         </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
-          { label: t('dimension.googleAds'), value: rollup.googleAds },
-          { label: t('dimension.seo'), value: rollup.seo },
-          { label: t('dimension.social'), value: rollup.social },
+          { label: t('common.dimension.googleAds'), value: rollup.googleAds },
+          { label: t('common.dimension.seo'), value: rollup.seo },
+          { label: t('common.dimension.social'), value: rollup.social },
         ].map((c) => (
           <Card key={c.label} className="border-slate-200 bg-white">
             <CardHeader className="p-4 pb-2">
@@ -213,7 +213,7 @@ export function TrafficSourceBreakdown({
                 </div>
               ))}
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span>{t('traffic.total')}</span>
+                <span>{t('dashboard.common.traffic.total')}</span>
                 <span className="tabular-nums font-semibold text-slate-700">{total}</span>
               </div>
             </div>

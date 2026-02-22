@@ -59,7 +59,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                 <CardHeader className="p-5 pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-600">
                         <TrendingUp className="h-4 w-4 text-blue-500" />
-                        {t('pulse.revenueProjection')}
+                        {t('dashboard.pulse.revenueProjection')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
@@ -70,7 +70,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                         <span className="text-base font-medium text-slate-500">{currency}</span>
                     </div>
                     <p className="mt-2 text-xs text-slate-500">
-                        {t('pulse.basedOnDeals', { count: sealed })}
+                        {t('dashboard.pulse.basedOnDeals', { count: sealed })}
                     </p>
                 </CardContent>
             </Card>
@@ -83,7 +83,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                 <CardHeader className="p-5 pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-600">
                         <Activity className="h-4 w-4 text-emerald-500" />
-                        {t('pulse.conversionPulse')}
+                        {t('dashboard.pulse.conversionPulse')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
@@ -100,7 +100,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                         </div>
                     </div>
                     <p className="mt-2 text-xs text-slate-500">
-                        {t('pulse.qualifiedTotal', { qualified: sealed, total })}
+                        {t('dashboard.pulse.qualifiedTotal', { qualified: sealed, total })}
                     </p>
                 </CardContent>
             </Card>

@@ -15,7 +15,7 @@ export function QueueLoadingState({ queueMeta }: { queueMeta: React.ReactNode })
       {queueMeta}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t('queue.intentQualificationQueue')}</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t('dashboard.commandCenter.queue.intentQualificationQueue')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Skeleton className="h-48 w-full" />
@@ -42,7 +42,7 @@ export function QueueErrorState({
       <Card className="border border-rose-200 bg-rose-50">
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
           <Icons.alert className="w-10 h-10 text-rose-600 mb-2" />
-          <p className="text-rose-800 text-sm mb-4">{t('queue.failedToLoad')}: {error}</p>
+          <p className="text-rose-800 text-sm mb-4">{t('dashboard.commandCenter.queue.failedToLoad')}: {error}</p>
           <Button
             variant="outline"
             size="sm"

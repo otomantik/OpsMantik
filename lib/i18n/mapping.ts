@@ -15,12 +15,12 @@ export function getLocalizedLabel(raw: string | null | undefined, t: (key: strin
     if (l === 'android') return t('device.android');
 
     // Attribution Sources / Dimensions
-    if (l === 'google ads') return t('dimension.googleAds');
-    if (l === 'seo' || l === 'organic') return t('dimension.seo');
-    if (l === 'social') return t('dimension.social');
-    if (l === 'direct') return t('dimension.direct');
-    if (l === 'referral') return t('dimension.referral');
-    if (l === 'other') return t('dimension.other');
+    if (l === 'google ads') return t('common.dimension.googleAds');
+    if (l === 'seo' || l === 'organic') return t('common.dimension.seo');
+    if (l === 'social') return t('common.dimension.social');
+    if (l === 'direct') return t('common.dimension.direct');
+    if (l === 'referral') return t('common.dimension.referral');
+    if (l === 'other') return t('common.dimension.other');
 
     // Specific Attribution Models (Forensic)
     if (l === 'first click (paid)') return t('attribution.firstClickPaid');

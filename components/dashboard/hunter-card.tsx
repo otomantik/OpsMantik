@@ -58,7 +58,7 @@ function deviceLabel(
   const b = (browser || '').trim();
   const osLower = os.toLowerCase();
 
-  let typeLabel = t('dimension.device');
+  let typeLabel = t('common.dimension.device');
   let Icon = Smartphone;
 
   if (d.includes('desktop') || d.includes('web')) {
@@ -111,23 +111,23 @@ function normalizeTraffic(
   const srcLc = src.toLowerCase();
 
   // SEO: prefer medium=organic as the "certain" signal.
-  if (med === 'organic') return { kind: 'seo', label: t('dimension.seo') };
+  if (med === 'organic') return { kind: 'seo', label: t('common.dimension.seo') };
 
   // Google Ads: common classifier outputs.
   if (srcLc.includes('google ads') || (srcLc.includes('google') && (med === 'cpc' || med === 'ppc' || med === 'paid'))) {
-    return { kind: 'google_ads', label: t('dimension.googleAds') };
+    return { kind: 'google_ads', label: t('common.dimension.googleAds') };
   }
 
   // Social: paid or organic social buckets.
   if (med === 'social' || med === 'paid_social' || ['instagram', 'facebook', 'meta', 'tiktok', 'linkedin', 'twitter', 'x'].some((k) => srcLc.includes(k))) {
-    return { kind: 'social', label: t('dimension.social') };
+    return { kind: 'social', label: t('common.dimension.social') };
   }
 
   // Direct
-  if (med === 'direct' || srcLc === 'direct') return { kind: 'direct', label: t('dimension.direct') };
+  if (med === 'direct' || srcLc === 'direct') return { kind: 'direct', label: t('common.dimension.direct') };
 
   if (!src && !med) return { kind: 'other', label: '—' };
-  return { kind: 'other', label: src || t('dimension.other') };
+  return { kind: 'other', label: src || t('common.dimension.other') };
 }
 
 function SourceBadge({ traffic_source, traffic_medium, t_fn }: { traffic_source?: string | null; traffic_medium?: string | null; t_fn: (key: string, params?: Record<string, string | number>) => string }) {

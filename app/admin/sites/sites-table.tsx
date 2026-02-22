@@ -95,11 +95,13 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
                   <td className="p-3">
                     <span
                       className={`inline-flex items-center px-2 py-1 rounded text-xs border ${site.status === 'Receiving events'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-muted text-muted-foreground border-border'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-muted text-muted-foreground border-border'
                         }`}
                     >
-                      {site.status}
+                      {site.status === 'Receiving events'
+                        ? t('admin.sites.status.receiving')
+                        : t('admin.sites.status.noTraffic')}
                     </span>
                   </td>
                   <td className="p-3">

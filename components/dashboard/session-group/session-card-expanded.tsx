@@ -129,7 +129,7 @@ export function SessionCardExpanded({
                             <tr className="border-b border-border">
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.time')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">+{t('table.time')}</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.category')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('session.eventCategory')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.action')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.label')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.value')}</th>

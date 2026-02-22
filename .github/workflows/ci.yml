@@ -1,0 +1,36 @@
+# CI — Lint, i18n, and verify gates. Run on PR to catch regressions early.
+name: CI
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+jobs:
+  lint-and-i18n:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Lint i18n (hardcoded strings)
+        run: npm run lint:i18n
+
+      - name: Verify i18n (dashboard atomic)
+        run: npm run verify:i18n
+
+      - name: Audit i18n (dictionary symmetry)
+        run: npm run audit:i18n

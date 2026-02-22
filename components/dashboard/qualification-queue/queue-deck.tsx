@@ -32,6 +32,7 @@ function ActiveDeckCard({
   pushToast: (kind: 'success' | 'danger', text: string) => void;
   pushHistoryRow: (row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => void;
 }) {
+  const { t } = useTranslation();
   // Hook must be called unconditionally (no conditional wrapper).
   const { qualify, saving } = useIntentQualification(
     siteId,
@@ -48,7 +49,7 @@ function ActiveDeckCard({
       })
       .catch(() => {
         // Best-effort: refresh + show error toast; avoid re-inserting the card to keep flow snappy.
-        pushToast('danger', 'Failed to update. Refetching…');
+        pushToast('danger', t('toast.failedUpdate'));
         onQualified();
       });
   };
@@ -64,7 +65,7 @@ function ActiveDeckCard({
       intent_action: intent.intent_action ?? null,
       identity: intent.intent_target ?? null,
     });
-    pushToast('success', 'Lead captured.');
+    pushToast('success', t('toast.captured'));
     // Step 3: async update in background
     fireQualify({ score: s, status: 'confirmed' });
   };
@@ -77,7 +78,7 @@ function ActiveDeckCard({
       intent_action: intent.intent_action ?? null,
       identity: intent.intent_target ?? null,
     });
-    pushToast('danger', 'Trash taken out.');
+    pushToast('danger', t('toast.trashRemoved'));
     // Junk should be score=0 (0-100 lead_score = 0) to avoid polluting OCI value logic.
     fireQualify({ score: 0, status: 'junk' });
   };
@@ -118,7 +119,7 @@ function LiteDeckCard({
 }) {
   const action = (intent.intent_action || 'intent').toString();
   const { t } = useTranslation();
-  const summary = intent.summary || t('queue.loadingDetails');
+  const summary = intent.summary || t('dashboard.commandCenter.queue.loadingDetails');
   const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;
   const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
   const actionsLine =
@@ -129,32 +130,29 @@ function LiteDeckCard({
       : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      <button
-        type="button"
-        className="w-full text-left p-4 hover:bg-muted/30 transition-colors"
-        onClick={() => onOpenDetails(intent.id)}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">{action}</div>
-          <div className="text-xs text-muted-foreground tabular-nums" suppressHydrationWarning>
-            {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('queue.trt')}
+    <div className="relative group">
+      <div className="flex items-center justify-between gap-4 p-4 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] font-bold tracking-tight text-slate-400 tabular-nums">
+              {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('dashboard.commandCenter.queue.trt')}
+            </span>
           </div>
+          <div className="mt-2 text-sm font-medium truncate">{summary}</div>
+          <div className="mt-2 text-xs text-muted-foreground">{actionsLine || t('dashboard.commandCenter.queue.loadingDetails')}</div>
         </div>
-        <div className="mt-2 text-sm font-medium truncate">{summary}</div>
-        <div className="mt-2 text-xs text-muted-foreground">{actionsLine || 'Fetching details…'}</div>
-      </button>
+      </div>
 
       <div className="p-3 pt-0">
         <div className="grid grid-cols-3 gap-2 w-full">
-          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('queue.loadingDetails')}>
-            {t('queue.junk')}
+          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
+            {t('dashboard.commandCenter.queue.junk')}
           </Button>
-          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" onClick={() => onSkip()}>
-            {t('queue.skip')}
+          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
+            {t('dashboard.commandCenter.queue.skip')}
           </Button>
-          <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('queue.loadingDetails')}>
-            {t('queue.seal')}
+          <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
+            {t('dashboard.commandCenter.queue.seal')}
           </Button>
         </div>
       </div>

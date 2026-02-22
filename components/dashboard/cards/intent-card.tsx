@@ -158,7 +158,7 @@ export function IntentCard({
 
   const campaignLabel = useMemo(() => {
     if (intent.utm_campaign && intent.utm_campaign.trim()) return intent.utm_campaign.trim();
-    if (hasAnyClickId) return t('dimension.googleAds');
+    if (hasAnyClickId) return t('common.dimension.googleAds');
     if (intent.attribution_source && intent.attribution_source.trim()) return intent.attribution_source.trim();
     return '—';
   }, [hasAnyClickId, intent.attribution_source, intent.utm_campaign, t]);
@@ -247,7 +247,7 @@ export function IntentCard({
                     {formatRelative(intent.created_at, t)}
                   </div>
                   <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                    • {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' })} {t('queue.trt')}
+                    • {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' })} {t('dashboard.commandCenter.queue.trt')}
                   </div>
                 </div>
               </div>
