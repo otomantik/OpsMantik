@@ -4,6 +4,7 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logInfo, logError } from '@/lib/logging/logger';
 import { appendAuditLog } from '@/lib/audit/audit-log';
+import { chunkArray } from '@/lib/utils/batch';
 import crypto from 'node:crypto';
 
 export const runtime = 'nodejs';
@@ -65,50 +66,65 @@ export async function POST(req: NextRequest) {
             break;
         }
 
-        for (const row of usageRows) {
+        // Reduced O(N) DB round-trips to O(N/500) bulk upserts.
+        const bulkStart = Date.now();
+        const rowsToInsert = usageRows.map((row) => {
+            const snapshotHash = crypto
+                .createHash('sha256')
+                .update(`${row.site_id}:${yearMonth}:${row.event_count}:${row.overage_count}`)
+                .digest('hex');
+            return {
+                site_id: row.site_id,
+                year_month: yearMonth,
+                event_count: row.event_count,
+                overage_count: row.overage_count,
+                snapshot_hash: snapshotHash,
+                generated_by: 'cron/invoice-freeze',
+            };
+        });
+
+        const invoiceChunks = chunkArray(rowsToInsert, 500);
+        for (const chunk of invoiceChunks) {
             try {
-                // Double Check Aggr (Paranoid Check)
-                // In a massive system we might skip this and trust `site_usage_monthly`,
-                // but for robust financial exactness, we re-verify or use the ledger value.
-                // We will trust `site_usage_monthly` as it is maintained by `reconcile-usage` job.
-                // The runbook should ensure reconcile runs right before freeze.
-
-                const snapshotHash = crypto
-                    .createHash('sha256')
-                    .update(`${row.site_id}:${yearMonth}:${row.event_count}:${row.overage_count}`)
-                    .digest('hex');
-
-                const { error: insertError } = await adminClient
+                const { data, error: insertError } = await adminClient
                     .from('invoice_snapshot')
-                    .insert({
-                        site_id: row.site_id,
-                        year_month: yearMonth,
-                        event_count: row.event_count,
-                        overage_count: row.overage_count,
-                        snapshot_hash: snapshotHash,
-                        generated_by: 'cron/invoice-freeze',
+                    .upsert(chunk, {
+                        onConflict: 'site_id,year_month',
+                        ignoreDuplicates: true,
                     })
-                    .select()
-                    .single();
+                    .select('site_id');
 
                 if (insertError) {
-                    // Ignore uniques (already frozen)
-                    if (insertError.code === '23505') {
-                        // Already frozen
-                    } else {
-                        throw insertError;
-                    }
+                    logError('INVOICE_FREEZE_CHUNK_ERROR', {
+                        chunk_size: chunk.length,
+                        first_site_id: chunk[0]?.site_id,
+                        error: insertError.message,
+                    });
+                    failed += chunk.length;
                 } else {
-                    frozen++;
+                    // data = inserted rows only (ignoreDuplicates skips existing)
+                    frozen += data?.length ?? 0;
                 }
-
             } catch (err) {
-                failed++;
-                logError('INVOICE_FREEZE_SITE_ERROR', { site_id: row.site_id, error: String(err) });
+                failed += chunk.length;
+                logError('INVOICE_FREEZE_CHUNK_ERROR', {
+                    chunk_size: chunk.length,
+                    first_site_id: chunk[0]?.site_id,
+                    error: String(err),
+                });
             }
         }
 
         lastSiteId = usageRows[usageRows.length - 1].site_id;
+        if (rowsToInsert.length > 0) {
+            logInfo('INVOICE_FREEZE_BULK', {
+                idsCount: rowsToInsert.length,
+                chunks: invoiceChunks.length,
+                durationMs: Date.now() - bulkStart,
+                frozen,
+                failed,
+            });
+        }
     }
 
     logInfo('INVOICE_FREEZE_COMPLETE', { year_month: yearMonth, frozen, failed });

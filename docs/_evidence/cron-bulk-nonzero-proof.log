@@ -1,0 +1,22 @@
+=== Non-zero workload proof ===
+BASE {"url":"https://console.opsmantik.com"}
+Seed mode {"enabled":true}
+--- SQL counts ---
+Freeze year_month {"yearMonth":"2026-01"}
+offline_conversion_queue eligible {"count":0}
+site_usage_monthly (freeze month) {"count":12}
+ingest_fallback_buffer PENDING {"count":0}
+Seed site_id {"site_id":"e47f36f6-c277-4879-b2dc-07914a0632c2"}
+Seed sale inserted {"sale_id":"82f02fca-ce83-45b7-859c-63ef8e8669cc"}
+Seed offline_conversion_queue inserted {"queue_id":"ccdb9af7-2d4e-41e2-9fad-95296f4df973"}
+--- SQL counts ---
+Freeze year_month {"yearMonth":"2026-01"}
+offline_conversion_queue eligible {"count":1}
+site_usage_monthly (freeze month) {"count":12}
+ingest_fallback_buffer PENDING {"count":0}
+--- Cron runs ---
+[200] process-offline-conversions {"response":{"ok":true,"processed":1,"completed":0,"failed":1,"retry":0}}
+[200] invoice-freeze {"response":{"ok":true,"year_month":"2026-01","frozen":0,"failed":0}}
+[200] recover {"response":{"ok":true,"claimed":0,"recovered":0,"failed":0,"request_id":"fa5f05c5-b16e-4a7a-b548-ae0b7310e8a0"}}
+--- Evidence summary ---
+Bulk workload {"oci_eligible_before":1,"freeze_rows_before":12,"recover_pending_before":0,"processed_after":1,"frozen_after":0,"claimed_after":0,"non_zero":true}

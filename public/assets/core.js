@@ -81,6 +81,113 @@
     console.log('[OPSMANTIK_DEBUG] tracker init', { siteId: siteId, ts: Date.now() });
   }
 
+  // --- Autonomous Consent Sniffer (Zero-Config CMP Integration) ---
+  var trackerConsentScopes = ['analytics'];
+
+  function updateTrackerConsent(scopes) {
+    try {
+      if (!Array.isArray(scopes)) return;
+      var valid = [];
+      for (var i = 0; i < scopes.length; i++) {
+        var s = String(scopes[i]).toLowerCase();
+        if (s === 'analytics' || s === 'marketing') valid.push(s);
+      }
+      trackerConsentScopes = valid.length > 0 ? valid : [];
+      if (localStorage.getItem('opsmantik_debug') === '1') {
+        console.log('[OPSMANTIK_DEBUG] consent updated', { scopes: trackerConsentScopes });
+      }
+    } catch (e) { /* defensive */ }
+  }
+
+  function initConsentSniffer() {
+    try {
+      if (typeof window === 'undefined') return;
+      var w = window;
+      var explicitConfig = w.opmantikConfig && 'consentScopes' in w.opmantikConfig;
+      if (explicitConfig) {
+        updateTrackerConsent(Array.isArray(w.opmantikConfig.consentScopes) ? w.opmantikConfig.consentScopes : []);
+        return;
+      }
+      var dc = (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-consent')) || '';
+      if (dc) {
+        var parts = dc.split(/[,\s]+/).map(function (p) { return (p || '').toLowerCase().trim(); });
+        var sc = [];
+        if (parts.indexOf('analytics') >= 0) sc.push('analytics');
+        if (parts.indexOf('marketing') >= 0) sc.push('marketing');
+        if (sc.length > 0) updateTrackerConsent(sc);
+      }
+
+      if (w.Cookiebot) {
+        try {
+          if (w.Cookiebot.consent) {
+            var cb = [];
+            if (w.Cookiebot.consent.statistics) cb.push('analytics');
+            if (w.Cookiebot.consent.marketing) cb.push('marketing');
+            updateTrackerConsent(cb.length > 0 ? cb : []);
+          }
+          w.addEventListener('CookiebotOnAccept', function () {
+            try {
+              var a = [];
+              if (w.Cookiebot && w.Cookiebot.consent && w.Cookiebot.consent.statistics) a.push('analytics');
+              if (w.Cookiebot && w.Cookiebot.consent && w.Cookiebot.consent.marketing) a.push('marketing');
+              updateTrackerConsent(a.length > 0 ? a : []);
+            } catch (e) { /* defensive */ }
+          });
+        } catch (e) { /* defensive */ }
+        return;
+      }
+
+      if (typeof w.__tcfapi === 'function') {
+        try {
+          w.__tcfapi('addEventListener', 2, function (tcData, success) {
+            if (!success || !tcData || (tcData.eventStatus !== 'tcloaded' && tcData.eventStatus !== 'useractioncomplete')) return;
+            try {
+              var pc = tcData.purposeConsents || {};
+              var analytics = false;
+              var marketing = false;
+              if (typeof pc === 'string') {
+                analytics = (pc[0] === '1') || (pc[6] === '1') || (pc[7] === '1');
+                marketing = (pc[2] === '1') || (pc[3] === '1');
+              } else {
+                analytics = !!(pc[1] || pc[7] || pc[8]);
+                marketing = !!(pc[3] || pc[4]);
+              }
+              var tcfScopes = [];
+              if (analytics) tcfScopes.push('analytics');
+              if (marketing) tcfScopes.push('marketing');
+              updateTrackerConsent(tcfScopes.length > 0 ? tcfScopes : []);
+            } catch (e) { /* defensive */ }
+          });
+        } catch (e) { /* defensive */ }
+        return;
+      }
+
+      if (w.OnetrustActiveGroups) {
+        try {
+          var groups = String(w.OnetrustActiveGroups || '').split(',').map(function (g) { return (g || '').trim(); });
+          var otScopes = [];
+          if (groups.indexOf('C0002') >= 0) otScopes.push('analytics');
+          if (groups.indexOf('C0004') >= 0) otScopes.push('marketing');
+          updateTrackerConsent(otScopes.length > 0 ? otScopes : []);
+        } catch (e) { /* defensive */ }
+      }
+      if (w.OneTrust && typeof w.OneTrust.OnConsentChanged === 'function') {
+        try {
+          w.OneTrust.OnConsentChanged(function () {
+            try {
+              var g = String(w.OnetrustActiveGroups || '').split(',').map(function (x) { return (x || '').trim(); });
+              var s = [];
+              if (g.indexOf('C0002') >= 0) s.push('analytics');
+              if (g.indexOf('C0004') >= 0) s.push('marketing');
+              updateTrackerConsent(s.length > 0 ? s : []);
+            } catch (e) { /* defensive */ }
+          });
+        } catch (e) { /* defensive */ }
+      }
+    } catch (e) { /* defensive */ }
+  }
+  initConsentSniffer();
+
   // Fingerprint generation
   function generateFingerprint() {
     const canvas = document.createElement('canvas');
@@ -585,14 +692,7 @@
       r: referrer,
       meta,
     };
-    var consent = [];
-    if (typeof window !== 'undefined' && window.opmantikConfig && 'consentScopes' in window.opmantikConfig) {
-      consent = Array.isArray(window.opmantikConfig.consentScopes) ? window.opmantikConfig.consentScopes : [];
-    } else {
-      var dc = (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-consent')) || '';
-      if (dc && dc.toLowerCase().indexOf('analytics') !== -1) consent = ['analytics']; else consent = ['analytics'];
-    }
-    payload.consent_scopes = consent;
+    payload.consent_scopes = trackerConsentScopes;
     if (localStorage.getItem('opsmantik_debug') === '1') {
       console.log('[OPSMANTIK] Outbox:', category + '/' + action, sessionId.slice(0, 8) + '...');
     } else {
@@ -828,6 +928,7 @@
   window.opmantik = {
     send: sendEvent,
     session: getOrCreateSession,
+    setConsent: function (scopes) { updateTrackerConsent(Array.isArray(scopes) ? scopes : []); },
     _initialized: true,
   };
 

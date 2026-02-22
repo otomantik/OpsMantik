@@ -30,6 +30,7 @@ import {
   MAX_LIMIT_CRON,
   LIST_GROUPS_LIMIT,
 } from '@/lib/oci/constants';
+import { chunkArray } from '@/lib/utils/batch';
 
 /** Options for runOfflineConversionRunner. */
 export interface RunnerOptions {
@@ -68,6 +69,49 @@ async function decryptCredentials(ciphertext: string): Promise<unknown> {
 function logError(prefix: string, message: string, err: unknown): void {
   const detail = err instanceof Error ? err.message : String(err);
   console.error(`${prefix} ${message}`, detail);
+}
+
+/** Bulk update queue rows by ids. Reduced O(N) round-trips to O(N/500). */
+async function bulkUpdateQueue(
+  ids: string[],
+  payload: Record<string, unknown>,
+  prefix: string,
+  logLabel: string
+): Promise<void> {
+  const chunks = chunkArray(ids, 500);
+  const start = Date.now();
+  for (const chunk of chunks) {
+    const { error } = await adminClient
+      .from('offline_conversion_queue')
+      .update(payload)
+      .in('id', chunk);
+    if (error) logError(prefix, logLabel, error);
+  }
+  const durationMs = Date.now() - start;
+  if (ids.length > 0) {
+    console.log(JSON.stringify({ event: 'OCI_BULK_UPDATE', idsCount: ids.length, chunks: chunks.length, durationMs, prefix }));
+  }
+}
+
+/** Group rows by identical payload; bulk update each group. */
+async function bulkUpdateQueueGrouped<T>(
+  rows: T[],
+  idFn: (r: T) => string,
+  payloadFn: (r: T) => Record<string, unknown>,
+  prefix: string,
+  logLabel: string
+): Promise<void> {
+  const byKey = new Map<string, { payload: Record<string, unknown>; ids: string[] }>();
+  for (const row of rows) {
+    const payload = payloadFn(row);
+    const key = JSON.stringify(payload);
+    const existing = byKey.get(key);
+    if (existing) existing.ids.push(idFn(row));
+    else byKey.set(key, { payload, ids: [idFn(row)] });
+  }
+  for (const { payload, ids } of byKey.values()) {
+    await bulkUpdateQueue(ids, payload, prefix, logLabel);
+  }
 }
 
 /** Shared persistence: record_provider_outcome (circuit breaker). Both worker and cron use this. */
@@ -319,18 +363,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
 
       if (!encryptedPayload) {
         const lastError = 'Credentials missing or decryption failed';
-        for (const row of siteRows) {
-          const { error: updateErr } = await adminClient
-            .from('offline_conversion_queue')
-            .update({
-              status: 'FAILED',
-              last_error: lastError,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', row.id);
-          if (updateErr) logError(prefix, 'Update FAILED (credentials) failed', updateErr);
-          failed++;
-        }
+        await bulkUpdateQueue(
+          siteRows.map((r) => r.id),
+          { status: 'FAILED', last_error: lastError, updated_at: new Date().toISOString() },
+          prefix,
+          'Update FAILED (credentials) failed'
+        );
+        failed += siteRows.length;
         if (mode === 'cron') await writeProviderMetrics(siteIdUuid, providerKey, siteRows.length, 0, siteRows.length, 0);
         continue;
       }
@@ -341,18 +380,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
       } catch (err) {
         logError(prefix, 'Decrypt credentials failed', err);
         const lastError = 'Credentials missing or decryption failed';
-        for (const row of siteRows) {
-          const { error: updateErr } = await adminClient
-            .from('offline_conversion_queue')
-            .update({
-              status: 'FAILED',
-              last_error: lastError,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', row.id);
-          if (updateErr) logError(prefix, 'Update FAILED (decrypt) failed', updateErr);
-          failed++;
-        }
+        await bulkUpdateQueue(
+          siteRows.map((r) => r.id),
+          { status: 'FAILED', last_error: lastError, updated_at: new Date().toISOString() },
+          prefix,
+          'Update FAILED (decrypt) failed'
+        );
+        failed += siteRows.length;
         if (mode === 'cron') await writeProviderMetrics(siteIdUuid, providerKey, siteRows.length, 0, siteRows.length, 0);
         continue;
       }
@@ -368,20 +402,19 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           const backoffSec = 30 + Math.floor(Math.random() * 11);
           const nextRetryAt = new Date(Date.now() + backoffSec * 1000).toISOString();
           const lastError = 'CONCURRENCY_LIMIT: Semaphore full';
-          for (const row of siteRows) {
-            const { error: updateErr } = await adminClient
-              .from('offline_conversion_queue')
-              .update({
-                status: 'RETRY',
-                next_retry_at: nextRetryAt,
-                last_error: lastError,
-                updated_at: new Date().toISOString(),
-                provider_error_code: 'CONCURRENCY_LIMIT',
-                provider_error_category: 'TRANSIENT',
-              })
-              .eq('id', row.id);
-            if (updateErr) logError(prefix, 'Update RETRY (concurrency) failed', updateErr);
-          }
+          await bulkUpdateQueue(
+            siteRows.map((r) => r.id),
+            {
+              status: 'RETRY',
+              next_retry_at: nextRetryAt,
+              last_error: lastError,
+              updated_at: new Date().toISOString(),
+              provider_error_code: 'CONCURRENCY_LIMIT',
+              provider_error_category: 'TRANSIENT',
+            },
+            prefix,
+            'Update RETRY (concurrency) failed'
+          );
           const batchIdConv = crypto.randomUUID();
           const startedAtConv = Date.now();
           await adminClient.from('provider_upload_attempts').insert({
@@ -418,20 +451,19 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             const backoffSec = 30 + Math.floor(Math.random() * 11);
             const nextRetryAt = new Date(Date.now() + backoffSec * 1000).toISOString();
             const lastError = 'CONCURRENCY_LIMIT: Semaphore full';
-            for (const row of siteRows) {
-              const { error: updateErr } = await adminClient
-                .from('offline_conversion_queue')
-                .update({
-                  status: 'RETRY',
-                  next_retry_at: nextRetryAt,
-                  last_error: lastError,
-                  updated_at: new Date().toISOString(),
-                  provider_error_code: 'CONCURRENCY_LIMIT',
-                  provider_error_category: 'TRANSIENT',
-                })
-                .eq('id', row.id);
-              if (updateErr) logError(prefix, 'Update RETRY (concurrency) failed', updateErr);
-            }
+            await bulkUpdateQueue(
+              siteRows.map((r) => r.id),
+              {
+                status: 'RETRY',
+                next_retry_at: nextRetryAt,
+                last_error: lastError,
+                updated_at: new Date().toISOString(),
+                provider_error_code: 'CONCURRENCY_LIMIT',
+                provider_error_category: 'TRANSIENT',
+              },
+              prefix,
+              'Update RETRY (concurrency) failed'
+            );
             const batchIdConv = crypto.randomUUID();
             const startedAtConv = Date.now();
             await adminClient.from('provider_upload_attempts').insert({
@@ -490,34 +522,39 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             logError(prefix, 'Adapter uploadConversions threw', err);
             attemptErrorCode = null;
             attemptErrorCategory = 'TRANSIENT';
+            await bulkUpdateQueueGrouped(
+              siteRows,
+              (r) => r.id,
+              (row) => {
+                const count = (row.retry_count ?? 0) + 1;
+                const isFinal = count >= MAX_RETRY_ATTEMPTS;
+                const delaySec = nextRetryDelaySeconds(row.retry_count ?? 0);
+                const lastErrorFinal = `Max retries reached: ${msg}`.slice(0, 1000);
+                return isFinal
+                  ? {
+                      status: 'FAILED' as const,
+                      retry_count: count,
+                      last_error: lastErrorFinal,
+                      updated_at: new Date().toISOString(),
+                      provider_error_code: null,
+                      provider_error_category: 'TRANSIENT' as const,
+                    }
+                  : {
+                      status: 'RETRY' as const,
+                      retry_count: count,
+                      next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
+                      last_error: msg.slice(0, 1000),
+                      updated_at: new Date().toISOString(),
+                      provider_error_code: null,
+                      provider_error_category: 'TRANSIENT' as const,
+                    };
+              },
+              prefix,
+              'Update RETRY/FAILED after throw failed'
+            );
             for (const row of siteRows) {
               const count = (row.retry_count ?? 0) + 1;
               const isFinal = count >= MAX_RETRY_ATTEMPTS;
-              const delaySec = nextRetryDelaySeconds(row.retry_count ?? 0);
-              const lastErrorFinal = `Max retries reached: ${msg}`.slice(0, 1000);
-              const updatePayload = isFinal
-                ? {
-                    status: 'FAILED' as const,
-                    retry_count: count,
-                    last_error: lastErrorFinal,
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: null,
-                    provider_error_category: 'TRANSIENT' as const,
-                  }
-                : {
-                    status: 'RETRY' as const,
-                    retry_count: count,
-                    next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                    last_error: msg.slice(0, 1000),
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: null,
-                    provider_error_category: 'TRANSIENT' as const,
-                  };
-              const { error: updateErr } = await adminClient
-                .from('offline_conversion_queue')
-                .update(updatePayload)
-                .eq('id', row.id);
-              if (updateErr) logError(prefix, 'Update RETRY/FAILED after throw failed', updateErr);
               if (isFinal) {
                 attemptFailed++;
                 failed++;
@@ -530,57 +567,76 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
 
           if (results !== undefined) {
             const rowById = new Map(siteRows.map((r) => [r.id, r]));
+            const updates: { row: QueueRow; result: UploadResult }[] = [];
             for (const result of results) {
               const row = rowById.get(result.job_id);
               if (!row) continue;
-              if (result.status === 'COMPLETED') {
-                if (result.provider_request_id && attemptRequestId == null) attemptRequestId = result.provider_request_id;
-                const updatePayload: Record<string, unknown> = {
-                  status: 'COMPLETED',
-                  last_error: null,
+              updates.push({ row, result });
+            }
+            await bulkUpdateQueueGrouped(
+              updates,
+              (u) => u.row.id,
+              ({ row, result }) => {
+                if (result.status === 'COMPLETED') {
+                  if (result.provider_request_id && attemptRequestId == null) attemptRequestId = result.provider_request_id;
+                  const payload: Record<string, unknown> = {
+                    status: 'COMPLETED',
+                    last_error: null,
+                    updated_at: new Date().toISOString(),
+                    uploaded_at: new Date().toISOString(),
+                    provider_request_id: result.provider_request_id ?? null,
+                    provider_error_code: null,
+                    provider_error_category: null,
+                  };
+                  if (result.provider_ref != null) payload.provider_ref = result.provider_ref;
+                  return payload;
+                }
+                if (result.status === 'RETRY') {
+                  const count = (row.retry_count ?? 0) + 1;
+                  const isFinal = count >= MAX_RETRY_ATTEMPTS;
+                  const delaySec = nextRetryDelaySeconds(count);
+                  const errorMsg = result.error_message ?? 'Unknown error';
+                  const lastErrorFinal = isFinal
+                    ? `Max retries reached: ${errorMsg}`.slice(0, 1000)
+                    : errorMsg.slice(0, 1000);
+                  return isFinal
+                    ? {
+                        status: 'FAILED' as const,
+                        retry_count: count,
+                        last_error: lastErrorFinal,
+                        updated_at: new Date().toISOString(),
+                        provider_error_code: result.error_code ?? null,
+                        provider_error_category: result.provider_error_category ?? null,
+                      }
+                    : {
+                        status: 'RETRY' as const,
+                        retry_count: count,
+                        next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
+                        last_error: lastErrorFinal,
+                        updated_at: new Date().toISOString(),
+                        provider_error_code: result.error_code ?? null,
+                        provider_error_category: result.provider_error_category ?? null,
+                      };
+                }
+                const lastError = (result.error_message ?? 'Unknown error').slice(0, 1000);
+                return {
+                  status: 'FAILED',
+                  last_error: lastError,
                   updated_at: new Date().toISOString(),
-                  uploaded_at: new Date().toISOString(),
-                  provider_request_id: result.provider_request_id ?? null,
-                  provider_error_code: null,
-                  provider_error_category: null,
+                  provider_error_code: result.error_code ?? null,
+                  provider_error_category: result.provider_error_category ?? null,
                 };
-                if (result.provider_ref != null) updatePayload.provider_ref = result.provider_ref;
-                const { error: updateErr } = await adminClient
-                  .from('offline_conversion_queue')
-                  .update(updatePayload)
-                  .eq('id', row.id);
-                if (updateErr) logError(prefix, 'Update COMPLETED failed', updateErr);
+              },
+              prefix,
+              'Update COMPLETED/RETRY/FAILED (partial) failed'
+            );
+            for (const { row, result } of updates) {
+              if (result.status === 'COMPLETED') {
                 attemptCompleted++;
                 completed++;
               } else if (result.status === 'RETRY') {
                 const count = (row.retry_count ?? 0) + 1;
                 const isFinal = count >= MAX_RETRY_ATTEMPTS;
-                const delaySec = nextRetryDelaySeconds(count);
-                const errorMsg = result.error_message ?? 'Unknown error';
-                const lastErrorFinal = isFinal ? `Max retries reached: ${errorMsg}`.slice(0, 1000) : errorMsg.slice(0, 1000);
-                const updatePayload = isFinal
-                  ? {
-                      status: 'FAILED' as const,
-                      retry_count: count,
-                      last_error: lastErrorFinal,
-                      updated_at: new Date().toISOString(),
-                      provider_error_code: result.error_code ?? null,
-                      provider_error_category: result.provider_error_category ?? null,
-                    }
-                  : {
-                      status: 'RETRY' as const,
-                      retry_count: count,
-                      next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                      last_error: lastErrorFinal,
-                      updated_at: new Date().toISOString(),
-                      provider_error_code: result.error_code ?? null,
-                      provider_error_category: result.provider_error_category ?? null,
-                    };
-                const { error: updateErr } = await adminClient
-                  .from('offline_conversion_queue')
-                  .update(updatePayload)
-                  .eq('id', row.id);
-                if (updateErr) logError(prefix, 'Update RETRY/FAILED (partial) failed', updateErr);
                 if (isFinal) {
                   attemptFailed++;
                   failed++;
@@ -589,18 +645,6 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                   retry++;
                 }
               } else {
-                const lastError = (result.error_message ?? 'Unknown error').slice(0, 1000);
-                const { error: updateErr } = await adminClient
-                  .from('offline_conversion_queue')
-                  .update({
-                    status: 'FAILED',
-                    last_error: lastError,
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: result.error_code ?? null,
-                    provider_error_category: result.provider_error_category ?? null,
-                  })
-                  .eq('id', row.id);
-                if (updateErr) logError(prefix, 'Update FAILED (partial) failed', updateErr);
                 attemptFailed++;
                 failed++;
               }
@@ -648,23 +692,33 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           if (nextProbeAt > Date.now()) {
             const jitterMs = Math.floor(Math.random() * 31 * 1000);
             const nextRetryAt = new Date(nextProbeAt + jitterMs).toISOString();
+            await bulkUpdateQueueGrouped(
+              siteRows,
+              (r) => r.id,
+              (row) => {
+                const count = (row.retry_count ?? 0) + 1;
+                const isFinal = count >= MAX_RETRY_ATTEMPTS;
+                return isFinal
+                  ? {
+                      status: 'FAILED' as const,
+                      retry_count: count,
+                      last_error: 'CIRCUIT_OPEN',
+                      updated_at: new Date().toISOString(),
+                    }
+                  : {
+                      status: 'RETRY' as const,
+                      retry_count: count,
+                      next_retry_at: nextRetryAt,
+                      last_error: 'CIRCUIT_OPEN',
+                      updated_at: new Date().toISOString(),
+                    };
+              },
+              prefix,
+              'Update CIRCUIT_OPEN failed'
+            );
             for (const row of siteRows) {
               const count = (row.retry_count ?? 0) + 1;
               const isFinal = count >= MAX_RETRY_ATTEMPTS;
-              await adminClient
-                .from('offline_conversion_queue')
-                .update(
-                  isFinal
-                    ? { status: 'FAILED', retry_count: count, last_error: 'CIRCUIT_OPEN', updated_at: new Date().toISOString() }
-                    : {
-                        status: 'RETRY',
-                        retry_count: count,
-                        next_retry_at: nextRetryAt,
-                        last_error: 'CIRCUIT_OPEN',
-                        updated_at: new Date().toISOString(),
-                      }
-                )
-                .eq('id', row.id);
               if (isFinal) failed++;
               else retry++;
             }
@@ -678,11 +732,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           const limitProbe = Math.max(1, Math.min(probeLimit, siteRows.length));
           rowsToProcess = siteRows.slice(0, limitProbe);
           const remainder = siteRows.slice(limitProbe);
-          for (const row of remainder) {
-            await adminClient
-              .from('offline_conversion_queue')
-              .update({ status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() })
-              .eq('id', row.id);
+          if (remainder.length > 0) {
+            await bulkUpdateQueue(
+              remainder.map((r) => r.id),
+              { status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() },
+              prefix,
+              'Update QUEUED (HALF_OPEN remainder) failed'
+            );
           }
         }
 
@@ -693,29 +749,34 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           results = await adapter.uploadConversions({ jobs, credentials });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          await bulkUpdateQueueGrouped(
+            rowsToProcess,
+            (r) => r.id,
+            (row) => {
+              const count = (row.retry_count ?? 0) + 1;
+              const isFinal = count >= MAX_RETRY_ATTEMPTS;
+              const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
+              return isFinal
+                ? {
+                    status: 'FAILED' as const,
+                    retry_count: count,
+                    last_error: msg.slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                  }
+                : {
+                    status: 'RETRY' as const,
+                    retry_count: count,
+                    next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                    last_error: msg.slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                  };
+            },
+            prefix,
+            'Update RETRY/FAILED (cron adapter throw) failed'
+          );
           for (const row of rowsToProcess) {
             const count = (row.retry_count ?? 0) + 1;
             const isFinal = count >= MAX_RETRY_ATTEMPTS;
-            const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
-            await adminClient
-              .from('offline_conversion_queue')
-              .update(
-                isFinal
-                  ? {
-                      status: 'FAILED',
-                      retry_count: count,
-                      last_error: msg.slice(0, 1000),
-                      updated_at: new Date().toISOString(),
-                    }
-                  : {
-                      status: 'RETRY',
-                      retry_count: count,
-                      next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-                      last_error: msg.slice(0, 1000),
-                      updated_at: new Date().toISOString(),
-                    }
-              )
-              .eq('id', row.id);
             if (isFinal) {
               failed++;
               groupFailed++;
@@ -731,44 +792,60 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         }
 
         const rowById = new Map(rowsToProcess.map((r) => [r.id, r]));
+        const cronUpdates: { row: QueueRow; result: UploadResult }[] = [];
         for (const result of results) {
           const row = rowById.get(result.job_id);
           if (!row) continue;
-          if (result.status === 'COMPLETED') {
-            await adminClient
-              .from('offline_conversion_queue')
-              .update({
+          cronUpdates.push({ row, result });
+        }
+        await bulkUpdateQueueGrouped(
+          cronUpdates,
+          (u) => u.row.id,
+          ({ row, result }) => {
+            if (result.status === 'COMPLETED') {
+              return {
                 status: 'COMPLETED',
                 last_error: null,
                 updated_at: new Date().toISOString(),
                 ...(result.provider_ref != null && { provider_ref: result.provider_ref }),
-              })
-              .eq('id', row.id);
+              };
+            }
+            if (result.status === 'RETRY') {
+              const count = (row.retry_count ?? 0) + 1;
+              const isFinal = count >= MAX_RETRY_ATTEMPTS;
+              const delay = nextRetryDelaySeconds(count);
+              const lastErr = (result.error_message ?? '').slice(0, 1000);
+              return isFinal
+                ? {
+                    status: 'FAILED' as const,
+                    retry_count: count,
+                    last_error: lastErr,
+                    updated_at: new Date().toISOString(),
+                  }
+                : {
+                    status: 'RETRY' as const,
+                    retry_count: count,
+                    next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                    last_error: lastErr,
+                    updated_at: new Date().toISOString(),
+                  };
+            }
+            return {
+              status: 'FAILED',
+              last_error: (result.error_message ?? '').slice(0, 1000),
+              updated_at: new Date().toISOString(),
+            };
+          },
+          prefix,
+          'Update COMPLETED/RETRY/FAILED (cron results) failed'
+        );
+        for (const { row, result } of cronUpdates) {
+          if (result.status === 'COMPLETED') {
             completed++;
             groupCompleted++;
           } else if (result.status === 'RETRY') {
             const count = (row.retry_count ?? 0) + 1;
             const isFinal = count >= MAX_RETRY_ATTEMPTS;
-            const delay = nextRetryDelaySeconds(count);
-            await adminClient
-              .from('offline_conversion_queue')
-              .update(
-                isFinal
-                  ? {
-                      status: 'FAILED',
-                      retry_count: count,
-                      last_error: (result.error_message ?? '').slice(0, 1000),
-                      updated_at: new Date().toISOString(),
-                    }
-                  : {
-                      status: 'RETRY',
-                      retry_count: count,
-                      next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-                      last_error: (result.error_message ?? '').slice(0, 1000),
-                      updated_at: new Date().toISOString(),
-                    }
-              )
-              .eq('id', row.id);
             if (isFinal) {
               failed++;
               groupFailed++;
@@ -777,14 +854,6 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               groupRetry++;
             }
           } else {
-            await adminClient
-              .from('offline_conversion_queue')
-              .update({
-                status: 'FAILED',
-                last_error: (result.error_message ?? '').slice(0, 1000),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', row.id);
             failed++;
             groupFailed++;
           }

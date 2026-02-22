@@ -17,6 +17,8 @@
     "worker:google-ads-oci": "node scripts/trigger-google-ads-oci-worker.mjs",
     "tracker:embed": "node scripts/get-tracker-embed.mjs",
     "smoke:api": "node scripts/smoke/api.prod.mjs",
+    "smoke:cron-bulk": "node scripts/smoke/cron-bulk-curl.mjs",
+    "smoke:cron-bulk-nonzero": "node scripts/smoke/cron-bulk-nonzero-proof.mjs",
     "smoke:watchtower": "node scripts/smoke/watchtower-proof.mjs",
     "smoke:conversation-layer": "node scripts/smoke/conversation-layer-e2e.mjs",
     "smoke:conversation-layer:hours-only": "node scripts/smoke/conversation-layer-e2e.mjs --hours-only",
