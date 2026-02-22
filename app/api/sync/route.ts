@@ -223,7 +223,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
             const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
             return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
         }
-        return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: baseHeaders });
+        return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'invalid_json' } });
     }
 
     // --- 1.5 Batch wrapper: client may send { events: [ payload ] } or { events: [ p1, p2, ... ] }. We accept single payload only.
@@ -232,13 +232,13 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         if (events.length === 0) {
             return NextResponse.json(
                 { ok: false, error: 'invalid_payload', code: 'events_empty' },
-                { status: 400, headers: baseHeaders }
+                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'events_empty' } }
             );
         }
         if (events.length > 1) {
             return NextResponse.json(
                 { ok: false, error: 'batch_not_supported', code: 'batch_not_supported' },
-                { status: 400, headers: baseHeaders }
+                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_not_supported' } }
             );
         }
         json = events[0];
@@ -249,7 +249,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     if (parsed.kind === 'invalid') {
         return NextResponse.json(
             { ok: false, error: 'invalid_payload', code: parsed.error },
-            { status: 400, headers: baseHeaders }
+            { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': parsed.error } }
         );
     }
     const body = parsed.data;
@@ -260,7 +260,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     if (!siteValid || !site) {
         return NextResponse.json(
             createSyncResponse(false, null, { error: 'Site not found or invalid', code: 'site_not_found' }),
-            { status: 400, headers: baseHeaders }
+            { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'site_not_found' } }
         );
     }
     const siteIdUuid = site.id;
