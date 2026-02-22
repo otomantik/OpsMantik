@@ -7,10 +7,13 @@ import { MonthBoundaryBanner } from '@/components/dashboard/month-boundary-banne
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { isAdmin } from '@/lib/auth/is-admin';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 import { headers } from 'next/headers';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
+
+const E2E_SITE_NAME_FILTER = 'E2E Conversation Layer';
 
 async function signOut() {
   'use server';
@@ -31,12 +34,14 @@ export default async function DashboardPage() {
   const userIsAdmin = await isAdmin();
 
   // Fetch accessible sites: owner OR member OR admin (RLS enforces)
-  const { data: sites } = await supabase
+  const { data: rawSites } = await supabase
     .from('sites')
     .select('id, name, domain, public_id, locale')
     .order('created_at', { ascending: false });
 
-  const siteCount = sites?.length || 0;
+  // Filter out E2E smoke test sites
+  const sites = rawSites?.filter((s) => s.name !== E2E_SITE_NAME_FILTER) ?? [];
+  const siteCount = sites.length;
 
   // Locale resolution: use first site's locale or user metadata or header
   const headersList = await headers();
@@ -54,11 +59,12 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-6 relative">
-      {/* Month Boundary Banner */}
-      <MonthBoundaryBanner />
+    <I18nProvider locale={resolvedLocale}>
+      <div className="min-h-screen bg-background text-foreground p-6 relative">
+        {/* Month Boundary Banner */}
+        <MonthBoundaryBanner />
 
-      <div className="max-w-[1920px] mx-auto">
+        <div className="max-w-[1920px] mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -109,7 +115,8 @@ export default async function DashboardPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </I18nProvider>
   );
 }

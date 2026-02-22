@@ -89,7 +89,9 @@ export function SitesManager() {
         setError(errorMessage);
       }
     } else {
-      setSites(sitesData || []);
+      // Filter out E2E smoke test sites
+      const filtered = (sitesData || []).filter((s) => s.name !== 'E2E Conversation Layer');
+      setSites(filtered);
     }
     setIsLoading(false);
   }, [t]);

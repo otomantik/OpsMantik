@@ -50,12 +50,14 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
         return;
       }
 
-      setSites(sitesData || []);
+      // Filter out E2E smoke test sites
+      const filtered = (sitesData || []).filter((s) => s.name !== 'E2E Conversation Layer');
+      setSites(filtered);
       setIsLoading(false);
 
       // If no site selected and sites exist, select first one
-      if (!selectedSiteId && sitesData && sitesData.length > 0) {
-        setSelectedSiteId(sitesData[0].id);
+      if (!selectedSiteId && filtered.length > 0) {
+        setSelectedSiteId(filtered[0].id);
       }
     };
 
