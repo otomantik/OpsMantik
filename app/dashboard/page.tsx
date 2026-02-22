@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { isAdmin } from '@/lib/auth/is-admin';
 
+import { headers } from 'next/headers';
+import { resolveLocale } from '@/lib/i18n/locale';
+import { translate } from '@/lib/i18n/t';
+
 async function signOut() {
   'use server';
   const supabase = await createClient();
@@ -29,10 +33,16 @@ export default async function DashboardPage() {
   // Fetch accessible sites: owner OR member OR admin (RLS enforces)
   const { data: sites } = await supabase
     .from('sites')
-    .select('id, name, domain, public_id')
+    .select('id, name, domain, public_id, locale')
     .order('created_at', { ascending: false });
 
   const siteCount = sites?.length || 0;
+
+  // Locale resolution: use first site's locale or user metadata or header
+  const headersList = await headers();
+  const acceptLanguage = headersList.get('accept-language') ?? null;
+  const firstSite = sites && sites.length > 0 ? sites[0] : null;
+  const resolvedLocale = resolveLocale(firstSite, user?.user_metadata, acceptLanguage);
 
   // Router logic:
   // 0 sites => show CTA + create site UI
@@ -53,28 +63,28 @@ export default async function DashboardPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              WAR ROOM
+              {translate('dashboard.warRoom', resolvedLocale)}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Command Center • Real-time Intelligence • Phone Matching
+              {translate('dashboard.commandCenterSub', resolvedLocale)}
             </p>
           </div>
           <div className="flex gap-2">
             {process.env.NODE_ENV === 'development' && (
               <Link href="/test-page">
                 <Button variant="outline">
-                  🧪 TEST PAGE
+                  🧪 {translate('dashboard.testPage', resolvedLocale)}
                 </Button>
               </Link>
             )}
             <form action={signOut}>
               <Button type="submit" variant="outline">
-                🚪 SIGN OUT
+                🚪 {translate('dashboard.signOut', resolvedLocale)}
               </Button>
             </form>
           </div>
         </div>
-        
+
         {/* Router Content */}
         {siteCount === 0 ? (
           // 0 sites: Show CTA + create site UI

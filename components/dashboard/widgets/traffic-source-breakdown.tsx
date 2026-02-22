@@ -152,9 +152,9 @@ export function TrafficSourceBreakdown({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
-          { label: 'Google Ads', value: rollup.googleAds },
-          { label: 'SEO', value: rollup.seo },
-          { label: 'Social', value: rollup.social },
+          { label: t('dimension.googleAds'), value: rollup.googleAds },
+          { label: t('dimension.seo'), value: rollup.seo },
+          { label: t('dimension.social'), value: rollup.social },
         ].map((c) => (
           <Card key={c.label} className="border-slate-200 bg-white">
             <CardHeader className="p-4 pb-2">

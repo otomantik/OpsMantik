@@ -85,7 +85,7 @@ export function SealModal({
   const handleConfirm = useCallback(async () => {
     if (!canSave) return;
     if (!(leadScore >= 1 && leadScore <= 5)) {
-      setStarError('Please select a lead quality rating.');
+      setStarError(t('seal.errorSelectStar'));
       return;
     }
     setSaving(true);

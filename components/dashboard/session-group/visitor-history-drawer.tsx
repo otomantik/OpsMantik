@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { X } from 'lucide-react';
 import { formatTimestamp } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel } from '@/lib/i18n/mapping';
 
 // Define the Session type here to avoid importing circular dependencies or redefine exactly what we need
 interface VisitorSession {
@@ -115,15 +116,15 @@ export function VisitorHistoryDrawer({
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     {session.attribution_source && (
                                                         <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
-                                                            {session.attribution_source}
+                                                            {getLocalizedLabel(session.attribution_source, t)}
                                                         </span>
                                                     )}
                                                     {session.device_type && (
                                                         <span className="text-sm px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                                                            {session.device_type}
+                                                            {getLocalizedLabel(session.device_type, t)}
                                                         </span>
                                                     )}
-                                                    {session.city && session.city !== 'Unknown' && (
+                                                    {session.city && session.city !== 'Unknown' && session.city !== t('misc.unknown') && (
                                                         <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
                                                             {session.city}
                                                         </span>
@@ -161,7 +162,7 @@ export function VisitorHistoryDrawer({
                                                     <div className="flex items-center gap-2 flex-wrap mb-2">
                                                         <span className="text-sm text-foreground tabular-nums">{call.phone_number}</span>
                                                         <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">
-                                                            Score: {call.lead_score}
+                                                            {t('visitor.score')}: {call.lead_score}
                                                         </span>
                                                         {call.matched_session_id && (
                                                             <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border tabular-nums">

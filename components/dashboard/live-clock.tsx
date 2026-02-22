@@ -24,7 +24,7 @@ export function LiveClock() {
   if (!mounted || !time) {
     return (
       <span className="inline-block w-[60px] h-[20px] bg-gray-100/10 animate-pulse rounded text-transparent">
-        00:00:00
+        --:--:--
       </span>
     );
   }

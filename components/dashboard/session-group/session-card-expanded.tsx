@@ -133,7 +133,7 @@ export function SessionCardExpanded({
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.action')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.label')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">{t('table.value')}</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">URL</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('session.url')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -168,8 +168,8 @@ export function SessionCardExpanded({
                                                     }`}>
                                                     {toLocaleUpperCase(
                                                         event.event_category === 'conversion' ? t('intent.conversion') :
-                                                            event.event_category === 'acquisition' ? 'ACQUISITION' :
-                                                                event.event_category === 'interaction' ? 'INTERACTION' :
+                                                            event.event_category === 'acquisition' ? t('intent.acquisition') :
+                                                                event.event_category === 'interaction' ? t('intent.interaction') :
                                                                     event.event_category
                                                     )}
                                                 </span>
@@ -230,7 +230,11 @@ export function SessionCardExpanded({
                                                             firstEvent.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
                                                                 'bg-white text-muted-foreground border-slate-200'
                                                         }`}>
-                                                        {toLocaleUpperCase(firstEvent.event_category)}
+                                                        {toLocaleUpperCase(
+                                                            firstEvent.event_category === 'acquisition' ? t('intent.acquisition') :
+                                                                firstEvent.event_category === 'interaction' ? t('intent.interaction') :
+                                                                    firstEvent.event_category
+                                                        )}
                                                     </span>
                                                 </td>
                                                 <td className="py-2 px-3 text-foreground flex items-center gap-2">
@@ -276,7 +280,11 @@ export function SessionCardExpanded({
                                                                 event.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
                                                                     'bg-white text-muted-foreground border-slate-200'
                                                             }`}>
-                                                            {toLocaleUpperCase(event.event_category)}
+                                                            {toLocaleUpperCase(
+                                                                event.event_category === 'acquisition' ? t('intent.acquisition') :
+                                                                    event.event_category === 'interaction' ? t('intent.interaction') :
+                                                                        event.event_category
+                                                            )}
                                                         </span>
                                                     </td>
                                                     <td className="py-1.5 px-3 text-foreground text-sm flex items-center gap-2">

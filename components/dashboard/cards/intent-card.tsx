@@ -292,9 +292,9 @@ export function IntentCard({
             </div>
             <div className="text-sm text-muted-foreground">
               {intent.click_id ? (
-                <span className="font-mono">click_id: {intent.click_id.slice(0, 14)}{intent.click_id.length > 14 ? '…' : ''}</span>
+                <span className="font-mono">{t('technical.clickId')}: {intent.click_id.slice(0, 14)}{intent.click_id.length > 14 ? '…' : ''}</span>
               ) : (
-                <span className="font-mono">click_id: —</span>
+                <span className="font-mono">{t('technical.clickId')}: —</span>
               )}
             </div>
           </div>

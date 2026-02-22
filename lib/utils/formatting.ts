@@ -64,8 +64,9 @@ export function formatTimestampWithTZ(
 
 /**
  * Format relative time (e.g., "5m ago").
+ * Passing t() is preferred for proper i18n.
  */
-export function formatRelativeTime(ts: string | null | undefined): string {
+export function formatRelativeTime(ts: string | null | undefined, t?: (key: string, params?: Record<string, string | number>) => string): string {
     if (!ts) return '—';
     try {
         const date = new Date(ts);
@@ -76,10 +77,19 @@ export function formatRelativeTime(ts: string | null | undefined): string {
         const diffHour = Math.floor(diffMin / 60);
         const diffDay = Math.floor(diffHour / 24);
 
-        if (diffSec < 60) return 'just now';
-        if (diffMin < 60) return `${diffMin}m ago`;
-        if (diffHour < 24) return `${diffHour}h ago`;
-        if (diffDay < 7) return `${diffDay}d ago`;
+        if (!t) {
+            // Fallback to hardcoded Turkish if t is not provided (legacy support)
+            if (diffSec < 60) return 'az önce';
+            if (diffMin < 60) return `${diffMin}dk önce`;
+            if (diffHour < 24) return `${diffHour}sa önce`;
+            if (diffDay < 7) return `${diffDay}g önce`;
+            return formatTimestamp(ts, { month: 'short', day: 'numeric' });
+        }
+
+        if (diffSec < 60) return t('time.justNow');
+        if (diffMin < 60) return t('time.minAgo', { n: diffMin });
+        if (diffHour < 24) return t('time.hourAgo', { n: diffHour });
+        if (diffDay < 7) return t('time.dayAgo', { n: diffDay });
         return formatTimestamp(ts, { month: 'short', day: 'numeric' });
     } catch {
         return '—';

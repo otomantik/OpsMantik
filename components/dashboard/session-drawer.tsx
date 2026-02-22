@@ -77,13 +77,13 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
           const expected = msg === 'access_denied' || msg === 'not_authenticated';
           setSession(null);
           setIsLimitedView(true);
-          setLimitedReason(expected ? msg : (details || msg || 'unavailable'));
+          setLimitedReason(expected ? msg : (details || msg || t('misc.unavailable')));
           return;
         }
         if (!sessionData || !Array.isArray(sessionData) || sessionData.length === 0) {
           setSession(null);
           setIsLimitedView(true);
-          setLimitedReason('unavailable');
+          setLimitedReason(t('misc.unavailable'));
           return;
         }
         const sessionRow = sessionData[0];
@@ -117,7 +117,7 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
         });
         setSession(null);
         setIsLimitedView(true);
-        setLimitedReason('unavailable');
+        setLimitedReason(t('misc.unavailable'));
       } finally {
         setIsLoading(false);
       }
@@ -127,10 +127,10 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
   }, [intent.matched_session_id, siteId]);
 
   const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 60) return `${seconds}${t('common.sec')}`;
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}m ${secs}s`;
+    return `${mins}${t('common.min')} ${secs}${t('common.sec')}`;
   };
 
   return (
@@ -247,11 +247,11 @@ export function SessionDrawer({ intent, siteId, onClose }: SessionDrawerProps) {
                   </div>
                   <div>
                     <span className="text-muted-foreground">{t('sessionDrawer.ip')}:</span>
-                    <span className="ml-2 text-muted-foreground">{'—'}</span>
+                    <span className="ml-2 text-muted-foreground">{t('misc.na')}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">{t('sessionDrawer.userAgent')}:</span>
-                    <span className="ml-2 text-muted-foreground truncate block">{'—'}</span>
+                    <span className="ml-2 text-muted-foreground truncate block">{t('misc.na')}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">{t('sessionDrawer.duration')}:</span>

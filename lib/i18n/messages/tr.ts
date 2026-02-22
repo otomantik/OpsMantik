@@ -53,6 +53,10 @@ export const tr = {
   'dashboard.yesterdayPerformance': 'Dünün Performansı',
   'dashboard.realtimeToday': 'Canlı (Bugün)',
   'dashboard.timeline': 'Zaman Çizelgesi',
+  'dashboard.warRoom': 'HAREKAT MERKEZİ',
+  'dashboard.commandCenterSub': 'Komuta Merkezi • Gerçek Zamanlı Zeka • Telefon Eşleme',
+  'dashboard.testPage': 'TEST SAYFASI',
+  'dashboard.signOut': 'OTURUMU KAPAT',
   'dashboard.adsCommandCenter': 'Reklam Komuta Merkezi',
 
   // Status
@@ -84,6 +88,8 @@ export const tr = {
 
   'intent.call': 'Arama',
   'intent.conversion': 'Dönüşüm',
+  'intent.acquisition': 'Edinim',
+  'intent.interaction': 'Etkileşim',
   'intent.general': 'Niyet',
 
   'seal.title': 'Anlaşmayı onayla',
@@ -96,6 +102,7 @@ export const tr = {
   'seal.cancel': 'İptal',
   'seal.confirm': 'Kaydet',
   'seal.sealing': 'Kaydediliyor…',
+  'seal.errorSelectStar': 'Lütfen bir potansiyel kalite puanı seçin.',
   'seal.dealSealed': 'Anlaşma onaylandı.',
   'seal.markedJunk': 'Değersiz olarak işaretlendi.',
   'seal.mute': 'Sesi kapat',
@@ -152,6 +159,11 @@ export const tr = {
   'dimension.direct': 'Direkt',
   'dimension.referral': 'Yönlendirme',
   'dimension.other': 'Diğer',
+  'dimension.organic': 'Organik',
+
+  'attribution.firstClick': 'İlk Tıklama',
+  'attribution.firstClickPaid': 'İlk Tıklama (Ücretli)',
+  'attribution.lastClick': 'Son Tıklama',
 
   'device.desktop': 'Masaüstü',
   'device.mobile': 'Mobil',
@@ -161,6 +173,10 @@ export const tr = {
   'device.macbook': 'MacBook',
   'device.windows': 'Windows',
   'device.unknown': 'Bilinmiyor',
+
+  'event.scrollDepth': 'Kaydırma Derinliği',
+  'event.whatsapp': 'WhatsApp',
+  'event.view': 'Görüntüleme',
 
   'breakdown.sources': 'Kaynaklar',
   'breakdown.locations': 'Konumlar',
@@ -227,7 +243,9 @@ export const tr = {
   'misc.noData': 'Veri yok',
   'misc.noDataInRange': 'Seçili aralıkta veri yok',
   'misc.breakdown': 'Dağılım',
-  'misc.errorLabel': 'Hata: {msg}',
+  'misc.unknown': 'Bilinmiyor',
+  'misc.unavailable': 'Kullanılamıyor',
+  'misc.na': '—',
 
   // Activity
   'activity.hours': 'Saat',
@@ -356,6 +374,7 @@ export const tr = {
   'sessionDrawer.created': 'Oluşturulma',
   'sessionDrawer.events': 'Olaylar',
   'sessionDrawer.noMatchedSession': 'Eşleşen oturum bulunamadı',
+  'technical.clickId': 'click_id',
 
   'setup.noSitesFound': 'Site bulunamadı',
   'setup.description': 'Etkinlikleri izlemek için en az bir siteye ihtiyacınız var. Başlamak için bir test sitesi oluşturun.',
@@ -374,7 +393,6 @@ export const tr = {
   'queue.inQueue': '{n} kuyrukta',
   'queue.trt': 'TRT',
   'queue.readOnlyJunk': 'Salt okunur rol: onaylama/reddetme yapılamaz.',
-  'misc.na': 'Yok',
   'setup.publicId': 'Genel Kimlik (Public ID):',
   'setup.domain': 'Alan Adı:',
   'setup.useThisInTracker': 'Takip kodunuzda bunu kullanın:',
@@ -404,4 +422,12 @@ export const tr = {
   'error.auth': 'Kullanıcı kimliği doğrulanmadı',
   'error.undoFailed': 'Geri alma başarısız',
   'error.sessionQualified': 'Bu oturum zaten nitelendirildi.',
+  'time.justNow': 'az önce',
+  'time.minAgo': '{n}dk önce',
+  'time.hourAgo': '{n}sa önce',
+  'time.dayAgo': '{n}g önce',
+
+  'confidence.high': 'YÜKSEK',
+  'confidence.medium': 'ORTA',
+  'confidence.low': 'DÜŞÜK',
 } as const;

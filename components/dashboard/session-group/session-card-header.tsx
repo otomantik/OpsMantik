@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, Clock, CheckCircle2, ChevronUp, ChevronDown, History, BadgeCheck, Phone, Flame } from 'lucide-react';
 import { formatTimestamp, formatLocation, cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel } from '@/lib/i18n/mapping';
 
 interface SessionCardHeaderProps {
     session: {
@@ -151,7 +152,7 @@ export function SessionCardHeader({
             <div className="mt-3 pt-2 border-t border-border">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
-                        {t('session.source')}: <span className="text-foreground font-medium">{attributionSource || t('common.direct')}</span>
+                        {t('session.source')}: <span className="text-foreground font-medium">{getLocalizedLabel(attributionSource, t)}</span>
                     </span>
                     {gclid && (
                         <span className="text-sm px-2 py-1 rounded bg-yellow-50 text-yellow-800 border border-yellow-200 tabular-nums">
@@ -199,11 +200,11 @@ export function SessionCardHeader({
                     <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
                         {t('session.locationLabel')}:{' '}
                         <span className="text-foreground font-medium">
-                            {locationLabel && locationLabel !== 'Unknown' ? locationLabel : '—'}
+                            {locationLabel && locationLabel !== 'Unknown' && locationLabel !== t('misc.unknown') ? locationLabel : t('misc.na')}
                         </span>
                     </span>
                     <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">
-                        {t('session.deviceLabel')}: <span className="text-foreground font-medium">{session.device_type || '—'}</span>
+                        {t('session.deviceLabel')}: <span className="text-foreground font-medium">{getLocalizedLabel(session.device_type, t)}</span>
                     </span>
                     {session.os && session.os !== 'Unknown' && (
                         <span className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border min-w-0 truncate">

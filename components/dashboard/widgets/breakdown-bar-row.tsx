@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel } from '@/lib/i18n/mapping';
 import type { BreakdownItem } from '@/lib/hooks/use-dashboard-breakdown';
 
 interface BreakdownBarRowProps {
@@ -8,19 +9,6 @@ interface BreakdownBarRowProps {
   total: number;
   /** Optional: decode URL-encoded labels (e.g. locations) */
   decodeLabel?: boolean;
-}
-
-function fixMojibake(s: string): string {
-  // Fix common mojibake like "Ä°zmir" when UTF-8 bytes were decoded as Latin1.
-  // Heuristic: presence of these characters often indicates the problem.
-  if (!/[ÃÄÅ]/.test(s)) return s;
-  try {
-    const bytes = Uint8Array.from(s, (c) => c.charCodeAt(0));
-    const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-    return decoded || s;
-  } catch {
-    return s;
-  }
 }
 
 function safeDecode(s: string): string {
@@ -35,20 +23,7 @@ export function BreakdownBarRow({ item, total, decodeLabel }: BreakdownBarRowPro
   const { formatNumber, t } = useTranslation();
   const rawLabel = decodeLabel ? safeDecode(item.name) : item.name;
 
-  // Professional i18n: Map database-level dimension values to localized labels
-  const getLocalizedLabel = (raw: string) => {
-    const l = raw.toLowerCase().trim();
-    if (l === 'mobile') return t('device.mobile');
-    if (l === 'desktop') return t('device.desktop');
-    if (l === 'tablet') return t('device.tablet');
-    if (l === 'social') return t('dimension.social');
-    if (l === 'direct') return t('dimension.direct');
-    if (l === 'seo') return t('dimension.seo');
-    if (l === 'google ads') return t('dimension.googleAds');
-    return fixMojibake(raw);
-  };
-
-  const label = getLocalizedLabel(rawLabel);
+  const label = getLocalizedLabel(rawLabel, t);
   const pctNum = total > 0 ? Math.min(100, Math.max(0, item.pct)) : 0;
 
   return (

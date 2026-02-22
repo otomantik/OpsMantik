@@ -29,8 +29,6 @@ interface DashboardShellProps {
   siteId: string;
   siteName?: string;
   siteDomain?: string;
-  /** Site i18n config (currency, timezone, locale) for formatting. */
-  siteConfig?: { currency?: string; timezone?: string; locale?: string };
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
   siteRole: SiteRole;
@@ -76,7 +74,7 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initialTodayRange, siteRole }: DashboardShellProps) {
+export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole }: DashboardShellProps) {
   const { t } = useTranslation();
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
@@ -130,7 +128,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, siteConfig, initi
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
-            {t('sidebar.operationsCenter').toUpperCase()} {' // '}{t('statusBar.ociActive')}
+            {t('sidebar.operationsCenter').toUpperCase()} • {t('statusBar.ociActive')}
           </div>
           <div className="hidden sm:block opacity-70 text-slate-500">
             {t('statusBar.latency')}: {loading ? '...' : '12ms'}

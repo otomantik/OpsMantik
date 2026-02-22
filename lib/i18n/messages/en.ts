@@ -54,6 +54,10 @@ export const en = {
   'dashboard.yesterdayPerformance': 'Yesterday Performance',
   'dashboard.realtimeToday': 'Real-Time (Today)',
   'dashboard.timeline': 'Timeline',
+  'dashboard.warRoom': 'WAR ROOM',
+  'dashboard.commandCenterSub': 'Command Center • Real-time Intelligence • Phone Matching',
+  'dashboard.testPage': 'TEST PAGE',
+  'dashboard.signOut': 'SIGN OUT',
   'dashboard.adsCommandCenter': 'Ads Command Center',
 
   // Status
@@ -89,6 +93,8 @@ export const en = {
   // Intent types
   'intent.call': 'Call',
   'intent.conversion': 'Conversion',
+  'intent.acquisition': 'Acquisition',
+  'intent.interaction': 'Interaction',
   'intent.general': 'Intent',
 
   // Seal modal
@@ -102,6 +108,7 @@ export const en = {
   'seal.cancel': 'Cancel',
   'seal.confirm': 'Save',
   'seal.sealing': 'Saving…',
+  'seal.errorSelectStar': 'Please select a lead quality rating.',
   'seal.dealSealed': 'Deal sealed.',
   'seal.markedJunk': 'Marked as junk.',
   'seal.mute': 'Mute',
@@ -119,6 +126,11 @@ export const en = {
   'dimension.direct': 'Direct',
   'dimension.referral': 'Referral',
   'dimension.other': 'Other',
+  'dimension.organic': 'Organic',
+
+  'attribution.firstClick': 'First Click',
+  'attribution.firstClickPaid': 'First Click (Paid)',
+  'attribution.lastClick': 'Last Click',
 
   'device.desktop': 'Desktop',
   'device.mobile': 'Mobile',
@@ -128,6 +140,10 @@ export const en = {
   'device.macbook': 'MacBook',
   'device.windows': 'Windows',
   'device.unknown': 'Unknown',
+
+  'event.scrollDepth': 'Scroll Depth',
+  'event.whatsapp': 'WhatsApp',
+  'event.view': 'View',
 
   'traffic.title': 'Traffic Sources',
   'traffic.whereVisitorsCameFrom': 'Where visitors came from',
@@ -244,6 +260,8 @@ export const en = {
   'misc.breakdown': 'Breakdown',
   'misc.noDataInRange': 'No data in selected range',
   'misc.errorLabel': 'Error: {msg}',
+  'misc.unknown': 'Unknown',
+  'misc.unavailable': 'Unavailable',
 
   // Activity
   'activity.hours': 'Hours',
@@ -372,6 +390,7 @@ export const en = {
   'sessionDrawer.created': 'Created',
   'sessionDrawer.events': 'Events',
   'sessionDrawer.noMatchedSession': 'No matched session found',
+  'technical.clickId': 'click_id',
 
   'setup.noSitesFound': 'No sites found',
   'setup.description': 'You need at least one site to track events. Create a test site to get started.',
@@ -410,4 +429,12 @@ export const en = {
   'setup.domain': 'Domain:',
   'setup.useThisInTracker': 'Use this in your tracker script:',
   'month.newMonthDetected': 'New month detected. Refresh to switch partitions.',
+  'time.justNow': 'just now',
+  'time.minAgo': '{n}m ago',
+  'time.hourAgo': '{n}h ago',
+  'time.dayAgo': '{n}d ago',
+
+  'confidence.high': 'HIGH',
+  'confidence.medium': 'MEDIUM',
+  'confidence.low': 'LOW',
 } as const;

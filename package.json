@@ -6,7 +6,7 @@
     "verify": "npm run verify-rpcs && npm run verify:partition-triggers && npm run verify:i18n",
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
     "verify:partition-triggers": "node scripts/verify-partition-triggers.mjs",
-    "verify:i18n": "node scripts/verify-dashboard-i18n-clean.mjs",
+    "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -14,7 +14,7 @@ export interface PulseProjectionWidgetsProps {
 }
 
 export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjectionWidgetsProps) {
-    const { t, formatMoneyFromCents } = useTranslation();
+    const { t } = useTranslation();
     const { stats, loading } = useCommandCenterP0Stats(siteId, dateRange, { scope });
 
     if (loading) {
@@ -51,7 +51,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="executive-pulse">
-            {/* Revenue Projection Card — masaüstü okunaklı */}
+            {/* Revenue card */}
             <Card className="relative overflow-hidden border border-slate-200 bg-white shadow-sm">
                 <div className="absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-8 opacity-5">
                     <DollarSign className="h-full w-full" />
@@ -75,7 +75,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
                 </CardContent>
             </Card>
 
-            {/* Conversion Pulse Card */}
+            {/* Pulse card */}
             <Card className="relative overflow-hidden border border-slate-200 bg-white shadow-sm">
                 <div className="absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-8 opacity-5">
                     <Zap className="h-full w-full" />
