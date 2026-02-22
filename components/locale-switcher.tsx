@@ -12,12 +12,12 @@ const LOCALES = [
 ] as const;
 
 export function LocaleSwitcher() {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
   const [isPending, startTransition] = useTransition();
 
   const currentBase = locale.split('-')[0]?.toLowerCase() || 'en';
 
-  const handleSelect = (code: string) => {
+  const handleSelect = (code: 'en' | 'tr' | 'it') => {
     if (code === currentBase) return;
     startTransition(async () => {
       await setUserLocale(code);
@@ -32,7 +32,7 @@ export function LocaleSwitcher() {
           <button
             key={code}
             type="button"
-            onClick={() => handleSelect(code)}
+            onClick={() => handleSelect(code as 'en' | 'tr' | 'it')}
             disabled={isPending}
             className={cn(
               'px-2 py-1 text-xs font-bold uppercase tracking-wider rounded-md transition-colors',
@@ -42,7 +42,7 @@ export function LocaleSwitcher() {
               isPending && 'opacity-70 cursor-wait'
             )}
             aria-pressed={isActive}
-            aria-label={`Switch to ${label}`}
+            aria-label={t('locale.switchTo', { label })}
           >
             {label}
           </button>

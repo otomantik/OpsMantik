@@ -299,11 +299,11 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       const rows = await fetchRange();
       setIntents(rows);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load intents');
+      setError(err instanceof Error ? err.message : t('dashboard.commandCenter.queue.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [range, siteId]);
+  }, [range, siteId, t]);
 
   // Lazy-load full details for the ACTIVE (top) card only
   useEffect(() => {
@@ -446,7 +446,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         void fetchUnscoredIntents();
         void fetchKillFeed();
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to undo';
+        const msg = err instanceof Error ? err.message : t('toast.error.undoFailed');
         pushToast('danger', msg);
       } finally {
         setRestoringIds((prev) => {
@@ -456,7 +456,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         });
       }
     },
-    [fetchKillFeed, fetchUnscoredIntents, pushToast, siteId]
+    [fetchKillFeed, fetchUnscoredIntents, pushToast, siteId, t]
   );
 
   const cancelDeal = useCallback(
@@ -476,7 +476,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         // Refresh kill feed to show updated status
         void fetchKillFeed();
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to cancel';
+        const msg = err instanceof Error ? err.message : t('toast.error.failed');
         pushToast('danger', msg);
       } finally {
         setRestoringIds((prev) => {
@@ -486,7 +486,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         });
       }
     },
-    [fetchKillFeed, pushToast]
+    [fetchKillFeed, pushToast, t]
   );
 
   const openSealModal = useCallback((intent: HunterIntent) => {

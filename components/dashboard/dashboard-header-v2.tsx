@@ -26,14 +26,14 @@ export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHea
   }, []);
 
   const formatLastSeen = (date: Date | null) => {
-    if (!date) return 'Never';
+    if (!date) return t('common.never');
     const seconds = Math.floor((nowMs - date.getTime()) / 1000);
-    if (seconds < 10) return 'Just now';
-    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 10) return t('common.justNow');
+    if (seconds < 60) return `${seconds}${t('common.sec')} ${t('common.ago')}`;
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60) return `${minutes}${t('common.min')} ${t('common.ago')}`;
     const hours = Math.floor(minutes / 60);
-    return `${hours}h ago`;
+    return `${hours}${t('common.hr')} ${t('common.ago')}`;
   };
 
   return (
@@ -49,7 +49,7 @@ export function DashboardHeaderV2({ siteId, siteName, siteDomain }: DashboardHea
             </Link>
             <div className="min-w-0">
               <h1 className="text-lg font-semibold truncate">
-                {siteName || siteDomain || 'Site Dashboard'}
+                {siteName || siteDomain || t('dashboard.siteDashboard')}
               </h1>
               <p className="text-sm text-muted-foreground">
                 {t('dashboard.adsCommandCenter')}

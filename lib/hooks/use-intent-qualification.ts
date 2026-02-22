@@ -53,16 +53,16 @@ export function useIntentQualification(
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || 'Failed to undo');
+          throw new Error(data.error || t('toast.error.undoFailed'));
         }
 
         return { success: true };
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Undo failed';
+        const errorMessage = err instanceof Error ? err.message : t('toast.error.undoFailed');
         return { success: false, error: errorMessage };
       }
     },
-    []
+    [t]
   );
 
   const qualify = useCallback(
@@ -132,8 +132,8 @@ export function useIntentQualification(
           Array.isArray(updatedRows) ? updatedRows.length > 0 : Boolean(updatedRows);
         if (!didUpdate) {
           const msg = doSessionUpdate
-            ? 'This session was already qualified (or no longer pending).'
-            : 'This intent was already qualified (or no longer pending).';
+            ? t('toast.error.sessionAlreadyQualified')
+            : t('toast.error.intentAlreadyQualified');
           setError(msg);
           return { success: false, error: msg };
         }
@@ -170,7 +170,7 @@ export function useIntentQualification(
 
         return { success: true };
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to qualify intent';
+        const errorMessage = err instanceof Error ? err.message : t('toast.error.qualifyFailed');
         setError(errorMessage);
         toast.error(t('toast.error.failed'));
         return { success: false, error: errorMessage };
@@ -178,7 +178,7 @@ export function useIntentQualification(
         setSaving(false);
       }
     },
-    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess]
+    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess, t]
   );
 
   const clearError = useCallback(() => {

@@ -115,12 +115,12 @@ export function SealModal({
       setSelectedAmount(null);
       setCustomAmount('');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to seal';
+      const msg = err instanceof Error ? err.message : t('seal.errorSeal');
       onError?.(msg);
     } finally {
       setSaving(false);
     }
-  }, [canSave, effectiveAmount, currency, leadScore, muted, onConfirm, onSuccess, onError, onOpenChange, playChaChing]);
+  }, [canSave, effectiveAmount, currency, leadScore, muted, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
 
   const handleJunk = useCallback(async () => {
     if (!onJunk) return;
@@ -133,12 +133,12 @@ export function SealModal({
       setSelectedAmount(null);
       setCustomAmount('');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to mark as junk';
+      const msg = err instanceof Error ? err.message : t('seal.errorMarkJunk');
       onError?.(msg);
     } finally {
       setJunking(false);
     }
-  }, [onJunk, onJunkSuccess, onError, onOpenChange]);
+  }, [onJunk, onJunkSuccess, onError, onOpenChange, t]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
