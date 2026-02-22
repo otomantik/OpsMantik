@@ -227,7 +227,7 @@ export function SitesManager() {
       setSiteStatus({
         ...siteStatus,
         [siteId]: {
-          status: 'Error checking status',
+          status: t('misc.error'),
           last_event_at: null,
           last_session_id: null,
           last_source: null,
@@ -455,14 +455,14 @@ export function SitesManager() {
                 <div className="pt-2 border-t border-border">
                   <div className="flex justify-between items-center mb-2">
                     <label className="block text-sm text-muted-foreground">
-                      Install Status:
+                      {t('sites.installStatus')}
                     </label>
                     <Button
                       onClick={() => handleVerifyInstall(site.id)}
                       disabled={statusLoading[site.id]}
                       size="sm"
                     >
-                      {statusLoading[site.id] ? '⏳' : '🔍 Verify Install'}
+                      {statusLoading[site.id] ? '⏳' : `🔍 ${t('sites.verifyInstall')}`}
                     </Button>
                   </div>
 
@@ -473,38 +473,38 @@ export function SitesManager() {
                           ? 'text-emerald-700'
                           : 'text-muted-foreground'
                           }`}>
-                          {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status}
+                          {siteStatus[site.id].status === 'Receiving events' ? '✅' : '⚠️'} {siteStatus[site.id].status === 'Receiving events' ? t('sites.receivingEvents') : siteStatus[site.id].status}
                         </span>
                       </div>
 
                       {siteStatus[site.id].last_event_at ? (
                         <div className="text-sm space-y-1">
                           <p className="text-muted-foreground tabular-nums">
-                            Last event: <span className="text-foreground" suppressHydrationWarning>
+                            {t('sites.lastEventAt')} <span className="text-foreground" suppressHydrationWarning>
                               {formatTimestamp(siteStatus[site.id].last_event_at!)}
                             </span>
                           </p>
                           {siteStatus[site.id].last_session_id && (
                             <p className="text-muted-foreground tabular-nums">
-                              Session: <span className="text-foreground text-sm">
+                              {t('session.sessionLabel')}: <span className="text-foreground text-sm">
                                 {siteStatus[site.id].last_session_id?.slice(0, 8)}...
                               </span>
                             </p>
                           )}
                           {siteStatus[site.id].last_source && (
                             <p className="text-muted-foreground">
-                              Source: <span className="text-foreground">{siteStatus[site.id].last_source}</span>
+                              {t('session.source')}: <span className="text-foreground">{siteStatus[site.id].last_source}</span>
                             </p>
                           )}
                           {siteStatus[site.id].last_event_category && (
                             <p className="text-muted-foreground">
-                              Category: <span className="text-foreground">{siteStatus[site.id].last_event_category}</span>
+                              {t('table.category')}: <span className="text-foreground">{siteStatus[site.id].last_event_category}</span>
                             </p>
                           )}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
-                          No events recorded yet
+                          {t('sites.noEventsYet')}
                         </p>
                       )}
                     </div>
@@ -528,7 +528,7 @@ export function SitesManager() {
                 {/* Invite Customer Form */}
                 <div className="pt-2 border-t border-border">
                   <label className="block text-sm text-muted-foreground mb-2">
-                    Invite Customer:
+                    {t('sites.inviteCustomer')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -543,7 +543,7 @@ export function SitesManager() {
                       disabled={inviteLoading[site.id] || !inviteEmail[site.id]?.trim()}
                       size="sm"
                     >
-                      {inviteLoading[site.id] ? '⏳' : '📧 Invite'}
+                      {inviteLoading[site.id] ? '⏳' : `📧 ${t('sites.inviteCustomer').split(':')[0]}`}
                     </Button>
                   </div>
 
@@ -555,17 +555,17 @@ export function SitesManager() {
 
                   {inviteSuccess[site.id] && (
                     <div className="mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded space-y-2">
-                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message}</p>
+                      <p className="text-sm text-emerald-700">✅ {inviteSuccess[site.id].message === 'Customer invited successfully' ? t('sites.createdSuccess') : inviteSuccess[site.id].message}</p>
                       {inviteSuccess[site.id].loginUrl && (
                         <div>
-                          <p className="text-sm text-muted-foreground mb-1">Login URL:</p>
+                          <p className="text-sm text-muted-foreground mb-1">{t('sites.loginUrl')}</p>
                           <code className="block px-2 py-1 bg-background border border-border rounded text-foreground text-sm break-all tabular-nums">
                             {inviteSuccess[site.id].loginUrl}
                           </code>
                         </div>
                       )}
                       <p className="text-sm text-muted-foreground">
-                        Share the login URL with the customer. No page reload required.
+                        {t('sites.shareLoginUrl')}
                       </p>
                     </div>
                   )}

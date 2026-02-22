@@ -147,7 +147,7 @@ export function KPICardsV2({ siteId }: KPICardsV2Props) {
             <div className="text-3xl font-semibold tabular-nums" suppressHydrationWarning>
               {loading ? <Skeleton className="h-9 w-20" /> : fmt(whatsappIntents)}
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">Clicks</div>
+            <div className="mt-1 text-sm text-muted-foreground">{t('kpi.clicks')}</div>
           </CardContent>
         </Card>
 

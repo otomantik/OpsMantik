@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn, formatTimestamp } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import {
   CheckCircle2,
@@ -54,7 +55,7 @@ function getKind(action: string | null | undefined): IntentCardKind {
   return 'other';
 }
 
-function formatRelative(ts: string): string {
+function formatRelative(ts: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -62,15 +63,14 @@ function formatRelative(ts: string): string {
 
   const diffSec = Math.round(diffMs / 1000);
   const abs = Math.abs(diffSec);
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
-  if (abs < 60) return rtf.format(-diffSec, 'second');
-  const diffMin = Math.round(diffSec / 60);
-  if (Math.abs(diffMin) < 60) return rtf.format(-diffMin, 'minute');
-  const diffHr = Math.round(diffMin / 60);
-  if (Math.abs(diffHr) < 24) return rtf.format(-diffHr, 'hour');
-  const diffDay = Math.round(diffHr / 24);
-  return rtf.format(-diffDay, 'day');
+  if (abs < 60) return t('common.justNow');
+  const minutes = Math.floor(abs / 60);
+  if (minutes < 60) return `${minutes}${t('common.min')} ${t('common.ago')}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}${t('common.hr')} ${t('common.ago')}`;
+  const days = Math.floor(hours / 24);
+  return `${days}${t('common.day')} ${t('common.ago')}`;
 }
 
 function pickBorder(kind: IntentCardKind): string {
@@ -80,7 +80,7 @@ function pickBorder(kind: IntentCardKind): string {
   return 'border-l-4 border-border bg-background';
 }
 
-const KIND_ICON: Record<IntentCardKind, any> = {
+const KIND_ICON: Record<IntentCardKind, React.ComponentType<{ className?: string }>> = {
   whatsapp: MessageCircle,
   phone: Phone,
   form: FileText,
@@ -96,12 +96,12 @@ function toPath(u: string | null | undefined): string {
   }
 }
 
-function secondsToHuman(sec: number | null | undefined): string {
+function secondsToHuman(sec: number | null | undefined, t: (key: string, params?: Record<string, string | number>) => string): string {
   if (typeof sec !== 'number' || Number.isNaN(sec)) return '—';
-  if (sec < 60) return `${sec}s`;
+  if (sec < 60) return `${sec}${t('common.sec')}`;
   const m = Math.floor(sec / 60);
   const s = sec % 60;
-  return `${m}m ${s}s`;
+  return `${m}${t('common.min')} ${s}${t('common.sec')}`;
 }
 
 function normalizeWho(target: string | null | undefined): { label: string; raw: string } {
@@ -128,6 +128,7 @@ export function IntentCard({
   onOpenSession?: () => void;
   autoFocusPrimary?: boolean;
 }) {
+  const { t } = useTranslation();
   const kind = getKind(intent.intent_action);
   const Icon = KIND_ICON[kind];
 
@@ -150,9 +151,9 @@ export function IntentCard({
 
   const hasAnyClickId = Boolean(
     (intent.click_id && intent.click_id.trim()) ||
-      (intent.gclid && intent.gclid.trim()) ||
-      (intent.wbraid && intent.wbraid.trim()) ||
-      (intent.gbraid && intent.gbraid.trim())
+    (intent.gclid && intent.gclid.trim()) ||
+    (intent.wbraid && intent.wbraid.trim()) ||
+    (intent.gbraid && intent.gbraid.trim())
   );
 
   const campaignLabel = useMemo(() => {
@@ -213,7 +214,7 @@ export function IntentCard({
                 : 'border-red-200 bg-red-50 text-red-800'
             )}
           >
-            {flash === 'sealed' ? 'Sealed ✅' : 'Marked Junk 🗑️'}
+            {flash === 'sealed' ? t('hunter.successSealed') : t('hunter.successJunk')}
           </div>
         </div>
       )}
@@ -240,13 +241,13 @@ export function IntentCard({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-medium">
-                    {kind === 'whatsapp' ? 'WhatsApp' : kind === 'phone' ? 'Phone' : kind === 'form' ? 'Form' : 'Intent'}
+                    {kind === 'whatsapp' ? t('hunter.intentWhatsApp') : kind === 'phone' ? t('hunter.intentPhone') : kind === 'form' ? t('hunter.intentForm') : t('hunter.intentGeneral')}
                   </div>
                   <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                    {formatRelative(intent.created_at)}
+                    {formatRelative(intent.created_at, t)}
                   </div>
                   <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                    • {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' })} TRT
+                    • {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' })} {t('queue.trt')}
                   </div>
                 </div>
               </div>
@@ -257,12 +258,12 @@ export function IntentCard({
           {isHighRisk ? (
             <Badge className="bg-red-100 text-red-700 border border-red-200">
               <AlertTriangle className="h-3.5 w-3.5 mr-1" />
-              High Risk
+              {t('hunter.riskHigh')}
             </Badge>
           ) : (
             <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">
               <ShieldCheck className="h-3.5 w-3.5 mr-1" />
-              Safe
+              {t('hunter.riskSafe')}
             </Badge>
           )}
         </div>
@@ -272,7 +273,7 @@ export function IntentCard({
         {/* Evidence: WHO */}
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <div className="text-sm text-muted-foreground">Who</div>
+            <div className="text-sm text-muted-foreground">{t('hunter.who')}</div>
             <div className="text-sm font-medium tabular-nums">
               {who.label === '—' ? (
                 '—'
@@ -300,13 +301,13 @@ export function IntentCard({
 
           {/* Evidence: WHERE + duration (phones want this) */}
           <div className="space-y-1">
-            <div className="text-sm text-muted-foreground">Where</div>
+            <div className="text-sm text-muted-foreground">{t('hunter.where')}</div>
             <div className="text-sm font-medium">
               {(intent.city || '—')}{intent.district ? ` / ${intent.district}` : ''}
             </div>
             <div className="text-sm text-muted-foreground">
-              Duration: <span className="font-medium tabular-nums">{secondsToHuman(intent.total_duration_sec)}</span>
-              {' '}• Events: <span className="font-medium tabular-nums">{typeof intent.event_count === 'number' ? intent.event_count : '—'}</span>
+              {t('hunter.duration')}: <span className="font-medium tabular-nums">{secondsToHuman(intent.total_duration_sec, t)}</span>
+              {' '}• {t('hunter.events')}: <span className="font-medium tabular-nums">{typeof intent.event_count === 'number' ? intent.event_count : '—'}</span>
             </div>
           </div>
         </div>
@@ -315,15 +316,15 @@ export function IntentCard({
         <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3">
           <div className="grid gap-2 md:grid-cols-3">
             <div>
-              <div className="text-sm text-muted-foreground">Campaign</div>
+              <div className="text-sm text-muted-foreground">{t('hunter.campaign')}</div>
               <div className="text-sm font-medium truncate">{campaignLabel}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Keyword</div>
+              <div className="text-sm text-muted-foreground">{t('hunter.keyword')}</div>
               <div className="text-sm font-medium truncate">{keywordLabel}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Page</div>
+              <div className="text-sm text-muted-foreground">{t('hunter.page')}</div>
               <div className="text-sm font-medium font-mono truncate">{toPath(intent.intent_page_url)}</div>
             </div>
           </div>
@@ -332,7 +333,7 @@ export function IntentCard({
         {/* Risk reasons (only when high risk; keep terse) */}
         {isHighRisk && Array.isArray(intent.risk_reasons) && intent.risk_reasons.length > 0 && (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50/60 p-3">
-            <div className="text-sm font-medium text-red-800">Why High Risk?</div>
+            <div className="text-sm font-medium text-red-800">{t('hunter.whyHighRisk')}</div>
             <ul className="mt-2 space-y-1 text-sm text-red-800/90">
               {intent.risk_reasons.slice(0, 3).map((r, idx) => (
                 <li key={idx} className="flex gap-2">
@@ -346,7 +347,7 @@ export function IntentCard({
 
         {/* Quick score picker (kept for legacy logic, but gamified + optional) */}
         <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="text-sm text-muted-foreground">Lead quality</div>
+          <div className="text-sm text-muted-foreground">{t('hunter.leadQuality')}</div>
           <div className="flex items-center gap-1">
             {([1, 2, 3, 4, 5] as const).map((s) => (
               <button
@@ -395,7 +396,7 @@ export function IntentCard({
             disabled={saving}
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            JUNK
+            {t('hunter.junk')}
           </Button>
 
           <Button
@@ -404,7 +405,7 @@ export function IntentCard({
             onClick={onSkip}
             disabled={saving}
           >
-            SKIP
+            {t('hunter.skip')}
           </Button>
 
           <Button
@@ -418,7 +419,7 @@ export function IntentCard({
             autoFocus={autoFocusPrimary}
           >
             <CheckCircle2 className="h-5 w-5 mr-2" />
-            SEAL (Real Lead)
+            {t('hunter.sealRealLead')}
           </Button>
 
           {intent.matched_session_id && (
@@ -427,7 +428,7 @@ export function IntentCard({
               className="h-11"
               onClick={onOpenSession}
               disabled={saving}
-              title="Open session details"
+              title={t('session.viewHistory')}
             >
               <ExternalLink className="h-4 w-4" />
             </Button>

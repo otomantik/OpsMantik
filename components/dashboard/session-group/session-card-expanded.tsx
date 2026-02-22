@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { formatTimestamp } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { TrendingUp, Phone, MapPin, ChevronRight, CornerDownRight } from 'lucide-react';
 
 // Types from SessionGroup (need to be consistent)
@@ -51,6 +52,7 @@ export function SessionCardExpanded({
     onToggleGroup,
     matchedCall,
 }: SessionCardExpandedProps) {
+    const { t, toLocaleUpperCase } = useTranslation();
 
     // Get icon for event action
     const getEventIcon = (action: string | null | undefined) => {
@@ -70,7 +72,7 @@ export function SessionCardExpanded({
             {/* Event Timeline (Visual) */}
             <div>
                 <p className="text-sm text-muted-foreground uppercase tracking-wider mb-3">
-                    Event Timeline
+                    {toLocaleUpperCase(t('session.eventTimeline'))}
                 </p>
                 <div className="flex items-center gap-2 overflow-x-auto pb-2">
                     {(sortedEvents || []).slice(0, 15).map((event, index) => {
@@ -119,18 +121,18 @@ export function SessionCardExpanded({
             {/* Event Details Table */}
             <div>
                 <p className="text-sm text-muted-foreground uppercase tracking-wider mb-3">
-                    Event Details & Time Table
+                    {toLocaleUpperCase(t('session.eventDetails'))}
                 </p>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-border">
-                                <th className="text-left py-2 px-3 text-muted-foreground">Time</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">+Time</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">Category</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">Action</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">Label</th>
-                                <th className="text-left py-2 px-3 text-muted-foreground">Value</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.time')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">+{t('table.time')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.category')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.action')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.label')}</th>
+                                <th className="text-left py-2 px-3 text-muted-foreground">{t('table.value')}</th>
                                 <th className="text-left py-2 px-3 text-muted-foreground">URL</th>
                             </tr>
                         </thead>
@@ -164,7 +166,7 @@ export function SessionCardExpanded({
                                                         event.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
                                                             'bg-white text-muted-foreground border-slate-200'
                                                     }`}>
-                                                    {event.event_category.toUpperCase()}
+                                                    {toLocaleUpperCase(event.event_category)}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-foreground flex items-center gap-2">
@@ -223,7 +225,7 @@ export function SessionCardExpanded({
                                                             firstEvent.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
                                                                 'bg-white text-muted-foreground border-slate-200'
                                                         }`}>
-                                                        {firstEvent.event_category.toUpperCase()}
+                                                        {toLocaleUpperCase(firstEvent.event_category)}
                                                     </span>
                                                 </td>
                                                 <td className="py-2 px-3 text-foreground flex items-center gap-2">
@@ -269,7 +271,7 @@ export function SessionCardExpanded({
                                                                 event.event_category === 'interaction' ? 'bg-white text-muted-foreground border-slate-200' :
                                                                     'bg-white text-muted-foreground border-slate-200'
                                                             }`}>
-                                                            {event.event_category.toUpperCase()}
+                                                            {toLocaleUpperCase(event.event_category)}
                                                         </span>
                                                     </td>
                                                     <td className="py-1.5 px-3 text-foreground text-sm flex items-center gap-2">
@@ -302,11 +304,11 @@ export function SessionCardExpanded({
             {matchedCall && (
                 <div className="mt-4 p-3 rounded bg-rose-50 border border-rose-200">
                     <p className="text-sm text-rose-700 mb-1">
-                        PHONE MATCHED: {matchedCall.phone_number}
+                        {t('session.phoneMatched')}: {matchedCall.phone_number}
                     </p>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground tabular-nums">
-                        <span>Score: {matchedCall.lead_score}</span>
-                        <span suppressHydrationWarning>Match Time: {formatTimestamp(matchedCall.created_at)}</span>
+                        <span>{t('table.value')}: {matchedCall.lead_score}</span>
+                        <span suppressHydrationWarning>{t('session.matchTime')}: {formatTimestamp(matchedCall.created_at)}</span>
                     </div>
                 </div>
             )}

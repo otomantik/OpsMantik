@@ -8,6 +8,7 @@
 
 import { Wifi, WifiOff, Activity } from 'lucide-react';
 import { formatTimestamp } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface RealtimePulseProps {
   isConnected: boolean;
@@ -17,6 +18,7 @@ interface RealtimePulseProps {
 }
 
 export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: RealtimePulseProps) {
+  const { t, toLocaleUpperCase } = useTranslation();
   return (
     <div className="flex items-center gap-2">
       {isConnected ? (
@@ -27,7 +29,7 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
           </div>
           <div className="flex flex-col">
             <span className="text-sm text-emerald-600 uppercase tracking-wider">
-              Live
+              {toLocaleUpperCase(t('pulse.live'))}
             </span>
             {lastEventAt && (
               <span className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
@@ -41,7 +43,7 @@ export function RealtimePulse({ isConnected, lastEventAt, eventCount, error }: R
           <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
           <div className="flex flex-col">
             <span className="text-sm text-muted-foreground uppercase tracking-wider">
-              Offline
+              {toLocaleUpperCase(t('pulse.offline'))}
             </span>
             {error && (
               <span className="text-sm text-rose-600 truncate max-w-[160px]">

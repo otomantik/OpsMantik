@@ -16,6 +16,8 @@ interface I18nContextValue {
   formatMoneyFromCents: (cents: number | null | undefined) => string;
   formatTimestamp: (ts: string | null | undefined, options?: Intl.DateTimeFormatOptions) => string;
   formatNumber: (n: number) => string;
+  toLocaleUpperCase: (str: string) => string;
+  toLocaleLowerCase: (str: string) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -31,6 +33,15 @@ export function I18nProvider({ locale, siteConfig, children }: I18nProviderProps
   const currency = siteConfig?.currency || 'USD';
   const timezone = siteConfig?.timezone || 'UTC';
 
+  // Core i18n Fix: Sync html lang attribute for correct character rendering (i -> İ)
+  React.useEffect(() => {
+    const html = document.documentElement;
+    const langCode = loc.split('-')[0];
+    if (html.lang !== langCode) {
+      html.lang = langCode;
+    }
+  }, [loc]);
+
   const value = useMemo(
     () => ({
       locale: loc,
@@ -41,6 +52,8 @@ export function I18nProvider({ locale, siteConfig, children }: I18nProviderProps
       formatTimestamp: (ts: string | null | undefined, options?: Intl.DateTimeFormatOptions) =>
         formatTimestampI18n(ts, timezone, loc, options),
       formatNumber: (n: number) => n.toLocaleString(loc),
+      toLocaleUpperCase: (str: string) => str.toLocaleUpperCase(loc),
+      toLocaleLowerCase: (str: string) => str.toLocaleLowerCase(loc),
     }),
     [loc, currency, timezone]
   );
@@ -63,6 +76,8 @@ export function useI18nContext(): I18nContextValue {
       formatTimestamp: (ts: string | null | undefined, opts?: Intl.DateTimeFormatOptions) =>
         formatTimestampI18n(ts, 'UTC', 'en-US', opts),
       formatNumber: (n: number) => n.toLocaleString('en-US'),
+      toLocaleUpperCase: (str: string) => str.toLocaleUpperCase('en-US'),
+      toLocaleLowerCase: (str: string) => str.toLocaleLowerCase('en-US'),
     };
   }
   return ctx;

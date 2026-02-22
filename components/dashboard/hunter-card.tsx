@@ -18,19 +18,19 @@ const ICON_MAP: Record<string, LucideIcon> = {
   other: Icons.sparkles,
 };
 
-function relativeTime(ts: string): string {
+function relativeTime(ts: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   if (!Number.isFinite(diffMs)) return '—';
   const diffSec = Math.max(0, Math.round(diffMs / 1000));
-  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 60) return t('common.justNow');
   const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 60) return `${diffMin}${t('common.min')} ${t('common.ago')}`;
   const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) return `${diffHr}${t('common.hr')} ${t('common.ago')}`;
   const diffDay = Math.round(diffHr / 24);
-  return `${diffDay}d ago`;
+  return `${diffDay}${t('common.day')} ${t('common.ago')}`;
 }
 
 function sourceTypeOf(action: string | null | undefined): HunterSourceType {
@@ -49,31 +49,32 @@ function getScoreColor(score: number): { border: string; bg: string; text: strin
 
 function deviceLabel(
   deviceType: string | null | undefined,
-  deviceOs?: string | null,
-  browser?: string | null
+  deviceOs: string | null | undefined,
+  browser: string | null | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string
 ): { icon: LucideIcon; label: string } {
   const d = (deviceType || '').toLowerCase().trim();
   const os = (deviceOs || '').trim();
   const b = (browser || '').trim();
   const osLower = os.toLowerCase();
 
-  let typeLabel = 'Device';
+  let typeLabel = t('dimension.device');
   let Icon = Smartphone;
 
   if (d.includes('desktop') || d.includes('web')) {
-    typeLabel = 'Desktop';
+    typeLabel = t('device.desktop');
     Icon = Monitor;
   } else if (d.includes('tablet')) {
-    typeLabel = 'Tablet';
+    typeLabel = t('device.tablet');
   } else {
-    typeLabel = 'Mobile';
+    typeLabel = t('device.mobile');
   }
 
   let detailedOs = os;
-  if (osLower.includes('ios') || osLower.includes('iphone')) detailedOs = 'iPhone';
-  else if (osLower.includes('android')) detailedOs = 'Android';
-  else if (osLower.includes('mac os')) detailedOs = 'MacBook';
-  else if (osLower.includes('windows')) detailedOs = 'Windows';
+  if (osLower.includes('ios') || osLower.includes('iphone')) detailedOs = t('device.iphone');
+  else if (osLower.includes('android')) detailedOs = t('device.android');
+  else if (osLower.includes('mac os')) detailedOs = t('device.macbook');
+  else if (osLower.includes('windows')) detailedOs = t('device.windows');
 
   let label = detailedOs || typeLabel;
   if (b && b !== 'Unknown') {
@@ -82,7 +83,7 @@ function deviceLabel(
     label = `${typeLabel} · ${detailedOs}`;
   }
 
-  if (!d && !os && !b) return { icon: Smartphone, label: 'Unknown' };
+  if (!d && !os && !b) return { icon: Smartphone, label: t('device.unknown') };
   return { icon: Icon, label };
 }
 
@@ -102,44 +103,45 @@ function getPageLabel(pageUrl: string | null | undefined, t: (k: string) => stri
 
 function normalizeTraffic(
   traffic_source: string | null | undefined,
-  traffic_medium: string | null | undefined
+  traffic_medium: string | null | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string
 ): { kind: 'google_ads' | 'seo' | 'social' | 'direct' | 'other'; label: string } {
   const src = (traffic_source || '').toString().trim();
   const med = (traffic_medium || '').toString().trim().toLowerCase();
   const srcLc = src.toLowerCase();
 
   // SEO: prefer medium=organic as the "certain" signal.
-  if (med === 'organic') return { kind: 'seo', label: 'SEO' };
+  if (med === 'organic') return { kind: 'seo', label: t('dimension.seo') };
 
   // Google Ads: common classifier outputs.
   if (srcLc.includes('google ads') || (srcLc.includes('google') && (med === 'cpc' || med === 'ppc' || med === 'paid'))) {
-    return { kind: 'google_ads', label: 'Google Ads' };
+    return { kind: 'google_ads', label: t('dimension.googleAds') };
   }
 
   // Social: paid or organic social buckets.
   if (med === 'social' || med === 'paid_social' || ['instagram', 'facebook', 'meta', 'tiktok', 'linkedin', 'twitter', 'x'].some((k) => srcLc.includes(k))) {
-    return { kind: 'social', label: 'Social' };
+    return { kind: 'social', label: t('dimension.social') };
   }
 
   // Direct
-  if (med === 'direct' || srcLc === 'direct') return { kind: 'direct', label: 'Direct' };
+  if (med === 'direct' || srcLc === 'direct') return { kind: 'direct', label: t('dimension.direct') };
 
   if (!src && !med) return { kind: 'other', label: '—' };
-  return { kind: 'other', label: src || 'Other' };
+  return { kind: 'other', label: src || t('dimension.other') };
 }
 
-function SourceBadge({ traffic_source, traffic_medium }: { traffic_source?: string | null; traffic_medium?: string | null }) {
-  const t = normalizeTraffic(traffic_source, traffic_medium);
-  if (t.kind === 'other' && (t.label === '—' || !t.label)) return null;
+function SourceBadge({ traffic_source, traffic_medium, t_fn }: { traffic_source?: string | null; traffic_medium?: string | null; t_fn: (key: string, params?: Record<string, string | number>) => string }) {
+  const trk = normalizeTraffic(traffic_source, traffic_medium, t_fn);
+  if (trk.kind === 'other' && (trk.label === '—' || !trk.label)) return null;
 
   const theme =
-    t.kind === 'google_ads'
+    trk.kind === 'google_ads'
       ? { cls: 'border-rose-200 bg-rose-50 text-rose-700', icon: Icons.google }
-      : t.kind === 'seo'
+      : trk.kind === 'seo'
         ? { cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: Leaf }
-        : t.kind === 'social'
+        : trk.kind === 'social'
           ? { cls: 'border-blue-200 bg-blue-50 text-blue-700', icon: Share2 }
-          : t.kind === 'direct'
+          : trk.kind === 'direct'
             ? { cls: 'border-slate-200 bg-slate-50 text-slate-700', icon: Compass }
             : { cls: 'border-slate-200 bg-slate-50 text-slate-700', icon: Icons.circleDot };
 
@@ -148,7 +150,7 @@ function SourceBadge({ traffic_source, traffic_medium }: { traffic_source?: stri
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold', theme.cls)}>
       <Icon className="h-3.5 w-3.5" />
-      <span className="leading-none">{t.label}</span>
+      <span className="leading-none">{trk.label}</span>
     </span>
   );
 }
@@ -190,8 +192,8 @@ export function HunterCard({
   const scoreTheme = getScoreColor(displayScore);
 
   const device = useMemo(
-    () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null, intent.browser ?? null),
-    [intent.device_type, intent.device_os, intent.browser]
+    () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null, intent.browser ?? null, translate),
+    [intent.device_type, intent.device_os, intent.browser, translate]
   );
 
   const locationDisplay = useMemo(() => {
@@ -210,11 +212,11 @@ export function HunterCard({
     const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;
     const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
     const parts = [
-      phoneClicks > 0 ? `${phoneClicks}× phone` : null,
+      phoneClicks > 0 ? `${phoneClicks}× ${translate('session.phone')}` : null,
       waClicks > 0 ? `${waClicks}× WhatsApp` : null,
     ].filter(Boolean) as string[];
     return parts.length ? parts.join(' · ') : '—';
-  }, [intent.phone_clicks, intent.whatsapp_clicks]);
+  }, [intent.phone_clicks, intent.whatsapp_clicks, translate]);
 
   return (
     <Card
@@ -238,12 +240,12 @@ export function HunterCard({
               </div>
               <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                 <Clock className="h-3.5 w-3.5" />
-                <span suppressHydrationWarning>{relativeTime(intent.created_at)}</span>
+                <span suppressHydrationWarning>{relativeTime(intent.created_at, translate)}</span>
               </div>
             </div>
           </div>
           <div className={cn('shrink-0 flex flex-col items-end gap-1', scoreTheme.text)}>
-            <SourceBadge traffic_source={trafficSource} traffic_medium={trafficMedium} />
+            <SourceBadge traffic_source={trafficSource} traffic_medium={trafficMedium} t_fn={translate} />
             <span className="text-[10px] font-semibold uppercase tracking-wide">{translate('hunter.aiConfidence')}</span>
             <span className={cn('text-sm font-bold tabular-nums px-2 py-0.5 rounded-md border', scoreTheme.bg, scoreTheme.border)}>
               {displayScore}%
@@ -258,7 +260,7 @@ export function HunterCard({
           <Row label={translate('hunter.keyword')} value={keywordDisplay} icon={FileText} />
           <Row label={translate('hunter.location')} value={locationDisplay} icon={MapPin} />
           <Row label={translate('hunter.page')} value={pageDisplay} icon={FileText} />
-          <Row label={translate('hunter.time')} value={relativeTime(intent.created_at)} icon={Clock} />
+          <Row label={translate('hunter.time')} value={relativeTime(intent.created_at, translate)} icon={Clock} />
           <Row label={translate('hunter.device')} value={device.label} icon={device.icon} />
         </div>
         {intent.ai_summary && (
@@ -278,7 +280,7 @@ export function HunterCard({
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
-            JUNK
+            {translate('hunter.junk')}
           </Button>
           <Button
             variant="outline"
@@ -286,7 +288,7 @@ export function HunterCard({
             className="h-9 border-slate-200 font-semibold text-xs"
             onClick={() => onSkip({ id: intent.id })}
           >
-            SKIP
+            {translate('hunter.skip')}
           </Button>
           <Button
             size="sm"
@@ -295,7 +297,7 @@ export function HunterCard({
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
           >
-            SEAL
+            {translate('hunter.seal')}
           </Button>
         </div>
       </CardFooter>
