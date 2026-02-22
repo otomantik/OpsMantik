@@ -52,7 +52,7 @@ export const en = {
   'common.table.value': 'Value',
   'common.technical.clickId': 'Click ID',
   'common.noResults': 'No results found',
-  'common.percentOfTraffic': '%{percent} traffic',
+  'common.percentOfTraffic': '{percent}% traffic',
   'common.ofTraffic': 'of traffic',
   'common.dashboard': 'Dashboard',
   'common.more': 'more',
