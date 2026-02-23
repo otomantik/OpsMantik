@@ -129,7 +129,7 @@ test('enqueue-from-sales: rate limit 1/min — second request within 1 min retur
       method: 'POST',
       headers: { authorization: `Bearer ${CRON_SECRET}` },
     });
-    const r1 = await POST(req);
+    await POST(req);
     const r2 = await POST(req);
     assert.equal(r2.status, 429, 'second request should be rate limited');
     const json = await r2.json();

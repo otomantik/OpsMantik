@@ -110,24 +110,7 @@ export async function GET(req: NextRequest) {
         payload: { year_month: yearMonth },
     });
 
-    // Create a TransformStream to format as CSV on the fly
     const encoder = new TextEncoder();
-    const csvStream = new TransformStream({
-        start(controller) {
-            controller.enqueue(encoder.encode(
-                'idempotency_key,created_at,billable,billing_state,year_month\n'
-            ));
-        },
-        async transform(chunk, controller) {
-            // Chunk is a row or array of rows? Supabase stream not directly supported in node client yet.
-            // We'll use cursor pagination to stream manually if needed, but for MVP
-            // let's fetch in one go (up to reasonable limit) or use a cursor loop.
-            // For true streaming from Postgres via Supabase, we usually need direct connection.
-            // Here we will use efficient pagination loops.
-            // For the specific TransformStream interface, we need to feed it.
-        }
-    });
-
     // Since Next.js custom streaming with Supabase client is tricky, 
     // we will construct the response using an async generator.
     async function* makeIterator() {

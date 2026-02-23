@@ -22,7 +22,7 @@ function getEnv(key: string) {
 }
 
 // Helper to create a site
-async function createTestSite(admin: any, userId: string) {
+async function createTestSite(admin: ReturnType<typeof createClient>, userId: string) {
     const suffix = crypto.randomBytes(4).toString('hex');
     const site = {
         user_id: userId,

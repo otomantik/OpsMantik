@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { getEntitlements } from '@/lib/entitlements/getEntitlements';
+import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +40,16 @@ export async function POST(req: NextRequest) {
     }
     if (callIds.length === 0) {
       return NextResponse.json({ error: 'Missing call_ids' }, { status: 400 });
+    }
+
+    const entitlements = await getEntitlements(siteId, adminClient);
+    try {
+      requireCapability(entitlements, 'oci_upload');
+    } catch (err) {
+      if (err instanceof EntitlementError) {
+        return NextResponse.json({ error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: err.capability }, { status: 403 });
+      }
+      throw err;
     }
 
     const nowIso = new Date().toISOString();

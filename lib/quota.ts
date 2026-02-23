@@ -9,7 +9,6 @@ import { redis } from '@/lib/upstash';
 import { logWarn } from '@/lib/logging/logger';
 
 const DEFAULT_HARD_CAP_MULTIPLIER = 2;
-const PG_CONSERVATIVE_THRESHOLD = 0.95; // When Redis down and usage >= 95% of limit, allow with degraded header (pro tier choice)
 const USAGE_KEY_PREFIX = 'usage:';
 const CACHE_TTL_MS = 60_000; // 1 min cache for site plan
 

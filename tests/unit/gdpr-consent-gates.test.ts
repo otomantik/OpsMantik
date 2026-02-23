@@ -26,7 +26,8 @@ test('Site invalid returns 400, consent missing returns 204 only when site valid
   const src = readFileSync(SYNC_ROUTE, 'utf8');
   assert.ok(src.includes("'site_not_found'"), 'site invalid must return 400');
   assert.ok(src.includes("'x-opsmantik-consent-missing'"), 'consent-missing header must exist');
-  const siteInvalid400 = src.indexOf("site_not_found");
+  const _siteInvalid400 = src.indexOf("site_not_found");
+  void _siteInvalid400;
   const consent204 = src.indexOf("'x-opsmantik-consent-missing'");
   const validateSite = src.indexOf('validateSiteFn');
   assert.ok(validateSite < consent204, 'validateSite must run before consent 204 (204 only when site valid)');

@@ -30,6 +30,7 @@
     "smoke:watchtower": "node scripts/smoke/watchtower-proof.mjs",
     "smoke:conversation-layer": "node scripts/smoke/conversation-layer-e2e.mjs",
     "smoke:conversation-layer:hours-only": "node scripts/smoke/conversation-layer-e2e.mjs --hours-only",
+    "smoke:sprint1": "node scripts/smoke/sprint1-entitlements.mjs",
     "diagnostics": "node scripts/run-diagnostics.mjs",
     "load:smoke": "k6 run tests/load/smoke-load.js",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",

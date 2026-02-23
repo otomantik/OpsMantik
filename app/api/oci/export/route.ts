@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import type { OciCallRow, OciSessionRow, SiteWithCurrency } from '@/lib/types/oci';
+import { getEntitlements } from '@/lib/entitlements/getEntitlements';
+import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +56,16 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
     if (siteError || !site) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    const entitlements = await getEntitlements(siteId, supabase);
+    try {
+      requireCapability(entitlements, 'oci_upload');
+    } catch (err) {
+      if (err instanceof EntitlementError) {
+        return NextResponse.json({ error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: err.capability }, { status: 403 });
+      }
+      throw err;
     }
 
     const siteWithCurrency = site as SiteWithCurrency;

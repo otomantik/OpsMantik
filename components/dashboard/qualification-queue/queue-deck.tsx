@@ -117,7 +117,8 @@ function LiteDeckCard({
   onOpenDetails: (callId: string) => void;
   onSkip: () => void;
 }) {
-  const action = (intent.intent_action || 'intent').toString();
+  void onOpenDetails;
+  void onSkip;
   const { t } = useTranslation();
   const summary = intent.summary || t('dashboard.commandCenter.queue.loadingDetails');
   const phoneClicks = typeof intent.phone_clicks === 'number' ? intent.phone_clicks : 0;

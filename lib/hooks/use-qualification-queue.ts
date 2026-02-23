@@ -37,8 +37,7 @@ export function useQualificationQueue({
   // Keep range as prop, but sync to controller (controller owns side effects).
   useEffect(() => {
     actions.setRange(range);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.day, range.fromIso, range.toIso, siteId]);
+  }, [range.day, range.fromIso, range.toIso, siteId, actions]);
 
   const filters = useMemo<QualificationQueueFilters>(() => ({ range }), [range]);
 

@@ -23,11 +23,11 @@ test('stripColumnFromInsertPayload: strips optional columns but never site_id', 
   const payload = { site_id: 'site-1', click_id: 'x', intent_page_url: 'y' };
   const r1 = stripColumnFromInsertPayload(payload, 'click_id');
   assert.equal(r1.stripped, true);
-  assert.equal((r1.next as any).click_id, undefined);
-  assert.equal((r1.next as any).site_id, 'site-1');
+  assert.equal((r1.next as Record<string, unknown>).click_id, undefined);
+  assert.equal((r1.next as Record<string, unknown>).site_id, 'site-1');
 
   const r2 = stripColumnFromInsertPayload(r1.next, 'site_id');
   assert.equal(r2.stripped, false);
-  assert.equal((r2.next as any).site_id, 'site-1');
+  assert.equal((r2.next as Record<string, unknown>).site_id, 'site-1');
 });
 

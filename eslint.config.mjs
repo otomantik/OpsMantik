@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "public/assets/**",
     "public/*.js",
     "scripts/**",
+    "coverage/**",
   ]),
   {
     rules: {

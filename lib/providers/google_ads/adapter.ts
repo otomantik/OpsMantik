@@ -69,7 +69,7 @@ function classifyByStatus(
   headers?: Headers
 ): GoogleAdsErrorClassification {
   if (httpStatus === 429) {
-    const retryAfter = headers?.get('retry-after');
+    void headers?.get('retry-after');
     return {
       errorClass: 'ProviderRateLimitError',
       retryable: true,

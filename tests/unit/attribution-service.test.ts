@@ -16,12 +16,6 @@ const REFERRER = 'https://www.google.com/';
 function makeMockClient(siteIdWithPastGclid: string) {
   let capturedSiteId: string | null = null;
 
-  const thenable = (data: unknown) => ({
-    then: (resolve: (v: { data: unknown; error: null }) => void) =>
-      resolve({ data, error: null }),
-    catch: () => thenable(data),
-  });
-
   const from = (table: string) => {
     if (table !== 'events')
       return { select: () => ({ eq: () => ({ not: () => ({ in: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }) }) };
@@ -52,7 +46,7 @@ function makeMockClient(siteIdWithPastGclid: string) {
     };
   };
 
-  return { from } as any;
+  return { from } as unknown as import('@supabase/supabase-js').SupabaseClient;
 }
 
 test('AttributionService: site A with no past GCLID must NOT inherit site B gclid (same fingerprint)', async () => {
@@ -98,7 +92,7 @@ test('AttributionService: with current GCLID does not query past events', async 
         },
       }),
     }),
-  } as any;
+  } as unknown as import('@supabase/supabase-js').SupabaseClient;
 
   const result = await AttributionService.resolveAttribution(
     SITE_A_ID,

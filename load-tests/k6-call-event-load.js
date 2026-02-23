@@ -103,7 +103,7 @@ export function setup() {
   };
 }
 
-export default function (data = {}) {
+export default function k6CallEventLoad(data = {}) {
   if (!SITE_ID || !SECRET) {
     console.error('SITE_ID and SECRET required');
     return;

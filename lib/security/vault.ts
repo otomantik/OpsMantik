@@ -4,7 +4,6 @@
  * Server-only: never expose decrypted payload or private key.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const nacl = require('tweetnacl-sealed-box');
 
 const VAULT_KEY_ENV = 'OPSMANTIK_VAULT_KEY';

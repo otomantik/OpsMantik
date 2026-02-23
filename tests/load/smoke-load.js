@@ -67,7 +67,7 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 // Test site ID (use a test/staging site, not production)
 const TEST_SITE_ID = __ENV.TEST_SITE_ID || 'test_site_5186339e';
 
-export default function () {
+export default function smokeLoad() {
   // Generate a realistic session fingerprint
   const sessionId = `load_test_${__VU}_${Date.now()}`;
   const fingerprint = `fp_${sessionId}`;

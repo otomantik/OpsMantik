@@ -46,11 +46,6 @@ interface RpcIntentRow {
   intent_events?: unknown;
 }
 
-function rowStr(r: RpcIntentRow, key: keyof RpcIntentRow): string | null {
-  const v = r[key];
-  if (v == null) return null;
-  return String(v);
-}
 function rowNum(r: RpcIntentRow, key: keyof RpcIntentRow): number | null {
   const v = r[key];
   return typeof v === 'number' ? v : null;

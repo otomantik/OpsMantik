@@ -241,7 +241,8 @@ async function defaultInserter(args: IdempotencyInsertArgs): Promise<{ error?: u
     if (!Object.prototype.hasOwnProperty.call(payload, col)) return { error };
 
     stripped.add(col);
-    const { [col]: _removed, ...rest } = payload;
+    const { [col]: removed, ...rest } = payload;
+    void removed;
     payload = rest;
   }
 

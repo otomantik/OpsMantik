@@ -4,6 +4,8 @@ import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { calculateLeadValue } from '@/lib/valuation/calculator';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { getEntitlements } from '@/lib/entitlements/getEntitlements';
+import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,6 +49,16 @@ export async function GET(req: NextRequest) {
 
     if (siteError || !site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    const entitlements = await getEntitlements(siteId, adminClient);
+    try {
+      requireCapability(entitlements, 'oci_upload');
+    } catch (err) {
+      if (err instanceof EntitlementError) {
+        return NextResponse.json({ error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: err.capability }, { status: 403 });
+      }
+      throw err;
     }
 
     const currency = (site as { currency?: string })?.currency || 'TRY';

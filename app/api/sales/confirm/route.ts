@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { getEntitlements } from '@/lib/entitlements/getEntitlements';
+import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 
 export const runtime = 'nodejs';
 
@@ -49,6 +51,16 @@ export async function POST(req: NextRequest) {
   const access = await validateSiteAccess(sale.site_id, user.id, supabase);
   if (!access.allowed) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: HEADERS() });
+  }
+
+  const entitlements = await getEntitlements(sale.site_id, supabase);
+  try {
+    requireCapability(entitlements, 'oci_upload');
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      return NextResponse.json({ error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: err.capability }, { status: 403, headers: HEADERS() });
+    }
+    throw err;
   }
 
   const { data: rpcRows, error: rpcError } = await supabase

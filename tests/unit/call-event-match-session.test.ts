@@ -19,7 +19,7 @@ function makeMockClient(siteIdToSession: Record<string, string>) {
   let fromCallCount = 0;
 
   const thenable = (data: unknown) => ({
-    then: (resolve: (v: any) => void) => resolve({ data, error: null }),
+    then: (resolve: (v: unknown) => void) => resolve({ data, error: null }),
     catch: () => thenable(data),
   });
 
@@ -88,7 +88,7 @@ function makeMockClient(siteIdToSession: Record<string, string>) {
     };
   };
 
-  return { from } as any;
+  return { from } as unknown as import('@supabase/supabase-js').SupabaseClient;
 }
 
 test('findRecentSessionByFingerprint: same fingerprint for site A never returns site B session', async () => {

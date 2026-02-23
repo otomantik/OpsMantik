@@ -62,6 +62,7 @@ export function requireQstashSignature(handler: AppRouterHandler): AppRouterHand
 
   const keys = getSigningKeys();
   if (!keys) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- handler signature requires request param
     return async (_req: NextRequest) => {
       return new Response(
         JSON.stringify({ error: 'QStash signing keys misconfigured', code: 'QSTASH_KEYS_MISSING' }),
@@ -90,7 +91,7 @@ export function requireQstashSignature(handler: AppRouterHandler): AppRouterHand
         return forbiddenResponse(code, message);
       }
       return res;
-    } catch (_err) {
+    } catch {
       logWarn('qstash signature rejected', {
         code: 'QSTASH_SIGNATURE_INVALID',
         requestId: request.headers.get('x-request-id') ?? undefined,

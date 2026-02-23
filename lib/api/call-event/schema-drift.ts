@@ -57,7 +57,8 @@ export function stripColumnFromInsertPayload(
   if (!column) return { next: payload, stripped: false };
   if (column === 'site_id') return { next: payload, stripped: false };
   if (!Object.prototype.hasOwnProperty.call(payload, column)) return { next: payload, stripped: false };
-  const { [column]: _removed, ...rest } = payload;
+  const { [column]: removed, ...rest } = payload;
+  void removed;
   return { next: rest, stripped: true };
 }
 

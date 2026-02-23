@@ -21,6 +21,7 @@ import {
     incrementBillingIngestOverage,
     incrementBillingIngestDegraded,
 } from '@/lib/billing-metrics';
+import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 
 /**
  * Revenue Kernel (frozen order): Auth → Parse body → validateSite → Rate limit → Consent → Idempotency → Quota → Publish.
@@ -341,6 +342,36 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         // Apply quota headers to successful response (set below before publish return)
         baseHeaders['x-opsmantik-quota-remaining'] = decision.headers['x-opsmantik-quota-remaining'];
         if (decision.headers['x-opsmantik-overage']) baseHeaders['x-opsmantik-overage'] = decision.headers['x-opsmantik-overage'];
+    }
+
+    // --- 2.8 Entitlements (Sprint-1): atomic check+increment for monthly_revenue_events. ---
+    if (idempotencyInserted && billableDecision.billable) {
+        const entitlements = await getEntitlements(siteIdUuid, adminClient);
+        const currentMonthStart = `${yearMonth}-01`;
+        const { data: incResult, error: incError } = await adminClient.rpc('increment_usage_checked', {
+            p_site_id: siteIdUuid,
+            p_month: currentMonthStart,
+            p_kind: 'revenue_events',
+            p_limit: entitlements.limits.monthly_revenue_events,
+        });
+        if (incError) {
+            logError('ENTITLEMENTS_INCREMENT_ERROR', { route: 'sync', site_id: siteIdUuid, error: String(incError) });
+            await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'entitlements_increment_error' });
+            return NextResponse.json(
+                createSyncResponse(false, null, { error: 'quota_exceeded' }),
+                { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1' } }
+            );
+        }
+        const result = incResult as { ok?: boolean; reason?: string } | null;
+        if (result && result.ok === false && result.reason === 'LIMIT') {
+            incrementBillingIngestRejectedQuota();
+            await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'rejected_entitlements_quota' });
+            const retryAfter = computeRetryAfterToMonthRollover();
+            return NextResponse.json(
+                createSyncResponse(false, null, { status: 'rejected_quota' }),
+                { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1', 'Retry-After': String(retryAfter) } }
+            );
+        }
     }
 
     // --- 3. Offload to QStash (with server-side fallback on publish failure) ---

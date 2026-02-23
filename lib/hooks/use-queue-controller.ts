@@ -425,8 +425,8 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
   }, []);
 
   const pushHistoryRow = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature required by caller, row unused (DB refresh)
     (_row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => {
-      // History is DB-backed now; refresh instead of optimistic local rows.
       void fetchKillFeed();
     },
     [fetchKillFeed]

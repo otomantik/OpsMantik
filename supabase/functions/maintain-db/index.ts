@@ -41,7 +41,6 @@ function getSharedSecret(): string | null {
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Deno.serve handler signature requires request param
 Deno.serve(async (req) => {
   // Method hardening
   if (req.method === 'OPTIONS') {

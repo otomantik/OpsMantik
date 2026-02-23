@@ -221,7 +221,12 @@ export function parseValidIngestPayload(input: unknown): ParseResult<ValidIngest
   const meta = asMeta(input.meta);
   const r = normalizeReferrer(input.r);
   // Important: do NOT carry both url + u forward (union guarantee + DB safety).
-  const { url: _rawUrl, u: _rawU, s: _rawS, meta: _rawMeta, r: _rawR, ...rest } = input as IngestPayload;
+  const { url: _u, u: _u2, s: _s, meta: _m, r: _r, ...rest } = input as IngestPayload;
+  void _u;
+  void _u2;
+  void _s;
+  void _m;
+  void _r;
   const normalizedBase: ValidIngestPayloadBase = {
     ...rest,
     s,
