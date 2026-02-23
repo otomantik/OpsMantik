@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { mutate } from 'swr';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
@@ -375,6 +376,8 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     // Intent was qualified, refresh the list
     void fetchUnscoredIntents();
     void fetchKillFeed();
+    // Revalidate P0 stats (revenue/kasa) so GELİR TAHMİNİ updates immediately
+    mutate((key) => Array.isArray(key) && key[0] === 'get_command_center_p0_stats_v2');
   }, [fetchUnscoredIntents, fetchKillFeed]);
 
   // Modal qualification hook (must be after handleQualified definition)
