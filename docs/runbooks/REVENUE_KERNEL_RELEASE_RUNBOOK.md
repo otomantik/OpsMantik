@@ -1,38 +1,38 @@
 # 📘 REVENUE KERNEL RELEASE RUNBOOK
 
 **Scope:** OpsMantik – Billing / Revenue Kernel only  
-**Applies to:** PR-1, PR-2, PR-3, PR-4 ve sonrası tüm faturalama etkileyen değişiklikler
+**Applies to:** PR-1, PR-2, PR-3, PR-4 and all subsequent billing-impacting changes
 
 ---
 
-## 1️⃣ Amaç
+## 1️⃣ Purpose
 
-Revenue Kernel finansal doğruluğun kalbidir.
+Revenue Kernel is the core of financial correctness.
 
-Bu runbook'un amacı:
+This runbook aims to:
 
-- Phantom usage riskini önlemek
-- Double billing riskini önlemek
-- Drift'i erken yakalamak
-- Deploy sırasında finansal integrity'yi korumak
+- Prevent phantom usage risk
+- Prevent double billing risk
+- Catch drift early
+- Preserve financial integrity during deploy
 
 ---
 
 ## 2️⃣ Golden Rules (Non-Negotiable)
 
 - **Billable Event = Successfully inserted idempotency row**
-- DB insert başarısızsa → publish yok
+- If DB insert fails → no publish
 - **Invoice SoT = ingest_idempotency WHERE billable=true**
-- Redis asla finansal otorite değildir
-- Quota 429 ve rate-limit 429 ayrı kalmalıdır
+- Redis is never financial authority
+- Quota 429 and rate-limit 429 must remain distinct
 - **Dispute Evidence = CSV Export from `ingest_idempotency`**
 - **Invoice Finality = `invoice_snapshot` table (immutable)**
 
 ---
 
-## 3️⃣ Release Gate Checklist (Deploy Öncesi)
+## 3️⃣ Release Gate Checklist (Pre-Deploy)
 
-Deploy edebilmek için:
+To deploy:
 
 ### ✅ A. Test Gate
 
@@ -42,16 +42,16 @@ node --import tsx --test tests/billing/financial-proofing.test.ts
 npm run test:unit
 ```
 
-**Koşullar:**
+**Conditions:**
 
 - 0 fail
-- PR gate testleri green
-- Idempotency + Quota testleri green
-- Financial Proofing (Dispute/Freeze) testleri green
+- PR gate tests green
+- Idempotency + Quota tests green
+- Financial Proofing (Dispute/Freeze) tests green
 
 ### ✅ B. Static Invariant Check
 
-Aşağıdakiler kodda bulunmalı:
+The following must exist in code:
 
 - `billing_gate_closed`
 - `x-opsmantik-quota-exceeded`
@@ -68,10 +68,10 @@ Aşağıdakiler kodda bulunmalı:
 
 ---
 
-## 3.1 Quota incident hızlı müdahale linkleri
+## 3.1 Quota incident quick-reference links
 
-- Temporary unblock SQL: `docs/OPS/TEMP_QUOTA_UNBLOCK_SITES_2026-02-15.md`
-- Incident runbook (quota + call-event): `docs/OPS/QUOTA_CALL_EVENT_INCIDENT_RUNBOOK.md`
+- Temporary unblock SQL: `docs/runbooks/TEMP_QUOTA_UNBLOCK_SITES_2026-02-15.md`
+- Incident runbook (quota + call-event): `docs/runbooks/QUOTA_CALL_EVENT_INCIDENT_RUNBOOK.md`
 
 ---
 
@@ -79,12 +79,12 @@ Aşağıdakiler kodda bulunmalı:
 
 **Option A — Safe Default**
 
-- Feature flag varsa kapalı deploy
-- Canary: tek site_id
+- Deploy with feature flag off if present
+- Canary: single site_id
 
 **Option B — Full deploy**
 
-- Ancak Test Gate + Smoke tamamlandıysa
+- Only if Test Gate + Smoke completed
 
 ---
 
@@ -110,14 +110,14 @@ Deploy commit prod’a çıkınca:
 
 ```powershell
 $CONSOLE_URL = "https://console.opsmantik.com"
-# Secret'ı set et (boşsa CRON_FORBIDDEN alırsın)
+# Set secret (CRON_FORBIDDEN if empty)
 $env:CRON_SECRET = "..."   # gerçek secret (Vercel env’den)
 
 curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/watchtower" -H "Authorization: Bearer $env:CRON_SECRET"
 curl.exe -s -D - -X POST "$CONSOLE_URL/api/cron/reconcile-usage/run" -H "Authorization: Bearer $env:CRON_SECRET"
 ```
 
-**Beklenen:**
+**Expected:**
 
 - **watchtower** → 200, body “ok”
 - **reconcile run** → 200, body’de `processed` (aktif site varsa > 0)
@@ -133,13 +133,13 @@ Cron smoke geçerli sayılmadan önce auth 200 dönmeli. PowerShell’de `$CRON_
 **1) Secret’ın set olduğunu kontrol et**
 
 ```powershell
-# PowerShell: değişkeni göster (boş olmamalı)
+# PowerShell: show variable (must not be empty)
 $env:CRON_SECRET
-# veya tek seferlik set:
-$env:CRON_SECRET = "gercek-secret-deger"
+# or one-time set:
+$env:CRON_SECRET = "actual-secret-value"
 ```
 
-**2) Watchtower ile hızlı test (200 → secret doğru)**
+**2) Quick test with Watchtower (200 → secret correct)**
 
 ```powershell
 $CONSOLE_URL = "https://console.opsmantik.com"   # prod
@@ -149,7 +149,7 @@ curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/watchtower" -H "Authorization: Be
 - **200** → secret doğru, cron smoke geçerli.
 - **403** → secret yanlış veya prod env’de `CRON_SECRET` yok/değişti.
 
-**3) Header escaping şüphesi varsa (güvenli)**
+**3) If header escaping is suspect (safe method)**
 
 ```powershell
 $h = @("Authorization: Bearer $env:CRON_SECRET")
@@ -164,7 +164,7 @@ curl.exe -s -X GET "$CONSOLE_URL/api/cron/reconcile-usage/enqueue" -H $h
 
 Aynı payload 2 kez gönder:
 
-**Beklenen:**
+**Expected:**
 
 - 2. request → 200
 - `x-opsmantik-dedup: 1`
@@ -174,7 +174,7 @@ Aynı payload 2 kez gönder:
 
 Limit aş:
 
-**Beklenen:**
+**Expected:**
 
 - 429
 - `x-opsmantik-ratelimit: 1`
@@ -184,7 +184,7 @@ Limit aş:
 
 Limit doldur:
 
-**Beklenen:**
+**Expected:**
 
 - 429
 - `x-opsmantik-quota-exceeded: 1`
@@ -200,7 +200,7 @@ ORDER BY created_at DESC
 LIMIT 5;
 ```
 
-**Beklenen:** reject satır → `billable=false`
+**Expected:** reject satır → `billable=false`
 
 **Reconciliation kanıt (COMPLETED job vs idempotency/site_usage_monthly):**
 
@@ -221,7 +221,7 @@ LIMIT 5;
 
 ### 🔎 4. Overage testi (soft limit)
 
-**Beklenen:**
+**Expected:**
 
 - 200
 - `x-opsmantik-overage: true`
@@ -244,7 +244,7 @@ LIMIT 5;
 
 ## 6️⃣ Emergency Rollback Plan
 
-**Rollback gerektiren durumlar:**
+**Situations requiring rollback:**
 
 - Phantom usage şüphesi
 - Duplicate publish şüphesi
@@ -252,7 +252,7 @@ LIMIT 5;
 - Idempotency insert bypass edilmiş
 - Dispute export yanlış veri sızdırıyor
 
-**Rollback Adımları**
+**Rollback steps**
 
 1. Billing feature flag kapat
 2. Önceki stable tag'e dön
@@ -281,7 +281,7 @@ LIMIT 5;
 
 ## 7.1 Cron Schedules
 
-| Cron Job | Endpoint | Schedule | Amaç |
+| Cron Job | Endpoint | Schedule | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Reconcile Usage** | `GET /api/cron/reconcile-usage` | Her 15 dk | Usage sayıcılarını (Redis vs PG) eşitler. SoT'yi (ingest_idempotency) baz alır. |
 | **Invoice Freeze** | `POST /api/cron/invoice-freeze` | Ayın 1. günü 00:00 UTC | Önceki ayın usage'ını `invoice_snapshot` tablosuna kilitler (immutable). |
@@ -299,14 +299,14 @@ Bir Revenue PR ancak şu durumda DONE sayılır:
 - Smoke testi tamam
 - Evidence doc güncel
 - Runbook checklist işaretli
-- **Dispute Export yetki kontrolü doğrulanmış**
-- **Invoice Snapshot hash doğrulanmış**
+- **Dispute Export authorization verified**
+- **Invoice Snapshot hash verified**
 
 ---
 
-## 9️⃣ Post-deploy (ilk deploy / migration sonrası)
+## 9️⃣ Post-deploy (first deploy / after migration)
 
-Deploy veya yeni migration (örn. idempotency cleanup RPC) sonrası adımlar için: **`docs/OPS/DEPLOY_CHECKLIST_REVENUE_KERNEL.md`**.  
+For steps after deploy or new migration (e.g. idempotency cleanup RPC): **`docs/runbooks/DEPLOY_CHECKLIST_REVENUE_KERNEL.md`**.  
 Migration, Redis/CRON_SECRET env, lifecycle test, cron schedule, dry_run ve metrics smoke orada listelenir.
 
 ---

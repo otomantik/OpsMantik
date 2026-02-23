@@ -105,3 +105,31 @@ export function isOriginAllowed(origin: string | null, allowedOrigins: string[])
     reason: `origin_mismatch: received=${normalizedOrigin}, allowed_count=${allowedOrigins.length}`
   };
 }
+
+/**
+ * Echo-Origin CORS headers for public ingest routes (/api/sync, /api/call-event).
+ * Security: site_id validation in the route handler is the auth boundary.
+ * No ALLOWED_ORIGINS check — matches industry standard (GA, GTM, etc).
+ *
+ * @param origin - Origin header value (or null)
+ * @param extraHeaders - Optional extra headers to merge (e.g. X-OpsMantik-Version)
+ */
+export function getIngestCorsHeaders(
+  origin: string | null,
+  extraHeaders?: Record<string, string>
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-OpsMantik-Version, X-Ops-Site-Id, X-Ops-Ts, X-Ops-Signature, X-Ops-Proxy, X-Ops-Proxy-Host',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+    ...extraHeaders,
+  };
+  if (origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  } else {
+    headers['Access-Control-Allow-Origin'] = '*';
+  }
+  return headers;
+}

@@ -149,16 +149,16 @@ Signals and attribution are deterministic (S1–S5); revenue signal tied to sale
 
 ## Post–G1–G5 update (2026-02)
 
-**Artık var:** Audit log tablosu + billing/admin write path (G5); in-product OCI upload (G4 worker + G3 adapter + G1 vault); provider credentials vault (G1).
+**Now present:** Audit log table + billing/admin write path (G5); in-product OCI upload (G4 worker + G3 adapter + G1 vault); provider credentials vault (G1).
 
-| Dimension | Eski | Yeni | Gerekçe |
+| Dimension | Previous | New | Rationale |
 |-----------|------|------|--------|
 | Tenant isolation | 85 | **92** | Billing/admin için audit_log; cross-tenant denemeleri izlenebilir. |
 | Offline conversion loop | 60 | **88** | Sale → queue → **upload (in-repo)**; worker + Google Ads adapter + vault. |
 | Compliance readiness | 35 | **48** | Audit log tamamlandı; consent ve right-to-erasure hâlâ yok. |
 
-**Yeni weighted skor (eşit ağırlık):** (88+92+75+88+65+70+48)/7 ≈ **75**.  
-**Global SaaS readiness (EU/US):** **~56/100** (audit + kapalı OCI döngüsü ile artış; consent/erasure eksik).
+**New weighted score (equal weights):** (88+92+75+88+65+70+48)/7 ≈ **75**.  
+**Global SaaS readiness (EU/US):** **~56/100** (increase from audit + closed OCI loop; consent/erasure still missing).
 
 ---
 

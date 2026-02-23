@@ -4,7 +4,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { SiteService } from '@/lib/services/site-service';
-import { isOriginAllowed, parseAllowedOrigins } from '@/lib/security/cors';
+import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/logging/logger';
 import { qstash } from '@/lib/qstash/client';
@@ -32,7 +32,6 @@ export const runtime = 'nodejs';
 const ERROR_MESSAGE_MAX_LEN = 500;
 
 const OPSMANTIK_VERSION = '2.1.0-upstash';
-const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 /** 500/min allows view+heartbeat+scroll+conversion+session_end burst + retries without 429. Use OPSMANTIK_SYNC_RL_SITE_OVERRIDE for per-site override. */
 const DEFAULT_RL_LIMIT = 500;
@@ -115,22 +114,8 @@ export async function GET(req: NextRequest) {
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const { isAllowed } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-
-    const headers: Record<string, string> = {
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-OpsMantik-Version',
-        'Access-Control-Max-Age': '86400',
-        'Vary': 'Origin',
-        'X-OpsMantik-Version': OPSMANTIK_VERSION,
-    };
-
-    if (isAllowed && origin) {
-        headers['Access-Control-Allow-Origin'] = origin;
-        headers['Access-Control-Allow-Credentials'] = 'true';
-    }
-
-    return new NextResponse(null, { status: isAllowed ? 200 : 403, headers });
+    const headers = getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION });
+    return new NextResponse(null, { status: 200, headers });
 }
 
 /**
@@ -184,22 +169,10 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
 
   return async function POST(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-
     const baseHeaders: Record<string, string> = {
         ...getBuildInfoHeaders(),
-        'Vary': 'Origin',
-        'X-OpsMantik-Version': OPSMANTIK_VERSION,
+        ...getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION }),
     };
-
-    if (origin) {
-        baseHeaders['Access-Control-Allow-Origin'] = origin;
-        if (isAllowed) baseHeaders['Access-Control-Allow-Credentials'] = 'true';
-    }
-
-    if (!isAllowed) {
-        return NextResponse.json(createSyncResponse(false, null, { error: 'Origin not allowed', reason }), { status: 403, headers: baseHeaders });
-    }
 
     const contentLength = req.headers.get('content-length');
     if (contentLength !== null && contentLength !== undefined) {

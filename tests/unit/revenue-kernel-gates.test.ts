@@ -37,10 +37,10 @@ test('PR gate: rate limit 429 sets x-opsmantik-ratelimit (non-billable)', () => 
   assert.ok(!rateLimitBlock.includes('x-opsmantik-quota-exceeded'), 'rate limit 429 must NOT set x-opsmantik-quota-exceeded (429 reason separation)');
 });
 
-test('PR gate: evaluation order Auth -> Rate limit -> Idempotency -> Quota -> Publish', () => {
+test('PR gate: evaluation order Auth (validateSite) -> Rate limit -> Idempotency -> Quota -> Publish', () => {
   const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  const auth = src.indexOf('isOriginAllowed');
-  const rateLimit = src.indexOf('rl.allowed');
+  const auth = src.indexOf('validateSiteFn');
+  const rateLimit = src.indexOf('rl.allowed', auth); // main-path rate limit (after validateSite)
   const idempotency = src.indexOf('tryInsert(siteIdUuid');
   const quota = src.indexOf('evaluateQuota(plan,'); // call site, not import
   const publish = src.indexOf('qstash.publishJSON');

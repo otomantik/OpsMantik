@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
-import { parseAllowedOrigins, isOriginAllowed } from '@/lib/security/cors';
+import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/logging/logger';
@@ -30,7 +30,6 @@ export const dynamic = 'force-dynamic';
 
 const ROUTE = '/api/call-event/v2';
 const OPSMANTIK_VERSION = '2.0.0-proxy';
-const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const MAX_BODY_BYTES = 64 * 1024;
 function getEventIdMode(): EventIdMode {
@@ -62,53 +61,18 @@ const CallEventV2Schema = z
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get('origin');
-  const signingDisabledCors =
-    process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
-  const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-
-  // If signing is enabled, CORS allowlist is not required: the HMAC signature is the auth boundary.
-  const allowAnyOrigin = !signingDisabledCors;
-
-  const headers: Record<string, string> = {
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Ops-Site-Id, X-Ops-Ts, X-Ops-Signature, X-Ops-Proxy, X-Ops-Proxy-Host',
-    'Access-Control-Max-Age': '86400',
-    Vary: 'Origin',
-    'X-OpsMantik-Version': OPSMANTIK_VERSION,
-    'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
-    'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
-  };
-
-  // For signed call-event endpoint, allow any origin by reflecting it (still protected by HMAC).
-  if ((allowAnyOrigin || isAllowed) && origin) headers['Access-Control-Allow-Origin'] = origin;
-  return new NextResponse(null, { status: (allowAnyOrigin || isAllowed) ? 200 : 403, headers });
+  const headers = getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION });
+  return new NextResponse(null, { status: 200, headers });
 }
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get('x-request-id') ?? undefined;
 
   try {
-    // CORS:
-    // - If signing is enabled: allow any origin (HMAC is the auth boundary).
-    // - If signing is disabled (rollback): enforce allowlist for browser requests.
-    // - If Origin is missing: allow (server-to-server / proxy).
     const origin = req.headers.get('origin');
-    const signingDisabledCors =
-      process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
-    const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-    const allowAnyOrigin = !signingDisabledCors;
-    const allowByCors = !origin ? true : (allowAnyOrigin || isAllowed);
-
     const baseHeaders: Record<string, string> = {
-      Vary: 'Origin',
-      'X-OpsMantik-Version': OPSMANTIK_VERSION,
-      'X-CORS-Status': !origin ? 'no_origin' : (allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected')),
-      'X-CORS-Reason': !origin ? 'no_origin' : (allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok')),
+      ...getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION }),
     };
-    if (allowByCors && origin) baseHeaders['Access-Control-Allow-Origin'] = origin;
-    if (!allowByCors) {
-      return NextResponse.json({ error: 'Origin not allowed', reason }, { status: 403, headers: baseHeaders });
-    }
 
     // Read raw body for signature + size guard
     const rawBody = await req.text();

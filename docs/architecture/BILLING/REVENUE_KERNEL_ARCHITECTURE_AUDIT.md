@@ -1,7 +1,7 @@
 # Revenue Kernel — Architecture Audit & Freeze
 
-**Tarih:** 13 Şubat 2026  
-**Amaç:** Revenue Kernel mimarisini doğrulamak, yarış koşullarını ve invaryantları kilitlemek, Go/No-Go kararı için tablo sunmak.
+**Date:** 2026-02-13  
+**Purpose:** Validate Revenue Kernel architecture, lock race conditions and invariants, and provide a table for Go/No-Go decision.
 
 ---
 
@@ -172,4 +172,4 @@
 
 ---
 
-*Bu denetim, Revenue Kernel mimarisini donduğu ve PR gate’lerde referans alınabilir.*
+*This audit freezes the Revenue Kernel architecture and serves as a reference for PR gates.*

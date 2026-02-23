@@ -31,7 +31,7 @@ export async function getAccessToken(creds: GoogleAdsCredentials): Promise<strin
     const text = await res.text();
     const hint =
       res.status === 400 && text.includes('invalid_grant')
-        ? ' (Refresh token expired/revoked or wrong Client ID/Secret — regenerate with node get-refresh-token.js using the same OAuth client)'
+        ? ' (Refresh token expired/revoked or wrong Client ID/Secret — regenerate using OAuth flow with the same client)'
         : '';
     throw new ProviderAuthError(
       `Google OAuth token refresh failed: ${res.status} ${text}${hint}`,

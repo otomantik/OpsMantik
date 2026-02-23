@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
-import { parseAllowedOrigins, isOriginAllowed } from '@/lib/security/cors';
+import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/logging/logger';
@@ -30,9 +30,6 @@ export const dynamic = 'force-dynamic';
 // Global version for debug verification
 const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 
-// Parse allowed origins (fail-closed in production)
-const ALLOWED_ORIGINS = parseAllowedOrigins();
-
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
 
 const CallEventSchema = z
@@ -57,33 +54,13 @@ const CallEventSchema = z
 
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const signingDisabledCors =
-        process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
-    const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-    const allowAnyOrigin = !signingDisabledCors;
-
-    const headers: Record<string, string> = {
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-Ops-Site-Id, X-Ops-Ts, X-Ops-Signature',
-        'Access-Control-Max-Age': '86400',
-        'Vary': 'Origin',
+    const headers = getIngestCorsHeaders(origin, {
         'X-OpsMantik-Version': OPSMANTIK_VERSION,
-        'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
-        'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
         'X-Ops-Deprecated': '1',
         'X-Ops-Deprecated-Use': CALL_EVENT_V2_ROUTE,
-        'Sunset': DEPRECATION_SUNSET,
-    };
-
-    // For signed call-event endpoint, allow any origin by reflecting it (still protected by HMAC).
-    if ((allowAnyOrigin || isAllowed) && origin) {
-        headers['Access-Control-Allow-Origin'] = origin;
-    }
-
-    return new NextResponse(null, {
-        status: (allowAnyOrigin || isAllowed) ? 200 : 403,
-        headers,
+        Sunset: DEPRECATION_SUNSET,
     });
+    return new NextResponse(null, { status: 200, headers });
 }
 
 const CALL_EVENT_ROUTE = '/api/call-event';
@@ -96,36 +73,15 @@ function getEventIdMode(): EventIdMode {
 export async function POST(req: NextRequest) {
     const requestId = req.headers.get('x-request-id') ?? undefined;
     try {
-        // CORS check
         const origin = req.headers.get('origin');
-        const { isAllowed, reason } = isOriginAllowed(origin, ALLOWED_ORIGINS);
-
-        // If signing is enabled, CORS allowlist is not required: the HMAC signature is the auth boundary.
-        const signingDisabledCors =
-            process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
-        const allowAnyOrigin = !signingDisabledCors;
-
         const baseHeaders: Record<string, string> = {
-            'Vary': 'Origin',
-            'X-OpsMantik-Version': OPSMANTIK_VERSION,
-            'X-CORS-Status': allowAnyOrigin ? 'relaxed' : (isAllowed ? 'allowed' : 'rejected'),
-            'X-CORS-Reason': allowAnyOrigin ? 'signed_any_origin' : (reason || 'ok'),
-            'X-Ops-Deprecated': '1',
-            'X-Ops-Deprecated-Use': CALL_EVENT_V2_ROUTE,
-            'Sunset': DEPRECATION_SUNSET,
+            ...getIngestCorsHeaders(origin, {
+                'X-OpsMantik-Version': OPSMANTIK_VERSION,
+                'X-Ops-Deprecated': '1',
+                'X-Ops-Deprecated-Use': CALL_EVENT_V2_ROUTE,
+                Sunset: DEPRECATION_SUNSET,
+            }),
         };
-
-        if ((allowAnyOrigin || isAllowed) && origin) {
-            baseHeaders['Access-Control-Allow-Origin'] = origin;
-        }
-
-        // Only enforce allowlist when unsigned rollback mode is enabled.
-        if (!allowAnyOrigin && !isAllowed) {
-            return NextResponse.json(
-                { error: 'Origin not allowed', reason },
-                { status: 403, headers: baseHeaders }
-            );
-        }
 
         // Rate limiting: 50 requests per minute per IP (calls are less frequent)
         const clientId = RateLimitService.getClientId(req);
