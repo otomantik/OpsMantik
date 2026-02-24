@@ -62,7 +62,9 @@ const CallEventV2Schema = z
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get('origin');
   const headers = getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION });
-  return new NextResponse(null, { status: 200, headers });
+  const res = new NextResponse(null, { status: 200, headers });
+  if (origin) res.headers.set('Access-Control-Allow-Credentials', 'true');
+  return res;
 }
 
 export async function POST(req: NextRequest) {

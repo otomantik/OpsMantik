@@ -60,7 +60,9 @@ export async function OPTIONS(req: NextRequest) {
         'X-Ops-Deprecated-Use': CALL_EVENT_V2_ROUTE,
         Sunset: DEPRECATION_SUNSET,
     });
-    return new NextResponse(null, { status: 200, headers });
+    const res = new NextResponse(null, { status: 200, headers });
+    if (origin) res.headers.set('Access-Control-Allow-Credentials', 'true');
+    return res;
 }
 
 const CALL_EVENT_ROUTE = '/api/call-event';

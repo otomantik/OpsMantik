@@ -17,8 +17,9 @@
   // Preferred attribute: data-ops-site-id (V2). Back-compat: data-site-id.
   const scriptTag = document.currentScript || document.querySelector('script[data-ops-site-id], script[data-site-id]');
   let siteId = scriptTag?.getAttribute('data-ops-site-id') || scriptTag?.getAttribute('data-site-id') || '';
-  if (!siteId && typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.siteId) {
-    siteId = String(window.opmantikConfig.siteId);
+  if (!siteId && typeof window !== 'undefined') {
+    const cfg = window.opsmantikConfig || window.opmantikConfig;
+    if (cfg && cfg.siteId) siteId = String(cfg.siteId);
   }
   if (!siteId) {
     var scripts = document.getElementsByTagName('script');
@@ -54,14 +55,14 @@
     apiSource = 'prod-default';
   }
 
-  // Configuration (neutral key names for ad-blocker avoidance)
+  // Configuration (storage keys: opsmantik_* for correct brand spelling)
   const CONFIG = {
     apiUrl: apiUrl,
-    sessionKey: 'opmantik_session_sid',
-    fingerprintKey: 'opmantik_session_fp',
-    contextKey: 'opmantik_session_context',
-    contextWbraidKey: 'opmantik_session_wbraid',
-    contextGbraidKey: 'opmantik_session_gbraid',
+    sessionKey: 'opsmantik_session_sid',
+    fingerprintKey: 'opsmantik_session_fp',
+    contextKey: 'opsmantik_session_context',
+    contextWbraidKey: 'opsmantik_session_wbraid',
+    contextGbraidKey: 'opsmantik_session_gbraid',
     heartbeatInterval: 60000, // 60 seconds
     sessionTimeout: 1800000, // 30 minutes
   };
@@ -103,9 +104,10 @@
     try {
       if (typeof window === 'undefined') return;
       var w = window;
-      var explicitConfig = w.opmantikConfig && 'consentScopes' in w.opmantikConfig;
+      var scriptCfg = w.opsmantikConfig || w.opmantikConfig;
+      var explicitConfig = scriptCfg && 'consentScopes' in scriptCfg;
       if (explicitConfig) {
-        updateTrackerConsent(Array.isArray(w.opmantikConfig.consentScopes) ? w.opmantikConfig.consentScopes : []);
+        updateTrackerConsent(Array.isArray(scriptCfg.consentScopes) ? scriptCfg.consentScopes : []);
         return;
       }
       var dc = (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-consent')) || '';
@@ -517,6 +519,7 @@
         body: body,
         keepalive: true,
         signal: controller.signal,
+        credentials: 'omit',
       });
       clearTimeout(timeoutId);
       var throttled = false;
@@ -704,9 +707,10 @@
   // Call Event API — Phone/WhatsApp tıklamalarını calls tablosuna kaydet
   function sendCallEvent(phoneNumber) {
     const session = getOrCreateSession();
+    const scriptCfgForCall = typeof window !== 'undefined' ? (window.opsmantikConfig || window.opmantikConfig) : null;
     const proxyUrl =
       (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-proxy-url')) ||
-      (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsProxyUrl) ||
+      (scriptCfgForCall && scriptCfgForCall.opsProxyUrl) ||
       '';
     const callEventUrl = isLocalhost ? window.location.origin + '/api/call-event/v2' : 'https://console.opsmantik.com/api/call-event/v2';
 
@@ -729,6 +733,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: rawBody,
         keepalive: true,
+        credentials: 'omit',
       }).catch(() => { /* silent */ });
       return;
     }
@@ -736,7 +741,7 @@
     // V1 fallback: Signed request (HMAC-SHA256): requires data-ops-secret on script tag
     const secret =
       (scriptTag && scriptTag.getAttribute && scriptTag.getAttribute('data-ops-secret')) ||
-      (typeof window !== 'undefined' && window.opmantikConfig && window.opmantikConfig.opsSecret) ||
+      (scriptCfgForCall && scriptCfgForCall.opsSecret) ||
       '';
     const debug = localStorage.getItem('opsmantik_debug') === '1';
 
@@ -764,6 +769,7 @@
             },
             body: rawBody,
             keepalive: true,
+            credentials: 'omit',
           });
         })
         .catch(() => { /* silent */ });
@@ -777,6 +783,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: rawBody,
       keepalive: true,
+      credentials: 'omit',
     }).catch(() => { /* silent */ });
   }
 
@@ -924,13 +931,14 @@
     });
   }
 
-  // Public API
-  window.opmantik = {
+  // Public API (correct spelling: opsmantik; legacy opmantik for backward compatibility)
+  window.opsmantik = {
     send: sendEvent,
     session: getOrCreateSession,
     setConsent: function (scopes) { updateTrackerConsent(Array.isArray(scopes) ? scopes : []); },
     _initialized: true,
   };
+  window.opmantik = window.opsmantik;
 
   // 4. Initialization — process outbox on load
   if (document.readyState === 'loading') {
