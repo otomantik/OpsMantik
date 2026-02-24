@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
+import { logWarn } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,8 @@ export const dynamic = 'force-dynamic';
  * Body: { site_id: string, call_ids: string[] }
  *
  * Side effect: Marks ONLY provided call_ids as oci_status='uploaded' (site-scoped).
+ * Canonical conversion_sends increment: after successful UPDATE, increment_usage_checked.
+ * On LIMIT: increment skip, structured warn log, 200 OK (ACK idempotent değil; 429 duplicate risk).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     const entitlements = await getEntitlements(siteId, adminClient);
     try {
-      requireCapability(entitlements, 'oci_upload');
+      requireCapability(entitlements, 'google_ads_sync');
     } catch (err) {
       if (err instanceof EntitlementError) {
         return NextResponse.json({ error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: err.capability }, { status: 403 });
@@ -72,6 +75,34 @@ export async function POST(req: NextRequest) {
         { error: 'ACK update failed', details: error.message },
         { status: 500 }
       );
+    }
+
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const currentMonthStart = `${year}-${month}-01`;
+
+    const { data: incResult, error: incError } = await adminClient.rpc('increment_usage_checked', {
+      p_site_id: siteId,
+      p_month: currentMonthStart,
+      p_kind: 'conversion_sends',
+      p_limit: entitlements.limits.monthly_conversion_sends,
+    });
+
+    if (incError) {
+      logWarn('oci_ack_increment_error', { site_id: siteId, call_ids: callIds, error: incError.message });
+    } else {
+      const result = incResult as { ok?: boolean; reason?: string } | null;
+      if (result && result.ok === false && result.reason === 'LIMIT') {
+        logWarn('oci_ack_conversion_sends_limit', {
+          site_id: siteId,
+          call_ids: callIds,
+          tier: entitlements.tier,
+          limit: entitlements.limits.monthly_conversion_sends,
+          reason: 'LIMIT',
+          kind: 'conversion_sends',
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, site_id: siteId, updated: callIds.length, batch_id: batchId });
