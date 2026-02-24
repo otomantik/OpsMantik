@@ -37,7 +37,7 @@ export interface GoogleAdsConversionItem {
  * "Ready-for-Google" Exit Valve: reads from offline_conversion_queue (status = QUEUED),
  * returns JSON formatted for Google Ads Script consumption.
  *
- * Auth: x-api-key must match OCI_API_KEY.
+ * Auth: x-api-key must match OCI_API_KEY (env on Vercel).
  * Optional: markAsExported=true → updates returned rows to PROCESSING so they are not re-fetched.
  */
 export async function GET(req: NextRequest) {
