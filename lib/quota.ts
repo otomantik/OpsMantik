@@ -19,10 +19,11 @@ export type SitePlan = {
   hard_cap_multiplier: number;
 };
 
+/** Sites without a site_plans row get this. High default so ingest never blocks in normal operation. */
 const defaultFreePlan: SitePlan = {
   site_id: '',
-  monthly_limit: 1000,
-  soft_limit_enabled: false,
+  monthly_limit: 100_000,
+  soft_limit_enabled: true,
   hard_cap_multiplier: DEFAULT_HARD_CAP_MULTIPLIER,
 };
 

@@ -34,11 +34,17 @@ const ERROR_MESSAGE_MAX_LEN = 500;
 
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 
-/** 500/min allows view+heartbeat+scroll+conversion+session_end burst + retries without 429. Use OPSMANTIK_SYNC_RL_SITE_OVERRIDE for per-site override. */
-const DEFAULT_RL_LIMIT = 500;
+/** Default req/min per site:clientId. Env OPSMANTIK_SYNC_RL_DEFAULT overrides (e.g. 5000). High default so normal traffic does not hit 429. */
+const DEFAULT_RL_LIMIT =
+  typeof process.env.OPSMANTIK_SYNC_RL_DEFAULT !== 'undefined' && process.env.OPSMANTIK_SYNC_RL_DEFAULT !== ''
+    ? Math.max(500, parseInt(process.env.OPSMANTIK_SYNC_RL_DEFAULT, 10) || 2000)
+    : 2000;
 const RL_WINDOW_MS = 60000;
 
-/** Parse OPSMANTIK_SYNC_RL_SITE_OVERRIDE e.g. "siteId1:500,siteId2:300" → Map(siteId -> limit). Temporary relief for a site hitting 429. */
+/** Max events per batch request. Batch support removes 400 batch_not_supported and reduces request count (fewer 429). */
+const MAX_BATCH_SIZE = 50;
+
+/** Parse OPSMANTIK_SYNC_RL_SITE_OVERRIDE e.g. "siteId1:5000,siteId2:3000" → Map(siteId -> limit). Optional per-site override. */
 function getSiteRateLimitOverrides(): Map<string, number> {
   const raw = process.env.OPSMANTIK_SYNC_RL_SITE_OVERRIDE;
   if (!raw || typeof raw !== 'string') return new Map();
@@ -200,7 +206,8 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'invalid_json' } });
     }
 
-    // --- 1.5 Batch wrapper: client may send { events: [ payload ] } or { events: [ p1, p2, ... ] }. We accept single payload only.
+    // --- 1.5 Normalize to array: single payload or { events: [ ... ] }. Batch supported (no more 400 batch_not_supported).
+    let rawBodies: unknown[];
     if (typeof json === 'object' && json !== null && Array.isArray((json as Record<string, unknown>).events)) {
         const events = (json as Record<string, unknown>).events as unknown[];
         if (events.length === 0) {
@@ -209,24 +216,35 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
                 { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'events_empty' } }
             );
         }
-        if (events.length > 1) {
-            return NextResponse.json(
-                { ok: false, error: 'batch_not_supported', code: 'batch_not_supported' },
-                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_not_supported' } }
-            );
-        }
-        json = events[0];
+        rawBodies = events.slice(0, MAX_BATCH_SIZE);
+    } else {
+        rawBodies = [json];
     }
 
-    // --- 2. Request Validation (needed for siteId and body before validateSite) ---
-    const parsed = parseValidIngestPayload(json);
-    if (parsed.kind === 'invalid') {
-        return NextResponse.json(
-            { ok: false, error: 'invalid_payload', code: parsed.error },
-            { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': parsed.error } }
-        );
+    // --- 2. Validate all payloads and require same site_id ---
+    type ValidIngestPayload = import('@/lib/types/ingest').ValidIngestPayload;
+    const bodies: ValidIngestPayload[] = [];
+    for (let i = 0; i < rawBodies.length; i++) {
+        const parsed = parseValidIngestPayload(rawBodies[i]);
+        if (parsed.kind === 'invalid') {
+            firstError = parsed.error;
+            return NextResponse.json(
+                { ok: false, error: 'invalid_payload', code: parsed.error },
+                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': parsed.error } }
+            );
+        }
+        bodies.push(parsed.data);
     }
-    const body = parsed.data;
+    const firstSiteId = bodies[0].s;
+    for (let i = 1; i < bodies.length; i++) {
+        if (bodies[i].s !== firstSiteId) {
+            return NextResponse.json(
+                { ok: false, error: 'invalid_payload', code: 'batch_mixed_sites' },
+                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_mixed_sites' } }
+            );
+        }
+    }
+    const body = bodies[0];
 
     // --- 3. Site validation (MUST run before consent). Site invalid → 400/403, NOT 204. ---
     const validateSiteFn = deps?.validateSite ?? SiteService.validateSite;
@@ -239,7 +257,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     }
     const siteIdUuid = site.id;
 
-    // --- 4. Rate Limit (abuse/DoS). Key = siteId:clientId when siteId present. ---
+    // --- 4. Rate Limit (abuse/DoS). One check per request (batch counts as one). ---
     const siteIdForRl = extractSiteIdForRateLimit(json);
     const clientId = RateLimitService.getClientId(req);
     const rateLimitKey = siteIdForRl ? `${siteIdForRl}:${clientId}` : clientId;
@@ -254,6 +272,126 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
     }
 
+    const yearMonth = getCurrentYearMonthUTC();
+    const updateBillableFalse = deps?.updateIdempotencyBillableFalse ?? updateIdempotencyBillableFalse;
+    const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; retries: number }) => {
+        await qstash.publishJSON({ url: args.url, body: args.body, retries: args.retries });
+    });
+    const doInsertFallback = deps?.insertFallback ?? (async (row: unknown) => {
+        const { error } = await adminClient.from('ingest_fallback_buffer').insert(row as Record<string, unknown>);
+        return { error };
+    });
+    const doIncrementRedis = deps?.incrementUsageRedis ?? incrementUsageRedis;
+    const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
+
+    // --- Batch: process each event and aggregate (or return on first 429/500). ---
+    if (bodies.length > 1) {
+        let queued = 0, duplicates = 0, skippedConsent = 0, degraded = 0;
+        for (const b of bodies) {
+            const consentScopes = Array.isArray((b as Record<string, unknown>).consent_scopes)
+                ? ((b as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
+                : Array.isArray(b.meta?.consent_scopes)
+                    ? (b.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+                    : [];
+            if (!consentScopes.includes('analytics')) {
+                skippedConsent++;
+                continue;
+            }
+            const billableDecision = classifyIngestBillable(b);
+            const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
+            const idempotencyKey = idempotencyVersion === '2'
+                ? await computeIdempotencyKeyV2(siteIdUuid, b, getServerNowMs())
+                : await computeIdempotencyKey(siteIdUuid, b);
+            const idempotencyResult = await tryInsert(siteIdUuid, idempotencyKey, {
+                billable: billableDecision.billable,
+                billingReason: billableDecision.reason,
+                eventCategory: b.ec,
+                eventAction: b.ea,
+                eventLabel: b.el,
+            });
+            if (idempotencyResult.error && !idempotencyResult.duplicate) {
+                logError('BILLING_GATE_CLOSED', { route: 'sync', site_id: b.s, error: String(idempotencyResult.error) });
+                return NextResponse.json({ status: 'billing_gate_closed' }, { status: 500, headers: baseHeaders });
+            }
+            if (idempotencyResult.duplicate) {
+                if (billableDecision.billable) incrementBillingIngestDuplicate();
+                duplicates++;
+                continue;
+            }
+            const idempotencyInserted = idempotencyResult.inserted;
+            if (idempotencyInserted && billableDecision.billable) {
+                const plan = await getSitePlan(siteIdUuid);
+                const { usage, source: usageSource } = await getUsage(siteIdUuid, yearMonth);
+                const decision = evaluateQuota(plan, usage + 1);
+                if (decision.reject) {
+                    incrementBillingIngestRejectedQuota();
+                    await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'rejected_quota' });
+                    const retryAfter = computeRetryAfterToMonthRollover();
+                    return NextResponse.json(
+                        createSyncResponse(false, null, { status: 'rejected_quota' }),
+                        { status: 429, headers: { ...baseHeaders, 'Retry-After': String(retryAfter), 'x-opsmantik-quota-exceeded': '1' } }
+                    );
+                }
+                const entitlements = await getEntitlements(siteIdUuid, adminClient);
+                const currentMonthStart = `${yearMonth}-01`;
+                const { data: incResult, error: incError } = await adminClient.rpc('increment_usage_checked', {
+                    p_site_id: siteIdUuid,
+                    p_month: currentMonthStart,
+                    p_kind: 'revenue_events',
+                    p_limit: entitlements.limits.monthly_revenue_events,
+                });
+                if (incError) {
+                    await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'entitlements_increment_error' });
+                    const retryAfter = computeRetryAfterToMonthRollover();
+                    return NextResponse.json(createSyncResponse(false, null, { error: 'quota_exceeded' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1', 'Retry-After': String(retryAfter) } });
+                }
+                const result = incResult as { ok?: boolean; reason?: string } | null;
+                if (result && result.ok === false && result.reason === 'LIMIT') {
+                    incrementBillingIngestRejectedQuota();
+                    await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'rejected_entitlements_quota' });
+                    const retryAfter = computeRetryAfterToMonthRollover();
+                    return NextResponse.json(createSyncResponse(false, null, { status: 'rejected_quota' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1', 'Retry-After': String(retryAfter) } });
+                }
+            }
+            const ip = normalizeIp(req.headers.get('x-forwarded-for'));
+            const ua = normalizeUserAgent(req.headers.get('user-agent'));
+            const { extractGeoInfo } = await import('@/lib/geo');
+            const { geoInfo } = extractGeoInfo(req, ua, b.meta);
+            const ingestId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            const workerPayload = {
+                ...b,
+                consent_scopes: consentScopes,
+                ingest_id: ingestId,
+                ip,
+                ua,
+                geo_city: geoInfo.city !== 'Unknown' ? geoInfo.city : undefined,
+                geo_country: geoInfo.country !== 'Unknown' ? geoInfo.country : undefined,
+                geo_timezone: geoInfo.timezone !== 'Unknown' ? geoInfo.timezone : undefined,
+            };
+            try {
+                await doPublish({ url: workerUrl, body: workerPayload, retries: 3 });
+                if (idempotencyInserted && billableDecision.billable) {
+                    await doIncrementRedis(siteIdUuid, yearMonth);
+                    incrementBillingIngestAllowed();
+                }
+                queued++;
+            } catch (err) {
+                const errorShort = String((err as Error)?.message ?? err).slice(0, ERROR_MESSAGE_MAX_LEN);
+                try {
+                    await doInsertFallback(buildFallbackRow(siteIdUuid, workerPayload, errorShort || null));
+                    if (idempotencyInserted && billableDecision.billable) await doIncrementRedis(siteIdUuid, yearMonth);
+                } catch { /* ignore */ }
+                incrementBillingIngestDegraded();
+                degraded++;
+            }
+        }
+        return NextResponse.json(
+            createSyncResponse(true, 10, { status: 'batch', queued, duplicates, skipped_consent: skippedConsent, degraded, v: OPSMANTIK_VERSION }),
+            { headers: baseHeaders }
+        );
+    }
+
+    // --- Single-event path (unchanged flow below) ---
     // COMPLIANCE INVARIANT:
     // Consent gate must execute AFTER site validation but BEFORE idempotency.
     // Changing this order breaks GDPR compliance.
@@ -304,8 +442,6 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const idempotencyInserted = idempotencyResult.inserted;
 
     // --- 2.7 Quota (PR-3). After idempotency insert success, before publish. Reject → 429, billable=false; overage → header + billing_state. ---
-    const yearMonth = getCurrentYearMonthUTC();
-    const updateBillableFalse = deps?.updateIdempotencyBillableFalse ?? updateIdempotencyBillableFalse;
     if (idempotencyInserted && billableDecision.billable) {
         let decision: QuotaDecision;
         if (deps?.getQuotaDecision) {
@@ -405,17 +541,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         is_proxy_detected: geoInfo.is_proxy_detected ?? undefined,
     };
 
-    const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; retries: number }) => {
-        await qstash.publishJSON({ url: args.url, body: args.body, retries: args.retries });
-    });
-    const doInsertFallback = deps?.insertFallback ?? (async (row: unknown) => {
-        const { error } = await adminClient.from('ingest_fallback_buffer').insert(row as Record<string, unknown>);
-        return { error };
-    });
-    const doIncrementRedis = deps?.incrementUsageRedis ?? incrementUsageRedis;
-
     try {
-        const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
         await doPublish({ url: workerUrl, body: workerPayload, retries: 3 });
         if (idempotencyInserted && billableDecision.billable) {
             await doIncrementRedis(siteIdUuid, yearMonth);

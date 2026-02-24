@@ -18,12 +18,12 @@ Save + Production redeploy. If origin is not in the list, 403 is returned; the b
 
 ## Emergency Relief: Site Limit Override (If No Events Flow Today)
 
-Add to Vercel (or hosting) **Environment Variables**:
+Default is now **2000/min** per site. If one site still hits 429, add:
 
 - **Name:** `OPSMANTIK_SYNC_RL_SITE_OVERRIDE`
-- **Value:** `b3e9634575df45c390d99d2623ddcde5:500`
+- **Value:** `b3e9634575df45c390d99d2623ddcde5:5000` (or higher)
 
-This sets the limit to **500/min** for that site instead of 100; events start flowing again. Trigger deploy (save + redeploy). Remove when no longer needed to revert to default 100.
+Optional: **OPSMANTIK_SYNC_RL_DEFAULT** = `5000` to raise the default for all sites. See `docs/runbooks/SYNC_RATE_LIMIT_AND_QUOTA_DEFAULTS.md` for full reference.
 
 ## 1) Vercel Auto Deploy (If GitHub Connected)
 

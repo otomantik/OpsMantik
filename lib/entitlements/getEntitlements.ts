@@ -9,13 +9,17 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { parseEntitlements, FREE_FALLBACK, PRO_FULL_ENTITLEMENTS, type Entitlements } from './types';
 
-/** When true, getEntitlements returns PRO_FULL_ENTITLEMENTS so all features are on (prod override). Server-only. */
-const FULL_ACCESS = process.env.OPSMANTIK_ENTITLEMENTS_FULL_ACCESS === 'true';
+/** When true, getEntitlements returns PRO_FULL_ENTITLEMENTS (unlimited revenue_events, etc.). Server-only. */
+const EXPLICIT_FULL_ACCESS = process.env.OPSMANTIK_ENTITLEMENTS_FULL_ACCESS === 'true';
+/** In production we default to full access so sync/queue never block on subscription limits. Set OPSMANTIK_ENTITLEMENTS_STRICT=true to use DB subscriptions. */
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const STRICT_ENTITLEMENTS = process.env.OPSMANTIK_ENTITLEMENTS_STRICT === 'true';
+const FULL_ACCESS = EXPLICIT_FULL_ACCESS || (IS_PRODUCTION && !STRICT_ENTITLEMENTS);
 
 /**
  * Get entitlements for a site. Use adminClient when no user context (e.g. sync route).
  * On error or invalid response, returns FREE_FALLBACK so the app never crashes and remains secure.
- * When OPSMANTIK_ENTITLEMENTS_FULL_ACCESS=true (e.g. in prod), returns PRO_FULL_ENTITLEMENTS so all functions are enabled.
+ * Production: defaults to PRO_FULL_ENTITLEMENTS (no 429 from monthly_revenue_events). Set OPSMANTIK_ENTITLEMENTS_STRICT=true to enforce DB subscriptions.
  */
 export async function getEntitlements(
   siteId: string,
