@@ -227,7 +227,6 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     for (let i = 0; i < rawBodies.length; i++) {
         const parsed = parseValidIngestPayload(rawBodies[i]);
         if (parsed.kind === 'invalid') {
-            firstError = parsed.error;
             return NextResponse.json(
                 { ok: false, error: 'invalid_payload', code: parsed.error },
                 { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': parsed.error } }
