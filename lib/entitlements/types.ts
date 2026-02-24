@@ -9,7 +9,7 @@ export type CapabilityKey =
   | 'dashboard_live_queue'
   | 'dashboard_traffic_widget'
   | 'csv_export'
-  | 'oci_upload'
+  | 'google_ads_sync'
   | 'full_attribution_history'
   | 'ai_cro_insights'
   | 'superadmin_god_mode'
@@ -19,7 +19,7 @@ export interface EntitlementsLimits {
   visible_queue_items: number;
   history_days: number;
   monthly_revenue_events: number;
-  monthly_oci_uploads: number;
+  monthly_conversion_sends: number;
 }
 
 export interface Entitlements {
@@ -35,7 +35,7 @@ export const FREE_FALLBACK: Entitlements = {
     dashboard_live_queue: false,
     dashboard_traffic_widget: false,
     csv_export: false,
-    oci_upload: false,
+    google_ads_sync: false,
     full_attribution_history: false,
     ai_cro_insights: false,
     superadmin_god_mode: false,
@@ -45,7 +45,7 @@ export const FREE_FALLBACK: Entitlements = {
     visible_queue_items: 0,
     history_days: 0,
     monthly_revenue_events: 0,
-    monthly_oci_uploads: 0,
+    monthly_conversion_sends: 0,
   },
 };
 
@@ -56,7 +56,7 @@ export const PRO_FULL_ENTITLEMENTS: Entitlements = {
     dashboard_live_queue: true,
     dashboard_traffic_widget: true,
     csv_export: true,
-    oci_upload: true,
+    google_ads_sync: true,
     full_attribution_history: true,
     ai_cro_insights: true,
     superadmin_god_mode: false,
@@ -66,7 +66,7 @@ export const PRO_FULL_ENTITLEMENTS: Entitlements = {
     visible_queue_items: 500,
     history_days: 365,
     monthly_revenue_events: -1,
-    monthly_oci_uploads: -1,
+    monthly_conversion_sends: -1,
   },
 };
 
@@ -74,7 +74,7 @@ const CAPABILITY_KEYS: CapabilityKey[] = [
   'dashboard_live_queue',
   'dashboard_traffic_widget',
   'csv_export',
-  'oci_upload',
+  'google_ads_sync',
   'full_attribution_history',
   'ai_cro_insights',
   'superadmin_god_mode',
@@ -97,8 +97,8 @@ export function parseEntitlements(raw: unknown): Entitlements | null {
   const visible_queue_items = Number(limits.visible_queue_items);
   const history_days = Number(limits.history_days);
   const monthly_revenue_events = Number(limits.monthly_revenue_events);
-  const monthly_oci_uploads = Number(limits.monthly_oci_uploads);
-  if (!Number.isInteger(visible_queue_items) || !Number.isInteger(history_days) || !Number.isInteger(monthly_revenue_events) || !Number.isInteger(monthly_oci_uploads)) {
+  const monthly_conversion_sends = Number(limits.monthly_conversion_sends);
+  if (!Number.isInteger(visible_queue_items) || !Number.isInteger(history_days) || !Number.isInteger(monthly_revenue_events) || !Number.isInteger(monthly_conversion_sends)) {
     return null;
   }
   return {
@@ -108,7 +108,7 @@ export function parseEntitlements(raw: unknown): Entitlements | null {
       visible_queue_items,
       history_days,
       monthly_revenue_events,
-      monthly_oci_uploads,
+      monthly_conversion_sends,
     },
   };
 }
