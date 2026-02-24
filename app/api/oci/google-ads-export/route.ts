@@ -64,17 +64,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
     }
 
-    const { data: site, error: siteError } = await adminClient
-      .from('sites')
-      .select('id, currency')
-      .eq('id', siteId)
-      .maybeSingle();
-
-    if (siteError || !site) {
+    // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
+    let site: { id: string; currency?: string | null } | null = null;
+    const byId = await adminClient.from('sites').select('id, currency').eq('id', siteId).maybeSingle();
+    if (byId.data) {
+      site = byId.data as { id: string; currency?: string | null };
+    }
+    if (!site) {
+      const byPublicId = await adminClient.from('sites').select('id, currency').eq('public_id', siteId).maybeSingle();
+      if (byPublicId.data) {
+        site = byPublicId.data as { id: string; currency?: string | null };
+      }
+    }
+    if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    const entitlements = await getEntitlements(siteId, adminClient);
+    const siteUuid = site.id;
+
+    const entitlements = await getEntitlements(siteUuid, adminClient);
     try {
       requireCapability(entitlements, 'google_ads_sync');
     } catch (err) {
@@ -92,7 +100,7 @@ export async function GET(req: NextRequest) {
     const query = adminClient
       .from('offline_conversion_queue')
       .select('id, gclid, wbraid, gbraid, conversion_time, value_cents, currency')
-      .eq('site_id', siteId)
+      .eq('site_id', siteUuid)
       .eq('status', 'QUEUED')
       .eq('provider_key', providerFilter)
       .order('created_at', { ascending: true });
@@ -122,7 +130,7 @@ export async function GET(req: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .in('id', idsToMark)
-        .eq('site_id', siteId)
+        .eq('site_id', siteUuid)
         .eq('status', 'QUEUED');
 
       if (updateError) {
