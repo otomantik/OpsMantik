@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 
     const entitlements = await getEntitlements(siteId, supabase);
     try {
-      requireCapability(entitlements, 'oci_upload');
+      requireCapability(entitlements, 'google_ads_sync');
     } catch (err) {
       if (err instanceof EntitlementError) {
         return NextResponse.json({ error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: err.capability }, { status: 403 });
