@@ -178,16 +178,18 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Format timestamptz/ISO string to Google Ads style: yyyy-MM-dd HH:mm:ssZ
- * (e.g. 2026-02-22 14:30:00+00:00).
+ * Format timestamptz/ISO string to Google Ads style: yyyy-MM-dd HH:mm:ss (UTC, no suffix)
+ * (e.g. 2026-02-22 14:30:00). No timezone suffix; script uses timeZone: Etc/UTC.
  */
 function formatConversionTime(isoOrEmpty: string): string {
   if (!isoOrEmpty || typeof isoOrEmpty !== 'string') {
-    return new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '+00:00');
+    const fallback = new Date();
+    return formatConversionTime(fallback.toISOString());
   }
   const d = new Date(isoOrEmpty);
   if (Number.isNaN(d.getTime())) {
-    return new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '+00:00');
+    const fallback = new Date();
+    return formatConversionTime(fallback.toISOString());
   }
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -195,5 +197,5 @@ function formatConversionTime(isoOrEmpty: string): string {
   const h = String(d.getUTCHours()).padStart(2, '0');
   const min = String(d.getUTCMinutes()).padStart(2, '0');
   const s = String(d.getUTCSeconds()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}:${s}+00:00`;
+  return `${y}-${m}-${day} ${h}:${min}:${s}`;
 }

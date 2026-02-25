@@ -76,7 +76,10 @@ function main() {
     'Conversion currency'
   ];
 
-  var upload = AdsApp.bulkUploads().newCsvUpload(columns, { moneyInMicros: false });
+  var upload = AdsApp.bulkUploads().newCsvUpload(columns, {
+    moneyInMicros: false,
+    timeZone: 'Etc/UTC'
+  });
   upload.forOfflineConversions();
   upload.setFileName('OpsMantik_OCI_' + new Date().getTime() + '.csv');
 
