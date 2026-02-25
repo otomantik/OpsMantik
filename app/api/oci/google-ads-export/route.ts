@@ -34,8 +34,9 @@ export interface GoogleAdsConversionItem {
 /**
  * GET /api/oci/google-ads-export?siteId=<uuid>&markAsExported=true
  *
- * "Ready-for-Google" Exit Valve: reads from offline_conversion_queue (status = QUEUED),
+ * "Ready-for-Google" Exit Valve: reads from offline_conversion_queue (status = QUEUED or RETRY),
  * returns JSON formatted for Google Ads Script consumption.
+ * RETRY = recovered from PROCESSING (e.g. script didn't ack); script re-uploads them.
  *
  * Auth: x-api-key must match OCI_API_KEY (env on Vercel).
  * Optional: markAsExported=true → updates returned rows to PROCESSING so they are not re-fetched.
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest) {
       .from('offline_conversion_queue')
       .select('id, gclid, wbraid, gbraid, conversion_time, value_cents, currency')
       .eq('site_id', siteUuid)
-      .eq('status', 'QUEUED')
+      .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter)
       .order('created_at', { ascending: true });
 
@@ -131,7 +132,7 @@ export async function GET(req: NextRequest) {
         })
         .in('id', idsToMark)
         .eq('site_id', siteUuid)
-        .eq('status', 'QUEUED');
+        .in('status', ['QUEUED', 'RETRY']);
 
       if (updateError) {
         return NextResponse.json(
