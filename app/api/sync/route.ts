@@ -122,7 +122,12 @@ export async function GET(req: NextRequest) {
 export async function OPTIONS(req: NextRequest) {
     const origin = req.headers.get('origin');
     const headers = getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION });
-    return new NextResponse(null, { status: 200, headers });
+    const res = new NextResponse(null, { status: 200, headers });
+    // Force credentials header on Response so it is not stripped (preflight requires it when request uses credentials).
+    if (origin) {
+        res.headers.set('Access-Control-Allow-Credentials', 'true');
+    }
+    return res;
 }
 
 /**

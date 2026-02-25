@@ -84,7 +84,7 @@ export function SiteSetup() {
           )}
 
           <code className="block px-2 py-1 bg-background border border-border rounded text-foreground text-sm leading-relaxed break-all">
-            {`<script defer src="https://assets.yourdomain.com/assets/core.js" data-ops-site-id="test_site_123" data-ops-consent="analytics" data-api="https://console.yourdomain.com/api/sync"></script>`}
+            {`<script defer src="https://assets.yourdomain.com/assets/core.js?v=2" data-ops-site-id="test_site_123" data-ops-consent="analytics" data-api="https://console.yourdomain.com/api/sync"></script>`}
           </code>
           <p className="text-xs text-muted-foreground mt-2">
             {t('dashboard.setup.replaceDomain', { domain: 'localhost:3000', production: 'opsmantik.com' })}

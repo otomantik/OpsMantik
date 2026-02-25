@@ -1,8 +1,8 @@
 /**
  * OpsMantik → Google Ads Offline Conversion Sync (Exit Valve)
  *
- * Configured for: Eslamed (eslamed.com)
- * Site ID: 81d957f3c7534f53b12ff305f9f07ae7
+ * Configured for: Eslamed (eslamed.com) — queue data is under this site UUID.
+ * API accepts either site UUID or public_id; queue is keyed by site_id (UUID).
  *
  * Consumes GET /api/oci/google-ads-export (offline_conversion_queue, status = QUEUED)
  * and uploads conversions via AdsApp.bulkUploads().newCsvUpload().forOfflineConversions().
@@ -14,7 +14,8 @@
  * conversionTime format: yyyy-MM-dd HH:mm:ss+00:00
  */
 function main() {
-  var siteId = '81d957f3c7534f53b12ff305f9f07ae7'; // Eslamed (eslamed.com)
+  // Kuyruk verisi bu site_id altında (b1264552...). public_id yerine UUID kullanıyoruz.
+  var siteId = 'b1264552-c859-40cb-a3fb-0ba057afd070'; // Eslamed – queue site
   var exportUrl = typeof OPSMANTIK_EXPORT_URL !== 'undefined'
     ? OPSMANTIK_EXPORT_URL
     : 'https://console.opsmantik.com/api/oci/google-ads-export';
@@ -55,8 +56,13 @@ function main() {
     return;
   }
 
-  if (!Array.isArray(conversions) || conversions.length === 0) {
-    Logger.log('OpsMantik: 0 records to upload.');
+  if (!Array.isArray(conversions)) {
+    Logger.log('OpsMantik: response is not an array: ' + jsonText.substring(0, 200));
+    return;
+  }
+  Logger.log('OpsMantik: API returned ' + conversions.length + ' record(s). URL: ' + url);
+  if (conversions.length === 0) {
+    Logger.log('OpsMantik: 0 records to upload. Check queue: SELECT * FROM offline_conversion_queue WHERE site_id = \'b1264552-c859-40cb-a3fb-0ba057afd070\' AND status = \'QUEUED\';');
     return;
   }
 

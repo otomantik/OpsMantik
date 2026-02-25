@@ -29,10 +29,12 @@ import {
 
 declare global {
   interface Window {
-    opmantik?: {
+    opsmantik?: {
       send: (category: string, action: string, label?: string, value?: number, metadata?: IngestMeta) => void;
       session: () => { sessionId: string; fingerprint: string; context: string };
     };
+    /** @deprecated Use window.opsmantik. Kept for backward compatibility. */
+    opmantik?: Window['opsmantik'];
   }
 }
 
@@ -80,7 +82,7 @@ export default function TestPage() {
     if (!siteId) return; // Wait for siteId
 
     // Check if tracker already exists
-    if (window.opmantik) {
+    if (window.opsmantik || window.opmantik) {
       debugLog('[TEST_PAGE] Tracker already loaded');
       setTrackerLoaded(true);
       updateSessionInfo();
@@ -92,7 +94,7 @@ export default function TestPage() {
     if (existingScript) {
       debugLog('[TEST_PAGE] Script already in DOM, waiting...');
       const checkInterval = setInterval(() => {
-        if (window.opmantik) {
+        if (window.opsmantik || window.opmantik) {
           setTrackerLoaded(true);
           updateSessionInfo();
           clearInterval(checkInterval);
@@ -106,12 +108,12 @@ export default function TestPage() {
     const timestamp = Date.now();
     script.src = `/ux-core.js?v=${timestamp}`;
     script.setAttribute('data-site-id', siteId);
-    script.setAttribute('id', 'opmantik-tracker-script');
+    script.setAttribute('id', 'opsmantik-tracker-script');
 
     script.onload = () => {
       debugLog('[TEST_PAGE] Tracker script loaded');
       setTimeout(() => {
-        if (window.opmantik) {
+        if (window.opsmantik || window.opmantik) {
           setTrackerLoaded(true);
           updateSessionInfo();
         } else {
@@ -134,9 +136,10 @@ export default function TestPage() {
   }, [siteId]);
 
   const updateSessionInfo = () => {
-    if (window.opmantik) {
+    const tracker = window.opsmantik || window.opmantik;
+    if (tracker) {
       try {
-        const session = window.opmantik.session();
+        const session = tracker.session();
         setSessionInfo({
           sessionId: session.sessionId,
           fingerprint: session.fingerprint,
@@ -149,16 +152,17 @@ export default function TestPage() {
   };
 
   const clearStorage = () => {
-    sessionStorage.removeItem('opmantik_session_sid');
-    sessionStorage.removeItem('opmantik_session_context');
-    localStorage.removeItem('opmantik_session_fp');
+    sessionStorage.removeItem('opsmantik_session_sid');
+    sessionStorage.removeItem('opsmantik_session_context');
+    localStorage.removeItem('opsmantik_session_fp');
     debugLog('[TEST_PAGE] Storage cleared');
     alert(t('test.page.storageCleared'));
     window.location.reload();
   };
 
   const sendEvent = (category: string, action: string, label?: string, value?: number, metadata?: IngestMeta) => {
-    if (!window.opmantik) {
+    const tracker = window.opsmantik || window.opmantik;
+    if (!tracker) {
       console.error('[TEST_PAGE] ❌ Tracker not loaded');
       alert(t('test.page.trackerNotLoaded'));
       return;
@@ -176,7 +180,7 @@ export default function TestPage() {
 
     try {
       // Send event via tracker with metadata
-      window.opmantik.send(category, action, label, value, metadata);
+      (window.opsmantik || window.opmantik)!.send(category, action, label, value, metadata);
 
       // Add to event log immediately (tracker handles API call asynchronously)
       setEventLog(prev => [{
@@ -209,7 +213,7 @@ export default function TestPage() {
     }
 
     // Store GCLID in sessionStorage so tracker picks it up
-    sessionStorage.setItem('opmantik_session_context', gclid);
+    sessionStorage.setItem('opsmantik_session_context', gclid);
     debugLog('[TEST_PAGE] GCLID stored in sessionStorage:', gclid);
 
     // Build URL with GCLID and UTM params
@@ -229,9 +233,10 @@ export default function TestPage() {
 
     // Force tracker to re-read context by triggering a new session check
     // The tracker reads from URL params first, then sessionStorage
-    if (window.opmantik?.session) {
+    const tracker = window.opsmantik || window.opmantik;
+    if (tracker?.session) {
       // Get fresh session with updated context
-      const session = window.opmantik.session();
+      const session = tracker.session();
       debugLog('[TEST_PAGE] Session context:', session.context);
     }
 

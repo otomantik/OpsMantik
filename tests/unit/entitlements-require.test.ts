@@ -23,7 +23,7 @@ function proEntitlements(): Entitlements {
       dashboard_live_queue: true,
       dashboard_traffic_widget: true,
       csv_export: true,
-      oci_upload: true,
+      google_ads_sync: true,
       full_attribution_history: true,
       ai_cro_insights: true,
       superadmin_god_mode: false,
@@ -33,35 +33,35 @@ function proEntitlements(): Entitlements {
       visible_queue_items: 1_000_000,
       history_days: 3650,
       monthly_revenue_events: 25_000,
-      monthly_oci_uploads: 25_000,
+      monthly_conversion_sends: 25_000,
     },
   };
 }
 
 test('requireCapability: granted capability does not throw', () => {
   const ent = proEntitlements();
-  requireCapability(ent, 'oci_upload');
+  requireCapability(ent, 'google_ads_sync');
   requireCapability(ent, 'csv_export');
   requireCapability(ent, 'dashboard_live_queue');
 });
 
 test('requireCapability: missing capability throws EntitlementError with correct code and capability', () => {
   assert.throws(
-    () => requireCapability(FREE_FALLBACK, 'oci_upload'),
+    () => requireCapability(FREE_FALLBACK, 'google_ads_sync'),
     EntitlementError,
-    'FREE_FALLBACK must throw for oci_upload (fail-closed)'
+    'FREE_FALLBACK must throw for google_ads_sync (fail-closed)'
   );
   try {
-    requireCapability(FREE_FALLBACK, 'oci_upload');
+    requireCapability(FREE_FALLBACK, 'google_ads_sync');
   } catch (err) {
-    assert.equal((err as EntitlementError).capability, 'oci_upload');
+    assert.equal((err as EntitlementError).capability, 'google_ads_sync');
     assert.equal((err as EntitlementError).code, 'CAPABILITY_REQUIRED');
   }
 });
 
-test('requireCapability: FREE tier without oci_upload throws', () => {
+test('requireCapability: FREE tier without google_ads_sync throws', () => {
   const free = { ...FREE_FALLBACK };
-  assert.throws(() => requireCapability(free, 'oci_upload'), EntitlementError);
+  assert.throws(() => requireCapability(free, 'google_ads_sync'), EntitlementError);
 });
 
 test('requireWithinLimit: usage below limit does not throw', () => {

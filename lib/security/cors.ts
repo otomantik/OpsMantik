@@ -128,6 +128,8 @@ export function getIngestCorsHeaders(
   };
   if (origin) {
     headers['Access-Control-Allow-Origin'] = origin;
+    // When request uses credentials: 'include', browser requires this to be 'true' (and origin cannot be '*').
+    headers['Access-Control-Allow-Credentials'] = 'true';
   } else {
     headers['Access-Control-Allow-Origin'] = '*';
   }

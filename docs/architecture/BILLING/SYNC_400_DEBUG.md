@@ -31,7 +31,7 @@ WHERE domain ILIKE '%jetsolar%' OR domain = 'jetsolar.com.tr';
 - jetsolar.com.tr’deki embed script’te bu değerin kullanıldığından emin ol:
   - `data-ops-site-id="<public_id>"` veya
   - `data-site-id="<public_id>"`
-  - Veya `window.opmantikConfig = { siteId: '<public_id>' };`
+  - Veya `window.opsmantikConfig = { siteId: '<public_id>' };` (veya legacy: `window.opmantikConfig`)
 - Script’te başka bir (eski/yanlış) site id varsa onu bu **public_id** ile değiştir, sayfayı yenile ve heartbeat’i tekrar dene.
 
 ## 3) Hâlâ 400 ise

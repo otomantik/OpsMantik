@@ -47,8 +47,8 @@ async function main() {
 
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-  // --- 1) get_entitlements_for_site: no subscription => FREE, oci_upload false ---
-  log('\n📋 1) get_entitlements_for_site (no sub => FREE, oci_upload false)', 'blue');
+  // --- 1) get_entitlements_for_site: no subscription => FREE, google_ads_sync false ---
+  log('\n📋 1) get_entitlements_for_site (no sub => FREE, google_ads_sync false)', 'blue');
   let siteUuid = null;
   if (sitePublicId) {
     const { data: siteRow } = await admin.from('sites').select('id').eq('public_id', sitePublicId).single();
@@ -64,11 +64,11 @@ async function main() {
     const { data: ent, error: entErr } = await admin.rpc('get_entitlements_for_site', { p_site_id: siteUuid });
     assert(!entErr, `get_entitlements_for_site must not error: ${entErr?.message}`);
     assert(ent?.tier, 'response must have tier');
-    const hasOci = ent?.capabilities?.oci_upload === true;
+    const hasGoogleAdsSync = ent?.capabilities?.google_ads_sync === true;
     if (ent?.tier === 'FREE') {
-      assert(!hasOci, 'FREE tier must have oci_upload false');
+      assert(!hasGoogleAdsSync, 'FREE tier must have google_ads_sync false');
     }
-    log(`   tier=${ent?.tier} oci_upload=${ent?.capabilities?.oci_upload}`, 'reset');
+    log(`   tier=${ent?.tier} google_ads_sync=${ent?.capabilities?.google_ads_sync}`, 'reset');
   }
 
   // --- 2) increment_usage_checked: limit 2 => 3rd call returns LIMIT ---
