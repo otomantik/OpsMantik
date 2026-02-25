@@ -122,6 +122,11 @@ export const en = {
   'adSpend.campaignRows': '{count} campaign row(s)',
   'adSpend.lastUpdated': 'Last updated',
   'adSpend.upsellTitle': 'Google Ads Spend is not enabled for this site.',
+  'adSpend.upsellDescription': 'Contact your account manager to enable this module.',
+  'adSpend.upsellCtaLabel': 'Contact sales',
+  'adSpend.totalCost': 'Total Spend',
+  'adSpend.campaigns': 'Campaigns',
+  'adSpend.costPerClick': 'Cost per Click',
 
   // Status
   'status.live': 'Live',

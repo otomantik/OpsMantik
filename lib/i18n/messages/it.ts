@@ -115,6 +115,11 @@ export const it = {
   "adSpend.campaignRows": "{count} riga/e campagna",
   "adSpend.lastUpdated": "Ultimo aggiornamento",
   "adSpend.upsellTitle": "Spesa Google Ads non abilitata per questo sito.",
+  "adSpend.upsellDescription": "Contatta il tuo account manager per abilitare questo modulo.",
+  "adSpend.upsellCtaLabel": "Contatta vendite",
+  "adSpend.totalCost": "Spesa totale",
+  "adSpend.campaigns": "Campagne",
+  "adSpend.costPerClick": "Costo per click",
 
   "status.live": "Live",
   "status.offline": "Offline",

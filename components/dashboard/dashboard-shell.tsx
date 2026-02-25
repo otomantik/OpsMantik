@@ -88,6 +88,8 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const { t } = useTranslation();
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
+  const hasSpendModule = activeModules.includes('google_ads_spend');
+
   // Real-time signals for the Shell
   // Holistic View: always show ALL traffic (no ads-only filter).
   const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: false });
@@ -271,14 +273,24 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
       {/* Desktop: Live Queue first (left), then Reports; full-width Breakdown below */}
       <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
-        {/* CRO INSIGHTS TOP BAR */}
-        <div className="mb-8">
-          <div className="mb-3">
-            <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
+        {/* TOP: Ad Spend (when module active) else CRO */}
+        {hasSpendModule ? (
+          <div className="mb-8">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">{t('adSpend.title')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('adSpend.subtitle')}</p>
+            </div>
+            <AdSpendWidget siteId={siteId} />
           </div>
-          <CROInsights metrics={metrics} loading={analyticsLoading} />
-        </div>
+        ) : (
+          <div className="mb-8">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
+            </div>
+            <CROInsights metrics={metrics} loading={analyticsLoading} />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7">
@@ -293,12 +305,11 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <h2 className="text-base font-semibold text-slate-800">{t('sidebar.reports')}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.reportsSubtitle')}</p>
             </div>
-            {/* Wrap in Suspense? No, dynamic has loading */}
             <TrafficSourceBreakdown
               siteId={siteId}
               dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
             />
-            <AdSpendWidget siteId={siteId} />
+            {!hasSpendModule && <AdSpendWidget siteId={siteId} />}
             <PulseProjectionWidgets
               siteId={siteId}
               dateRange={queueRange}
@@ -306,6 +317,18 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             />
           </div>
         </div>
+
+        {/* CRO moved below when Ad Spend is at top */}
+        {hasSpendModule && (
+          <div className="mt-8 pt-6 border-t border-slate-200">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
+            </div>
+            <CROInsights metrics={metrics} loading={analyticsLoading} />
+          </div>
+        )}
+
         {/* Breakdown: full-width row */}
         <div className="mt-8 pt-6 border-t border-slate-200">
           <BreakdownWidgets

@@ -115,6 +115,11 @@ export const tr = {
   "adSpend.campaignRows": "{count} kampanya satırı",
   "adSpend.lastUpdated": "Son güncelleme",
   "adSpend.upsellTitle": "Bu site için Google Ads Harcaması etkin değil.",
+  "adSpend.upsellDescription": "Bu modülü açmak için hesap yöneticinizle iletişime geçin.",
+  "adSpend.upsellCtaLabel": "Satış ile iletişim",
+  "adSpend.totalCost": "Toplam Harcama",
+  "adSpend.campaigns": "Kampanyalar",
+  "adSpend.costPerClick": "Tıklama Başı Maliyet",
 
   "status.live": "Canlı",
   "status.offline": "Çevrimdışı",

@@ -14,11 +14,13 @@ export interface UpsellUIProps {
 
 /**
  * Placeholder upsell when a feature module is not enabled for the current site.
+ * Callers MUST pass translated title, description, ctaLabel (e.g. via t('adSpend.upsellTitle') etc.)
+ * so the correct locale is shown. No hardcoded English.
  */
 export function UpsellUI({
-  title = 'This feature is not enabled for this site.',
-  description = 'Contact your account manager to enable this module.',
-  ctaLabel = 'Contact sales',
+  title = '',
+  description = '',
+  ctaLabel = '',
   onCtaClick,
 }: UpsellUIProps) {
   return (

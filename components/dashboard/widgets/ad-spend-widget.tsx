@@ -48,14 +48,14 @@ export function AdSpendWidget({ siteId }: AdSpendWidgetProps) {
         const res = await fetch(`/api/dashboard/spend?siteId=${encodeURIComponent(siteId)}`);
         if (cancelled) return;
         if (!res.ok) {
-          setError(res.status === 403 ? t('adSpend.moduleNotEnabled') : res.statusText);
+          setError(res.status === 403 ? t('adSpend.moduleNotEnabled') : t('adSpend.error'));
           setLoading(false);
           return;
         }
         const json = await res.json();
         setData(json);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(t('adSpend.error'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -66,14 +66,14 @@ export function AdSpendWidget({ siteId }: AdSpendWidgetProps) {
   return (
     <FeatureGuard
       requiredModule="google_ads_spend"
-      fallback={<UpsellUI title={t('adSpend.upsellTitle')} />}
+      fallback={<UpsellUI title={t('adSpend.upsellTitle')} description={t('adSpend.upsellDescription')} ctaLabel={t('adSpend.upsellCtaLabel')} />}
     >
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">{t('adSpend.title')}</CardTitle>
-          <CardDescription className="text-xs">{t('adSpend.subtitle')}</CardDescription>
+      <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow rounded-xl overflow-hidden">
+        <CardHeader className="pb-2 p-5">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wider text-slate-600">{t('adSpend.title')}</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-1">{t('adSpend.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-5 pt-0">
           {loading && <p className="text-xs text-slate-500">{t('adSpend.loading')}</p>}
           {error && <p className="text-xs text-amber-600">{error}</p>}
           {data && !loading && !error && (
@@ -109,7 +109,7 @@ export function AdSpendWidget({ siteId }: AdSpendWidgetProps) {
                 </div>
               )}
               {data.data?.length ? (
-                <p className="text-[10px] text-slate-400 mt-2">{t('adSpend.campaignRows', { count: data.data.length })}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('adSpend.campaignRows', { count: data.data.length })}</p>
               ) : null}
               {data.data?.length && (() => {
                 const lastUpdated = data.data.reduce<string | null>(
@@ -117,7 +117,7 @@ export function AdSpendWidget({ siteId }: AdSpendWidgetProps) {
                   null
                 );
                 return lastUpdated ? (
-                  <p className="text-[10px] text-slate-400 mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {t('adSpend.lastUpdated')}: {formatTimestamp(lastUpdated, { dateStyle: 'short', timeStyle: 'short' })}
                   </p>
                 ) : null;
