@@ -1,6 +1,7 @@
 /**
- * POST /api/cron/providers/recover-processing — requeue jobs stuck in PROCESSING (e.g. worker crash).
+ * GET/POST /api/cron/providers/recover-processing — requeue jobs stuck in PROCESSING (e.g. worker crash).
  * Auth: requireCronAuth. Query: min_age_minutes=15 (default).
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,11 +13,14 @@ export const runtime = 'nodejs';
 
 const DEFAULT_MIN_AGE_MINUTES = 15;
 
-export async function POST(req: NextRequest) {
-  const forbidden = requireCronAuth(req);
-  if (forbidden) return forbidden;
-
-  const minAge = Math.max(1, Math.min(60, parseInt(req.nextUrl.searchParams.get('min_age_minutes') ?? String(DEFAULT_MIN_AGE_MINUTES), 10) || DEFAULT_MIN_AGE_MINUTES));
+async function runRecover(req: NextRequest) {
+  const minAge = Math.max(
+    1,
+    Math.min(
+      60,
+      parseInt(req.nextUrl.searchParams.get('min_age_minutes') ?? String(DEFAULT_MIN_AGE_MINUTES), 10) || DEFAULT_MIN_AGE_MINUTES
+    )
+  );
 
   const { data, error } = await adminClient.rpc('recover_stuck_offline_conversion_jobs', {
     p_min_age_minutes: minAge,
@@ -34,4 +38,16 @@ export async function POST(req: NextRequest) {
     { ok: true, recovered },
     { status: 200, headers: getBuildInfoHeaders() }
   );
+}
+
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runRecover(req);
+}
+
+export async function POST(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runRecover(req);
 }

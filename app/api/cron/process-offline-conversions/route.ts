@@ -1,9 +1,9 @@
 /**
- * POST /api/cron/process-offline-conversions — claim and upload queued conversions (all or filtered providers).
+ * GET/POST /api/cron/process-offline-conversions — claim and upload queued conversions (all or filtered providers).
  *
  * Uses single OCI runner (PR-C4): list groups → health gate → claim → upload → metrics + record_provider_outcome.
  * Query: provider_key? (optional), limit=50 (1..500).
- *
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  * Auth: requireCronAuth.
  */
 
@@ -15,10 +15,7 @@ import { DEFAULT_LIMIT_CRON, MAX_LIMIT_CRON } from '@/lib/oci/constants';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: NextRequest) {
-  const forbidden = requireCronAuth(req);
-  if (forbidden) return forbidden;
-
+async function runProcess(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const providerKeyParam = searchParams.get('provider_key')?.trim() || null;
   let limit = DEFAULT_LIMIT_CRON;
@@ -48,4 +45,16 @@ export async function POST(req: NextRequest) {
     { ok: true, processed: result.processed, completed: result.completed, failed: result.failed, retry: result.retry },
     { status: 200, headers: getBuildInfoHeaders() }
   );
+}
+
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runProcess(req);
+}
+
+export async function POST(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runProcess(req);
 }

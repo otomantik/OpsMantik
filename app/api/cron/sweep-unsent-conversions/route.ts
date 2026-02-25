@@ -1,5 +1,5 @@
 /**
- * POST /api/cron/sweep-unsent-conversions
+ * GET/POST /api/cron/sweep-unsent-conversions
  *
  * Self-healing sweeper: finds calls that are oci_status = 'sealed' but not in
  * offline_conversion_queue (e.g. sealed via auto-approve cron or failed API).
@@ -7,6 +7,7 @@
  * manual DB intervention.
  *
  * Scope: last 7 days. Auth: requireCronAuth (Bearer CRON_SECRET / x-vercel-cron).
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,10 +21,7 @@ export const runtime = 'nodejs';
 const LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;
 
-export async function POST(req: NextRequest) {
-  const forbidden = requireCronAuth(req);
-  if (forbidden) return forbidden;
-
+async function runSweep() {
   const since = new Date();
   since.setDate(since.getDate() - LOOKBACK_DAYS);
   const sinceIso = since.toISOString();
@@ -94,4 +92,16 @@ export async function POST(req: NextRequest) {
       { status: 500, headers: getBuildInfoHeaders() }
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runSweep();
+}
+
+export async function POST(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runSweep();
 }
