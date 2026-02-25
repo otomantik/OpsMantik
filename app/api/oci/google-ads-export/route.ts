@@ -23,11 +23,11 @@ export interface GoogleAdsConversionItem {
   gbraid: string;
   /** Conversion action name (e.g. "Sealed Lead"). */
   conversionName: string;
-  /** Format: yyyy-MM-dd HH:mm:ssZ (e.g. 2026-02-22 14:30:00+00:00). */
+  /** Format: yyyy-mm-dd hh:mm:ss+0300 (Turkey Time). Do not use ISO with Z or milliseconds. */
   conversionTime: string;
-  /** Value in currency units (converted from value_cents). */
+  /** Numeric value only (e.g. 750.00). No currency symbols. */
   conversionValue: number;
-  /** ISO currency code (e.g. TRY, USD). */
+  /** ISO currency code, e.g. TRY. */
   conversionCurrency: string;
 }
 
@@ -153,10 +153,10 @@ export async function GET(req: NextRequest) {
       currency?: string | null;
     }) => {
       const rawTime = row.conversion_time || '';
-      const conversionTime = formatConversionTime(rawTime);
+      const conversionTime = formatConversionTimeTurkey(rawTime);
       const valueCents = Number(row.value_cents) || 0;
-      const conversionValue = valueCents / 100;
-      const rowCurrency = (row.currency || currency || 'TRY').trim();
+      const conversionValue = ensureNumericValue(valueCents / 100);
+      const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
 
       return {
         id: String(row.id),
@@ -165,8 +165,8 @@ export async function GET(req: NextRequest) {
         gbraid: (row.gbraid || '').trim(),
         conversionName,
         conversionTime,
-        conversionValue: conversionValue >= 0 ? conversionValue : 0,
-        conversionCurrency: rowCurrency,
+        conversionValue,
+        conversionCurrency,
       };
     });
 
@@ -177,25 +177,42 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/** Turkey timezone offset: +3 hours in ms. Do not use .toISOString() — Google Ads rejects 'Z' and milliseconds. */
+const TURKEY_OFFSET_MS = 3 * 60 * 60 * 1000;
+
 /**
- * Format timestamptz/ISO string to Google Ads style: yyyy-MM-dd HH:mm:ss (UTC, no suffix)
- * (e.g. 2026-02-22 14:30:00). No timezone suffix; script uses timeZone: Etc/UTC.
+ * Format conversion time as yyyy-mm-dd hh:mm:ss+0300 (Turkey Time).
+ * Input is stored as UTC; we convert to Turkey and append +0300.
+ * Example: 2026-02-25 18:24:15+0300
  */
-function formatConversionTime(isoOrEmpty: string): string {
+function formatConversionTimeTurkey(isoOrEmpty: string): string {
   if (!isoOrEmpty || typeof isoOrEmpty !== 'string') {
-    const fallback = new Date();
-    return formatConversionTime(fallback.toISOString());
+    return formatConversionTimeTurkey(new Date().toISOString());
   }
   const d = new Date(isoOrEmpty);
   if (Number.isNaN(d.getTime())) {
-    const fallback = new Date();
-    return formatConversionTime(fallback.toISOString());
+    return formatConversionTimeTurkey(new Date().toISOString());
   }
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const h = String(d.getUTCHours()).padStart(2, '0');
-  const min = String(d.getUTCMinutes()).padStart(2, '0');
-  const s = String(d.getUTCSeconds()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}:${s}`;
+  const turkeyMs = d.getTime() + TURKEY_OFFSET_MS;
+  const turkey = new Date(turkeyMs);
+  const y = turkey.getUTCFullYear();
+  const m = String(turkey.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(turkey.getUTCDate()).padStart(2, '0');
+  const h = String(turkey.getUTCHours()).padStart(2, '0');
+  const min = String(turkey.getUTCMinutes()).padStart(2, '0');
+  const s = String(turkey.getUTCSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}:${s}+0300`;
+}
+
+/** Ensure value is a number suitable for Conversion value (no currency symbols). Round to 2 decimals. */
+function ensureNumericValue(value: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+/** Ensure currency is a clean code (e.g. TRY). Strip non-alpha. */
+function ensureCurrencyCode(raw: string): string {
+  const code = String(raw || 'TRY').trim().toUpperCase().replace(/[^A-Z]/g, '');
+  return code || 'TRY';
 }

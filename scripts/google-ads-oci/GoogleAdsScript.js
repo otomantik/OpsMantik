@@ -11,7 +11,8 @@
  *
  * API response shape (each item):
  *   id, gclid, wbraid, gbraid, conversionName, conversionTime, conversionValue, conversionCurrency
- * conversionTime format: yyyy-MM-dd HH:mm:ss+00:00
+ * conversionTime format: yyyy-mm-dd hh:mm:ss+0300 (Turkey Time)
+ * conversionValue: numeric only (no ₺ or other symbols). conversionCurrency: TRY.
  */
 function main() {
   // Kuyruk verisi bu site_id altında (b1264552...). public_id yerine UUID kullanıyoruz.
@@ -78,7 +79,7 @@ function main() {
 
   var upload = AdsApp.bulkUploads().newCsvUpload(columns, {
     moneyInMicros: false,
-    timeZone: 'Etc/UTC'
+    timeZone: 'Europe/Istanbul'
   });
   upload.forOfflineConversions();
   upload.setFileName('OpsMantik_OCI_' + new Date().getTime() + '.csv');
@@ -101,16 +102,16 @@ function main() {
 
     var conversionName = (row.conversionName != null) ? String(row.conversionName) : 'Sealed Lead';
     var conversionTime = (row.conversionTime != null) ? String(row.conversionTime) : '';
-    var conversionValue = Number(row.conversionValue);
-    var conversionCurrency = (row.conversionCurrency != null) ? String(row.conversionCurrency) : 'TRY';
+    // Strip currency symbols (e.g. ₺) — Conversion value must be numeric only.
+    var conversionValue = parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0;
+    if (!Number.isFinite(conversionValue) || conversionValue < 0) conversionValue = 0;
+    var conversionCurrency = (row.conversionCurrency != null) ? String(row.conversionCurrency).trim().toUpperCase() : 'TRY';
+    if (!/^[A-Z]{3}$/.test(conversionCurrency)) conversionCurrency = 'TRY';
 
     if (!conversionTime) {
       Logger.log('Skip row (no conversion time): id=' + (row.id || i));
       skipped++;
       continue;
-    }
-    if (!Number.isFinite(conversionValue) || conversionValue < 0) {
-      conversionValue = 0;
     }
 
     // Template uses "Google Click ID" for the click identifier. For WBRAID/GBRAID some templates
