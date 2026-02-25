@@ -32,7 +32,13 @@ export interface EnqueueSealParams {
 
 export interface EnqueueSealResult {
   enqueued: boolean;
-  reason?: 'no_click_id' | 'duplicate' | 'marketing_consent_required' | 'star_below_threshold' | 'error';
+  reason?:
+    | 'no_click_id'
+    | 'duplicate'
+    | 'duplicate_session'
+    | 'marketing_consent_required'
+    | 'star_below_threshold'
+    | 'error';
   value?: number;
   error?: string;
 }
@@ -124,12 +130,38 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const valueCents = Math.round(valueUnits * 100);
   const currencySafe = currency?.trim() || config.currency || siteCurrency;
 
-  // 6. Insert into queue
+  // 6. Resolve session_id and enforce 1 conversion per session (dedupe before insert)
+  let sessionId: string | null = null;
+  const { data: callRow } = await adminClient
+    .from('calls')
+    .select('matched_session_id')
+    .eq('id', callId)
+    .eq('site_id', siteId)
+    .maybeSingle();
+  sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id ?? null;
+
+  if (sessionId) {
+    const { data: existingList } = await adminClient
+      .from('offline_conversion_queue')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('session_id', sessionId)
+      .in('status', ['QUEUED', 'RETRY', 'PROCESSING'])
+      .limit(1);
+    const existing = Array.isArray(existingList) ? existingList[0] : null;
+    if (existing) {
+      logInfo('enqueue_seal_skip', { call_id: callId, reason: 'duplicate_session', session_id: sessionId });
+      return { enqueued: false, reason: 'duplicate_session' };
+    }
+  }
+
+  // 7. Insert into queue (session_id set so DB unique index backs stop duplicates on race)
   try {
     const { error } = await adminClient.from('offline_conversion_queue').insert({
       site_id: siteId,
       call_id: callId,
       sale_id: null,
+      session_id: sessionId,
       provider_key: 'google_ads',
       conversion_time: confirmedAt,
       value_cents: valueCents,

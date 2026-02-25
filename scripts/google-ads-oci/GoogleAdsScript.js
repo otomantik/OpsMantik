@@ -10,7 +10,8 @@
  * Override via script properties: OPSMANTIK_EXPORT_URL, OPSMANTIK_API_KEY
  *
  * API response shape (each item):
- *   id, gclid, wbraid, gbraid, conversionName, conversionTime, conversionValue, conversionCurrency
+ *   id, orderId, gclid, wbraid, gbraid, conversionName, conversionTime, conversionValue, conversionCurrency
+ * orderId: sent to Google as Order ID so duplicate uploads (same orderId) are ignored by Google.
  * conversionTime format: yyyy-mm-dd hh:mm:ss+0300 (Turkey Time)
  * conversionValue: numeric only (no ₺ or other symbols). conversionCurrency: TRY.
  */
@@ -68,8 +69,10 @@ function main() {
   }
 
   // Google Ads bulk upload columns for offline conversions (match template "Conversions from clicks").
-  // Use the column names from your account's template (Tools > Bulk actions > Uploads > View templates).
+  // Order ID: Google deduplicates by this; same orderId sent twice → second is ignored. Use queue row id.
+  // If your template does not have "Order ID", add it or remove from columns and from upload.append() below.
   var columns = [
+    'Order ID',
     'Google Click ID',
     'Conversion name',
     'Conversion time',
@@ -86,6 +89,7 @@ function main() {
 
   var appended = 0;
   var skipped = 0;
+  var uploadedIds = []; // queue row ids successfully appended (for ack)
   for (var i = 0; i < conversions.length; i++) {
     var row = conversions[i];
     var gclid = (row.gclid || '').toString().trim();
@@ -114,11 +118,13 @@ function main() {
       continue;
     }
 
+    var orderId = (row.orderId != null) ? String(row.orderId) : (row.id != null) ? String(row.id) : '';
     // Template uses "Google Click ID" for the click identifier. For WBRAID/GBRAID some templates
     // use columns "WBRAID" / "GBRAID". If your template has separate columns, add them and pass
     // the appropriate one; here we send the single click id in "Google Click ID" (works when
     // the account uses GCLID-style imports; for iOS-only columns adjust per your template).
     upload.append({
+      'Order ID': orderId,
       'Google Click ID': clickId,
       'Conversion name': conversionName,
       'Conversion time': conversionTime,
@@ -126,6 +132,7 @@ function main() {
       'Conversion currency': conversionCurrency
     });
     appended++;
+    if (row.id) uploadedIds.push(String(row.id));
   }
 
   if (appended === 0) {
@@ -136,6 +143,23 @@ function main() {
   try {
     upload.apply();
     Logger.log('OpsMantik: applied ' + appended + ' conversions; skipped ' + skipped);
+    // Ack: mark these queue rows as COMPLETED so they are not re-sent (recover won't move them to RETRY).
+    if (uploadedIds.length > 0) {
+      var ackUrl = (typeof OPSMANTIK_EXPORT_URL !== 'undefined'
+        ? OPSMANTIK_EXPORT_URL.replace(/\/api\/oci\/google-ads-export.*$/, '')
+        : 'https://console.opsmantik.com') + '/api/oci/ack';
+      try {
+        UrlFetchApp.fetch(ackUrl, {
+          method: 'post',
+          muteHttpExceptions: true,
+          contentType: 'application/json',
+          headers: { 'x-api-key': apiKey },
+          payload: JSON.stringify({ siteId: siteId, queueIds: uploadedIds })
+        });
+      } catch (ackErr) {
+        Logger.log('OpsMantik ack error (non-fatal): ' + ackErr.toString());
+      }
+    }
   } catch (e) {
     Logger.log('OpsMantik upload.apply() error: ' + e.toString());
   }

@@ -13,8 +13,10 @@ export const runtime = 'nodejs';
  * Used by Google Ads Script (UrlFetchApp → parse → AdsApp upload).
  */
 export interface GoogleAdsConversionItem {
-  /** Queue row id for idempotency / ack (optional). */
+  /** Queue row id for idempotency / ack. */
   id: string;
+  /** Sent as Order ID so Google Ads deduplicates by this value (same orderId → second upload ignored). */
+  orderId: string;
   /** Google Click ID (preferred). */
   gclid: string;
   /** iOS web conversions. */
@@ -37,9 +39,10 @@ export interface GoogleAdsConversionItem {
  * "Ready-for-Google" Exit Valve: reads from offline_conversion_queue (status = QUEUED or RETRY),
  * returns JSON formatted for Google Ads Script consumption.
  * RETRY = recovered from PROCESSING (e.g. script didn't ack); script re-uploads them.
+ * One conversion per session: same matched_session_id → only earliest conversion_time is returned; others marked COMPLETED (skipped).
  *
  * Auth: x-api-key must match OCI_API_KEY (env on Vercel).
- * Optional: markAsExported=true → updates returned rows to PROCESSING so they are not re-fetched.
+ * Optional: markAsExported=true → returned rows → PROCESSING; duplicate-session rows → COMPLETED (not re-exported).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -100,7 +103,7 @@ export async function GET(req: NextRequest) {
 
     const query = adminClient
       .from('offline_conversion_queue')
-      .select('id, gclid, wbraid, gbraid, conversion_time, value_cents, currency')
+      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, value_cents, currency')
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter)
@@ -115,30 +118,77 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const list = Array.isArray(rows) ? rows : [];
-    const idsToMark = list.map((r: { id: string }) => r.id);
-
-    if (list.length === 0) {
+    const rawList = Array.isArray(rows) ? rows : [];
+    if (rawList.length === 0) {
       return NextResponse.json([]);
     }
 
-    if (markAsExported && idsToMark.length > 0) {
-      const { error: updateError } = await adminClient
-        .from('offline_conversion_queue')
-        .update({
-          status: 'PROCESSING',
-          claimed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .in('id', idsToMark)
+    const callIds = rawList.map((r: { call_id: string | null }) => r.call_id).filter(Boolean) as string[];
+    const sessionByCall: Record<string, string> = {};
+    if (callIds.length > 0) {
+      const { data: calls } = await adminClient
+        .from('calls')
+        .select('id, matched_session_id')
         .eq('site_id', siteUuid)
-        .in('status', ['QUEUED', 'RETRY']);
+        .in('id', callIds);
+      for (const c of calls ?? []) {
+        const sid = (c as { matched_session_id?: string | null }).matched_session_id;
+        if (sid) sessionByCall[(c as { id: string }).id] = sid;
+      }
+    }
 
-      if (updateError) {
-        return NextResponse.json(
-          { error: 'Failed to mark as exported', details: updateError.message },
-          { status: 500 }
-        );
+    // One per session: keep earliest conversion_time per matched_session_id
+    const byConversionTime = [...rawList].sort(
+      (a, b) =>
+        new Date((a as { conversion_time: string }).conversion_time).getTime() -
+        new Date((b as { conversion_time: string }).conversion_time).getTime()
+    );
+    const seenSessions = new Set<string>();
+    const list: typeof rawList = [];
+    const skippedIds: string[] = [];
+    for (const row of byConversionTime) {
+      const sessionId = row.call_id ? sessionByCall[row.call_id] : null;
+      if (!sessionId) {
+        list.push(row);
+        continue;
+      }
+      if (seenSessions.has(sessionId)) {
+        skippedIds.push(row.id);
+        continue;
+      }
+      seenSessions.add(sessionId);
+      list.push(row);
+    }
+
+    const idsToMarkProcessing = list.map((r: { id: string }) => r.id);
+
+    if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0)) {
+      const now = new Date().toISOString();
+      if (idsToMarkProcessing.length > 0) {
+        const { error: updateError } = await adminClient
+          .from('offline_conversion_queue')
+          .update({
+            status: 'PROCESSING',
+            claimed_at: now,
+            updated_at: now,
+          })
+          .in('id', idsToMarkProcessing)
+          .eq('site_id', siteUuid)
+          .in('status', ['QUEUED', 'RETRY']);
+        if (updateError) {
+          return NextResponse.json(
+            { error: 'Failed to mark as exported', details: updateError.message },
+            { status: 500 }
+          );
+        }
+      }
+      if (skippedIds.length > 0) {
+        await adminClient
+          .from('offline_conversion_queue')
+          .update({ status: 'COMPLETED', updated_at: now })
+          .in('id', skippedIds)
+          .eq('site_id', siteUuid)
+          .in('status', ['QUEUED', 'RETRY']);
       }
     }
 
@@ -146,6 +196,7 @@ export async function GET(req: NextRequest) {
 
     const conversions: GoogleAdsConversionItem[] = list.map((row: {
       id: string;
+      call_id?: string | null;
       gclid?: string | null;
       wbraid?: string | null;
       gbraid?: string | null;
@@ -161,6 +212,7 @@ export async function GET(req: NextRequest) {
 
       return {
         id: String(row.id),
+        orderId: String(row.id),
         gclid: (row.gclid || '').trim(),
         wbraid: (row.wbraid || '').trim(),
         gbraid: (row.gbraid || '').trim(),

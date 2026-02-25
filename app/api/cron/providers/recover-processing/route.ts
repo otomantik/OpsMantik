@@ -34,6 +34,9 @@ async function runRecover(req: NextRequest) {
   }
 
   const recovered = (data as number) ?? 0;
+  if (recovered > 0) {
+    console.warn(`[recover-processing] Recovering stale OCI job(s): ${recovered}`);
+  }
   return NextResponse.json(
     { ok: true, recovered },
     { status: 200, headers: getBuildInfoHeaders() }
