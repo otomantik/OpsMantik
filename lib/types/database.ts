@@ -55,6 +55,9 @@ export interface SiteConfig {
   [key: string]: unknown;
 }
 
+/** Tenant feature entitlements (see lib/types/modules.ts) */
+export type SiteActiveModules = string[];
+
 /** Sites row shape (minimal for config + proxy value) */
 export interface SiteRow {
   id: string;
@@ -64,5 +67,7 @@ export interface SiteRow {
   default_deal_value?: number | null;
   /** Dynamic sector playbook: macro/micro conversion stages for OCI */
   pipeline_stages?: PipelineStage[] | null;
+  /** Enabled feature modules for this tenant (e.g. core_oci, scoring_v1, google_ads_spend) */
+  active_modules?: SiteActiveModules | null;
   [key: string]: unknown;
 }

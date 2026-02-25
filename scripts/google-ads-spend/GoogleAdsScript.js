@@ -7,11 +7,12 @@
 function main() {
   // === AYARLAR (Kendi ortamına göre doldur) ===
   var WEBHOOK_URL = "https://console.opsmantik.com/api/webhooks/google-spend";
-  var SECRET_TOKEN = "5ScWmCqUNE6-0pGh1sdZxFo5u5CwRMNqfWAFiavGxDw";  // Vercel'deki GOOGLE_SPEND_WEBHOOK_SECRET ile AYNI
+  var SECRET_TOKEN = "BURAYA_GIZLI_SIFRE_GELECEK";  // Vercel'deki GOOGLE_SPEND_WEBHOOK_SECRET ile AYNI
   var SITE_ID = "b1264552-c859-40cb-a3fb-0ba057afd070";  // Eslamed (sites tablosu UUID)
   // ============================================
 
-  if (SECRET_TOKEN === "5ScWmCqUNE6-0pGh1sdZxFo5u5CwRMNqfWAFiavGxDw") {
+  var secret = (SECRET_TOKEN && SECRET_TOKEN.trim()) ? SECRET_TOKEN.trim() : "";
+  if (secret === "" || secret === "BURAYA_GIZLI_SIFRE_GELECEK") {
     Logger.log("HATA: SECRET_TOKEN değerini doldurun (Vercel'deki GOOGLE_SPEND_WEBHOOK_SECRET ile aynı olmalı).");
     return;
   }
@@ -58,7 +59,7 @@ function main() {
     contentType: "application/json",
     payload: payload,
     headers: {
-      "x-opsmantik-webhook-secret": SECRET_TOKEN
+      "x-opsmantik-webhook-secret": secret
     }
   };
 

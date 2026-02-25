@@ -36,7 +36,7 @@ export default async function DashboardPage() {
   // Fetch accessible sites: owner OR member OR admin (RLS enforces)
   const { data: rawSites } = await supabase
     .from('sites')
-    .select('id, name, domain, public_id, locale')
+    .select('id, name, domain, public_id, locale, active_modules')
     .order('created_at', { ascending: false });
 
   // Filter out E2E smoke test sites

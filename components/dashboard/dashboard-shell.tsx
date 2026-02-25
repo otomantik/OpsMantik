@@ -25,6 +25,8 @@ import { CROInsights } from './widgets/cro-insights';
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import './reset.css';
 import type { SiteRole } from '@/lib/auth/rbac';
+import type { OpsMantikModule } from '@/lib/types/modules';
+import { SiteModulesProvider } from '@/lib/contexts/site-modules-context';
 
 interface DashboardShellProps {
   siteId: string;
@@ -33,6 +35,8 @@ interface DashboardShellProps {
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
   siteRole: SiteRole;
+  /** Tenant entitlements; used by FeatureGuard. Default [] so missing prop does not break. */
+  activeModules?: OpsMantikModule[];
 }
 
 const BreakdownWidgets = dynamic(
@@ -75,7 +79,12 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole }: DashboardShellProps) {
+const AdSpendWidget = dynamic(
+  () => import('./widgets/ad-spend-widget').then((mod) => mod.AdSpendWidget),
+  { ssr: false, loading: () => <div className="h-[120px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" /> }
+);
+
+export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, activeModules = [] }: DashboardShellProps) {
   const { t } = useTranslation();
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
@@ -123,6 +132,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   const avgEngagement = typeof avgScroll === 'number' && Number.isFinite(avgScroll) ? avgScroll : null;
 
   return (
+    <SiteModulesProvider siteId={siteId} activeModules={activeModules}>
     <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
       {/* ENTERPRISE GLOBAL STATUS BAR */}
       <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-60 relative">
@@ -288,6 +298,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               siteId={siteId}
               dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
             />
+            <AdSpendWidget siteId={siteId} />
             <PulseProjectionWidgets
               siteId={siteId}
               dateRange={queueRange}
@@ -305,5 +316,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         </div>
       </main>
     </div>
+    </SiteModulesProvider>
   );
 }

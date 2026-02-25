@@ -9,6 +9,7 @@ import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 import type { Metadata } from 'next';
 import type { SiteRole } from '@/lib/auth/rbac';
+import { isOpsMantikModule } from '@/lib/types/modules';
 
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
 export const dynamic = 'force-dynamic';
@@ -82,7 +83,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
 
   const { data: site, error: siteError } = await supabase
     .from('sites')
-    .select('id, name, domain, public_id, user_id, currency, timezone, locale')
+    .select('id, name, domain, public_id, user_id, currency, timezone, locale, active_modules')
     .eq('id', siteId)
     .single();
 
@@ -155,6 +156,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
         siteDomain={site.domain || undefined}
         initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
         siteRole={siteRole}
+        activeModules={(site.active_modules ?? []).filter((m): m is import('@/lib/types/modules').OpsMantikModule => typeof m === 'string' && isOpsMantikModule(m))}
       />
     </I18nProvider>
   );
