@@ -3,6 +3,13 @@
 -- Run in Supabase SQL Editor or psql. Eslamed site_id below; change for other tenants.
 -- =============================================================================
 
+-- Enable Google Ads Spend module for Eslamed (so dashboard shows Ad Spend widget)
+-- Run once per site. Idempotent: no duplicate entry if already present.
+UPDATE public.sites
+SET active_modules = array_append(active_modules, 'google_ads_spend')
+WHERE id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+  AND NOT (active_modules @> ARRAY['google_ads_spend']::text[]);
+
 -- Eslamed, single day (e.g. 2026-02-25)
 SELECT
   id,

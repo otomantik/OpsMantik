@@ -107,6 +107,22 @@ export const en = {
   'dashboard.adsCommandCenter': 'Ads Command Center',
   'dashboard.adsOnly': 'ADS ONLY',
 
+  // Ad Spend (Google Ads)
+  'adSpend.title': 'Ad Spend',
+  'adSpend.subtitle': 'Daily campaign spend (Google Ads)',
+  'adSpend.loading': 'Loading…',
+  'adSpend.error': 'Failed to load',
+  'adSpend.moduleNotEnabled': 'Module not enabled',
+  'adSpend.noData': 'No spend data yet',
+  'adSpend.campaign': 'Campaign',
+  'adSpend.date': 'Date',
+  'adSpend.cost': 'Cost',
+  'adSpend.clicks': 'Clicks',
+  'adSpend.impressions': 'Impressions',
+  'adSpend.campaignRows': '{count} campaign row(s)',
+  'adSpend.lastUpdated': 'Last updated',
+  'adSpend.upsellTitle': 'Google Ads Spend is not enabled for this site.',
+
   // Status
   'status.live': 'Live',
   'status.offline': 'Offline',
