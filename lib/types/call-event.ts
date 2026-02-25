@@ -5,7 +5,7 @@
 
 import type { PostgrestError } from '@supabase/supabase-js';
 
-/** Lead score breakdown returned when matching a session. */
+/** Lead score breakdown returned when matching a session. V1.1 adds optional keys. */
 export interface ScoreBreakdown {
   conversionPoints: number;
   interactionPoints: number;
@@ -13,6 +13,16 @@ export interface ScoreBreakdown {
   cappedAt100: boolean;
   rawScore: number;
   finalScore: number;
+  /** V1.1: bonus after saturation cap */
+  bonusesCapped?: number;
+  /** V1.1: linear confidence 0–100 */
+  confidenceScore?: number;
+  /** V1.1: elapsed seconds from session start to call */
+  elapsedSeconds?: number;
+  /** V1.1: version tag */
+  version?: string;
+  /** V1.1: audit snapshot */
+  inputsSnapshot?: Record<string, unknown>;
 }
 
 /** Event metadata from events table (e.g. lead_score). */

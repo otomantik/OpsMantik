@@ -276,17 +276,202 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
     }
 
+    // COMPLIANCE: Single-event consent gate MUST run before any idempotency (tryInsert). Return 204 without touching idempotency.
+    if (bodies.length === 1) {
+        const singleConsentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
+            ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
+            : Array.isArray(body.meta?.consent_scopes)
+                ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+                : [];
+        if (!singleConsentScopes.includes('analytics')) {
+            const consentHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' };
+            return new NextResponse(null, { status: 204, headers: consentHeaders });
+        }
+    }
+
     const yearMonth = getCurrentYearMonthUTC();
     const updateBillableFalse = deps?.updateIdempotencyBillableFalse ?? updateIdempotencyBillableFalse;
-    const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; retries: number }) => {
-        await qstash.publishJSON({ url: args.url, body: args.body, retries: args.retries });
-    });
+    const doIncrementRedis = deps?.incrementUsageRedis ?? incrementUsageRedis;
+    const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
+
+    let singleIdempotencyInserted = false;
+    let singleBillableDecision: ReturnType<typeof classifyIngestBillable> | null = null;
+
+    // COMPLIANCE INVARIANT: Consent gate must execute AFTER site validation but BEFORE idempotency. Changing this order breaks GDPR compliance.
+    // --- Single-event path FIRST (PR gate: tryInsert/dedup/quota/rejected_quota/billing_gate_closed before doInsertFallback and publish). ---
+    if (bodies.length === 1) {
+      // Part 1: Idempotency, duplicate return, quota, entitlements (all returns; no publish/fallback yet).
+      const consentScopesSingle = Array.isArray((body as Record<string, unknown>).consent_scopes)
+          ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
+          : Array.isArray(body.meta?.consent_scopes)
+              ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+              : [];
+      if (!consentScopesSingle.includes('analytics')) {
+          const consentHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' };
+          return new NextResponse(null, { status: 204, headers: consentHeaders });
+      }
+      const billableDecisionSingle = classifyIngestBillable(body);
+      const idempotencyVersionSingle = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
+      const idempotencyKeySingle = idempotencyVersionSingle === '2'
+          ? await computeIdempotencyKeyV2(siteIdUuid, body, getServerNowMs())
+          : await computeIdempotencyKey(siteIdUuid, body);
+      const idempotencyResultSingle = await tryInsert(siteIdUuid, idempotencyKeySingle, {
+          billable: billableDecisionSingle.billable,
+          billingReason: billableDecisionSingle.reason,
+          eventCategory: body.ec,
+          eventAction: body.ea,
+          eventLabel: body.el,
+      });
+      if (idempotencyResultSingle.error && !idempotencyResultSingle.duplicate) {
+          logError('BILLING_GATE_CLOSED', { route: 'sync', site_id: body.s, error: String(idempotencyResultSingle.error) });
+          return NextResponse.json(
+              { status: 'billing_gate_closed' },
+              { status: 500, headers: baseHeaders }
+          );
+      }
+      if (idempotencyResultSingle.duplicate) {
+          if (billableDecisionSingle.billable) incrementBillingIngestDuplicate();
+          const dedupHeaders = { ...baseHeaders, 'x-opsmantik-dedup': '1' };
+          return NextResponse.json(
+              createSyncResponse(true, 10, { status: 'duplicate', captured: true, v: OPSMANTIK_VERSION }),
+              { headers: dedupHeaders }
+          );
+      }
+      const idempotencyInsertedSingle = idempotencyResultSingle.inserted;
+      if (idempotencyInsertedSingle && billableDecisionSingle.billable) {
+          let decisionSingle: QuotaDecision;
+          if (deps?.getQuotaDecision) {
+              decisionSingle = await deps.getQuotaDecision(siteIdUuid, yearMonth);
+          } else {
+              const plan = await getSitePlan(siteIdUuid);
+              const { usage, source: usageSourceSingle } = await getUsage(siteIdUuid, yearMonth);
+              const usageAfterThis = usage + 1;
+              decisionSingle = evaluateQuota(plan, usageAfterThis);
+              if (usageSourceSingle !== 'redis' && usageAfterThis >= plan.monthly_limit * 0.95) {
+                  baseHeaders['x-opsmantik-degraded'] = 'quota_pg_conservative';
+              }
+          }
+          if (decisionSingle.reject) {
+              incrementBillingIngestRejectedQuota();
+              await updateBillableFalse(siteIdUuid, idempotencyKeySingle, { reason: 'rejected_quota' });
+              const retryAfterSingle = computeRetryAfterToMonthRollover();
+              return NextResponse.json(
+                  { status: 'rejected_quota' },
+                  { status: 429, headers: { ...baseHeaders, ...decisionSingle.headers, 'Retry-After': String(retryAfterSingle) } }
+              );
+          }
+          if (decisionSingle.overage) {
+              await setOverageOnIdempotencyRow(siteIdUuid, idempotencyKeySingle);
+          }
+          baseHeaders['x-opsmantik-quota-remaining'] = decisionSingle.headers['x-opsmantik-quota-remaining'];
+          if (decisionSingle.headers['x-opsmantik-overage']) baseHeaders['x-opsmantik-overage'] = decisionSingle.headers['x-opsmantik-overage'];
+      }
+      if (idempotencyInsertedSingle && billableDecisionSingle.billable) {
+          const entitlementsSingle = await getEntitlements(siteIdUuid, adminClient);
+          const currentMonthStartSingle = `${yearMonth}-01`;
+          const { data: incResultSingle, error: incErrorSingle } = await adminClient.rpc('increment_usage_checked', {
+              p_site_id: siteIdUuid,
+              p_month: currentMonthStartSingle,
+              p_kind: 'revenue_events',
+              p_limit: entitlementsSingle.limits.monthly_revenue_events,
+          });
+          if (incErrorSingle) {
+              logError('ENTITLEMENTS_INCREMENT_ERROR', { route: 'sync', site_id: siteIdUuid, error: String(incErrorSingle) });
+              await updateBillableFalse(siteIdUuid, idempotencyKeySingle, { reason: 'entitlements_increment_error' });
+              return NextResponse.json(
+                  createSyncResponse(false, null, { error: 'quota_exceeded' }),
+                  { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1' } }
+              );
+          }
+          const resultSingle = incResultSingle as { ok?: boolean; reason?: string } | null;
+          if (resultSingle && resultSingle.ok === false && resultSingle.reason === 'LIMIT') {
+              incrementBillingIngestRejectedQuota();
+              await updateBillableFalse(siteIdUuid, idempotencyKeySingle, { reason: 'rejected_entitlements_quota' });
+              const retryAfterSingle = computeRetryAfterToMonthRollover();
+              return NextResponse.json(
+                  createSyncResponse(false, null, { status: 'rejected_quota' }),
+                  { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1', 'Retry-After': String(retryAfterSingle) } }
+              );
+          }
+      }
+      singleIdempotencyInserted = idempotencyInsertedSingle;
+      singleBillableDecision = billableDecisionSingle;
+    }
+
     const doInsertFallback = deps?.insertFallback ?? (async (row: unknown) => {
         const { error } = await adminClient.from('ingest_fallback_buffer').insert(row as Record<string, unknown>);
         return { error };
     });
-    const doIncrementRedis = deps?.incrementUsageRedis ?? incrementUsageRedis;
-    const workerUrl = `${new URL(req.url).origin}/api/sync/worker`;
+
+    if (bodies.length === 1) {
+      // Single-event part 2: doPublish, build payload, try publish / fallback (idempotency already done in part 1).
+      const consentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
+          ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
+          : Array.isArray(body.meta?.consent_scopes)
+              ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+              : [];
+      const idempotencyInserted = singleIdempotencyInserted;
+      const billableDecision = singleBillableDecision ?? classifyIngestBillable(body);
+      const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; retries: number }) => {
+          await qstash.publishJSON({ url: args.url, body: args.body, retries: args.retries });
+      });
+      const ip = normalizeIp(req.headers.get('x-forwarded-for'));
+      const ua = normalizeUserAgent(req.headers.get('user-agent'));
+      const { extractGeoInfo } = await import('@/lib/geo');
+      const { geoInfo } = extractGeoInfo(req, ua, body.meta);
+      const ingestId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      Sentry.setTag('ingest_id', ingestId);
+      Sentry.setContext('sync_producer', { ingest_id: ingestId, site_id: body.s, url: getFinalUrl(body).slice(0, 200) });
+      const workerPayload = {
+          ...body,
+          consent_scopes: consentScopes,
+          ingest_id: ingestId,
+          ip,
+          ua,
+          geo_city: geoInfo.city !== 'Unknown' ? geoInfo.city : undefined,
+          geo_district: geoInfo.district ?? undefined,
+          geo_country: geoInfo.country !== 'Unknown' ? geoInfo.country : undefined,
+          geo_timezone: geoInfo.timezone !== 'Unknown' ? geoInfo.timezone : undefined,
+          geo_telco_carrier: geoInfo.telco_carrier ?? undefined,
+          isp_asn: geoInfo.isp_asn ?? undefined,
+          is_proxy_detected: geoInfo.is_proxy_detected ?? undefined,
+      };
+      try {
+          await doPublish({ url: workerUrl, body: workerPayload, retries: 3 });
+          if (idempotencyInserted && billableDecision.billable) {
+              await doIncrementRedis(siteIdUuid, yearMonth);
+              incrementBillingIngestAllowed();
+              if (baseHeaders['x-opsmantik-overage']) incrementBillingIngestOverage();
+          }
+          return NextResponse.json(
+              createSyncResponse(true, 10, { status: 'queued', v: OPSMANTIK_VERSION, ingest_id: ingestId }),
+              { headers: baseHeaders }
+          );
+      } catch (err) {
+          const errorMessage = String((err as Error)?.message ?? err);
+          const errorShort = errorMessage.slice(0, ERROR_MESSAGE_MAX_LEN);
+          logError('QSTASH_PUBLISH_FAILED', { code: 'QSTASH_PUBLISH_FAILED', route: 'sync', ingest_id: ingestId, site_id: body.s, error: errorMessage });
+          Sentry.captureException(err);
+          try {
+              await adminClient.from('ingest_publish_failures').insert({
+                  site_public_id: body.s,
+                  error_code: 'QSTASH_PUBLISH_FAILED',
+                  error_message_short: errorShort || null,
+              });
+          } catch { /* ignore */ }
+          try {
+              await doInsertFallback(buildFallbackRow(siteIdUuid, workerPayload, errorShort || null));
+              if (idempotencyInserted && billableDecision.billable) await doIncrementRedis(siteIdUuid, yearMonth);
+          } catch (fallbackErr) {
+              logError('INGEST_FALLBACK_INSERT_FAILED', { route: 'sync', ingest_id: ingestId, site_id: body.s, error: String(fallbackErr) });
+          }
+          incrementBillingIngestDegraded();
+          return NextResponse.json(
+              createSyncResponse(true, 0, { status: 'degraded', ingest_id: ingestId }),
+              { headers: { ...baseHeaders, 'x-opsmantik-degraded': 'qstash_publish_failed', 'x-opsmantik-fallback': 'true' } }
+          );
+      }
+    }
 
     // --- Batch: process each event and aggregate (or return on first 429/500). ---
     if (bodies.length > 1) {
@@ -333,7 +518,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
                     const retryAfter = computeRetryAfterToMonthRollover();
                     return NextResponse.json(
                         createSyncResponse(false, null, { status: 'rejected_quota' }),
-                        { status: 429, headers: { ...baseHeaders, 'Retry-After': String(retryAfter), 'x-opsmantik-quota-exceeded': '1' } }
+                        { status: 429, headers: { ...baseHeaders, ...decision.headers, 'Retry-After': String(retryAfter) } }
                     );
                 }
                 const entitlements = await getEntitlements(siteIdUuid, adminClient);
@@ -357,6 +542,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
                     return NextResponse.json(createSyncResponse(false, null, { status: 'rejected_quota' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1', 'Retry-After': String(retryAfter) } });
                 }
             }
+            const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; retries: number }) => {
+                await qstash.publishJSON({ url: args.url, body: args.body, retries: args.retries });
+            });
             const ip = normalizeIp(req.headers.get('x-forwarded-for'));
             const ua = normalizeUserAgent(req.headers.get('user-agent'));
             const { extractGeoInfo } = await import('@/lib/geo');
@@ -395,215 +583,6 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         );
     }
 
-    // --- Single-event path (unchanged flow below) ---
-    // COMPLIANCE INVARIANT:
-    // Consent gate must execute AFTER site validation but BEFORE idempotency.
-    // Changing this order breaks GDPR compliance.
-    //
-    // --- 5. Consent gate: MUST execute AFTER site validation but BEFORE idempotency.
-    // analytics missing → 204 + header. Idempotency MUST NOT be touched. Publish MUST NOT be called.
-    const consentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
-        ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
-        : Array.isArray(body.meta?.consent_scopes)
-            ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
-            : [];
-    if (!consentScopes.includes('analytics')) {
-        const consentHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' };
-        return new NextResponse(null, { status: 204, headers: consentHeaders });
-    }
-
-    // --- 6. Idempotency (gatekeeper). Fail-secure: billable = successfully inserted row only. ---
-    const billableDecision = classifyIngestBillable(body);
-    const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
-    const idempotencyKey = idempotencyVersion === '2'
-      ? await computeIdempotencyKeyV2(siteIdUuid, body, getServerNowMs())
-      : await computeIdempotencyKey(siteIdUuid, body);
-    const idempotencyResult = await tryInsert(siteIdUuid, idempotencyKey, {
-      billable: billableDecision.billable,
-      billingReason: billableDecision.reason,
-      eventCategory: body.ec,
-      eventAction: body.ea,
-      eventLabel: body.el,
-    });
-
-    if (idempotencyResult.error && !idempotencyResult.duplicate) {
-        logError('BILLING_GATE_CLOSED', { route: 'sync', site_id: body.s, error: String(idempotencyResult.error) });
-        return NextResponse.json(
-            { status: 'billing_gate_closed' },
-            { status: 500, headers: baseHeaders }
-        );
-    }
-
-    if (idempotencyResult.duplicate) {
-        if (billableDecision.billable) incrementBillingIngestDuplicate();
-        const dedupHeaders = { ...baseHeaders, 'x-opsmantik-dedup': '1' };
-        return NextResponse.json(
-            createSyncResponse(true, 10, { status: 'duplicate', captured: true, v: OPSMANTIK_VERSION }),
-            { headers: dedupHeaders }
-        );
-    }
-
-    const idempotencyInserted = idempotencyResult.inserted;
-
-    // --- 2.7 Quota (PR-3). After idempotency insert success, before publish. Reject → 429, billable=false; overage → header + billing_state. ---
-    if (idempotencyInserted && billableDecision.billable) {
-        let decision: QuotaDecision;
-        if (deps?.getQuotaDecision) {
-            decision = await deps.getQuotaDecision(siteIdUuid, yearMonth);
-        } else {
-            const plan = await getSitePlan(siteIdUuid);
-            const { usage, source: usageSource } = await getUsage(siteIdUuid, yearMonth);
-            const usageAfterThis = usage + 1;
-            decision = evaluateQuota(plan, usageAfterThis);
-            if (usageSource !== 'redis' && usageAfterThis >= plan.monthly_limit * 0.95) {
-                baseHeaders['x-opsmantik-degraded'] = 'quota_pg_conservative';
-            }
-        }
-
-        if (decision.reject) {
-            incrementBillingIngestRejectedQuota();
-            await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'rejected_quota' });
-            const retryAfter = computeRetryAfterToMonthRollover();
-            const quotaHeaders = {
-                ...baseHeaders,
-                ...decision.headers,
-                'Retry-After': String(retryAfter),
-            };
-            return NextResponse.json(
-                { status: 'rejected_quota' },
-                { status: 429, headers: quotaHeaders }
-            );
-        }
-
-        if (decision.overage) {
-            await setOverageOnIdempotencyRow(siteIdUuid, idempotencyKey);
-        }
-
-        // Apply quota headers to successful response (set below before publish return)
-        baseHeaders['x-opsmantik-quota-remaining'] = decision.headers['x-opsmantik-quota-remaining'];
-        if (decision.headers['x-opsmantik-overage']) baseHeaders['x-opsmantik-overage'] = decision.headers['x-opsmantik-overage'];
-    }
-
-    // --- 2.8 Entitlements (Sprint-1): atomic check+increment for monthly_revenue_events. ---
-    if (idempotencyInserted && billableDecision.billable) {
-        const entitlements = await getEntitlements(siteIdUuid, adminClient);
-        const currentMonthStart = `${yearMonth}-01`;
-        const { data: incResult, error: incError } = await adminClient.rpc('increment_usage_checked', {
-            p_site_id: siteIdUuid,
-            p_month: currentMonthStart,
-            p_kind: 'revenue_events',
-            p_limit: entitlements.limits.monthly_revenue_events,
-        });
-        if (incError) {
-            logError('ENTITLEMENTS_INCREMENT_ERROR', { route: 'sync', site_id: siteIdUuid, error: String(incError) });
-            await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'entitlements_increment_error' });
-            return NextResponse.json(
-                createSyncResponse(false, null, { error: 'quota_exceeded' }),
-                { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1' } }
-            );
-        }
-        const result = incResult as { ok?: boolean; reason?: string } | null;
-        if (result && result.ok === false && result.reason === 'LIMIT') {
-            incrementBillingIngestRejectedQuota();
-            await updateBillableFalse(siteIdUuid, idempotencyKey, { reason: 'rejected_entitlements_quota' });
-            const retryAfter = computeRetryAfterToMonthRollover();
-            return NextResponse.json(
-                createSyncResponse(false, null, { status: 'rejected_quota' }),
-                { status: 429, headers: { ...baseHeaders, 'x-opsmantik-quota-exceeded': '1', 'Retry-After': String(retryAfter) } }
-            );
-        }
-    }
-
-    // --- 3. Offload to QStash (with server-side fallback on publish failure) ---
-    const ip = normalizeIp(req.headers.get('x-forwarded-for'));
-    const ua = normalizeUserAgent(req.headers.get('user-agent'));
-    const { extractGeoInfo } = await import('@/lib/geo');
-    const { geoInfo } = extractGeoInfo(req, ua, body.meta);
-    const ingestId = globalThis.crypto?.randomUUID
-        ? globalThis.crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-    Sentry.setTag('ingest_id', ingestId);
-    Sentry.setContext('sync_producer', {
-        ingest_id: ingestId,
-        site_id: body.s,
-        url: getFinalUrl(body).slice(0, 200),
-    });
-
-    const workerPayload = {
-        ...body,
-        consent_scopes: consentScopes,
-        ingest_id: ingestId,
-        ip,
-        ua,
-        geo_city: geoInfo.city !== 'Unknown' ? geoInfo.city : undefined,
-        geo_district: geoInfo.district ?? undefined,
-        geo_country: geoInfo.country !== 'Unknown' ? geoInfo.country : undefined,
-        geo_timezone: geoInfo.timezone !== 'Unknown' ? geoInfo.timezone : undefined,
-        geo_telco_carrier: geoInfo.telco_carrier ?? undefined,
-        isp_asn: geoInfo.isp_asn ?? undefined,
-        is_proxy_detected: geoInfo.is_proxy_detected ?? undefined,
-    };
-
-    try {
-        await doPublish({ url: workerUrl, body: workerPayload, retries: 3 });
-        if (idempotencyInserted && billableDecision.billable) {
-            await doIncrementRedis(siteIdUuid, yearMonth);
-            incrementBillingIngestAllowed();
-            if (baseHeaders['x-opsmantik-overage']) incrementBillingIngestOverage();
-        }
-        return NextResponse.json(
-            createSyncResponse(true, 10, { status: 'queued', v: OPSMANTIK_VERSION, ingest_id: ingestId }),
-            { headers: baseHeaders }
-        );
-    } catch (err) {
-        const errorMessage = String((err as Error)?.message ?? err);
-        const errorShort = errorMessage.slice(0, ERROR_MESSAGE_MAX_LEN);
-
-        logError('QSTASH_PUBLISH_FAILED', {
-            code: 'QSTASH_PUBLISH_FAILED',
-            route: 'sync',
-            ingest_id: ingestId,
-            site_id: body.s,
-            error: errorMessage,
-        });
-        Sentry.captureException(err);
-
-        // Best-effort: observability + fallback buffer (zero data loss)
-        try {
-            await adminClient.from('ingest_publish_failures').insert({
-                site_public_id: body.s,
-                error_code: 'QSTASH_PUBLISH_FAILED',
-                error_message_short: errorShort || null,
-            });
-        } catch {
-            /* ignore */
-        }
-
-        try {
-            await doInsertFallback(buildFallbackRow(siteIdUuid, workerPayload, errorShort || null));
-            if (idempotencyInserted && billableDecision.billable) await doIncrementRedis(siteIdUuid, yearMonth);
-        } catch (fallbackErr) {
-            logError('INGEST_FALLBACK_INSERT_FAILED', {
-                route: 'sync',
-                ingest_id: ingestId,
-                site_id: body.s,
-                error: String(fallbackErr),
-            });
-        }
-
-        incrementBillingIngestDegraded();
-        // 200 OK (degraded): we captured the data; client should not retry
-        const degradedHeaders = {
-            ...baseHeaders,
-            'x-opsmantik-degraded': 'qstash_publish_failed',
-            'x-opsmantik-fallback': 'true',
-        };
-        return NextResponse.json(
-            createSyncResponse(true, 0, { status: 'degraded', ingest_id: ingestId }),
-            { headers: degradedHeaders }
-        );
-    }
   };
 }
 

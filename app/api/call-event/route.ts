@@ -20,6 +20,8 @@ import {
     parseValueAllowNull,
     type EventIdMode,
 } from '@/lib/api/call-event/shared';
+import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
+import { insertCallScoreAudit } from '@/lib/scoring/call-scores-audit';
 import type { CallInsertError, CallRecord, EventMetadata, ScoreBreakdown } from '@/lib/types/call-event';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
@@ -369,137 +371,22 @@ export async function POST(req: NextRequest) {
         }
 
         // COMPLIANCE INVARIANT: No call insert without session analytics consent. Marketing consent required for OCI enqueue.
-        // 2. Find most recent session for this fingerprint (within last 30 minutes)
+        // 2. Find most recent session and compute V1.1 score (shared with v2)
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const recentMonths = getRecentMonths(2);
+        const matchResult = await findRecentSessionByFingerprint(adminClient, {
+            siteId: siteUuidFinal,
+            fingerprint,
+            recentMonths,
+            thirtyMinutesAgo,
+        });
 
-        const { data: recentEvents, error: eventsError } = await adminClient
-            .from('events')
-            .select('session_id, session_month, metadata, created_at')
-            .eq('metadata->>fingerprint', fingerprint)
-            .in('session_month', recentMonths)
-            .gte('created_at', thirtyMinutesAgo)
-            .order('created_at', { ascending: false })
-            .order('id', { ascending: false })
-            .limit(1);
-
-        if (eventsError) {
-            logError('call-event events query error', {
-                request_id: requestId,
-                route: CALL_EVENT_ROUTE,
-                site_id: site_id ?? undefined,
-                fingerprint,
-                code: eventsError.code,
-                details: eventsError.details,
-                message: eventsError.message,
-            });
-
-            return NextResponse.json(
-                { error: 'Failed to query events', details: eventsError.message },
-                { status: 500, headers: baseHeaders }
-            );
-        }
-
-        let matchedSessionId: string | null = null;
-        let leadScore = 0;
-        let scoreBreakdown: ScoreBreakdown | null = null;
-        let callStatus: string | null = null;
-        let sessionConsentScopes: string[] = [];
         const matchedAt = new Date().toISOString();
-
-        if (recentEvents && recentEvents.length > 0) {
-            matchedSessionId = recentEvents[0].session_id;
-            const sessionMonth = recentEvents[0].session_month;
-
-            // Validate: Check session exists and was created before match. Include consent_scopes for analytics gate.
-            const { data: session, error: sessionError } = await adminClient
-                .from('sessions')
-                .select('id, created_at, created_month, consent_scopes')
-                .eq('id', matchedSessionId)
-                .eq('site_id', siteUuidFinal)
-                .eq('created_month', sessionMonth)
-                .single();
-
-            if (sessionError || !session) {
-                // Session doesn't exist - invalid match
-                logWarn('call-event session not found for match', {
-                    request_id: requestId,
-                    route: CALL_EVENT_ROUTE,
-                    site_id: site_id ?? undefined,
-                    session_id: matchedSessionId,
-                    error: sessionError?.message,
-                });
-                matchedSessionId = null;
-            } else {
-                sessionConsentScopes = ((session as { consent_scopes?: string[] }).consent_scopes ?? []).map((s) => String(s).toLowerCase());
-                // Check if match is suspicious (session created after match by > 2 minutes)
-                const sessionCreatedAt = new Date(session.created_at);
-                const matchTime = new Date(matchedAt);
-                const timeDiffMinutes = (sessionCreatedAt.getTime() - matchTime.getTime()) / (1000 * 60);
-
-                if (timeDiffMinutes > 2) {
-                    // Suspicious: session created more than 2 minutes after match
-                    logWarn('call-event suspicious match detected', {
-                        request_id: requestId,
-                        route: CALL_EVENT_ROUTE,
-                        site_id: site_id ?? undefined,
-                        session_id: matchedSessionId,
-                        session_created_at: session.created_at,
-                        matched_at: matchedAt,
-                        time_diff_minutes: timeDiffMinutes.toFixed(2),
-                    });
-                    callStatus = 'suspicious';
-                } else {
-                    callStatus = 'intent'; // Normal match
-                }
-
-                // 3. Calculate lead score from session events (only if match is valid)
-                const { data: sessionEvents, error: sessionEventsError } = await adminClient
-                    .from('events')
-                    .select('event_category, event_action, metadata')
-                    .eq('session_id', matchedSessionId)
-                    .eq('session_month', sessionMonth);
-
-                if (sessionEventsError) {
-                    logError('call-event session events query error', {
-                        request_id: requestId,
-                        route: CALL_EVENT_ROUTE,
-                        site_id: site_id ?? undefined,
-                        session_id: matchedSessionId,
-                        code: sessionEventsError.code,
-                        message: sessionEventsError.message,
-                    });
-
-                    return NextResponse.json(
-                        { error: 'Failed to query session events', details: sessionEventsError.message },
-                        { status: 500, headers: baseHeaders }
-                    );
-                }
-
-                if (sessionEvents && sessionEvents.length > 0) {
-                    const conversionCount = sessionEvents.filter(e => e.event_category === 'conversion').length;
-                    const interactionCount = sessionEvents.filter(e => e.event_category === 'interaction').length;
-                    const scores = sessionEvents.map(e => Number((e.metadata as EventMetadata | null)?.lead_score) || 0);
-                    const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
-
-                    const conversionPoints = conversionCount * 20;
-                    const interactionPoints = interactionCount * 5;
-                    const bonuses = maxScore;
-                    const rawScore = conversionPoints + interactionPoints + bonuses;
-                    const cappedAt100 = rawScore > 100;
-
-                    leadScore = Math.min(rawScore, 100);
-                    scoreBreakdown = {
-                        conversionPoints,
-                        interactionPoints,
-                        bonuses,
-                        cappedAt100,
-                        rawScore,
-                        finalScore: leadScore
-                    };
-                }
-            }
-        }
+        const matchedSessionId = matchResult.matchedSessionId;
+        const leadScore = matchResult.leadScore;
+        const scoreBreakdown = matchResult.scoreBreakdown as ScoreBreakdown | null;
+        const callStatus = matchResult.callStatus;
+        const sessionConsentScopes = (matchResult.consentScopes ?? []).map((s) => String(s).toLowerCase());
 
         // COMPLIANCE: Analytics consent gate. No session OR analytics missing → 204, no insert.
         // Side-channel mitigation: 204 identical for (no session) and (no analytics).
@@ -543,8 +430,9 @@ export async function POST(req: NextRequest) {
             lead_score: leadScore,
             lead_score_at_match: matchedSessionId ? leadScore : null,
             score_breakdown: scoreBreakdown,
+            confidence_score: matchResult.confidenceScore ?? null,
             matched_at: matchedSessionId ? matchedAt : null,
-            status: callStatus, // 'intent', 'suspicious', or null
+            status: callStatus,
             source: 'click',
             intent_action,
             intent_target,
@@ -645,6 +533,14 @@ export async function POST(req: NextRequest) {
                 { error: 'Failed to record call' },
                 { status: 500, headers: baseHeaders }
             );
+        }
+
+        if (callRecord && scoreBreakdown && (scoreBreakdown as unknown as Record<string, unknown>).version === 'v1.1') {
+            await insertCallScoreAudit(adminClient, {
+                siteId: site.id,
+                callId: callRecord.id,
+                scoreBreakdown: scoreBreakdown as unknown as Record<string, unknown>,
+            }, { request_id: requestId, route: CALL_EVENT_ROUTE });
         }
 
         return NextResponse.json(

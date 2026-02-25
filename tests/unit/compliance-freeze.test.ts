@@ -125,7 +125,10 @@ test('COMPLIANCE: erase RPC does NOT modify partition keys', () => {
 test('COMPLIANCE: erase RPC preserves billing fields (value_cents, session_id, etc)', () => {
   const src = readFileSync(ERASE_RPC, 'utf8');
   assert.ok(!src.includes('value_cents ='), 'erase must not alter value_cents');
-  assert.ok(!src.includes('session_id ='), 'erase must not alter session_id (referential)');
+  // Only forbid SET-clause assignment of session_id (WHERE uses session_id::text = / session_id = ANY are allowed)
+  const setSections = src.split(/\bSET\b/i);
+  const hasSetSessionId = setSections.some((block, i) => i > 0 && /\bsession_id\s*=/.test(block.split(/\bWHERE\b/i)[0] || ''));
+  assert.ok(!hasSetSessionId, 'erase must not SET session_id (referential)');
   assert.ok(!src.includes('billable ='), 'erase must not alter billable');
 });
 

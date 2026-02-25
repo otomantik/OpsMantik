@@ -93,26 +93,26 @@ test('resolveLocale: cookie > site > user > Accept-Language > default', () => {
 // --- Translation fallback ---
 
 test('translate: exact locale match', () => {
-  assert.equal(translate('sidebar.operationsCenter', 'en'), 'Operations Center');
-  assert.equal(translate('sidebar.operationsCenter', 'tr'), 'Operasyon Merkezi');
+  assert.equal(translate('en', 'sidebar.operationsCenter'), 'Operations Center');
+  assert.equal(translate('tr', 'sidebar.operationsCenter'), 'Operasyon Merkezi');
 });
 
 test('translate: locale prefix fallback (tr-TR -> tr)', () => {
-  assert.equal(translate('sidebar.operationsCenter', 'tr-TR'), 'Operasyon Merkezi');
+  assert.equal(translate('tr-TR', 'sidebar.operationsCenter'), 'Operasyon Merkezi');
 });
 
 test('translate: fallback to en when key missing in locale', () => {
   const key = 'sidebar.operationsCenter';
-  assert.equal(translate(key, 'de'), 'Operations Center');
+  assert.equal(translate('de', key), 'Operations Center');
 });
 
 test('translate: fallback to key when missing everywhere', () => {
-  assert.equal(translate('unknown.key.xyz', 'en'), 'unknown.key.xyz');
+  assert.equal(translate('en', 'unknown.key.xyz'), 'unknown.key.xyz');
 });
 
 test('translate: never throws', () => {
-  assert.doesNotThrow(() => translate('', 'en'));
-  assert.doesNotThrow(() => translate('x', 'zz', { a: 1 }));
+  assert.doesNotThrow(() => translate('en', ''));
+  assert.doesNotThrow(() => translate('zz', 'x', { a: 1 }));
 });
 
 // --- Guard: no TRY/Europe/Istanbul hardcoding in i18n core ---

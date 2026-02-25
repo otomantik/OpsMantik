@@ -23,6 +23,7 @@ import {
 } from '@/lib/api/call-event/shared';
 import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
 import { extractMissingColumnName, stripColumnFromInsertPayload } from '@/lib/api/call-event/schema-drift';
+import { insertCallScoreAudit } from '@/lib/scoring/call-scores-audit';
 import type { CallInsertError, CallRecord } from '@/lib/types/call-event';
 
 export const runtime = 'nodejs';
@@ -339,6 +340,7 @@ export async function POST(req: NextRequest) {
       lead_score: leadScore,
       lead_score_at_match: matchedSessionId ? leadScore : null,
       score_breakdown: scoreBreakdown,
+      confidence_score: matchResult.confidenceScore ?? null,
       matched_at: matchedSessionId ? matchedAt : null,
       status: callStatus,
       source: 'click',
@@ -401,6 +403,14 @@ export async function POST(req: NextRequest) {
       }
 
       break;
+    }
+
+    if (!insertError && callRecord && scoreBreakdown && (scoreBreakdown as unknown as Record<string, unknown>).version === 'v1.1') {
+      await insertCallScoreAudit(adminClient, {
+        siteId: site.id,
+        callId: callRecord.id,
+        scoreBreakdown: scoreBreakdown as unknown as Record<string, unknown>,
+      }, { request_id: requestId, route: ROUTE });
     }
 
     if (insertError) {
