@@ -145,19 +145,29 @@ function main() {
     Logger.log('OpsMantik: applied ' + appended + ' conversions; skipped ' + skipped);
     // Ack: mark these queue rows as COMPLETED so they are not re-sent (recover won't move them to RETRY).
     if (uploadedIds.length > 0) {
+      Logger.log('=> Starting ACK process for ' + uploadedIds.length + ' conversions.');
+      var payload = { siteId: siteId, queueIds: uploadedIds };
+      Logger.log('=> ACK Payload: ' + JSON.stringify(payload));
       var ackUrl = (typeof OPSMANTIK_EXPORT_URL !== 'undefined'
         ? OPSMANTIK_EXPORT_URL.replace(/\/api\/oci\/google-ads-export.*$/, '')
         : 'https://console.opsmantik.com') + '/api/oci/ack';
       try {
-        UrlFetchApp.fetch(ackUrl, {
+        var ackResp = UrlFetchApp.fetch(ackUrl, {
           method: 'post',
           muteHttpExceptions: true,
           contentType: 'application/json',
           headers: { 'x-api-key': apiKey },
-          payload: JSON.stringify({ siteId: siteId, queueIds: uploadedIds })
+          payload: JSON.stringify(payload)
         });
+        var ackCode = ackResp.getResponseCode();
+        var ackBody = ackResp.getContentText();
+        Logger.log('=> ACK Response Code: ' + ackCode);
+        Logger.log('=> ACK Response Body: ' + ackBody);
+        if (ackCode !== 200) {
+          Logger.log('!!! ACK FAILED: HTTP ' + ackCode + ' ' + ackBody);
+        }
       } catch (ackErr) {
-        Logger.log('OpsMantik ack error (non-fatal): ' + ackErr.toString());
+        Logger.log('!!! ACK FAILED: ' + ackErr.toString());
       }
     }
   } catch (e) {

@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (queueIds.length === 0) {
+      console.log('[OCI ACK] Received 0 ids. Nothing to update.');
       return NextResponse.json({ ok: true, updated: 0 });
     }
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
       .select('id');
 
     if (error) {
+      console.error('[OCI ACK] SQL error:', error.message, { code: error.code, siteId: siteUuid, idsReceived: queueIds.length });
       return NextResponse.json(
         { error: 'Failed to ack', details: error.message },
         { status: 500 }
@@ -74,9 +76,11 @@ export async function POST(req: NextRequest) {
     }
 
     const updated = Array.isArray(data) ? data.length : 0;
+    console.log('[OCI ACK] Received', queueIds.length, 'ids. Successfully updated', updated, 'rows.');
     return NextResponse.json({ ok: true, updated });
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
+    console.error('[OCI ACK] Unhandled error:', details);
     return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
   }
 }

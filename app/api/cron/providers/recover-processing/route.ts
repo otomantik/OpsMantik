@@ -11,7 +11,7 @@ import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 
-const DEFAULT_MIN_AGE_MINUTES = 15;
+const DEFAULT_MIN_AGE_MINUTES = 30;
 
 async function runRecover(req: NextRequest) {
   const minAge = Math.max(
@@ -35,7 +35,7 @@ async function runRecover(req: NextRequest) {
 
   const recovered = (data as number) ?? 0;
   if (recovered > 0) {
-    console.warn(`[recover-processing] Recovering stale OCI job(s): ${recovered}`);
+    console.warn(`[Recover] Reverting ${recovered} stale PROCESSING job(s) to RETRY.`);
   }
   return NextResponse.json(
     { ok: true, recovered },

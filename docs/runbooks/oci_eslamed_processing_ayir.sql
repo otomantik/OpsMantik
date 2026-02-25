@@ -22,8 +22,8 @@ ORDER BY oq.claimed_at;
 
 
 -- -----------------------------------------------------------------------------
--- 2) (İsteğe bağlı) Google'a GİTTİĞİNİ bildiğin queue_id'leri COMPLETED yap.
---    Aşağıdaki id listesini doldur, sonra bu UPDATE'i çalıştır.
+-- 2a) Google'a GİTTİĞİNİ bildiğin belirli queue_id'leri COMPLETED yap.
+--     Aşağıdaki id listesini doldur, sonra bu UPDATE'i çalıştır.
 -- -----------------------------------------------------------------------------
 -- UPDATE offline_conversion_queue
 -- SET status = 'COMPLETED', uploaded_at = now(), updated_at = now()
@@ -32,6 +32,15 @@ ORDER BY oq.claimed_at;
 --   AND id IN (
 --     '11be2886-46ab-4345-b9ed-f7d3e7f861de'  -- giden queue_id
 --   );
+
+-- -----------------------------------------------------------------------------
+-- 2b) Hepsini "Google'a gitti" kabul et (tekrar kuyruğa alma, çift gönderim yok).
+--     Script upload etti ama ack gelmediyse; PROCESSING'deki tümünü COMPLETED yap.
+-- -----------------------------------------------------------------------------
+-- UPDATE offline_conversion_queue
+-- SET status = 'COMPLETED', uploaded_at = now(), updated_at = now()
+-- WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND status = 'PROCESSING';
 
 
 -- -----------------------------------------------------------------------------
