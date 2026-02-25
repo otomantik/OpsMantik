@@ -78,14 +78,90 @@ export function useIntentQualification(
           throw new Error('User not authenticated');
         }
 
-        // Convert 0-5 score to 0-100 scale (0 = junk, 1-5 = 20-100)
-        const leadScore = params.score * 20;
-
         const isConfirmed = params.status === 'confirmed';
+        const leadScore = params.score * 20; // 0-5 → 0-100
+
+        if (isConfirmed) {
+          // Route through Seal API so enqueueSealConversion() runs (OCI queue).
+          const callIds: string[] = [];
+          const doSessionUpdate = Boolean(matchedSessionId && String(matchedSessionId).trim().length > 0);
+
+          if (doSessionUpdate) {
+            const { data: rows, error: fetchError } = await supabase
+              .from('calls')
+              .select('id')
+              .eq('site_id', siteId)
+              .eq('matched_session_id', matchedSessionId as string)
+              .eq('source', 'click')
+              .in('status', ['intent', null]);
+            if (fetchError) throw fetchError;
+            callIds.push(...(rows ?? []).map((r) => r.id));
+          } else {
+            callIds.push(intentId);
+          }
+
+          if (callIds.length === 0) {
+            const msg = doSessionUpdate
+              ? t('toast.error.sessionAlreadyQualified')
+              : t('toast.error.intentAlreadyQualified');
+            setError(msg);
+            return { success: false, error: msg };
+          }
+
+          const body = {
+            lead_score: leadScore,
+            currency: 'TRY',
+          };
+
+          for (const callId of callIds) {
+            const res = await fetch(`/api/calls/${callId}/seal`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+              credentials: 'include',
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              const msg = (data as { error?: string }).error || (res.status === 404 ? (doSessionUpdate ? t('toast.error.sessionAlreadyQualified') : t('toast.error.intentAlreadyQualified')) : t('toast.error.qualifyFailed'));
+              setError(msg);
+              return { success: false, error: msg };
+            }
+          }
+
+          const actionType = 'sealed';
+          const undoToastId = toast.success(t('toast.success.done'), {
+            description: t('toast.description.intentAction', { action: actionType }),
+            duration: 8000,
+            action: {
+              label: t('common.undo'),
+              onClick: async () => {
+                toast.dismiss(undoToastId);
+                toast.info(t('toast.info.undoing'));
+                try {
+                  const result = await undoQualification(intentId);
+                  if (result.success) {
+                    toast.success(t('toast.success.undone'));
+                    onUndoSuccess?.();
+                  } else {
+                    toast.error(t('toast.error.undoFailed'), {
+                      description: result.error || t('common.tryAgain'),
+                    });
+                  }
+                } catch (err: unknown) {
+                  const errorMessage = err instanceof Error ? err.message : t('toast.error.undoFailed');
+                  toast.error(t('toast.error.undoFailed'), { description: errorMessage });
+                }
+              },
+            },
+          });
+          return { success: true };
+        }
+
+        // Junk: direct update (no OCI enqueue).
         const updatePayload = {
           lead_score: leadScore,
-          status: params.status,
-          confirmed_at: isConfirmed ? new Date().toISOString() : null,
+          status: 'junk',
+          confirmed_at: null,
           confirmed_by: user.id,
           note: params.note || null,
           score_breakdown: {
@@ -93,15 +169,11 @@ export function useIntentQualification(
             qualified_by: 'user',
             timestamp: new Date().toISOString(),
           },
-          oci_status: isConfirmed ? 'sealed' : 'skipped',
+          oci_status: 'skipped',
           oci_status_updated_at: new Date().toISOString(),
         };
 
-        // Session-based single card:
-        // If we have matched_session_id, qualify ALL pending click-intents in that session.
-        // This ensures legacy duplicates can't remain visible and the queue stays "1 person = 1 card".
         const doSessionUpdate = Boolean(matchedSessionId && String(matchedSessionId).trim().length > 0);
-
         const updateQuery = doSessionUpdate
           ? supabase
             .from('calls')
@@ -116,20 +188,13 @@ export function useIntentQualification(
             .update(updatePayload)
             .eq('id', intentId)
             .eq('site_id', siteId)
-            .in('status', ['intent', null]) // Only update if not already qualified
+            .in('status', ['intent', null])
             .select('id');
 
         const { data: updatedRows, error: updateError } = await updateQuery;
+        if (updateError) throw updateError;
 
-        if (updateError) {
-          throw updateError;
-        }
-
-        // If 0 rows matched, PostgREST returns empty data when we request a select.
-        // Without this check, the UI can show "success" while nothing changed in DB.
-        // Note: some older supabase-js versions return null data without a select; keep this defensive.
-        const didUpdate =
-          Array.isArray(updatedRows) ? updatedRows.length > 0 : Boolean(updatedRows);
+        const didUpdate = Array.isArray(updatedRows) ? updatedRows.length > 0 : Boolean(updatedRows);
         if (!didUpdate) {
           const msg = doSessionUpdate
             ? t('toast.error.sessionAlreadyQualified')
@@ -138,36 +203,11 @@ export function useIntentQualification(
           return { success: false, error: msg };
         }
 
-        // Show success toast with undo button
-        const actionType = params.status === 'confirmed' ? 'sealed' : 'marked as junk';
-        const undoToastId = toast.success(t('toast.success.done'), {
+        const actionType = 'marked as junk';
+        toast.success(t('toast.success.done'), {
           description: t('toast.description.intentAction', { action: actionType }),
           duration: 8000,
-          action: {
-            label: t('common.undo'),
-            onClick: async () => {
-              toast.dismiss(undoToastId);
-              toast.info(t('toast.info.undoing'));
-              try {
-                const result = await undoQualification(intentId);
-                if (result.success) {
-                  toast.success(t('toast.success.undone'));
-                  onUndoSuccess?.();
-                } else {
-                  toast.error(t('toast.error.undoFailed'), {
-                    description: result.error || t('common.tryAgain'),
-                  });
-                }
-              } catch (err: unknown) {
-                const errorMessage = err instanceof Error ? err.message : t('toast.error.undoFailed');
-                toast.error(t('toast.error.undoFailed'), {
-                  description: errorMessage,
-                });
-              }
-            },
-          },
         });
-
         return { success: true };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : t('toast.error.qualifyFailed');

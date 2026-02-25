@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/dispatch-conversions",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/sweep-unsent-conversions",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
