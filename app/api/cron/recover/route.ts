@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
     }
 
     claimed = rows.length;
-    const workerUrl = `${getWorkerBaseUrl()}/api/sync/worker`;
+    const workerUrl = `${getWorkerBaseUrl()}/api/workers/ingest`;
     const typedRows = rows as {
       id: string;
       site_id: string;

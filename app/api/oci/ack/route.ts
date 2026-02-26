@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const siteId = typeof body.siteId === 'string' ? body.siteId.trim() : '';
     const rawIds = Array.isArray(body.queueIds) ? body.queueIds : [];
-    const queueIds = rawIds.filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const queueIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
 
     if (!siteId) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });

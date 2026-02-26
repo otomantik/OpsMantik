@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nextjs';
 
 import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
+import { publishToQStash } from '@/lib/ingest/publish';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
@@ -13,7 +14,6 @@ import { logError, logWarn } from '@/lib/logging/logger';
 import {
   getEventIdModeFromEnv,
   inferIntentAction,
-  isMissingEventIdColumnError,
   isMissingResolveRpcError,
   isRecord,
   makeIntentStamp,
@@ -22,9 +22,6 @@ import {
   type EventIdMode,
 } from '@/lib/api/call-event/shared';
 import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
-import { extractMissingColumnName, stripColumnFromInsertPayload } from '@/lib/api/call-event/schema-drift';
-import { insertCallScoreAudit } from '@/lib/scoring/call-scores-audit';
-import type { CallInsertError, CallRecord } from '@/lib/types/call-event';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -332,7 +329,8 @@ export async function POST(req: NextRequest) {
       ? createHash('sha256').update(headerSig, 'utf8').digest('hex')
       : null;
 
-    const baseInsert: Record<string, unknown> = {
+    const workerPayload = {
+      _ingest_type: 'call-event' as const,
       site_id: site.id,
       phone_number,
       matched_session_id: matchedSessionId,
@@ -343,142 +341,45 @@ export async function POST(req: NextRequest) {
       confidence_score: matchResult.confidenceScore ?? null,
       matched_at: matchedSessionId ? matchedAt : null,
       status: callStatus,
-      source: 'click',
+      source: 'click' as const,
       intent_action,
       intent_target,
       intent_stamp,
       intent_page_url,
       click_id,
-      ...(value !== null ? { _client_value: value } : {}),
-      ...(signatureHash ? { signature_hash: signatureHash } : {}),
-    };
-
-    const insertWithEventId = {
-      ...baseInsert,
+      signature_hash: signatureHash,
       ...(event_id ? { event_id } : {}),
+      ...(value !== null ? { _client_value: value } : {}),
     };
 
-    let callRecord: CallRecord | null = null;
-    let insertError: CallInsertError = null;
-    // Insert with drift tolerance:
-    // - Handle missing calls.event_id (older schema) by retrying without event_id.
-    // - Handle missing optional columns by stripping them iteratively (schema cache / migration lag).
-    let insertPayload: Record<string, unknown> = (eventIdMode !== 'off' && event_id) ? insertWithEventId : baseInsert;
-    const strippedCols = new Set<string>();
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      // Tenant-scope audit: ensure site_id is explicitly present in the insert payload.
-      const r = await adminClient.from('calls').insert({ ...insertPayload, site_id: site.id }).select().single();
-      callRecord = r.data;
-      insertError = r.error;
-      if (!insertError) break;
+    const deduplicationId = `ce:${site.id}:${signatureHash || event_id || intent_stamp}`;
+    const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
 
-      // Back-compat: event_id column may not exist in some DBs yet.
-      if (insertError && isMissingEventIdColumnError(insertError)) {
-        eventIdColumnOk = false;
-        strippedCols.add('event_id');
-        insertPayload = { ...insertPayload };
-        delete (insertPayload as Record<string, unknown>).event_id;
-        logWarn('call-event-v2: calls.event_id missing; retrying insert without event_id', {
-          request_id: requestId,
-          route: ROUTE,
-          site_id,
-        });
-        continue;
-      }
-
-      const missingCol = extractMissingColumnName(insertError);
-      if (missingCol && !strippedCols.has(missingCol)) {
-        const { next, stripped } = stripColumnFromInsertPayload(insertPayload, missingCol);
-        if (stripped) {
-          strippedCols.add(missingCol);
-          insertPayload = next;
-          logWarn('call-event-v2: missing calls column; retrying insert with reduced payload', {
-            request_id: requestId,
-            route: ROUTE,
-            site_id,
-            missing_column: missingCol,
-          });
-          continue;
-        }
-      }
-
-      break;
-    }
-
-    if (!insertError && callRecord && scoreBreakdown && (scoreBreakdown as unknown as Record<string, unknown>).version === 'v1.1') {
-      await insertCallScoreAudit(adminClient, {
-        siteId: site.id,
-        callId: callRecord.id,
-        scoreBreakdown: scoreBreakdown as unknown as Record<string, unknown>,
-      }, { request_id: requestId, route: ROUTE });
-    }
-
-    if (insertError) {
-      if (insertError.code === '23505') {
-        let existing: { id: string; matched_session_id?: string | null; lead_score?: number | null } | null = null;
-        if (signatureHash) {
-          const { data: bySig } = await adminClient
-            .from('calls')
-            .select('id, matched_session_id, lead_score')
-            .eq('site_id', site.id)
-            .eq('signature_hash', signatureHash)
-            .single();
-          existing = bySig;
-        }
-        if (!existing && event_id && eventIdColumnOk) {
-          const { data: byEventId } = await adminClient
-            .from('calls')
-            .select('id, matched_session_id, lead_score')
-            .eq('site_id', site.id)
-            .eq('event_id', event_id)
-            .single();
-          existing = byEventId;
-        }
-        if (!existing) {
-          const { data: byIntent } = await adminClient
-            .from('calls')
-            .select('id, matched_session_id, lead_score')
-            .eq('site_id', site.id)
-            .eq('intent_stamp', intent_stamp)
-            .single();
-          existing = byIntent;
-        }
-
-        if (existing) {
-          return NextResponse.json(
-            signatureHash
-              ? { status: 'noop', reason: 'idempotent_conflict', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore }
-              : { status: 'noop', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore },
-            {
-              headers: {
-                ...baseHeaders,
-                'X-RateLimit-Limit': '80',
-                'X-RateLimit-Remaining': rl.remaining.toString(),
-                'X-Ops-Proxy': (req.headers.get('x-ops-proxy') || '').toString().slice(0, 8),
-              },
-            }
-          );
-        }
-      }
-
-      const missingCol = extractMissingColumnName(insertError);
-      logError('call-event-v2 insert failed', {
+    try {
+      await publishToQStash({
+        url: workerUrl,
+        body: workerPayload,
+        deduplicationId,
+        retries: 3,
+      });
+    } catch (err) {
+      logError('call-event-v2 QStash publish failed', {
         request_id: requestId,
         route: ROUTE,
         site_id,
-        message: insertError.message,
-        code: insertError.code,
-        missing_column: missingCol ?? undefined,
+        error: String((err as Error)?.message ?? err),
       });
+      Sentry.captureException(err);
       return NextResponse.json(
-        { error: 'Failed to record call', code: missingCol ? 'CALLS_SCHEMA_DRIFT' : 'CALL_EVENT_INSERT_FAILED' },
-        { status: 500, headers: { ...baseHeaders, 'x-opsmantik-error-code': missingCol ? 'CALLS_SCHEMA_DRIFT' : 'CALL_EVENT_INSERT_FAILED' } }
+        { error: 'Failed to queue call' },
+        { status: 500, headers: baseHeaders }
       );
     }
 
     return NextResponse.json(
-      { status: 'matched', call_id: callRecord!.id, session_id: matchedSessionId, lead_score: leadScore },
+      { status: 'queued' },
       {
+        status: 202,
         headers: {
           ...baseHeaders,
           'X-RateLimit-Limit': '80',

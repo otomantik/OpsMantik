@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
+import { publishToQStash } from '@/lib/ingest/publish';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
@@ -12,7 +13,6 @@ import { z } from 'zod';
 import {
     getEventIdModeFromEnv,
     inferIntentAction,
-    isMissingEventIdColumnError,
     isMissingResolveRpcError,
     isRecord,
     makeIntentStamp,
@@ -21,8 +21,7 @@ import {
     type EventIdMode,
 } from '@/lib/api/call-event/shared';
 import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
-import { insertCallScoreAudit } from '@/lib/scoring/call-scores-audit';
-import type { CallInsertError, CallRecord, EventMetadata, ScoreBreakdown } from '@/lib/types/call-event';
+import type { ScoreBreakdown } from '@/lib/types/call-event';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -416,13 +415,13 @@ export async function POST(req: NextRequest) {
             ? body.click_id.trim()
             : null;
 
-        // 4. Insert call record
-        // DB idempotency: signature_hash = sha256(signature). UNIQUE(site_id, signature_hash) prevents duplicate when Redis replay cache is down.
+        // 4. Publish to QStash worker → 202 Accepted
         const signatureHash = headerSig
             ? createHash('sha256').update(headerSig, 'utf8').digest('hex')
             : null;
 
-        const baseInsert: Record<string, unknown> = {
+        const workerPayload = {
+            _ingest_type: 'call-event' as const,
             site_id: site.id,
             phone_number,
             matched_session_id: matchedSessionId,
@@ -433,124 +432,45 @@ export async function POST(req: NextRequest) {
             confidence_score: matchResult.confidenceScore ?? null,
             matched_at: matchedSessionId ? matchedAt : null,
             status: callStatus,
-            source: 'click',
+            source: 'click' as const,
             intent_action,
             intent_target,
             intent_stamp,
             intent_page_url,
             click_id,
-            ...(value !== null ? { _client_value: value } : {}),
-            ...(signatureHash ? { signature_hash: signatureHash } : {}),
-        };
-
-        const insertWithEventId = {
-            ...baseInsert,
+            signature_hash: signatureHash,
             ...(event_id ? { event_id } : {}),
+            ...(value !== null ? { _client_value: value } : {}),
         };
 
-        let callRecord: CallRecord | null = null;
-        let insertError: CallInsertError = null;
-        if (eventIdMode !== 'off' && event_id) {
-            const r1 = await adminClient.from('calls').insert(insertWithEventId).select().single();
-            callRecord = r1.data;
-            insertError = r1.error;
-            if (insertError && isMissingEventIdColumnError(insertError)) {
-                // DB migration not yet applied in this environment. Retry without event_id.
-                eventIdColumnOk = false;
-                logWarn('call-event: calls.event_id missing; retrying insert without event_id', {
-                    request_id: requestId,
-                    route: CALL_EVENT_ROUTE,
-                    site_id: site.id,
-                });
-                const r2 = await adminClient.from('calls').insert(baseInsert).select().single();
-                callRecord = r2.data;
-                insertError = r2.error;
-            }
-        } else {
-            const r0 = await adminClient.from('calls').insert(baseInsert).select().single();
-            callRecord = r0.data;
-            insertError = r0.error;
-        }
+        const deduplicationId = `ce:${site.id}:${signatureHash || event_id || intent_stamp}`;
+        const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
 
-        if (insertError) {
-            // Idempotency: treat unique conflicts as NOOP and return existing call.
-            if (insertError.code === '23505') {
-                let existing: { id: string; matched_session_id?: string | null; lead_score?: number | null } | null = null;
-                if (signatureHash) {
-                    const { data: bySig } = await adminClient
-                        .from('calls')
-                        .select('id, matched_session_id, lead_score')
-                        .eq('site_id', site.id)
-                        .eq('signature_hash', signatureHash)
-                        .single();
-                    existing = bySig;
-                }
-                if (!existing && event_id && eventIdColumnOk) {
-                    const { data: byEventId } = await adminClient
-                        .from('calls')
-                        .select('id, matched_session_id, lead_score')
-                        .eq('site_id', site.id)
-                        .eq('event_id', event_id)
-                        .single();
-                    existing = byEventId;
-                }
-                if (!existing) {
-                    const { data: byIntent } = await adminClient
-                        .from('calls')
-                        .select('id, matched_session_id, lead_score')
-                        .eq('site_id', site.id)
-                        .eq('intent_stamp', intent_stamp)
-                        .single();
-                    existing = byIntent;
-                }
-
-                if (existing) {
-                    return NextResponse.json(
-                        signatureHash
-                            ? { status: 'noop', reason: 'idempotent_conflict', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore }
-                            : { status: 'noop', call_id: existing.id, session_id: existing.matched_session_id ?? null, lead_score: typeof existing.lead_score === 'number' ? existing.lead_score : leadScore },
-                        {
-                            headers: {
-                                ...baseHeaders,
-                                'X-RateLimit-Limit': '50',
-                                'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
-                            },
-                        }
-                    );
-                }
-            }
-
-            logError('call-event insert failed', {
+        try {
+            await publishToQStash({
+                url: workerUrl,
+                body: workerPayload,
+                deduplicationId,
+                retries: 3,
+            });
+        } catch (err) {
+            logError('call-event QStash publish failed', {
                 request_id: requestId,
                 route: CALL_EVENT_ROUTE,
                 site_id,
-                code: insertError.code,
-                details: insertError.details,
-                hint: insertError.hint,
-                message: insertError.message,
+                error: String((err as Error)?.message ?? err),
             });
+            Sentry.captureException(err);
             return NextResponse.json(
-                { error: 'Failed to record call' },
+                { error: 'Failed to queue call' },
                 { status: 500, headers: baseHeaders }
             );
         }
 
-        if (callRecord && scoreBreakdown && (scoreBreakdown as unknown as Record<string, unknown>).version === 'v1.1') {
-            await insertCallScoreAudit(adminClient, {
-                siteId: site.id,
-                callId: callRecord.id,
-                scoreBreakdown: scoreBreakdown as unknown as Record<string, unknown>,
-            }, { request_id: requestId, route: CALL_EVENT_ROUTE });
-        }
-
         return NextResponse.json(
+            { status: 'queued' },
             {
-                status: 'matched',
-                call_id: callRecord!.id,
-                session_id: matchedSessionId,
-                lead_score: leadScore,
-            },
-            {
+                status: 202,
                 headers: {
                     ...baseHeaders,
                     'X-RateLimit-Limit': '50',
