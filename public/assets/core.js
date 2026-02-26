@@ -83,7 +83,7 @@
   }
 
   // --- Autonomous Consent Sniffer (Zero-Config CMP Integration) ---
-  var trackerConsentScopes = ['analytics'];
+  var trackerConsentScopes = ['analytics', 'marketing']; // Ensures OCI ingest for sites without CMP
 
   function updateTrackerConsent(scopes) {
     try {
