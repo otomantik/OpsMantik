@@ -33,6 +33,13 @@ const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
 
+const AdsContextSchema = z.object({
+    keyword: z.string().max(512).nullable().optional(),
+    match_type: z.string().max(8).nullable().optional(),
+    device_model: z.string().max(256).nullable().optional(),
+    geo_target_id: z.number().int().positive().nullable().optional(),
+}).nullable().optional();
+
 const CallEventSchema = z
     .object({
         // V2 rollout: accept event_id but ignore until DB idempotency migration lands.
@@ -50,6 +57,8 @@ const CallEventSchema = z
         intent_stamp: z.string().max(128).nullable().optional(),
         intent_page_url: z.string().max(2048).nullable().optional(),
         click_id: z.string().max(256).nullable().optional(),
+        // Google Ads ValueTrack enrichment
+        ads_context: AdsContextSchema,
     })
     .strict();
 
@@ -441,6 +450,7 @@ export async function POST(req: NextRequest) {
             signature_hash: signatureHash,
             ...(event_id ? { event_id } : {}),
             ...(value !== null ? { _client_value: value } : {}),
+            ...(body.ads_context ? { ads_context: body.ads_context } : {}),
         };
 
         const deduplicationId = `ce-${site.id}-${signatureHash || event_id || intent_stamp}`.replace(/:/g, '-');

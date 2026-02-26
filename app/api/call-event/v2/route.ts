@@ -33,6 +33,13 @@ const MAX_BODY_BYTES = 64 * 1024;
 function getEventIdMode(): EventIdMode {
   return getEventIdModeFromEnv();
 }
+const AdsContextSchema = z.object({
+  keyword: z.string().max(512).nullable().optional(),
+  match_type: z.string().max(8).nullable().optional(),
+  device_model: z.string().max(256).nullable().optional(),
+  geo_target_id: z.number().int().positive().nullable().optional(),
+}).nullable().optional();
+
 // V2 payload is identical to V1 but adds event_id (for upcoming idempotency).
 const CallEventV2Schema = z
   .object({
@@ -54,6 +61,8 @@ const CallEventV2Schema = z
     intent_stamp: z.string().max(128).nullable().optional(),
     intent_page_url: z.string().max(2048).nullable().optional(),
     click_id: z.string().max(256).nullable().optional(),
+    // Google Ads ValueTrack enrichment
+    ads_context: AdsContextSchema,
   })
   .strict();
 
@@ -350,6 +359,7 @@ export async function POST(req: NextRequest) {
       signature_hash: signatureHash,
       ...(event_id ? { event_id } : {}),
       ...(value !== null ? { _client_value: value } : {}),
+      ...(body.ads_context ? { ads_context: body.ads_context } : {}),
     };
 
     const deduplicationId = `ce-${site.id}-${signatureHash || event_id || intent_stamp}`.replace(/:/g, '-');

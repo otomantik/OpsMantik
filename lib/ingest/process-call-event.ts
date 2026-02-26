@@ -39,6 +39,31 @@ export async function processCallEvent(
   let eventIdColumnOk = Boolean(payload.event_id);
 
   const safeStatus = sanitizeCallStatus(payload.status);
+
+  // ── Google Ads enrichment: resolve geo_target_id → district_name ────────────
+  const adsCtx = payload.ads_context ?? null;
+  let resolvedDistrictName: string | null = null;
+
+  if (adsCtx?.geo_target_id) {
+    try {
+      const { data: geoRow } = await adminClient
+        .from('google_geo_targets')
+        .select('canonical_name')
+        .eq('criteria_id', adsCtx.geo_target_id)
+        .single();
+
+      if (geoRow?.canonical_name) {
+        // canonical_name format: "Şişli,İstanbul,Turkey" → "Şişli / İstanbul"
+        const parts = geoRow.canonical_name.split(',').map((p: string) => p.trim());
+        resolvedDistrictName = parts.length >= 2
+          ? `${parts[0]} / ${parts[1]}`
+          : parts[0] || null;
+      }
+    } catch {
+      // Geo lookup failure is non-critical — proceed without district_name
+    }
+  }
+
   const baseInsert: Record<string, unknown> = {
     site_id: payload.site_id,
     phone_number: payload.phone_number,
@@ -58,6 +83,12 @@ export async function processCallEvent(
     click_id: payload.click_id,
     ...(payload._client_value != null ? { _client_value: payload._client_value } : {}),
     ...(payload.signature_hash ? { signature_hash: payload.signature_hash } : {}),
+    // Google Ads enrichment (nullable — gracefully absent when no ads data)
+    ...(adsCtx?.keyword ? { keyword: adsCtx.keyword } : {}),
+    ...(adsCtx?.match_type ? { match_type: adsCtx.match_type } : {}),
+    ...(adsCtx?.device_model ? { device_model: adsCtx.device_model } : {}),
+    ...(adsCtx?.geo_target_id ? { geo_target_id: adsCtx.geo_target_id } : {}),
+    ...(resolvedDistrictName ? { district_name: resolvedDistrictName } : {}),
   };
 
   const insertWithEventId = payload.event_id

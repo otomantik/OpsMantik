@@ -3,6 +3,14 @@
  * Worker performs insert + audit only.
  */
 
+/** Google Ads ValueTrack enrichment context captured by the tracker. */
+export type AdsContext = {
+  keyword?: string | null;
+  match_type?: 'e' | 'p' | 'b' | string | null;
+  device_model?: string | null;
+  geo_target_id?: number | null;
+};
+
 export type CallEventWorkerPayload = {
   _ingest_type: 'call-event';
   site_id: string;
@@ -24,6 +32,7 @@ export type CallEventWorkerPayload = {
   signature_hash: string | null;
   event_id?: string | null;
   _client_value?: number | null;
+  ads_context?: AdsContext | null;
 };
 
 export function isCallEventWorkerPayload(raw: unknown): raw is CallEventWorkerPayload {
