@@ -244,11 +244,11 @@
   // Hardware DNA + Network (backend: meta.lan, mem, con, sw, sh, dpr, gpu, con_type)
   function getHardwareMeta() {
     const o = {};
-    try { if (navigator.language) o.lan = navigator.language; } catch (e) {}
-    try { if (typeof navigator.deviceMemory === 'number') o.mem = navigator.deviceMemory; } catch (e) {}
-    try { if (typeof navigator.hardwareConcurrency === 'number') o.con = navigator.hardwareConcurrency; } catch (e) {}
-    try { if (typeof screen !== 'undefined') { o.sw = screen.width; o.sh = screen.height; } } catch (e) {}
-    try { if (typeof window.devicePixelRatio === 'number') o.dpr = window.devicePixelRatio; } catch (e) {}
+    try { if (navigator.language) o.lan = navigator.language; } catch (e) { }
+    try { if (typeof navigator.deviceMemory === 'number') o.mem = navigator.deviceMemory; } catch (e) { }
+    try { if (typeof navigator.hardwareConcurrency === 'number') o.con = navigator.hardwareConcurrency; } catch (e) { }
+    try { if (typeof screen !== 'undefined') { o.sw = screen.width; o.sh = screen.height; } } catch (e) { }
+    try { if (typeof window.devicePixelRatio === 'number') o.dpr = window.devicePixelRatio; } catch (e) { }
     try {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
@@ -256,11 +256,11 @@
         const ext = gl.getExtension('WEBGL_debug_renderer_info');
         if (ext) { const r = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL); if (r) o.gpu = r; }
       }
-    } catch (e) {}
+    } catch (e) { }
     try {
       const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
       if (conn && conn.effectiveType) o.con_type = conn.effectiveType;
-    } catch (e) {}
+    } catch (e) { }
     return o;
   }
 
@@ -299,7 +299,7 @@
         try {
           var hashParams = new URLSearchParams(afterQ);
           hashParams.forEach(function (value, key) { params.set(key, value); });
-        } catch (_) {}
+        } catch (_) { }
       }
     }
     return params;
@@ -723,6 +723,7 @@
       action: (typeof phoneNumber === 'string' && (phoneNumber.includes('wa.me') || phoneNumber.includes('whatsapp'))) ? 'whatsapp' : 'phone',
       url: window.location.href,
       ua: navigator.userAgent,
+      consent_scopes: trackerConsentScopes,
     };
     const rawBody = JSON.stringify(payload);
 
