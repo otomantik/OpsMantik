@@ -723,7 +723,6 @@
       action: (typeof phoneNumber === 'string' && (phoneNumber.includes('wa.me') || phoneNumber.includes('whatsapp'))) ? 'whatsapp' : 'phone',
       url: window.location.href,
       ua: navigator.userAgent,
-      consent_scopes: trackerConsentScopes,
     };
     const rawBody = JSON.stringify(payload);
 
