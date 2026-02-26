@@ -69,19 +69,27 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: { id: string; currency?: string | null } | null = null;
-    const byId = await adminClient.from('sites').select('id, currency').eq('id', siteId).maybeSingle();
+    let site: { id: string; currency?: string | null; oci_sync_method?: string | null } | null = null;
+    const byId = await adminClient.from('sites').select('id, currency, oci_sync_method').eq('id', siteId).maybeSingle();
     if (byId.data) {
       site = byId.data as { id: string; currency?: string | null };
     }
     if (!site) {
-      const byPublicId = await adminClient.from('sites').select('id, currency').eq('public_id', siteId).maybeSingle();
+      const byPublicId = await adminClient.from('sites').select('id, currency, oci_sync_method').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as { id: string; currency?: string | null };
+        site = byPublicId.data as { id: string; currency?: string | null; oci_sync_method?: string | null };
       }
     }
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    // Explicit Partitioning: Export only works for sites configured as 'script'
+    if (site.oci_sync_method === 'api') {
+      return NextResponse.json(
+        { error: 'Site partition mismatch', details: 'This site is configured for backend API sync, not script export.' },
+        { status: 400 }
+      );
     }
 
     const siteUuid = site.id;
