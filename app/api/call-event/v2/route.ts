@@ -352,7 +352,7 @@ export async function POST(req: NextRequest) {
       ...(value !== null ? { _client_value: value } : {}),
     };
 
-    const deduplicationId = `ce:${site.id}:${signatureHash || event_id || intent_stamp}`;
+    const deduplicationId = `ce-${site.id}-${signatureHash || event_id || intent_stamp}`.replace(/:/g, '-');
     const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
 
     try {
