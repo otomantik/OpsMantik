@@ -73,43 +73,47 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
+  const [userResult, userIsAdmin, siteResult] = await Promise.all([
+    supabase.auth.getUser(),
+    isAdmin(),
+    supabase
+      .from('sites')
+      .select('id, name, domain, public_id, user_id, currency, timezone, locale, active_modules')
+      .eq('id', siteId)
+      .single(),
+  ]);
+
+  const user = userResult.data?.user ?? null;
   if (!user) {
     redirect('/login');
   }
 
-  const userIsAdmin = await isAdmin();
-
-  const { data: site, error: siteError } = await supabase
-    .from('sites')
-    .select('id, name, domain, public_id, user_id, currency, timezone, locale, active_modules')
-    .eq('id', siteId)
-    .single();
-
+  const { data: site, error: siteError } = siteResult;
   if (siteError || !site) {
     notFound();
   }
 
+  let membershipForRole: { role?: string } | null = null;
   if (!userIsAdmin) {
-    const { data: ownedSite } = await supabase
-      .from('sites')
-      .select('id')
-      .eq('id', siteId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!ownedSite) {
-      const { data: membership } = await supabase
+    const [ownedSiteResult, membershipResult] = await Promise.all([
+      supabase
+        .from('sites')
+        .select('id')
+        .eq('id', siteId)
+        .eq('user_id', user.id)
+        .single(),
+      supabase
         .from('site_members')
-        .select('site_id')
+        .select('site_id, role')
         .eq('site_id', siteId)
         .eq('user_id', user.id)
-        .single();
-
-      if (!membership) {
-        notFound();
-      }
+        .maybeSingle(),
+    ]);
+    const ownedSite = ownedSiteResult.data;
+    membershipForRole = membershipResult.data;
+    if (!ownedSite && !membershipForRole) {
+      notFound();
     }
   }
 
@@ -118,18 +122,11 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   if (userIsAdmin) {
     siteRole = 'admin';
   } else {
-    // Owner → highest privilege
     const isOwner = site.user_id === user.id;
     if (isOwner) {
       siteRole = 'owner';
     } else {
-      const { data: membership } = await supabase
-        .from('site_members')
-        .select('role')
-        .eq('site_id', siteId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const r = (membership?.role || '').toString();
+      const r = (membershipForRole?.role || '').toString();
       if (r === 'admin' || r === 'operator' || r === 'analyst' || r === 'billing') {
         siteRole = r as SiteRole;
       }
