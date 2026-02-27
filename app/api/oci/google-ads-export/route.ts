@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { calculateExpectedValue } from '@/lib/valuation/predictive-engine';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
@@ -69,15 +70,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: { id: string; currency?: string | null; oci_sync_method?: string | null } | null = null;
-    const byId = await adminClient.from('sites').select('id, currency, oci_sync_method').eq('id', siteId).maybeSingle();
+    let site: { id: string; currency?: string | null; oci_sync_method?: string | null; default_aov?: number | null; intent_weights?: any } | null = null;
+    const byId = await adminClient.from('sites').select('id, currency, oci_sync_method, default_aov, intent_weights').eq('id', siteId).maybeSingle();
     if (byId.data) {
       site = byId.data as { id: string; currency?: string | null };
     }
     if (!site) {
-      const byPublicId = await adminClient.from('sites').select('id, currency, oci_sync_method').eq('public_id', siteId).maybeSingle();
+      const byPublicId = await adminClient.from('sites').select('id, currency, oci_sync_method, default_aov, intent_weights').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as { id: string; currency?: string | null; oci_sync_method?: string | null };
+        site = byPublicId.data as { id: string; currency?: string | null; oci_sync_method?: string | null; default_aov?: number | null; intent_weights?: any };
       }
     }
     if (!site) {
@@ -111,7 +112,7 @@ export async function GET(req: NextRequest) {
 
     const query = adminClient
       .from('offline_conversion_queue')
-      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, value_cents, currency')
+      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, value_cents, currency, action')
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter)
@@ -211,11 +212,15 @@ export async function GET(req: NextRequest) {
       conversion_time: string;
       value_cents: number;
       currency?: string | null;
+      action?: string | null;
     }) => {
       const rawTime = row.conversion_time || '';
       const conversionTime = formatConversionTimeTurkey(rawTime);
-      const valueCents = Number(row.value_cents) || 0;
-      const conversionValue = ensureNumericValue(valueCents / 100);
+
+      // Predictive Value Engine Integration
+      const ev = calculateExpectedValue(site?.default_aov, site?.intent_weights, row.action);
+      const conversionValue = ensureNumericValue(ev > 0 ? ev : (Number(row.value_cents) || 0) / 100);
+
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
 
       return {

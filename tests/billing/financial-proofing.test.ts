@@ -21,8 +21,8 @@ function getEnv(key: string) {
     return val;
 }
 
-// Helper to create a site
-async function createTestSite(admin: ReturnType<typeof createClient>, userId: string) {
+// Helper to create a site (admin typed loosely for test Supabase client compatibility)
+async function createTestSite(admin: import('@supabase/supabase-js').SupabaseClient, userId: string): Promise<string> {
     const suffix = crypto.randomBytes(4).toString('hex');
     const site = {
         user_id: userId,
@@ -30,9 +30,10 @@ async function createTestSite(admin: ReturnType<typeof createClient>, userId: st
         domain: `fin-test-${suffix}.example.com`,
         name: `Financial Test Site ${suffix}`
     };
-    const { data, error } = await admin.from('sites').insert(site).select('id').single();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (admin as any).from('sites').insert(site).select('id').single();
     if (error) throw error;
-    return data.id;
+    return (data as { id: string }).id;
 }
 
 test('Financial Proofing: Dispute Export & Invoice Freeze', async (t) => {

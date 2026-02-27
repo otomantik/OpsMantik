@@ -481,6 +481,7 @@ export function useRealtimeDashboard(
           event: 'INSERT',
           schema: 'public',
           table: 'events',
+          filter: `site_id=eq.${siteId}`,
         },
         async (payload) => {
           if (!isMountedRef.current) return;

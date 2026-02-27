@@ -25,7 +25,7 @@ export interface QueueRow {
   gclid?: string | null;
   wbraid?: string | null;
   gbraid?: string | null;
-  action_key?: string | null;
+  action?: string | null;
   retry_count?: number;
 }
 
@@ -42,7 +42,7 @@ export function queueRowToConversionJob(row: QueueRow): ConversionJob {
     site_id: row.site_id,
     provider_key: row.provider_key,
     payload: row.payload ?? {},
-    action_key: row.action_key ?? null,
+    action_key: row.action || (row as any).action_key || null,
     action_id: null,
     occurred_at: occurredAt,
     amount_cents: Number(row.value_cents),

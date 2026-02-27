@@ -59,8 +59,10 @@ export async function runSyncGates(
   const idempotencyInserted = idempotencyResult.inserted;
 
   if (idempotencyInserted && billableDecision.billable) {
-    const plan = await getSitePlan(siteIdUuid);
-    const { usage } = await getUsage(siteIdUuid, yearMonth);
+    const [plan, { usage }] = await Promise.all([
+      getSitePlan(siteIdUuid),
+      getUsage(siteIdUuid, yearMonth),
+    ]);
     const decision = evaluateQuota(plan, usage + 1);
     if (decision.reject) {
       incrementBillingIngestRejectedQuota();

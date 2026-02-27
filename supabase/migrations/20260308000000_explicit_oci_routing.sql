@@ -26,7 +26,8 @@ WHERE EXISTS (
     SELECT 1 FROM public.provider_credentials pc 
     WHERE pc.site_id = s.id 
       AND pc.provider_key = 'google_ads' 
-      AND (pc.decrypted_secret IS NOT NULL OR pc.encrypted_secret IS NOT NULL)
+      AND pc.is_active = true
+      AND pc.encrypted_payload IS NOT NULL
 );
 
 -- 3. Update list_offline_conversion_groups to respect sync method

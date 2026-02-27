@@ -56,7 +56,7 @@ test('POST /api/cron/dispatch-conversions: wrong bearer token returns 403', asyn
     const saved = stashEnv(['CRON_SECRET', 'NODE_ENV', 'ALLOW_BEARER_CRON']);
     try {
         process.env.CRON_SECRET = CRON_SECRET;
-        process.env.NODE_ENV = 'production';
+        (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
         delete process.env.ALLOW_BEARER_CRON;
 
         const { POST } = await import('@/app/api/cron/dispatch-conversions/route');
@@ -109,7 +109,7 @@ test('POST /api/cron/dispatch-conversions: Bearer CRON_SECRET in dev passes auth
     const saved = stashEnv(['CRON_SECRET', 'NODE_ENV', 'ALLOW_BEARER_CRON', 'GOOGLE_ADS_CREDENTIALS']);
     try {
         process.env.CRON_SECRET = CRON_SECRET;
-        process.env.NODE_ENV = 'development';
+        (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
         process.env.ALLOW_BEARER_CRON = 'true';
         delete process.env.GOOGLE_ADS_CREDENTIALS;
 

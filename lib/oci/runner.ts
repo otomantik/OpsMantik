@@ -17,6 +17,7 @@ import {
   queueRowToConversionJob,
   type QueueRow,
 } from '@/lib/cron/process-offline-conversions';
+import { calculateExpectedValue } from '@/lib/valuation/predictive-engine';
 import {
   acquireSemaphore,
   releaseSemaphore,
@@ -346,16 +347,27 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
       let groupRetry = 0;
 
       let encryptedPayload: string | null = null;
+      let siteValuation: { default_aov: number | null; intent_weights: any } | null = null;
+
       try {
-        const { data, error: fetchErr } = await adminClient
-          .from('provider_credentials')
-          .select('encrypted_payload')
-          .eq('site_id', siteIdUuid)
-          .eq('provider_key', providerKey)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (fetchErr) throw fetchErr;
-        encryptedPayload = (data as { encrypted_payload?: string } | null)?.encrypted_payload ?? null;
+        const [{ data: credsData, error: credsErr }, { data: siteData }] = await Promise.all([
+          adminClient
+            .from('provider_credentials')
+            .select('encrypted_payload')
+            .eq('site_id', siteIdUuid)
+            .eq('provider_key', providerKey)
+            .eq('is_active', true)
+            .maybeSingle(),
+          adminClient
+            .from('sites')
+            .select('default_aov, intent_weights')
+            .eq('id', siteIdUuid)
+            .maybeSingle()
+        ]);
+
+        if (credsErr) throw credsErr;
+        encryptedPayload = (credsData as { encrypted_payload?: string } | null)?.encrypted_payload ?? null;
+        siteValuation = siteData as { default_aov: number | null; intent_weights: any } | null;
       } catch (err) {
         logError(prefix, 'provider_credentials fetch failed', err);
         encryptedPayload = null;
@@ -494,7 +506,22 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         }
 
         const adapter = getProvider(providerKey);
-        const jobs = siteRows.map(queueRowToConversionJob);
+        const jobs = siteRows.map((r) => {
+          const job = queueRowToConversionJob(r);
+
+          // Apply Predictive Value Engine
+          const ev = calculateExpectedValue(
+            siteValuation?.default_aov,
+            siteValuation?.intent_weights,
+            r.action
+          );
+
+          if (ev > 0) {
+            job.amount_cents = Math.round(ev * 100);
+          }
+
+          return job;
+        });
         const batchId = crypto.randomUUID();
         const startedAt = Date.now();
         let attemptCompleted = 0;
@@ -532,22 +559,22 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 const lastErrorFinal = `Max retries reached: ${msg}`.slice(0, 1000);
                 return isFinal
                   ? {
-                      status: 'FAILED' as const,
-                      retry_count: count,
-                      last_error: lastErrorFinal,
-                      updated_at: new Date().toISOString(),
-                      provider_error_code: null,
-                      provider_error_category: 'TRANSIENT' as const,
-                    }
+                    status: 'FAILED' as const,
+                    retry_count: count,
+                    last_error: lastErrorFinal,
+                    updated_at: new Date().toISOString(),
+                    provider_error_code: null,
+                    provider_error_category: 'TRANSIENT' as const,
+                  }
                   : {
-                      status: 'RETRY' as const,
-                      retry_count: count,
-                      next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                      last_error: msg.slice(0, 1000),
-                      updated_at: new Date().toISOString(),
-                      provider_error_code: null,
-                      provider_error_category: 'TRANSIENT' as const,
-                    };
+                    status: 'RETRY' as const,
+                    retry_count: count,
+                    next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
+                    last_error: msg.slice(0, 1000),
+                    updated_at: new Date().toISOString(),
+                    provider_error_code: null,
+                    provider_error_category: 'TRANSIENT' as const,
+                  };
               },
               prefix,
               'Update RETRY/FAILED after throw failed'
@@ -601,22 +628,22 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                     : errorMsg.slice(0, 1000);
                   return isFinal
                     ? {
-                        status: 'FAILED' as const,
-                        retry_count: count,
-                        last_error: lastErrorFinal,
-                        updated_at: new Date().toISOString(),
-                        provider_error_code: result.error_code ?? null,
-                        provider_error_category: result.provider_error_category ?? null,
-                      }
+                      status: 'FAILED' as const,
+                      retry_count: count,
+                      last_error: lastErrorFinal,
+                      updated_at: new Date().toISOString(),
+                      provider_error_code: result.error_code ?? null,
+                      provider_error_category: result.provider_error_category ?? null,
+                    }
                     : {
-                        status: 'RETRY' as const,
-                        retry_count: count,
-                        next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                        last_error: lastErrorFinal,
-                        updated_at: new Date().toISOString(),
-                        provider_error_code: result.error_code ?? null,
-                        provider_error_category: result.provider_error_category ?? null,
-                      };
+                      status: 'RETRY' as const,
+                      retry_count: count,
+                      next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
+                      last_error: lastErrorFinal,
+                      updated_at: new Date().toISOString(),
+                      provider_error_code: result.error_code ?? null,
+                      provider_error_category: result.provider_error_category ?? null,
+                    };
                 }
                 const lastError = (result.error_message ?? 'Unknown error').slice(0, 1000);
                 return {
@@ -700,18 +727,18 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 const isFinal = count >= MAX_RETRY_ATTEMPTS;
                 return isFinal
                   ? {
-                      status: 'FAILED' as const,
-                      retry_count: count,
-                      last_error: 'CIRCUIT_OPEN',
-                      updated_at: new Date().toISOString(),
-                    }
+                    status: 'FAILED' as const,
+                    retry_count: count,
+                    last_error: 'CIRCUIT_OPEN',
+                    updated_at: new Date().toISOString(),
+                  }
                   : {
-                      status: 'RETRY' as const,
-                      retry_count: count,
-                      next_retry_at: nextRetryAt,
-                      last_error: 'CIRCUIT_OPEN',
-                      updated_at: new Date().toISOString(),
-                    };
+                    status: 'RETRY' as const,
+                    retry_count: count,
+                    next_retry_at: nextRetryAt,
+                    last_error: 'CIRCUIT_OPEN',
+                    updated_at: new Date().toISOString(),
+                  };
               },
               prefix,
               'Update CIRCUIT_OPEN failed'
@@ -758,18 +785,18 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
               return isFinal
                 ? {
-                    status: 'FAILED' as const,
-                    retry_count: count,
-                    last_error: msg.slice(0, 1000),
-                    updated_at: new Date().toISOString(),
-                  }
+                  status: 'FAILED' as const,
+                  retry_count: count,
+                  last_error: msg.slice(0, 1000),
+                  updated_at: new Date().toISOString(),
+                }
                 : {
-                    status: 'RETRY' as const,
-                    retry_count: count,
-                    next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-                    last_error: msg.slice(0, 1000),
-                    updated_at: new Date().toISOString(),
-                  };
+                  status: 'RETRY' as const,
+                  retry_count: count,
+                  next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                  last_error: msg.slice(0, 1000),
+                  updated_at: new Date().toISOString(),
+                };
             },
             prefix,
             'Update RETRY/FAILED (cron adapter throw) failed'
@@ -817,18 +844,18 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               const lastErr = (result.error_message ?? '').slice(0, 1000);
               return isFinal
                 ? {
-                    status: 'FAILED' as const,
-                    retry_count: count,
-                    last_error: lastErr,
-                    updated_at: new Date().toISOString(),
-                  }
+                  status: 'FAILED' as const,
+                  retry_count: count,
+                  last_error: lastErr,
+                  updated_at: new Date().toISOString(),
+                }
                 : {
-                    status: 'RETRY' as const,
-                    retry_count: count,
-                    next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-                    last_error: lastErr,
-                    updated_at: new Date().toISOString(),
-                  };
+                  status: 'RETRY' as const,
+                  retry_count: count,
+                  next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
+                  last_error: lastErr,
+                  updated_at: new Date().toISOString(),
+                };
             }
             return {
               status: 'FAILED',
