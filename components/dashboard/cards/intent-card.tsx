@@ -38,6 +38,7 @@ export type IntentCardData = {
   // Evidence (best-effort: may be missing depending on RPC/session availability)
   city?: string | null;
   district?: string | null;
+  location_source?: 'gclid' | string | null;
   total_duration_sec?: number | null;
   event_count?: number | null;
   attribution_source?: string | null;
@@ -308,8 +309,13 @@ export function IntentCard({
           {/* Evidence: WHERE + duration (phones want this) */}
           <div className="space-y-1">
             <div className="text-sm text-muted-foreground">{t('hunter.where')}</div>
-            <div className="text-sm font-medium">
-              {(intent.city || '—')}{intent.district ? ` / ${intent.district}` : ''}
+            <div className="text-sm font-medium inline-flex items-center gap-2 flex-wrap">
+              <span>{(intent.city || '—')}{intent.district ? ` / ${intent.district}` : ''}</span>
+              {intent.location_source === 'gclid' && (
+                <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800" title={t('hunter.locationSourceGclidTitle')}>
+                  {t('hunter.locationSourceGclid')}
+                </span>
+              )}
             </div>
             <div className="text-sm text-muted-foreground">
               {t('hunter.duration')}: <span className="font-medium tabular-nums">{secondsToHuman(intent.total_duration_sec, t)}</span>

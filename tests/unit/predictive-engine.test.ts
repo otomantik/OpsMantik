@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { calculateExpectedValue, DEFAULT_AOV, DEFAULT_INTENT_WEIGHTS } from '../../lib/valuation/predictive-engine';
+import { calculateExpectedValue, DEFAULT_AOV } from '../../lib/valuation/predictive-engine';
 
 test('Predictive Engine: calculates default values correctly', () => {
     // Sealed should be 1.0 * DEFAULT_AOV

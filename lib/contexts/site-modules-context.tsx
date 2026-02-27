@@ -21,7 +21,7 @@ export function SiteModulesProvider({
 }) {
   const value = useMemo(
     () => ({ siteId, activeModules }),
-    [siteId, activeModules.join(',')]
+    [siteId, activeModules]
   );
   return (
     <SiteModulesContext.Provider value={value}>

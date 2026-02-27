@@ -45,7 +45,11 @@ function toConversionDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
 }
 
+/** Dev/sandbox only; not available in production. */
 export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   try {
     const creds = getTestCredentials();
     const accessToken = await getAccessToken(creds);

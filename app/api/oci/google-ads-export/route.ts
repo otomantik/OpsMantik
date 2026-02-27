@@ -5,6 +5,7 @@ import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
+import type { SiteValuationRow } from '@/lib/oci/oci-config';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -70,15 +71,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: { id: string; currency?: string | null; oci_sync_method?: string | null; default_aov?: number | null; intent_weights?: any } | null = null;
+    let site: (SiteValuationRow & { id: string; currency?: string | null; oci_sync_method?: string | null }) | null = null;
     const byId = await adminClient.from('sites').select('id, currency, oci_sync_method, default_aov, intent_weights').eq('id', siteId).maybeSingle();
     if (byId.data) {
-      site = byId.data as { id: string; currency?: string | null };
+      site = byId.data as SiteValuationRow & { id: string; currency?: string | null; oci_sync_method?: string | null };
     }
     if (!site) {
       const byPublicId = await adminClient.from('sites').select('id, currency, oci_sync_method, default_aov, intent_weights').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as { id: string; currency?: string | null; oci_sync_method?: string | null; default_aov?: number | null; intent_weights?: any };
+        site = byPublicId.data as SiteValuationRow & { id: string; currency?: string | null; oci_sync_method?: string | null };
       }
     }
     if (!site) {

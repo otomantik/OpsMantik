@@ -5,6 +5,15 @@
  * All fields are optional — system falls back to safe defaults.
  */
 
+/** Intent stage weights from sites.intent_weights (JSONB). Used for valuation. */
+export type IntentWeightsRecord = Record<string, number>;
+
+/** Row shape for site valuation (default_aov, intent_weights) from sites table. */
+export interface SiteValuationRow {
+  default_aov: number | null;
+  intent_weights: IntentWeightsRecord | null;
+}
+
 /** Default weights applied when site has no config */
 export const OCI_DEFAULT_CONFIG: OciSiteConfig = {
     base_value: 500,

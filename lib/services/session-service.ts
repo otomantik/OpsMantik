@@ -113,20 +113,29 @@ export class SessionService {
                 msclkid: params.get('msclkid') || meta?.msclkid || null,
             });
 
+            // Sprint 3 GCLID Phase 2: If existing session is Organic, do not accept click IDs from payload (ghost attribution).
+            const sessionIsOrganic = session.attribution_source === 'Organic';
+            const safeGclidUpdate = sessionIsOrganic ? (session.gclid ?? null) : (currentGclid || session.gclid || null);
+            const newWbraid = params.get('wbraid') || meta?.wbraid;
+            const newGbraid = params.get('gbraid') || meta?.gbraid;
+
             const updates: Record<string, unknown> = {
                 device_type: deviceType,
                 device_os: deviceInfo.os || null,
                 city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
                 district: geoInfo.district,
                 fingerprint: fingerprint,
-                gclid: currentGclid || session.gclid || null,
+                gclid: safeGclidUpdate,
                 traffic_source: traffic.traffic_source,
                 traffic_medium: traffic.traffic_medium,
             };
-            const newWbraid = params.get('wbraid') || meta?.wbraid;
-            const newGbraid = params.get('gbraid') || meta?.gbraid;
-            if (newWbraid) updates.wbraid = newWbraid;
-            if (newGbraid) updates.gbraid = newGbraid;
+            if (sessionIsOrganic) {
+                updates.wbraid = null;
+                updates.gbraid = null;
+            } else {
+                if (newWbraid) updates.wbraid = newWbraid;
+                if (newGbraid) updates.gbraid = newGbraid;
+            }
 
             // UTM merging logic
             updates.attribution_source = attributionSource;
@@ -181,6 +190,7 @@ export class SessionService {
         }
     }
 
+    /** New session = clean slate for attribution. Only current request's click IDs (currentGclid, params, meta) are used; client must not send stale GCLID for new sessions (Sprint 1 GCLID re-entry fix). */
     private static async createSession(
         sessionId: string,
         siteId: string,
@@ -222,14 +232,20 @@ export class SessionService {
             }
         }
 
+        // Sprint 3 GCLID Phase 2: If session is Organic, do not persist click IDs from payload (ghost attribution safety).
+        const isOrganic = attributionSource === 'Organic' || ['Direct', 'SEO', 'Referral'].includes(traffic.traffic_source || '');
+        const safeGclid = isOrganic ? null : (currentGclid ?? null);
+        const safeWbraid = isOrganic ? null : (params.get('wbraid') || meta?.wbraid || null);
+        const safeGbraid = isOrganic ? null : (params.get('gbraid') || meta?.gbraid || null);
+
         const sessionPayload: Record<string, unknown> = {
             id: sessionId,
             site_id: siteId,
             ip_address: ip,
             entry_page: url, // Full landing URL
-            gclid: currentGclid,
-            wbraid: params.get('wbraid') || meta?.wbraid,
-            gbraid: params.get('gbraid') || meta?.gbraid,
+            gclid: safeGclid,
+            wbraid: safeWbraid,
+            gbraid: safeGbraid,
             // NOTE: created_month will be set by trigger (trg_sessions_set_created_month)
             // We still pass dbMonth for backward compatibility, but trigger overrides it
             created_month: dbMonth,

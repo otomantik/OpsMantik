@@ -1,31 +1,29 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { requireQstashSignature } from '@/lib/qstash/require-signature';
-import { logError } from '@/lib/logging/logger';
+import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { logInfo, logError } from '@/lib/logging/logger';
 
 /**
  * Nightly Cron: Auto-Junk Stale Leads
  * Target: status = 'pending' AND expires_at < now()
+ * Auth: requireCronAuth (x-vercel-cron or Bearer CRON_SECRET). Schedule: vercel.json "0 2 * * *"
  */
 async function handler() {
     try {
-        // 1. Identify and transition stale leads
+        const nowIso = new Date().toISOString();
         const { error, count } = await adminClient
             .from('calls')
-            // eventIdColumnOk is checked in the loop
-            .update({
-                status: 'junk',
-            })
+            .update({ status: 'junk' })
             .eq('status', 'pending')
-            .lt('expires_at', new Date().toISOString());
+            .lt('expires_at', nowIso);
 
         if (error) throw error;
 
-        console.log(`[AUTO-JUNK CRON] Successfully processed ${count || 0} stale leads.`);
+        logInfo('AUTO_JUNK_CRON_OK', { processed_count: count ?? 0 });
 
         return NextResponse.json({
             success: true,
-            processed_count: count || 0,
+            processed_count: count ?? 0,
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -36,5 +34,8 @@ async function handler() {
     }
 }
 
-// Secure with QStash signature
-export const POST = requireQstashSignature(handler);
+export async function POST(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return handler();
+}

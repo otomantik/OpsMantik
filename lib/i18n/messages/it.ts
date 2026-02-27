@@ -271,6 +271,8 @@ export const it = {
   "hunter.device": "Dispositivo",
   "hunter.homepage": "Homepage",
   "hunter.locationUnknown": "Sconosciuto",
+  "hunter.locationSourceGclid": "Fonte: GCLID",
+  "hunter.locationSourceGclidTitle": "Posizione da Google Ads (GCLID), non da IP",
   "hunter.aiConfidence": "Confidenza AI",
   "hunter.sessionActions": "Azioni sessione",
   "hunter.intentWhatsApp": "WhatsApp diretto",

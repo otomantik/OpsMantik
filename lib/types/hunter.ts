@@ -48,9 +48,11 @@ export interface HunterIntent {
   utm_content?: string | null;
   matchtype?: string | null;
 
-  // Geo (TARGET HUD)
+  // Geo (TARGET HUD). GCLID-first: when location_source === 'gclid', city/district are from AdsContext.
   city?: string | null;
   district?: string | null;
+  /** 'gclid' when location is from Google Ads (geo_target_id/location_name); null when from IP/session. */
+  location_source?: string | null;
 
   // Device (TARGET HUD)
   device_type?: string | null;

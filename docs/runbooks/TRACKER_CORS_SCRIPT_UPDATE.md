@@ -14,10 +14,10 @@ Eslamed’deki mevcut script şuna benzer olabilir:
 
 Şu şekilde güncelleyin:
 ```html
-<script defer src="https://console.opsmantik.com/assets/core.js?v=2" data-ops-site-id="..." data-api="https://console.opsmantik.com/api/sync"></script>
+<script defer src="https://console.opsmantik.com/assets/core.js?v=4" data-ops-site-id="..." data-api="https://console.opsmantik.com/api/sync"></script>
 ```
 
-Sadece `core.js` → `core.js?v=2` eklenmesi yeterli. Deploy sonrası sayfayı yenileyin (gerekirse hard refresh: Ctrl+Shift+R / Cache temizle). Yeni script ile sync/call-event CORS’a takılmadan gider, intent’ler hem masaüstü hem telefondan düşer.
+Sadece `core.js` → `core.js?v=4` eklenmesi yeterli. Deploy sonrası sayfayı yenileyin (gerekirse hard refresh: Ctrl+Shift+R / Cache temizle). Yeni script ile sync/call-event CORS’a takılmadan gider, intent’ler hem masaüstü hem telefondan düşer.
 
 ### Genel
 - Dashboard’dan kopyalanan yeni snippet’ler zaten `?v=2` içerir.

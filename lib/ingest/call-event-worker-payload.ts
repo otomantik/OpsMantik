@@ -1,22 +1,31 @@
 /**
  * Call-event worker payload: pre-validated data from receiver (HMAC, replay, consent passed).
  * Worker performs insert + audit only.
+ * Sprint 3: Single source of truth for AdsContext — Zod schema to prevent payload poisoning.
  */
 
-/** Google Ads ValueTrack enrichment context captured by the tracker. */
-export type AdsContext = {
-  keyword?: string | null;
-  match_type?: 'e' | 'p' | 'b' | string | null;
-  network?: string | null;
-  device?: string | null;
-  device_model?: string | null;
-  geo_target_id?: number | null;
-  campaign_id?: number | null;
-  adgroup_id?: number | null;
-  creative_id?: number | null;
-  placement?: string | null;
-  target_id?: number | null;
-};
+import { z } from 'zod';
+
+/** Google Ads ValueTrack enrichment context — strict Zod schema (no any). */
+export const AdsContextSchema = z.object({
+  keyword: z.string().max(512).nullable().optional(),
+  match_type: z.string().max(8).nullable().optional(),
+  network: z.string().max(16).nullable().optional(),
+  device: z.string().max(16).nullable().optional(),
+  device_model: z.string().max(256).nullable().optional(),
+  geo_target_id: z.number().int().positive().nullable().optional(),
+  /** Human-readable location from Google Ads (e.g. Istanbul). GCLID-first: prefer over IP-derived geo. */
+  location_name: z.string().max(512).nullable().optional(),
+  campaign_id: z.number().int().positive().nullable().optional(),
+  adgroup_id: z.number().int().positive().nullable().optional(),
+  creative_id: z.number().int().positive().nullable().optional(),
+  placement: z.string().max(512).nullable().optional(),
+  target_id: z.number().int().positive().nullable().optional(),
+});
+export type AdsContext = z.infer<typeof AdsContextSchema>;
+
+/** For ingest routes: ads_context is optional and can be null. */
+export const AdsContextOptionalSchema = AdsContextSchema.nullable().optional();
 
 export type CallEventWorkerPayload = {
   _ingest_type: 'call-event';

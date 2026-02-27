@@ -31,6 +31,7 @@ export async function POST(
     const currency = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
     // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
     const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
+    const version = body.version != null ? Number(body.version) : null;
     const leadScore =
       leadScoreRaw != null && Number.isFinite(leadScoreRaw) && leadScoreRaw >= 0 && leadScoreRaw <= 100
         ? Math.round(leadScoreRaw)
@@ -84,7 +85,7 @@ export async function POST(
     // Lookup: admin only for id+site_id (do not trust client). Then gate by access; update with user client (RLS).
     const { data: call, error: fetchError } = await adminClient
       .from('calls')
-      .select('id, site_id')
+      .select('id, site_id, version')
       .eq('id', callId)
       .maybeSingle();
 
@@ -122,9 +123,24 @@ export async function POST(
       p_actor_type: 'user',
       p_actor_id: null,
       p_metadata: { route, request_id: requestId },
+      p_version: version, // NEW: Optimistic Locking
     });
 
     if (updateError) {
+      // Sprint 1: State machine — cannot seal from junk or cancelled (DB-level guard)
+      if (updateError.code === 'P0003' || updateError.message?.includes('cannot_seal_from_junk_or_cancelled')) {
+        return NextResponse.json(
+          { error: 'Cannot seal: call is junk or cancelled. Restore to queue first.' },
+          { status: 409 }
+        );
+      }
+      // Concurrency conflict (e.g., version mismatch — record was updated by another process)
+      if (updateError.code === 'P0002' || updateError.message?.includes('version mismatch')) {
+        return NextResponse.json(
+          { error: 'Concurrency conflict: Call was updated by another user. Please refresh and try again.' },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: updateError.message || 'Update failed' },
         { status: 500 }

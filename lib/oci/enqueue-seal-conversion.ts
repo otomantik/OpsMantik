@@ -13,6 +13,7 @@
  *   base_value=500 TRY, min_star=3, weights={3:0.5, 4:0.8, 5:1.0}
  */
 
+import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { adminClient } from '@/lib/supabase/admin';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
@@ -33,12 +34,12 @@ export interface EnqueueSealParams {
 export interface EnqueueSealResult {
   enqueued: boolean;
   reason?:
-    | 'no_click_id'
-    | 'duplicate'
-    | 'duplicate_session'
-    | 'marketing_consent_required'
-    | 'star_below_threshold'
-    | 'error';
+  | 'no_click_id'
+  | 'duplicate'
+  | 'duplicate_session'
+  | 'marketing_consent_required'
+  | 'star_below_threshold'
+  | 'error';
   value?: number;
   error?: string;
 }
@@ -131,12 +132,12 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const currencySafe = currency?.trim() || config.currency || siteCurrency;
 
   // 6. Resolve session_id and enforce 1 conversion per session (dedupe before insert)
+  const tenantClient = createTenantClient(siteId);
   let sessionId: string | null = null;
-  const { data: callRow } = await adminClient
+  const { data: callRow } = await tenantClient
     .from('calls')
     .select('matched_session_id')
     .eq('id', callId)
-    .eq('site_id', siteId)
     .maybeSingle();
   sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id ?? null;
 
@@ -163,13 +164,14 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       sale_id: null,
       session_id: sessionId,
       provider_key: 'google_ads',
-      conversion_time: confirmedAt,
+      conversion_time: confirmedAt, // Usually passed from worker or already in UTC
       value_cents: valueCents,
       currency: currencySafe,
       gclid,
       wbraid,
       gbraid,
       status: 'QUEUED',
+      // updated_at: handled by DB trigger
     });
 
     if (error) {

@@ -7,11 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { logWarn } from '@/lib/logging/logger';
 import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 
-const DEFAULT_MIN_AGE_MINUTES = 30;
+const DEFAULT_MIN_AGE_MINUTES = 15; // Stale job recovery: reset PROCESSING → RETRY after 15 min (worker crash)
 
 async function runRecover(req: NextRequest) {
   const minAge = Math.max(
@@ -35,7 +36,7 @@ async function runRecover(req: NextRequest) {
 
   const recovered = (data as number) ?? 0;
   if (recovered > 0) {
-    console.warn(`[Recover] Reverting ${recovered} stale PROCESSING job(s) to RETRY.`);
+    logWarn('RECOVER_PROCESSING_STALE_JOBS', { recovered });
   }
   return NextResponse.json(
     { ok: true, recovered },

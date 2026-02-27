@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { logInfo, logWarn, logError } from '@/lib/logging/logger';
 import { runOfflineConversionRunner } from '@/lib/oci/runner';
 
 export const dynamic = 'force-dynamic';
@@ -25,11 +26,11 @@ const LOG_PREFIX = '[google-ads-oci]';
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) {
-    console.log(`${LOG_PREFIX} Auth failed: invalid or missing Authorization Bearer CRON_SECRET / x-vercel-cron`);
+    logWarn('GOOGLE_ADS_OCI_AUTH_FAILED', { message: 'Invalid or missing CRON_SECRET / x-vercel-cron' });
     return forbidden;
   }
 
-  console.log(`${LOG_PREFIX} Worker started`);
+  logInfo('GOOGLE_ADS_OCI_STARTED', {});
 
   const result = await runOfflineConversionRunner({
     mode: 'worker',
@@ -38,14 +39,14 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.ok) {
-    console.error(`${LOG_PREFIX} Runner error`, result.error);
+    logError('GOOGLE_ADS_OCI_RUNNER_ERROR', { error: result.error });
     return NextResponse.json(
       { ok: false, error: result.error },
       { status: 500, headers: getBuildInfoHeaders() }
     );
   }
 
-  console.log(`${LOG_PREFIX} Worker finished`, result);
+  logInfo('GOOGLE_ADS_OCI_FINISHED', { processed: result.processed, completed: result.completed, failed: result.failed, retry: result.retry });
   return NextResponse.json(
     { ok: true, processed: result.processed, completed: result.completed, failed: result.failed, retry: result.retry },
     { status: 200, headers: getBuildInfoHeaders() }

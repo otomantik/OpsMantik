@@ -9,6 +9,7 @@
  * and set provider_error_code / provider_error_category (worker) or last_error (cron).
  */
 
+import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { adminClient } from '@/lib/supabase/admin';
 import { getProvider } from '@/lib/providers/registry';
 import type { UploadResult } from '@/lib/providers/types';
@@ -32,6 +33,9 @@ import {
   LIST_GROUPS_LIMIT,
 } from '@/lib/oci/constants';
 import { chunkArray } from '@/lib/utils/batch';
+import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
+import type { SiteValuationRow } from '@/lib/oci/oci-config';
+import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
 
 /** Options for runOfflineConversionRunner. */
 export interface RunnerOptions {
@@ -67,9 +71,9 @@ async function decryptCredentials(ciphertext: string): Promise<unknown> {
   return vault.decryptJson(ciphertext);
 }
 
-function logError(prefix: string, message: string, err: unknown): void {
+function logRunnerError(prefix: string, message: string, err: unknown): void {
   const detail = err instanceof Error ? err.message : String(err);
-  console.error(`${prefix} ${message}`, detail);
+  loggerError(message, { prefix, error: detail });
 }
 
 /** Bulk update queue rows by ids. Reduced O(N) round-trips to O(N/500). */
@@ -86,11 +90,11 @@ async function bulkUpdateQueue(
       .from('offline_conversion_queue')
       .update(payload)
       .in('id', chunk);
-    if (error) logError(prefix, logLabel, error);
+    if (error) logRunnerError(prefix, logLabel, error);
   }
   const durationMs = Date.now() - start;
   if (ids.length > 0) {
-    console.log(JSON.stringify({ event: 'OCI_BULK_UPDATE', idsCount: ids.length, chunks: chunks.length, durationMs, prefix }));
+    logInfo('OCI_BULK_UPDATE', { idsCount: ids.length, chunks: chunks.length, durationMs, prefix });
   }
 }
 
@@ -115,6 +119,56 @@ async function bulkUpdateQueueGrouped<T>(
   }
 }
 
+/** Sprint 2: Re-read lead_score/sale_amount from calls and sync queue value_cents before send. Only for rows with call_id. */
+async function syncQueueValuesFromCalls(
+  siteIdUuid: string,
+  siteRows: QueueRow[],
+  prefix: string
+): Promise<void> {
+  const withCallId = siteRows.filter((r) => r.call_id);
+  if (withCallId.length === 0) return;
+
+  const callIds = [...new Set(withCallId.map((r) => r.call_id!).filter(Boolean))];
+  const { data: callsData } = await adminClient
+    .from('calls')
+    .select('id, lead_score, sale_amount, currency')
+    .in('id', callIds);
+  const callsById = new Map(
+    (callsData ?? []).map((c: { id: string; lead_score?: number | null; sale_amount?: number | null; currency?: string | null }) => [c.id, c])
+  );
+
+  const { data: siteRow } = await adminClient.from('sites').select('oci_config').eq('id', siteIdUuid).maybeSingle();
+  const config = parseOciConfig((siteRow as { oci_config?: unknown } | null)?.oci_config ?? null);
+
+  function leadScoreToStar(leadScore: number | null): number | null {
+    if (leadScore == null || !Number.isFinite(leadScore)) return null;
+    return Math.round(Math.max(0, Math.min(100, leadScore)) / 20);
+  }
+
+  const toUpdate: { id: string; value_cents: number }[] = [];
+  for (const row of withCallId) {
+    const call = callsById.get(row.call_id!);
+    if (!call) continue;
+    const leadScore = call.lead_score ?? null;
+    const saleAmount = call.sale_amount != null && Number.isFinite(Number(call.sale_amount)) ? Number(call.sale_amount) : null;
+    const star = leadScoreToStar(leadScore);
+    const valueUnits = computeConversionValue(star, saleAmount, config);
+    const freshCents = valueUnits != null ? Math.round(valueUnits * 100) : row.value_cents;
+    if (freshCents !== row.value_cents) {
+      (row as { value_cents: number }).value_cents = freshCents;
+      toUpdate.push({ id: row.id, value_cents: freshCents });
+    }
+  }
+
+  if (toUpdate.length > 0) {
+    for (const { id, value_cents } of toUpdate) {
+      const { error } = await adminClient.from('offline_conversion_queue').update({ value_cents, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) logRunnerError(prefix, 'Sync queue value_cents from call failed', error);
+    }
+    logInfo('OCI_VALUE_SYNC', { site_id: siteIdUuid, updated_count: toUpdate.length, prefix });
+  }
+}
+
 /** Shared persistence: record_provider_outcome (circuit breaker). Both worker and cron use this. */
 async function persistProviderOutcome(
   siteId: string,
@@ -131,7 +185,7 @@ async function persistProviderOutcome(
       p_is_transient: isTransient,
     });
   } catch (e) {
-    logError(prefix, 'record_provider_outcome failed', e);
+    logRunnerError(prefix, 'record_provider_outcome failed', e);
   }
 }
 
@@ -145,9 +199,7 @@ function logGroupOutcome(
   failure_count: number,
   retry_count: number
 ): void {
-  console.log(
-    `${prefix} mode=${mode} providerKey=${providerKey} claimed_count=${claimed_count} success_count=${success_count} failure_count=${failure_count} retry_count=${retry_count}`
-  );
+  logInfo('OCI_GROUP_OUTCOME', { prefix, mode, providerKey, claimed_count, success_count, failure_count, retry_count });
 }
 
 /**
@@ -295,7 +347,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           p_limit: claimLimit,
         });
         if (claimError) {
-          logError(prefix, `claim failed for ${siteId}`, claimError);
+          logRunnerError(prefix, `claim failed for ${siteId}`, claimError);
           continue;
         }
         const claimedRows = (rows ?? []) as QueueRow[];
@@ -334,7 +386,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         });
         writtenMetricsKeys.add(`${siteId}:${provKey}`);
       } catch (e) {
-        console.warn(`${prefix} increment_provider_upload_metrics failed:`, e);
+        logWarn('OCI_increment_provider_upload_metrics_failed', { prefix, error: e instanceof Error ? e.message : String(e) });
       }
     }
 
@@ -346,30 +398,29 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
       let groupFailed = 0;
       let groupRetry = 0;
 
+      const tenantClient = createTenantClient(siteIdUuid);
       let encryptedPayload: string | null = null;
-      let siteValuation: { default_aov: number | null; intent_weights: any } | null = null;
+      let siteValuation: SiteValuationRow | null = null;
 
       try {
         const [{ data: credsData, error: credsErr }, { data: siteData }] = await Promise.all([
-          adminClient
+          tenantClient
             .from('provider_credentials')
             .select('encrypted_payload')
-            .eq('site_id', siteIdUuid)
             .eq('provider_key', providerKey)
             .eq('is_active', true)
             .maybeSingle(),
-          adminClient
+          tenantClient
             .from('sites')
             .select('default_aov, intent_weights')
-            .eq('id', siteIdUuid)
             .maybeSingle()
         ]);
 
         if (credsErr) throw credsErr;
         encryptedPayload = (credsData as { encrypted_payload?: string } | null)?.encrypted_payload ?? null;
-        siteValuation = siteData as { default_aov: number | null; intent_weights: any } | null;
+        siteValuation = siteData as SiteValuationRow | null;
       } catch (err) {
-        logError(prefix, 'provider_credentials fetch failed', err);
+        logRunnerError(prefix, 'provider_credentials fetch failed', err);
         encryptedPayload = null;
       }
 
@@ -390,7 +441,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
       try {
         credentials = await decryptCredentials(encryptedPayload);
       } catch (err) {
-        logError(prefix, 'Decrypt credentials failed', err);
+        logRunnerError(prefix, 'Decrypt credentials failed', err);
         const lastError = 'Credentials missing or decryption failed';
         await bulkUpdateQueue(
           siteRows.map((r) => r.id),
@@ -505,6 +556,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           }
         }
 
+        await syncQueueValuesFromCalls(siteIdUuid, siteRows, prefix);
+
         const adapter = getProvider(providerKey);
         const jobs = siteRows.map((r) => {
           const job = queueRowToConversionJob(r);
@@ -540,13 +593,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             phase: 'STARTED',
             claimed_count: siteRows.length,
           });
-          if (startedErr) logError(prefix, 'Ledger STARTED insert failed', startedErr);
+          if (startedErr) logRunnerError(prefix, 'Ledger STARTED insert failed', startedErr);
 
           try {
             results = await adapter.uploadConversions({ jobs, credentials });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            logError(prefix, 'Adapter uploadConversions threw', err);
+            logRunnerError(prefix, 'Adapter uploadConversions threw', err);
             attemptErrorCode = null;
             attemptErrorCategory = 'TRANSIENT';
             await bulkUpdateQueueGrouped(
@@ -618,33 +671,31 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                   if (result.provider_ref != null) payload.provider_ref = result.provider_ref;
                   return payload;
                 }
-                if (result.status === 'RETRY') {
-                  const count = (row.retry_count ?? 0) + 1;
-                  const isFinal = count >= MAX_RETRY_ATTEMPTS;
-                  const delaySec = nextRetryDelaySeconds(count);
-                  const errorMsg = result.error_message ?? 'Unknown error';
-                  const lastErrorFinal = isFinal
-                    ? `Max retries reached: ${errorMsg}`.slice(0, 1000)
-                    : errorMsg.slice(0, 1000);
-                  return isFinal
-                    ? {
-                      status: 'FAILED' as const,
-                      retry_count: count,
-                      last_error: lastErrorFinal,
-                      updated_at: new Date().toISOString(),
-                      provider_error_code: result.error_code ?? null,
-                      provider_error_category: result.provider_error_category ?? null,
-                    }
-                    : {
-                      status: 'RETRY' as const,
-                      retry_count: count,
-                      next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                      last_error: lastErrorFinal,
-                      updated_at: new Date().toISOString(),
-                      provider_error_code: result.error_code ?? null,
-                      provider_error_category: result.provider_error_category ?? null,
-                    };
-                }
+                const count = (row.retry_count ?? 0) + 1;
+                const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+                const delaySec = nextRetryDelaySeconds(count);
+                const errorMsg = result.error_message ?? 'Unknown error';
+                const lastErrorFinal = isFatal
+                  ? `FATAL: ${errorMsg}`.slice(0, 1000)
+                  : errorMsg.slice(0, 1000);
+                return isFatal
+                  ? {
+                    status: 'FATAL' as const,
+                    retry_count: count,
+                    last_error: lastErrorFinal,
+                    updated_at: new Date().toISOString(),
+                    provider_error_code: result.error_code ?? null,
+                    provider_error_category: result.provider_error_category ?? null,
+                  }
+                  : {
+                    status: 'RETRY' as const,
+                    retry_count: count,
+                    next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
+                    last_error: lastErrorFinal,
+                    updated_at: new Date().toISOString(),
+                    provider_error_code: result.error_code ?? null,
+                    provider_error_category: result.provider_error_category ?? null,
+                  };
                 const lastError = (result.error_message ?? 'Unknown error').slice(0, 1000);
                 return {
                   status: 'FAILED',
@@ -663,8 +714,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 completed++;
               } else if (result.status === 'RETRY') {
                 const count = (row.retry_count ?? 0) + 1;
-                const isFinal = count >= MAX_RETRY_ATTEMPTS;
-                if (isFinal) {
+                const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+                if (isFatal) {
                   attemptFailed++;
                   failed++;
                 } else {
@@ -693,7 +744,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             error_code: attemptErrorCode,
             error_category: attemptErrorCategory,
           });
-          if (finishedErr) logError(prefix, 'Ledger FINISHED insert failed', finishedErr);
+          if (finishedErr) logRunnerError(prefix, 'Ledger FINISHED insert failed', finishedErr);
 
           const isTransient = attemptRetry > 0 || attemptErrorCategory === 'TRANSIENT';
           await persistProviderOutcome(siteIdUuid, providerKey, attemptCompleted > 0, isTransient, prefix);
@@ -745,8 +796,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             );
             for (const row of siteRows) {
               const count = (row.retry_count ?? 0) + 1;
-              const isFinal = count >= MAX_RETRY_ATTEMPTS;
-              if (isFinal) failed++;
+              const isFatal = count >= 8;
+              if (isFatal) failed++;
               else retry++;
             }
             continue;
@@ -768,6 +819,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             );
           }
         }
+
+        await syncQueueValuesFromCalls(siteIdUuid, rowsToProcess, prefix);
 
         const adapter = getProvider(providerKey);
         const jobs = rowsToProcess.map(queueRowToConversionJob);
@@ -803,8 +856,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           );
           for (const row of rowsToProcess) {
             const count = (row.retry_count ?? 0) + 1;
-            const isFinal = count >= MAX_RETRY_ATTEMPTS;
-            if (isFinal) {
+            const isFatal = count >= 8;
+            if (isFatal) {
               failed++;
               groupFailed++;
             } else {
@@ -839,12 +892,12 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             }
             if (result.status === 'RETRY') {
               const count = (row.retry_count ?? 0) + 1;
-              const isFinal = count >= MAX_RETRY_ATTEMPTS;
+              const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
               const delay = nextRetryDelaySeconds(count);
               const lastErr = (result.error_message ?? '').slice(0, 1000);
-              return isFinal
+              return isFatal
                 ? {
-                  status: 'FAILED' as const,
+                  status: 'FATAL' as const,
                   retry_count: count,
                   last_error: lastErr,
                   updated_at: new Date().toISOString(),
@@ -872,8 +925,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             groupCompleted++;
           } else if (result.status === 'RETRY') {
             const count = (row.retry_count ?? 0) + 1;
-            const isFinal = count >= MAX_RETRY_ATTEMPTS;
-            if (isFinal) {
+            const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+            if (isFatal) {
               failed++;
               groupFailed++;
             } else {
@@ -891,9 +944,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
       }
     }
 
-    console.log(
-      `${prefix} run_complete mode=${mode} processed=${allClaimed.length} completed=${completed} failed=${failed} retry=${retry}`
-    );
+    logInfo('OCI_RUN_COMPLETE', { prefix, mode, processed: allClaimed.length, completed, failed, retry });
     return { ok: true, processed: allClaimed.length, completed, failed, retry };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -911,7 +962,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             p_retry_delta: 0,
           });
         } catch (e) {
-          console.warn(`${prefix} crash-path increment_provider_upload_metrics failed:`, e);
+          logWarn('OCI_crash_path_increment_metrics_failed', { prefix, error: e instanceof Error ? e.message : String(e) });
         }
       }
     }

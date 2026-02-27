@@ -29,6 +29,27 @@ const eslintConfig = defineConfig([
       "react-hooks/immutability": "off",
     },
   },
+  // Disallow console.log/warn/error in backend/cron/worker paths we hardened (YELLOW-3). Prevents regressions.
+  {
+    files: [
+      "lib/auth/is-admin.ts",
+      "app/api/cron/watchtower/route.ts",
+      "app/api/workers/google-ads-oci/route.ts",
+      "lib/oci/runner.ts",
+      "lib/services/watchtower.ts",
+      "app/api/cron/auto-junk/route.ts",
+      "app/api/workers/calc-brain-score/route.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "MemberExpression[object.name='console'][property.name=/^(log|warn|error)$/]",
+          message: "Use logInfo / logWarn / logError from lib/logging/logger instead of console.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

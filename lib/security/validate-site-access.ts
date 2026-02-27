@@ -98,11 +98,10 @@ export async function validateSiteAccess(
       };
     }
 
-    // Access denied - log security event
+    // Access denied - log security event (real client IP: x-forwarded-for first, then x-real-ip)
     const headersList = await headers();
-    const ip = headersList.get('x-forwarded-for') || 
-               headersList.get('x-real-ip') || 
-               'unknown';
+    const xff = headersList.get('x-forwarded-for');
+    const ip = (xff ? xff.split(',')[0]?.trim() : null) || headersList.get('x-real-ip') || 'unknown';
 
     console.warn('[SECURITY] Unauthorized site access attempt', {
       userId: currentUserId,

@@ -1,9 +1,15 @@
 /**
  * Geo Extraction Module
- * 
+ *
  * Extracts geographic and device information from request headers and metadata.
  * Extracted from app/api/sync/route.ts for canonical single source of truth.
- * 
+ *
+ * Multi-tenant / proxy (e.g. SST): When behind a proxy, edge headers (cf-*, x-vercel-*)
+ * may reflect the proxy/edge location (e.g. Rome/Amsterdam), not the real client (e.g. Istanbul).
+ * The ingest route uses getClientIp(req) from lib/request-client-ip so the stored IP is the
+ * real client IP (x-forwarded-for first, then x-real-ip). For geo, prefer proxy-set headers
+ * (x-forwarded-city, x-city) when present; otherwise edge headers are used.
+ *
  * Edge Runtime compatible (no Node.js-specific dependencies).
  */
 
@@ -46,8 +52,8 @@ export interface GeoExtractionResult {
 /**
  * Extract geographic and device information from request headers and metadata.
  * 
- * Priority for geo (when behind Cloudflare, prefer CF so visitor IP is used, not edge):
- * - Metadata override > Cloudflare headers > Vercel headers > Generic headers > Unknown
+ * Priority for geo (when behind proxy/SST, x-forwarded-* and x-city may carry real client location):
+ * - Metadata override > Generic (x-city, x-forwarded-city) > Cloudflare > Vercel > Unknown
  * 
  * Device type normalization:
  * - mobile/tablet/desktop (default: desktop)
@@ -118,25 +124,27 @@ export function extractGeoInfo(
     const cityFromVercel = req?.headers.get('x-vercel-ip-city');
     const countryFromVercel = req?.headers.get('x-vercel-ip-country');
 
+    // Proxy/SST may set these with real client location when x-forwarded-for is set
     const cityFromGeneric = req?.headers.get('x-city') ||
         req?.headers.get('x-forwarded-city');
     const districtFromGeneric = req?.headers.get('x-district');
     const countryFromGeneric = req?.headers.get('x-country');
 
+    // Prefer generic (proxy-set) over edge so Istanbul is used when proxy forwards correctly
     const city = meta?.city ||
+        cityFromGeneric ||
         cityFromCloudflare ||
         cityFromVercel ||
-        cityFromGeneric ||
         null;
 
     const district = meta?.district ||
-        districtFromCloudflare ||
         districtFromGeneric ||
+        districtFromCloudflare ||
         null;
 
-    const country = countryFromCloudflare ||
+    const country = countryFromGeneric ||
+        countryFromCloudflare ||
         countryFromVercel ||
-        countryFromGeneric ||
         'Unknown';
 
     // isp_asn: Cloudflare/Vercel or custom header (producer only; worker has no client req)

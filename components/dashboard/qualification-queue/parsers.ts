@@ -20,6 +20,7 @@ interface RpcIntentRow {
   matchtype?: unknown;
   city?: unknown;
   district?: unknown;
+  location_source?: unknown;
   device_type?: unknown;
   device_os?: unknown;
   ads_network?: unknown;
@@ -102,6 +103,7 @@ export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
     matchtype: r.matchtype ?? null,
     city: r.city ?? null,
     district: r.district ?? null,
+    location_source: typeof r.location_source === 'string' ? r.location_source : null,
     device_type: r.device_type ?? null,
     device_os: r.device_os ?? null,
     ads_network: r.ads_network ?? null,

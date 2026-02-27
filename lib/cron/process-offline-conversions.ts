@@ -12,11 +12,12 @@ export function nextRetryDelaySeconds(retryCount: number): number {
   return Math.max(0, Math.floor(delay));
 }
 
-/** Queue row shape (from DB). */
+/** Queue row shape (from DB). action_key is legacy column name. */
 export interface QueueRow {
   id: string;
   site_id: string;
-  sale_id?: string;
+  sale_id?: string | null;
+  call_id?: string | null;
   provider_key: string;
   payload: Record<string, unknown>;
   conversion_time: string;
@@ -26,6 +27,7 @@ export interface QueueRow {
   wbraid?: string | null;
   gbraid?: string | null;
   action?: string | null;
+  action_key?: string | null;
   retry_count?: number;
 }
 
@@ -42,7 +44,7 @@ export function queueRowToConversionJob(row: QueueRow): ConversionJob {
     site_id: row.site_id,
     provider_key: row.provider_key,
     payload: row.payload ?? {},
-    action_key: row.action || (row as any).action_key || null,
+    action_key: row.action ?? row.action_key ?? null,
     action_id: null,
     occurred_at: occurredAt,
     amount_cents: Number(row.value_cents),

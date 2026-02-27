@@ -1,8 +1,13 @@
 // File: supabase/functions/hunter-ai/index.ts
 // PHASE 2 — Hunter AI: Trigger'dan gelen high-intent call → Session + Timeline → OpenAI → sessions.ai_* güncelle.
 
+// @ts-expect-error: URL imports are standard in Deno/Supabase Edge Functions
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-expect-error: URL imports are standard in Deno/Supabase Edge Functions
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// NOTE: Deno-specific imports above may show as errors in Node-based IDEs. 
+// These modules are correctly resolved in the Supabase Edge Runtime.
 
 /**
  * CRITICAL SECURITY GUARD (2026-02-05)
@@ -130,7 +135,7 @@ async function authorizeRequest(req: Request): Promise<AuthResult> {
   return { ok: false };
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   const origin = req.headers.get("origin");
   const corsHeaders = buildCorsHeaders(origin);
 

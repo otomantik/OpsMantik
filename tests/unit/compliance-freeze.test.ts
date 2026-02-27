@@ -29,22 +29,22 @@ test('COMPLIANCE: validateSiteFn executes BEFORE consent gate', () => {
   assert.ok(validateSiteIdx < consentIdx, 'validateSiteFn MUST run before consent gate');
 });
 
-test('COMPLIANCE: consent gate executes BEFORE idempotency', () => {
+test('COMPLIANCE: consent gate executes BEFORE publish (idempotency runs in worker)', () => {
   const src = readFileSync(SYNC_ROUTE, 'utf8');
-  const consentIdx = src.indexOf('consentScopes');
-  const tryInsertIdx = src.indexOf('tryInsert(siteIdUuid');
-  assert.ok(consentIdx !== -1, 'consent gate must exist');
-  assert.ok(tryInsertIdx !== -1, 'tryInsert must exist');
-  assert.ok(consentIdx < tryInsertIdx, 'consent gate MUST run before idempotency');
+  const consent204Idx = src.indexOf("return new NextResponse(null, { status: 204");
+  const publishCallIdx = src.indexOf('await doPublish(') !== -1 ? src.indexOf('await doPublish(') : src.indexOf('publishToQStash({');
+  assert.ok(consent204Idx !== -1, 'consent gate (204 return) must exist');
+  assert.ok(publishCallIdx !== -1, 'publish call must exist');
+  assert.ok(consent204Idx < publishCallIdx, 'consent gate MUST run before publish');
 });
 
-test('COMPLIANCE: idempotency path unreachable when consent fails (204 return before tryInsert)', () => {
+test('COMPLIANCE: publish path unreachable when consent fails (204 return before publish)', () => {
   const src = readFileSync(SYNC_ROUTE, 'utf8');
   const consentReturn204 = src.indexOf("return new NextResponse(null, { status: 204");
-  const tryInsertIdx = src.indexOf('tryInsert(siteIdUuid');
+  const publishIdx = src.indexOf('doPublish') !== -1 ? src.indexOf('doPublish') : src.indexOf('publishToQStash');
   assert.ok(consentReturn204 !== -1, '204 return on consent miss must exist');
-  assert.ok(tryInsertIdx !== -1, 'tryInsert must exist');
-  assert.ok(consentReturn204 < tryInsertIdx, '204 return MUST occur before idempotency; idempotency never runs on consent fail');
+  assert.ok(publishIdx !== -1, 'publish must exist');
+  assert.ok(consentReturn204 < publishIdx, '204 return MUST occur before publish; no publish on consent fail');
 });
 
 test('COMPLIANCE: sync route contains compliance invariant comment', () => {

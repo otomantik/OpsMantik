@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { cache } from 'react';
+import { logWarn, logError } from '@/lib/logging/logger';
 
 /**
  * Server-only utility to check if the current user is an admin.
@@ -22,22 +23,16 @@ export const isAdmin = cache(async (): Promise<boolean> => {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError) {
-      if (isDebug) {
-        console.log('[isAdmin] getUser error:', userError.message);
-      }
+      if (isDebug) logWarn('isAdmin_getUser_error', { message: userError.message });
       return false;
     }
     
     if (!user) {
-      if (isDebug) {
-        console.log('[isAdmin] No user found in session');
-      }
+      if (isDebug) logWarn('isAdmin_no_user');
       return false;
     }
     
-    if (isDebug) {
-      console.log('[isAdmin] Checking admin status for user:', user.id);
-    }
+    if (isDebug) logWarn('isAdmin_checking_role');
     
     // Query profiles table for user's role
     const { data: profile, error: profileError } = await supabase
@@ -47,33 +42,25 @@ export const isAdmin = cache(async (): Promise<boolean> => {
       .single();
     
     if (profileError) {
-      if (isDebug) {
-        console.log('[isAdmin] Profile query error:', profileError.message, profileError.code);
-      }
+      if (isDebug) logWarn('isAdmin_profile_error', { code: profileError.code });
       // Profile doesn't exist or query failed - not admin (fail-safe)
       return false;
     }
     
     if (!profile) {
-      if (isDebug) {
-        console.log('[isAdmin] Profile not found for user:', user.id);
-      }
+      if (isDebug) logWarn('isAdmin_profile_not_found');
       return false;
     }
     
     const isUserAdmin = profile.role === 'admin';
     
-    if (isDebug) {
-      console.log('[isAdmin] User role:', profile.role, '→ Admin:', isUserAdmin);
-    }
+    if (isDebug) logWarn('isAdmin_role_result', { role: profile.role, isAdmin: isUserAdmin });
     
     return isUserAdmin;
   } catch (error) {
     // On any error, assume not admin (fail-safe)
-    if (isDebug) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[isAdmin] Exception checking admin status:', errorMessage);
-    }
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logError('isAdmin_exception', { message: errorMessage });
     return false;
   }
 });

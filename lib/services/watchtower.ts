@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import { logError } from '@/lib/logging/logger';
 import { TelegramService } from './telegram-service';
 
 export type WatchtowerStatus = 'ok' | 'degraded' | 'alarm' | 'critical';
@@ -45,7 +46,7 @@ export class WatchtowerService {
             .gte('created_at', oneHourAgo);
 
         if (error) {
-            console.error('[WATCHTOWER] Session vitality check failed:', error);
+            logError('WATCHTOWER_session_vitality_failed', { error: error.message });
             throw error;
         }
 
@@ -65,7 +66,7 @@ export class WatchtowerService {
             .gt('last_drift_pct', 0.01);
 
         if (error) {
-            console.error('[WATCHTOWER] Billing reconciliation drift check failed:', error);
+            logError('WATCHTOWER_billing_drift_check_failed', { error: error.message });
             return -1;
         }
         const siteIds = new Set((data ?? []).map((r: { site_id?: string }) => r.site_id).filter(Boolean));
@@ -84,7 +85,7 @@ export class WatchtowerService {
             .gte('created_at', fifteenMinAgo);
 
         if (error) {
-            console.error('[WATCHTOWER] Ingest publish failures check failed:', error);
+            logError('WATCHTOWER_ingest_failures_check_failed', { error: error.message });
             return -1;
         }
         return count ?? 0;
@@ -104,7 +105,7 @@ export class WatchtowerService {
             .not('gclid', 'is', null);
 
         if (error) {
-            console.error('[WATCHTOWER] Attribution liveness check failed:', error);
+            logError('WATCHTOWER_attribution_liveness_failed', { error: error.message });
             throw error;
         }
 
@@ -171,7 +172,7 @@ export class WatchtowerService {
             return healthCheck;
 
         } catch (error) {
-            console.error('[WATCHTOWER] Critical failure running diagnostics:', error);
+            logError('WATCHTOWER_diagnostics_failed', { error: error instanceof Error ? error.message : String(error) });
             // Fail open but loud
             return {
                 status: 'alarm',
@@ -218,8 +219,8 @@ ${issues.join('\n')}
 _Immediate investigation required._
         `.trim();
 
-        // 1. Log to console for Sentry/Logs
-        console.error('[WATCHTOWER] ALARM STATE:', JSON.stringify(health, null, 2));
+        // 1. Log for Sentry/Logs
+        logError('WATCHTOWER_ALARM_STATE', { status: health.status, checks: health.checks });
 
         // 2. Send Telegram Notification
         await TelegramService.sendMessage(alertMessage, 'alarm');

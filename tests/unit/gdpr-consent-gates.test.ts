@@ -10,16 +10,16 @@ const SYNC_ROUTE = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
 const ENQUEUE_SEAL = join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts');
 const PIPELINE = join(process.cwd(), 'lib', 'services', 'pipeline-service.ts');
 
-test('validateSite before consentScopes, consentScopes before tryInsert', () => {
+test('validateSite before consent gate, consent gate before publish', () => {
   const src = readFileSync(SYNC_ROUTE, 'utf8');
   const validateSiteIdx = src.indexOf('validateSiteFn');
-  const consentIdx = src.indexOf('consentScopes');
-  const tryInsertIdx = src.indexOf('tryInsert(siteIdUuid');
+  const consentIdx = src.indexOf('singleConsentScopes') !== -1 ? src.indexOf('singleConsentScopes') : src.indexOf("'x-opsmantik-consent-missing'");
+  const publishIdx = src.indexOf('doPublish') !== -1 ? src.indexOf('doPublish') : src.indexOf('publishToQStash');
   assert.ok(validateSiteIdx !== -1, 'validateSite must exist');
   assert.ok(consentIdx !== -1, 'consent check must exist');
-  assert.ok(tryInsertIdx !== -1, 'tryInsert must exist');
+  assert.ok(publishIdx !== -1, 'publish (doPublish or publishToQStash) must exist');
   assert.ok(validateSiteIdx < consentIdx, 'validateSite must run before consent');
-  assert.ok(consentIdx < tryInsertIdx, 'consent must run before idempotency');
+  assert.ok(consentIdx < publishIdx, 'consent must run before publish');
 });
 
 test('Site invalid returns 400, consent missing returns 204 only when site valid', () => {

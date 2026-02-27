@@ -271,6 +271,8 @@ export const tr = {
   "hunter.device": "Cihaz",
   "hunter.homepage": "Ana Sayfa",
   "hunter.locationUnknown": "Bilinmiyor",
+  "hunter.locationSourceGclid": "Kaynak: GCLID",
+  "hunter.locationSourceGclidTitle": "Konum Google Ads (GCLID) verisinden, IP değil",
   "hunter.aiConfidence": "AI Güven",
   "hunter.sessionActions": "Oturum Eylemleri",
   "hunter.intentWhatsApp": "WhatsApp Direkt",

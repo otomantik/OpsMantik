@@ -202,6 +202,20 @@ export function HunterCard({
     return out === '—' ? translate('hunter.locationUnknown') : out;
   }, [intent.city, intent.district, translate]);
 
+  const locationWithSource = useMemo(() => {
+    if (intent.location_source === 'gclid') {
+      return (
+        <span className="inline-flex items-center gap-2 flex-wrap">
+          <span>{locationDisplay}</span>
+          <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800" title={translate('hunter.locationSourceGclidTitle')}>
+            {translate('hunter.locationSourceGclid')}
+          </span>
+        </span>
+      );
+    }
+    return locationDisplay;
+  }, [intent.location_source, locationDisplay, translate]);
+
   const pageDisplay = useMemo(
     () => getPageLabel(intent.intent_page_url || intent.page_url, translate),
     [intent.intent_page_url, intent.page_url, translate]
@@ -259,7 +273,7 @@ export function HunterCard({
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
           <Row label={translate('hunter.sessionActions')} value={actionsDisplay} icon={Clock} />
           <Row label={translate('hunter.keyword')} value={keywordDisplay} icon={FileText} />
-          <Row label={translate('hunter.location')} value={locationDisplay} icon={MapPin} />
+          <Row label={translate('hunter.location')} value={locationWithSource} icon={MapPin} />
           <Row label={translate('hunter.page')} value={pageDisplay} icon={FileText} />
           <Row label={translate('hunter.time')} value={relativeTime(intent.created_at, translate)} icon={Clock} />
           <Row label={translate('hunter.device')} value={device.label} icon={device.icon} />
@@ -306,13 +320,15 @@ export function HunterCard({
   );
 }
 
-function Row({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
+function Row({ label, value, icon: Icon }: { label: string; value: string | React.ReactNode; icon: LucideIcon }) {
+  const valueNode = typeof value === 'string' ? value : value;
+  const title = typeof value === 'string' ? value : undefined;
   return (
     <div className="flex items-center gap-3 min-w-0">
       <Icon className="h-4 w-4 text-blue-600 shrink-0 opacity-80" />
       <div className="min-w-0 flex-1">
         <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{label}</div>
-        <div className="text-sm font-medium text-slate-800 truncate" title={value}>{value || '—'}</div>
+        <div className="text-sm font-medium text-slate-800 truncate" title={title}>{valueNode || '—'}</div>
       </div>
     </div>
   );

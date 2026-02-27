@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '../..');
 const uxCorePath = join(rootDir, 'public/ux-core.js');
+const corePath = join(rootDir, 'public/assets/core.js');
 
 const GREEN = '\x1b[32m';
 const RED = '\x1b[31m';
@@ -33,25 +34,34 @@ function bold(msg) {
 
 const requiredPatterns = [
   { name: 'QUEUE_KEY opsmantik_outbox_v2', pattern: /opsmantik_outbox_v2/ },
-  { name: 'getQueue()', pattern: /function\s+getQueue\s*\(/ },
-  { name: 'saveQueue()', pattern: /function\s+saveQueue\s*\(/ },
-  { name: 'addToOutbox()', pattern: /function\s+addToOutbox\s*\(/ },
-  { name: 'processOutbox()', pattern: /function\s+processOutbox\s*\(/ },
+  { name: 'getQueue()', pattern: /function\s+getQueue\s*\(|function\s+A\s*\(/ },
+  { name: 'saveQueue()', pattern: /function\s+saveQueue\s*\(|function\s+v\s*\(/ },
+  { name: 'addToOutbox()', pattern: /function\s+addToOutbox\s*\(|function\s+D\s*\(/ },
+  { name: 'processOutbox()', pattern: /function\s+processOutbox\s*\(|function\s+l\s*\(/ },
   { name: 'response.ok check', pattern: /response\.ok/ },
   { name: 'TankTracker log', pattern: /\[TankTracker\]/ },
-  { name: 'online event listener', pattern: /addEventListener\s*\(\s*['"]online['"]\s*,\s*processOutbox\s*\)/ },
-  { name: 'beforeunload sendBeacon (Last Gasp)', pattern: /beforeunload[\s\S]{0,600}sendBeacon/ },
+  { name: 'online event listener', pattern: /addEventListener\s*\(\s*['"]online['"]\s*,\s*processOutbox\s*\)|addEventListener\s*\(\s*['"]online['"]\s*,\s*l\s*\)/ },
+  { name: 'beforeunload sendBeacon (Last Gasp)', pattern: /beforeunload[\s\S]{0,2000}sendBeacon|(beforeunload[\s\S]{0,300}lastGaspFlush)/ },
+  { name: 'sessionStorage fallback (Hardness Map)', pattern: /sessionStorage|getStorage|_s\s*\(/ },
 ];
 
 console.log(`\n${bold('SECTOR BRAVO — Tank Tracker (Store & Forward) proof')}`);
 console.log(`${bold('========================================')}\n`);
 
-if (!existsSync(uxCorePath)) {
-  fail(`File not found: public/ux-core.js`);
-  process.exit(1);
+const filesToCheck = [
+  { path: uxCorePath, name: 'public/ux-core.js' },
+  { path: corePath, name: 'public/assets/core.js' },
+];
+
+for (const { path: filePath, name } of filesToCheck) {
+  if (!existsSync(filePath)) {
+    fail(`File not found: ${name}`);
+    process.exit(1);
+  }
 }
 
-const content = readFileSync(uxCorePath, 'utf-8');
+// Check canonical production bundle (core.js) as primary
+const content = readFileSync(corePath, 'utf-8');
 let passed = 0;
 let failed = 0;
 

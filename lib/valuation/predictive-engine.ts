@@ -30,7 +30,7 @@ export const DEFAULT_AOV = 100.0;
  */
 export function calculateExpectedValue(
     aov: number | null | undefined,
-    weights: any | null | undefined,
+    weights: Record<string, number> | null | undefined,
     intent: string | null | undefined
 ): number {
     const finalAov = (aov !== null && aov !== undefined && Number.isFinite(aov)) ? Number(aov) : DEFAULT_AOV;

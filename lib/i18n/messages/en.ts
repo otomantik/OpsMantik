@@ -302,6 +302,8 @@ export const en = {
   'hunter.device': 'Device',
   'hunter.homepage': 'Homepage',
   'hunter.locationUnknown': 'Unknown',
+  'hunter.locationSourceGclid': 'Source: GCLID',
+  'hunter.locationSourceGclidTitle': 'Location from Google Ads (GCLID), not IP',
   'hunter.aiConfidence': 'AI Confidence',
   'hunter.sessionActions': 'Session Actions',
   'hunter.intentWhatsApp': 'WhatsApp Direct',

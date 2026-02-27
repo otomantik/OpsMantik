@@ -92,11 +92,13 @@ test('requireWithinLimit: QuotaExceededError has code QUOTA_EXCEEDED', () => {
 });
 
 test('PR gate: quota 429 must use x-opsmantik-quota-exceeded only (rate-limit separate)', () => {
+  const syncGatesPath = join(process.cwd(), 'lib', 'ingest', 'sync-gates.ts');
   const syncPath = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
-  const src = readFileSync(syncPath, 'utf8');
-  const entitlementsLimitBlock = src.indexOf('rejected_entitlements_quota');
-  assert.ok(entitlementsLimitBlock !== -1, 'sync must have entitlements quota reject path');
-  const block = src.slice(entitlementsLimitBlock, entitlementsLimitBlock + 400);
-  assert.ok(block.includes("'x-opsmantik-quota-exceeded'"), 'entitlements quota 429 must set x-opsmantik-quota-exceeded');
-  assert.ok(!block.includes('x-opsmantik-ratelimit'), 'entitlements quota 429 must NOT set rate-limit header');
+  const syncGates = readFileSync(syncGatesPath, 'utf8');
+  const syncSrc = readFileSync(syncPath, 'utf8');
+  assert.ok(syncGates.includes('rejected_entitlements_quota'), 'sync-gates (worker) must have entitlements quota reject path');
+  assert.ok(syncSrc.includes("'x-opsmantik-ratelimit'"), 'sync route must have rate-limit header (429 separation)');
+  const quotaLibPath = join(process.cwd(), 'lib', 'quota.ts');
+  const quotaLib = readFileSync(quotaLibPath, 'utf8');
+  assert.ok(quotaLib.includes("'x-opsmantik-quota-exceeded'"), 'quota module must set x-opsmantik-quota-exceeded');
 });

@@ -13,7 +13,7 @@ import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 export interface ProcessStageActionResult {
   success: boolean;
   oci_enqueued: boolean;
-  reason?: 'junk_or_zero_value' | 'no_click_id' | 'duplicate' | 'marketing_consent_required';
+  reason?: 'junk_or_zero_value' | 'no_click_id' | 'duplicate' | 'marketing_consent_required' | 'version_mismatch';
   stage?: string;
   value?: number;
 }
@@ -26,7 +26,8 @@ export class PipelineService {
     siteId: string,
     callId: string,
     stageId: string,
-    customAmountCents?: number
+    customAmountCents?: number,
+    version?: number
   ): Promise<ProcessStageActionResult> {
     // 1. Fetch the site's dynamic playbook (pipeline_stages) and config for currency
     const { data: site, error: siteErr } = await adminClient
@@ -53,7 +54,7 @@ export class PipelineService {
     const isJunk = stage.id === 'junk';
     const newOciStatus = isJunk ? 'skipped' : 'sealed';
 
-    const { error: updateErr } = await adminClient
+    let query = adminClient
       .from('calls')
       .update({
         status: stage.id,
@@ -65,8 +66,19 @@ export class PipelineService {
       .eq('id', callId)
       .eq('site_id', siteId);
 
+    if (version !== undefined && version !== null) {
+      query = query.eq('version', version);
+    }
+
+    const { error: updateErr, count } = await query;
+
     if (updateErr) {
       throw new Error(`Failed to update call: ${updateErr.message}`);
+    }
+
+    // If no rows were updated, and a version was provided, it's a version mismatch
+    if (version !== undefined && count === 0) {
+      return { success: false, oci_enqueued: false, reason: 'version_mismatch' };
     }
 
     // 4. If it's Junk or value is 0, we STOP here. Do not send to Google Ads OCI.

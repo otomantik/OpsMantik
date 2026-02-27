@@ -8,6 +8,7 @@ import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/logging/logger';
 import { buildFallbackRow } from '@/lib/sync-fallback';
+import { getClientIp } from '@/lib/request-client-ip';
 import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
 import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '@/lib/idempotency';
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
@@ -256,7 +257,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
     }
 
-    // COMPLIANCE: Single-event consent gate MUST run before any idempotency (tryInsert). Return 204 without touching idempotency.
+    // COMPLIANCE INVARIANT — validateSite → consent → publish (idempotency/quota run in worker). Return 204 without publish when analytics consent missing.
     if (bodies.length === 1) {
         const singleConsentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
             ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
@@ -275,7 +276,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       return { error };
     });
 
-    const ip = normalizeIp(req.headers.get('x-forwarded-for'));
+    // Real client IP: x-forwarded-for (first) then x-real-ip (multi-tenant/proxy e.g. SST)
+    const clientIp = getClientIp(req);
+    const ip = normalizeIp(clientIp);
     const ua = normalizeUserAgent(req.headers.get('user-agent'));
     const { extractGeoInfo } = await import('@/lib/geo');
 
@@ -348,10 +351,11 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     }
 
     const primaryIngestId = ingestIds[0];
+    // RPO: When both QStash and fallback fail, return 503 so client retries (event stays in outbox).
     if (degraded > 0 && queued === 0) {
       return NextResponse.json(
-        createSyncResponse(true, 0, { status: 'degraded', ingest_id: primaryIngestId }),
-        { status: 202, headers: { ...baseHeaders, 'x-opsmantik-degraded': 'qstash_publish_failed', 'x-opsmantik-fallback': 'true' } }
+        createSyncResponse(false, 0, { status: 'degraded', error: 'Ingest temporarily unavailable', ingest_id: primaryIngestId }),
+        { status: 503, headers: { ...baseHeaders, 'x-opsmantik-degraded': 'qstash_publish_failed', 'x-opsmantik-fallback': 'true', 'Retry-After': '60' } }
       );
     }
 

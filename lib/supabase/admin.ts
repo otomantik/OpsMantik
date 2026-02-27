@@ -1,5 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+/**
+ * Admin (Service Role) Supabase client for server/worker use.
+ * Connection resilience (Sprint 3): This client uses the Supabase REST API and does not
+ * hold Postgres connections. For high-frequency workers using a direct Postgres client
+ * (e.g. serverless driver), use the Supabase Transaction Pooler (port 6543) to avoid
+ * connection exhaustion when many QStash workers run simultaneously.
+ */
+
 // Lazy initialization to avoid build-time errors when env vars are not set
 let _adminClient: SupabaseClient | null = null;
 

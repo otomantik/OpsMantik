@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
-import { logInfo, logWarn } from '@/lib/logging/logger';
+import { logInfo, logWarn, logError } from '@/lib/logging/logger';
 import { WatchtowerService } from '@/lib/services/watchtower';
 import { getBillingMetrics } from '@/lib/billing-metrics';
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const health = await WatchtowerService.runDiagnostics();
 
     if (health.status === 'alarm') {
-      console.error('[WATCHTOWER] CRON DETECTED ALARM STATE');
+      logError('WATCHTOWER_CRON_ALARM', { message: 'CRON DETECTED ALARM STATE' });
     }
 
     const requestId = req.headers.get('x-request-id') ?? undefined;
@@ -72,7 +72,9 @@ export async function GET(req: NextRequest) {
       { headers: getBuildInfoHeaders() }
     );
   } catch (error) {
-    console.error('[WATCHTOWER] Cron execution failed:', error);
+    logError('WATCHTOWER_CRON_FAILED', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       {
         ok: false,

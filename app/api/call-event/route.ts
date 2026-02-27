@@ -22,6 +22,9 @@ import {
 } from '@/lib/api/call-event/shared';
 import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
 import type { ScoreBreakdown } from '@/lib/types/call-event';
+import { AdsContextOptionalSchema } from '@/lib/ingest/call-event-worker-payload';
+import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
+import { getBuildInfoHeaders } from '@/lib/build-info';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -32,20 +35,6 @@ export const dynamic = 'force-dynamic';
 const OPSMANTIK_VERSION = '1.0.2-bulletproof';
 
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
-
-const AdsContextSchema = z.object({
-    keyword: z.string().max(512).nullable().optional(),
-    match_type: z.string().max(8).nullable().optional(),
-    network: z.string().max(16).nullable().optional(),
-    device: z.string().max(16).nullable().optional(),
-    device_model: z.string().max(256).nullable().optional(),
-    geo_target_id: z.number().int().positive().nullable().optional(),
-    campaign_id: z.number().int().positive().nullable().optional(),
-    adgroup_id: z.number().int().positive().nullable().optional(),
-    creative_id: z.number().int().positive().nullable().optional(),
-    placement: z.string().max(512).nullable().optional(),
-    target_id: z.number().int().positive().nullable().optional(),
-}).nullable().optional();
 
 const CallEventSchema = z
     .object({
@@ -67,8 +56,8 @@ const CallEventSchema = z
         gclid: z.string().max(256).nullable().optional(),
         wbraid: z.string().max(256).nullable().optional(),
         gbraid: z.string().max(256).nullable().optional(),
-        // Google Ads ValueTrack enrichment
-        ads_context: AdsContextSchema,
+        // Google Ads ValueTrack enrichment (Sprint 3: shared Zod schema)
+        ads_context: AdsContextOptionalSchema,
     })
     .strict();
 
@@ -332,10 +321,12 @@ export async function POST(req: NextRequest) {
 
         // Canonical site UUID for DB operations.
         let siteUuid = resolvedSiteUuid;
+        let dailyLimit = 1000;
+        let siteRow: { id: string; daily_lead_limit?: number; active_modules?: string[] | null } | null = null;
         if (!siteUuid) {
             const { data: s, error: sErr } = await adminClient
                 .from('sites')
-                .select('id')
+                .select('id, daily_lead_limit, active_modules')
                 .eq('public_id', legacyPublicId)
                 .single();
             if (sErr || !s?.id) {
@@ -343,12 +334,52 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
             }
             siteUuid = s.id;
+            dailyLimit = s.daily_lead_limit ?? 1000;
+            siteRow = s;
+        } else {
+            const { data: s } = await adminClient
+                .from('sites')
+                .select('id, daily_lead_limit, active_modules')
+                .eq('id', siteUuid)
+                .single();
+            dailyLimit = s?.daily_lead_limit ?? 1000;
+            siteRow = s;
         }
-        // TS: ensure non-null canonical UUID from here.
+
         if (!siteUuid) {
             return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
         }
         const siteUuidFinal: string = siteUuid;
+
+        try {
+            await requireModule({ siteId: siteUuidFinal, requiredModule: 'core_oci', site: siteRow ?? undefined });
+        } catch (err) {
+            if (err instanceof ModuleNotEnabledError) {
+                return NextResponse.json(
+                    { error: 'Module not enabled', code: 'MODULE_NOT_ENABLED', required_module: 'core_oci' },
+                    { status: 403, headers: getBuildInfoHeaders() }
+                );
+            }
+            throw err;
+        }
+
+        // ── ARCHITECTURAL HARDENING: Daily Quota (Noisy Neighbor Protection) ────────
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const { count: leadCount } = await adminClient
+            .from('calls')
+            .select('*', { count: 'exact', head: true })
+            .eq('site_id', siteUuidFinal)
+            .gte('matched_at', todayStart.toISOString());
+
+        if (leadCount !== null && leadCount >= dailyLimit) {
+            logWarn('Daily lead quota exceeded (v1)', { site_id: siteUuidFinal, count: leadCount, limit: dailyLimit });
+            return NextResponse.json(
+                { error: 'Daily quota exceeded', limit: dailyLimit },
+                { status: 429, headers: baseHeaders }
+            );
+        }
 
         const site = { id: siteUuidFinal } as const;
         // Ensure downstream logs/queries use canonical UUID.

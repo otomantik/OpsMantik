@@ -32,7 +32,8 @@ test('Precedence: callId branch is evaluated before sessionId in getPrimarySourc
 test('Primary source is always scoped by site_id (tenant-safe)', () => {
   const src = readFileSync(join(process.cwd(), 'lib', 'conversation', 'primary-source.ts'), 'utf8');
   const siteIdFilters = (src.match(/\.eq\s*\(\s*['"]site_id['"]\s*,\s*siteId\s*\)/g) ?? []).length;
-  assert.ok(siteIdFilters >= 2, 'calls and sessions must both filter by site_id');
+  const rpcSiteId = (src.match(/p_site_id\s*:\s*siteId/g) ?? []).length;
+  assert.ok(siteIdFilters >= 1 && rpcSiteId >= 1, 'calls path must scope by p_site_id, sessions path by .eq(site_id, siteId)');
 });
 
 test('Primary source returns null on error (best-effort)', () => {

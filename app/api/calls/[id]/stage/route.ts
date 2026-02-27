@@ -33,6 +33,7 @@ export async function POST(
     const stageId = typeof body.stageId === 'string' ? body.stageId.trim() : '';
     const customAmountCents =
       body.customAmountCents != null ? Number(body.customAmountCents) : undefined;
+    const version = body.version != null ? Number(body.version) : undefined;
 
     if (!stageId) {
       return NextResponse.json({ error: 'Missing stageId' }, { status: 400 });
@@ -108,8 +109,16 @@ export async function POST(
       siteId,
       callId,
       stageId,
-      customAmountCents
+      customAmountCents,
+      version
     );
+
+    if (!result.success && result.reason === 'version_mismatch') {
+      return NextResponse.json(
+        { error: 'Concurrency conflict: Call was updated by another user. Please refresh and try again.' },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json(result);
   } catch (err: unknown) {

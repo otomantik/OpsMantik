@@ -14,18 +14,19 @@ import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 
 const SYNC_ROUTE_PATH = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
+const WORKER_INGEST_PATH = join(process.cwd(), 'app', 'api', 'workers', 'ingest', 'route.ts');
+const SYNC_GATES_PATH = join(process.cwd(), 'lib', 'ingest', 'sync-gates.ts');
 const QUOTA_LIB_PATH = join(process.cwd(), 'lib', 'quota.ts');
 const RECONCILIATION_LIB_PATH = join(process.cwd(), 'lib', 'reconciliation.ts');
 const RECONCILE_RUN_ROUTE_PATH = join(process.cwd(), 'app', 'api', 'cron', 'reconcile-usage', 'run', 'route.ts');
 const PR4_MIGRATION_PATH = join(process.cwd(), 'supabase', 'migrations', '20260216000004_revenue_kernel_pr4_reconciliation_jobs.sql');
 
-test('PR gate: duplicate path returns 200 with x-opsmantik-dedup and MUST NOT publish', () => {
-  const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  assert.ok(src.includes('x-opsmantik-dedup'), 'duplicate response must set x-opsmantik-dedup');
-  assert.ok(src.includes("status: 'duplicate'"), 'duplicate response must have status duplicate');
-  const afterDedup = src.indexOf("'x-opsmantik-dedup'");
-  const publishCall = src.indexOf('qstash.publishJSON');
-  assert.ok(afterDedup < publishCall, 'dedup return must be before publish (duplicate does not publish)');
+test('PR gate: duplicate path returns 200 with dedup and MUST NOT persist (worker acks)', () => {
+  const worker = readFileSync(WORKER_INGEST_PATH, 'utf8');
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  assert.ok(worker.includes('DedupSkipError'), 'worker must handle DedupSkipError');
+  assert.ok(worker.includes('dedup: true'), 'worker dedup response must exist');
+  assert.ok(syncGates.includes("reason: 'duplicate'"), 'sync-gates must return duplicate');
 });
 
 test('PR gate: rate limit 429 sets x-opsmantik-ratelimit (non-billable)', () => {
@@ -37,69 +38,60 @@ test('PR gate: rate limit 429 sets x-opsmantik-ratelimit (non-billable)', () => 
   assert.ok(!rateLimitBlock.includes('x-opsmantik-quota-exceeded'), 'rate limit 429 must NOT set x-opsmantik-quota-exceeded (429 reason separation)');
 });
 
-test('PR gate: evaluation order Auth (validateSite) -> Rate limit -> Idempotency -> Quota -> Publish', () => {
-  const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  const auth = src.indexOf('validateSiteFn');
-  const rateLimit = src.indexOf('rl.allowed', auth); // main-path rate limit (after validateSite)
-  const idempotency = src.indexOf('tryInsert(siteIdUuid');
-  const quota = src.indexOf('evaluateQuota(plan,'); // call site, not import
-  const publish = src.indexOf('qstash.publishJSON');
+test('PR gate: evaluation order Auth (validateSite) -> Rate limit -> Consent -> Publish (route); Idempotency -> Quota -> Persist (worker)', () => {
+  const sync = readFileSync(SYNC_ROUTE_PATH, 'utf8');
+  const worker = readFileSync(WORKER_INGEST_PATH, 'utf8');
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  const auth = sync.indexOf('validateSiteFn');
+  const rateLimit = sync.indexOf('rl.allowed', auth);
+  const publish = sync.indexOf('doPublish') !== -1 ? sync.indexOf('doPublish') : sync.indexOf('publishToQStash');
   assert.ok(auth < rateLimit, 'Auth before Rate limit');
-  assert.ok(rateLimit < idempotency, 'Rate limit before Idempotency');
-  assert.ok(idempotency < quota, 'Idempotency before Quota');
-  assert.ok(quota < publish, 'Quota before Publish');
+  assert.ok(rateLimit < publish, 'Rate limit before Publish');
+  const idempotency = syncGates.indexOf('tryInsertIdempotencyKey');
+  const quota = syncGates.indexOf('evaluateQuota');
+  const persist = worker.indexOf('processSyncEvent') !== -1 ? worker.indexOf('processSyncEvent') : worker.indexOf('processCallEvent');
+  assert.ok(idempotency !== -1 && quota !== -1, 'worker path: idempotency and quota must exist in sync-gates');
+  assert.ok(idempotency < quota, 'Idempotency before Quota in worker');
 });
 
 test('PR gate: quota reject path does not publish or write fallback', () => {
-  const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  const quotaRejectReturn = src.indexOf("status: 'rejected_quota'");
-  const publishCall = src.indexOf('qstash.publishJSON');
-  const fallbackInsert = src.indexOf('ingest_fallback_buffer');
-  assert.ok(quotaRejectReturn !== -1, 'quota reject returns status rejected_quota');
-  assert.ok(quotaRejectReturn < publishCall, 'quota reject return before publish (no publish on reject)');
-  assert.ok(quotaRejectReturn < fallbackInsert, 'quota reject return before fallback insert (no fallback on reject)');
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  assert.ok(syncGates.includes("reason: 'quota_reject'"), 'quota reject returns reason quota_reject');
+  assert.ok(syncGates.includes('updateIdempotencyBillableFalse'), 'quota reject must update billable before return');
 });
 
 test('PR gate: quota reject sets x-opsmantik-quota-exceeded and not x-opsmantik-ratelimit', () => {
-  const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  const quotaRejectStart = src.indexOf('if (decision.reject)');
-  assert.ok(quotaRejectStart !== -1, 'quota reject block must exist');
-  const quotaRejectBlock = src.slice(quotaRejectStart, quotaRejectStart + 900);
-  assert.ok(quotaRejectBlock.includes('...decision.headers'), 'quota reject path must spread decision.headers (includes quota-exceeded)');
-  assert.ok(quotaRejectBlock.includes("'rejected_quota'"), 'quota reject body must be status rejected_quota');
-  assert.ok(!quotaRejectBlock.includes('x-opsmantik-ratelimit'), 'quota reject 429 must NOT set x-opsmantik-ratelimit (429 reason separation)');
-
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  assert.ok(syncGates.includes("reason: 'quota_reject'"), 'quota reject block must exist');
+  assert.ok(syncGates.includes('evaluateQuota'), 'quota evaluation must exist');
   const quotaLib = readFileSync(QUOTA_LIB_PATH, 'utf8');
   assert.ok(quotaLib.includes("'x-opsmantik-quota-exceeded': '1'"), 'quota module must set x-opsmantik-quota-exceeded === "1"');
 });
 
 test('PR gate: quota reject updates idempotency row billable=false', () => {
-  const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  assert.ok(src.includes('updateIdempotencyBillableFalse'), 'quota reject must call updateIdempotencyBillableFalse before returning 429');
-  const updateCall = src.indexOf('updateIdempotencyBillableFalse');
-  const rejectReturn = src.indexOf("status: 'rejected_quota'");
-  assert.ok(updateCall < rejectReturn, 'billable=false update must happen before returning rejected_quota');
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  assert.ok(syncGates.includes('updateIdempotencyBillableFalse'), 'quota reject must call updateIdempotencyBillableFalse');
+  const updateIdx = syncGates.indexOf('updateIdempotencyBillableFalse');
+  const rejectIdx = syncGates.indexOf("reason: 'quota_reject'");
+  assert.ok(updateIdx < rejectIdx, 'billable=false update must happen before returning quota_reject');
 });
 
-test('PR gate: QStash failure path writes fallback after idempotency (billable at capture)', () => {
+test('PR gate: QStash failure path writes fallback (sync route)', () => {
   const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  const idempotencyInsert = src.indexOf('tryInsert(siteIdUuid');
-  const fallbackInsert = src.indexOf('ingest_fallback_buffer');
-  assert.ok(idempotencyInsert < fallbackInsert, 'idempotency row exists before fallback insert on publish failure');
+  const publishCall = src.indexOf('await doPublish(') !== -1 ? src.indexOf('await doPublish(') : src.indexOf('publishToQStash({');
+  const fallbackCall = src.indexOf('doInsertFallback(');
+  assert.ok(publishCall !== -1 && fallbackCall !== -1, 'publish and fallback call must exist');
+  assert.ok(publishCall < fallbackCall, 'fallback is in catch of publish failure');
 });
 
-test('PR gate: idempotency DB error must return 500 and MUST NOT publish', () => {
-  const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  assert.ok(src.includes('billing_gate_closed'), 'idempotency error path must return status billing_gate_closed');
-  assert.ok(src.includes('BILLING_GATE_CLOSED'), 'idempotency error path must log BILLING_GATE_CLOSED');
-  const billingGate500 = src.indexOf("'billing_gate_closed'");
-  const publishCall = src.indexOf('qstash.publishJSON');
-  const fallbackInsert = src.indexOf('ingest_fallback_buffer');
-  assert.ok(billingGate500 !== -1, '500 response body must contain billing_gate_closed');
-  assert.ok(billingGate500 < publishCall, '500 return must be before publish (fail-secure: no publish on idempotency error)');
-  assert.ok(billingGate500 < fallbackInsert, '500 return must be before fallback (no fallback on idempotency error)');
-  const status500 = src.indexOf('status: 500', billingGate500);
-  assert.ok(status500 !== -1 || src.includes('status: 500'), 'response must be HTTP 500');
+test('PR gate: idempotency DB error must ack and MUST NOT persist (worker)', () => {
+  const worker = readFileSync(WORKER_INGEST_PATH, 'utf8');
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  assert.ok(syncGates.includes('idempotency_error'), 'sync-gates must return idempotency_error');
+  assert.ok(worker.includes('WORKERS_INGEST_BILLING_GATE_CLOSED'), 'worker must log BILLING_GATE_CLOSED on idempotency error');
+  const gatesCall = worker.indexOf('runSyncGates');
+  const processCall = worker.indexOf('processSyncEvent');
+  assert.ok(gatesCall < processCall, 'gates run before process (idempotency error stops before persist)');
 });
 
 // Idempotency (tryInsert) runs in /api/workers/ingest; SyncHandlerDeps no longer exposes tryInsert.

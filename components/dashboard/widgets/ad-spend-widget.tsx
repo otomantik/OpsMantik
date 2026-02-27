@@ -54,7 +54,7 @@ export function AdSpendWidget({ siteId }: AdSpendWidgetProps) {
         }
         const json = await res.json();
         setData(json);
-      } catch (e) {
+      } catch {
         if (!cancelled) setError(t('adSpend.error'));
       } finally {
         if (!cancelled) setLoading(false);

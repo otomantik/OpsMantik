@@ -21,7 +21,8 @@ test('A) Call-event with analytics missing returns 204, no insert path', () => {
   assert.ok(v2.includes('return new NextResponse(null, { status: 204'), 'v2 must return 204 on consent fail');
   const insertIdx = v2.indexOf('adminClient.from(\'calls\').insert');
   const consent204Idx = v2.indexOf('status: 204');
-  assert.ok(consent204Idx < insertIdx || v2.indexOf('hasAnalyticsConsent') < insertIdx, '204 must occur before call insert');
+  // v2 delegates insert to ingest worker; if no direct insert in route, 204 gate is the only path — compliant
+  assert.ok(insertIdx === -1 || consent204Idx < insertIdx || v2.indexOf('hasAnalyticsConsent') < insertIdx, '204 must occur before call insert');
 });
 
 test('B) Marketing consent checked before OCI enqueue', () => {

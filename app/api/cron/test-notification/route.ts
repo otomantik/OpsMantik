@@ -1,18 +1,14 @@
-
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { TelegramService } from '@/lib/services/telegram-service';
 
-// Security check
-const CRON_SECRET = process.env.CRON_SECRET;
-
+/**
+ * Manual/cron test notification (Telegram). Not in vercel.json.
+ * Auth: requireCronAuth (x-vercel-cron or Bearer CRON_SECRET) in all environments.
+ */
 export async function GET(req: NextRequest) {
-    const authHeader = req.headers.get('authorization');
-
-    if (process.env.NODE_ENV === 'production') {
-        if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
-            return new NextResponse('Unauthorized', { status: 401 });
-        }
-    }
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
 
     try {
         const result = await TelegramService.sendMessage(
