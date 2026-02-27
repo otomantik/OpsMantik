@@ -14,10 +14,12 @@
  * Also prints before/after deltas for last-15-min ads-only window.
  *
  * Env:
- * - NEXT_PUBLIC_SUPABASE_URL
+ * - NEXT_PUBLIC_SUPABASE_URL — MUST match production (same as Vercel), else events written to different DB
  * - SUPABASE_SERVICE_ROLE_KEY
- * - SYNC_API_URL (default http://localhost:3100/api/sync)
+ * - SYNC_API_URL (default http://localhost:3100/api/sync; regression uses production when not set)
  * - ORIGIN (default https://www.poyrazantika.com)
+ * - P0_DB_RETRIES (default 12) — QStash + worker can take 5–30s
+ * - P0_DB_RETRY_MS (default 2000) — delay per retry
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -56,7 +58,7 @@ async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function retry(label, fn, attempts = 6) {
+async function retry(label, fn, attempts = 6, baseMs = 500) {
   let last;
   for (let i = 1; i <= attempts; i++) {
     try {
@@ -65,7 +67,7 @@ async function retry(label, fn, attempts = 6) {
       last = e;
       const msg = e?.message || String(e);
       console.warn(`⚠️  ${label} retry ${i}/${attempts}: ${msg}`);
-      await sleep(500 * i);
+      await sleep(baseMs * i);
     }
   }
   throw last;
@@ -130,7 +132,8 @@ async function countAdsHighIntent(siteId, fromIso, toIso) {
 
 async function main() {
   console.log('🧪 P0 intent-gate regression');
-  console.log(JSON.stringify({ SYNC_API_URL, ORIGIN }, null, 2));
+  const supabaseHost = supabaseUrl ? new URL(supabaseUrl).hostname : 'unknown';
+  console.log(JSON.stringify({ SYNC_API_URL, ORIGIN, supabase_host: supabaseHost }, null, 2));
 
   const { site_id: internalSiteId, site_public_id } = await pickSitePublicId();
   const sid = generateUUID();
@@ -160,6 +163,7 @@ async function main() {
       fp: 'fp_regression_test',
       gclid: 'TEST',
     },
+    consent_scopes: ['analytics', 'marketing'], // Required: without this sync returns 204 and event is never published
   };
 
   // Post to /api/sync (requires Origin header; route fail-closed if missing origin)
@@ -183,6 +187,12 @@ async function main() {
   if (!body || body.ok !== true) {
     throw new Error(`sync_response_not_ok: ${JSON.stringify(body).slice(0, 200)}`);
   }
+  console.log('Sync response:', { status: res.status, ok: body.ok, count: body.count, ingest_id: body.ingest_id });
+  console.log('## P0 lookup (use for Supabase verify):', { sid, sm, site_id: internalSiteId });
+
+  // QStash + worker can take 5–30s; retry with longer delays
+  const dbRetries = parseInt(process.env.P0_DB_RETRIES || '12', 10);
+  const dbRetryMs = parseInt(process.env.P0_DB_RETRY_MS || '2000', 10);
 
   // Verify event row category stays 'conversion' even with gclid present
   const eventRow = await retry('DB verify events', async () => {
@@ -202,7 +212,7 @@ async function main() {
       throw new Error(`event_category_wrong: ${row.event_category}`);
     }
     return row;
-  });
+  }, dbRetries, dbRetryMs);
 
   // Verify call intent exists (source=click, status=intent) for matched_session_id
   const callRow = await retry('DB verify calls', async () => {
@@ -220,7 +230,7 @@ async function main() {
     const row = data?.[0] || null;
     if (!row) throw new Error('call_intent_missing');
     return row;
-  });
+  }, dbRetries, dbRetryMs);
 
   const afterAdsHighIntent = await countAdsHighIntent(internalSiteId, fromIso, toIso);
 

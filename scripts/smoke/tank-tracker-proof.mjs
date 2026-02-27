@@ -43,6 +43,7 @@ const requiredPatterns = [
   { name: 'online event listener', pattern: /addEventListener\s*\(\s*['"]online['"]\s*,\s*processOutbox\s*\)|addEventListener\s*\(\s*['"]online['"]\s*,\s*l\s*\)/ },
   { name: 'beforeunload sendBeacon (Last Gasp)', pattern: /beforeunload[\s\S]{0,2000}sendBeacon|(beforeunload[\s\S]{0,300}lastGaspFlush)/ },
   { name: 'sessionStorage fallback (Hardness Map)', pattern: /sessionStorage|getStorage|_s\s*\(/ },
+  { name: 'SYNC_TIMEOUT_MS >= 15s (intent loss prevention)', pattern: /SYNC_TIMEOUT_MS\s*=\s*15e3|15e3.*AbortController|abort.*DOMException/ },
 ];
 
 console.log(`\n${bold('SECTOR BRAVO — Tank Tracker (Store & Forward) proof')}`);

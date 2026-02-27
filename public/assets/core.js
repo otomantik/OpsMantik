@@ -412,8 +412,9 @@
         return;
       }
       const body = batch2.length > 1 ? JSON.stringify({ events: batch2.map((e) => e.payload) }) : JSON.stringify(batch2[0].payload);
+      const SYNC_TIMEOUT_MS = 15e3;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5e3);
+      const timeoutId = setTimeout(() => controller.abort(new DOMException(`Sync timeout after ${SYNC_TIMEOUT_MS / 1e3}s`, "AbortError")), SYNC_TIMEOUT_MS);
       lastFlushAt = now;
       const syncUrl = new URL(CONFIG.apiUrl);
       syncUrl.searchParams.set("_ts", Date.now().toString());

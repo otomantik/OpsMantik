@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
-import { debugLog, debugWarn } from '@/lib/utils';
+import { debugLog } from '@/lib/utils';
+import { logError } from '@/lib/logging/logger';
 
 export class IntentService {
     static async handleIntent(
@@ -75,7 +76,12 @@ export class IntentService {
         });
 
         if (ensureErr) {
-            debugWarn('[SYNC_API] ensure_session_intent_v1 failed:', { code: ensureErr.code, message: ensureErr.message });
+            logError('ensure_session_intent_v1 failed', {
+                code: (ensureErr as { code?: string })?.code,
+                message: (ensureErr as { message?: string })?.message,
+                site_id: siteId,
+                session_id: session.id,
+            });
             return;
         }
 

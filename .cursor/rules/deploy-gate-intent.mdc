@@ -1,0 +1,16 @@
+---
+description: Deploy öncesi zorunlu — Intent multi-site test
+alwaysApply: true
+---
+
+# DEPLOY GATE — Intent Test (KESİN EMİR)
+
+**Intent bizim belkemiğimiz.** Deploy öncesi mutlaka:
+
+```bash
+npm run smoke:intent-multi-site
+```
+
+3/3 site PASS olmadan deploy edilmeyecek. Bu test sync → events → calls akışını doğrular (muratcanaku.com, yapiozmendanismanlik.com, poyrazantika.com).
+
+Ayrıntılar: `docs/OPS/DEPLOY_GATE_INTENT.md`
