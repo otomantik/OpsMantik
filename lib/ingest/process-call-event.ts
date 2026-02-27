@@ -108,6 +108,11 @@ export async function processCallEvent(
     ...(adsCtx?.device_model ? { device_model: adsCtx.device_model } : {}),
     ...(adsCtx?.geo_target_id ? { geo_target_id: adsCtx.geo_target_id } : {}),
     ...(resolvedDistrictName ? { district_name: resolvedDistrictName } : {}),
+    // AdTech Metadata
+    gclid: payload.gclid || payload.click_id, // Backward compatibility: click_id was often gclid
+    wbraid: payload.wbraid || null,
+    gbraid: payload.gbraid || null,
+    source_type: (payload.gclid || payload.wbraid || payload.gbraid || payload.click_id) ? 'paid' : 'organic',
   };
 
   const insertWithEventId = payload.event_id

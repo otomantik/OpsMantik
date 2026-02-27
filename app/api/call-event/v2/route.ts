@@ -61,6 +61,9 @@ const CallEventV2Schema = z
     intent_stamp: z.string().max(128).nullable().optional(),
     intent_page_url: z.string().max(2048).nullable().optional(),
     click_id: z.string().max(256).nullable().optional(),
+    gclid: z.string().max(256).nullable().optional(),
+    wbraid: z.string().max(256).nullable().optional(),
+    gbraid: z.string().max(256).nullable().optional(),
     // Google Ads ValueTrack enrichment
     ads_context: AdsContextSchema,
   })
@@ -356,6 +359,9 @@ export async function POST(req: NextRequest) {
       intent_stamp,
       intent_page_url,
       click_id,
+      gclid: body.gclid || null,
+      wbraid: body.wbraid || null,
+      gbraid: body.gbraid || null,
       signature_hash: signatureHash,
       ua: body.ua || req.headers.get('user-agent'),
       ...(event_id ? { event_id } : {}),

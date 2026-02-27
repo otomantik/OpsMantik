@@ -29,6 +29,9 @@ export type CallEventWorkerPayload = {
   intent_stamp: string;
   intent_page_url: string | null;
   click_id: string | null;
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
   signature_hash: string | null;
   ua?: string | null;
   event_id?: string | null;
