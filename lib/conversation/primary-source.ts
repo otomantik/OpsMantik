@@ -37,15 +37,33 @@ export async function getPrimarySource(
 ): Promise<PrimarySource | null> {
   try {
     if (input.callId) {
-      const { data: call, error: callError } = await adminClient
-        .from('calls')
-        .select('matched_session_id')
-        .eq('id', input.callId)
-        .eq('site_id', siteId)
-        .maybeSingle();
-
-      if (callError || !call?.matched_session_id) return null;
-      return getPrimarySourceFromSession(siteId, call.matched_session_id);
+      const { data: rows, error } = await adminClient.rpc('get_call_session_for_oci', {
+        p_call_id: input.callId,
+        p_site_id: siteId,
+      });
+      if (error || !Array.isArray(rows) || rows.length === 0) return null;
+      const row = rows[0] as {
+        gclid?: string | null;
+        wbraid?: string | null;
+        gbraid?: string | null;
+        utm_source?: string | null;
+        utm_medium?: string | null;
+        utm_campaign?: string | null;
+        utm_content?: string | null;
+        utm_term?: string | null;
+        referrer_host?: string | null;
+      };
+      return {
+        gclid: row.gclid ?? null,
+        wbraid: row.wbraid ?? null,
+        gbraid: row.gbraid ?? null,
+        utm_source: row.utm_source ?? null,
+        utm_medium: row.utm_medium ?? null,
+        utm_campaign: row.utm_campaign ?? null,
+        utm_content: row.utm_content ?? null,
+        utm_term: row.utm_term ?? null,
+        referrer: row.referrer_host ?? null,
+      };
     }
     if (input.sessionId) {
       return getPrimarySourceFromSession(siteId, input.sessionId);
