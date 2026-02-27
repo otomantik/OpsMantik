@@ -38,9 +38,9 @@ export async function processCallEvent(
   payload: CallEventWorkerPayload,
   requestId?: string
 ): Promise<ProcessCallEventResult> {
-  let eventIdColumnOk = Boolean(payload.event_id);
+  // eventIdColumnOk logic removed here, handled by payload.event_id directly
 
-  const safeStatus = sanitizeCallStatus(payload.status);
+  // const safeStatus = sanitizeCallStatus(payload.status); // Removed (replaced by initialStatus)
 
   // ── Google Ads enrichment: resolve geo_target_id → district_name ────────────
   const adsCtx = payload.ads_context ?? null;
@@ -75,6 +75,12 @@ export async function processCallEvent(
     payload.ads_context
   );
 
+  // ── ARCHITECTURAL STRATEGY: Lane Routing (Fast-Track) ──────────────────────
+  // If score >= 80, auto-transition to 'qualified' and mark as fast-tracked.
+  // if score < 30, it stays 'pending' but is held for review.
+  const isFastTrack = brainScore >= 80;
+  const initialStatus = isFastTrack ? 'qualified' : (sanitizeCallStatus(payload.status) || 'pending');
+
   const baseInsert: Record<string, unknown> = {
     site_id: payload.site_id,
     phone_number: payload.phone_number,
@@ -85,7 +91,9 @@ export async function processCallEvent(
     score_breakdown: brainBreakdown,
     confidence_score: payload.confidence_score,
     matched_at: payload.matched_at,
-    ...(safeStatus !== null ? { status: safeStatus } : {}),
+    status: initialStatus,
+    is_fast_tracked: isFastTrack,
+    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     source: payload.source,
     intent_action: payload.intent_action,
     intent_target: payload.intent_target,
@@ -111,18 +119,17 @@ export async function processCallEvent(
   let callRecord: { id: string } | null = null;
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const r = await adminClient
+    const { error: insertError, data: rData } = await adminClient
       .from('calls')
       .insert({ ...insertPayload, site_id: payload.site_id })
       .select('id')
       .single();
-    callRecord = r.data;
-    const insertError = r.error as CallInsertError | null;
+    callRecord = rData;
 
     if (!insertError) break;
 
     if (isMissingEventIdColumnError(insertError)) {
-      eventIdColumnOk = false;
+      // Mark as failed column for this attempt
       strippedCols.add('event_id');
       insertPayload = { ...insertPayload };
       delete (insertPayload as Record<string, unknown>).event_id;
@@ -144,6 +151,24 @@ export async function processCallEvent(
 
   if (!callRecord?.id) {
     throw new Error('Call insert returned no record');
+  }
+
+  // ── ARCHITECTURAL STRATEGY: Fast-Track OCI Push ──────────────────────────
+  if (isFastTrack) {
+    try {
+      const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
+      await enqueueSealConversion({
+        callId: callRecord.id,
+        siteId: payload.site_id,
+        confirmedAt: new Date().toISOString(),
+        saleAmount: payload._client_value ?? null,
+        currency: 'TRY', // Default currency, will be overridden by site config in utility
+        leadScore: brainScore,
+      });
+    } catch (ociError) {
+      // Fast-track push failure is non-critical for the ingestion flow
+      console.warn('[FAST-TRACK] OCI Auto-Queue failed:', ociError);
+    }
   }
 
   if (
