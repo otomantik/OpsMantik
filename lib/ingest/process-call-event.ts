@@ -24,6 +24,8 @@ import {
 } from '@/lib/api/call-event/schema-drift';
 import type { CallEventWorkerPayload } from './call-event-worker-payload';
 
+import { calculateBrainScore } from './scoring-engine';
+
 export type ProcessCallEventResult = { success: true; call_id: string };
 
 export type CallInsertError = { code?: string; message?: string; details?: string; hint?: string };
@@ -64,14 +66,23 @@ export async function processCallEvent(
     }
   }
 
+  // ── Brain Score V1: Algorithmic Lead Quality ──────────────────────────────
+  const { score: brainScore, breakdown: brainBreakdown } = calculateBrainScore(
+    {
+      ua: payload.ua,
+      intent_action: payload.intent_action,
+    },
+    payload.ads_context
+  );
+
   const baseInsert: Record<string, unknown> = {
     site_id: payload.site_id,
     phone_number: payload.phone_number,
     matched_session_id: payload.matched_session_id,
     matched_fingerprint: payload.matched_fingerprint,
-    lead_score: payload.lead_score,
-    lead_score_at_match: payload.lead_score_at_match,
-    score_breakdown: payload.score_breakdown,
+    lead_score: brainScore,
+    lead_score_at_match: brainScore,
+    score_breakdown: brainBreakdown,
     confidence_score: payload.confidence_score,
     matched_at: payload.matched_at,
     ...(safeStatus !== null ? { status: safeStatus } : {}),

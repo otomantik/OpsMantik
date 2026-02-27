@@ -30,6 +30,7 @@ export type CallEventWorkerPayload = {
   intent_page_url: string | null;
   click_id: string | null;
   signature_hash: string | null;
+  ua?: string | null;
   event_id?: string | null;
   _client_value?: number | null;
   ads_context?: AdsContext | null;

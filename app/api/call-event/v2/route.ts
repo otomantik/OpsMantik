@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     const phone_number = typeof body.phone_number === 'string' ? body.phone_number : null;
     const eventIdMode = getEventIdMode();
     const event_id = eventIdMode !== 'off' ? (body.event_id ?? null) : null;
-    let eventIdColumnOk = eventIdMode === 'on';
+    const eventIdColumnOk = eventIdMode === 'on';
     const value = parseValueAllowNull(body.value);
 
     // Replay cache (stronger than timestamp window). Degraded mode falls back locally on redis errors.
@@ -357,6 +357,7 @@ export async function POST(req: NextRequest) {
       intent_page_url,
       click_id,
       signature_hash: signatureHash,
+      ua: body.ua || req.headers.get('user-agent'),
       ...(event_id ? { event_id } : {}),
       ...(value !== null ? { _client_value: value } : {}),
       ...(body.ads_context ? { ads_context: body.ads_context } : {}),
