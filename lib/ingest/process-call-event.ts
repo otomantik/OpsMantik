@@ -107,6 +107,13 @@ export async function processCallEvent(
     ...(adsCtx?.match_type ? { match_type: adsCtx.match_type } : {}),
     ...(adsCtx?.device_model ? { device_model: adsCtx.device_model } : {}),
     ...(adsCtx?.geo_target_id ? { geo_target_id: adsCtx.geo_target_id } : {}),
+    ...(adsCtx?.campaign_id ? { campaign_id: adsCtx.campaign_id } : {}),
+    ...(adsCtx?.adgroup_id ? { adgroup_id: adsCtx.adgroup_id } : {}),
+    ...(adsCtx?.creative_id ? { creative_id: adsCtx.creative_id } : {}),
+    ...(adsCtx?.network ? { network: adsCtx.network } : {}),
+    ...(adsCtx?.device ? { device: adsCtx.device } : {}),
+    ...(adsCtx?.placement ? { placement: adsCtx.placement } : {}),
+    ...(adsCtx?.target_id ? { target_id: adsCtx.target_id } : {}),
     ...(resolvedDistrictName ? { district_name: resolvedDistrictName } : {}),
     // AdTech Metadata
     gclid: payload.gclid || payload.click_id, // Backward compatibility: click_id was often gclid

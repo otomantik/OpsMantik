@@ -36,8 +36,15 @@ const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
 const AdsContextSchema = z.object({
     keyword: z.string().max(512).nullable().optional(),
     match_type: z.string().max(8).nullable().optional(),
+    network: z.string().max(16).nullable().optional(),
+    device: z.string().max(16).nullable().optional(),
     device_model: z.string().max(256).nullable().optional(),
     geo_target_id: z.number().int().positive().nullable().optional(),
+    campaign_id: z.number().int().positive().nullable().optional(),
+    adgroup_id: z.number().int().positive().nullable().optional(),
+    creative_id: z.number().int().positive().nullable().optional(),
+    placement: z.string().max(512).nullable().optional(),
+    target_id: z.number().int().positive().nullable().optional(),
 }).nullable().optional();
 
 const CallEventSchema = z

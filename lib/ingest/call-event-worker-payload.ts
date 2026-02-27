@@ -7,8 +7,15 @@
 export type AdsContext = {
   keyword?: string | null;
   match_type?: 'e' | 'p' | 'b' | string | null;
+  network?: string | null;
+  device?: string | null;
   device_model?: string | null;
   geo_target_id?: number | null;
+  campaign_id?: number | null;
+  adgroup_id?: number | null;
+  creative_id?: number | null;
+  placement?: string | null;
+  target_id?: number | null;
 };
 
 export type CallEventWorkerPayload = {
