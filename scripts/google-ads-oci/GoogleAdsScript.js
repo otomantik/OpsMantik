@@ -1,111 +1,211 @@
 /**
- * OpsMantik → Google Ads Offline Conversion Sync (Exit Valve) — Iron Seal Multi-Tenant
- *
- * Script Properties (File → Project properties → Script properties):
- *   OPSMANTIK_SITE_ID  — Site UUID or public_id (required)
- *   OPSMANTIK_API_KEY — API key for OCI (required)
- *   OPSMANTIK_EXPORT_URL — Optional; default https://console.opsmantik.com/api/oci/google-ads-export
- *   OPSMANTIK_USE_V2_VERIFY — Optional; "true" to use v2 handshake (recommended)
- *
- * Flow: 1) Handshake (v2/verify) → session_token  2) Export  3) Upload to Google  4) ACK
- * No hardcoded site IDs — all from Script Properties.
+ * ╔══════════════════════════════════════════════════════════════════════════════╗
+ * ║  OPSMANTIK — Google Ads Offline Conversion Sync                             ║
+ * ║  Iron Seal Identity Protocol | Session Token Handshake                      ║
+ * ╠══════════════════════════════════════════════════════════════════════════════╣
+ * ║  INSTALLATION (Google Ads → Tools → Bulk actions → Scripts):                 ║
+ * ║    1. Create new script.                                                     ║
+ * ║    2. PASTE THIS SCRIPT.                                                     ║
+ * ║    3. EDIT THE CONFIG BLOCK BELOW — replace REPLACE_WITH_* with your values. ║
+ * ║    4. Set main() as trigger (e.g. every hour).                               ║
+ * ║                                                                              ║
+ * ║  ⚠️  Use public_id only. UUIDs are forbidden.                                 ║
+ * ╚══════════════════════════════════════════════════════════════════════════════╝
  */
-function main() {
-  var props = PropertiesService.getScriptProperties();
-  var siteId = (props.getProperty('OPSMANTIK_SITE_ID') || '').trim();
-  var apiKey = (props.getProperty('OPSMANTIK_API_KEY') || '').trim();
-  var exportUrl = (props.getProperty('OPSMANTIK_EXPORT_URL') || 'https://console.opsmantik.com/api/oci/google-ads-export').trim();
-  var baseUrl = exportUrl.replace(/\/api\/oci\/google-ads-export.*$/, '') || 'https://console.opsmantik.com';
-  var useV2Verify = (props.getProperty('OPSMANTIK_USE_V2_VERIFY') || 'false').toLowerCase() === 'true';
 
-  if (!siteId || !apiKey) {
-    Logger.log('OpsMantik: Set OPSMANTIK_SITE_ID and OPSMANTIK_API_KEY in Script Properties.');
-    return;
+'use strict';
+
+// ========================================================================
+// ⚙️ OPSMANTIK CONFIGURATION (MUST FILL THESE OUT)
+// ========================================================================
+var OPSMANTIK_SITE_ID = '81d957f3c7534f53b12ff305f9f07ae7';   // Eslamed (public_id)
+var OPSMANTIK_API_KEY = 'becaef33f722de5f08691091bbe2cbb7fba0594e56ccbfb4c8a15b3ebedd2cf1';
+var OPSMANTIK_BASE_URL = 'https://console.opsmantik.com';
+// ========================================================================
+
+// ---------------------------------------------------------------------------
+// LogManager — Enterprise prefixed logging
+// ---------------------------------------------------------------------------
+
+var LogManager = (function () {
+  var PREFIX = '[OpsMantik OCI]';
+  var LEVELS = { INFO: 'INFO', WARN: 'WARN', ERROR: 'ERROR', FATAL: 'FATAL' };
+
+  function _log(level, msg) {
+    Logger.log(PREFIX + ' [' + level + '] ' + msg);
   }
 
-  var authHeader = { 'x-api-key': apiKey };
-  var sessionToken = null;
+  return {
+    info: function (msg) { _log(LEVELS.INFO, msg); },
+    warn: function (msg) { _log(LEVELS.WARN, msg); },
+    error: function (msg) { _log(LEVELS.ERROR, msg); },
+    fatal: function (msg) { _log(LEVELS.FATAL, msg); }
+  };
+})();
 
-  if (useV2Verify) {
-    var verifyResp;
-    try {
-      verifyResp = UrlFetchApp.fetch(baseUrl + '/api/oci/v2/verify', {
-        method: 'post',
-        muteHttpExceptions: true,
-        contentType: 'application/json',
-        headers: { 'x-api-key': apiKey },
-        payload: JSON.stringify({ siteId: siteId })
-      });
-    } catch (e) {
-      Logger.log('OpsMantik v2/verify error: ' + e.toString());
-      return;
-    }
-    if (verifyResp.getResponseCode() !== 200) {
-      Logger.log('OpsMantik v2/verify failed: HTTP ' + verifyResp.getResponseCode() + ' ' + verifyResp.getContentText());
-      return;
-    }
-    var verifyJson;
-    try {
-      verifyJson = JSON.parse(verifyResp.getContentText());
-    } catch (e) {
-      Logger.log('OpsMantik v2/verify parse error: ' + e.toString());
-      return;
-    }
-    if (verifyJson.session_token) {
-      sessionToken = verifyJson.session_token;
-      authHeader = { 'Authorization': 'Bearer ' + sessionToken };
-    }
+// ---------------------------------------------------------------------------
+// ConfigLoader — Validates top-level config variables
+// ---------------------------------------------------------------------------
+
+/**
+ * Load and validate configuration from top-level variables.
+ * @returns {{ siteId: string, apiKey: string, baseUrl: string } | null} Config or null if invalid
+ */
+function ConfigLoader_load() {
+  var siteId = (OPSMANTIK_SITE_ID || '').trim();
+  var apiKey = (OPSMANTIK_API_KEY || '').trim();
+  var baseUrl = (OPSMANTIK_BASE_URL || 'https://console.opsmantik.com').trim().replace(/\/+$/, '');
+
+  if (siteId === 'REPLACE_WITH_YOUR_PUBLIC_ID' || !siteId || !apiKey || apiKey === 'REPLACE_WITH_YOUR_API_KEY') {
+    throw new Error('You must replace the configuration variables at the top of the script!');
   }
 
-  var url = exportUrl + '?siteId=' + encodeURIComponent(siteId) + '&markAsExported=true';
-  var options = {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: Object.assign({ 'Accept': 'application/json' }, authHeader)
+  var uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(siteId)) {
+    LogManager.fatal('You are using an internal UUID. Please use the public_id provided in your OpsMantik Dashboard.');
+    LogManager.info('UUIDs are forbidden by the Identity Protocol.');
+    return null;
+  }
+
+  return { siteId: siteId, apiKey: apiKey, baseUrl: baseUrl };
+}
+
+// ---------------------------------------------------------------------------
+// AuthManager — Handshake: POST /api/oci/v2/verify → session_token
+// ---------------------------------------------------------------------------
+
+/**
+ * Perform handshake to obtain session token.
+ * @param {{ siteId: string, apiKey: string, baseUrl: string }} config
+ * @returns {string | null} session_token or null on failure
+ */
+function AuthManager_handshake(config) {
+  var url = config.baseUrl + '/api/oci/v2/verify';
+  var payload = JSON.stringify({ siteId: config.siteId });
+  var headers = {
+    'Content-Type': 'application/json',
+    'x-api-key': config.apiKey
   };
 
-  var response;
   try {
-    response = UrlFetchApp.fetch(url, options);
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      muteHttpExceptions: true,
+      contentType: 'application/json',
+      headers: headers,
+      payload: payload
+    });
   } catch (e) {
-    Logger.log('OpsMantik fetch error: ' + e.toString());
-    return;
+    LogManager.error('Handshake fetch error: ' + e.toString());
+    return null;
   }
 
-  var code = response.getResponseCode();
+  var code = resp.getResponseCode();
+  var body = resp.getContentText();
+
+  if (code === 400) {
+    try {
+      var json = JSON.parse(body || '{}');
+      if (json.code === 'IDENTITY_BOUNDARY') {
+        LogManager.fatal('You are using an internal UUID. Please use the public_id provided in your OpsMantik Dashboard.');
+        return null;
+      }
+    } catch (e) { /* ignore */ }
+    LogManager.error('Handshake bad request: ' + body);
+    return null;
+  }
+
+  if (code === 401 || code === 403) {
+    LogManager.fatal('Handshake failed: Invalid API key or site configuration. Check OPSMANTIK_SITE_ID and OPSMANTIK_API_KEY.');
+    return null;
+  }
+
   if (code !== 200) {
-    Logger.log('OpsMantik API error: HTTP ' + code + ' ' + response.getContentText());
-    return;
+    LogManager.error('Handshake failed: HTTP ' + code + ' ' + body);
+    return null;
   }
 
-  var jsonText = response.getContentText();
-  var conversions;
   try {
-    conversions = JSON.parse(jsonText);
+    var data = JSON.parse(body);
+    if (data.session_token) {
+      return data.session_token;
+    }
   } catch (e) {
-    Logger.log('OpsMantik parse error: ' + e.toString());
-    return;
+    LogManager.error('Handshake parse error: ' + e.toString());
+    return null;
   }
 
-  if (!Array.isArray(conversions)) {
-    Logger.log('OpsMantik: response is not an array: ' + jsonText.substring(0, 200));
-    return;
-  }
-  Logger.log('OpsMantik: API returned ' + conversions.length + ' record(s). Site: ' + siteId);
-  if (conversions.length === 0) {
-    return;
+  LogManager.error('Handshake: No session_token in response.');
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// ExportManager — GET /api/oci/google-ads-export with Bearer token
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch conversions from OpsMantik export API.
+ * @param {{ siteId: string, baseUrl: string }} config
+ * @param {string} sessionToken
+ * @returns {Array<Object> | null} Conversions array or null on failure
+ */
+function ExportManager_fetch(config, sessionToken) {
+  var url = config.baseUrl + '/api/oci/google-ads-export?siteId=' + encodeURIComponent(config.siteId) + '&markAsExported=true';
+  var headers = {
+    'Accept': 'application/json',
+    'Authorization': 'Bearer ' + sessionToken
+  };
+
+  try {
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'get',
+      muteHttpExceptions: true,
+      headers: headers
+    });
+  } catch (e) {
+    LogManager.error('Export fetch error: ' + e.toString());
+    return null;
   }
 
-  var columns = [
-    'Order ID',
-    'Google Click ID',
-    'Conversion name',
-    'Conversion time',
-    'Conversion value',
-    'Conversion currency'
-  ];
+  var code = resp.getResponseCode();
+  var body = resp.getContentText();
 
-  var upload = AdsApp.bulkUploads().newCsvUpload(columns, {
+  if (code !== 200) {
+    LogManager.error('Export failed: HTTP ' + code + ' ' + body);
+    return null;
+  }
+
+  try {
+    var data = JSON.parse(body);
+    if (Array.isArray(data)) return data;
+    LogManager.error('Export: response is not an array.');
+    return null;
+  } catch (e) {
+    LogManager.error('Export parse error: ' + e.toString());
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GoogleAdsUploader — AdsApp CSV upload
+// ---------------------------------------------------------------------------
+
+var COLUMNS = [
+  'Order ID',
+  'Google Click ID',
+  'Conversion name',
+  'Conversion time',
+  'Conversion value',
+  'Conversion currency'
+];
+
+/**
+ * Build upload rows and apply to Google Ads.
+ * @param {Array<Object>} conversions
+ * @returns {{ appended: number, skipped: number, uploadedIds: Array<string> }}
+ */
+function GoogleAdsUploader_apply(conversions) {
+  var upload = AdsApp.bulkUploads().newCsvUpload(COLUMNS, {
     moneyInMicros: false,
     timeZone: 'Europe/Istanbul'
   });
@@ -115,14 +215,16 @@ function main() {
   var appended = 0;
   var skipped = 0;
   var uploadedIds = [];
+
   for (var i = 0; i < conversions.length; i++) {
     var row = conversions[i];
     var gclid = (row.gclid || '').toString().trim();
     var wbraid = (row.wbraid || '').toString().trim();
     var gbraid = (row.gbraid || '').toString().trim();
     var clickId = gclid || wbraid || gbraid;
+
     if (!clickId) {
-      Logger.log('Skip row (no click id): id=' + (row.id || i));
+      LogManager.warn('Skip row (no click id): id=' + (row.id || i));
       skipped++;
       continue;
     }
@@ -135,7 +237,7 @@ function main() {
     if (!/^[A-Z]{3}$/.test(conversionCurrency)) conversionCurrency = 'TRY';
 
     if (!conversionTime) {
-      Logger.log('Skip row (no conversion time): id=' + (row.id || i));
+      LogManager.warn('Skip row (no conversion time): id=' + (row.id || i));
       skipped++;
       continue;
     }
@@ -153,57 +255,129 @@ function main() {
     if (row.id) uploadedIds.push(String(row.id));
   }
 
-  if (appended === 0) {
-    Logger.log('OpsMantik: no valid rows to upload (all skipped: ' + skipped + ').');
+  if (appended > 0) {
+    try {
+      upload.apply();
+    } catch (e) {
+      LogManager.error('AdsApp.upload.apply() error: ' + e.toString());
+      throw e;
+    }
+  }
+
+  return { appended: appended, skipped: skipped, uploadedIds: uploadedIds };
+}
+
+// ---------------------------------------------------------------------------
+// AckManager — POST /api/oci/ack
+// ---------------------------------------------------------------------------
+
+/**
+ * Send acknowledgment for uploaded conversions.
+ * @param {{ siteId: string, baseUrl: string }} config
+ * @param {string} sessionToken
+ * @param {Array<string>} queueIds
+ * @returns {boolean} true if ACK succeeded
+ */
+function AckManager_send(config, sessionToken, queueIds) {
+  if (!queueIds || queueIds.length === 0) return true;
+
+  var url = config.baseUrl + '/api/oci/ack';
+  var payload = JSON.stringify({ siteId: config.siteId, queueIds: queueIds });
+  var headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + sessionToken
+  };
+
+  var maxRetries = 3;
+  for (var attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      var resp = UrlFetchApp.fetch(url, {
+        method: 'post',
+        muteHttpExceptions: true,
+        contentType: 'application/json',
+        headers: headers,
+        payload: payload
+      });
+      var code = resp.getResponseCode();
+      var body = resp.getContentText();
+
+      if (code === 200) {
+        LogManager.info('ACK success (updated: ' + (JSON.parse(body || '{}').updated || '?') + ')');
+        return true;
+      }
+
+      LogManager.warn('ACK failed (attempt ' + attempt + '/' + maxRetries + '): HTTP ' + code);
+      if (attempt < maxRetries && code >= 500) {
+        Utilities.sleep(2000);
+      } else {
+        break;
+      }
+    } catch (e) {
+      LogManager.error('ACK error (attempt ' + attempt + '): ' + e.toString());
+      if (attempt < maxRetries) Utilities.sleep(2000);
+    }
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// main — Entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Main entry point. Orchestrates: Config → Handshake → Export → Upload → ACK.
+ */
+function main() {
+  LogManager.info('Starting OCI sync...');
+
+  var config;
+  try {
+    config = ConfigLoader_load();
+  } catch (e) {
+    LogManager.fatal(e.toString());
+    return;
+  }
+  if (!config) {
+    LogManager.fatal('Configuration invalid. Halting.');
     return;
   }
 
-  try {
-    upload.apply();
-    Logger.log('OpsMantik: applied ' + appended + ' conversions; skipped ' + skipped);
-    if (uploadedIds.length > 0) {
-      Logger.log('=> Starting ACK process for ' + uploadedIds.length + ' conversions.');
-      var ackUrl = baseUrl + '/api/oci/ack';
-      var maxRetries = 3;
-      var ackOk = false;
-      for (var attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          var payload = { siteId: siteId, queueIds: uploadedIds };
-          Logger.log('=> ACK attempt ' + attempt + '/' + maxRetries);
-          var ackResp = UrlFetchApp.fetch(ackUrl, {
-            method: 'post',
-            muteHttpExceptions: true,
-            contentType: 'application/json',
-            headers: authHeader,
-            payload: JSON.stringify(payload)
-          });
-          var ackCode = ackResp.getResponseCode();
-          var ackBody = ackResp.getContentText();
-          Logger.log('=> ACK Response Code: ' + ackCode);
-          if (ackCode === 200) {
-            ackOk = true;
-            try {
-              var parsed = JSON.parse(ackBody || '{}');
-              Logger.log('=> ACK success (updated: ' + (parsed.updated != null ? parsed.updated : '?') + ')');
-            } catch (e) { Logger.log('=> ACK success (HTTP 200)'); }
-            break;
-          }
-          Logger.log('!!! ACK FAILED: HTTP ' + ackCode + ' ' + ackBody);
-          if (attempt < maxRetries && ackCode >= 500) {
-            Utilities.sleep(2000);
-          } else {
-            break;
-          }
-        } catch (ackErr) {
-          Logger.log('!!! ACK FAILED (attempt ' + attempt + '): ' + ackErr.toString());
-          if (attempt < maxRetries) Utilities.sleep(2000);
-        }
-      }
-      if (!ackOk) {
-        Logger.log('!!! ACK failed after ' + maxRetries + ' attempts. Rows will be recovered by cron and re-sent.');
-      }
-    }
-  } catch (e) {
-    Logger.log('OpsMantik upload.apply() error: ' + e.toString());
+  var sessionToken = AuthManager_handshake(config);
+  if (!sessionToken) {
+    LogManager.fatal('Handshake failed. Halting.');
+    return;
   }
+  LogManager.info('Handshake OK.');
+
+  var conversions = ExportManager_fetch(config, sessionToken);
+  if (conversions === null) {
+    LogManager.fatal('Export failed. Halting.');
+    return;
+  }
+
+  LogManager.info('Export returned ' + conversions.length + ' record(s).');
+
+  if (conversions.length === 0) {
+    LogManager.info('No conversions to upload.');
+    return;
+  }
+
+  var result = GoogleAdsUploader_apply(conversions);
+
+  if (result.appended === 0) {
+    LogManager.warn('No valid rows to upload (skipped: ' + result.skipped + ').');
+    return;
+  }
+
+  LogManager.info('Applied ' + result.appended + ' conversions; skipped ' + result.skipped);
+
+  if (result.uploadedIds.length > 0) {
+    var ackOk = AckManager_send(config, sessionToken, result.uploadedIds);
+    if (!ackOk) {
+      LogManager.warn('ACK failed. Rows will be recovered by cron and re-sent.');
+    }
+  }
+
+  LogManager.info('OCI sync complete.');
 }
