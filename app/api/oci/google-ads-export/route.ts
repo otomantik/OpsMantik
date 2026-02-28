@@ -6,6 +6,7 @@ import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
+import { getPrimarySource } from '@/lib/conversation/primary-source';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
 
 export const dynamic = 'force-dynamic';
@@ -39,13 +40,9 @@ export interface GoogleAdsConversionItem {
 /**
  * GET /api/oci/google-ads-export?siteId=<uuid>&markAsExported=true
  *
- * "Ready-for-Google" Exit Valve: reads from offline_conversion_queue (status = QUEUED or RETRY),
- * returns JSON formatted for Google Ads Script consumption.
- * RETRY = recovered from PROCESSING (e.g. script didn't ack); script re-uploads them.
- * One conversion per session: same matched_session_id → only earliest conversion_time is returned; others marked COMPLETED (skipped).
- *
- * Auth: x-api-key must match OCI_API_KEY (env on Vercel).
- * Optional: markAsExported=true → returned rows → PROCESSING; duplicate-session rows → COMPLETED (not re-exported).
+ * Dual-Pipeline: reads from BOTH offline_conversion_queue (Seals) AND marketing_signals (Observation).
+ * Returns JSON for Google Ads Script. IDs prefixed: seal_<uuid> | signal_<uuid> for ACK routing.
+ * Auth: Bearer session_token or x-api-key. Optional markAsExported → queue rows → PROCESSING.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -145,7 +142,47 @@ export async function GET(req: NextRequest) {
     }
 
     const rawList = Array.isArray(rows) ? rows : [];
-    if (rawList.length === 0) {
+
+    // Pipeline B: marketing_signals (PENDING)
+    const { data: signalRows } = await adminClient
+      .from('marketing_signals')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time')
+      .eq('site_id', siteUuid)
+      .eq('dispatch_status', 'PENDING')
+      .order('created_at', { ascending: true });
+
+    const signalList = Array.isArray(signalRows) ? signalRows : [];
+
+    // Resolve gclid for signals (only include those with click ID)
+    const signalItems: GoogleAdsConversionItem[] = [];
+    for (const sig of signalList) {
+      const callId = (sig as { call_id?: string | null }).call_id;
+      if (!callId) continue;
+      const source = await getPrimarySource(siteUuid, { callId });
+      const gclid = (source?.gclid || '').trim();
+      const wbraid = (source?.wbraid || '').trim();
+      const gbraid = (source?.gbraid || '').trim();
+      const clickId = gclid || wbraid || gbraid;
+      if (!clickId) continue;
+
+      const rawTime = (sig as { google_conversion_time: string }).google_conversion_time || '';
+      const conversionTime = formatConversionTimeTurkey(rawTime);
+      const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
+
+      signalItems.push({
+        id: 'signal_' + (sig as { id: string }).id,
+        orderId: 'signal_' + (sig as { id: string }).id,
+        gclid: gclid || '',
+        wbraid: wbraid || '',
+        gbraid: gbraid || '',
+        conversionName,
+        conversionTime,
+        conversionValue: 0,
+        conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
+      });
+    }
+
+    if (rawList.length === 0 && signalItems.length === 0) {
       return NextResponse.json([]);
     }
 
@@ -241,8 +278,8 @@ export async function GET(req: NextRequest) {
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
 
       return {
-        id: String(row.id),
-        orderId: String(row.id),
+        id: 'seal_' + String(row.id),
+        orderId: 'seal_' + String(row.id),
         gclid: (row.gclid || '').trim(),
         wbraid: (row.wbraid || '').trim(),
         gbraid: (row.gbraid || '').trim(),
@@ -253,7 +290,10 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json(conversions);
+    const combined = [...conversions, ...signalItems].sort(
+      (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
+    );
+    return NextResponse.json(combined);
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });

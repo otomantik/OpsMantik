@@ -1,8 +1,9 @@
 /**
- * POST /api/oci/ack — Script yükleme sonrası: Google'a giden queue satırlarını COMPLETED yapar.
+ * POST /api/oci/ack — Script yükleme sonrası: Google'a giden kayıtları onaylar.
  *
- * Google Ads Script başarılı upload'dan sonra bu endpoint'i çağırır (queue id listesi ile).
- * Böylece PROCESSING'de kalan kayıtlar tekrar RETRY'a düşüp çift gönderilmez.
+ * Dual-Pipeline: Script queueIds'leri seal_<uuid> veya signal_<uuid> prefix'i ile gönderir.
+ * - seal_* → offline_conversion_queue (status=COMPLETED, uploaded_at=NOW)
+ * - signal_* → marketing_signals (dispatch_status=SENT, google_sent_at=NOW)
  *
  * Body: { siteId: string, queueIds: string[] }
  * Auth: x-api-key = OCI_API_KEY (export ile aynı).
@@ -71,26 +72,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, updated: 0 });
     }
 
-    const now = new Date().toISOString();
-    const { data, error } = await adminClient
-      .from('offline_conversion_queue')
-      .update({
-        status: 'COMPLETED',
-        uploaded_at: now,
-        updated_at: now,
-      })
-      .in('id', queueIds)
-      .eq('site_id', siteUuid)
-      .in('status', ['PROCESSING'])
-      .select('id');
-
-    if (error) {
-      logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
-      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+    const sealIds: string[] = [];
+    const signalIds: string[] = [];
+    for (const id of queueIds) {
+      const s = String(id);
+      if (s.startsWith('seal_')) sealIds.push(s.slice(5));
+      else if (s.startsWith('signal_')) signalIds.push(s.slice(7));
     }
 
-    const updated = Array.isArray(data) ? data.length : 0;
-    return NextResponse.json({ ok: true, updated });
+    const now = new Date().toISOString();
+    let totalUpdated = 0;
+
+    if (sealIds.length > 0) {
+      const { data, error } = await adminClient
+        .from('offline_conversion_queue')
+        .update({
+          status: 'COMPLETED',
+          uploaded_at: now,
+          updated_at: now,
+        })
+        .in('id', sealIds)
+        .eq('site_id', siteUuid)
+        .in('status', ['PROCESSING'])
+        .select('id');
+
+      if (error) {
+        logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      totalUpdated += Array.isArray(data) ? data.length : 0;
+    }
+
+    if (signalIds.length > 0) {
+      const { data, error } = await adminClient
+        .from('marketing_signals')
+        .update({
+          dispatch_status: 'SENT',
+          google_sent_at: now,
+        })
+        .in('id', signalIds)
+        .eq('site_id', siteUuid)
+        .eq('dispatch_status', 'PENDING')
+        .select('id');
+
+      if (error) {
+        logError('OCI_ACK_SIGNALS_SQL_ERROR', { code: (error as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      totalUpdated += Array.isArray(data) ? data.length : 0;
+    }
+
+    return NextResponse.json({ ok: true, updated: totalUpdated });
   } catch (e: unknown) {
     logError('OCI_ACK_ERROR', { error: e instanceof Error ? e.message : String(e) });
     return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
