@@ -128,20 +128,29 @@ export async function POST(req: NextRequest) {
       totalUpdated += Array.isArray(data) ? data.length : 0;
     }
 
+    const failedRedisCleanups: string[] = [];
     if (pvIds.length > 0) {
-      try {
-        const processingKey = `pv:processing:${siteRedisKey}`;
-        for (const pvId of pvIds) {
+      const processingKey = `pv:processing:${siteRedisKey}`;
+      for (const pvId of pvIds) {
+        try {
           await redis.del(`pv:data:${pvId}`);
           await redis.lrem(processingKey, 0, pvId);
+          totalUpdated += 1;
+        } catch (redisErr) {
+          logError('OCI_ACK_PV_REDIS_ERROR', { pvId, error: redisErr instanceof Error ? redisErr.message : String(redisErr) });
+          failedRedisCleanups.push(pvId);
         }
-        totalUpdated += pvIds.length;
-      } catch (redisErr) {
-        logError('OCI_ACK_PV_REDIS_ERROR', { error: redisErr instanceof Error ? redisErr.message : String(redisErr) });
       }
     }
 
-    return NextResponse.json({ ok: true, updated: totalUpdated });
+    const payload: { ok: boolean; updated: number; warnings?: { redis_cleanup_failed: string[] } } = {
+      ok: true,
+      updated: totalUpdated,
+    };
+    if (failedRedisCleanups.length > 0) {
+      payload.warnings = { redis_cleanup_failed: failedRedisCleanups };
+    }
+    return NextResponse.json(payload);
   } catch (e: unknown) {
     logError('OCI_ACK_ERROR', { error: e instanceof Error ? e.message : String(e) });
     return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });

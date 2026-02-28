@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
     // Pipeline B: marketing_signals (PENDING)
     const { data: signalRows } = await adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING')
       .order('created_at', { ascending: true });
@@ -172,6 +172,7 @@ export async function GET(req: NextRequest) {
       const conversionTime = formatConversionTimeTurkey(rawTime);
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
+      const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
       signalItems.push({
         id: 'signal_' + (sig as { id: string }).id,
         orderId: 'signal_' + (sig as { id: string }).id,
@@ -180,7 +181,7 @@ export async function GET(req: NextRequest) {
         gbraid: gbraid || '',
         conversionName,
         conversionTime,
-        conversionValue: 0,
+        conversionValue: Number(rowValue) || 0,
         conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
       });
     }
