@@ -144,30 +144,49 @@ function main() {
     upload.apply();
     Logger.log('OpsMantik: applied ' + appended + ' conversions; skipped ' + skipped);
     // Ack: mark these queue rows as COMPLETED so they are not re-sent (recover won't move them to RETRY).
+    // Retry up to 3 times on failure (transient 5xx, network errors).
     if (uploadedIds.length > 0) {
       Logger.log('=> Starting ACK process for ' + uploadedIds.length + ' conversions.');
-      var payload = { siteId: siteId, queueIds: uploadedIds };
-      Logger.log('=> ACK Payload: ' + JSON.stringify(payload));
       var ackUrl = (typeof OPSMANTIK_EXPORT_URL !== 'undefined'
         ? OPSMANTIK_EXPORT_URL.replace(/\/api\/oci\/google-ads-export.*$/, '')
         : 'https://console.opsmantik.com') + '/api/oci/ack';
-      try {
-        var ackResp = UrlFetchApp.fetch(ackUrl, {
-          method: 'post',
-          muteHttpExceptions: true,
-          contentType: 'application/json',
-          headers: { 'x-api-key': apiKey },
-          payload: JSON.stringify(payload)
-        });
-        var ackCode = ackResp.getResponseCode();
-        var ackBody = ackResp.getContentText();
-        Logger.log('=> ACK Response Code: ' + ackCode);
-        Logger.log('=> ACK Response Body: ' + ackBody);
-        if (ackCode !== 200) {
+      var maxRetries = 3;
+      var ackOk = false;
+      for (var attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          var payload = { siteId: siteId, queueIds: uploadedIds };
+          Logger.log('=> ACK attempt ' + attempt + '/' + maxRetries);
+          var ackResp = UrlFetchApp.fetch(ackUrl, {
+            method: 'post',
+            muteHttpExceptions: true,
+            contentType: 'application/json',
+            headers: { 'x-api-key': apiKey },
+            payload: JSON.stringify(payload)
+          });
+          var ackCode = ackResp.getResponseCode();
+          var ackBody = ackResp.getContentText();
+          Logger.log('=> ACK Response Code: ' + ackCode);
+          if (ackCode === 200) {
+            ackOk = true;
+            try {
+              var parsed = JSON.parse(ackBody || '{}');
+              Logger.log('=> ACK success (updated: ' + (parsed.updated != null ? parsed.updated : '?') + ')');
+            } catch (e) { Logger.log('=> ACK success (HTTP 200)'); }
+            break;
+          }
           Logger.log('!!! ACK FAILED: HTTP ' + ackCode + ' ' + ackBody);
+          if (attempt < maxRetries && ackCode >= 500) {
+            Utilities.sleep(2000);
+          } else {
+            break;
+          }
+        } catch (ackErr) {
+          Logger.log('!!! ACK FAILED (attempt ' + attempt + '): ' + ackErr.toString());
+          if (attempt < maxRetries) Utilities.sleep(2000);
         }
-      } catch (ackErr) {
-        Logger.log('!!! ACK FAILED: ' + ackErr.toString());
+      }
+      if (!ackOk) {
+        Logger.log('!!! ACK failed after ' + maxRetries + ' attempts. Rows will be recovered by cron and re-sent.');
       }
     }
   } catch (e) {
