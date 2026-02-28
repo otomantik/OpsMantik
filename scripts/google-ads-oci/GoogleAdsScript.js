@@ -18,8 +18,8 @@
 // ========================================================================
 // ⚙️ OPSMANTIK CONFIGURATION (MUST FILL THESE OUT)
 // ========================================================================
-var OPSMANTIK_SITE_ID = '81d957f3c7534f53b12ff305f9f07ae7';   // Eslamed (public_id)
-var OPSMANTIK_API_KEY = 'becaef33f722de5f08691091bbe2cbb7fba0594e56ccbfb4c8a15b3ebedd2cf1';
+var OPSMANTIK_SITE_ID = '28cf0aefaa074f5bb29e818a9d53b488';   // Muratcan AKÜ (public_id)
+var OPSMANTIK_API_KEY = '3a1a48f946a1f42c584dc15975ff95c2cb2cb0ab23beffc79c5bb03b0fb47726';
 var OPSMANTIK_BASE_URL = 'https://console.opsmantik.com';
 // ========================================================================
 

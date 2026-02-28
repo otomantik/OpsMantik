@@ -1,9 +1,10 @@
 /**
  * POST /api/oci/ack — Script yükleme sonrası: Google'a giden kayıtları onaylar.
  *
- * Dual-Pipeline: Script queueIds'leri seal_<uuid> veya signal_<uuid> prefix'i ile gönderir.
+ * Tri-Pipeline: Script queueIds'leri seal_, signal_, pv_ prefix'i ile gönderir.
  * - seal_* → offline_conversion_queue (status=COMPLETED, uploaded_at=NOW)
  * - signal_* → marketing_signals (dispatch_status=SENT, google_sent_at=NOW)
+ * - pv_* → Redis: DEL pv:data:{id}, LREM pv:processing:{siteId}
  *
  * Body: { siteId: string, queueIds: string[] }
  * Auth: x-api-key = OCI_API_KEY (export ile aynı).
@@ -11,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
@@ -74,11 +76,15 @@ export async function POST(req: NextRequest) {
 
     const sealIds: string[] = [];
     const signalIds: string[] = [];
+    const pvIds: string[] = [];
     for (const id of queueIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealIds.push(s.slice(5));
       else if (s.startsWith('signal_')) signalIds.push(s.slice(7));
+      else if (s.startsWith('pv_')) pvIds.push(s);
     }
+
+    const siteRedisKey = siteId;
 
     const now = new Date().toISOString();
     let totalUpdated = 0;
@@ -120,6 +126,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
       totalUpdated += Array.isArray(data) ? data.length : 0;
+    }
+
+    if (pvIds.length > 0) {
+      try {
+        const processingKey = `pv:processing:${siteRedisKey}`;
+        for (const pvId of pvIds) {
+          await redis.del(`pv:data:${pvId}`);
+          await redis.lrem(processingKey, 0, pvId);
+        }
+        totalUpdated += pvIds.length;
+      } catch (redisErr) {
+        logError('OCI_ACK_PV_REDIS_ERROR', { error: redisErr instanceof Error ? redisErr.message : String(redisErr) });
+      }
     }
 
     return NextResponse.json({ ok: true, updated: totalUpdated });
