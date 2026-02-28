@@ -122,10 +122,9 @@ export async function GET(req: NextRequest) {
     const { data: rows, error: fetchError } = await query;
 
     if (fetchError) {
-      return NextResponse.json(
-        { error: 'Failed to load queue', details: fetchError.message },
-        { status: 500 }
-      );
+      const { logError } = await import('@/lib/logging/logger');
+      logError('OCI_GOOGLE_ADS_EXPORT_QUEUE_FAILED', { code: (fetchError as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     const rawList = Array.isArray(rows) ? rows : [];
@@ -186,10 +185,9 @@ export async function GET(req: NextRequest) {
           .eq('site_id', siteUuid)
           .in('status', ['QUEUED', 'RETRY']);
         if (updateError) {
-          return NextResponse.json(
-            { error: 'Failed to mark as exported', details: updateError.message },
-            { status: 500 }
-          );
+          const { logError } = await import('@/lib/logging/logger');
+          logError('OCI_GOOGLE_ADS_EXPORT_UPDATE_FAILED', { code: (updateError as { code?: string })?.code });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
         }
       }
       if (skippedIds.length > 0) {
@@ -218,9 +216,10 @@ export async function GET(req: NextRequest) {
       const rawTime = row.conversion_time || '';
       const conversionTime = formatConversionTimeTurkey(rawTime);
 
-      // Predictive Value Engine Integration
+      // Ground truth: use value_cents from queue (operator-entered or OCI config). Fallback: Predictive Value Engine.
+      const queueValue = (Number(row.value_cents) || 0) / 100;
       const ev = calculateExpectedValue(site?.default_aov, site?.intent_weights, row.action);
-      const conversionValue = ensureNumericValue(ev > 0 ? ev : (Number(row.value_cents) || 0) / 100);
+      const conversionValue = ensureNumericValue(queueValue > 0 ? queueValue : (ev > 0 ? ev : 0));
 
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
 

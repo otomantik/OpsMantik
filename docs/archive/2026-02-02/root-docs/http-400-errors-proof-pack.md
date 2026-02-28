@@ -57,7 +57,7 @@ Look for these prefixes:
 
 ### Network Evidence
 ```
-URL: jktpvfbmuoqrtuwbjpwl.supabase.co/rest/v1/sessions
+URL: api.opsmantik.com/rest/v1/sessions
 Query Params:
   select=id%2Ccreated_at%2Ccity%2Cdistrict%2Cdevice_type%2Cip%2Cuser_agent%2Cfingerprint%2Ccreated_month
   id=eq.7d3a5073-ae5d-47ee-b9be-0c22b1618ebf
@@ -118,7 +118,7 @@ PostgREST: "Redundant site_id filter conflicts with RLS subquery" → 400
 
 ### Network Evidence
 ```
-URL: jktpvfbmuoqrtuwbjpwl.supabase.co/rest/v1/sessions
+URL: api.opsmantik.com/rest/v1/sessions
 Query Params:
   select=id%2Ccreated_at%2Cattribution_source%2Cdevice_type%2Ccity%2Clead_score
   site_id=eq.01d24667-ca9a-44e3-ab7a-7cd171ae653f
@@ -161,7 +161,7 @@ const { data: session } = await supabase
 
 ### Network Evidence
 ```
-URL: jktpvfbmuoqrtuwbjpwl.supabase.co/rest/v1/sessions
+URL: api.opsmantik.com/rest/v1/sessions
 Query Params:
   select=id%2Ccreated_at%2Cattribution_source%2Cdevice_type%2Ccity%2Clead_score
   site_id=eq.01d24667-ca9a-44e3-ab7a-7cd171ae653f

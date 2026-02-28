@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { logError } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,7 +51,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (queueIds.length === 0) {
-      console.log('[OCI ACK] Received 0 ids. Nothing to update.');
       return NextResponse.json({ ok: true, updated: 0 });
     }
 
@@ -68,19 +68,14 @@ export async function POST(req: NextRequest) {
       .select('id');
 
     if (error) {
-      console.error('[OCI ACK] SQL error:', error.message, { code: error.code, siteId: siteUuid, idsReceived: queueIds.length });
-      return NextResponse.json(
-        { error: 'Failed to ack', details: error.message },
-        { status: 500 }
-      );
+      logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     const updated = Array.isArray(data) ? data.length : 0;
-    console.log('[OCI ACK] Received', queueIds.length, 'ids. Successfully updated', updated, 'rows.');
     return NextResponse.json({ ok: true, updated });
   } catch (e: unknown) {
-    const details = e instanceof Error ? e.message : String(e);
-    console.error('[OCI ACK] Unhandled error:', details);
-    return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
+    logError('OCI_ACK_ERROR', { error: e instanceof Error ? e.message : String(e) });
+    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
   }
 }

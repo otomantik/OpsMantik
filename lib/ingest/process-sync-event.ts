@@ -133,8 +133,24 @@ async function doProcessSyncEvent(
 ): Promise<ProcessSyncEventResult> {
   const site_id = job.s;
 
+  let urlObj: URL;
+  let params: URLSearchParams;
+  let safeUrl: string;
+  let currentGclid: string | null;
+
+  try {
+    urlObj = new URL(url);
+    params = urlObj.searchParams;
+    safeUrl = url;
+    currentGclid = params.get('gclid') || meta?.gclid || null;
+  } catch {
+    safeUrl = 'https://unknown.local/?malformed=1';
+    params = new URLSearchParams();
+    currentGclid = meta?.gclid || null;
+  }
+
   if (event_action !== 'heartbeat') {
-    const hasGclid = !!(new URL(url).searchParams.get('gclid') || meta?.gclid);
+    const hasGclid = !!currentGclid;
     await incrementCapturedSafe(site_id, hasGclid);
   }
 
@@ -151,9 +167,6 @@ async function doProcessSyncEvent(
   }
   if (job.is_proxy_detected != null) geoInfo.is_proxy_detected = Boolean(job.is_proxy_detected);
 
-  const urlObj = new URL(url);
-  const params = urlObj.searchParams;
-  const currentGclid = params.get('gclid') || meta?.gclid || null;
   const fingerprint = meta?.fp || null;
 
   const dbMonth =
@@ -165,7 +178,7 @@ async function doProcessSyncEvent(
       return `${year}-${month}-01`;
     })();
 
-  const { attribution, utm } = await AttributionService.resolveAttribution(siteIdUuid, currentGclid, fingerprint, url, referrer);
+  const { attribution, utm } = await AttributionService.resolveAttribution(siteIdUuid, currentGclid, fingerprint, safeUrl, referrer);
   const attributionSource = attribution.source;
   const deviceType =
     utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device) ? utm.device.toLowerCase() : deviceInfo.device_type;
@@ -179,7 +192,7 @@ async function doProcessSyncEvent(
     dbMonth,
     {
       client_sid,
-      url,
+      url: safeUrl,
       currentGclid,
       meta,
       params,
@@ -200,7 +213,7 @@ async function doProcessSyncEvent(
     session: { id: session.id, created_month: session.created_month },
     siteId: siteIdUuid,
     consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
-    url,
+    url: safeUrl,
     event_category,
     event_action,
     event_label,
@@ -223,7 +236,7 @@ async function doProcessSyncEvent(
     await IntentService.handleIntent(
       siteIdUuid,
       { id: session.id },
-      { fingerprint, event_action, event_label, meta, url, currentGclid, params },
+      { fingerprint, event_action, event_label, meta, url: safeUrl, currentGclid, params },
       leadScore
     );
   }

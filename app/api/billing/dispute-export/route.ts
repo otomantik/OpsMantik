@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
 
             if (error) {
                 logError('DISPUTE_EXPORT_FAIL', { error: error.message, site_id: siteId ?? undefined });
-                yield encoder.encode(`ERROR: ${error.message}\n`);
+                yield encoder.encode(`ERROR: Something went wrong\n`);
                 return;
             }
 

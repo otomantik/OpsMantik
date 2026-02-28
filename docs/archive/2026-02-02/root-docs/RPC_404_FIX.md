@@ -2,7 +2,7 @@
 
 ## Problem
 ```
-POST https://jktpvfbmuoqrtuwbjpwl.supabase.co/rest/v1/rpc/get_recent_intents_v1 404 (Not Found)
+POST https://api.opsmantik.com/rest/v1/rpc/get_recent_intents_v1 404 (Not Found)
 ```
 
 **Neden:** `get_recent_intents_v1` RPC fonksiyonu veritabanında yok. Migration'lar uygulanmamış.

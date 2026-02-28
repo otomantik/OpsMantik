@@ -80,10 +80,9 @@ export async function GET(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Export failed', details: error.message },
-        { status: 500 }
-      );
+      const { logError } = await import('@/lib/logging/logger');
+      logError('GDPR_EXPORT_FAILED', { code: (error as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     const data = exportData as Record<string, unknown> | null;

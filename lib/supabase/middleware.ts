@@ -31,6 +31,10 @@ export async function updateSession(request: NextRequest) {
         supabaseUrl,
         anonKey,
         {
+            cookieOptions: {
+                sameSite: 'lax',
+                secure: true,
+            },
             cookies: {
                 getAll() {
                     return request.cookies.getAll()

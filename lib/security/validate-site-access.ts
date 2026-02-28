@@ -12,6 +12,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
+import { hashForLog } from '@/lib/security/redact-for-log';
+import { logWarn, logError } from '@/lib/logging/logger';
 
 export interface SiteAccessResult {
   allowed: boolean;
@@ -98,16 +100,16 @@ export async function validateSiteAccess(
       };
     }
 
-    // Access denied - log security event (real client IP: x-forwarded-for first, then x-real-ip)
+    // Access denied - log security event (redacted: never expose raw UUIDs)
     const headersList = await headers();
     const xff = headersList.get('x-forwarded-for');
     const ip = (xff ? xff.split(',')[0]?.trim() : null) || headersList.get('x-real-ip') || 'unknown';
 
-    console.warn('[SECURITY] Unauthorized site access attempt', {
-      userId: currentUserId,
-      siteId,
-      ip,
-      timestamp: new Date().toISOString()
+    logWarn('SECURITY_UNAUTHORIZED_SITE_ACCESS', {
+      userIdHash: hashForLog(currentUserId),
+      siteIdHash: hashForLog(siteId),
+      ipHash: hashForLog(ip),
+      reason: 'no_access',
     });
 
     return {
@@ -116,7 +118,9 @@ export async function validateSiteAccess(
     };
 
   } catch (error) {
-    console.error('[SECURITY] Error validating site access:', error);
+    logError('SECURITY_VALIDATE_SITE_ACCESS_ERROR', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     // Fail-closed: deny access on error
     return {
       allowed: false,

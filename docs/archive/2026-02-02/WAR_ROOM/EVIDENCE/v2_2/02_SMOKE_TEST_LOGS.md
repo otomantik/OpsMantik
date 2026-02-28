@@ -11,7 +11,7 @@
 ```
 🚀 PRO Dashboard Migration v2.2 - RPC Contract Smoke Test
 
-Supabase URL: https://jktpvfbmuoqrtuwbjpwl.supabase.co
+Supabase URL: https://api.opsmantik.com
 Test Site ID: Will fetch first site
 
 📌 Using site: 9772b10d-bd03-49f8-8ee2-54f9cc65d7c0

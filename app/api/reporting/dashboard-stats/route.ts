@@ -63,7 +63,9 @@ export async function GET(req: NextRequest) {
     const { data, error } = result;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const { logError } = await import('@/lib/logging/logger');
+      logError('DASHBOARD_STATS_RPC_FAILED', { code: (error as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     const rangeDays = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24));
@@ -73,13 +75,15 @@ export async function GET(req: NextRequest) {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const { logError } = await import('@/lib/logging/logger');
+    logError('DASHBOARD_STATS_ERROR', { error: msg });
     if (msg.includes('QUERY_TIMEOUT')) {
       return NextResponse.json(
-        { error: 'Report timed out. Try a shorter date range.' },
+        { error: 'Report timed out. Try a shorter date range.', code: 'TIMEOUT' },
         { status: 504, headers: getBuildInfoHeaders() }
       );
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
   } finally {
     await release();
   }

@@ -15,6 +15,7 @@ import { isRecord, parseValidWorkerJobData } from '@/lib/types/ingest';
 import { SiteService } from '@/lib/services/site-service';
 import { runSyncGates } from '@/lib/ingest/sync-gates';
 import { processSyncEvent, DedupSkipError } from '@/lib/ingest/process-sync-event';
+import { checkAndIncrementFraudFingerprint } from '@/lib/services/fraud-quarantine-service';
 import { isCallEventWorkerPayload } from '@/lib/ingest/call-event-worker-payload';
 import { processCallEvent } from '@/lib/ingest/process-call-event';
 import { incrementBillingIngestAllowed } from '@/lib/billing-metrics';
@@ -88,6 +89,23 @@ async function handler(req: NextRequest) {
     const { valid: siteValid, site } = await SiteService.validateSite(site_id);
     if (!siteValid || !site) return NextResponse.json({ ok: true });
     siteDbId = site.id;
+
+    const fingerprint = (job.meta && typeof (job.meta as Record<string, unknown>).fp === 'string')
+        ? String((job.meta as Record<string, unknown>).fp).trim()
+        : (typeof job.sid === 'string' ? job.sid.trim() : '');
+    const fraudCheck = await checkAndIncrementFraudFingerprint(site.id, fingerprint);
+    if (fraudCheck.quarantine) {
+        try {
+            await adminClient.from('ingest_fraud_quarantine').insert({
+                site_id: site.id,
+                payload: rawBody as Record<string, unknown>,
+                reason: fraudCheck.reason,
+                fingerprint: fingerprint || null,
+                ip_address: typeof job.ip === 'string' ? job.ip : null,
+            });
+        } catch { /* best-effort; ack message anyway */ }
+        return NextResponse.json({ ok: true, quarantine: true, reason: fraudCheck.reason });
+    }
 
     const gatesResult = await runSyncGates(job, site.id);
     if (gatesResult.ok === false) {

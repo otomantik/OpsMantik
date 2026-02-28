@@ -74,7 +74,10 @@ async function main() {
     
     if (failCount > 0) {
       console.log('\n⚠️  Some statements failed. Please run the SQL manually in Supabase SQL Editor:');
-      console.log(`   ${supabaseUrl.replace('.supabase.co', '.supabase.com')}/sql`);
+      const sqlUrl = supabaseUrl.includes('.supabase.co')
+        ? supabaseUrl.replace('.supabase.co', '.supabase.com') + '/sql'
+        : 'https://supabase.com/dashboard/project/jktpvfbmuoqrtuwbjpwl/sql';
+      console.log(`   ${sqlUrl}`);
       console.log('\n   Copy the contents of hotfix_missing_rpcs.sql and paste it there.');
       process.exit(1);
     }
@@ -116,7 +119,11 @@ async function main() {
 main().catch((e) => {
   console.error('❌ FAIL:', e?.message || e);
   console.log('\n⚠️  Please run the SQL manually in Supabase SQL Editor:');
-  console.log(`   ${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('.supabase.co', '.supabase.com')}/sql`);
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const sqlUrl = url?.includes('.supabase.co')
+    ? url.replace('.supabase.co', '.supabase.com') + '/sql'
+    : 'https://supabase.com/dashboard/project/jktpvfbmuoqrtuwbjpwl/sql';
+  console.log(`   ${sqlUrl}`);
   console.log('\n   Copy the contents of hotfix_missing_rpcs.sql and paste it there.');
   process.exit(1);
 });

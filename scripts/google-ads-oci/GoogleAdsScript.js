@@ -1,7 +1,7 @@
 /**
  * OpsMantik → Google Ads Offline Conversion Sync (Exit Valve)
  *
- * Configured for: Eslamed (eslamed.com) — queue data is under this site UUID.
+ * Configured for: Muratcan AKÜ (muratcanaku.com) — queue data is under this site UUID.
  * API accepts either site UUID or public_id; queue is keyed by site_id (UUID).
  *
  * Consumes GET /api/oci/google-ads-export (offline_conversion_queue, status = QUEUED)
@@ -16,8 +16,8 @@
  * conversionValue: numeric only (no ₺ or other symbols). conversionCurrency: TRY.
  */
 function main() {
-  // Kuyruk verisi bu site_id altında (b1264552...). public_id yerine UUID kullanıyoruz.
-  var siteId = 'b1264552-c859-40cb-a3fb-0ba057afd070'; // Eslamed – queue site
+  // Kuyruk verisi bu site_id altında. public_id yerine UUID kullanıyoruz.
+  var siteId = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'; // Muratcan AKÜ – queue site
   var exportUrl = typeof OPSMANTIK_EXPORT_URL !== 'undefined'
     ? OPSMANTIK_EXPORT_URL
     : 'https://console.opsmantik.com/api/oci/google-ads-export';
@@ -64,7 +64,7 @@ function main() {
   }
   Logger.log('OpsMantik: API returned ' + conversions.length + ' record(s). URL: ' + url);
   if (conversions.length === 0) {
-    Logger.log('OpsMantik: 0 records to upload. Check queue: SELECT * FROM offline_conversion_queue WHERE site_id = \'b1264552-c859-40cb-a3fb-0ba057afd070\' AND status = \'QUEUED\';');
+    Logger.log('OpsMantik: 0 records to upload. Check queue: SELECT * FROM offline_conversion_queue WHERE site_id = \'c644fff7-9d7a-440d-b9bf-99f3a0f86073\' AND status IN (\'QUEUED\', \'RETRY\');');
     return;
   }
 

@@ -97,9 +97,10 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (updateErr) {
-        console.error('[SITES_CREATE] Update existing site failed:', updateErr);
+        const { logError } = await import('@/lib/logging/logger');
+        logError('SITES_CREATE_UPDATE_FAILED', { code: (updateErr as { code?: string })?.code });
         return NextResponse.json(
-          { error: 'Failed to update site', details: updateErr.message },
+          { error: 'Something went wrong', code: 'SERVER_ERROR' },
           { status: 500 }
         );
       }
@@ -156,9 +157,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (createError) {
-      console.error('[SITES_CREATE] Error:', createError);
+      const { logError } = await import('@/lib/logging/logger');
+      logError('SITES_CREATE_INSERT_FAILED', { code: (createError as { code?: string })?.code });
       return NextResponse.json(
-        { error: 'Failed to create site', details: createError.message },
+        { error: 'Something went wrong', code: 'SERVER_ERROR' },
         { status: 500 }
       );
     }
@@ -169,10 +171,10 @@ export async function POST(req: NextRequest) {
       message: 'Site created successfully',
     });
   } catch (error: unknown) {
-    console.error('[SITES_CREATE] Exception:', error);
-    const details = error instanceof Error ? error.message : String(error);
+    const { logError } = await import('@/lib/logging/logger');
+    logError('SITES_CREATE_EXCEPTION', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
-      { error: 'Internal server error', details },
+      { error: 'Something went wrong', code: 'SERVER_ERROR' },
       { status: 500 }
     );
   }

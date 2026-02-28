@@ -34,7 +34,7 @@ export class RateLimitService {
         windowMs: number,
         opts?: { mode?: 'fail-open' | 'fail-closed' | 'degraded'; namespace?: string; fallbackMaxRequests?: number }
     ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
-        const mode = opts?.mode ?? 'fail-open';
+        const mode = opts?.mode ?? (process.env.OPSMANTIK_RATE_LIMIT_FAIL_MODE as 'fail-open' | 'fail-closed' | 'degraded') ?? 'fail-closed';
         const ns = opts?.namespace ? `${opts.namespace}:` : '';
         const key = `ratelimit:${ns}${clientId}`;
         const now = Date.now();
@@ -102,8 +102,9 @@ export class RateLimitService {
         maxRequests: number,
         windowMs: number
     ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
-        // Backwards compatible default: fail-open, no namespace.
-        return RateLimitService.checkWithMode(clientId, maxRequests, windowMs, { mode: 'fail-open' });
+        // CRITICAL LOCKDOWN: Ingest paths use fail-closed. Protect DB when Redis is down.
+        const mode = (process.env.OPSMANTIK_RATE_LIMIT_FAIL_MODE as 'fail-open' | 'fail-closed' | 'degraded') ?? 'fail-closed';
+        return RateLimitService.checkWithMode(clientId, maxRequests, windowMs, { mode });
     }
 
     static getClientId(req: Request): string {

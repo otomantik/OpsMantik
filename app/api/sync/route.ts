@@ -183,7 +183,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         const clientId = RateLimitService.getClientId(req);
         const rl = deps?.checkRateLimit
             ? await deps.checkRateLimit()
-            : await RateLimitService.check(clientId, 100, 60000);
+            : await RateLimitService.checkWithMode(clientId, 100, 60000, { mode: 'fail-closed' });
         if (!rl.allowed) {
             incrementBillingIngestRateLimited();
             const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
@@ -250,7 +250,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const rlLimit = (siteIdForRl && limitOverrides.has(siteIdForRl)) ? limitOverrides.get(siteIdForRl)! : DEFAULT_RL_LIMIT;
     const rl = deps?.checkRateLimit
         ? await deps.checkRateLimit()
-        : await RateLimitService.check(rateLimitKey, rlLimit, RL_WINDOW_MS);
+        : await RateLimitService.checkWithMode(rateLimitKey, rlLimit, RL_WINDOW_MS, { mode: 'fail-closed' });
     if (!rl.allowed) {
         incrementBillingIngestRateLimited();
         const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;

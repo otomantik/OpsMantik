@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { logError } from '@/lib/logging/logger';
 
 const IDENTIFIER_TYPES = ['email', 'fingerprint', 'session_id'] as const;
 const RL_LIMIT = 10;
@@ -113,14 +114,12 @@ export async function POST(req: NextRequest) {
       : 0;
 
     if (rpcErr) {
+      logError('GDPR_ERASE_FAILED', { code: (rpcErr as { code?: string })?.code });
       await adminClient
         .from('gdpr_erase_requests')
         .update({ status: 'FAILED', completed_at: new Date().toISOString() })
         .eq('id', eraseRow.id);
-      return NextResponse.json(
-        { error: 'Erase failed', details: rpcErr.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     await adminClient

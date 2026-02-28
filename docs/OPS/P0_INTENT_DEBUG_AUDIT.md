@@ -4,13 +4,13 @@
 
 | Layer | Source | Supabase URL |
 |-------|--------|--------------|
-| **P0 test** | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` → `jktpvfbmuoqrtuwbjpwl.supabase.co` |
+| **P0 test** | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` → `https://api.opsmantik.com` |
 | **Production sync** | Vercel env | `NEXT_PUBLIC_SUPABASE_URL` (Vercel project settings) |
 | **Production worker** | Vercel env | Same as sync (worker runs on Vercel) |
 
 **Critical:** P0 reads from the Supabase project in `.env.local`. The sync route and worker write to the Supabase project in **Vercel** env. If these are different projects, events are written to one DB and P0 reads from another → `event_row_missing` / `call_intent_missing`.
 
-**Check:** Vercel → Project → Settings → Environment Variables → `NEXT_PUBLIC_SUPABASE_URL`. Compare hostname with `jktpvfbmuoqrtuwbjpwl.supabase.co`. Must match.
+**Check:** Vercel → Project → Settings → Environment Variables → `NEXT_PUBLIC_SUPABASE_URL`. Should be `https://api.opsmantik.com`. Must match.
 
 ---
 

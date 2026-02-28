@@ -6,41 +6,77 @@ import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
+import { logError } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/** Parse OCI_API_KEYS "siteId:key,siteId:key" → Map<siteId, key>. Strict per-site scoping. */
+function getOciApiKeysBySite(): Map<string, string> {
+  const raw = process.env.OCI_API_KEYS?.trim();
+  if (!raw) return new Map();
+  const map = new Map<string, string>();
+  for (const part of raw.split(',')) {
+    const idx = part.indexOf(':');
+    if (idx > 0) {
+      const sid = part.slice(0, idx).trim();
+      const key = part.slice(idx + 1).trim();
+      if (sid && key) map.set(sid, key);
+    }
+  }
+  return map;
+}
 
 /**
  * GET /api/oci/export-batch?siteId=<uuid>
  *
  * OCI "Pull" strategy: Google Ads Script calls this with x-api-key.
- * Returns JSON array for bulk upload. No cookie/session; API key only.
+ * STRICT: x-api-key must match the key for the requested siteId (OCI_API_KEYS).
+ * Falls back to OCI_API_KEY (single key) if OCI_API_KEYS not set (backward compat).
  */
 export async function GET(req: NextRequest) {
   try {
-    // 1. SECURITY: API Key auth (timing-safe, generic 401 on fail)
     const apiKey = (req.headers.get('x-api-key') || '').trim();
-    const envKey = (process.env.OCI_API_KEY || '').trim();
-    const authed = Boolean(envKey) && timingSafeCompare(apiKey, envKey);
+    const { searchParams } = new URL(req.url);
+    const siteId = String(searchParams.get('siteId') || '');
+
+    if (!siteId) {
+      return NextResponse.json({ error: 'Missing siteId', code: 'VALIDATION_FAILED' }, { status: 400 });
+    }
+
+    // 1. SECURITY: Site-scoped API key (OCI_API_KEYS) or legacy single key (OCI_API_KEY)
+    const keysBySite = getOciApiKeysBySite();
+    const legacyKey = (process.env.OCI_API_KEY || '').trim();
+
+    let authed = false;
+    if (keysBySite.size > 0) {
+      const expectedKey = keysBySite.get(siteId);
+      if (!expectedKey) {
+        return NextResponse.json({ error: 'Forbidden', code: 'SITE_KEY_MISMATCH' }, { status: 403 });
+      }
+      authed = timingSafeCompare(apiKey, expectedKey);
+      if (!authed) {
+        const clientId = RateLimitService.getClientId(req);
+        await RateLimitService.checkWithMode(clientId, 10, 60 * 1000, {
+          mode: 'fail-closed',
+          namespace: 'oci-authfail',
+        });
+        return NextResponse.json({ error: 'Forbidden', code: 'SITE_KEY_MISMATCH' }, { status: 403 });
+      }
+    } else if (legacyKey) {
+      authed = timingSafeCompare(apiKey, legacyKey);
+    }
 
     if (!authed) {
-      // Stricter throttling on auth failures (response stays generic 401).
       const clientId = RateLimitService.getClientId(req);
       await RateLimitService.checkWithMode(clientId, 10, 60 * 1000, {
         mode: 'fail-closed',
         namespace: 'oci-authfail',
       });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 });
     }
 
-    // 2. PARAMETRELER
-    const { searchParams } = new URL(req.url);
-    const siteId = String(searchParams.get('siteId') || '');
-
-    if (!siteId) {
-      return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
-    }
-
+    // 2. Site lookup
     const { data: site, error: siteError } = await adminClient
       .from('sites')
       .select('id, currency, default_deal_value')
@@ -76,10 +112,8 @@ export async function GET(req: NextRequest) {
       .or('oci_status.is.null,oci_status.eq.sealed,oci_status.eq.failed');
 
     if (callsError) {
-      return NextResponse.json(
-        { error: 'Failed to load calls', details: callsError.message },
-        { status: 500 }
-      );
+      logError('OCI_EXPORT_BATCH_CALLS_FAILED', { code: (callsError as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     const rows = Array.isArray(calls) ? calls : [];
@@ -110,10 +144,8 @@ export async function GET(req: NextRequest) {
         .in('id', sessionIds);
 
       if (sessError) {
-        return NextResponse.json(
-          { error: 'Failed to load sessions', details: sessError.message },
-          { status: 500 }
-        );
+        logError('OCI_EXPORT_BATCH_SESSIONS_FAILED', { code: (sessError as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
 
       for (const s of sessions || []) {
@@ -189,7 +221,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(jsonOutput);
   } catch (e: unknown) {
-    const details = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
+    logError('OCI_EXPORT_BATCH_ERROR', { error: e instanceof Error ? e.message : String(e) });
+    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
   }
 }

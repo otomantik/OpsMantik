@@ -14,6 +14,10 @@ export async function createClient() {
   }
 
   return createServerClient(supabaseUrl, anonKey, {
+    cookieOptions: {
+      sameSite: 'lax',
+      secure: true,
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll();

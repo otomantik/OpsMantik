@@ -25,7 +25,7 @@ Alternatif (dış cron kullanmak istersen):
 
 Use [cron-job.org](https://cron-job.org), GitHub Actions, or Vercel Cron to **POST** once a month:
 
-- **URL:** `https://<PROJECT_REF>.supabase.co/functions/v1/maintain-db`
+- **URL:** `https://api.opsmantik.com/functions/v1/maintain-db` (or `https://<PROJECT_REF>.supabase.co/functions/v1/maintain-db` if using default)
 - **Method:** POST
 - **Header:** `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`
 - **Cron:** `0 3 25 * *` (25th of every month, 03:00)
@@ -38,7 +38,7 @@ Keep the service role key in the cron provider’s secrets.
 2. Store URL and key in Vault (Dashboard → SQL):
 
    ```sql
-   SELECT vault.create_secret('https://YOUR_PROJECT_REF.supabase.co', 'project_url');
+   SELECT vault.create_secret('https://api.opsmantik.com', 'project_url');
    SELECT vault.create_secret('YOUR_SERVICE_ROLE_KEY', 'service_role_key');
    ```
 
@@ -65,7 +65,7 @@ Keep the service role key in the cron provider’s secrets.
 
 **Bash / Git Bash / WSL:**
 ```bash
-curl -X POST "https://YOUR_PROJECT_REF.supabase.co/functions/v1/maintain-db" \
+curl -X POST "https://api.opsmantik.com/functions/v1/maintain-db" \
   -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json"
 ```
@@ -74,14 +74,14 @@ curl -X POST "https://YOUR_PROJECT_REF.supabase.co/functions/v1/maintain-db" \
 PowerShell’de `curl` aslında `Invoke-WebRequest` olduğu için aşağıdaki kullanılır:
 
 ```powershell
-$uri = "https://jktpvfbmuoqrtuwbjpwl.supabase.co/functions/v1/maintain-db"
+$uri = "https://api.opsmantik.com/functions/v1/maintain-db"
 $key = "YOUR_SERVICE_ROLE_KEY"   # veya: (Get-Content .env.local | Where { $_ -match 'SUPABASE_SERVICE_ROLE_KEY' }) -replace '^SUPABASE_SERVICE_ROLE_KEY=', ''
 Invoke-RestMethod -Method POST -Uri $uri -Headers @{ "Authorization" = "Bearer $key"; "Content-Type" = "application/json" }
 ```
 
 Gerçek curl (Windows 10+) kullanmak istersen:
 ```powershell
-curl.exe -X POST "https://jktpvfbmuoqrtuwbjpwl.supabase.co/functions/v1/maintain-db" -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" -H "Content-Type: application/json"
+curl.exe -X POST "https://api.opsmantik.com/functions/v1/maintain-db" -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" -H "Content-Type: application/json"
 ```
 
 Expected: `{"message":"Success"}` with HTTP 200.

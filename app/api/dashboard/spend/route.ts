@@ -68,8 +68,10 @@ export async function GET(req: NextRequest) {
   const { data: rows, error } = await query.limit(500);
 
   if (error) {
+    const { logError } = await import('@/lib/logging/logger');
+    logError('DASHBOARD_SPEND_FAILED', { code: (error as { code?: string })?.code });
     return NextResponse.json(
-      { error: error.message },
+      { error: 'Something went wrong', code: 'SERVER_ERROR' },
       { status: 500, headers: getBuildInfoHeaders() }
     );
   }

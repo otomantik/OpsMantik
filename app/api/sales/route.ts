@@ -194,7 +194,9 @@ export async function GET(req: NextRequest) {
 
   const { data: rows, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500, headers: getBuildInfoHeaders() });
+    const { logError } = await import('@/lib/logging/logger');
+    logError('SALES_LIST_FAILED', { code: (error as { code?: string })?.code });
+    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500, headers: getBuildInfoHeaders() });
   }
   return NextResponse.json(rows ?? [], { status: 200, headers: getBuildInfoHeaders() });
 }

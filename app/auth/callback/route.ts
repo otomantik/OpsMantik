@@ -33,6 +33,10 @@ export async function GET(request: Request) {
     }
     
     const supabase = createServerClient(supabaseUrl, anonKey, {
+      cookieOptions: {
+        sameSite: 'lax',
+        secure: true,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();

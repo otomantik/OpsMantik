@@ -57,7 +57,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const { logError } = await import('@/lib/logging/logger');
+      logError('DEBUG_REALTIME_SIGNAL_SESSIONS_FAILED', { code: (error as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, kind: 'sessions', id });
@@ -83,7 +85,9 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const { logError } = await import('@/lib/logging/logger');
+    logError('DEBUG_REALTIME_SIGNAL_CALLS_FAILED', { code: (error as { code?: string })?.code });
+    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, kind: 'calls', id: data?.id });

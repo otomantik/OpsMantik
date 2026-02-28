@@ -83,7 +83,9 @@ export async function GET(req: NextRequest) {
       .or('oci_status.is.null,oci_status.eq.sealed,oci_status.eq.failed');
 
     if (callsError) {
-      return NextResponse.json({ error: 'Failed to load sealed calls', details: callsError.message }, { status: 500 });
+      const { logError } = await import('@/lib/logging/logger');
+      logError('OCI_EXPORT_CALLS_FAILED', { code: (callsError as { code?: string })?.code });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
 
     const rows: OciCallRow[] = Array.isArray(calls) ? calls : [];
@@ -100,7 +102,9 @@ export async function GET(req: NextRequest) {
         .eq('site_id', siteId)
         .in('id', sessionIds);
       if (sessError) {
-        return NextResponse.json({ error: 'Failed to load sessions', details: sessError.message }, { status: 500 });
+        const { logError } = await import('@/lib/logging/logger');
+        logError('OCI_EXPORT_SESSIONS_FAILED', { code: (sessError as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
       const sessionRows: OciSessionRow[] = Array.isArray(sessions) ? sessions : [];
       for (const s of sessionRows) {
