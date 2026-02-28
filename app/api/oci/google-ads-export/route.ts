@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { calculateExpectedValue } from '@/lib/valuation/predictive-engine';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { verifySessionToken } from '@/lib/oci/session-auth';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
@@ -48,9 +49,24 @@ export interface GoogleAdsConversionItem {
  */
 export async function GET(req: NextRequest) {
   try {
+    const bearer = (req.headers.get('authorization') || '').trim();
+    const sessionToken = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
     const apiKey = (req.headers.get('x-api-key') || '').trim();
     const envKey = (process.env.OCI_API_KEY || '').trim();
-    const authed = Boolean(envKey) && timingSafeCompare(apiKey, envKey);
+
+    let authed = false;
+    let siteIdFromAuth = '';
+
+    if (sessionToken) {
+      const parsed = verifySessionToken(sessionToken);
+      if (parsed) {
+        authed = true;
+        siteIdFromAuth = parsed.siteId;
+      }
+    }
+    if (!authed && envKey && timingSafeCompare(apiKey, envKey)) {
+      authed = true;
+    }
 
     if (!authed) {
       const clientId = RateLimitService.getClientId(req);
@@ -62,7 +78,8 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const siteId = String(searchParams.get('siteId') || '');
+    const siteIdParam = String(searchParams.get('siteId') || '');
+    const siteId = siteIdFromAuth || siteIdParam;
     const markAsExported = searchParams.get('markAsExported') === 'true';
     const providerFilter = searchParams.get('providerKey') ?? 'google_ads';
 

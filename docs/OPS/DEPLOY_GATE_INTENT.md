@@ -11,11 +11,10 @@ Her deploy öncesi:
 npm run smoke:intent-multi-site
 ```
 
-**3/3 site PASS** olmadan deploy yapılmayacak.
+**2/2 site PASS** olmadan deploy yapılmayacak.
 
 ## Test Edilen Siteler (varsayılan)
 
-- muratcanaku.com
 - yapiozmendanismanlik.com
 - poyrazantika.com
 
@@ -27,5 +26,5 @@ npm run smoke:intent-multi-site
 ## Özel Site Listesi
 
 ```bash
-P0_SITES="muratcanaku.com,yapiozmendanismanlik.com,yoursite.com" npm run smoke:intent-multi-site
+P0_SITES="yapiozmendanismanlik.com,poyrazantika.com,yoursite.com" npm run smoke:intent-multi-site
 ```

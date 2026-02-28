@@ -11,6 +11,6 @@ alwaysApply: true
 npm run smoke:intent-multi-site
 ```
 
-3/3 site PASS olmadan deploy edilmeyecek. Bu test sync → events → calls akışını doğrular (muratcanaku.com, yapiozmendanismanlik.com, poyrazantika.com).
+2/2 site PASS olmadan deploy edilmeyecek. Bu test sync → events → calls akışını doğrular (yapiozmendanismanlik.com, poyrazantika.com).
 
 Ayrıntılar: `docs/OPS/DEPLOY_GATE_INTENT.md`

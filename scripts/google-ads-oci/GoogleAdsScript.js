@@ -1,38 +1,67 @@
 /**
- * OpsMantik → Google Ads Offline Conversion Sync (Exit Valve)
+ * OpsMantik → Google Ads Offline Conversion Sync (Exit Valve) — Iron Seal Multi-Tenant
  *
- * Configured for: Muratcan AKÜ (muratcanaku.com) — queue data is under this site UUID.
- * API accepts either site UUID or public_id; queue is keyed by site_id (UUID).
+ * Script Properties (File → Project properties → Script properties):
+ *   OPSMANTIK_SITE_ID  — Site UUID or public_id (required)
+ *   OPSMANTIK_API_KEY — API key for OCI (required)
+ *   OPSMANTIK_EXPORT_URL — Optional; default https://console.opsmantik.com/api/oci/google-ads-export
+ *   OPSMANTIK_USE_V2_VERIFY — Optional; "true" to use v2 handshake (recommended)
  *
- * Consumes GET /api/oci/google-ads-export (offline_conversion_queue, status = QUEUED)
- * and uploads conversions via AdsApp.bulkUploads().newCsvUpload().forOfflineConversions().
- *
- * Override via script properties: OPSMANTIK_EXPORT_URL, OPSMANTIK_API_KEY
- *
- * API response shape (each item):
- *   id, orderId, gclid, wbraid, gbraid, conversionName, conversionTime, conversionValue, conversionCurrency
- * orderId: sent to Google as Order ID so duplicate uploads (same orderId) are ignored by Google.
- * conversionTime format: yyyy-mm-dd hh:mm:ss+0300 (Turkey Time)
- * conversionValue: numeric only (no ₺ or other symbols). conversionCurrency: TRY.
+ * Flow: 1) Handshake (v2/verify) → session_token  2) Export  3) Upload to Google  4) ACK
+ * No hardcoded site IDs — all from Script Properties.
  */
 function main() {
-  // Kuyruk verisi bu site_id altında. public_id yerine UUID kullanıyoruz.
-  var siteId = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'; // Muratcan AKÜ – queue site
-  var exportUrl = typeof OPSMANTIK_EXPORT_URL !== 'undefined'
-    ? OPSMANTIK_EXPORT_URL
-    : 'https://console.opsmantik.com/api/oci/google-ads-export';
-  var apiKey = typeof OPSMANTIK_API_KEY !== 'undefined'
-    ? OPSMANTIK_API_KEY
-    : 'zyHDNxdZlQKp9eMCBXuUeMoILApnk2uSTV7OpMKw3To=';
+  var props = PropertiesService.getScriptProperties();
+  var siteId = (props.getProperty('OPSMANTIK_SITE_ID') || '').trim();
+  var apiKey = (props.getProperty('OPSMANTIK_API_KEY') || '').trim();
+  var exportUrl = (props.getProperty('OPSMANTIK_EXPORT_URL') || 'https://console.opsmantik.com/api/oci/google-ads-export').trim();
+  var baseUrl = exportUrl.replace(/\/api\/oci\/google-ads-export.*$/, '') || 'https://console.opsmantik.com';
+  var useV2Verify = (props.getProperty('OPSMANTIK_USE_V2_VERIFY') || 'false').toLowerCase() === 'true';
+
+  if (!siteId || !apiKey) {
+    Logger.log('OpsMantik: Set OPSMANTIK_SITE_ID and OPSMANTIK_API_KEY in Script Properties.');
+    return;
+  }
+
+  var authHeader = { 'x-api-key': apiKey };
+  var sessionToken = null;
+
+  if (useV2Verify) {
+    var verifyResp;
+    try {
+      verifyResp = UrlFetchApp.fetch(baseUrl + '/api/oci/v2/verify', {
+        method: 'post',
+        muteHttpExceptions: true,
+        contentType: 'application/json',
+        headers: { 'x-api-key': apiKey },
+        payload: JSON.stringify({ siteId: siteId })
+      });
+    } catch (e) {
+      Logger.log('OpsMantik v2/verify error: ' + e.toString());
+      return;
+    }
+    if (verifyResp.getResponseCode() !== 200) {
+      Logger.log('OpsMantik v2/verify failed: HTTP ' + verifyResp.getResponseCode() + ' ' + verifyResp.getContentText());
+      return;
+    }
+    var verifyJson;
+    try {
+      verifyJson = JSON.parse(verifyResp.getContentText());
+    } catch (e) {
+      Logger.log('OpsMantik v2/verify parse error: ' + e.toString());
+      return;
+    }
+    if (verifyJson.session_token) {
+      sessionToken = verifyJson.session_token;
+      authHeader = { 'Authorization': 'Bearer ' + sessionToken };
+    }
+  }
 
   var url = exportUrl + '?siteId=' + encodeURIComponent(siteId) + '&markAsExported=true';
   var options = {
     method: 'get',
     muteHttpExceptions: true,
-    headers: {
-      'x-api-key': apiKey,
-      'Accept': 'application/json'
-    }
+    headers: Object.assign({ 'Accept': 'application/json' }, authHeader)
   };
 
   var response;
@@ -62,15 +91,11 @@ function main() {
     Logger.log('OpsMantik: response is not an array: ' + jsonText.substring(0, 200));
     return;
   }
-  Logger.log('OpsMantik: API returned ' + conversions.length + ' record(s). URL: ' + url);
+  Logger.log('OpsMantik: API returned ' + conversions.length + ' record(s). Site: ' + siteId);
   if (conversions.length === 0) {
-    Logger.log('OpsMantik: 0 records to upload. Check queue: SELECT * FROM offline_conversion_queue WHERE site_id = \'c644fff7-9d7a-440d-b9bf-99f3a0f86073\' AND status IN (\'QUEUED\', \'RETRY\');');
     return;
   }
 
-  // Google Ads bulk upload columns for offline conversions (match template "Conversions from clicks").
-  // Order ID: Google deduplicates by this; same orderId sent twice → second is ignored. Use queue row id.
-  // If your template does not have "Order ID", add it or remove from columns and from upload.append() below.
   var columns = [
     'Order ID',
     'Google Click ID',
@@ -89,14 +114,12 @@ function main() {
 
   var appended = 0;
   var skipped = 0;
-  var uploadedIds = []; // queue row ids successfully appended (for ack)
+  var uploadedIds = [];
   for (var i = 0; i < conversions.length; i++) {
     var row = conversions[i];
     var gclid = (row.gclid || '').toString().trim();
     var wbraid = (row.wbraid || '').toString().trim();
     var gbraid = (row.gbraid || '').toString().trim();
-
-    // Google requires exactly one of: GCLID, WBRAID, or GBRAID per row.
     var clickId = gclid || wbraid || gbraid;
     if (!clickId) {
       Logger.log('Skip row (no click id): id=' + (row.id || i));
@@ -106,7 +129,6 @@ function main() {
 
     var conversionName = (row.conversionName != null) ? String(row.conversionName) : 'Sealed Lead';
     var conversionTime = (row.conversionTime != null) ? String(row.conversionTime) : '';
-    // Strip currency symbols (e.g. ₺) — Conversion value must be numeric only.
     var conversionValue = parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0;
     if (!Number.isFinite(conversionValue) || conversionValue < 0) conversionValue = 0;
     var conversionCurrency = (row.conversionCurrency != null) ? String(row.conversionCurrency).trim().toUpperCase() : 'TRY';
@@ -119,10 +141,6 @@ function main() {
     }
 
     var orderId = (row.orderId != null) ? String(row.orderId) : (row.id != null) ? String(row.id) : '';
-    // Template uses "Google Click ID" for the click identifier. For WBRAID/GBRAID some templates
-    // use columns "WBRAID" / "GBRAID". If your template has separate columns, add them and pass
-    // the appropriate one; here we send the single click id in "Google Click ID" (works when
-    // the account uses GCLID-style imports; for iOS-only columns adjust per your template).
     upload.append({
       'Order ID': orderId,
       'Google Click ID': clickId,
@@ -143,13 +161,9 @@ function main() {
   try {
     upload.apply();
     Logger.log('OpsMantik: applied ' + appended + ' conversions; skipped ' + skipped);
-    // Ack: mark these queue rows as COMPLETED so they are not re-sent (recover won't move them to RETRY).
-    // Retry up to 3 times on failure (transient 5xx, network errors).
     if (uploadedIds.length > 0) {
       Logger.log('=> Starting ACK process for ' + uploadedIds.length + ' conversions.');
-      var ackUrl = (typeof OPSMANTIK_EXPORT_URL !== 'undefined'
-        ? OPSMANTIK_EXPORT_URL.replace(/\/api\/oci\/google-ads-export.*$/, '')
-        : 'https://console.opsmantik.com') + '/api/oci/ack';
+      var ackUrl = baseUrl + '/api/oci/ack';
       var maxRetries = 3;
       var ackOk = false;
       for (var attempt = 1; attempt <= maxRetries; attempt++) {
@@ -160,7 +174,7 @@ function main() {
             method: 'post',
             muteHttpExceptions: true,
             contentType: 'application/json',
-            headers: { 'x-api-key': apiKey },
+            headers: authHeader,
             payload: JSON.stringify(payload)
           });
           var ackCode = ackResp.getResponseCode();
