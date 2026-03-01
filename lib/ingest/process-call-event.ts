@@ -7,6 +7,7 @@
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { publishToQStash } from '@/lib/ingest/publish';
+import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 
 // Brain Score logic moved to async worker
 
@@ -39,6 +40,7 @@ export async function processCallEvent(
   const adsCtx = payload.ads_context ?? null;
   let resolvedDistrictName: string | null = null;
   let locationSource: 'gclid' | null = null;
+  let adsCity: string | null = null;
 
   if (adsCtx?.geo_target_id) {
     try {
@@ -49,11 +51,10 @@ export async function processCallEvent(
         .single();
 
       if (geoRow?.canonical_name) {
-        // canonical_name format: "Şişli,İstanbul,Turkey" → "Şişli / İstanbul"
+        // canonical_name format: "Şişli,İstanbul,Turkey" → district "Şişli / İstanbul", city "İstanbul"
         const parts = geoRow.canonical_name.split(',').map((p: string) => p.trim());
-        resolvedDistrictName = parts.length >= 2
-          ? `${parts[0]} / ${parts[1]}`
-          : parts[0] || null;
+        resolvedDistrictName = parts.length >= 2 ? `${parts[0]} / ${parts[1]}` : parts[0] || null;
+        adsCity = parts.length >= 2 ? parts[1] : null;
         if (resolvedDistrictName) locationSource = 'gclid';
       }
     } catch {
@@ -64,6 +65,59 @@ export async function processCallEvent(
   if (!resolvedDistrictName && adsCtx?.location_name && String(adsCtx.location_name).trim()) {
     resolvedDistrictName = String(adsCtx.location_name).trim();
     locationSource = 'gclid';
+  }
+
+  // Early-call fix 1: session lacks GCLID; payload has gclid/wbraid/gbraid → persist to session for OCI
+  const sessionMonth = payload.matched_session_month ?? (payload.matched_at ? new Date(payload.matched_at).toISOString().slice(0, 7) + '-01' : null);
+  const payloadHasClickIds = Boolean(
+    (payload.gclid && String(payload.gclid).trim()) ||
+      (payload.wbraid && String(payload.wbraid).trim()) ||
+      (payload.gbraid && String(payload.gbraid).trim())
+  );
+  if (payload.matched_session_id && sessionMonth && payloadHasClickIds) {
+    try {
+      const { data: sessionRow } = await tenantClient
+        .from('sessions')
+        .select('gclid, wbraid, gbraid')
+        .eq('id', payload.matched_session_id)
+        .eq('site_id', siteId)
+        .eq('created_month', sessionMonth)
+        .maybeSingle();
+      const sess = sessionRow as { gclid?: string | null; wbraid?: string | null; gbraid?: string | null } | null;
+      const sessionHasClickIds = Boolean(
+        sess && ((sess.gclid && String(sess.gclid).trim()) || (sess.wbraid && String(sess.wbraid).trim()) || (sess.gbraid && String(sess.gbraid).trim()))
+      );
+      if (!sessionHasClickIds) {
+        await tenantClient
+          .from('sessions')
+          .update({
+            gclid: payload.gclid || null,
+            wbraid: payload.wbraid || null,
+            gbraid: payload.gbraid || null,
+          })
+          .eq('id', payload.matched_session_id)
+          .eq('site_id', siteId)
+          .eq('created_month', sessionMonth);
+      }
+    } catch {
+      // Non-critical; ingestion continues
+    }
+  }
+
+  // Early-call fix 2: session lacks ADS geo; payload has ads_context.geo_target_id → upsert ADS geo to session
+  if (payload.matched_session_id && sessionMonth && resolvedDistrictName && locationSource === 'gclid') {
+    try {
+      await upsertSessionGeo({
+        siteId,
+        sessionId: payload.matched_session_id,
+        sessionMonth,
+        city: adsCity,
+        district: resolvedDistrictName,
+        source: 'ADS',
+      });
+    } catch {
+      // Non-critical; ingestion continues
+    }
   }
 
   // ── ARCHITECTURAL HARDENING: Async Scoring ──────────────────────
@@ -77,6 +131,7 @@ export async function processCallEvent(
     phone_number: payload.phone_number,
     matched_session_id: payload.matched_session_id,
     matched_fingerprint: payload.matched_fingerprint,
+    ...(sessionMonth ? { session_created_month: sessionMonth } : {}),
     // Scoring will update these later
     lead_score: 0,
     lead_score_at_match: 0,

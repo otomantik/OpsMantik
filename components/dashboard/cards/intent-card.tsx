@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cn, formatTimestamp } from '@/lib/utils';
+import { cn, formatTimestamp, formatDisplayLocation } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
@@ -310,7 +310,7 @@ export function IntentCard({
           <div className="space-y-1">
             <div className="text-sm text-muted-foreground">{t('hunter.where')}</div>
             <div className="text-sm font-medium inline-flex items-center gap-2 flex-wrap">
-              <span>{(intent.city || '—')}{intent.district ? ` / ${intent.district}` : ''}</span>
+              <span>{formatDisplayLocation(intent.city, intent.district, intent.location_source) ?? t('hunter.locationUnknown')}</span>
               {intent.location_source === 'gclid' && (
                 <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800" title={t('hunter.locationSourceGclidTitle')}>
                   {t('hunter.locationSourceGclid')}

@@ -5,6 +5,7 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { extractGeoInfo } from '@/lib/geo';
+import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { debugLog } from '@/lib/utils';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
 import { AttributionService } from '@/lib/services/attribution-service';
@@ -205,6 +206,36 @@ async function doProcessSyncEvent(
     },
     { ip, userAgent, geoInfo, deviceInfo }
   );
+
+  // Deterministik geo: GCLID + loc_physical_ms/loc_interest_ms → ADS geo
+  const geoCriteriaId = utm?.loc_physical_ms || utm?.loc_interest_ms;
+  if (currentGclid && geoCriteriaId) {
+    try {
+      const id = parseInt(String(geoCriteriaId), 10);
+      if (Number.isFinite(id)) {
+        const { data: geoRow } = await adminClient
+          .from('google_geo_targets')
+          .select('canonical_name')
+          .eq('criteria_id', id)
+          .single();
+        if (geoRow?.canonical_name) {
+          const parts = String(geoRow.canonical_name).split(',').map((p: string) => p.trim());
+          const district = parts.length >= 2 ? `${parts[0]} / ${parts[1]}` : parts[0] || null;
+          const city = parts.length >= 2 ? parts[1] : null;
+          await upsertSessionGeo({
+            siteId: siteIdUuid,
+            sessionId: session.id,
+            sessionMonth: dbMonth,
+            city,
+            district,
+            source: 'ADS',
+          });
+        }
+      }
+    } catch (geoErr) {
+      debugLog('[PROCESS_SYNC_EVENT] geo upsert skip', { session_id: session.id, error: (geoErr as Error)?.message });
+    }
+  }
 
   let summary = 'Standard Traffic';
   if (attributionSource.includes('Ads')) summary = 'Ads Origin';

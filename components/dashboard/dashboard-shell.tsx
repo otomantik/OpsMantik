@@ -184,6 +184,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               >
                 {t('dashboard.activityLog')}
               </Link>
+              <Link
+                href={`/dashboard/site/${siteId}/oci-control`}
+                className={cn(
+                  buttonVariants({ variant: 'outline' }),
+                  'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
+                )}
+              >
+                OCI Control
+              </Link>
               <div className="shrink-0 flex flex-col items-end">
                 {(() => {
                   const status = getBadgeStatus({

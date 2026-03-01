@@ -172,9 +172,10 @@ export async function GET(req: NextRequest) {
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
+      const orderIdDDA = `${clickId}_${conversionName}_${conversionTime}`.slice(0, 128);
       signalItems.push({
         id: 'signal_' + (sig as { id: string }).id,
-        orderId: 'signal_' + (sig as { id: string }).id,
+        orderId: orderIdDDA || 'signal_' + (sig as { id: string }).id,
         gclid: gclid || '',
         wbraid: wbraid || '',
         gbraid: gbraid || '',
@@ -219,9 +220,10 @@ export async function GET(req: NextRequest) {
         if (!clickId) continue;
         const rawTime = payload.timestamp || new Date().toISOString();
         const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
+        const pvOrderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW}_${conversionTime}`.slice(0, 128);
         pvItems.push({
           id: pvId,
-          orderId: pvId,
+          orderId: pvOrderIdDDA || pvId,
           gclid: gclid || '',
           wbraid: wbraid || '',
           gbraid: gbraid || '',
@@ -294,20 +296,21 @@ export async function GET(req: NextRequest) {
     if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0)) {
       const now = new Date().toISOString();
       if (idsToMarkProcessing.length > 0) {
-        const { error: updateError } = await adminClient
-          .from('offline_conversion_queue')
-          .update({
-            status: 'PROCESSING',
-            claimed_at: now,
-            updated_at: now,
-          })
-          .in('id', idsToMarkProcessing)
-          .eq('site_id', siteUuid)
-          .in('status', ['QUEUED', 'RETRY']);
-        if (updateError) {
+        const { data: claimedCount, error: rpcError } = await adminClient.rpc(
+          'claim_offline_conversion_rows_for_script_export',
+          { p_ids: idsToMarkProcessing, p_site_id: siteUuid }
+        );
+        if (rpcError) {
           const { logError } = await import('@/lib/logging/logger');
-          logError('OCI_GOOGLE_ADS_EXPORT_UPDATE_FAILED', { code: (updateError as { code?: string })?.code });
+          logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_FAILED', { code: (rpcError as { code?: string })?.code });
           return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        if (typeof claimedCount !== 'number' || claimedCount !== idsToMarkProcessing.length) {
+          const { logWarn } = await import('@/lib/logging/logger');
+          logWarn('OCI_GOOGLE_ADS_EXPORT_CLAIM_PARTIAL', {
+            requested: idsToMarkProcessing.length,
+            claimed: claimedCount,
+          });
         }
       }
       if (skippedIds.length > 0) {
@@ -349,10 +352,12 @@ export async function GET(req: NextRequest) {
       const conversionValue = ensureNumericValue(valueCents / 100);
 
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
+      const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim();
+      const orderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V5_SEAL}_${conversionTime}`.slice(0, 128);
 
       return {
         id: 'seal_' + String(row.id),
-        orderId: 'seal_' + String(row.id),
+        orderId: orderIdDDA || 'seal_' + String(row.id),
         gclid: (row.gclid || '').trim(),
         wbraid: (row.wbraid || '').trim(),
         gbraid: (row.gbraid || '').trim(),
@@ -366,7 +371,16 @@ export async function GET(req: NextRequest) {
     const combined = [...conversions, ...signalItems, ...pvItems].sort(
       (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
     );
-    return NextResponse.json(combined);
+
+    if (markAsExported) {
+      return NextResponse.json(combined);
+    }
+    return NextResponse.json({
+      siteId: siteUuid,
+      items: combined,
+      counts: { queued: list.length, skipped: skippedIds.length },
+      warnings: [],
+    });
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });

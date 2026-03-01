@@ -1,26 +1,27 @@
 # Google Ads OCI Script (OpsMantik Exit Valve)
 
-**Eslamed (eslamed.com)** için yapılandırıldı.
+**Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js`
 
 ## Ne yapar?
 
-1. OpsMantik’ten **hazır dönüşüm listesini** alır: `GET https://console.opsmantik.com/api/oci/google-ads-export?siteId=81d957f3c7534f53b12ff305f9f07ae7&markAsExported=true`
+1. OpsMantik'ten **hazır dönüşüm listesini** alır: `GET .../api/oci/google-ads-export?siteId=...&markAsExported=true`
 2. Gelen kayıtları **Google Ads Offline Conversion** bulk upload ile yükler.
-3. `markAsExported=true` sayesinde aynı kayıtlar bir daha dönmez.
+3. `markAsExported=true` ile yüklenen kayıtlar tekrar gelmez; ACK ile backend durumu güncellenir.
 
-## Google Ads’te yapılacaklar
+## Eslamed Kurulumu
 
-1. **Script’i ekle:** Araçlar → Toplu işlemler → Scripts → Yeni script. `GoogleAdsScript.js` içeriğini yapıştır.
-2. **Dönüşüm adı:** Google Ads’te bir “Offline / Import” dönüşüm aksiyonu oluşturun; adı **“Sealed Lead”** olsun (veya sunucuda `OCI_CONVERSION_NAME` ile aynı).
-3. **Çalıştır:** Önce Önizleme/Çalıştır ile test edin; log’da “0 records” veya “applied X conversions” görünür.
-4. **Zamanlama:** Script’e tetikleyici ekleyin (örn. günde 2–4 kez).
+1. **Script ekle:** Google Ads → Araçlar → Toplu işlemler → Scripts → Yeni script.
+2. `Eslamed-OCI-Quantum.js` içeriğini kopyalayıp yapıştırın.
+3. **Script Properties** (Project Settings → Script Properties):
+   | Key | Value |
+   |-----|-------|
+   | `OPSMANTIK_SITE_ID` | Eslamed public_id (OpsMantik Console'dan) |
+   | `OPSMANTIK_API_KEY` | OpsMantik OCI API key |
+   | `OPSMANTIK_BASE_URL` | `https://console.opsmantik.com` (opsiyonel) |
+4. **Dönüşüm adları:** Google Ads'te Offline Conversion aksiyonları oluşturun: `OpsMantik_V1_Nabiz`, `OpsMantik_V2_Ilk_Temas`, `OpsMantik_V3_Nitelikli_Gorusme`, `OpsMantik_V4_Sicak_Teklif`, `OpsMantik_V5_DEMIR_MUHUR`
+5. **Test:** Önce Önizleme ile çalıştırın; logda "0 records" veya "Yuklendi=X" görünür.
+6. **Zamanlama:** Tetikleyici ekleyin (örn. günde 2–4 kez).
 
-## Değerler (Eslamed)
+## Diğer siteler
 
-| Ayar        | Değer |
-|------------|--------|
-| Site ID    | `81d957f3c7534f53b12ff305f9f07ae7` |
-| Export URL | `https://console.opsmantik.com/api/oci/google-ads-export` |
-| API Key    | `.env.local` → `OCI_API_KEY` (script içinde varsayılan var) |
-
-Farklı bir site için `GoogleAdsScript.js` içindeki `siteId` ve gerekirse `exportUrl` / `apiKey` satırlarını değiştirin.
+`GoogleAdsScript.js` jenerik versiyondur; aynı Script Properties ile herhangi bir site için kullanılabilir. Sadece `OPSMANTIK_SITE_ID` değerini ilgili sitenin public_id'si ile değiştirin.

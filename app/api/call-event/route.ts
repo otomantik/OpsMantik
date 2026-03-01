@@ -475,6 +475,7 @@ export async function POST(req: NextRequest) {
             site_id: site.id,
             phone_number,
             matched_session_id: matchedSessionId,
+            matched_session_month: matchResult.sessionMonth ?? null,
             matched_fingerprint: fingerprint,
             lead_score: leadScore,
             lead_score_at_match: matchedSessionId ? leadScore : null,

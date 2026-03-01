@@ -6,8 +6,8 @@
  * - signal_* → marketing_signals (dispatch_status=SENT, google_sent_at=NOW)
  * - pv_* → Redis: DEL pv:data:{id}, LREM pv:processing:{siteId}
  *
- * Body: { siteId: string, queueIds: string[] }
- * Auth: x-api-key = OCI_API_KEY (export ile aynı).
+ * Body: { siteId: string, queueIds: string[], skippedIds?: string[] }
+ * skippedIds: DETERMINISTIC_SKIP (V1 sampled out). seal_* → COMPLETED + provider_error_code=V1_SAMPLED_OUT.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -56,9 +56,15 @@ export async function POST(req: NextRequest) {
     const siteId = siteIdFromToken || siteIdBody;
     const rawIds = Array.isArray(body.queueIds) ? body.queueIds : [];
     const queueIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const rawSkipped = Array.isArray(body.skippedIds) ? body.skippedIds : [];
+    const skippedIds = rawSkipped.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
 
     if (!siteId) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
+    }
+
+    if (queueIds.length === 0 && skippedIds.length === 0) {
+      return NextResponse.json({ ok: true, updated: 0 });
     }
 
     let siteUuid = siteId;
@@ -70,18 +76,25 @@ export async function POST(req: NextRequest) {
       if (byPublic.data) siteUuid = (byPublic.data as { id: string }).id;
     }
 
-    if (queueIds.length === 0) {
-      return NextResponse.json({ ok: true, updated: 0 });
-    }
-
     const sealIds: string[] = [];
     const signalIds: string[] = [];
     const pvIds: string[] = [];
+    const sealSkippedIds: string[] = [];
+    const signalSkippedIds: string[] = [];
+    const pvSkippedIds: string[] = [];
     for (const id of queueIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealIds.push(s.slice(5));
       else if (s.startsWith('signal_')) signalIds.push(s.slice(7));
-      else if (s.startsWith('pv_')) pvIds.push(s);
+      else if (s.startsWith('pv_')) pvIds.push(s.slice(3));
+      else pvIds.push(s);
+    }
+    for (const id of skippedIds) {
+      const s = String(id);
+      if (s.startsWith('seal_')) sealSkippedIds.push(s.slice(5));
+      else if (s.startsWith('signal_')) signalSkippedIds.push(s.slice(7));
+      else if (s.startsWith('pv_')) pvSkippedIds.push(s.slice(3));
+      else pvSkippedIds.push(s);
     }
 
     const siteRedisKey = siteId;
@@ -109,6 +122,27 @@ export async function POST(req: NextRequest) {
       totalUpdated += Array.isArray(data) ? data.length : 0;
     }
 
+    if (sealSkippedIds.length > 0) {
+      const { data, error } = await adminClient
+        .from('offline_conversion_queue')
+        .update({
+          status: 'COMPLETED',
+          provider_error_code: 'V1_SAMPLED_OUT',
+          provider_error_category: 'DETERMINISTIC_SKIP',
+          updated_at: now,
+        })
+        .in('id', sealSkippedIds)
+        .eq('site_id', siteUuid)
+        .in('status', ['PROCESSING'])
+        .select('id');
+
+      if (error) {
+        logError('OCI_ACK_SKIPPED_SQL_ERROR', { code: (error as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      totalUpdated += Array.isArray(data) ? data.length : 0;
+    }
+
     if (signalIds.length > 0) {
       const { data, error } = await adminClient
         .from('marketing_signals')
@@ -129,9 +163,10 @@ export async function POST(req: NextRequest) {
     }
 
     const failedRedisCleanups: string[] = [];
-    if (pvIds.length > 0) {
+    const allPvIds = [...pvIds, ...pvSkippedIds];
+    if (allPvIds.length > 0) {
       const processingKey = `pv:processing:${siteRedisKey}`;
-      for (const pvId of pvIds) {
+      for (const pvId of allPvIds) {
         try {
           await redis.del(`pv:data:${pvId}`);
           await redis.lrem(processingKey, 0, pvId);

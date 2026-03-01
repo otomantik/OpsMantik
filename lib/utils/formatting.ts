@@ -116,6 +116,25 @@ export function maskFingerprint(fp: string | null | undefined): string {
     return `${fp.slice(0, 4)}...${fp.slice(-4)}`;
 }
 
+/** Ghost geo cities (IP edge / proxy locations, not real client). Never display. */
+const GHOST_GEO_CITIES = new Set(['rome', 'amsterdam', 'roma']);
+
+/**
+ * Format location for display. UI Gate (PR1): call geo when location_source='gclid', else session geo.
+ * Rome/Amsterdam ghost ALWAYS returns null (UI shows Unknown) — deterministic quarantine.
+ */
+export function formatDisplayLocation(
+  city?: string | null,
+  district?: string | null,
+  locationSource?: string | null
+): string | null {
+  const cityNorm = (city || '').toString().trim().toLowerCase();
+  const districtNorm = (district || '').toString().trim().toLowerCase();
+  if (GHOST_GEO_CITIES.has(cityNorm) || GHOST_GEO_CITIES.has(districtNorm)) return null;
+  const out = formatLocation(city, district);
+  return out === '—' ? null : out;
+}
+
 /**
  * Format Turkish administrative locations.
  */

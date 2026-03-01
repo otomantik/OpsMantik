@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Copy, Clock, CheckCircle2, ChevronUp, ChevronDown, History, BadgeCheck, Phone, Flame } from 'lucide-react';
-import { formatTimestamp, formatLocation, cn } from '@/lib/utils';
+import { formatTimestamp, formatDisplayLocation, cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { getLocalizedLabel } from '@/lib/i18n/mapping';
 
@@ -55,7 +55,7 @@ export function SessionCardHeader({
     const firstEventCreatedAt = session.first_event_created_at;
     const sessionDuration = session.duration;
 
-    const locationLabel = formatLocation(session.city, session.district);
+    const locationLabel = formatDisplayLocation(session.city, session.district, null) ?? t('hunter.locationUnknown');
 
     return (
         <div

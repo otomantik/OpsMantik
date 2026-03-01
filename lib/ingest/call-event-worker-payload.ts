@@ -32,6 +32,8 @@ export type CallEventWorkerPayload = {
   site_id: string;
   phone_number: string | null;
   matched_session_id: string;
+  /** Session partition (YYYY-MM-01). Used for early-call ADS geo upsert. */
+  matched_session_month?: string | null;
   matched_fingerprint: string;
   lead_score: number;
   lead_score_at_match: number | null;

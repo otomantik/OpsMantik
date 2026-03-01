@@ -5,7 +5,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { X } from 'lucide-react';
-import { formatTimestamp } from '@/lib/utils';
+import { formatTimestamp, formatDisplayLocation } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { getLocalizedLabel } from '@/lib/i18n/mapping';
 
@@ -16,6 +16,7 @@ interface VisitorSession {
     attribution_source?: string | null;
     device_type?: string | null;
     city?: string | null;
+    district?: string | null;
     lead_score?: number | null;
 }
 
@@ -124,9 +125,9 @@ export function VisitorHistoryDrawer({
                                                             {getLocalizedLabel(session.device_type, t)}
                                                         </span>
                                                     )}
-                                                    {session.city && session.city !== 'Unknown' && session.city !== t('misc.unknown') && (
+                                                    {formatDisplayLocation(session.city ?? null, session.district ?? null, null) && (
                                                         <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground border border-border">
-                                                            {session.city}
+                                                            {formatDisplayLocation(session.city ?? null, session.district ?? null, null)}
                                                         </span>
                                                     )}
                                                     {session.lead_score !== null && session.lead_score !== undefined && (

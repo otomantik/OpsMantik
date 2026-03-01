@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { cn, safeDecode, formatLocation } from '@/lib/utils';
+import { cn, safeDecode, formatDisplayLocation } from '@/lib/utils';
 import type { HunterIntent } from '@/lib/types/hunter';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
@@ -229,17 +229,15 @@ export function HunterCard({
   }, [intent.intent_target, intent.intent_action, translate]);
 
   const geoDisplay = useMemo(() => {
-    const district = (intent.district || '').trim();
-    const city = (intent.city || '').trim();
-    const combined = [district, city].filter(Boolean).join(' / ');
-    if (!combined) return translate('hunter.locationUnknown');
-    return combined.toLocaleUpperCase('tr-TR');
-  }, [intent.district, intent.city, translate]);
+    const out = formatDisplayLocation(intent.city, intent.district, intent.location_source);
+    if (!out) return translate('hunter.locationUnknown');
+    return out.toLocaleUpperCase('tr-TR');
+  }, [intent.city, intent.district, intent.location_source, translate]);
 
   const locationDisplay = useMemo(() => {
-    const out = formatLocation(intent.city ?? null, intent.district ?? null);
-    return out === '—' ? translate('hunter.locationUnknown') : out;
-  }, [intent.city, intent.district, translate]);
+    const out = formatDisplayLocation(intent.city ?? null, intent.district ?? null, intent.location_source);
+    return out ?? translate('hunter.locationUnknown');
+  }, [intent.city, intent.district, intent.location_source, translate]);
 
   const leadSourceLabel = useMemo(() => {
     const trk = normalizeTraffic(trafficSource, trafficMedium, translate);

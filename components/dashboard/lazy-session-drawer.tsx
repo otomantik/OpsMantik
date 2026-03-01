@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { formatTimestamp, formatLocation } from '@/lib/utils';
+import { formatTimestamp, formatDisplayLocation } from '@/lib/utils';
 import type { LiveInboxIntent } from '@/lib/types/dashboard';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { getLocalizedLabel, formatEventType } from '@/lib/i18n/mapping';
@@ -143,7 +143,7 @@ export function LazySessionDrawer({
                   <div>
                     <div className="text-sm text-muted-foreground uppercase tracking-wider">{t('session.location')}</div>
                     <div className="text-sm text-foreground">
-                      {formatLocation(details?.city ?? null, details?.district ?? null)}
+                      {formatDisplayLocation(details?.city ?? null, details?.district ?? null, null) ?? t('hunter.locationUnknown')}
                     </div>
                   </div>
                   <div>
