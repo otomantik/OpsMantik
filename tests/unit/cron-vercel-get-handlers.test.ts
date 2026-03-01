@@ -41,3 +41,15 @@ for (const route of ROUTES) {
     );
   });
 }
+
+// PR-2: dispatch-conversions uses distributed cron lock
+test('PR-2: dispatch-conversions uses tryAcquireCronLock("dispatch-conversions")', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'dispatch-conversions', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes('tryAcquireCronLock(\'dispatch-conversions\''),
+    'dispatch-conversions must use tryAcquireCronLock("dispatch-conversions") for overlap prevention'
+  );
+  assert.ok(src.includes('releaseCronLock'), 'dispatch-conversions must release lock in finally');
+  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
+});
