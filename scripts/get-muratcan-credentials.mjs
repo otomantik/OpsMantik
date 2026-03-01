@@ -34,3 +34,6 @@ if (!data || data.length === 0) {
 
 const site = data[0];
 console.log(JSON.stringify(site, null, 2));
+console.log('\n--- GoogleAdsScript.js config (copy-paste) ---');
+console.log("var OPSMANTIK_SITE_ID = '" + (site.public_id || '') + "';   // " + (site.name || site.domain || 'Muratcan AKÜ'));
+console.log("var OPSMANTIK_API_KEY = '" + (site.oci_api_key || '') + "';");

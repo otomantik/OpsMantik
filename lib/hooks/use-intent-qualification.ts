@@ -17,8 +17,8 @@ import { toast } from 'sonner';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export interface QualifyIntentParams {
-  /** 0 = junk, 1-5 = lead quality (Lazy Antiques Dealer). */
-  score: 0 | 1 | 2 | 3 | 4 | 5;
+  /** 0 = junk, 1-100 = lead quality score. */
+  score: number;
   status: 'confirmed' | 'junk';
   note?: string;
 }
@@ -79,7 +79,7 @@ export function useIntentQualification(
         }
 
         const isConfirmed = params.status === 'confirmed';
-        const leadScore = params.score * 20; // 0-5 → 0-100
+        const leadScore = params.score; // Passing the actual score directly
 
         if (isConfirmed) {
           // Route through Seal API so enqueueSealConversion() runs (OCI queue).

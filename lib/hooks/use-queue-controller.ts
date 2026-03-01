@@ -504,13 +504,14 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
   const onSealConfirm = useCallback(
     async (saleAmount: number | null, currency: string, leadScore: number) => {
       if (!intentForSeal) return;
+      const finalScore = leadScore >= 100 || leadScore > 5 ? 100 : leadScore * 20; // Ensure max is 100
       const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sale_amount: saleAmount ?? null,
           currency,
-          lead_score: (leadScore >= 100 || leadScore > 5) ? 100 : leadScore * 20,
+          lead_score: finalScore,
         }),
       });
       if (!res.ok) {

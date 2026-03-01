@@ -197,7 +197,7 @@ export function HunterCard({
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
-  onQualify?: (params: { score: 4 | 5; status: 'confirmed' }) => void;
+  onQualify?: (params: { score: 60 | 80; status: 'confirmed' }) => void;
   readOnly?: boolean;
 }) {
   const { t: translate } = useTranslation();
@@ -356,63 +356,69 @@ export function HunterCard({
         )}
       </CardContent>
 
-      <CardFooter className="p-4 pt-0 gap-2 shrink-0 border-t border-slate-100">
-        <div className="grid grid-cols-4 gap-2 w-full">
+      <CardFooter className="p-4 pt-0 gap-2 shrink-0 border-t border-slate-100 flex-col">
+        {/* Action Group wrapped in flex-wrap for mobile ergonomics */}
+        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
           <Button
             variant="outline"
             size="sm"
-            className="min-h-[44px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs"
+            className="flex-1 min-h-[44px] min-w-[70px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs transition-colors"
             onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
-            <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+            <Trash2 className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
+            <span className="hidden sm:inline truncate">Çöp</span>
           </Button>
-          {onQualify ? (
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 min-h-[44px] min-w-[70px] border-slate-200 font-semibold text-xs text-slate-600 hover:bg-slate-100 transition-colors"
+            onClick={() => onSkip({ id: intent.id })}
+            title={translate('hunter.skip')}
+          >
+            <span className="truncate">Geç</span>
+          </Button>
+
+          {onQualify && (
             <>
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-[44px] border-slate-200 font-semibold text-xs"
-                onClick={() => onQualify({ score: 4, status: 'confirmed' })}
+                className="flex-[1.5] min-h-[44px] min-w-[80px] border-slate-200 font-semibold text-xs transition-colors hover:bg-blue-50 hover:text-blue-700"
+                onClick={() => onQualify({ score: 60, status: 'confirmed' })}
                 disabled={Boolean(readOnly)}
                 title={translate('hunter.gorusuldu')}
               >
-                <UserCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
-                <span className="truncate">{translate('hunter.gorusuldu')}</span>
+                <UserCheck className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
+                <span className="truncate">Görüş</span>
               </Button>
+
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-[44px] border-slate-200 font-semibold text-xs"
-                onClick={() => onQualify({ score: 5, status: 'confirmed' })}
+                className="flex-[1.5] min-h-[44px] min-w-[80px] border-slate-200 font-semibold text-xs transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                onClick={() => onQualify({ score: 80, status: 'confirmed' })}
                 disabled={Boolean(readOnly)}
                 title={translate('hunter.teklif')}
               >
-                <TrendingUp className="h-4 w-4 shrink-0 mr-1" aria-hidden />
-                <span className="truncate">{translate('hunter.teklif')}</span>
+                <TrendingUp className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
+                <span className="truncate">Teklif</span>
               </Button>
             </>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-[44px] border-slate-200 font-semibold text-xs col-span-2"
-              onClick={() => onSkip({ id: intent.id })}
-            >
-              {translate('hunter.skip')}
-            </Button>
           )}
+
           <Button
             size="sm"
-            className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+            className="flex-2 min-h-[44px] min-w-[100px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-colors"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
             data-testid="hunter-card-seal-deal"
           >
             <ShieldCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
-            <span className="truncate">{translate('hunter.seal')}</span>
+            <span className="truncate">MÜHÜR</span>
           </Button>
         </div>
       </CardFooter>

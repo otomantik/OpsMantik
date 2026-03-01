@@ -41,7 +41,7 @@ function ActiveDeckCard({
     onQualified // Pass refetch callback for undo success
   );
 
-  const fireQualify = (params: { score: 0 | 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }, optimistic = false) => {
+  const fireQualify = (params: { score: number; status: 'confirmed' | 'junk' }, optimistic = false) => {
     if (optimistic) {
       onOptimisticRemove(intent.id);
       pushHistoryRow({
@@ -62,12 +62,13 @@ function ActiveDeckCard({
       });
   };
 
-  const handleQualify = (params: { score: 4 | 5; status: 'confirmed' }) => {
+  const handleQualify = (params: { score: 60 | 80; status: 'confirmed' }) => {
     fireQualify(params, true);
   };
 
-  const handleSeal = ({ id, stars }: { id: string; stars: number }) => {
-    const s = Math.min(5, Math.max(1, Number(stars || 0))) as 1 | 2 | 3 | 4 | 5;
+  const handleSeal = ({ id }: { id: string; stars?: number }) => {
+    // Legacy maps 1-5 to a fixed sealed rate, or handle freely. In UI it's usually 100 max.
+    const s = 100; // Seal forces the max limit we defined under the hood.
     // Step 1: remove immediately
     onOptimisticRemove(id);
     // Step 2: toast + history immediately
