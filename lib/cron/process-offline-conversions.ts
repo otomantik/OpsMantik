@@ -31,6 +31,13 @@ export interface QueueRow {
   retry_count?: number;
 }
 
+/** Deterministic order_id for Google Ads idempotency (dedupe on retry). Max 128 chars. */
+function buildOrderId(clickId: string | null, occurredAt: string, fallbackId: string): string {
+  const sanitized = occurredAt.replace(/[:.]/g, '-');
+  const raw = clickId ? `${clickId}_V5_SEAL_${sanitized}` : fallbackId;
+  return raw.slice(0, 128);
+}
+
 export function queueRowToConversionJob(row: QueueRow): ConversionJob {
   const occurredAt =
     typeof (row.payload as { conversion_time?: string })?.conversion_time === 'string'
@@ -39,11 +46,16 @@ export function queueRowToConversionJob(row: QueueRow): ConversionJob {
         ? row.conversion_time
         : new Date(row.conversion_time).toISOString();
 
+  const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim() || null;
+  const orderId = buildOrderId(clickId, occurredAt, row.id);
+
+  const payload: Record<string, unknown> = { ...(row.payload ?? {}), order_id: orderId };
+
   return {
     id: row.id,
     site_id: row.site_id,
     provider_key: row.provider_key,
-    payload: row.payload ?? {},
+    payload,
     action_key: row.action ?? row.action_key ?? null,
     action_id: null,
     occurred_at: occurredAt,
