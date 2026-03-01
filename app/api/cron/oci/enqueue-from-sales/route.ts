@@ -1,7 +1,8 @@
 /**
- * POST /api/cron/oci/enqueue-from-sales — enqueue CONFIRMED sales (last N hours) missing from queue.
+ * GET/POST /api/cron/oci/enqueue-from-sales — enqueue CONFIRMED sales (last N hours) missing from queue.
  * Query param: hours (optional, default 24, max 168). Auth: requireCronAuth.
- * Rate limit: 1 request per minute (per process).
+ * Vercel Cron sends GET (hourly); POST kept for manual/Bearer calls.
+ * In-memory rate limit removed — serverless makes it ineffective; Vercel schedule + requireCronAuth sufficient.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,14 +14,20 @@ export const runtime = 'nodejs';
 
 const DEFAULT_HOURS = 24;
 const MAX_HOURS = 168;
-const RATE_LIMIT_MS = 60_000;
 
-let lastEnqueueFromSalesCallTs = 0;
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runEnqueueFromSales(req);
+}
 
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
+  return runEnqueueFromSales(req);
+}
 
+async function runEnqueueFromSales(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   let hours = DEFAULT_HOURS;
   const hoursParam = searchParams.get('hours');
@@ -34,16 +41,6 @@ export async function POST(req: NextRequest) {
     }
     hours = parsed;
   }
-
-  // Rate-limit only after request is validated (invalid hours should not consume RL budget)
-  const now = Date.now();
-  if (now - lastEnqueueFromSalesCallTs < RATE_LIMIT_MS) {
-    return NextResponse.json(
-      { error: 'Too many requests', code: 'RATE_LIMITED' },
-      { status: 429, headers: getBuildInfoHeaders() }
-    );
-  }
-  lastEnqueueFromSalesCallTs = now;
 
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
@@ -92,13 +89,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // V5_SEAL: value_cents = sale_amount exactly (or 0). No proxy multipliers; bypasses legacy oci_config.
+      // sales.amount_cents is already in minor units — use as-is to match War Room output.
       const { error: insertError } = await adminClient
         .from('offline_conversion_queue')
         .insert({
           site_id: sale.site_id,
           sale_id: sale.id,
           conversion_time: sale.occurred_at,
-          value_cents: sale.amount_cents,
+          value_cents: sale.amount_cents ?? 0,
           currency: sale.currency,
           gclid,
           wbraid,

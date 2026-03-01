@@ -13,6 +13,7 @@ import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { majorToMinor } from '../lib/currency-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '..', '.env.local') });
@@ -118,10 +119,12 @@ async function run() {
       continue;
     }
 
-    const valueCents = c.sale_amount != null && c.sale_amount > 0
-      ? Math.round(c.sale_amount * 100)
-      : Math.round((Number(c.lead_score) || 20) / 20 * 150 * 100);
+    // V5_SEAL: value_cents = sale_amount exactly (or 0). No proxy multipliers; bypasses legacy oci_config.
+    // calls.sale_amount is in major units — use majorToMinor to match War Room output (JPY/KWD-aware).
     const currency = (c.currency || 'TRY').trim().toUpperCase().replace(/[^A-Z]/g, '') || 'TRY';
+    const valueCents = c.sale_amount != null && c.sale_amount > 0
+      ? majorToMinor(c.sale_amount, currency)
+      : 0;
 
     toInsert.push({
       site_id: siteId,

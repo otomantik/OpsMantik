@@ -2,9 +2,12 @@
  * PR11: Redis semaphore for provider upload concurrency (per site+provider / global).
  * ZSET: member=token, score=expiresAtMs. Lua scripts for race-safe acquire/release.
  * TTL purge on acquire so stuck tokens (crashed worker) don't hold slots.
+ *
+ * Fail-closed: Redis errors throw REDIS_OUTAGE so the runner fails the job instead of silently skipping uploads.
  */
 
 import { redis } from '@/lib/upstash';
+import { logError } from '@/lib/logging/logger';
 
 const ACQUIRE_SCRIPT = `
   redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
@@ -21,9 +24,19 @@ const RELEASE_SCRIPT = `
   return 1
 `;
 
+/** Thrown when Redis is unavailable during semaphore acquire (fail-closed). */
+export class RedisOutageError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'RedisOutageError';
+    if (cause instanceof Error) this.cause = cause;
+  }
+}
+
 /**
  * Acquire one slot. Purges expired (score < now), then if count < limit adds token with score=now+ttlMs.
- * @returns token (uuid) or null if at limit or Redis error (fail-open: null = skip upload, treat as CONCURRENCY_LIMIT)
+ * @returns token (uuid) or null if at limit
+ * @throws RedisOutageError if Redis fails (fail-closed — caller must fail job, not silently skip)
  */
 export async function acquireSemaphore(
   key: string,
@@ -41,8 +54,12 @@ export async function acquireSemaphore(
       [String(nowMs), String(limit), expiresAtMs, token]
     );
     return result === token ? token : null;
-  } catch {
-    return null;
+  } catch (err) {
+    logError('REDIS_OUTAGE_SEMAPHORE_ACQUIRE', {
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw new RedisOutageError('REDIS_OUTAGE: Semaphore acquire failed', err);
   }
 }
 

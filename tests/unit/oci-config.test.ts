@@ -29,30 +29,28 @@ test('computeConversionValue: uses actual revenue if provided', () => {
     assert.equal(value, 500);
 });
 
-test('computeConversionValue: skips if star is below min_star', () => {
+test('computeConversionValue: no sale (null) returns 0 regardless of star (V5_SEAL)', () => {
     const config = parseOciConfig({ min_star: 4 });
     const value = computeConversionValue(3, null, config);
-    assert.equal(value, null);
+    assert.equal(value, 0, 'V5: no sale → 0 TL, star/min_star not used');
 });
 
-test('computeConversionValue: applies weights correctly', () => {
+test('computeConversionValue: no sale returns 0 (V5 bypasses weights proxy)', () => {
     const config = parseOciConfig({
         base_value: 1000,
         weights: { 3: 0.5, 4: 0.8, 5: 1.0 }
     });
-
-    assert.equal(computeConversionValue(3, null, config), 500);
-    assert.equal(computeConversionValue(4, null, config), 800);
-    assert.equal(computeConversionValue(5, null, config), 1000);
+    // V5: saleAmount null → 0; weights not used when no sale
+    assert.equal(computeConversionValue(3, null, config), 0);
+    assert.equal(computeConversionValue(4, null, config), 0);
+    assert.equal(computeConversionValue(5, null, config), 0);
 });
 
-test('computeConversionValue: fallback if star not in weights', () => {
+test('computeConversionValue: no sale returns 0 (star/weights not used)', () => {
     const config = parseOciConfig({
         base_value: 1000,
         weights: { 5: 1.0 }
     });
-    // If star=4 is not in weights, it should fallback to 1.0 weight (implicit behavior)
-    // or whatever computeConversionValue does. Let's check code.
-    // result = config.base_value * (config.weights[s] ?? 1.0)
-    assert.equal(computeConversionValue(4, null, config), 1000);
+    // V5: saleAmount null → 0; star/weights path not reached
+    assert.equal(computeConversionValue(4, null, config), 0);
 });

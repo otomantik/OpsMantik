@@ -84,28 +84,30 @@ export function parseOciConfig(raw: unknown): OciSiteConfig {
 /**
  * Compute the conversion value (in currency units, not cents) for a given star rating.
  *
- * Returns null if the star is below min_star → caller should NOT enqueue this conversion.
- * Returns actual revenue (saleAmount) if provided and > 0, regardless of star.
+ * - sale_amount > 0 → use actual revenue (operatör satış girmiş).
+ * - sale_amount null veya 0 (görüşüldü, satış yok) → 0 TL gönder (lead_score/star proxy yok).
+ * Returns null if the star is below min_star and no sale → caller should NOT enqueue.
  */
 export function computeConversionValue(
     star: number | null,
     saleAmount: number | null,
     config: OciSiteConfig
 ): number | null {
-    // Always use actual revenue if operator entered it
+    // Gerçek satış girildiyse onu kullan
     if (saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0) {
         return saleAmount;
     }
 
-    // No star → can't compute
+    // Görüşüldü / satış yok → Google'a 0 TL (yüksek proxy değer gitmesin)
+    if (saleAmount === 0 || saleAmount == null) {
+        return 0;
+    }
+
+    // No star → can't compute (legacy path)
     if (star == null || !Number.isFinite(star)) return null;
 
     const s = Math.round(star);
-
-    // Below threshold → signal skip
     if (s < config.min_star) return null;
-
-    // Apply weight
     const weight = config.weights[s] ?? 1.0;
     return Math.round(config.base_value * weight * 100) / 100;
 }

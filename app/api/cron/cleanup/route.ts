@@ -1,5 +1,5 @@
 /**
- * POST /api/cron/cleanup — Sprint 2: Daily storage hygiene
+ * GET/POST /api/cron/cleanup — Sprint 2: Daily storage hygiene
  *
  * 1) cleanup_oci_queue_batch: Delete COMPLETED/FATAL/FAILED rows from offline_conversion_queue
  *    older than p_days_to_keep (default 90). Prevents unbounded table growth.
@@ -8,6 +8,7 @@
  * Auth: requireCronAuth (Bearer CRON_SECRET or x-vercel-cron).
  * Query: dry_run=true (count only, no deletes/updates), days_to_keep (default 90), limit (default 5000),
  *        days_old_intents (default 7), limit_intents (default 5000).
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,10 +24,19 @@ const DEFAULT_CLEANUP_LIMIT = 5000;
 const DEFAULT_DAYS_OLD_INTENTS = 7;
 const DEFAULT_LIMIT_INTENTS = 5000;
 
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return runCleanup(req);
+}
+
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
+  return runCleanup(req);
+}
 
+async function runCleanup(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get('dry_run') === 'true';
   const daysToKeep = Math.min(365, Math.max(1, parseInt(req.nextUrl.searchParams.get('days_to_keep') ?? String(DEFAULT_DAYS_TO_KEEP), 10) || DEFAULT_DAYS_TO_KEEP));
   const limit = Math.min(10000, Math.max(1, parseInt(req.nextUrl.searchParams.get('limit') ?? String(DEFAULT_CLEANUP_LIMIT), 10) || DEFAULT_CLEANUP_LIMIT));

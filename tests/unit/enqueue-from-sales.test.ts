@@ -121,7 +121,13 @@ test('hours boundary: hours=169 returns 400', async () => {
   }
 });
 
-test('enqueue-from-sales: rate limit 1/min — second request within 1 min returns 429 RATE_LIMITED', async () => {
+test('enqueue-from-sales: no in-memory rate limit — sequential requests both succeed (serverless-safe)', async (t) => {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    t.skip('Supabase env not set; rate-limit removal covered by source test');
+    return;
+  }
+  // In-memory rate limiter was removed; serverless makes it ineffective.
+  // Vercel Cron schedule + requireCronAuth are the guardrails.
   const saved = stashEnv(['CRON_SECRET']);
   try {
     process.env.CRON_SECRET = CRON_SECRET;
@@ -129,12 +135,12 @@ test('enqueue-from-sales: rate limit 1/min — second request within 1 min retur
       method: 'POST',
       headers: { authorization: `Bearer ${CRON_SECRET}` },
     });
-    await POST(req);
+    const r1 = await POST(req);
     const r2 = await POST(req);
-    assert.equal(r2.status, 429, 'second request should be rate limited');
+    assert.equal(r1.status, 200, 'first request succeeds');
+    assert.equal(r2.status, 200, 'second request succeeds (no rate limit)');
     const json = await r2.json();
-    assert.equal(json.code, 'RATE_LIMITED');
-    assert.ok(json.error?.toLowerCase().includes('many') || json.error?.toLowerCase().includes('rate'));
+    assert.equal(json.ok, true);
   } finally {
     restoreEnv(saved);
   }

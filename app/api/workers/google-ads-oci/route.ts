@@ -16,6 +16,7 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logWarn, logError } from '@/lib/logging/logger';
 import { runOfflineConversionRunner } from '@/lib/oci/runner';
+import { RedisOutageError } from '@/lib/providers/limits/semaphore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,11 +33,23 @@ export async function POST(req: NextRequest) {
 
   logInfo('GOOGLE_ADS_OCI_STARTED', {});
 
-  const result = await runOfflineConversionRunner({
-    mode: 'worker',
-    providerKey: 'google_ads',
-    logPrefix: LOG_PREFIX,
-  });
+  let result;
+  try {
+    result = await runOfflineConversionRunner({
+      mode: 'worker',
+      providerKey: 'google_ads',
+      logPrefix: LOG_PREFIX,
+    });
+  } catch (err) {
+    if (err instanceof RedisOutageError) {
+      logError('REDIS_OUTAGE_OCI_WORKER', { error: err.message });
+      return NextResponse.json(
+        { ok: false, error: 'REDIS_OUTAGE', detail: err.message },
+        { status: 500, headers: getBuildInfoHeaders() }
+      );
+    }
+    throw err;
+  }
 
   if (!result.ok) {
     logError('GOOGLE_ADS_OCI_RUNNER_ERROR', { error: result.error });

@@ -5,15 +5,19 @@
  * Query: provider_key? (optional), limit=50 (1..500).
  * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  * Auth: requireCronAuth.
+ * Distributed lock prevents overlapping runs (Redis SET NX EX).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 import { runOfflineConversionRunner } from '@/lib/oci/runner';
 import { DEFAULT_LIMIT_CRON, MAX_LIMIT_CRON } from '@/lib/oci/constants';
 
 export const runtime = 'nodejs';
+
+const CRON_LOCK_TTL_SEC = 660; // 11 min — exceeds 10-min schedule to prevent overlap
 
 async function runProcess(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
@@ -50,7 +54,25 @@ async function runProcess(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return runProcess(req);
+  const acquired = await tryAcquireCronLock('process-offline-conversions', CRON_LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { status: 200, headers: getBuildInfoHeaders() }
+    );
+  }
+  try {
+    const res = await runProcess(req);
+    return res;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { ok: false, error: msg },
+      { status: 500, headers: getBuildInfoHeaders() }
+    );
+  } finally {
+    await releaseCronLock('process-offline-conversions');
+  }
 }
 
 export async function POST(req: NextRequest) {

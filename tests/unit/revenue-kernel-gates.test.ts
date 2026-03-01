@@ -94,29 +94,40 @@ test('PR gate: idempotency DB error must ack and MUST NOT persist (worker)', () 
   assert.ok(gatesCall < processCall, 'gates run before process (idempotency error stops before persist)');
 });
 
-// Idempotency (tryInsert) runs in /api/workers/ingest; SyncHandlerDeps no longer exposes tryInsert.
-test('PR gate: idempotency DB error returns 500 and does not reach publish (runtime)', { skip: true, timeout: 8000 }, async () => {
-  const { createSyncHandler } = await import('@/app/api/sync/route');
-  const POST = createSyncHandler();
+// Idempotency runs in worker via runSyncGates; when tryInsert fails (DB error), gates return idempotency_error
+// and worker acks without calling processSyncEvent. Pure unit test via source assertions (no DB, no mocks).
+test('PR gate: idempotency DB error aborts flow and does not reach persist', () => {
+  const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
+  const worker = readFileSync(WORKER_INGEST_PATH, 'utf8');
 
-  const req = new NextRequest('http://localhost:3000/api/sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
-    body: JSON.stringify({
-      s: process.env.TEST_SITE_PUBLIC_ID || 'test-site-id',
-      url: 'https://example.com',
-      ec: 'c',
-      ea: 'e',
-      el: 'l',
-    }),
-  });
-  const res = await POST(req);
-  const body = await res.json().catch(() => ({}));
+  // 1) sync-gates: when idempotencyResult.error && !duplicate, return idempotency_error immediately
+  const idempotencyErrorBlock = syncGates.indexOf("idempotencyResult.error && !idempotencyResult.duplicate");
+  assert.ok(idempotencyErrorBlock !== -1, 'sync-gates must check idempotencyResult.error && !duplicate');
+  const returnIdempotencyError = syncGates.indexOf("reason: 'idempotency_error'", idempotencyErrorBlock);
+  assert.ok(returnIdempotencyError !== -1 && returnIdempotencyError < idempotencyErrorBlock + 200, 'sync-gates must return idempotency_error on DB error');
 
-  if (res.status !== 500) {
-    return;
-  }
-  assert.equal(body.status, 'billing_gate_closed', '500 response must have status billing_gate_closed');
+  // 2) sync-gates: idempotency check happens before quota/entitlements/persist (no getSitePlan before idempotency return)
+  const tryInsertCall = syncGates.indexOf('tryInsertIdempotencyKey(');
+  const getSitePlanCall = syncGates.indexOf('getSitePlan(');
+  assert.ok(tryInsertCall !== -1 && getSitePlanCall !== -1, 'sync-gates must have tryInsert and getSitePlan');
+  assert.ok(tryInsertCall < getSitePlanCall, 'tryInsertIdempotencyKey must run before getSitePlan (idempotency before quota)');
+
+  // 3) sync-gates: idempotency_error return happens before getSitePlan (early exit on DB error)
+  const earlyReturnEnd = syncGates.indexOf('}', returnIdempotencyError) + 1;
+  const blockBeforeQuota = syncGates.slice(idempotencyErrorBlock, earlyReturnEnd);
+  assert.ok(!blockBeforeQuota.includes('getSitePlan') && !blockBeforeQuota.includes('evaluateQuota'), 'idempotency_error return must not reach quota logic');
+
+  // 4) worker: when gatesResult.ok === false, return before processSyncEvent (no persist)
+  const gatesCheck = worker.indexOf('gatesResult.ok === false');
+  const processSyncCall = worker.indexOf('processSyncEvent(');
+  assert.ok(gatesCheck !== -1 && processSyncCall !== -1, 'worker must check gates and call processSyncEvent');
+  assert.ok(gatesCheck < processSyncCall, 'gates check must run before processSyncEvent');
+  const returnBlock = worker.indexOf('return NextResponse.json', gatesCheck);
+  assert.ok(returnBlock !== -1 && returnBlock < processSyncCall, 'worker must return on gates failure before processSyncEvent');
+
+  // 5) worker: idempotency_error path returns { ok: true, reason } (ack to QStash) and logs WORKERS_INGEST_BILLING_GATE_CLOSED
+  assert.ok(worker.includes("reason === 'idempotency_error'"), 'worker must handle idempotency_error');
+  assert.ok(worker.includes('WORKERS_INGEST_BILLING_GATE_CLOSED'), 'worker must log WORKERS_INGEST_BILLING_GATE_CLOSED on idempotency error');
 });
 
 test('PR-4 gate: reconciliation authority is ingest_idempotency count only (no Redis as invoice SoT)', () => {

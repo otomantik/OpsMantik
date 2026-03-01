@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { requireOciControlAuth } from '@/lib/oci/control-auth';
-import { QueueActionsBodySchema, QUEUE_STATUSES } from '@/lib/domain/oci/queue-types';
+import { QueueActionsBodySchema } from '@/lib/domain/oci/queue-types';
 import type { ProviderErrorCategory } from '@/lib/domain/oci/queue-types';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
   const siteUuid = auth.siteUuid;
 
   const { action, ids, reason, errorCode, errorCategory, clearErrors } = parsed.data;
-  const now = new Date().toISOString();
 
   if (ids.length === 0) {
     return NextResponse.json({ ok: true, affected: 0 });
@@ -53,60 +52,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, affected: 0 });
   }
 
-  let updatePayload: Record<string, unknown>;
-  let statusFilter: string[];
-
-  switch (action) {
-    case 'RETRY_SELECTED': {
-      statusFilter = ['FAILED', 'RETRY'];
-      updatePayload = {
-        status: 'QUEUED',
-        claimed_at: null,
-        next_retry_at: null,
-        updated_at: now,
-      };
-      break;
-    }
-    case 'RESET_TO_QUEUED': {
-      statusFilter = ['QUEUED', 'RETRY', 'PROCESSING', 'FAILED'];
-      updatePayload = {
-        status: 'QUEUED',
-        claimed_at: null,
-        next_retry_at: null,
-        updated_at: now,
-      };
-      if (clearErrors) {
-        updatePayload.last_error = null;
-        updatePayload.provider_error_code = null;
-        updatePayload.provider_error_category = null;
-      }
-      break;
-    }
-    case 'MARK_FAILED': {
-      statusFilter = ['PROCESSING', 'QUEUED', 'RETRY'];
-      const code = errorCode ?? MARK_FAILED_DEFAULTS.errorCode;
-      const category = errorCategory ?? MARK_FAILED_DEFAULTS.errorCategory;
-      const msg = reason ?? MARK_FAILED_DEFAULTS.reason;
-      updatePayload = {
-        status: 'FAILED',
-        last_error: msg.slice(0, 1024),
-        provider_error_code: code.slice(0, 64),
-        provider_error_category: category,
-        updated_at: now,
-      };
-      break;
-    }
-    default:
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  }
-
-  const { data, error } = await adminClient
-    .from('offline_conversion_queue')
-    .update(updatePayload)
-    .in('id', validIds)
-    .eq('site_id', siteUuid)
-    .in('status', statusFilter)
-    .select('id');
+  // Use RPC with row-level locking (FOR UPDATE) to prevent concurrent mutations.
+  const { data: affected, error } = await adminClient.rpc('update_queue_status_locked', {
+    p_ids: validIds,
+    p_site_id: siteUuid,
+    p_action: action,
+    p_clear_errors: clearErrors ?? false,
+    p_error_code: (errorCode ?? MARK_FAILED_DEFAULTS.errorCode).slice(0, 64),
+    p_error_category: errorCategory ?? MARK_FAILED_DEFAULTS.errorCategory,
+    p_reason: (reason ?? MARK_FAILED_DEFAULTS.reason).slice(0, 1024),
+  });
 
   if (error) {
     return NextResponse.json(
@@ -114,7 +69,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-
-  const affected = Array.isArray(data) ? data.length : 0;
-  return NextResponse.json({ ok: true, affected });
+  return NextResponse.json({ ok: true, affected: typeof affected === 'number' ? affected : 0 });
 }

@@ -15,7 +15,15 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return runAttemptCap(req);
+  try {
+    return await runAttemptCap(req);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { ok: false, error: msg },
+      { status: 500, headers: getBuildInfoHeaders() }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
