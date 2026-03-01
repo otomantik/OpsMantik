@@ -22,8 +22,7 @@ const LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;
 
 async function runSweep() {
-  const since = new Date();
-  since.setDate(since.getDate() - LOOKBACK_DAYS);
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86400 * 1000);
   const sinceIso = since.toISOString();
 
   try {

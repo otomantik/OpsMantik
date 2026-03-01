@@ -78,3 +78,14 @@ for (const route of PR3_ROUTES) {
     );
   });
 }
+
+// PR-4: sweep-unsent-conversions lookback is UTC-aligned (no local setDate/getDate)
+test('PR-4: sweep-unsent-conversions uses Date.now() based lookback, not .setDate(', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(!src.includes('.setDate('), 'sweep-unsent-conversions must not use .setDate() (local time, DST drift)');
+  assert.ok(
+    src.includes('Date.now()') && /LOOKBACK_DAYS\s*\*\s*86400\s*\*\s*1000/.test(src),
+    'sweep-unsent-conversions must use Date.now() - days*86400*1000 for UTC-aligned lookback'
+  );
+});
