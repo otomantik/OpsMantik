@@ -84,12 +84,12 @@ class Validator {
     return normalized <= rate;
   }
 
-  /** Google requires: yyyy-mm-dd HH:mm:ss+|-HH:mm (timezone mandatory). */
+  /** Google Ads CSV: yyyy-mm-dd HH:mm:ss+HHmm (offset 4 digits, NO colon, e.g. +0300). */
   static isValidGoogleAdsTime(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return false;
     var s = timeStr.trim();
     if (s.length < 20) return false;
-    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(s);
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{4}$/.test(s);
   }
 
   /** GCLID/WBRAID/GBRAID: alphanumeric, reasonable length (prevent obviously broken IDs). */

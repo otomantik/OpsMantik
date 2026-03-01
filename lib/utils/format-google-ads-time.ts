@@ -1,14 +1,14 @@
 /**
  * Google Ads OCI conversion_time formatter.
  *
- * Google Ads strict requirement: yyyy-MM-dd HH:mm:ss±HH:mm
- * Example: 2026-02-28 10:15:10+03:00
- * Regex:   /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/
+ * Google Ads CSV bulk upload expects (per support doc 7014069):
+ *   yyyy-MM-dd HH:mm:ss+z  where z = +0500 or -0100 (4-digit offset, NO colon)
+ * Example: 2026-02-28 10:15:10+0300
+ * Regex:   /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{4}$/
  *
- * - No "T" separator (ISO 8601 T is rejected by Google Ads).
+ * - No "T" separator.
  * - No milliseconds.
- * - Explicit UTC offset required (+03:00, not "Z", not empty).
- * - Compact yyyyMMdd HHmmss (no offset) is rejected: INVALID_FIELD_VALUES_IN_DATE_TIME.
+ * - Offset: +0300 (NOT +03:00) — colon causes "invalid" in CSV import.
  */
 
 import { normalizeTimezone } from '@/lib/i18n/timezone';
@@ -16,8 +16,8 @@ import { normalizeTimezone } from '@/lib/i18n/timezone';
 /** Canonical Google Ads format: yyyy-MM-dd HH:mm:ss±HH:mm (timezone required). */
 export const GOOGLE_ADS_TIME_FORMAT = 'yyyy-MM-dd HH:mm:ss±HH:mm' as const;
 
-/** Regex that Google Ads accepts for Conversion time column. */
-export const GOOGLE_ADS_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+/** Regex that Google Ads CSV import accepts (offset +0300, no colon). */
+export const GOOGLE_ADS_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{4}$/;
 
 /** Parse UTC/ISO timestamp string or Date. Returns null if input is null/undefined/invalid. */
 export function parseUtcTimestamp(ts: string | Date | null | undefined): Date | null {
@@ -68,16 +68,17 @@ function _formatDate(d: Date, tz: string): string {
     .replace(/\u2212/g, '-')
     .trim();
 
+  // Google Ads CSV bulk import expects +0300 (4 digits, NO colon). +03:00 causes "invalid".
   let offset: string;
   if (!raw || raw === 'Z') {
-    offset = '+00:00';
+    offset = '+0000';
   } else {
     const m = raw.match(/^([+-])(\d{1,2}):?(\d{2})$/);
     offset = m
-      ? `${m[1]}${m[2].padStart(2, '0')}:${m[3]}`
+      ? `${m[1]}${m[2].padStart(2, '0')}${m[3]}`
       : raw.includes(':')
-        ? raw
-        : raw.replace(/([+-])(\d{2})(\d{2})/, '$1$2:$3');
+        ? raw.replace(':', '')
+        : raw.replace(/([+-])(\d{2})(\d{2})/, '$1$2$3');
   }
 
   return `${base}${offset}`;
