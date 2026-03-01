@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { formatGoogleAdsTime, formatGoogleAdsTimeOrNull, parseUtcTimestamp } from '@/lib/utils/format-google-ads-time';
 import { logWarn, logError } from '@/lib/logging/logger';
+import { minorToMajor } from '@/lib/i18n/currency';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
@@ -351,7 +352,8 @@ export async function GET(req: NextRequest) {
       }
 
       const valueCents = Number(row.value_cents) || 0;
-      const conversionValue = ensureNumericValue(valueCents / 100);
+      const rowCurrency = row.currency || currency || 'TRY';
+      const conversionValue = ensureNumericValue(minorToMajor(valueCents, rowCurrency));
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
       const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim();
       const orderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V5_SEAL}_${conversionTime}`.slice(0, 128);

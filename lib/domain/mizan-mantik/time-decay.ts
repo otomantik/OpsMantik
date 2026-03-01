@@ -11,9 +11,10 @@ const MS_PER_DAY = 86400000;
 
 /**
  * Base value for gear (V5 returns exact value outside this func).
+ * No AOV fallback — caller passes effective AOV (e.g. from value-calculator).
  */
 export function getBaseValueForGear(gear: OpsGear, aov: number): number {
-  const safeAov = Number.isFinite(aov) && aov >= 0 ? aov : 100;
+  const safeAov = Number.isFinite(aov) && aov >= 0 ? aov : 0;
   switch (gear) {
     case 'V1_PAGEVIEW':
       return 0;

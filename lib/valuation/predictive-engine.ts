@@ -1,6 +1,9 @@
 /**
  * @deprecated Use lib/utils/mizan-mantik.ts — calculateConversionValue (unified valuation).
  * Re-exported for backward compatibility.
+ *
+ * OCI IMPORT BAN: Do NOT use calculateExpectedValue for OCI conversion value.
+ * OCI value comes from queue.value_cents only (V5 = sale_amount or 0). Runner never computes.
  */
 
 import {

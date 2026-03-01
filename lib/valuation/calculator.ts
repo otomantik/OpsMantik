@@ -2,6 +2,9 @@
  * Lead valuation for "Lazy Antiques Dealer" / Proxy Value Strategy.
  * When the user does not enter a sale amount, we derive a proxy value from the 0–5 score
  * and the site's default deal value.
+ *
+ * OCI IMPORT BAN: Do NOT use calculateLeadValue for OCI conversion value.
+ * OCI uses V5 rule: sale_amount > 0 ? sale_amount : 0 (export-batch, google-ads-export).
  */
 
 /**

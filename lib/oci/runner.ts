@@ -18,7 +18,7 @@ import {
   queueRowToConversionJob,
   type QueueRow,
 } from '@/lib/cron/process-offline-conversions';
-import { calculateExpectedValue } from '@/lib/valuation/predictive-engine';
+import { majorToMinor } from '@/lib/i18n/currency';
 import {
   acquireSemaphore,
   releaseSemaphore,
@@ -34,7 +34,6 @@ import {
 } from '@/lib/oci/constants';
 import { chunkArray } from '@/lib/utils/batch';
 import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
-import type { SiteValuationRow } from '@/lib/oci/oci-config';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
 
 /** Options for runOfflineConversionRunner. */
@@ -153,7 +152,8 @@ async function syncQueueValuesFromCalls(
     const saleAmount = call.sale_amount != null && Number.isFinite(Number(call.sale_amount)) ? Number(call.sale_amount) : null;
     const star = leadScoreToStar(leadScore);
     const valueUnits = computeConversionValue(star, saleAmount, config);
-    const freshCents = valueUnits != null ? Math.round(valueUnits * 100) : row.value_cents;
+    const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
+    const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
     if (freshCents !== row.value_cents) {
       (row as { value_cents: number }).value_cents = freshCents;
       toUpdate.push({ id: row.id, value_cents: freshCents });
@@ -400,25 +400,17 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
 
       const tenantClient = createTenantClient(siteIdUuid);
       let encryptedPayload: string | null = null;
-      let siteValuation: SiteValuationRow | null = null;
 
       try {
-        const [{ data: credsData, error: credsErr }, { data: siteData }] = await Promise.all([
-          tenantClient
-            .from('provider_credentials')
-            .select('encrypted_payload')
-            .eq('provider_key', providerKey)
-            .eq('is_active', true)
-            .maybeSingle(),
-          tenantClient
-            .from('sites')
-            .select('default_aov, intent_weights')
-            .maybeSingle()
-        ]);
+        const { data: credsData, error: credsErr } = await tenantClient
+          .from('provider_credentials')
+          .select('encrypted_payload')
+          .eq('provider_key', providerKey)
+          .eq('is_active', true)
+          .maybeSingle();
 
         if (credsErr) throw credsErr;
         encryptedPayload = (credsData as { encrypted_payload?: string } | null)?.encrypted_payload ?? null;
-        siteValuation = siteData as SiteValuationRow | null;
       } catch (err) {
         logRunnerError(prefix, 'provider_credentials fetch failed', err);
         encryptedPayload = null;
@@ -559,22 +551,15 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         await syncQueueValuesFromCalls(siteIdUuid, siteRows, prefix);
 
         const adapter = getProvider(providerKey);
-        const jobs = siteRows.map((r) => {
-          const job = queueRowToConversionJob(r);
-
-          // Apply Predictive Value Engine
-          const ev = calculateExpectedValue(
-            siteValuation?.default_aov,
-            siteValuation?.intent_weights,
-            r.action
-          );
-
-          if (ev > 0) {
-            job.amount_cents = Math.round(ev * 100);
+        const rowsWithValue = siteRows.filter((r) => {
+          const v = (r as { value_cents?: number | null }).value_cents;
+          if (v == null || v === undefined) {
+            logWarn('OCI_ROW_SKIP_NULL_VALUE', { queue_id: r.id, prefix });
+            return false;
           }
-
-          return job;
+          return true;
         });
+        const jobs = rowsWithValue.map((r) => queueRowToConversionJob(r));
         const batchId = crypto.randomUUID();
         const startedAt = Date.now();
         let attemptCompleted = 0;
@@ -603,7 +588,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             attemptErrorCode = null;
             attemptErrorCategory = 'TRANSIENT';
             await bulkUpdateQueueGrouped(
-              siteRows,
+              rowsWithValue,
               (r) => r.id,
               (row) => {
                 const count = (row.retry_count ?? 0) + 1;
@@ -632,7 +617,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               prefix,
               'Update RETRY/FAILED after throw failed'
             );
-            for (const row of siteRows) {
+            for (const row of rowsWithValue) {
               const count = (row.retry_count ?? 0) + 1;
               const isFinal = count >= MAX_RETRY_ATTEMPTS;
               if (isFinal) {
@@ -646,7 +631,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           }
 
           if (results !== undefined) {
-            const rowById = new Map(siteRows.map((r) => [r.id, r]));
+            const rowById = new Map(rowsWithValue.map((r) => [r.id, r]));
             const updates: { row: QueueRow; result: UploadResult }[] = [];
             for (const result of results) {
               const row = rowById.get(result.job_id);
@@ -822,15 +807,23 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
 
         await syncQueueValuesFromCalls(siteIdUuid, rowsToProcess, prefix);
 
+        const rowsWithValue = rowsToProcess.filter((r) => {
+          const v = (r as { value_cents?: number | null }).value_cents;
+          if (v == null || v === undefined) {
+            logWarn('OCI_ROW_SKIP_NULL_VALUE', { queue_id: r.id, prefix });
+            return false;
+          }
+          return true;
+        });
         const adapter = getProvider(providerKey);
-        const jobs = rowsToProcess.map(queueRowToConversionJob);
+        const jobs = rowsWithValue.map(queueRowToConversionJob);
         let results: UploadResult[];
         try {
           results = await adapter.uploadConversions({ jobs, credentials });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           await bulkUpdateQueueGrouped(
-            rowsToProcess,
+            rowsWithValue,
             (r) => r.id,
             (row) => {
               const count = (row.retry_count ?? 0) + 1;
@@ -854,7 +847,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             prefix,
             'Update RETRY/FAILED (cron adapter throw) failed'
           );
-          for (const row of rowsToProcess) {
+          for (const row of rowsWithValue) {
             const count = (row.retry_count ?? 0) + 1;
             const isFatal = count >= 8;
             if (isFatal) {
@@ -871,7 +864,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           continue;
         }
 
-        const rowById = new Map(rowsToProcess.map((r) => [r.id, r]));
+        const rowById = new Map(rowsWithValue.map((r) => [r.id, r]));
         const cronUpdates: { row: QueueRow; result: UploadResult }[] = [];
         for (const result of results) {
           const row = rowById.get(result.job_id);

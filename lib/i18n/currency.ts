@@ -15,6 +15,37 @@ export function normalizeCurrency(code: string | null | undefined, fallback = 'U
   }
 }
 
+/**
+ * Currency minor units (decimal places). Used for value pipeline consistency.
+ * TRY/EUR/USD = 2; JPY/KRW = 0; KWD/BHD = 3.
+ */
+const CURRENCY_MINOR_UNITS: Record<string, number> = {
+  TRY: 2, EUR: 2, USD: 2, GBP: 2, CHF: 2, CAD: 2, AUD: 2, NZD: 2,
+  DKK: 2, NOK: 2, SEK: 2, PLN: 2, CZK: 2, HUF: 2, RON: 2, BGN: 2,
+  ZAR: 2, MXN: 2, BRL: 2, CNY: 2, INR: 2, RUB: 2,
+  JPY: 0, KRW: 0, CLP: 0, PYG: 0, VND: 0, IDR: 0, ISK: 0,
+  KWD: 3, BHD: 3, OMR: 3, JOD: 3, TND: 3,
+};
+
+/** Returns minor unit decimal places for currency. Default 2 for unknown. */
+export function getMinorUnits(currency: string | null | undefined): number {
+  if (currency == null || typeof currency !== 'string') return 2;
+  const code = String(currency).trim().toUpperCase().slice(0, 3);
+  return CURRENCY_MINOR_UNITS[code] ?? 2;
+}
+
+/** Convert major units to minor (integer). E.g. 1000 TRY → 100000. */
+export function majorToMinor(major: number, currency: string | null | undefined): number {
+  const minorUnits = getMinorUnits(currency);
+  return Math.round(major * Math.pow(10, minorUnits));
+}
+
+/** Convert minor units to major (for display/export). E.g. 100000 TRY → 1000. */
+export function minorToMajor(minor: number, currency: string | null | undefined): number {
+  const minorUnits = getMinorUnits(currency);
+  return minor / Math.pow(10, minorUnits);
+}
+
 /** Resolve currency from site (or body). Legacy: config.currency, sites.currency. */
 export function resolveCurrency(
   site: { currency?: string | null; config?: { currency?: string } | null } | null | undefined,
@@ -36,20 +67,21 @@ export function resolveCurrency(
   }
 }
 
-/** Format cents as money string. Never throws. */
+/** Format minor units as money string. Never throws. Uses getMinorUnits for JPY/KWD. */
 export function formatMoneyFromCents(
-  cents: number | null | undefined,
+  minorUnits: number | null | undefined,
   currency: string,
   locale = 'en-US'
 ): string {
   try {
-    if (cents == null || typeof cents !== 'number' || !Number.isFinite(cents)) return '-';
-    const amount = cents / 100;
+    if (minorUnits == null || typeof minorUnits !== 'number' || !Number.isFinite(minorUnits)) return '-';
+    const amount = minorToMajor(minorUnits, currency);
+    const minor = getMinorUnits(currency);
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: normalizeCurrency(currency, 'USD'),
       minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
+      maximumFractionDigits: minor,
     }).format(amount);
   } catch {
     return '-';

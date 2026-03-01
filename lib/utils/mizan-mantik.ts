@@ -1,6 +1,9 @@
 /**
  * @deprecated Use lib/domain/mizan-mantik — MizanMantik 5-Gear Orchestrator.
  * Re-exports for backward compat (export route, predictive-engine).
+ *
+ * OCI IMPORT BAN: intent_weights / DEFAULT_INTENT_WEIGHTS / calculateConversionValue must NOT
+ * be used for OCI conversion value. OCI uses value-calculator.ts (V5 = sale or 0; V2–V4 = 5-gear decay).
  */
 
 import { calculateSignalEV } from '@/lib/domain/mizan-mantik';

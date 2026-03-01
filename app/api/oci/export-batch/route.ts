@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
-import { calculateLeadValue } from '@/lib/valuation/calculator';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
@@ -79,7 +78,7 @@ export async function GET(req: NextRequest) {
     // 2. Site lookup
     const { data: site, error: siteError } = await adminClient
       .from('sites')
-      .select('id, currency, default_deal_value')
+      .select('id, currency')
       .eq('id', siteId)
       .maybeSingle();
 
@@ -98,10 +97,9 @@ export async function GET(req: NextRequest) {
     }
 
     const currency = (site as { currency?: string })?.currency || 'TRY';
-    const siteDefaultValue = Number((site as { default_deal_value?: number | null }).default_deal_value) || 0;
     const { fromIso, toIso } = getTodayTrtUtcRange();
 
-    // 3. Fetch calls (sealed only) with lead_score and sale_amount for proxy value
+    // 3. Fetch calls (sealed only) with sale_amount for V5 value
     const { data: calls, error: callsError } = await adminClient
       .from('calls')
       .select('id, created_at, confirmed_at, matched_session_id, click_id, oci_status, lead_score, sale_amount')
@@ -193,18 +191,11 @@ export async function GET(req: NextRequest) {
       const hasAnyClickId = Boolean(gclid || wbraid || gbraid || fallbackClick);
       if (!hasAnyClickId) continue;
 
-      // Proxy value: use sale_amount if set, else derive from lead_score + site default_deal_value
-      const leadScore0to5 =
-        row.lead_score != null && Number.isFinite(row.lead_score)
-          ? Math.min(5, Math.max(0, Math.round(row.lead_score / 20)))
-          : 3;
-      const userPrice =
+      // V5: sale_amount or 0 (no lead_score proxy, no Math.max(1))
+      const value =
         row.sale_amount != null && Number.isFinite(row.sale_amount) && row.sale_amount > 0
           ? row.sale_amount
-          : null;
-      const conversionValue = calculateLeadValue(leadScore0to5, userPrice, siteDefaultValue);
-      // Do not send 0 to Google for qualified leads (ROAS bidding fails)
-      const value = conversionValue > 0 ? conversionValue : 1;
+          : 0;
 
       const rawTime = String(row.confirmed_at || row.created_at || '');
 

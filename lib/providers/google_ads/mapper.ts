@@ -3,6 +3,7 @@
  * PR-G3: Canonical payload (conversion_time, value_cents, currency, click_ids, order_id) -> Google format.
  */
 
+import { minorToMajor } from '@/lib/i18n/currency';
 import type { ConversionJob } from '../types';
 import type { GoogleAdsCredentials, ClickConversionRequest } from './types';
 
@@ -51,7 +52,7 @@ export function jobToClickConversion(
   const req: ClickConversionRequest = {
     conversion_action: conversionActionResourceName,
     conversion_date_time: toConversionDateTime(conversionTime),
-    conversion_value: valueCents / 100,
+    conversion_value: minorToMajor(valueCents, currency),
     currency_code: currency,
     order_id: orderId ?? undefined,
   };
