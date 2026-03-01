@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { ShieldCheck, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Star, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useSfx } from '@/lib/hooks/use-sfx';
 
@@ -18,8 +18,8 @@ export interface SealModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currency: string;
-  chipValues: number[];
-  /** Called when user saves: saleAmount can be null (lazy flow), leadScore is 1-5. */
+  chipValues?: number[];
+  /** Called when user saves: amount, currency, leadScore (always 100 for Golden Signal). */
   onConfirm: (saleAmount: number | null, currency: string, leadScore: number) => Promise<void>;
   /** Called when user clicks Junk: submit with score 0, status junk, then close. */
   onJunk?: () => Promise<void>;
@@ -30,77 +30,44 @@ export interface SealModalProps {
   onError?: (message: string) => void;
 }
 
-const DEFAULT_CHIPS = [1000, 5000, 10000, 25000];
-
 export function SealModal({
   open,
   onOpenChange,
   currency,
-  chipValues,
   onConfirm,
   onJunk,
   onSuccess,
   onJunkSuccess,
   onError,
 }: SealModalProps) {
-  const { t, formatNumber } = useTranslation();
-  const chips = chipValues.length > 0 ? chipValues : DEFAULT_CHIPS;
-  const [leadScore, setLeadScore] = useState<number>(0);
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const { t } = useTranslation();
   const [customAmount, setCustomAmount] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [junking, setJunking] = useState(false);
-  const [muted, setMuted] = useState<boolean>(false);
   const [sealSuccessPulse, setSealSuccessPulse] = useState(false);
-  const [starError, setStarError] = useState<string | null>(null);
 
   const sfxSrc = useMemo(() => '/sounds/cha-ching.mp3', []);
   const { play: playChaChing } = useSfx(sfxSrc);
 
-  // Persist mute preference locally (per device/browser)
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('opsmantik:sfx-muted');
-      if (saved === '1') setMuted(true);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('opsmantik:sfx-muted', muted ? '1' : '0');
-    } catch {
-      // ignore
-    }
-  }, [muted]);
-
   const customNum = customAmount.trim() ? Number(customAmount.trim()) : null;
   const effectiveAmount =
-    selectedAmount ?? (customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null);
+    customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null;
   const priceValid = effectiveAmount == null || (effectiveAmount >= 0 && Number.isFinite(effectiveAmount));
-  // Price is optional; we only validate it if provided.
   const canSave = priceValid;
 
   const handleConfirm = useCallback(async () => {
     if (!canSave) return;
-    if (!(leadScore >= 1 && leadScore <= 5)) {
-      setStarError(t('seal.errorSelectStar'));
-      return;
-    }
     setSaving(true);
     try {
-      await onConfirm(effectiveAmount ?? null, currency, leadScore);
+      await onConfirm(effectiveAmount ?? null, currency, 100);
 
-      // Gamification feedback (success only)
       try {
-        if (!muted) void playChaChing();
+        void playChaChing();
       } catch {
         // ignore
       }
       try {
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-          // light haptic
           (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(50);
         }
       } catch {
@@ -111,8 +78,6 @@ export function SealModal({
 
       onSuccess?.();
       onOpenChange(false);
-      setLeadScore(0);
-      setSelectedAmount(null);
       setCustomAmount('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('seal.errorSeal');
@@ -120,7 +85,7 @@ export function SealModal({
     } finally {
       setSaving(false);
     }
-  }, [canSave, effectiveAmount, currency, leadScore, muted, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
+  }, [canSave, effectiveAmount, currency, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
 
   const handleJunk = useCallback(async () => {
     if (!onJunk) return;
@@ -129,8 +94,6 @@ export function SealModal({
       await onJunk();
       onJunkSuccess?.();
       onOpenChange(false);
-      setLeadScore(0);
-      setSelectedAmount(null);
       setCustomAmount('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('seal.errorMarkJunk');
@@ -141,121 +104,46 @@ export function SealModal({
   }, [onJunk, onJunkSuccess, onError, onOpenChange, t]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-[min(92vw,440px)] max-h-[85vh] overflow-y-auto bg-white dark:bg-white text-slate-950 dark:text-slate-950 border border-slate-200"
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="h-[min(85vh,480px)] flex flex-col bg-white dark:bg-white text-slate-950 dark:text-slate-950 border-t border-slate-200 rounded-t-2xl"
         data-testid="seal-modal"
-        onPointerDownOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="pb-2 relative">
-          <DialogTitle className="text-xl font-semibold text-center">{t('seal.title')}</DialogTitle>
-          <button
-            type="button"
-            className="absolute right-0 top-0 p-2 rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
-            onClick={() => setMuted((v) => !v)}
-            aria-label={muted ? t('seal.unmute') : t('seal.mute')}
-            title={muted ? t('seal.unmute') : t('seal.mute')}
-          >
-            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
-        </DialogHeader>
-        <div className="space-y-6 py-4">
-          {/* Star rating (mandatory) — top */}
-          <div className="flex flex-col items-center">
-            <p className="text-sm font-semibold text-slate-700 mb-3">{t('seal.starLabel')}</p>
-            <div
-              className={cn(
-                'flex items-center justify-center gap-2 rounded-lg px-2 py-1',
-                starError && 'ring-2 ring-red-200'
-              )}
-            >
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  aria-label={t('seal.starAria', { star })}
-                  className={cn(
-                    'p-1.5 rounded-lg transition-all',
-                    leadScore >= star
-                      ? 'text-amber-500 hover:text-amber-600 hover:scale-110'
-                      : 'text-slate-300 hover:text-slate-400 hover:scale-105'
-                  )}
-                  onClick={() => {
-                    setLeadScore(star);
-                    if (starError) setStarError(null);
-                  }}
-                >
-                  <Star
-                    className={cn('h-10 w-10', leadScore >= star ? 'fill-amber-500' : 'fill-transparent')}
-                    strokeWidth={1.5}
-                  />
-                </button>
-              ))}
-            </div>
-            {leadScore >= 4 && (
-              <p className="text-sm font-medium text-emerald-600 mt-2.5">{t('seal.starQualified')}</p>
-            )}
-            {starError && (
-              <p className="text-sm font-medium text-red-600 mt-2">{starError}</p>
-            )}
-          </div>
-
-          {/* Price (optional) */}
+        <SheetHeader className="pb-4">
+          <SheetTitle className="flex items-center gap-2 text-xl font-semibold text-center">
+            <ShieldCheck className="h-8 w-8 text-emerald-600" aria-hidden />
+            {t('seal.title')}
+          </SheetTitle>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto space-y-4 py-2">
           <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-            <div className="mb-2">
-              <label className="text-sm font-semibold text-slate-700">{t('seal.priceLabel')}</label>
-              <p className="text-xs text-slate-500 mt-1">{t('seal.priceHelper')}</p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 justify-center">
-                {chips.map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={selectedAmount === value ? 'default' : 'outline'}
-                    size="sm"
-                    className={cn(
-                      'min-w-[80px] font-medium',
-                      selectedAmount === value && 'ring-2 ring-primary ring-offset-2'
-                    )}
-                    onClick={() => {
-                      setSelectedAmount(value);
-                      setCustomAmount('');
-                    }}
-                  >
-                    <span suppressHydrationWarning>{formatNumber(value)} {currency}</span>
-                  </Button>
-                ))}
-              </div>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                placeholder={t('seal.pricePlaceholder')}
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-950 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                value={customAmount}
-                onChange={(e) => {
-                  setCustomAmount(e.target.value);
-                  setSelectedAmount(null);
-                }}
-                data-testid="seal-modal-custom-amount"
-              />
-            </div>
+            <input
+              type="text"
+              inputMode="decimal"
+              min={0}
+              step={0.01}
+              placeholder={t('seal.pricePlaceholder', { currency })}
+              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+              value={customAmount}
+              onChange={(e) => setCustomAmount(e.target.value)}
+              data-testid="seal-modal-custom-amount"
+            />
+            <p className="text-sm text-slate-600 mt-2">{t('seal.instruction')}</p>
           </div>
         </div>
-        <DialogFooter className="flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200">
+        <SheetFooter className="flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200 pb-safe">
           {onJunk && (
             <Button
               type="button"
               variant="outline"
               size="lg"
-              className="w-full sm:w-auto text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-medium"
+              className="w-full sm:w-auto text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-medium min-h-[44px]"
               onClick={handleJunk}
               disabled={saving || junking}
               data-testid="seal-modal-junk"
             >
-              <Trash2 className="h-4 w-4 mr-2" />
+              <Trash2 className="h-4 w-4 mr-2" aria-hidden />
               {t('seal.junk')}
             </Button>
           )}
@@ -264,10 +152,9 @@ export function SealModal({
               type="button"
               variant="outline"
               size="lg"
-              className="flex-1 sm:flex-none font-medium"
+              className="flex-1 sm:flex-none font-medium min-h-[44px]"
               onClick={() => {
                 onOpenChange(false);
-                setSelectedAmount(null);
                 setCustomAmount('');
               }}
             >
@@ -277,18 +164,19 @@ export function SealModal({
               type="button"
               size="lg"
               className={cn(
-                'flex-1 sm:flex-none font-medium transition-transform duration-200',
+                'flex-1 sm:flex-none font-medium bg-emerald-600 hover:bg-emerald-700 text-white min-h-[44px] transition-transform duration-200',
                 sealSuccessPulse && 'scale-[1.04]'
               )}
               disabled={!canSave || saving || junking}
               onClick={handleConfirm}
               data-testid="seal-modal-confirm"
             >
-              {saving ? t('seal.sealing') : t('seal.confirm')}
+              <ShieldCheck className="h-4 w-4 mr-2" aria-hidden />
+              {saving ? t('seal.sealing') : t('seal.button')}
             </Button>
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

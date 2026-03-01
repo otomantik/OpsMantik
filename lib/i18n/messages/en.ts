@@ -191,13 +191,22 @@ export const en = {
   'intent.interaction': 'Interaction',
   'intent.general': 'Intent',
 
+  // OpsMantik gear names (UI display)
+  'opsmantik.v1_name': 'OpsMantik_V1_Pulse',
+  'opsmantik.v2_name': 'OpsMantik_V2_First_Contact',
+  'opsmantik.v3_name': 'OpsMantik_V3_Qualified_Call',
+  'opsmantik.v4_name': 'OpsMantik_V4_Hot_Quote',
+  'opsmantik.v5_name': 'OpsMantik_V5_IRON_SEAL',
+
   // Seal modal
-  'seal.title': 'Seal deal',
+  'seal.title': 'Train Algorithm with Real Revenue',
+  'seal.instruction': 'Accurate revenue data improves Google Smart Bidding efficiency by 40%.',
+  'seal.button': 'SEAL AND TRAIN',
   'seal.starLabel': 'Lead quality (required)',
   'seal.starQualified': 'Qualified',
   'seal.priceLabel': 'Actual Price (Optional)',
   'seal.priceHelper': 'You can skip the price. Adding it helps ROAS reporting.',
-  'seal.pricePlaceholder': '0',
+  'seal.pricePlaceholder': '0.00 {currency}',
   'seal.junk': 'Junk',
   'seal.cancel': 'Cancel',
   'seal.confirm': 'Save',
@@ -329,6 +338,13 @@ export const en = {
   'hunter.successJunk': 'Marked Junk',
   'hunter.riskHigh': 'High Risk',
   'hunter.riskSafe': 'Safe',
+  'hunter.gorusuldu': 'Contacted',
+  'hunter.teklif': 'Quote',
+  'hunter.anonimWhatsApp': 'Anonymous WhatsApp',
+  'hunter.anonimCall': 'Anonymous Call',
+  'hunter.anonimContact': 'Anonymous Contact',
+  'hunter.leadSource': 'Source',
+  'hunter.liveEv': 'Live Value',
 
   'toast.saved': 'Saved successfully!',
   'toast.error.generic': 'An error occurred',

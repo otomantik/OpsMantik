@@ -1,75 +1,67 @@
 /**
  * OpsMantik Signal Emitter
  *
- * Sistemde bir durum değiştiğinde (örn: form gönderildi, mühür beklemede, toplantı planlandı)
- * çağrılır. Orijinal veriyi bozmadan, Google Ads Observation/Optimization için yeni bir
- * 'Sinyal Olayı' yaratır.
- *
- * Sinyaller marketing_signals tablosuna append-only yazılır.
- * MizanMantik: baseValue + clickDate + signalDate → time-decayed conversion_value.
+ * Delegates to MizanMantikOrchestrator. No longer does valuation math.
+ * Maps legacy SignalType → OpsGear, calls evaluateAndRouteSignal.
  */
 
-import { adminClient } from '@/lib/supabase/admin';
-import { calculateDecayedValue } from '@/lib/utils/mizan-mantik';
+import { evaluateAndRouteSignal, resolveGearFromLegacy } from '@/lib/domain/mizan-mantik';
+import type { LegacySignalType } from '@/lib/domain/mizan-mantik';
 
-export type SignalType = 'INTENT_CAPTURED' | 'SEAL_PENDING' | 'MEETING_BOOKED';
+export type SignalType = LegacySignalType;
 
 export interface EmitSignalParams {
   siteId: string;
   callId?: string | null;
   signalType: SignalType;
-  conversionName: string; // Örn: 'OpsMantik_Qualified', 'OpsMantik_Lead'
-  /** MizanMantik: base value (e.g. AOV) for time-decay. */
-  baseValue?: number;
-  /** MizanMantik: when the user clicked the ad. */
-  clickDate?: Date;
-  /** MizanMantik: when the signal occurred (default: now). */
+  conversionName?: string;
+  aov: number;
+  clickDate: Date;
   signalDate?: Date;
+  /** For V2 dedup: gclid from primary source if no call_id */
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
 }
 
 /**
- * Sinyal yayınla — marketing_signals tablosuna append-only kayıt ekler.
- * Google Ads Observation/Optimization sinyalleri için zaman damgalı geçmiş oluşturur.
- * When baseValue, clickDate, signalDate are provided, conversion_value is computed via MizanMantik.
+ * Emit signal — delegates to MizanMantikOrchestrator.evaluateAndRouteSignal.
+ * V2 dedup: returns null if dropped (same call_id or site_id+gclid within 24h).
  */
-export async function emitSignal(params: EmitSignalParams) {
-  const { siteId, callId, signalType, conversionName, baseValue, clickDate, signalDate } = params;
+export async function emitSignal(params: EmitSignalParams): Promise<{
+  id?: string | null;
+  signalType: SignalType;
+  conversionName: string;
+  dropped?: boolean;
+} | null> {
+  const { siteId, callId, signalType, conversionName, aov, clickDate, signalDate, gclid, wbraid, gbraid } = params;
 
-  const now = new Date();
-  const sigDate = signalDate ?? now;
+  const gear = resolveGearFromLegacy(signalType);
+  const sigDate = signalDate ?? new Date();
 
-  let conversionValue: number | null = null;
-  if (
-    typeof baseValue === 'number' &&
-    Number.isFinite(baseValue) &&
-    clickDate instanceof Date &&
-    !Number.isNaN(clickDate.getTime())
-  ) {
-    conversionValue = calculateDecayedValue(baseValue, clickDate, sigDate);
-  }
-
-  const insertPayload: Record<string, unknown> = {
-    site_id: siteId,
-    call_id: callId ?? null,
-    signal_type: signalType,
-    google_conversion_name: conversionName,
-    google_conversion_time: sigDate.toISOString(),
-    dispatch_status: 'PENDING',
+  const payload = {
+    siteId,
+    callId,
+    gclid,
+    wbraid,
+    gbraid,
+    aov: Number.isFinite(aov) ? aov : 100,
+    clickDate: clickDate instanceof Date ? clickDate : new Date(clickDate),
+    signalDate: sigDate,
+    conversionName: conversionName ?? `OpsMantik_${signalType}`,
   };
-  if (conversionValue !== null) {
-    insertPayload.conversion_value = conversionValue;
+
+  const result = await evaluateAndRouteSignal(gear, payload);
+
+  if (result.dropped) return null;
+
+  if (!result.routed) {
+    throw new Error('MizanMantik: sinyal matrise yazılamadı.');
   }
 
-  const { data, error } = await adminClient
-    .from('marketing_signals')
-    .insert(insertPayload)
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('[Signal Emitter] Sinyal kayıt hatası:', error.message);
-    throw new Error('Sinyal matrise yazılamadı.');
-  }
-
-  return { id: data?.id, signalType, conversionName };
+  return {
+    id: result.signalId ?? null,
+    signalType,
+    conversionName: payload.conversionName,
+  };
 }

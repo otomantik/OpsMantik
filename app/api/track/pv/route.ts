@@ -1,27 +1,21 @@
 /**
- * POST /api/track/pv — Lightning Page View ingestion (Ops_PageView)
+ * POST /api/track/pv — V1_PAGEVIEW (MizanMantik 5-Gear)
  *
- * MizanMantik Signal Matrix, 4th Valve: high-volume "Defibrillator" signal for Google Ads.
- * Redis-backed, zero PostgreSQL footprint. Strict GCLID gate: organic traffic is silently dropped.
+ * Şok cihazı — volume sinyali, value=0. Orchestrator routes to Redis.
+ * Strict GCLID gate: organic traffic silently dropped.
  *
  * Body: { siteId: string, gclid?: string, wbraid?: string, gbraid?: string }
  * Response: 200 OK always (pixel fire-and-forget)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { redis } from '@/lib/upstash';
+import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { logError } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const PV_TTL_SEC = 48 * 60 * 60; // 48 hours
-
-function generatePvId(): string {
-  return 'pv_' + crypto.randomUUID().replace(/-/g, '');
-}
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get('origin');
@@ -56,19 +50,22 @@ export async function POST(req: NextRequest) {
       namespace: 'track-pv',
     });
 
-    const pvId = generatePvId();
-    const payload = {
+    const now = new Date();
+    const result = await evaluateAndRouteSignal('V1_PAGEVIEW', {
       siteId,
-      gclid: gclid || '',
-      wbraid: wbraid || '',
-      gbraid: gbraid || '',
-      timestamp: new Date().toISOString(),
-    };
+      gclid: gclid || null,
+      wbraid: wbraid || null,
+      gbraid: gbraid || null,
+      aov: 0,
+      clickDate: now,
+      signalDate: now,
+    });
 
-    await redis.set(`pv:data:${pvId}`, JSON.stringify(payload), { ex: PV_TTL_SEC });
-    await redis.lpush(`pv:queue:${siteId}`, pvId);
+    if (!result.routed || !result.pvId) {
+      return NextResponse.json({ ok: false }, { status: 200, headers: corsHeaders });
+    }
 
-    return NextResponse.json({ ok: true, id: pvId }, { status: 200, headers: corsHeaders });
+    return NextResponse.json({ ok: true, id: result.pvId }, { status: 200, headers: corsHeaders });
   } catch (e) {
     logError('TRACK_PV_ERROR', { error: e instanceof Error ? e.message : String(e) });
     return NextResponse.json({ ok: false }, { status: 200, headers: corsHeaders });

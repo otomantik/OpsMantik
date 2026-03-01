@@ -41,17 +41,29 @@ function ActiveDeckCard({
     onQualified // Pass refetch callback for undo success
   );
 
-  const fireQualify = (params: { score: 0 | 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }) => {
-    // Fire-and-forget background update; keep UI native-fast.
+  const fireQualify = (params: { score: 0 | 1 | 2 | 3 | 4 | 5; status: 'confirmed' | 'junk' }, optimistic = false) => {
+    if (optimistic) {
+      onOptimisticRemove(intent.id);
+      pushHistoryRow({
+        id: intent.id,
+        status: 'confirmed',
+        intent_action: intent.intent_action ?? null,
+        identity: intent.intent_target ?? null,
+      });
+      pushToast('success', t('seal.dealSealed'));
+    }
     void qualify(params)
       .then(() => {
         onQualified();
       })
       .catch(() => {
-        // Best-effort: refresh + show error toast; avoid re-inserting the card to keep flow snappy.
         pushToast('danger', t('toast.failedUpdate'));
         onQualified();
       });
+  };
+
+  const handleQualify = (params: { score: 4 | 5; status: 'confirmed' }) => {
+    fireQualify(params, true);
   };
 
   const handleSeal = ({ id, stars }: { id: string; stars: number }) => {
@@ -70,7 +82,7 @@ function ActiveDeckCard({
     fireQualify({ score: s, status: 'confirmed' });
   };
 
-  const handleJunk = ({ id }: { id: string; stars: number }) => {
+  const handleJunk = ({ id }: { id: string; stars?: number }) => {
     onOptimisticRemove(id);
     pushHistoryRow({
       id,
@@ -80,7 +92,7 @@ function ActiveDeckCard({
     });
     pushToast('danger', t('toast.trashRemoved'));
     // Junk should be score=0 (0-100 lead_score = 0) to avoid polluting OCI value logic.
-    fireQualify({ score: 0, status: 'junk' });
+    fireQualify({ score: 0, status: 'junk' }, false);
   };
 
   return (
@@ -99,8 +111,9 @@ function ActiveDeckCard({
           traffic_medium={intent.traffic_medium ?? null}
           onSeal={({ id, stars }) => handleSeal({ id, stars })}
           onSealDeal={onSealDeal}
-          onJunk={({ id, stars }) => handleJunk({ id, stars })}
+          onJunk={({ id }) => handleJunk({ id })}
           onSkip={() => onSkip()}
+          onQualify={handleQualify}
           readOnly={readOnly}
         />
       </div>

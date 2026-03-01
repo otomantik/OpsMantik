@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { calculateExpectedValue } from '@/lib/valuation/predictive-engine';
+import { formatGoogleAdsTime } from '@/lib/utils/format-google-ads-time';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
@@ -32,7 +33,7 @@ export interface GoogleAdsConversionItem {
   gbraid: string;
   /** Conversion action name (e.g. "Sealed Lead"). */
   conversionName: string;
-  /** Format: yyyy-mm-dd hh:mm:ss+0300 (Turkey Time). Do not use ISO with Z or milliseconds. */
+  /** Format: yyyy-mm-dd HH:mm:ssXXX (site timezone, e.g. +0300). Do not use ISO with Z or milliseconds. */
   conversionTime: string;
   /** Numeric value only (e.g. 750.00). No currency symbols. */
   conversionValue: number;
@@ -88,15 +89,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; oci_sync_method?: string | null }) | null = null;
-    const byId = await adminClient.from('sites').select('id, public_id, currency, oci_sync_method, default_aov, intent_weights').eq('id', siteId).maybeSingle();
+    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null }) | null = null;
+    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights').eq('id', siteId).maybeSingle();
     if (byId.data) {
-      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; oci_sync_method?: string | null };
+      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null };
     }
     if (!site) {
-      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, oci_sync_method, default_aov, intent_weights').eq('public_id', siteId).maybeSingle();
+      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; oci_sync_method?: string | null };
+        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null };
       }
     }
     if (!site) {
@@ -125,8 +126,6 @@ export async function GET(req: NextRequest) {
       }
       throw err;
     }
-
-    const conversionName = (process.env.OCI_CONVERSION_NAME || 'Sealed Lead').trim();
 
     const query = adminClient
       .from('offline_conversion_queue')
@@ -169,7 +168,7 @@ export async function GET(req: NextRequest) {
       if (!clickId) continue;
 
       const rawTime = (sig as { google_conversion_time: string }).google_conversion_time || '';
-      const conversionTime = formatConversionTimeTurkey(rawTime);
+      const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
@@ -202,6 +201,9 @@ export async function GET(req: NextRequest) {
         pvIds.push(id);
       }
       for (const pvId of pvIds) {
+        // 10% deterministic sampling: hash(pvId) % 10 === 0
+        const hash = simpleHash(pvId);
+        if (hash % 10 !== 0) continue;
         const raw = await redis.get(`pv:data:${pvId}`);
         if (!raw || typeof raw !== 'string') continue;
         let payload: { siteId?: string; gclid?: string; wbraid?: string; gbraid?: string; timestamp?: string };
@@ -216,14 +218,14 @@ export async function GET(req: NextRequest) {
         const clickId = gclid || wbraid || gbraid;
         if (!clickId) continue;
         const rawTime = payload.timestamp || new Date().toISOString();
-        const conversionTime = formatConversionTimeTurkey(rawTime);
+        const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
         pvItems.push({
           id: pvId,
           orderId: pvId,
           gclid: gclid || '',
           wbraid: wbraid || '',
           gbraid: gbraid || '',
-          conversionName: 'Ops_PageView',
+          conversionName: OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW,
           conversionTime,
           conversionValue: 0,
           conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
@@ -240,6 +242,7 @@ export async function GET(req: NextRequest) {
 
     const callIds = rawList.map((r: { call_id: string | null }) => r.call_id).filter(Boolean) as string[];
     const sessionByCall: Record<string, string> = {};
+    const sessionCreatedAt: Record<string, string> = {};
     if (callIds.length > 0) {
       const { data: calls } = await adminClient
         .from('calls')
@@ -249,6 +252,17 @@ export async function GET(req: NextRequest) {
       for (const c of calls ?? []) {
         const sid = (c as { matched_session_id?: string | null }).matched_session_id;
         if (sid) sessionByCall[(c as { id: string }).id] = sid;
+      }
+      const sessionIds = [...new Set(Object.values(sessionByCall))].filter(Boolean);
+      if (sessionIds.length > 0) {
+        const { data: sessions } = await adminClient
+          .from('sessions')
+          .select('id, created_at')
+          .in('id', sessionIds);
+        for (const s of sessions ?? []) {
+          const created = (s as { created_at?: string | null }).created_at;
+          if (created) sessionCreatedAt[(s as { id: string }).id] = created;
+        }
       }
     }
 
@@ -320,12 +334,19 @@ export async function GET(req: NextRequest) {
       action?: string | null;
     }) => {
       const rawTime = row.conversion_time || '';
-      const conversionTime = formatConversionTimeTurkey(rawTime);
+      const sealTs = new Date(rawTime || 0).getTime();
+      const sessionId = row.call_id ? sessionByCall[row.call_id] : null;
+      const clickTimeIso = sessionId ? sessionCreatedAt[sessionId] : null;
+      const clickTime = clickTimeIso ? new Date(clickTimeIso).getTime() : sealTs;
+      const diffHours = (sealTs - clickTime) / (60 * 60 * 1000);
+      const exportTs = diffHours < 24
+        ? new Date(clickTime + 24 * 60 * 60 * 1000 + 60 * 1000).toISOString()
+        : rawTime;
+      const conversionTime = formatGoogleAdsTime(exportTs, (site as { timezone?: string | null }).timezone);
 
-      // Ground truth: use value_cents from queue (operator-entered or OCI config). Fallback: Predictive Value Engine.
-      const queueValue = (Number(row.value_cents) || 0) / 100;
-      const ev = calculateExpectedValue(site?.default_aov, site?.intent_weights, row.action);
-      const conversionValue = ensureNumericValue(queueValue > 0 ? queueValue : (ev > 0 ? ev : 0));
+      // V5 Iron Seal: raw value_cents/100. No decay.
+      const valueCents = Number(row.value_cents) || 0;
+      const conversionValue = ensureNumericValue(valueCents / 100);
 
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
 
@@ -335,7 +356,7 @@ export async function GET(req: NextRequest) {
         gclid: (row.gclid || '').trim(),
         wbraid: (row.wbraid || '').trim(),
         gbraid: (row.gbraid || '').trim(),
-        conversionName,
+        conversionName: OPSMANTIK_CONVERSION_NAMES.V5_SEAL,
         conversionTime,
         conversionValue,
         conversionCurrency,
@@ -352,31 +373,13 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** Turkey timezone offset: +3 hours in ms. Do not use .toISOString() — Google Ads rejects 'Z' and milliseconds. */
-const TURKEY_OFFSET_MS = 3 * 60 * 60 * 1000;
-
-/**
- * Format conversion time as yyyy-mm-dd hh:mm:ss+0300 (Turkey Time).
- * Input is stored as UTC; we convert to Turkey and append +0300.
- * Example: 2026-02-25 18:24:15+0300
- */
-function formatConversionTimeTurkey(isoOrEmpty: string): string {
-  if (!isoOrEmpty || typeof isoOrEmpty !== 'string') {
-    return formatConversionTimeTurkey(new Date().toISOString());
+/** Deterministic hash for 10% V1 sampling. */
+function simpleHash(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h) + str.charCodeAt(i) | 0;
   }
-  const d = new Date(isoOrEmpty);
-  if (Number.isNaN(d.getTime())) {
-    return formatConversionTimeTurkey(new Date().toISOString());
-  }
-  const turkeyMs = d.getTime() + TURKEY_OFFSET_MS;
-  const turkey = new Date(turkeyMs);
-  const y = turkey.getUTCFullYear();
-  const m = String(turkey.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(turkey.getUTCDate()).padStart(2, '0');
-  const h = String(turkey.getUTCHours()).padStart(2, '0');
-  const min = String(turkey.getUTCMinutes()).padStart(2, '0');
-  const s = String(turkey.getUTCSeconds()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}:${s}+0300`;
+  return Math.abs(h);
 }
 
 /** Ensure value is a number suitable for Conversion value (no currency symbols). Round to 2 decimals. */

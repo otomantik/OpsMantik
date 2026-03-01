@@ -8,7 +8,7 @@ import type { HunterIntent } from '@/lib/types/hunter';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 import { Icons } from '@/components/icons';
-import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, type LucideIcon } from 'lucide-react';
+import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, Trash2, UserCheck, TrendingUp, ShieldCheck, CircleDollarSign, Target, type LucideIcon } from 'lucide-react';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -40,6 +40,29 @@ function sourceTypeOf(action: string | null | undefined): HunterSourceType {
   if (a === 'phone') return 'phone';
   if (a === 'form') return 'form';
   return 'other';
+}
+
+/** Strip tel:, wa:, https://wa.me/ from intent_target. */
+function normalizeIntentTarget(raw: string | null | undefined): string {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  return s
+    .replace(/^tel:/i, '')
+    .replace(/^wa:/i, '')
+    .replace(/^https?:\/\/wa\.me\//i, '')
+    .replace(/^\+/, '')
+    .trim();
+}
+
+/** Adaptive anonymous fallback per intent_action. */
+function getAnonymousLabel(
+  action: string | null | undefined,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
+  const a = (action || '').toLowerCase();
+  if (a === 'phone') return t('hunter.anonimCall');
+  if (a === 'whatsapp') return t('hunter.anonimWhatsApp');
+  return t('hunter.anonimContact');
 }
 
 function getScoreColor(score: number): { border: string; bg: string; text: string } {
@@ -164,6 +187,7 @@ export function HunterCard({
   onSealDeal,
   onJunk,
   onSkip,
+  onQualify,
   readOnly,
 }: {
   intent: HunterIntent;
@@ -173,6 +197,7 @@ export function HunterCard({
   onSealDeal?: () => void;
   onJunk: (params: { id: string; stars: number; score: number }) => void;
   onSkip: (params: { id: string }) => void;
+  onQualify?: (params: { score: 4 | 5; status: 'confirmed' }) => void;
   readOnly?: boolean;
 }) {
   const { t: translate } = useTranslation();
@@ -197,10 +222,36 @@ export function HunterCard({
     [intent.device_type, intent.device_os, intent.browser, translate]
   );
 
+  const identityDisplay = useMemo(() => {
+    const norm = normalizeIntentTarget(intent.intent_target);
+    if (norm) return norm;
+    return getAnonymousLabel(intent.intent_action, translate);
+  }, [intent.intent_target, intent.intent_action, translate]);
+
+  const geoDisplay = useMemo(() => {
+    const district = (intent.district || '').trim();
+    const city = (intent.city || '').trim();
+    const combined = [district, city].filter(Boolean).join(' / ');
+    if (!combined) return translate('hunter.locationUnknown');
+    return combined.toLocaleUpperCase('tr-TR');
+  }, [intent.district, intent.city, translate]);
+
   const locationDisplay = useMemo(() => {
     const out = formatLocation(intent.city ?? null, intent.district ?? null);
     return out === '—' ? translate('hunter.locationUnknown') : out;
   }, [intent.city, intent.district, translate]);
+
+  const leadSourceLabel = useMemo(() => {
+    const trk = normalizeTraffic(trafficSource, trafficMedium, translate);
+    return trk.label;
+  }, [trafficSource, trafficMedium, translate]);
+
+  const liveEvDisplay = useMemo(() => {
+    const ev = intent.estimated_value;
+    const cur = (intent.currency || 'TRY').trim().toUpperCase();
+    if (ev == null || !Number.isFinite(ev) || ev < 0) return '—';
+    return `${ev.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${cur}`;
+  }, [intent.estimated_value, intent.currency]);
 
   const locationWithSource = useMemo(() => {
     if (intent.location_source === 'gclid') {
@@ -241,21 +292,21 @@ export function HunterCard({
       )}
     >
       <CardHeader className="p-4 pb-2 shrink-0 border-b border-slate-100">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className={cn(
               'p-2.5 rounded-xl border shrink-0',
               'bg-blue-500/10 border-blue-500/20 text-blue-600'
             )}>
               <IntentIcon className="h-5 w-5" />
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-800 truncate">
-                {sourceType === 'whatsapp' ? translate('hunter.intentWhatsApp') : sourceType === 'phone' ? translate('hunter.intentPhone') : sourceType === 'form' ? translate('hunter.intentForm') : translate('hunter.intentGeneral')}
+            <div className="min-w-0 flex-1">
+              <div className="text-base font-bold text-slate-900 truncate">
+                {identityDisplay}
               </div>
-              <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                <Clock className="h-3.5 w-3.5" />
-                <span suppressHydrationWarning>{relativeTime(intent.created_at, translate)}</span>
+              <div className="flex items-center gap-1.5 mt-1.5 text-slate-600">
+                <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="text-xs font-medium truncate">{geoDisplay}</span>
               </div>
             </div>
           </div>
@@ -270,6 +321,26 @@ export function HunterCard({
       </CardHeader>
 
       <CardContent className="p-4 flex-1">
+        <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/50 p-3 mb-3 min-h-[44px]">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Target className="h-3.5 w-3.5 text-slate-600" aria-hidden />
+            <span className="text-xs font-medium text-slate-700 truncate max-w-[120px]" title={leadSourceLabel}>
+              {leadSourceLabel || '—'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <CircleDollarSign className="h-4 w-4 text-emerald-600" aria-hidden />
+            <span className="text-xs font-semibold text-emerald-700 truncate max-w-[100px]">
+              {liveEvDisplay}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end">
+            <Clock className="h-3.5 w-3.5 text-slate-600 shrink-0" aria-hidden />
+            <span className="text-xs font-medium text-slate-700 truncate" suppressHydrationWarning>
+              {relativeTime(intent.created_at, translate)}
+            </span>
+          </div>
+        </div>
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
           <Row label={translate('hunter.sessionActions')} value={actionsDisplay} icon={Clock} />
           <Row label={translate('hunter.keyword')} value={keywordDisplay} icon={FileText} />
@@ -286,33 +357,62 @@ export function HunterCard({
       </CardContent>
 
       <CardFooter className="p-4 pt-0 gap-2 shrink-0 border-t border-slate-100">
-        <div className="grid grid-cols-3 gap-2 w-full">
+        <div className="grid grid-cols-4 gap-2 w-full">
           <Button
             variant="outline"
             size="sm"
-            className="h-9 border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs"
+            className="min-h-[44px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs"
             onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
-            {translate('hunter.junk')}
+            <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
           </Button>
+          {onQualify ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] border-slate-200 font-semibold text-xs"
+                onClick={() => onQualify({ score: 4, status: 'confirmed' })}
+                disabled={Boolean(readOnly)}
+                title={translate('hunter.gorusuldu')}
+              >
+                <UserCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
+                <span className="truncate">{translate('hunter.gorusuldu')}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] border-slate-200 font-semibold text-xs"
+                onClick={() => onQualify({ score: 5, status: 'confirmed' })}
+                disabled={Boolean(readOnly)}
+                title={translate('hunter.teklif')}
+              >
+                <TrendingUp className="h-4 w-4 shrink-0 mr-1" aria-hidden />
+                <span className="truncate">{translate('hunter.teklif')}</span>
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] border-slate-200 font-semibold text-xs col-span-2"
+              onClick={() => onSkip({ id: intent.id })}
+            >
+              {translate('hunter.skip')}
+            </Button>
+          )}
           <Button
-            variant="outline"
             size="sm"
-            className="h-9 border-slate-200 font-semibold text-xs"
-            onClick={() => onSkip({ id: intent.id })}
-          >
-            {translate('hunter.skip')}
-          </Button>
-          <Button
-            size="sm"
-            className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+            className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
+            data-testid="hunter-card-seal-deal"
           >
-            {translate('hunter.seal')}
+            <ShieldCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
+            <span className="truncate">{translate('hunter.seal')}</span>
           </Button>
         </div>
       </CardFooter>

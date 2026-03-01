@@ -510,7 +510,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         body: JSON.stringify({
           sale_amount: saleAmount ?? null,
           currency,
-          lead_score: leadScore * 20,
+          lead_score: (leadScore >= 100 || leadScore > 5) ? 100 : leadScore * 20,
         }),
       });
       if (!res.ok) {
