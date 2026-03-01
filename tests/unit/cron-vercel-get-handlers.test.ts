@@ -79,6 +79,20 @@ for (const route of PR3_ROUTES) {
   });
 }
 
+// PR-5: invoice-freeze has top-level try/catch with INVOICE_FREEZE_ERROR and 500 on error
+test('PR-5: invoice-freeze contains INVOICE_FREEZE_ERROR and returns 500 in catch path', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'invoice-freeze', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes("'INVOICE_FREEZE_ERROR'") || src.includes('"INVOICE_FREEZE_ERROR"'),
+    'invoice-freeze must log INVOICE_FREEZE_ERROR on unexpected failure'
+  );
+  assert.ok(
+    src.includes('status: 500') && src.includes('ok: false') && src.includes("'Internal error'"),
+    'invoice-freeze catch path must return 500 JSON { ok: false, error: "Internal error" }'
+  );
+});
+
 // PR-4: sweep-unsent-conversions lookback is UTC-aligned (no local setDate/getDate)
 test('PR-4: sweep-unsent-conversions uses Date.now() based lookback, not .setDate(', () => {
   const path = join(process.cwd(), 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts');

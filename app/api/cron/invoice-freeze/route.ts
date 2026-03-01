@@ -17,7 +17,8 @@ export const runtime = 'nodejs';
  * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
 async function run(_req: NextRequest) {
-    // 1. Determine Target Month (Previous UTC Month)
+    try {
+        // 1. Determine Target Month (Previous UTC Month)
     // If run on Feb 1st, we freeze Jan.
     const now = new Date();
     const prevMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
@@ -139,6 +140,15 @@ async function run(_req: NextRequest) {
         { ok: true, year_month: yearMonth, frozen, failed },
         { headers: getBuildInfoHeaders() }
     );
+    } catch (err) {
+        logError('INVOICE_FREEZE_ERROR', {
+            error: err instanceof Error ? err.message : String(err),
+        });
+        return NextResponse.json(
+            { ok: false, error: 'Internal error' },
+            { status: 500, headers: getBuildInfoHeaders() }
+        );
+    }
 }
 
 export async function GET(req: NextRequest) {
