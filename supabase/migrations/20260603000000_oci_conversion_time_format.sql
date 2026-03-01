@@ -1,6 +1,6 @@
 -- =============================================================================
--- OCI: get_call_session_for_oci — conversion_time yyyyMMdd HHmmss
--- Original event time (calls.created_at); fallback queue.created_at.
+-- OCI: get_call_session_for_oci — conversion_time_formatted yyyyMMdd HH24MISS
+-- Seal: calls.confirmed_at. Intent: calls.created_at. Fallback: oq.created_at.
 -- Google Ads: timezone offset göndermiyoruz; hesap ayarı (Europe/Istanbul) kullanılır.
 -- =============================================================================
 
@@ -42,7 +42,7 @@ AS $$
     s.referrer_host,
     s.consent_scopes,
     to_char(
-      COALESCE(c.created_at, oq.created_at) AT TIME ZONE COALESCE(st.timezone, 'Europe/Istanbul'),
+      COALESCE(c.confirmed_at, c.created_at, oq.created_at) AT TIME ZONE COALESCE(st.timezone, 'Europe/Istanbul'),
       'YYYYMMDD HH24MISS'
     ) AS conversion_time_formatted
   FROM public.calls c
@@ -57,7 +57,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.get_call_session_for_oci(uuid, uuid) IS
-  'OCI: call + session + conversion_time_formatted (yyyyMMdd HHmmss). Uses calls.created_at; fallback oq.created_at.';
+  'OCI: call + session + conversion_time_formatted. Seal=confirmed_at; Intent=created_at; fallback oq.created_at.';
 
 GRANT EXECUTE ON FUNCTION public.get_call_session_for_oci(uuid, uuid) TO service_role;
 

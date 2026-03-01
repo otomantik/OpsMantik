@@ -2,11 +2,14 @@
  * POST /api/oci/ack — Script yükleme sonrası: Google'a giden kayıtları onaylar.
  *
  * Tri-Pipeline: Script queueIds'leri seal_, signal_, pv_ prefix'i ile gönderir.
- * - seal_* → offline_conversion_queue (status=COMPLETED, uploaded_at=NOW)
+ * - seal_* → offline_conversion_queue (status=COMPLETED or UPLOADED; see pendingConfirmation)
  * - signal_* → marketing_signals (dispatch_status=SENT, google_sent_at=NOW)
  * - pv_* → Redis: DEL pv:data:{id}, LREM pv:processing:{siteId}
  *
- * Body: { siteId: string, queueIds: string[], skippedIds?: string[] }
+ * Body: { siteId: string, queueIds: string[], skippedIds?: string[], pendingConfirmation?: boolean }
+ * - pendingConfirmation=true: AdsApp bulk upload is asynchronous; mark seal_* as UPLOADED (not COMPLETED).
+ *   Row-level errors cannot be fetched via Scripts — check Google Ads UI > Tools > Uploads.
+ * - pendingConfirmation=false or omitted: Mark as COMPLETED (API path or explicit confirmation).
  * skippedIds: DETERMINISTIC_SKIP (V1 sampled out). seal_* → COMPLETED + provider_error_code=V1_SAMPLED_OUT.
  */
 
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
     const queueIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
     const rawSkipped = Array.isArray(body.skippedIds) ? body.skippedIds : [];
     const skippedIds = rawSkipped.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const pendingConfirmation = body.pendingConfirmation === true;
 
     if (!siteId) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
@@ -103,13 +107,12 @@ export async function POST(req: NextRequest) {
     let totalUpdated = 0;
 
     if (sealIds.length > 0) {
+      const updatePayload = pendingConfirmation
+        ? { status: 'UPLOADED' as const, updated_at: now }
+        : { status: 'COMPLETED' as const, uploaded_at: now, updated_at: now };
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .update({
-          status: 'COMPLETED',
-          uploaded_at: now,
-          updated_at: now,
-        })
+        .update(updatePayload)
         .in('id', sealIds)
         .eq('site_id', siteUuid)
         .in('status', ['PROCESSING'])

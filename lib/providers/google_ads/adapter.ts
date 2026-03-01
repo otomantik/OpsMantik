@@ -146,11 +146,28 @@ function assertCredentials(creds: unknown): asserts creds is GoogleAdsCredential
 }
 
 /**
- * PR8A: Classify per-item partial_failure error. RETRY only for transient/rate-limit;
- * INVALID_ARGUMENT, INVALID_GCLID, UNPARSEABLE_GCLID, RESOURCE_NOT_FOUND => FAILED.
+ * PR8A: Strict partial_failure handling. RETRY only for transient/rate-limit;
+ * All validation/date/GCLID errors => FAILED (permanent, do not requeue).
+ *
+ * Fatal (never retry): ConversionPrecedesClick, TooRecentConversion, INVALID_GCLID,
+ * UNPARSEABLE_GCLID, INVALID_FIELD_VALUES_IN_DATE_TIME, DateError, RESOURCE_NOT_FOUND.
  */
 function isRetryablePartialError(message: string): boolean {
   const m = message.toUpperCase();
+  if (
+    m.includes('CONVERSION_PRECEDES_CLICK') ||
+    m.includes('TOO_RECENT_CONVERSION') ||
+    m.includes('INVALID_GCLID') ||
+    m.includes('UNPARSEABLE_GCLID') ||
+    m.includes('INVALID_FIELD_VALUES') ||
+    m.includes('DATE_ERROR') ||
+    m.includes('DATEERROR') ||
+    m.includes('RESOURCE_NOT_FOUND') ||
+    m.includes('CONVERSION_NOT_FOUND') ||
+    m.includes('INVALID_ARGUMENT')
+  ) {
+    return false;
+  }
   return (
     m.includes('RESOURCE_EXHAUSTED') ||
     m.includes('UNAVAILABLE') ||
@@ -160,6 +177,29 @@ function isRetryablePartialError(message: string): boolean {
     m.includes('TEMPORARILY') ||
     m.includes('BACKEND_ERROR')
   );
+}
+
+/** Extract Google Ads error code from message for provider_error_code (e.g. INVALID_GCLID, DateError.INVALID_FIELD_VALUES). */
+function extractGoogleErrorCode(message: string): string {
+  const m = message;
+  const patterns = [
+    /INVALID_GCLID/i,
+    /UNPARSEABLE_GCLID/i,
+    /CONVERSION_PRECEDES_CLICK/i,
+    /TOO_RECENT_CONVERSION/i,
+    /DateError\.INVALID_FIELD_VALUES/i,
+    /INVALID_FIELD_VALUES_IN_DATE_TIME/i,
+    /RESOURCE_NOT_FOUND/i,
+    /CONVERSION_NOT_FOUND/i,
+    /INVALID_ARGUMENT/i,
+    /RESOURCE_EXHAUSTED/i,
+    /UNAVAILABLE/i,
+  ];
+  for (const re of patterns) {
+    const match = m.match(re);
+    if (match) return match[0].toUpperCase().replace(/\./g, '_');
+  }
+  return 'PARTIAL_FAILURE';
 }
 
 /** Result of a single batch upload: success with payload, or PR8A batch failure (400/401/403/4xx => FAILED). PR9: request_id from response headers when success. */
@@ -397,10 +437,11 @@ export class GoogleAdsAdapter implements IAdsProvider {
           const msg = failureMessages[i] ?? partialFailure?.details?.[0]?.errors?.[0]?.message ?? 'Upload failed';
           const status = isRetryablePartialError(msg) ? 'RETRY' : 'FAILED';
           const category: ProviderErrorCategory = status === 'RETRY' ? 'TRANSIENT' : 'VALIDATION';
+          const errorCode = extractGoogleErrorCode(msg);
           resultsByJobId.set(jobId, {
             job_id: jobId,
             status,
-            error_code: 'PARTIAL_FAILURE',
+            error_code: errorCode,
             error_message: msg,
             provider_error_category: category,
           });

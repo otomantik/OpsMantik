@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { formatGoogleAdsTimeCompact } from '@/lib/utils/format-google-ads-time';
+import { formatGoogleAdsTime, formatGoogleAdsTimeOrNull, parseUtcTimestamp } from '@/lib/utils/format-google-ads-time';
+import { logWarn, logError } from '@/lib/logging/logger';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
@@ -33,7 +34,7 @@ export interface GoogleAdsConversionItem {
   gbraid: string;
   /** Conversion action name (e.g. "Sealed Lead"). */
   conversionName: string;
-  /** Format: yyyyMMdd HHmmss (site timezone; no offset). Google Ads uses account timezone. */
+  /** Format: yyyy-mm-dd HH:mm:ss±HH:mm (timezone required). Seal=confirmed_at; Intent=created_at. */
   conversionTime: string;
   /** Numeric value only (e.g. 750.00). No currency symbols. */
   conversionValue: number;
@@ -168,7 +169,7 @@ export async function GET(req: NextRequest) {
       if (!clickId) continue;
 
       const rawTime = (sig as { google_conversion_time: string }).google_conversion_time || '';
-      const conversionTime = formatGoogleAdsTimeCompact(rawTime, (site as { timezone?: string | null }).timezone);
+      const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
@@ -219,7 +220,7 @@ export async function GET(req: NextRequest) {
         const clickId = gclid || wbraid || gbraid;
         if (!clickId) continue;
         const rawTime = payload.timestamp || new Date().toISOString();
-        const conversionTime = formatGoogleAdsTimeCompact(rawTime, (site as { timezone?: string | null }).timezone);
+        const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
         const pvOrderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW}_${conversionTime}`.slice(0, 128);
         pvItems.push({
           id: pvId,
@@ -244,30 +245,18 @@ export async function GET(req: NextRequest) {
 
     const callIds = rawList.map((r: { call_id: string | null }) => r.call_id).filter(Boolean) as string[];
     const sessionByCall: Record<string, string> = {};
-    const sessionCreatedAt: Record<string, string> = {};
-    const callCreatedAt: Record<string, string> = {};
+    const callConfirmedAt: Record<string, string> = {};
     if (callIds.length > 0) {
       const { data: calls } = await adminClient
         .from('calls')
-        .select('id, matched_session_id, created_at')
+        .select('id, matched_session_id, confirmed_at')
         .eq('site_id', siteUuid)
         .in('id', callIds);
       for (const c of calls ?? []) {
         const sid = (c as { matched_session_id?: string | null }).matched_session_id;
         if (sid) sessionByCall[(c as { id: string }).id] = sid;
-        const ca = (c as { created_at?: string | null }).created_at;
-        if (ca) callCreatedAt[(c as { id: string }).id] = ca;
-      }
-      const sessionIds = [...new Set(Object.values(sessionByCall))].filter(Boolean);
-      if (sessionIds.length > 0) {
-        const { data: sessions } = await adminClient
-          .from('sessions')
-          .select('id, created_at')
-          .in('id', sessionIds);
-        for (const s of sessions ?? []) {
-          const created = (s as { created_at?: string | null }).created_at;
-          if (created) sessionCreatedAt[(s as { id: string }).id] = created;
-        }
+        const confirmed = (c as { confirmed_at?: string | null }).confirmed_at;
+        if (confirmed) callConfirmedAt[(c as { id: string }).id] = confirmed;
       }
     }
 
@@ -328,7 +317,9 @@ export async function GET(req: NextRequest) {
 
     const currency = (site as { currency?: string })?.currency || 'TRY';
 
-    const conversions: GoogleAdsConversionItem[] = list.map((row: {
+    const siteTimezone = (site as { timezone?: string | null }).timezone ?? 'Europe/Istanbul';
+
+    type QueueRow = {
       id: string;
       call_id?: string | null;
       gclid?: string | null;
@@ -339,26 +330,33 @@ export async function GET(req: NextRequest) {
       value_cents: number;
       currency?: string | null;
       action?: string | null;
-    }) => {
-      // Original event time: calls.created_at > queue.created_at (fallback)
-      const rawTs = row.call_id ? callCreatedAt[row.call_id] : null;
-      const fallbackTs = (row.created_at || row.conversion_time) || '';
-      const baseTs = rawTs || fallbackTs;
-      const tsMs = new Date(baseTs || 0).getTime();
-      const now = Date.now();
-      const exportTs =
-        tsMs > 0 && tsMs <= now ? baseTs : new Date(now - 60 * 1000).toISOString();
-      const conversionTime = formatGoogleAdsTimeCompact(exportTs, (site as { timezone?: string | null }).timezone);
+    };
 
-      // V5 Iron Seal: raw value_cents/100. No decay.
+    const conversions: GoogleAdsConversionItem[] = [];
+    for (const row of list as QueueRow[]) {
+      // Precedence: calls.confirmed_at > queue.conversion_time > queue.created_at
+      const sealTs = row.call_id ? (callConfirmedAt[row.call_id] ?? null) : null;
+      const baseTs = sealTs || row.conversion_time || row.created_at || null;
+
+      // Null-safe format — skip row if timestamp is missing or invalid (no silent fallback to now).
+      const conversionTime = formatGoogleAdsTimeOrNull(baseTs, siteTimezone);
+      if (!conversionTime) {
+        logError('OCI_EXPORT_CONVERSION_TIME_MISSING', {
+          queue_id: row.id,
+          call_id: row.call_id ?? null,
+          sealTs,
+          queueTs: row.conversion_time ?? null,
+        });
+        continue;
+      }
+
       const valueCents = Number(row.value_cents) || 0;
       const conversionValue = ensureNumericValue(valueCents / 100);
-
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
       const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim();
       const orderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V5_SEAL}_${conversionTime}`.slice(0, 128);
 
-      return {
+      conversions.push({
         id: 'seal_' + String(row.id),
         orderId: orderIdDDA || 'seal_' + String(row.id),
         gclid: (row.gclid || '').trim(),
@@ -368,8 +366,8 @@ export async function GET(req: NextRequest) {
         conversionTime,
         conversionValue,
         conversionCurrency,
-      };
-    });
+      });
+    }
 
     const combined = [...conversions, ...signalItems, ...pvItems].sort(
       (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')

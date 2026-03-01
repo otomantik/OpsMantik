@@ -89,6 +89,30 @@ function leadScoreToStar(leadScore: number | null): number | null {
 export async function enqueueSealConversion(params: EnqueueSealParams): Promise<EnqueueSealResult> {
   const { callId, siteId, confirmedAt, saleAmount, currency, leadScore, star: starParam } = params;
 
+  // 0. Null safety: Seal requires confirmed_at — never send broken payload to Google
+  if (!confirmedAt || typeof confirmedAt !== 'string') {
+    logWarn('enqueue_seal_rejected', {
+      call_id: callId,
+      reason: 'OCI_SEAL_CONFIRMED_AT_REQUIRED',
+      detail: 'confirmedAt must be non-null UTC/ISO string',
+    });
+    return { enqueued: false, reason: 'error', error: 'OCI_SEAL_CONFIRMED_AT_REQUIRED' };
+  }
+  const confirmedAtTrimmed = confirmedAt.trim();
+  if (!confirmedAtTrimmed) {
+    logWarn('enqueue_seal_rejected', { call_id: callId, reason: 'OCI_SEAL_CONFIRMED_AT_REQUIRED' });
+    return { enqueued: false, reason: 'error', error: 'OCI_SEAL_CONFIRMED_AT_REQUIRED' };
+  }
+  const parsedDate = new Date(confirmedAtTrimmed);
+  if (Number.isNaN(parsedDate.getTime())) {
+    logWarn('enqueue_seal_rejected', {
+      call_id: callId,
+      reason: 'OCI_SEAL_CONFIRMED_AT_INVALID',
+      detail: 'confirmedAt must be parseable UTC/ISO',
+    });
+    return { enqueued: false, reason: 'error', error: 'OCI_SEAL_CONFIRMED_AT_INVALID' };
+  }
+
   // 1. Click ID check
   const primarySource = await getPrimarySource(siteId, { callId });
   const gclid = primarySource?.gclid?.trim() || null;
@@ -156,7 +180,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     }
   }
 
-  // 7. Insert into queue (session_id set so DB unique index backs stop duplicates on race)
+  // 7. Insert into queue (Seal: conversion_time = confirmed_at, UTC/ISO; DB stores timestamptz)
   try {
     const { error } = await adminClient.from('offline_conversion_queue').insert({
       site_id: siteId,
@@ -164,7 +188,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       sale_id: null,
       session_id: sessionId,
       provider_key: 'google_ads',
-      conversion_time: confirmedAt, // Usually passed from worker or already in UTC
+      conversion_time: confirmedAtTrimmed,
       value_cents: valueCents,
       currency: currencySafe,
       gclid,

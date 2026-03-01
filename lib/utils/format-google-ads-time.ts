@@ -1,87 +1,148 @@
 /**
  * Google Ads OCI conversion_time formatter.
- * Dynamic timezone — no hardcoded UTC+3.
  *
- * Format: yyyy-MM-dd HH:mm:ss±HH:mm (e.g. 2026-02-25 18:24:15+03:00)
- * Google Ads Script Validator expects colon in offset. Default: Europe/Istanbul.
+ * Google Ads strict requirement: yyyy-MM-dd HH:mm:ss±HH:mm
+ * Example: 2026-02-28 10:15:10+03:00
+ * Regex:   /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/
+ *
+ * - No "T" separator (ISO 8601 T is rejected by Google Ads).
+ * - No milliseconds.
+ * - Explicit UTC offset required (+03:00, not "Z", not empty).
+ * - Compact yyyyMMdd HHmmss (no offset) is rejected: INVALID_FIELD_VALUES_IN_DATE_TIME.
  */
 
 import { normalizeTimezone } from '@/lib/i18n/timezone';
 
+/** Canonical Google Ads format: yyyy-MM-dd HH:mm:ss±HH:mm (timezone required). */
+export const GOOGLE_ADS_TIME_FORMAT = 'yyyy-MM-dd HH:mm:ss±HH:mm' as const;
+
+/** Regex that Google Ads accepts for Conversion time column. */
+export const GOOGLE_ADS_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/ as const;
+
+/** Parse UTC/ISO timestamp string or Date. Returns null if input is null/undefined/invalid. */
+export function parseUtcTimestamp(ts: string | Date | null | undefined): Date | null {
+  if (ts == null) return null;
+  const d = typeof ts === 'string' ? new Date(ts) : ts;
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+/** Assert timestamp is valid. Throws deterministic error if not. */
+export function assertValidTimestamp(
+  ts: string | Date | null | undefined,
+  context: string
+): asserts ts is string | Date {
+  const parsed = parseUtcTimestamp(ts);
+  if (parsed == null) {
+    throw new Error(`OCI_INVALID_TIMESTAMP: ${context} must be valid UTC/ISO string or Date, got ${JSON.stringify(ts)}`);
+  }
+}
+
 /**
- * Format UTC date for Google Ads conversion_time.
- * @param utcDate - Date in UTC (or ISO string)
- * @param timezoneString - IANA timezone (e.g. Europe/Istanbul, Europe/London). Default: Europe/Istanbul
- * @returns yyyy-MM-dd HH:mm:ss±HH:mm (e.g. 2026-02-25 18:24:15+03:00)
+ * Core low-level formatter. Formats a valid Date into Google Ads format.
+ * Uses sv-SE locale which natively produces "yyyy-MM-dd HH:mm:ss" (space, no T, no ms).
+ * Appends explicit UTC offset from longOffset (e.g. +03:00).
+ *
+ * Output strictly matches: /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/
+ */
+function _formatDate(d: Date, tz: string): string {
+  const base = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
+
+  const offsetParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    timeZoneName: 'longOffset',
+  }).formatToParts(d);
+
+  const tzPart = offsetParts.find((p) => p.type === 'timeZoneName');
+  const raw = (tzPart?.value ?? '+00:00')
+    .replace(/^GMT|^UTC/i, '')
+    .replace(/\u2212/g, '-')
+    .trim();
+
+  let offset: string;
+  if (!raw || raw === 'Z') {
+    offset = '+00:00';
+  } else {
+    const m = raw.match(/^([+-])(\d{1,2}):?(\d{2})$/);
+    offset = m
+      ? `${m[1]}${m[2].padStart(2, '0')}:${m[3]}`
+      : raw.includes(':')
+        ? raw
+        : raw.replace(/([+-])(\d{2})(\d{2})/, '$1$2:$3');
+  }
+
+  return `${base}${offset}`;
+}
+
+/**
+ * Format a UTC/ISO timestamp for Google Ads conversion_time.
+ * Returns yyyy-MM-dd HH:mm:ss±HH:mm in the given IANA timezone.
+ *
+ * NOTE: If the input is null/undefined/invalid, this falls back to current time.
+ * Use formatGoogleAdsTimeOrNull when you need explicit null-safety (export pipeline).
+ *
+ * @param utcDate - ISO string (e.g. "2026-02-28T07:15:10.000Z") or Date
+ * @param timezoneString - IANA timezone. Default: Europe/Istanbul
  */
 export function formatGoogleAdsTime(
   utcDate: Date | string,
   timezoneString?: string | null
 ): string {
   const tz = normalizeTimezone(timezoneString, 'Europe/Istanbul');
-  const d = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
-  if (Number.isNaN(d.getTime())) {
-    return formatGoogleAdsTime(new Date(), tz);
-  }
-
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const base = formatter.format(d);
-
-  const offsetFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    timeZoneName: 'longOffset', // GMT+03:00 (shortOffset GMT+3 script regex'i kırar)
-  });
-  const offsetParts = offsetFormatter.formatToParts(d);
-  const tzPart = offsetParts.find((p) => p.type === 'timeZoneName');
-  let raw = (tzPart?.value ?? '+00:00').replace(/^GMT|^UTC/i, '').replace(/\u2212/g, '-').trim();
-  const m = raw.match(/^([+-])(\d{1,2}):?(\d{2})$/);
-  const offset = m ? `${m[1]}${m[2].padStart(2, '0')}:${m[3]}` : (raw.includes(':') ? raw : raw.replace(/([+-])(\d{2})(\d{2})/, '$1$2:$3'));
-
-  return `${base}${offset}`;
+  const d = typeof utcDate === 'string' ? parseUtcTimestamp(utcDate) : utcDate;
+  const resolved = d instanceof Date && !Number.isNaN(d.getTime()) ? d : new Date();
+  return _formatDate(resolved, tz);
 }
 
 /**
- * Format for Google Ads OCI: compact yyyyMMdd HHmmss (no timezone offset).
- * Account timezone (e.g. Europe/Istanbul) is used by Google Ads; do not send offset.
- * @param utcDate - Date in UTC (or ISO string)
- * @param timezoneString - IANA timezone (e.g. Europe/Istanbul). Default: Europe/Istanbul
- * @returns yyyyMMdd HHmmss (e.g. 20260301 143841)
+ * Null-safe variant for the export pipeline.
+ * Returns null if the input is null/undefined/invalid/future instead of silently using current time.
+ * Export callers MUST skip the row when this returns null.
+ *
+ * @param utcDate - ISO string or Date (from calls.confirmed_at / queue.conversion_time)
+ * @param timezoneString - IANA timezone. Default: Europe/Istanbul
+ */
+export function formatGoogleAdsTimeOrNull(
+  utcDate: Date | string | null | undefined,
+  timezoneString?: string | null
+): string | null {
+  if (utcDate == null) return null;
+  const tz = normalizeTimezone(timezoneString, 'Europe/Istanbul');
+  const d = typeof utcDate === 'string' ? parseUtcTimestamp(utcDate) : utcDate;
+  if (!(d instanceof Date) || Number.isNaN(d.getTime()) || d.getTime() <= 0) return null;
+  const result = _formatDate(d, tz);
+  return GOOGLE_ADS_TIME_REGEX.test(result) ? result : null;
+}
+
+/**
+ * Format for Google Ads OCI: yyyy-MM-dd HH:mm:ss±HH:mm.
+ * @deprecated Use formatGoogleAdsTime directly.
  */
 export function formatGoogleAdsTimeCompact(
   utcDate: Date | string,
   timezoneString?: string | null
 ): string {
-  const tz = normalizeTimezone(timezoneString, 'Europe/Istanbul');
-  const d = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
-  if (Number.isNaN(d.getTime())) {
-    return formatGoogleAdsTimeCompact(new Date(), tz);
-  }
+  return formatGoogleAdsTime(utcDate, timezoneString);
+}
 
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(d);
-  const y = parts.find((p) => p.type === 'year')?.value ?? '';
-  const mo = parts.find((p) => p.type === 'month')?.value ?? '';
-  const d2 = parts.find((p) => p.type === 'day')?.value ?? '';
-  const h = parts.find((p) => p.type === 'hour')?.value ?? '';
-  const mi = parts.find((p) => p.type === 'minute')?.value ?? '';
-  const s = parts.find((p) => p.type === 'second')?.value ?? '';
-  return `${y}${mo}${d2} ${h}${mi}${s}`;
+/**
+ * Strict variant that throws on invalid input.
+ * For Seal events: use confirmed_at. For Intent: use created_at.
+ */
+export function formatGoogleAdsTimeStrict(
+  utcDate: Date | string | null | undefined,
+  timezoneString: string | null | undefined,
+  context: string
+): string {
+  assertValidTimestamp(utcDate, context);
+  return formatGoogleAdsTime(utcDate as Date | string, timezoneString);
 }

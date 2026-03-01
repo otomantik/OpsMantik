@@ -84,20 +84,38 @@ class Validator {
     return normalized <= rate;
   }
 
+  /** Google requires: yyyy-mm-dd HH:mm:ss+|-HH:mm (timezone mandatory). */
   static isValidGoogleAdsTime(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return false;
-    // Compact: yyyyMMdd HHmmss (no offset; Google Ads uses account timezone)
-    if (/^\d{8} \d{6}$/.test(timeStr.trim())) return true;
-    // Legacy: yyyy-mm-dd HH:mm:ss±HH:mm
-    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(timeStr.trim());
+    var s = timeStr.trim();
+    if (s.length < 20) return false;
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(s);
+  }
+
+  /** GCLID/WBRAID/GBRAID: alphanumeric, reasonable length (prevent obviously broken IDs). */
+  static isValidClickId(clickId) {
+    if (!clickId || typeof clickId !== 'string') return false;
+    var s = clickId.trim();
+    if (s.length < 10 || s.length > 256) return false;
+    return /^[A-Za-z0-9_-]+$/.test(s);
+  }
+
+  /** Conversion value: non-negative number. */
+  static isValidConversionValue(val) {
+    if (val == null) return true;
+    var n = parseFloat(String(val).replace(/[^\d.-]/g, ''));
+    return !isNaN(n) && n >= 0 && isFinite(n);
   }
 
   static analyze(row) {
     var clickId = row.gclid || row.wbraid || row.gbraid;
     if (!clickId) return { valid: false, reason: 'MISSING_CLICK_ID' };
+    if (!this.isValidClickId(clickId)) return { valid: false, reason: 'INVALID_CLICK_ID_FORMAT' };
 
     if (!row.conversionTime) return { valid: false, reason: 'MISSING_TIME' };
     if (!this.isValidGoogleAdsTime(row.conversionTime)) return { valid: false, reason: 'INVALID_TIME_FORMAT' };
+
+    if (!this.isValidConversionValue(row.conversionValue)) return { valid: false, reason: 'INVALID_CONVERSION_VALUE' };
 
     if (row.conversionName === CONVERSION_EVENTS.V1_PAGEVIEW) {
       if (!this.isSampledIn(clickId, CONFIG.SAMPLING_RATE_V1)) {
@@ -175,11 +193,12 @@ class QuantumClient {
     return JSON.parse(response.getContentText() || '[]');
   }
 
-  sendAck(siteId, queueIds, skippedIds) {
+  sendAck(siteId, queueIds, skippedIds, pendingConfirmation) {
     if (!queueIds.length && (!skippedIds || !skippedIds.length)) return null;
     var url = this.baseUrl + '/api/oci/ack';
     var payload = { siteId: siteId, queueIds: queueIds || [] };
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
+    if (pendingConfirmation === true) payload.pendingConfirmation = true;
     var response = this._fetchWithBackoff(url, {
       method: 'post',
       headers: {
@@ -294,6 +313,7 @@ class UploadEngine {
     if (stats.uploaded > 0) {
       try {
         upload.apply();
+        Telemetry.warn('CSV uploaded successfully to Google Ads. Awaiting Google internal processing. Row-level API errors cannot be fetched via Scripts. Check Google Ads UI > Tools > Uploads for actual conversion import errors.');
       } catch (err) {
         var msg = (err && err.message) ? String(err.message).slice(0, 500) : 'UPLOAD_EXCEPTION';
         Telemetry.error('upload.apply() HATA: ' + msg, err);
@@ -352,12 +372,12 @@ function main() {
 
     if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0)) {
       var total = (stats.successIds.length || 0) + (stats.skippedIds && stats.skippedIds.length || 0);
-      Telemetry.info(total + ' kayit icin API\'ye Muhur (ACK) gonderiliyor...');
-      var ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
+      Telemetry.info(total + ' kayit icin API\'ye Muhur (ACK) gonderiliyor (pendingConfirmation=true: UPLOADED)...');
+      var ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds, true);
       if (ackRes) {
         ackUpdated = ackRes.updated != null ? ackRes.updated : null;
         Telemetry.info('ACK geri donus: ok=' + !!ackRes.ok + ', updated=' + (ackRes.updated || 0) + (ackRes.warnings ? ' | uyari=' + JSON.stringify(ackRes.warnings) : ''));
-        Telemetry.info('Google\'a giden -> offline_conversion_queue COMPLETED: ' + (stats.successIds.join(', ') || '-'));
+        Telemetry.info('Google\'a giden -> offline_conversion_queue UPLOADED (pending Google processing): ' + (stats.successIds.join(', ') || '-'));
         Telemetry.info('DETERMINISTIC_SKIP (V1 sampled) -> COMPLETED: ' + ((stats.skippedIds || []).join(', ') || '-'));
       }
     }

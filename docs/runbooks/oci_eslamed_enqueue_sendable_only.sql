@@ -1,6 +1,7 @@
 -- =============================================================================
--- Eslamed: Sadece gönderilebilecek intent'leri kuyruğa ekle
+-- Eslamed: Tüm gönderilebilir dönüşümleri kuyruğa ekle
 -- Click ID (gclid/wbraid/gbraid) olan mühürleri kuyruğa at.
+-- conversion_time = mühür zamanı (calls.confirmed_at). Seal için confirmed_at zorunlu.
 -- Click ID olmayanlar Google Ads kabul etmez — onları ekleme.
 -- Supabase SQL Editor'da çalıştır.
 -- Site: Eslamed — b1264552-c859-40cb-a3fb-0ba057afd070
@@ -8,6 +9,7 @@
 
 -- -----------------------------------------------------------------------------
 -- 1) ÖNCE KONTROL — Hangi mühürler kuyruğa girecek, hangileri atlanacak
+--    conversion_time = mühür zamanı (calls.confirmed_at)
 -- -----------------------------------------------------------------------------
 SELECT
   c.id AS call_id,
@@ -33,11 +35,12 @@ WHERE c.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
   AND c.status IN ('confirmed', 'qualified', 'real')
   AND c.oci_status = 'sealed'
   AND NOT EXISTS (SELECT 1 FROM offline_conversion_queue oq2 WHERE oq2.call_id = c.id)
-ORDER BY c.confirmed_at DESC;
+ORDER BY c.created_at DESC;
 
 
 -- -----------------------------------------------------------------------------
 -- 2) KUYRUĞA EKLE — Sadece gclid/wbraid/gbraid olan mühürleri ekle
+--    conversion_time = mühür zamanı (c.confirmed_at)
 --    Click ID yoksa ekleme (script MISSING_CLICK_ID ile atar, gereksiz FAILED)
 -- -----------------------------------------------------------------------------
 INSERT INTO offline_conversion_queue (
@@ -77,7 +80,16 @@ WHERE c.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
 
 
 -- -----------------------------------------------------------------------------
--- 3) PROCESSING'de takılı olanları QUEUED yap (script yeniden alsın)
+-- 3) FAILED/RETRY'ları QUEUED yap (script yeniden denesin)
+-- -----------------------------------------------------------------------------
+UPDATE offline_conversion_queue
+SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
+WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+  AND status IN ('FAILED', 'RETRY');
+
+
+-- -----------------------------------------------------------------------------
+-- 4) PROCESSING'de takılı olanları QUEUED yap (script yeniden alsın)
 -- -----------------------------------------------------------------------------
 UPDATE offline_conversion_queue
 SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
@@ -86,10 +98,10 @@ WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
 
 
 -- -----------------------------------------------------------------------------
--- 4) ÖZET — Kaç eklendi, kaç atlandı (click_id yok)
+-- 5) ÖZET — Kaç eklendi, kaç atlandı (click_id yok)
 -- -----------------------------------------------------------------------------
 WITH sealed AS (
-  SELECT c.id, c.confirmed_at,
+  SELECT c.id, c.created_at,
     (sess.gclid IS NOT NULL AND TRIM(COALESCE(sess.gclid, '')) <> '')
     OR (sess.wbraid IS NOT NULL AND TRIM(COALESCE(sess.wbraid, '')) <> '')
     OR (sess.gbraid IS NOT NULL AND TRIM(COALESCE(sess.gbraid, '')) <> '') AS has_click_id
@@ -110,7 +122,7 @@ SELECT
 
 
 -- -----------------------------------------------------------------------------
--- 5) SISTEM TESTI — COMPLETED'leri QUEUED yap, tekrar gönder
+-- 6) SISTEM TESTI — COMPLETED'leri QUEUED yap, tekrar gönder
 --    Google zaten aldıysa duplicate hatası / ignor; almadıysa bu sefer gider.
 --    Sprint sonrası akış doğrulama için kullan.
 -- -----------------------------------------------------------------------------
@@ -123,7 +135,7 @@ WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
 
 
 -- -----------------------------------------------------------------------------
--- 6) ESKİ GCLID'LER — Önizleme (son 90 gün, kuyrukta olmayan, gclid var)
+-- 7) ESKİ GCLID'LER — Önizleme (son 90 gün, kuyrukta olmayan, gclid var)
 --    Google Ads OCI: tıklama tarihinden itibaren ~90 gün kabul eder
 -- -----------------------------------------------------------------------------
 SELECT
@@ -137,19 +149,20 @@ JOIN sessions sess ON sess.id = c.matched_session_id AND sess.site_id = c.site_i
 WHERE c.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
   AND c.status IN ('confirmed', 'qualified', 'real')
   AND c.oci_status = 'sealed'
-  AND c.confirmed_at >= CURRENT_DATE - INTERVAL '90 days'
-  AND c.confirmed_at < CURRENT_DATE
+  AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+  AND c.created_at < CURRENT_DATE
   AND (
     (sess.gclid IS NOT NULL AND TRIM(COALESCE(sess.gclid, '')) <> '')
     OR (sess.wbraid IS NOT NULL AND TRIM(COALESCE(sess.wbraid, '')) <> '')
     OR (sess.gbraid IS NOT NULL AND TRIM(COALESCE(sess.gbraid, '')) <> '')
   )
   AND NOT EXISTS (SELECT 1 FROM offline_conversion_queue oq WHERE oq.call_id = c.id)
-ORDER BY c.confirmed_at DESC;
+ORDER BY c.created_at DESC;
 
 
 -- -----------------------------------------------------------------------------
--- 7) ESKİ GCLID'LERİ KUYRUĞA EKLE — Son 90 gün, gclid olan, kuyrukta olmayan
+-- 8) ESKİ GCLID'LERİ KUYRUĞA EKLE — Son 90 gün, gclid olan, kuyrukta olmayan
+--    conversion_time = mühür zamanı (c.confirmed_at)
 -- -----------------------------------------------------------------------------
 INSERT INTO offline_conversion_queue (
   site_id, call_id, sale_id, provider_key,
@@ -176,8 +189,8 @@ JOIN sessions sess ON sess.id = c.matched_session_id AND sess.site_id = c.site_i
 WHERE c.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
   AND c.status IN ('confirmed', 'qualified', 'real')
   AND c.oci_status = 'sealed'
-  AND c.confirmed_at >= CURRENT_DATE - INTERVAL '90 days'
-  AND c.confirmed_at < CURRENT_DATE
+  AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+  AND c.created_at < CURRENT_DATE
   AND (
     (sess.gclid IS NOT NULL AND TRIM(COALESCE(sess.gclid, '')) <> '')
     OR (sess.wbraid IS NOT NULL AND TRIM(COALESCE(sess.wbraid, '')) <> '')
@@ -190,10 +203,11 @@ WHERE c.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
 -- Kullanım
 -- -----------------------------------------------------------------------------
 -- 1) Sorgu 1 → Hangi mühürler eklenecek, hangileri atlanacak (önizleme)
--- 2) Sorgu 2 (INSERT) → Sadece gönderilebilir olanları kuyruğa ekle
--- 3) Sorgu 3 (UPDATE) → Takılı PROCESSING'leri QUEUED yap
--- 4) Sorgu 4 → Özet
--- 5) Sorgu 5 (UPDATE) → SISTEM TESTI: Bugünkü COMPLETED'leri QUEUED yap
--- 6) Sorgu 6 → ESKİ GCLID önizleme (son 90 gün, kuyrukta olmayan)
--- 7) Sorgu 7 (INSERT) → ESKİ GCLID'leri kuyruğa ekle (son 90 gün)
--- 8) Google Ads Script çalıştır
+-- 2) Sorgu 2 (INSERT) → Tüm gönderilebilir dönüşümleri kuyruğa ekle (conversion_time = mühür)
+-- 3) Sorgu 3 (UPDATE) → FAILED/RETRY'ları QUEUED yap
+-- 4) Sorgu 4 (UPDATE) → Takılı PROCESSING'leri QUEUED yap
+-- 5) Sorgu 5 → Özet
+-- 6) Sorgu 6 (UPDATE) → SISTEM TESTI: Bugünkü COMPLETED'leri QUEUED yap
+-- 7) Sorgu 7 → ESKİ GCLID önizleme (son 90 gün, kuyrukta olmayan)
+-- 8) Sorgu 8 (INSERT) → ESKİ GCLID'leri kuyruğa ekle (son 90 gün)
+-- 9) Google Ads Script çalıştır
