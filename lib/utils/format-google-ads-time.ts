@@ -38,11 +38,11 @@ export function formatGoogleAdsTime(
 
   const offsetFormatter = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
-    timeZoneName: 'shortOffset',
+    timeZoneName: 'longOffset', // GMT+03:00 (shortOffset GMT+3 script regex'i kırar)
   });
   const offsetParts = offsetFormatter.formatToParts(d);
   const tzPart = offsetParts.find((p) => p.type === 'timeZoneName');
-  const raw = tzPart?.value ?? '+00:00';
+  let raw = (tzPart?.value ?? '+00:00').replace(/^GMT|^UTC/i, '').replace(/\u2212/g, '-').trim();
   const m = raw.match(/^([+-])(\d{1,2}):?(\d{2})$/);
   const offset = m ? `${m[1]}${m[2].padStart(2, '0')}:${m[3]}` : (raw.includes(':') ? raw : raw.replace(/([+-])(\d{2})(\d{2})/, '$1$2:$3'));
 

@@ -1,6 +1,6 @@
 # Google Ads OCI Script (OpsMantik Exit Valve)
 
-**Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js`
+**Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)
 
 ## Ne yapar?
 

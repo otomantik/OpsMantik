@@ -1,24 +1,22 @@
 /**
- * OPSMANTIK OCI SYNC — Eslamed Quantum Edition
+ * OCI SYNC ENGINE v3.0 (Quantum Edition) — Eslamed
  * Site: Eslamed (eslamed.com)
- * Kurulum: Google Ads Script Editor'a yapıştır. API_KEY'i aşağıda veya Script Properties'te ayarla.
- *
- * Dönüşüm Adları: OpsMantik_V1_Nabiz, OpsMantik_V2_Ilk_Temas, OpsMantik_V3_Nitelikli_Gorusme,
- *   OpsMantik_V4_Sicak_Teklif, OpsMantik_V5_DEMIR_MUHUR
+ * V8 Engine Native | Deterministic Sampling | Auto-Healing
+ * Kurulum: Google Ads Script Editor'a yapıştır. Script Properties veya aşağıdaki Eslamed değerleri.
+ * API key: node scripts/get-eslamed-credentials.mjs
  */
 
 'use strict';
 
 // ========================================================================
-// ESLAMED AYARLARI — Hazır, sadece API_KEY gerekli
-// API key: OpsMantik Console > Site > OCI veya: node scripts/get-eslamed-credentials.mjs
+// ESLAMED DEFAULTS (Script Properties öncelikli)
 // ========================================================================
 var ESLAMED_SITE_ID = '81d957f3c7534f53b12ff305f9f07ae7';   // Eslamed public_id
 var ESLAMED_BASE_URL = 'https://console.opsmantik.com';
 var ESLAMED_API_KEY = 'becaef33f722de5f08691091bbe2cbb7fba0594e56ccbfb4c8a15b3ebedd2cf1';   // Eslamed sites.oci_api_key
 
 // ========================================================================
-// CONFIG (Script Properties öncelikli; yoksa yukarıdaki Eslamed değerleri)
+// ENV CONFIGURATION (ScriptProperties or Eslamed fallbacks)
 // ========================================================================
 function getConfig() {
   var props = null;
@@ -48,9 +46,9 @@ function getConfig() {
     }),
   });
 }
-const CONFIG = getConfig();
+var CONFIG = getConfig();
 
-const CONVERSION_EVENTS = Object.freeze({
+var CONVERSION_EVENTS = Object.freeze({
   V1_PAGEVIEW: 'OpsMantik_V1_Nabiz',
   V2_PULSE: 'OpsMantik_V2_Ilk_Temas',
   V3_ENGAGE: 'OpsMantik_V3_Nitelikli_Gorusme',
@@ -62,13 +60,13 @@ const CONVERSION_EVENTS = Object.freeze({
 // TELEMETRY SYSTEM
 // ========================================================================
 class Telemetry {
-  static info(msg, meta = '') { Logger.log(`[INFO] ${msg} ${meta ? `| ${JSON.stringify(meta)}` : ''}`); }
-  static warn(msg, meta = '') { Logger.log(`[WARN] ${msg} ${meta ? `| ${JSON.stringify(meta)}` : ''}`); }
-  static error(msg, err = null) {
-    Logger.log(`[ERROR] ${msg} | ${err ? (err.message || err) : ''}`);
-    if (err && err.stack) Logger.log(`   Stack: ${err.stack}`);
+  static info(msg, meta) { meta = meta || ''; Logger.log('[INFO] ' + msg + (meta ? ' | ' + JSON.stringify(meta) : '')); }
+  static warn(msg, meta) { meta = meta || ''; Logger.log('[WARN] ' + msg + (meta ? ' | ' + JSON.stringify(meta) : '')); }
+  static error(msg, err) {
+    Logger.log('[ERROR] ' + msg + ' | ' + (err ? (err.message || err) : ''));
+    if (err && err.stack) Logger.log('   Stack: ' + err.stack);
   }
-  static wtf(msg) { Logger.log(`[FATAL] ${msg}`); }
+  static wtf(msg) { Logger.log('[FATAL] ' + msg); }
 }
 
 // ========================================================================
@@ -78,11 +76,11 @@ class Validator {
   static isSampledIn(clickId, rate) {
     if (rate >= 1.0) return true;
     if (rate <= 0.0) return false;
-    let hash = 5381;
-    for (let i = 0; i < clickId.length; i++) {
+    var hash = 5381;
+    for (var i = 0; i < clickId.length; i++) {
       hash = ((hash << 5) + hash) + clickId.charCodeAt(i);
     }
-    const normalized = Math.abs(hash) % 10000 / 10000;
+    var normalized = Math.abs(hash) % 10000 / 10000;
     return normalized <= rate;
   }
 
@@ -91,16 +89,19 @@ class Validator {
   }
 
   static analyze(row) {
-    const clickId = row.gclid || row.wbraid || row.gbraid;
+    var clickId = row.gclid || row.wbraid || row.gbraid;
     if (!clickId) return { valid: false, reason: 'MISSING_CLICK_ID' };
+
     if (!row.conversionTime) return { valid: false, reason: 'MISSING_TIME' };
     if (!this.isValidGoogleAdsTime(row.conversionTime)) return { valid: false, reason: 'INVALID_TIME_FORMAT' };
+
     if (row.conversionName === CONVERSION_EVENTS.V1_PAGEVIEW) {
       if (!this.isSampledIn(clickId, CONFIG.SAMPLING_RATE_V1)) {
         return { valid: false, reason: 'DETERMINISTIC_SKIP' };
       }
     }
-    return { valid: true, clickId };
+
+    return { valid: true, clickId: clickId };
   }
 }
 
@@ -115,71 +116,88 @@ class QuantumClient {
   }
 
   _fetchWithBackoff(url, options) {
-    let attempt = 0;
-    let delay = CONFIG.HTTP.INITIAL_DELAY_MS;
+    var attempt = 0;
+    var delay = CONFIG.HTTP.INITIAL_DELAY_MS;
+
     while (attempt < CONFIG.HTTP.MAX_RETRIES) {
       try {
-        const response = UrlFetchApp.fetch(url, { ...options, muteHttpExceptions: true });
-        const code = response.getResponseCode();
+        var response = UrlFetchApp.fetch(url, Object.assign({}, options, { muteHttpExceptions: true }));
+        var code = response.getResponseCode();
+
         if (code >= 200 && code < 300) return response;
+
         if (code === 429 || code >= 500) {
-          Telemetry.warn(`HTTP ${code} on attempt ${attempt + 1}. Retrying...`, { url });
+          var body = response.getContentText();
+          Telemetry.warn('HTTP ' + code + ' on attempt ' + (attempt + 1) + '. Retrying...', { url: url, body: (body || '').substring(0, 100) });
         } else {
-          throw new Error(`Kritik HTTP Hatasi ${code}: ${response.getContentText()}`);
+          throw new Error('Kritik HTTP Hatasi ' + code + ': ' + response.getContentText());
         }
       } catch (err) {
         if (attempt === CONFIG.HTTP.MAX_RETRIES - 1) throw err;
-        Telemetry.warn(`Ag Hatasi (Deneme ${attempt + 1}): ${err.message}`);
+        Telemetry.warn('Ag Hatasi (Deneme ' + (attempt + 1) + '): ' + err.message);
       }
+
       attempt++;
-      const jitter = Math.random() * 500;
+      var jitter = Math.random() * 500;
       Utilities.sleep(delay + jitter);
       delay *= 2;
     }
-    throw new Error(`Butun ${CONFIG.HTTP.MAX_RETRIES} ag denemesi basarisiz: ${url}`);
+    throw new Error('Butun ' + CONFIG.HTTP.MAX_RETRIES + ' ag denemesi basarisiz: ' + url);
   }
 
   verifyHandshake(siteId) {
-    const url = `${this.baseUrl}/api/oci/v2/verify`;
-    const response = this._fetchWithBackoff(url, {
+    var url = this.baseUrl + '/api/oci/v2/verify';
+    var response = this._fetchWithBackoff(url, {
       method: 'post',
       headers: { 'x-api-key': this.apiKey, 'Content-Type': 'application/json' },
-      payload: JSON.stringify({ siteId })
+      payload: JSON.stringify({ siteId: siteId })
     });
-    const data = JSON.parse(response.getContentText());
-    if (!data.session_token) throw new Error("Beklenmeyen Yanit: session_token eksik.");
+
+    var data = JSON.parse(response.getContentText());
+    if (!data.session_token) throw new Error('Beklenmeyen Yanit: session_token eksik.');
     this.sessionToken = data.session_token;
   }
 
   fetchConversions(siteId) {
-    const url = `${this.baseUrl}/api/oci/google-ads-export?siteId=${encodeURIComponent(siteId)}&markAsExported=true`;
-    const response = this._fetchWithBackoff(url, {
+    var url = this.baseUrl + '/api/oci/google-ads-export?siteId=' + encodeURIComponent(siteId) + '&markAsExported=true';
+    var response = this._fetchWithBackoff(url, {
       method: 'get',
-      headers: { 'Authorization': `Bearer ${this.sessionToken}`, 'Accept': 'application/json' }
+      headers: {
+        'Authorization': 'Bearer ' + this.sessionToken,
+        'Accept': 'application/json'
+      }
     });
+
     return JSON.parse(response.getContentText() || '[]');
   }
 
   sendAck(siteId, queueIds, skippedIds) {
     if (!queueIds.length && (!skippedIds || !skippedIds.length)) return;
-    const url = `${this.baseUrl}/api/oci/ack`;
-    const payload = { siteId, queueIds: queueIds || [] };
+    var url = this.baseUrl + '/api/oci/ack';
+    var payload = { siteId: siteId, queueIds: queueIds || [] };
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
     this._fetchWithBackoff(url, {
       method: 'post',
-      headers: { 'Authorization': `Bearer ${this.sessionToken}`, 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': 'Bearer ' + this.sessionToken,
+        'Content-Type': 'application/json'
+      },
       payload: JSON.stringify(payload)
     });
   }
 
   sendAckFailed(siteId, queueIds, errorCode, errorMessage, errorCategory) {
     if (!queueIds.length) return;
-    const url = `${this.baseUrl}/api/oci/ack-failed`;
+    var url = this.baseUrl + '/api/oci/ack-failed';
     this._fetchWithBackoff(url, {
       method: 'post',
-      headers: { 'Authorization': `Bearer ${this.sessionToken}`, 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': 'Bearer ' + this.sessionToken,
+        'Content-Type': 'application/json'
+      },
       payload: JSON.stringify({
-        siteId, queueIds,
+        siteId: siteId,
+        queueIds: queueIds,
         errorCode: errorCode || 'VALIDATION_FAILED',
         errorMessage: errorMessage || errorCode,
         errorCategory: errorCategory || 'VALIDATION'
@@ -193,32 +211,60 @@ class QuantumClient {
 // ========================================================================
 class UploadEngine {
   constructor() {
-    this.columns = ['Order ID', 'Google Click ID', 'Conversion name', 'Conversion time', 'Conversion value', 'Conversion currency'];
+    this.columns = [
+      'Order ID',
+      'Google Click ID',
+      'Conversion name',
+      'Conversion time',
+      'Conversion value',
+      'Conversion currency'
+    ];
   }
 
   process(conversions, opts) {
-    const timezone = AdsApp.currentAccount().getTimeZone() || 'Europe/Istanbul';
-    const upload = AdsApp.bulkUploads().newCsvUpload(this.columns, { moneyInMicros: false, timeZone: timezone });
+    var timezone = AdsApp.currentAccount().getTimeZone() || 'Europe/Istanbul';
+    var upload = AdsApp.bulkUploads().newCsvUpload(this.columns, {
+      moneyInMicros: false,
+      timeZone: timezone
+    });
     upload.forOfflineConversions();
-    upload.setFileName(`Eslamed_OCI_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
+    upload.setFileName('Eslamed_OCI_' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv');
 
-    const stats = { uploaded: 0, skippedDeterministic: 0, skippedValidation: 0, successIds: [], skippedIds: [], failedRows: [], uploadFailed: false };
+    var stats = {
+      uploaded: 0,
+      skippedDeterministic: 0,
+      skippedValidation: 0,
+      successIds: [],
+      skippedIds: [],
+      failedRows: [],
+      uploadFailed: false,
+    };
 
-    for (const row of conversions) {
-      const validation = Validator.analyze(row);
+    for (var i = 0; i < conversions.length; i++) {
+      var row = conversions[i];
+      var validation = Validator.analyze(row);
+
       if (!validation.valid) {
         if (validation.reason === 'DETERMINISTIC_SKIP') {
           stats.skippedDeterministic++;
           if (row.id) stats.skippedIds.push(row.id);
           continue;
         }
-        Telemetry.warn(`Hatali Satir: ${validation.reason}`, { id: row.id || 'N/A' });
+        Telemetry.warn('Hatali Satir Atlandi: ' + validation.reason, { id: row.id || 'N/A' });
         stats.skippedValidation++;
-        if (row.id) stats.failedRows.push({ queueId: row.id, errorCode: validation.reason, errorMessage: validation.reason, errorCategory: 'VALIDATION' });
+        if (row.id) {
+          stats.failedRows.push({
+            queueId: row.id,
+            errorCode: validation.reason,
+            errorMessage: validation.reason,
+            errorCategory: 'VALIDATION'
+          });
+        }
         continue;
       }
 
-      const conversionValue = parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0;
+      var conversionValue = parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0;
+
       upload.append({
         'Order ID': row.orderId || row.id || '',
         'Google Click ID': validation.clickId,
@@ -227,6 +273,7 @@ class UploadEngine {
         'Conversion value': Math.max(0, conversionValue),
         'Conversion currency': (row.conversionCurrency || 'TRY').toUpperCase()
       });
+
       stats.uploaded++;
       if (row.id) stats.successIds.push(row.id);
     }
@@ -235,13 +282,14 @@ class UploadEngine {
       try {
         upload.apply();
       } catch (err) {
-        if (typeof opts?.onUploadFailure === 'function' && stats.successIds.length > 0) {
-          const msg = (err && err.message) ? String(err.message).slice(0, 500) : 'UPLOAD_EXCEPTION';
+        if (typeof opts !== 'undefined' && opts !== null && typeof opts.onUploadFailure === 'function' && stats.successIds.length > 0) {
+          var msg = (err && err.message) ? String(err.message).slice(0, 500) : 'UPLOAD_EXCEPTION';
           opts.onUploadFailure(stats.successIds, 'UPLOAD_EXCEPTION', msg, 'TRANSIENT');
         }
         return Object.assign({}, stats, { uploadFailed: true });
       }
     }
+
     return stats;
   }
 }
@@ -250,63 +298,119 @@ class UploadEngine {
 // MAIN EXECUTION — Eslamed OCI Sync
 // ========================================================================
 function main() {
-  Telemetry.info('Eslamed OCI Engine baslatiliyor...');
+  Telemetry.info('Eslamed Quantum OCI Engine Baslatiliyor...');
 
   try {
     if (!CONFIG.SITE_ID || !CONFIG.API_KEY) {
-      Telemetry.wtf('API_KEY gerekli. Ya ESLAMED_API_KEY degiskenine yapistir ya da Script Properties: OPSMANTIK_API_KEY. Key: node scripts/get-eslamed-credentials.mjs');
+      Telemetry.wtf('API_KEY gerekli. Script Properties: OPSMANTIK_SITE_ID, OPSMANTIK_API_KEY. Key: node scripts/get-eslamed-credentials.mjs');
       return;
     }
 
-    const client = new QuantumClient(CONFIG.BASE_URL, CONFIG.API_KEY);
+    var client = new QuantumClient(CONFIG.BASE_URL, CONFIG.API_KEY);
+
+    Telemetry.info('Ag protokolu dogrulaniyor...');
     client.verifyHandshake(CONFIG.SITE_ID);
 
-    const conversions = client.fetchConversions(CONFIG.SITE_ID);
+    Telemetry.info('Kuyruk dinleniyor...');
+    var conversions = client.fetchConversions(CONFIG.SITE_ID);
+
     if (!Array.isArray(conversions) || conversions.length === 0) {
-      Telemetry.info('Islenecek yeni donusum yok.');
+      Telemetry.info('Islenecek yeni donusum bulunamadi. Uyku moduna geciliyor.');
       return;
     }
 
-    Telemetry.info(`${conversions.length} ham sinyal alindi. Validasyon basliyor...`);
+    Telemetry.info(conversions.length + ' ham sinyal yakalandi. Validasyon basliyor...');
 
-    const engine = new UploadEngine();
-    const stats = engine.process(conversions, {
+    var engine = new UploadEngine();
+    var stats = engine.process(conversions, {
       onUploadFailure: function (ids, errorCode, errorMessage, errorCategory) {
         if (ids && ids.length > 0) {
-          Telemetry.warn('Upload apply failed; appended rows FAILED (TRANSIENT)', { count: ids.length });
+          Telemetry.warn('Upload apply failed; marking appended rows FAILED (TRANSIENT)', { count: ids.length });
           client.sendAckFailed(CONFIG.SITE_ID, ids, errorCode, errorMessage, errorCategory);
         }
       }
     });
 
-    Telemetry.info(`Bilancosu: Yuklendi=${stats.uploaded}, Deterministic Skip=${stats.skippedDeterministic || 0}, Validation Fail=${stats.skippedValidation || 0}`);
+    Telemetry.info('Yukleme Bilancosu: Yuklendi: ' + stats.uploaded + ', Deterministic Skip: ' + (stats.skippedDeterministic || 0) + ', Validation Fail: ' + stats.skippedValidation);
 
     if (stats.uploadFailed) return;
 
     if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0)) {
-      const total = (stats.successIds.length || 0) + (stats.skippedIds && stats.skippedIds.length || 0);
-      Telemetry.info(`${total} kayit icin ACK gonderiliyor...`);
+      var total = (stats.successIds.length || 0) + (stats.skippedIds && stats.skippedIds.length || 0);
+      Telemetry.info(total + ' kayit icin API\'ye Muhur (ACK) gonderiliyor...');
       client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
     }
 
     if (stats.failedRows && stats.failedRows.length > 0) {
-      const byError = {};
-      for (const f of stats.failedRows) {
-        const key = f.errorCode + '|' + f.errorCategory;
+      var byError = {};
+      for (var j = 0; j < stats.failedRows.length; j++) {
+        var f = stats.failedRows[j];
+        var key = f.errorCode + '|' + f.errorCategory;
         if (!byError[key]) byError[key] = { queueIds: [], errorCode: f.errorCode, errorMessage: f.errorMessage, errorCategory: f.errorCategory };
         byError[key].queueIds.push(f.queueId);
       }
-      for (const key of Object.keys(byError)) {
-        const g = byError[key];
-        Telemetry.info(`${g.queueIds.length} kayit FAILED: ${g.errorCode}`);
-        client.sendAckFailed(CONFIG.SITE_ID, g.queueIds, g.errorCode, g.errorMessage, g.errorCategory);
+      for (var k in byError) {
+        if (byError.hasOwnProperty(k)) {
+          var g = byError[k];
+          Telemetry.info(g.queueIds.length + ' kayit FAILED isaretleniyor: ' + g.errorCode);
+          client.sendAckFailed(CONFIG.SITE_ID, g.queueIds, g.errorCode, g.errorMessage, g.errorCategory);
+        }
       }
     }
 
-    Telemetry.info('Eslamed OCI senkronizasyonu tamamlandi.');
+    if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0) || (stats.failedRows && stats.failedRows.length > 0)) {
+      Telemetry.info('Eslamed OCI senkronizasyonu tamamlandi.');
+    }
 
   } catch (error) {
-    Telemetry.wtf('Script kritik hatayla durdu.');
+    Telemetry.wtf('Script kritik bir cekirdek hatasiyla durduruldu.');
     Telemetry.error('Iz Dokumu', error);
   }
+}
+
+// ========================================================================
+// LOCAL TESTING (node Eslamed-OCI-Quantum.js)
+// ========================================================================
+if (typeof module !== 'undefined' && require !== 'undefined' && require.main === module) {
+  console.log('[LOCAL] Eslamed OCI Quantum - Local Mode');
+
+  global.Logger = { log: function (msg) { console.log(msg); } };
+  global.Utilities = { sleep: function (ms) { var w = new Date(new Date().getTime() + ms); while (w > new Date()) {} } };
+  global.UrlFetchApp = {
+    fetch: function (url, options) {
+      console.log('\n[Mock] ' + (options.method || 'GET').toUpperCase() + ' ' + url);
+      return {
+        getResponseCode: function () { return 200; },
+        getContentText: function () {
+          if (url.indexOf('/api/oci/v2/verify') !== -1) return JSON.stringify({ session_token: 'mock_eslamed_token' });
+          if (url.indexOf('/api/oci/google-ads-export') !== -1) return JSON.stringify([
+            { id: 'mock-1', gclid: 'TEST_GCLID', conversionName: 'OpsMantik_V5_DEMIR_MUHUR', conversionTime: '2026-03-01 15:30:00+03:00', conversionValue: 5000, conversionCurrency: 'TRY' }
+          ]);
+          if (url.indexOf('/api/oci/ack') !== -1) return JSON.stringify({ updated: 1 });
+          if (url.indexOf('/api/oci/ack-failed') !== -1) return JSON.stringify({ ok: true });
+          return '{}';
+        }
+      };
+    }
+  };
+  global.AdsApp = {
+    currentAccount: function () { return { getTimeZone: function () { return 'Europe/Istanbul'; } }; },
+    bulkUploads: function () {
+      return {
+        newCsvUpload: function (cols, cfg) {
+          return {
+            forOfflineConversions: function () {},
+            setFileName: function (n) { console.log('[Mock] File: ' + n); },
+            append: function (r) { console.log('[Mock] Row:', r); },
+            apply: function () { console.log('[Mock] Upload OK'); }
+          };
+        }
+      };
+    }
+  };
+
+  console.log('--------------------------------------------------');
+  main();
+  console.log('--------------------------------------------------');
+  console.log('[LOCAL] Bitti.');
 }
