@@ -16,7 +16,7 @@ import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { getBadgeStatus } from '@/lib/realtime-badge-status';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame } from 'lucide-react';
+import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame, LogOut } from 'lucide-react';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
 import { LiveClock } from './live-clock';
@@ -217,11 +217,11 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full flex-shrink-0">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full flex-shrink-0" data-testid="header-overflow-menu-trigger">
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-100 shadow-2xl">
+                <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-100 shadow-2xl" data-testid="header-overflow-menu-content">
                   <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('dashboard.timeline')}</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => setSelectedDay('yesterday')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
                     {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
@@ -237,6 +237,14 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     <div className="mt-2">
                       <LocaleSwitcher />
                     </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-700">
+                    <form action="/auth/signout" method="post" className="w-full">
+                      <button type="submit" className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-bold text-slate-300 hover:text-red-300 hover:bg-slate-800 rounded cursor-pointer" data-testid="menu-item-signout">
+                        <LogOut className="h-4 w-4 shrink-0" />
+                        {t('dashboard.signOut')}
+                      </button>
+                    </form>
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
