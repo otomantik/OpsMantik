@@ -128,8 +128,8 @@ export function useIntentQualification(
             }
           }
 
-          const actionType = 'sealed';
-          const undoToastId = toast.success(t('toast.success.done'), {
+          const actionType = leadScore === 100 ? 'sealed' : leadScore === 80 ? 'offered (teklif)' : 'contacted (görüşüldü)';
+          const undoToastId = toast.success(leadScore === 100 ? t('toast.success.done') : actionType.toUpperCase(), {
             description: t('toast.description.intentAction', { action: actionType }),
             duration: 8000,
             action: {

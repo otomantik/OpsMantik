@@ -108,7 +108,7 @@ export async function POST(
       status: 'confirmed',
       confirmed_at: new Date().toISOString(),
       confirmed_by: user.id,
-      oci_status: 'sealed',
+      oci_status: leadScore === 100 ? 'sealed' : 'skipped',
       oci_status_updated_at: new Date().toISOString(),
     };
     if (leadScore != null) {
@@ -157,26 +157,29 @@ export async function POST(
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
     const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
 
-    // Last-mile OCI: enqueue sealed call for Google Ads if it has a click ID (gclid/wbraid/gbraid)
-    try {
-      const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
-      const result = await enqueueSealConversion({
-        callId,
-        siteId,
-        confirmedAt,
-        saleAmount,
-        currency,
-        leadScore,
-      });
-      if (result.enqueued) {
-        logInfo('seal_oci_enqueued', { call_id: callId });
+    // Last-mile OCI: enqueue ONLY IF score is exactly 100 (Seal).
+    // Lower scores (e.g. 60=Görüşüldü, 80=Teklif) are saved locally but do not trigger an OCI queue row (Ghost Signal prevention).
+    if (leadScore === 100) {
+      try {
+        const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
+        const result = await enqueueSealConversion({
+          callId,
+          siteId,
+          confirmedAt,
+          saleAmount,
+          currency,
+          leadScore,
+        });
+        if (result.enqueued) {
+          logInfo('seal_oci_enqueued', { call_id: callId });
+        }
+      } catch (enqueueErr) {
+        logError('seal_oci_enqueue_failed', {
+          call_id: callId,
+          error: String((enqueueErr as Error)?.message ?? enqueueErr),
+        });
+        // Non-fatal: seal succeeded; OCI enqueue is best-effort
       }
-    } catch (enqueueErr) {
-      logError('seal_oci_enqueue_failed', {
-        call_id: callId,
-        error: String((enqueueErr as Error)?.message ?? enqueueErr),
-      });
-      // Non-fatal: seal succeeded; OCI enqueue is best-effort
     }
 
     return NextResponse.json({
