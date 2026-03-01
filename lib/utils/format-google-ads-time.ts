@@ -57,6 +57,7 @@ function _formatDate(d: Date, tz: string): string {
     hour12: false,
   }).format(d);
 
+  // longOffset produces GMT+3:00 (with colon). Google Ads CSV requires +0300 (no colon).
   const offsetParts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     timeZoneName: 'longOffset',
@@ -69,6 +70,7 @@ function _formatDate(d: Date, tz: string): string {
     .trim();
 
   // Google Ads CSV bulk import expects +0300 (4 digits, NO colon). +03:00 causes "invalid".
+  // Intl longOffset returns GMT+3:00 (with colon); we must output +0300 (no colon).
   let offset: string;
   if (!raw || raw === 'Z') {
     offset = '+0000';
@@ -76,12 +78,12 @@ function _formatDate(d: Date, tz: string): string {
     const m = raw.match(/^([+-])(\d{1,2}):?(\d{2})$/);
     offset = m
       ? `${m[1]}${m[2].padStart(2, '0')}${m[3]}`
-      : raw.includes(':')
-        ? raw.replace(':', '')
-        : raw.replace(/([+-])(\d{2})(\d{2})/, '$1$2$3');
+      : raw.replace(/:/g, ''); // Fallback: strip any colons (+03:00 -> +0300)
   }
 
-  return `${base}${offset}`;
+  // Defensive: ensure offset has no colon (some Intl/Node envs may vary)
+  const sanitized = offset.replace(/:/g, '');
+  return `${base}${sanitized}`;
 }
 
 /**

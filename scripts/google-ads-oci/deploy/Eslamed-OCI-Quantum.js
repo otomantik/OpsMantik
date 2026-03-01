@@ -426,7 +426,7 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
         getContentText: function () {
           if (url.indexOf('/api/oci/v2/verify') !== -1) return JSON.stringify({ session_token: 'mock_eslamed_token' });
           if (url.indexOf('/api/oci/google-ads-export') !== -1) return JSON.stringify([
-            { id: 'mock-1', gclid: 'TEST_GCLID', conversionName: 'OpsMantik_V5_DEMIR_MUHUR', conversionTime: '2026-03-01 15:30:00+03:00', conversionValue: 5000, conversionCurrency: 'TRY' }
+            { id: 'mock-1', gclid: 'TEST_GCLID', conversionName: 'OpsMantik_V5_DEMIR_MUHUR', conversionTime: '2026-03-01 15:30:00+0300', conversionValue: 5000, conversionCurrency: 'TRY' }
           ]);
           if (url.indexOf('/api/oci/ack') !== -1) return JSON.stringify({ updated: 1 });
           if (url.indexOf('/api/oci/ack-failed') !== -1) return JSON.stringify({ ok: true });

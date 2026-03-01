@@ -424,7 +424,7 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
                 id: 'mock-conv-1',
                 gclid: 'TEST_GCLID_QWERT123',
                 conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
-                conversionTime: '2026-03-01 15:30:00+03:00',
+                conversionTime: '2026-03-01 15:30:00+0300',
                 conversionValue: 5000,
                 conversionCurrency: 'TRY'
               },
@@ -432,7 +432,7 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
                 id: 'mock-conv-2',
                 wbraid: 'TEST_WBRAID_XYZ890',
                 conversionName: 'OpsMantik_V3_Nitelikli_Gorusme',
-                conversionTime: '2026-03-01 16:45:00+03:00',
+                conversionTime: '2026-03-01 16:45:00+0300',
                 conversionValue: 0,
                 conversionCurrency: 'TRY'
               },
