@@ -53,3 +53,28 @@ test('PR-2: dispatch-conversions uses tryAcquireCronLock("dispatch-conversions")
   assert.ok(src.includes('releaseCronLock'), 'dispatch-conversions must release lock in finally');
   assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
 });
+
+// PR-3: POST handlers also acquire cron locks (process-offline-conversions, providers/recover-processing)
+const PR3_ROUTES = [
+  { path: join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts'), name: 'process-offline-conversions' },
+  { path: join(process.cwd(), 'app', 'api', 'cron', 'providers', 'recover-processing', 'route.ts'), name: 'providers/recover-processing' },
+] as const;
+
+for (const route of PR3_ROUTES) {
+  test(`PR-3: ${route.name} POST path is not lock-free (uses tryAcquireCronLock)`, () => {
+    const src = readFileSync(route.path, 'utf-8');
+    assert.ok(src.includes('tryAcquireCronLock'), `${route.name} must use tryAcquireCronLock for both GET and POST`);
+  });
+
+  test(`PR-3: ${route.name} POST calls handlerWithLock`, () => {
+    const src = readFileSync(route.path, 'utf-8');
+    assert.ok(
+      src.includes('handlerWithLock'),
+      `${route.name} must define handlerWithLock for shared lock logic`
+    );
+    assert.ok(
+      /return\s+handlerWithLock\s*\(req\)/.test(src),
+      `${route.name} POST must return handlerWithLock(req)`
+    );
+  });
+}

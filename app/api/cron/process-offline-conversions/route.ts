@@ -51,9 +51,7 @@ async function runProcess(req: NextRequest) {
   );
 }
 
-export async function GET(req: NextRequest) {
-  const forbidden = requireCronAuth(req);
-  if (forbidden) return forbidden;
+async function handlerWithLock(req: NextRequest) {
   const acquired = await tryAcquireCronLock('process-offline-conversions', CRON_LOCK_TTL_SEC);
   if (!acquired) {
     return NextResponse.json(
@@ -62,8 +60,7 @@ export async function GET(req: NextRequest) {
     );
   }
   try {
-    const res = await runProcess(req);
-    return res;
+    return await runProcess(req);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
@@ -75,8 +72,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+  return handlerWithLock(req);
+}
+
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return runProcess(req);
+  return handlerWithLock(req);
 }
