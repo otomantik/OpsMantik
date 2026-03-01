@@ -128,32 +128,40 @@ export function useIntentQualification(
             }
           }
 
-          const actionType = leadScore === 100 ? 'sealed' : leadScore === 80 ? 'offered (teklif)' : 'contacted (görüşüldü)';
-          const undoToastId = toast.success(leadScore === 100 ? t('toast.success.done') : actionType.toUpperCase(), {
-            description: t('toast.description.intentAction', { action: actionType }),
-            duration: 8000,
-            action: {
-              label: t('common.undo'),
-              onClick: async () => {
-                toast.dismiss(undoToastId);
-                toast.info(t('toast.info.undoing'));
-                try {
-                  const result = await undoQualification(intentId);
-                  if (result.success) {
-                    toast.success(t('toast.success.undone'));
-                    onUndoSuccess?.();
-                  } else {
-                    toast.error(t('toast.error.undoFailed'), {
-                      description: result.error || t('common.tryAgain'),
-                    });
+          const actionType = leadScore === 100
+            ? 'sealed'
+            : leadScore === 80
+              ? t('hunter.teklif').toLowerCase()
+              : t('hunter.gorusuldu').toLowerCase();
+          const undoToastId = toast.success(
+            leadScore === 100 ? t('toast.success.done') : actionType.toUpperCase(),
+            {
+              description: leadScore === 100
+                ? t('toast.description.intentAction', { action: 'sealed' })
+                : t('toast.description.intentAction', { action: actionType }),
+              duration: 8000,
+              action: {
+                label: t('common.undo'),
+                onClick: async () => {
+                  toast.dismiss(undoToastId);
+                  toast.info(t('toast.info.undoing'));
+                  try {
+                    const result = await undoQualification(intentId);
+                    if (result.success) {
+                      toast.success(t('toast.success.undone'));
+                      onUndoSuccess?.();
+                    } else {
+                      toast.error(t('toast.error.undoFailed'), {
+                        description: result.error || t('common.tryAgain'),
+                      });
+                    }
+                  } catch (err: unknown) {
+                    const errorMessage = err instanceof Error ? err.message : t('toast.error.undoFailed');
+                    toast.error(t('toast.error.undoFailed'), { description: errorMessage });
                   }
-                } catch (err: unknown) {
-                  const errorMessage = err instanceof Error ? err.message : t('toast.error.undoFailed');
-                  toast.error(t('toast.error.undoFailed'), { description: errorMessage });
-                }
+                },
               },
-            },
-          });
+            });
           return { success: true };
         }
 

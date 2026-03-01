@@ -368,7 +368,7 @@ export function HunterCard({
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
             <Trash2 className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
-            <span className="hidden sm:inline truncate">Çöp</span>
+            <span className="hidden sm:inline truncate">{translate('hunter.junk')}</span>
           </Button>
 
           <Button
@@ -378,7 +378,7 @@ export function HunterCard({
             onClick={() => onSkip({ id: intent.id })}
             title={translate('hunter.skip')}
           >
-            <span className="truncate">Geç</span>
+            <span className="truncate">{translate('hunter.skip')}</span>
           </Button>
 
           {onQualify && (
@@ -392,7 +392,7 @@ export function HunterCard({
                 title={translate('hunter.gorusuldu')}
               >
                 <UserCheck className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
-                <span className="truncate">Görüş</span>
+                <span className="truncate">{translate('hunter.gorusuldu')}</span>
               </Button>
 
               <Button
@@ -404,7 +404,7 @@ export function HunterCard({
                 title={translate('hunter.teklif')}
               >
                 <TrendingUp className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
-                <span className="truncate">Teklif</span>
+                <span className="truncate">{translate('hunter.teklif')}</span>
               </Button>
             </>
           )}
@@ -418,7 +418,7 @@ export function HunterCard({
             data-testid="hunter-card-seal-deal"
           >
             <ShieldCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
-            <span className="truncate">MÜHÜR</span>
+            <span className="truncate">{translate('hunter.seal')}</span>
           </Button>
         </div>
       </CardFooter>
