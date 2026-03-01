@@ -17,7 +17,7 @@ import { normalizeTimezone } from '@/lib/i18n/timezone';
 export const GOOGLE_ADS_TIME_FORMAT = 'yyyy-MM-dd HH:mm:ss±HH:mm' as const;
 
 /** Regex that Google Ads accepts for Conversion time column. */
-export const GOOGLE_ADS_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/ as const;
+export const GOOGLE_ADS_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
 
 /** Parse UTC/ISO timestamp string or Date. Returns null if input is null/undefined/invalid. */
 export function parseUtcTimestamp(ts: string | Date | null | undefined): Date | null {
