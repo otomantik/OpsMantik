@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { formatGoogleAdsTime } from '@/lib/utils/format-google-ads-time';
+import { formatGoogleAdsTimeCompact } from '@/lib/utils/format-google-ads-time';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
@@ -33,7 +33,7 @@ export interface GoogleAdsConversionItem {
   gbraid: string;
   /** Conversion action name (e.g. "Sealed Lead"). */
   conversionName: string;
-  /** Format: yyyy-mm-dd HH:mm:ssXXX (site timezone, e.g. +0300). Do not use ISO with Z or milliseconds. */
+  /** Format: yyyyMMdd HHmmss (site timezone; no offset). Google Ads uses account timezone. */
   conversionTime: string;
   /** Numeric value only (e.g. 750.00). No currency symbols. */
   conversionValue: number;
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
 
     const query = adminClient
       .from('offline_conversion_queue')
-      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, value_cents, currency, action')
+      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, created_at, value_cents, currency, action')
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter)
@@ -168,7 +168,7 @@ export async function GET(req: NextRequest) {
       if (!clickId) continue;
 
       const rawTime = (sig as { google_conversion_time: string }).google_conversion_time || '';
-      const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
+      const conversionTime = formatGoogleAdsTimeCompact(rawTime, (site as { timezone?: string | null }).timezone);
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
@@ -219,7 +219,7 @@ export async function GET(req: NextRequest) {
         const clickId = gclid || wbraid || gbraid;
         if (!clickId) continue;
         const rawTime = payload.timestamp || new Date().toISOString();
-        const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
+        const conversionTime = formatGoogleAdsTimeCompact(rawTime, (site as { timezone?: string | null }).timezone);
         const pvOrderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW}_${conversionTime}`.slice(0, 128);
         pvItems.push({
           id: pvId,
@@ -245,15 +245,18 @@ export async function GET(req: NextRequest) {
     const callIds = rawList.map((r: { call_id: string | null }) => r.call_id).filter(Boolean) as string[];
     const sessionByCall: Record<string, string> = {};
     const sessionCreatedAt: Record<string, string> = {};
+    const callCreatedAt: Record<string, string> = {};
     if (callIds.length > 0) {
       const { data: calls } = await adminClient
         .from('calls')
-        .select('id, matched_session_id')
+        .select('id, matched_session_id, created_at')
         .eq('site_id', siteUuid)
         .in('id', callIds);
       for (const c of calls ?? []) {
         const sid = (c as { matched_session_id?: string | null }).matched_session_id;
         if (sid) sessionByCall[(c as { id: string }).id] = sid;
+        const ca = (c as { created_at?: string | null }).created_at;
+        if (ca) callCreatedAt[(c as { id: string }).id] = ca;
       }
       const sessionIds = [...new Set(Object.values(sessionByCall))].filter(Boolean);
       if (sessionIds.length > 0) {
@@ -332,18 +335,20 @@ export async function GET(req: NextRequest) {
       wbraid?: string | null;
       gbraid?: string | null;
       conversion_time: string;
+      created_at?: string | null;
       value_cents: number;
       currency?: string | null;
       action?: string | null;
     }) => {
-      const rawTime = row.conversion_time || '';
-      const sealTs = new Date(rawTime || 0).getTime();
+      // Original event time: calls.created_at > queue.created_at (fallback)
+      const rawTs = row.call_id ? callCreatedAt[row.call_id] : null;
+      const fallbackTs = (row.created_at || row.conversion_time) || '';
+      const baseTs = rawTs || fallbackTs;
+      const tsMs = new Date(baseTs || 0).getTime();
       const now = Date.now();
-      // Google gelecek tarih kabul etmez. Eski mantık clickTime+24h kullanıyordu → yarına taşıp "geçersiz" hatası.
-      // Gerçek mühür zamanını (rawTime) kullan; gelecekteyse now-1dak ile sınırla.
       const exportTs =
-        sealTs > 0 && sealTs <= now ? rawTime : new Date(now - 60 * 1000).toISOString();
-      const conversionTime = formatGoogleAdsTime(exportTs, (site as { timezone?: string | null }).timezone);
+        tsMs > 0 && tsMs <= now ? baseTs : new Date(now - 60 * 1000).toISOString();
+      const conversionTime = formatGoogleAdsTimeCompact(exportTs, (site as { timezone?: string | null }).timezone);
 
       // V5 Iron Seal: raw value_cents/100. No decay.
       const valueCents = Number(row.value_cents) || 0;

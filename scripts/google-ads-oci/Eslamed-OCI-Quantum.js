@@ -85,7 +85,11 @@ class Validator {
   }
 
   static isValidGoogleAdsTime(timeStr) {
-    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(timeStr);
+    if (!timeStr || typeof timeStr !== 'string') return false;
+    // Compact: yyyyMMdd HHmmss (no offset; Google Ads uses account timezone)
+    if (/^\d{8} \d{6}$/.test(timeStr.trim())) return true;
+    // Legacy: yyyy-mm-dd HH:mm:ss±HH:mm
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(timeStr.trim());
   }
 
   static analyze(row) {

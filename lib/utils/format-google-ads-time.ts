@@ -48,3 +48,40 @@ export function formatGoogleAdsTime(
 
   return `${base}${offset}`;
 }
+
+/**
+ * Format for Google Ads OCI: compact yyyyMMdd HHmmss (no timezone offset).
+ * Account timezone (e.g. Europe/Istanbul) is used by Google Ads; do not send offset.
+ * @param utcDate - Date in UTC (or ISO string)
+ * @param timezoneString - IANA timezone (e.g. Europe/Istanbul). Default: Europe/Istanbul
+ * @returns yyyyMMdd HHmmss (e.g. 20260301 143841)
+ */
+export function formatGoogleAdsTimeCompact(
+  utcDate: Date | string,
+  timezoneString?: string | null
+): string {
+  const tz = normalizeTimezone(timezoneString, 'Europe/Istanbul');
+  const d = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
+  if (Number.isNaN(d.getTime())) {
+    return formatGoogleAdsTimeCompact(new Date(), tz);
+  }
+
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(d);
+  const y = parts.find((p) => p.type === 'year')?.value ?? '';
+  const mo = parts.find((p) => p.type === 'month')?.value ?? '';
+  const d2 = parts.find((p) => p.type === 'day')?.value ?? '';
+  const h = parts.find((p) => p.type === 'hour')?.value ?? '';
+  const mi = parts.find((p) => p.type === 'minute')?.value ?? '';
+  const s = parts.find((p) => p.type === 'second')?.value ?? '';
+  return `${y}${mo}${d2} ${h}${mi}${s}`;
+}

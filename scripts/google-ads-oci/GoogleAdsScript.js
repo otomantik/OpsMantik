@@ -83,10 +83,13 @@ class Validator {
   }
 
   /**
-   * Google Ads requires YYYY-MM-DD HH:mm:ss+ZZ:ZZ strictly!
+   * Google Ads: yyyyMMdd HHmmss (compact, no offset) or legacy yyyy-mm-dd HH:mm:ss±HH:mm.
    */
   static isValidGoogleAdsTime(timeStr) {
-    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(timeStr);
+    if (!timeStr || typeof timeStr !== 'string') return false;
+    const s = timeStr.trim();
+    if (/^\d{8} \d{6}$/.test(s)) return true;
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(s);
   }
 
   static analyze(row) {
