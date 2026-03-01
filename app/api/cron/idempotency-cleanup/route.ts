@@ -21,16 +21,14 @@ function getYearMonthUtcOffset(monthsAgo: number): string {
 }
 
 /**
- * POST /api/cron/idempotency-cleanup
+ * GET/POST /api/cron/idempotency-cleanup
  * Lifecycle: Delete ingest_idempotency rows older than 90 days, in batches of 10k.
  * Safety: Never deletes current or previous UTC month (RPC + dry_run count).
  * Auth: Cron Secret.
  * Schedule: Daily 03:00 UTC. Large backlogs may require multiple runs.
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
-export async function POST(req: NextRequest) {
-    const forbidden = requireCronAuth(req);
-    if (forbidden) return forbidden;
-
+async function run(req: NextRequest) {
     const dryRun = req.nextUrl.searchParams.get('dry_run') === 'true';
 
     // 1. Cutoff = 90 days ago
@@ -93,4 +91,16 @@ export async function POST(req: NextRequest) {
         batch_size: BATCH_SIZE,
         note: deletedCount >= BATCH_SIZE ? `Backlog may remain; run again or schedule more frequently.` : undefined,
     }, { headers: getBuildInfoHeaders() });
+}
+
+export async function GET(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
+}
+
+export async function POST(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
 }

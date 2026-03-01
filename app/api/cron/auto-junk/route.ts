@@ -4,11 +4,13 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logError } from '@/lib/logging/logger';
 
 /**
+ * GET/POST /api/cron/auto-junk
  * Nightly Cron: Auto-Junk Stale Leads
  * Target: status = 'pending' AND expires_at < now()
  * Auth: requireCronAuth (x-vercel-cron or Bearer CRON_SECRET). Schedule: vercel.json "0 2 * * *"
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
-async function handler() {
+async function run(_req: NextRequest) {
     try {
         const nowIso = new Date().toISOString();
         const { error, count } = await adminClient
@@ -34,8 +36,14 @@ async function handler() {
     }
 }
 
+export async function GET(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
+}
+
 export async function POST(req: NextRequest) {
     const forbidden = requireCronAuth(req);
     if (forbidden) return forbidden;
-    return handler();
+    return run(req);
 }

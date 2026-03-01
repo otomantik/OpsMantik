@@ -1,11 +1,12 @@
 /**
- * POST /api/cron/dispatch-conversions
+ * GET/POST /api/cron/dispatch-conversions
  *
  * Sprint 1.5 cron: dispatches pending rows from the `conversions` table
  * to Google Ads API via googleAdsAdapter.
  *
  * Schedule: every 2 minutes (see vercel.json).
  * Auth: requireCronAuth (x-vercel-cron in prod; Bearer CRON_SECRET in dev).
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  *
  * Env required:
  *   GOOGLE_ADS_CREDENTIALS — JSON-stringified GoogleAdsCredentials object
@@ -19,10 +20,7 @@ import { processPendingConversions } from '@/lib/workers/conversion-worker';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
-    const forbidden = requireCronAuth(req);
-    if (forbidden) return forbidden;
-
+async function run(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const opts: Record<string, unknown> = {};
     const batchParam = sp.get('batch_size');
@@ -51,4 +49,16 @@ export async function POST(req: NextRequest) {
             { status: 500, headers: getBuildInfoHeaders() }
         );
     }
+}
+
+export async function GET(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
+}
+
+export async function POST(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
 }

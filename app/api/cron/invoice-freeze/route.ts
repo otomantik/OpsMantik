@@ -10,15 +10,13 @@ import crypto from 'node:crypto';
 export const runtime = 'nodejs';
 
 /**
- * POST /api/cron/invoice-freeze
+ * GET/POST /api/cron/invoice-freeze
  * Revenue Kernel: Snapshot previous month's usage into immutable invoice_snapshot table.
  * Auth: Cron Secret only.
  * Idempotency: ON CONFLICT DO NOTHING (safe to run multiple times).
+ * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
-export async function POST(req: NextRequest) {
-    const forbidden = requireCronAuth(req);
-    if (forbidden) return forbidden;
-
+async function run(_req: NextRequest) {
     // 1. Determine Target Month (Previous UTC Month)
     // If run on Feb 1st, we freeze Jan.
     const now = new Date();
@@ -141,4 +139,16 @@ export async function POST(req: NextRequest) {
         { ok: true, year_month: yearMonth, frozen, failed },
         { headers: getBuildInfoHeaders() }
     );
+}
+
+export async function GET(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
+}
+
+export async function POST(req: NextRequest) {
+    const forbidden = requireCronAuth(req);
+    if (forbidden) return forbidden;
+    return run(req);
 }

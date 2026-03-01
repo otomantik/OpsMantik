@@ -1,0 +1,43 @@
+/**
+ * PR-1: Vercel Cron GET compatibility tests.
+ * Asserts each of the 4 cron routes exports both GET and POST handlers.
+ * Source-based inspection (robust, no brittle line numbers).
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const ROUTES = [
+  { path: join(process.cwd(), 'app', 'api', 'cron', 'dispatch-conversions', 'route.ts'), name: 'dispatch-conversions' },
+  { path: join(process.cwd(), 'app', 'api', 'cron', 'auto-junk', 'route.ts'), name: 'auto-junk' },
+  { path: join(process.cwd(), 'app', 'api', 'cron', 'idempotency-cleanup', 'route.ts'), name: 'idempotency-cleanup' },
+  { path: join(process.cwd(), 'app', 'api', 'cron', 'invoice-freeze', 'route.ts'), name: 'invoice-freeze' },
+] as const;
+
+for (const route of ROUTES) {
+  test(`PR-1: ${route.name} exports GET handler`, () => {
+    const src = readFileSync(route.path, 'utf-8');
+    assert.ok(
+      /export\s+async\s+function\s+GET\s*\(/.test(src),
+      `${route.name} must export async function GET(req) for Vercel Cron compatibility`
+    );
+  });
+
+  test(`PR-1: ${route.name} exports POST handler`, () => {
+    const src = readFileSync(route.path, 'utf-8');
+    assert.ok(
+      /export\s+async\s+function\s+POST\s*\(/.test(src),
+      `${route.name} must export async function POST(req) for manual/Bearer calls`
+    );
+  });
+
+  test(`PR-1: ${route.name} uses requireCronAuth before run`, () => {
+    const src = readFileSync(route.path, 'utf-8');
+    assert.ok(src.includes('requireCronAuth'), `${route.name} must use requireCronAuth (fail-closed)`);
+    assert.ok(
+      src.includes('if (forbidden) return forbidden'),
+      `${route.name} must call requireCronAuth first and return early if forbidden`
+    );
+  });
+}
