@@ -338,13 +338,11 @@ export async function GET(req: NextRequest) {
     }) => {
       const rawTime = row.conversion_time || '';
       const sealTs = new Date(rawTime || 0).getTime();
-      const sessionId = row.call_id ? sessionByCall[row.call_id] : null;
-      const clickTimeIso = sessionId ? sessionCreatedAt[sessionId] : null;
-      const clickTime = clickTimeIso ? new Date(clickTimeIso).getTime() : sealTs;
-      const diffHours = (sealTs - clickTime) / (60 * 60 * 1000);
-      const exportTs = diffHours < 24
-        ? new Date(clickTime + 24 * 60 * 60 * 1000 + 60 * 1000).toISOString()
-        : rawTime;
+      const now = Date.now();
+      // Google gelecek tarih kabul etmez. Eski mantık clickTime+24h kullanıyordu → yarına taşıp "geçersiz" hatası.
+      // Gerçek mühür zamanını (rawTime) kullan; gelecekteyse now-1dak ile sınırla.
+      const exportTs =
+        sealTs > 0 && sealTs <= now ? rawTime : new Date(now - 60 * 1000).toISOString();
       const conversionTime = formatGoogleAdsTime(exportTs, (site as { timezone?: string | null }).timezone);
 
       // V5 Iron Seal: raw value_cents/100. No decay.

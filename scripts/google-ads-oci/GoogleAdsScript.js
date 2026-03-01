@@ -182,11 +182,11 @@ class QuantumClient {
   }
 
   sendAck(siteId, queueIds, skippedIds) {
-    if (!queueIds.length && (!skippedIds || !skippedIds.length)) return;
+    if (!queueIds.length && (!skippedIds || !skippedIds.length)) return null;
     const url = `${this.baseUrl}/api/oci/ack`;
     const payload = { siteId, queueIds: queueIds || [] };
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
-    this._fetchWithBackoff(url, {
+    const response = this._fetchWithBackoff(url, {
       method: 'post',
       headers: {
         'Authorization': `Bearer ${this.sessionToken}`,
@@ -194,6 +194,11 @@ class QuantumClient {
       },
       payload: JSON.stringify(payload)
     });
+    try {
+      return JSON.parse(response.getContentText() || '{}');
+    } catch {
+      return { ok: false, raw: response.getContentText?.() ?? '' };
+    }
   }
 
   sendAckFailed(siteId, queueIds, errorCode, errorMessage, errorCategory) {
@@ -274,8 +279,10 @@ class UploadEngine {
 
       const conversionValue = parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0;
 
+      const orderIdRaw = row.orderId || row.id || '';
+      const orderId = String(orderIdRaw).substring(0, 64);  // Google Ads Order ID max 64 karakter
       upload.append({
-        'Order ID': row.orderId || row.id || '',
+        'Order ID': orderId,
         'Google Click ID': validation.clickId,
         'Conversion name': (row.conversionName || '').trim() || CONVERSION_EVENTS.V5_SEAL,
         'Conversion time': row.conversionTime,
@@ -346,7 +353,12 @@ function main() {
     if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0)) {
       const total = (stats.successIds.length || 0) + (stats.skippedIds && stats.skippedIds.length || 0);
       Telemetry.info(`${total} kayit icin API\'ye Muhur (ACK) gonderiliyor...`);
-      client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
+      const ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
+      if (ackRes) {
+        Telemetry.info(`ACK geri donus: ok=${!!ackRes.ok}, updated=${ackRes.updated != null ? ackRes.updated : 0}${ackRes.warnings ? ` | uyari=${JSON.stringify(ackRes.warnings)}` : ''}`);
+        Telemetry.info(`Google\'a giden -> offline_conversion_queue COMPLETED: ${stats.successIds.join(', ') || '-'}`);
+        Telemetry.info(`DETERMINISTIC_SKIP (V1 sampled) -> COMPLETED: ${(stats.skippedIds || []).join(', ') || '-'}`);
+      }
     }
 
     // 5. Başarısız satırlar (validation fail) → ack-failed (PROCESSING → FAILED)

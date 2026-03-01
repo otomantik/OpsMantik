@@ -172,11 +172,11 @@ class QuantumClient {
   }
 
   sendAck(siteId, queueIds, skippedIds) {
-    if (!queueIds.length && (!skippedIds || !skippedIds.length)) return;
+    if (!queueIds.length && (!skippedIds || !skippedIds.length)) return null;
     var url = this.baseUrl + '/api/oci/ack';
     var payload = { siteId: siteId, queueIds: queueIds || [] };
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
-    this._fetchWithBackoff(url, {
+    var response = this._fetchWithBackoff(url, {
       method: 'post',
       headers: {
         'Authorization': 'Bearer ' + this.sessionToken,
@@ -184,6 +184,11 @@ class QuantumClient {
       },
       payload: JSON.stringify(payload)
     });
+    try {
+      return JSON.parse(response.getContentText() || '{}');
+    } catch (e) {
+      return { ok: false, raw: response.getContentText ? response.getContentText() : '' };
+    }
   }
 
   sendAckFailed(siteId, queueIds, errorCode, errorMessage, errorCategory) {
@@ -265,14 +270,18 @@ class UploadEngine {
 
       var conversionValue = parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0;
 
+      var orderIdRaw = row.orderId || row.id || '';
+      var orderId = String(orderIdRaw).substring(0, 64);  // Google Ads Order ID max 64 karakter
+      var gclidShort = (validation.clickId || '').substring(0, 20) + ((validation.clickId || '').length > 20 ? '...' : '');
       upload.append({
-        'Order ID': row.orderId || row.id || '',
+        'Order ID': orderId,
         'Google Click ID': validation.clickId,
         'Conversion name': (row.conversionName || '').trim() || CONVERSION_EVENTS.V5_SEAL,
         'Conversion time': row.conversionTime,
         'Conversion value': Math.max(0, conversionValue),
         'Conversion currency': (row.conversionCurrency || 'TRY').toUpperCase()
       });
+      Telemetry.info('Gonderildi: orderId=' + (orderId.length > 50 ? orderId.substring(0, 50) + '...' : orderId) + ' gclid=' + gclidShort, { id: row.id || '' });
 
       stats.uploaded++;
       if (row.id) stats.successIds.push(row.id);
@@ -282,8 +291,9 @@ class UploadEngine {
       try {
         upload.apply();
       } catch (err) {
+        var msg = (err && err.message) ? String(err.message).slice(0, 500) : 'UPLOAD_EXCEPTION';
+        Telemetry.error('upload.apply() HATA: ' + msg, err);
         if (typeof opts !== 'undefined' && opts !== null && typeof opts.onUploadFailure === 'function' && stats.successIds.length > 0) {
-          var msg = (err && err.message) ? String(err.message).slice(0, 500) : 'UPLOAD_EXCEPTION';
           opts.onUploadFailure(stats.successIds, 'UPLOAD_EXCEPTION', msg, 'TRANSIENT');
         }
         return Object.assign({}, stats, { uploadFailed: true });
@@ -299,6 +309,7 @@ class UploadEngine {
 // ========================================================================
 function main() {
   Telemetry.info('Eslamed Quantum OCI Engine Baslatiliyor...');
+  var ackUpdated = null;
 
   try {
     if (!CONFIG.SITE_ID || !CONFIG.API_KEY) {
@@ -338,7 +349,13 @@ function main() {
     if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0)) {
       var total = (stats.successIds.length || 0) + (stats.skippedIds && stats.skippedIds.length || 0);
       Telemetry.info(total + ' kayit icin API\'ye Muhur (ACK) gonderiliyor...');
-      client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
+      var ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
+      if (ackRes) {
+        ackUpdated = ackRes.updated != null ? ackRes.updated : null;
+        Telemetry.info('ACK geri donus: ok=' + !!ackRes.ok + ', updated=' + (ackRes.updated || 0) + (ackRes.warnings ? ' | uyari=' + JSON.stringify(ackRes.warnings) : ''));
+        Telemetry.info('Google\'a giden -> offline_conversion_queue COMPLETED: ' + (stats.successIds.join(', ') || '-'));
+        Telemetry.info('DETERMINISTIC_SKIP (V1 sampled) -> COMPLETED: ' + ((stats.skippedIds || []).join(', ') || '-'));
+      }
     }
 
     if (stats.failedRows && stats.failedRows.length > 0) {
@@ -360,6 +377,7 @@ function main() {
 
     if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0) || (stats.failedRows && stats.failedRows.length > 0)) {
       Telemetry.info('Eslamed OCI senkronizasyonu tamamlandi.');
+      Telemetry.info('=== RAPOR === Ham: ' + (conversions ? conversions.length : 0) + ' | Yuklendi: ' + stats.uploaded + ' | Skip: ' + (stats.skippedDeterministic || 0) + ' | ValidationFail: ' + stats.skippedValidation + ' | Google ID: ' + (stats.successIds.join(', ') || '-') + ' | ACK updated: ' + (ackUpdated != null ? ackUpdated : 'N/A') + ' ===');
     }
 
   } catch (error) {

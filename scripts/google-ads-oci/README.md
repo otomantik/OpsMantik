@@ -2,6 +2,13 @@
 
 **Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)
 
+**OCI credentials (SITE_ID, API_KEY)** — Supabase'den çekip scripte yaz:
+```bash
+npm run oci:credentials Eslamed              # Eslamed değerlerini göster
+npm run oci:credentials Eslamed -- --write   # Eslamed-OCI-Quantum.js güncelle
+node scripts/get-oci-credentials.mjs Muratcan   # Muratcan için değerler
+```
+
 ## Ne yapar?
 
 1. OpsMantik'ten **hazır dönüşüm listesini** alır: `GET .../api/oci/google-ads-export?siteId=...&markAsExported=true`
