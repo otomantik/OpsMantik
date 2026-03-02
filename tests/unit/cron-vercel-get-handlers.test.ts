@@ -79,6 +79,24 @@ for (const route of PR3_ROUTES) {
   });
 }
 
+// PR-7: reconcile-usage hardened against unhandled rejections
+test('PR-7: reconcile-usage has top-level try/catch with RECONCILE_CRON_ERROR and 500', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'reconcile-usage', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes("'RECONCILE_CRON_ERROR'") || src.includes('"RECONCILE_CRON_ERROR"'),
+    'reconcile-usage must log RECONCILE_CRON_ERROR on failure'
+  );
+  assert.ok(
+    src.includes('status: 500') && src.includes('ok: false'),
+    'reconcile-usage catch path must return 500 JSON { ok: false }'
+  );
+  assert.ok(
+    src.includes('try {') && src.includes('} catch'),
+    'reconcile-usage must wrap handler in try/catch'
+  );
+});
+
 // PR-5: invoice-freeze has top-level try/catch with INVOICE_FREEZE_ERROR and 500 on error
 test('PR-5: invoice-freeze contains INVOICE_FREEZE_ERROR and returns 500 in catch path', () => {
   const path = join(process.cwd(), 'app', 'api', 'cron', 'invoice-freeze', 'route.ts');

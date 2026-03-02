@@ -25,13 +25,13 @@ export async function GET(req: NextRequest) {
     const forbidden = requireCronAuth(req);
     if (forbidden) return forbidden;
 
-    const action = req.nextUrl.searchParams.get('action');
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '50', 10);
-    const requestId = req.headers.get('x-request-id') ?? undefined;
-
-    const result: ReconcileCronResponse = { ok: true, request_id: requestId };
-
     try {
+        const action = req.nextUrl.searchParams.get('action');
+        const limit = parseInt(req.nextUrl.searchParams.get('limit') || '50', 10);
+        const requestId = req.headers.get('x-request-id') ?? undefined;
+
+        const result: ReconcileCronResponse = { ok: true, request_id: requestId };
+
         // 1. Enqueue
         if (!action || action === 'enqueue') {
             const enqueueRes = await BillingReconciliationService.enqueueActiveSites();
@@ -45,11 +45,14 @@ export async function GET(req: NextRequest) {
         }
 
         return NextResponse.json(result, { headers: getBuildInfoHeaders() });
-
     } catch (err) {
-        logError('RECONCILE_CRON_ERROR', { error: err instanceof Error ? err.message : String(err) });
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        logError('RECONCILE_CRON_ERROR', {
+            error: errorMsg,
+            route: 'reconcile-usage',
+        });
         return NextResponse.json(
-            { ok: false, error: err instanceof Error ? err.message : String(err) },
+            { ok: false, error: errorMsg },
             { status: 500, headers: getBuildInfoHeaders() }
         );
     }
