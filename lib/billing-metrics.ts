@@ -25,10 +25,18 @@ function redisKey(metric: string): string {
   return BILLING_REDIS_PREFIX + metric;
 }
 
+const BILLING_COUNTER_TTL_SEC = 365 * 24 * 60 * 60; // 1 year
+
 function emit(metric: string, value: number = 1): void {
   counters[metric] = (counters[metric] ?? 0) + value;
   logInfo('BILLING_METRIC', { metric, value, total: counters[metric] });
-  redis.incr(redisKey(metric)).catch(() => { /* best-effort; do not fail request */ });
+  const key = redisKey(metric);
+  redis
+    .pipeline()
+    .incr(key)
+    .expire(key, BILLING_COUNTER_TTL_SEC)
+    .exec()
+    .catch(() => { /* best-effort; do not fail request */ });
 }
 
 export function incrementBillingIngestAllowed(): void {

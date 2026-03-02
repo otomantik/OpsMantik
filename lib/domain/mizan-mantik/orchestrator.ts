@@ -106,8 +106,12 @@ export async function evaluateAndRouteSignal(
       timestamp: signalDate.toISOString(),
       meta: { conversion_type: 'SECONDARY_OBSERVATION' },
     };
+    const pvQueueKey = `pv:queue:${siteId}`;
+    const pipeline = redis.pipeline();
+    pipeline.lpush(pvQueueKey, pvId);
+    pipeline.expire(pvQueueKey, PV_TTL_SEC);
+    await pipeline.exec();
     await redis.set(`pv:data:${pvId}`, JSON.stringify(pvPayload), { ex: PV_TTL_SEC });
-    await redis.lpush(`pv:queue:${siteId}`, pvId);
     return { routed: true, pvId, conversionValue: 0 };
   }
 

@@ -9,11 +9,14 @@
 import { redis } from '@/lib/upstash';
 import { logError } from '@/lib/logging/logger';
 
+const SEMAPHORE_KEY_TTL_SEC = 24 * 60 * 60; // 24h — reclaim dormant keys
+
 const ACQUIRE_SCRIPT = `
   redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
   local n = redis.call('ZCARD', KEYS[1])
   if n < tonumber(ARGV[2]) then
     redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
+    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[5]))
     return ARGV[4]
   end
   return nil
@@ -51,7 +54,7 @@ export async function acquireSemaphore(
     const result = await redis.eval(
       ACQUIRE_SCRIPT,
       [key],
-      [String(nowMs), String(limit), expiresAtMs, token]
+      [String(nowMs), String(limit), expiresAtMs, token, String(SEMAPHORE_KEY_TTL_SEC)]
     );
     return result === token ? token : null;
   } catch (err) {

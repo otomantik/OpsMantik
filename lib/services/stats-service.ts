@@ -30,11 +30,14 @@ export class StatsService {
     }
 
     /**
-     * Increment junk filter count
+     * Increment junk filter count (pipeline for atomic hincrby + expire)
      */
     static async incrementJunk(siteId: string, timezone: string = DEFAULT_TIMEZONE) {
         const key = this.getBaseKey(siteId, undefined, timezone);
-        await redis.hincrby(key, 'junk', 1);
+        const pipeline = redis.pipeline();
+        pipeline.hincrby(key, 'junk', 1);
+        pipeline.expire(key, 60 * 60 * 24 * 7);
+        await pipeline.exec();
     }
 
     /**
