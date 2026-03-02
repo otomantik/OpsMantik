@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { formatGoogleAdsTime, formatGoogleAdsTimeOrNull, parseUtcTimestamp } from '@/lib/utils/format-google-ads-time';
+import { buildOrderId } from '@/lib/oci/build-order-id';
 import { logWarn, logError } from '@/lib/logging/logger';
 import { minorToMajor } from '@/lib/i18n/currency';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
@@ -9,11 +10,14 @@ import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
-import { getPrimarySource } from '@/lib/conversation/primary-source';
+import { getPrimarySourceBatch } from '@/lib/conversation/primary-source';
 import { redis } from '@/lib/upstash';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
 
 const PV_BATCH_MAX = 500;
+/** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
+const EXPORT_QUEUE_LIMIT = 1000;
+const EXPORT_SIGNALS_LIMIT = 1000;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -91,19 +95,31 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null }) | null = null;
-    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights').eq('id', siteId).maybeSingle();
+    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null }) | null = null;
+    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key').eq('id', siteId).maybeSingle();
     if (byId.data) {
-      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null };
+      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null };
     }
     if (!site) {
-      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights').eq('public_id', siteId).maybeSingle();
+      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null };
+        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null };
       }
     }
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    // P0-4.1: Tenant isolation — x-api-key auth MUST bind to site.oci_api_key
+    const usedApiKeyAuth = authed && !siteIdFromAuth;
+    if (usedApiKeyAuth) {
+      const siteKey = (site as { oci_api_key?: string | null }).oci_api_key ?? '';
+      if (!siteKey || !timingSafeCompare(siteKey, apiKey)) {
+        return NextResponse.json(
+          { error: 'Tenant isolation violation: API key does not match requested site' },
+          { status: 403 }
+        );
+      }
     }
 
     // Explicit Partitioning: Export only works for sites configured as 'script'
@@ -135,7 +151,8 @@ export async function GET(req: NextRequest) {
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(EXPORT_QUEUE_LIMIT);
 
     const { data: rows, error: fetchError } = await query;
 
@@ -146,6 +163,9 @@ export async function GET(req: NextRequest) {
     }
 
     const rawList = Array.isArray(rows) ? rows : [];
+    if (rawList.length === EXPORT_QUEUE_LIMIT) {
+      logWarn('OCI_EXPORT_BATCH_HIT_LIMIT', { limit: EXPORT_QUEUE_LIMIT, pipeline: 'offline_conversion_queue' });
+    }
 
     // Pipeline B: marketing_signals (PENDING)
     const { data: signalRows } = await adminClient
@@ -153,16 +173,25 @@ export async function GET(req: NextRequest) {
       .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING')
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(EXPORT_SIGNALS_LIMIT);
 
     const signalList = Array.isArray(signalRows) ? signalRows : [];
+    if (signalList.length === EXPORT_SIGNALS_LIMIT) {
+      logWarn('OCI_EXPORT_BATCH_HIT_LIMIT', { limit: EXPORT_SIGNALS_LIMIT, pipeline: 'marketing_signals' });
+    }
 
-    // Resolve gclid for signals (only include those with click ID)
+    // P0-1.3: Bulk fetch primary sources (2 queries) instead of N+1
+    const signalCallIds = signalList
+      .map((s) => (s as { call_id?: string | null }).call_id)
+      .filter((id): id is string => Boolean(id));
+    const sourceMap = await getPrimarySourceBatch(siteUuid, signalCallIds);
+
     const signalItems: GoogleAdsConversionItem[] = [];
     for (const sig of signalList) {
       const callId = (sig as { call_id?: string | null }).call_id;
       if (!callId) continue;
-      const source = await getPrimarySource(siteUuid, { callId });
+      const source = sourceMap.get(callId) ?? null;
       const gclid = (source?.gclid || '').trim();
       const wbraid = (source?.wbraid || '').trim();
       const gbraid = (source?.gbraid || '').trim();
@@ -356,11 +385,19 @@ export async function GET(req: NextRequest) {
       const conversionValue = ensureNumericValue(minorToMajor(valueCents, rowCurrency));
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
       const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim();
-      const orderIdDDA = `${clickId}_${OPSMANTIK_CONVERSION_NAMES.V5_SEAL}_${conversionTime}`.slice(0, 128);
+      const fallbackOrderId = 'seal_' + String(row.id);
+      const orderIdDDA = buildOrderId(
+        OPSMANTIK_CONVERSION_NAMES.V5_SEAL,
+        clickId || null,
+        conversionTime,
+        fallbackOrderId,
+        row.id,
+        valueCents
+      );
 
       conversions.push({
-        id: 'seal_' + String(row.id),
-        orderId: orderIdDDA || 'seal_' + String(row.id),
+        id: fallbackOrderId,
+        orderId: orderIdDDA || fallbackOrderId,
         gclid: (row.gclid || '').trim(),
         wbraid: (row.wbraid || '').trim(),
         gbraid: (row.gbraid || '').trim(),

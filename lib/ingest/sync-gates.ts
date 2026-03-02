@@ -17,7 +17,7 @@ import {
 import type { ValidIngestPayload } from '@/lib/types/ingest';
 
 export type SyncGatesResult =
-  | { ok: true; billable: boolean }
+  | { ok: true; billable: boolean; idempotencyKey?: string }
   | { ok: false; reason: 'duplicate' }
   | { ok: false; reason: 'quota_reject' }
   | { ok: false; reason: 'entitlements_reject' }
@@ -94,5 +94,9 @@ export async function runSyncGates(
     }
   }
 
-  return { ok: true, billable: idempotencyInserted && billableDecision.billable };
+  return {
+    ok: true,
+    billable: idempotencyInserted && billableDecision.billable,
+    ...(idempotencyInserted && billableDecision.billable ? { idempotencyKey } : {}),
+  };
 }

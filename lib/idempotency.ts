@@ -320,6 +320,24 @@ export async function updateIdempotencyBillableFalse(
 }
 
 /**
+ * Extinction Patch 1.1: Compensation — delete idempotency row so QStash retry can re-process.
+ * Used when processSyncEvent throws after idempotency+usage commit. Deleting allows retry to re-insert.
+ */
+export async function deleteIdempotencyKeyForCompensation(
+  siteIdUuid: string,
+  idempotencyKey: string
+): Promise<{ deleted: boolean; error?: unknown }> {
+  const { error } = await adminClient
+    .from('ingest_idempotency')
+    .delete()
+    .eq('site_id', siteIdUuid)
+    .eq('idempotency_key', idempotencyKey);
+
+  if (error) return { deleted: false, error };
+  return { deleted: true };
+}
+
+/**
  * PR-3 Overage: mark the idempotency row as OVERAGE for billing classification.
  */
 export async function setOverageOnIdempotencyRow(

@@ -15,6 +15,7 @@ import { isRecord, parseValidWorkerJobData } from '@/lib/types/ingest';
 import { SiteService } from '@/lib/services/site-service';
 import { runSyncGates } from '@/lib/ingest/sync-gates';
 import { processSyncEvent, DedupSkipError } from '@/lib/ingest/process-sync-event';
+import { deleteIdempotencyKeyForCompensation } from '@/lib/idempotency';
 import { checkAndIncrementFraudFingerprint } from '@/lib/services/fraud-quarantine-service';
 import { isCallEventWorkerPayload } from '@/lib/ingest/call-event-worker-payload';
 import { processCallEvent } from '@/lib/ingest/process-call-event';
@@ -121,7 +122,39 @@ async function handler(req: NextRequest) {
       return NextResponse.json({ ok: true, reason });
     }
 
-    const processResult = await processSyncEvent(job, site.id, qstashMessageId);
+    let processResult;
+    try {
+      processResult = await processSyncEvent(job, site.id, qstashMessageId);
+    } catch (syncError) {
+      if (gatesResult.billable && gatesResult.idempotencyKey) {
+        const currentMonthStart = `${getCurrentYearMonthUTC()}-01`;
+        try {
+          await adminClient.rpc('decrement_usage_compensation', {
+            p_site_id: site.id,
+            p_month: currentMonthStart,
+            p_kind: 'revenue_events',
+          });
+        } catch (compErr) {
+          logError('WORKERS_INGEST_COMPENSATION_FAILED', {
+            route: 'workers_ingest',
+            site_id: site.id,
+            idempotency_key: gatesResult.idempotencyKey,
+            error: String(compErr),
+          });
+        }
+        try {
+          await deleteIdempotencyKeyForCompensation(site.id, gatesResult.idempotencyKey);
+        } catch (delErr) {
+          logError('WORKERS_INGEST_IDEMPOTENCY_DELETE_FAILED', {
+            route: 'workers_ingest',
+            site_id: site.id,
+            idempotency_key: gatesResult.idempotencyKey,
+            error: String(delErr),
+          });
+        }
+      }
+      throw syncError;
+    }
 
     if (gatesResult.billable) {
       const yearMonth = getCurrentYearMonthUTC();

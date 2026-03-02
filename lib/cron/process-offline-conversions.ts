@@ -1,7 +1,9 @@
 /**
  * PR-G4: Worker helpers — backoff and queue row -> ConversionJob mapping.
+ * Extinction Patch 4.1: Order ID uses deterministic unique suffix (buildOrderId).
  */
 
+import { buildOrderId } from '@/lib/oci/build-order-id';
 import type { ConversionJob } from '@/lib/providers/types';
 
 /** Backoff: min(5m * 2^retry_count, 24h). Returns seconds. */
@@ -31,13 +33,6 @@ export interface QueueRow {
   retry_count?: number;
 }
 
-/** Deterministic order_id for Google Ads idempotency (dedupe on retry). Max 128 chars. */
-function buildOrderId(clickId: string | null, occurredAt: string, fallbackId: string): string {
-  const sanitized = occurredAt.replace(/[:.]/g, '-');
-  const raw = clickId ? `${clickId}_V5_SEAL_${sanitized}` : fallbackId;
-  return raw.slice(0, 128);
-}
-
 export function queueRowToConversionJob(row: QueueRow): ConversionJob {
   const occurredAt =
     typeof (row.payload as { conversion_time?: string })?.conversion_time === 'string'
@@ -47,7 +42,7 @@ export function queueRowToConversionJob(row: QueueRow): ConversionJob {
         : new Date(row.conversion_time).toISOString();
 
   const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim() || null;
-  const orderId = buildOrderId(clickId, occurredAt, row.id);
+  const orderId = buildOrderId('V5_SEAL', clickId, occurredAt, row.id, row.id, Number(row.value_cents) || 0);
 
   const payload: Record<string, unknown> = { ...(row.payload ?? {}), order_id: orderId };
 
