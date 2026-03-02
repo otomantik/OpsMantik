@@ -4,7 +4,10 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { extractGeoInfo } from '@/lib/geo';
+import { extractGeoInfo, isGhostGeoCity } from '@/lib/geo';
+import { getSiteIngestConfig } from '@/lib/ingest/site-ingest-config';
+import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
+import { normalizeLandingUrl } from '@/lib/ingest/normalize-landing-url';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { debugLog } from '@/lib/utils';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
@@ -52,6 +55,23 @@ async function deterministicUuidFromString(input: string): Promise<string> {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20, 32)}`;
 }
 
+/**
+ * Compute dedup event id for a job (used by worker skip path and processSyncEvent).
+ */
+export async function getDedupEventIdForJob(
+  job: WorkerJob,
+  url: string,
+  qstashMessageId: string | null
+): Promise<string> {
+  const site_id = job.s;
+  const client_sid = typeof job.sid === 'string' ? job.sid : '';
+  const event_action = typeof job.ea === 'string' ? job.ea : '';
+  const dedupInput = qstashMessageId
+    ? `qstash:${qstashMessageId}`
+    : `fallback:${site_id}:${client_sid || ''}:${event_action || ''}:${url}`;
+  return deterministicUuidFromString(dedupInput);
+}
+
 export type ProcessSyncEventResult = { success: true; score: number };
 
 /**
@@ -84,10 +104,7 @@ export async function processSyncEvent(
           })()
         : null;
 
-  const dedupInput = qstashMessageId
-    ? `qstash:${qstashMessageId}`
-    : `fallback:${site_id}:${client_sid || ''}:${event_action || ''}:${url}`;
-  const dedupEventId = await deterministicUuidFromString(dedupInput);
+  const dedupEventId = await getDedupEventIdForJob(job, url, qstashMessageId);
 
   const { error: dedupError } = await adminClient
     .from('processed_signals')
@@ -168,6 +185,14 @@ async function doProcessSyncEvent(
   }
   if (job.is_proxy_detected != null) geoInfo.is_proxy_detected = Boolean(job.is_proxy_detected);
 
+  // Worker-side ghost geo: when site has strict mode, override ghost cities to Unknown/null (covers fallback/replay)
+  const siteIngestConfig = await getSiteIngestConfig(siteIdUuid);
+  const ghostGeoStrict = siteIngestConfig.ghost_geo_strict ?? siteIngestConfig.ingest_strict_mode ?? false;
+  if (ghostGeoStrict && (isGhostGeoCity(geoInfo.city) || isGhostGeoCity(geoInfo.district))) {
+    geoInfo.city = 'Unknown';
+    geoInfo.district = null;
+  }
+
   const fingerprint = meta?.fp || null;
 
   const dbMonth =
@@ -180,7 +205,15 @@ async function doProcessSyncEvent(
     })();
 
   const { attribution, utm } = await AttributionService.resolveAttribution(siteIdUuid, currentGclid, fingerprint, safeUrl, referrer);
-  const attributionSource = attribution.source;
+  let attributionSource = attribution.source;
+  // When traffic_debloat: only attribute as Google Ads when valid click-id present (length >= 10)
+  const trafficDebloat = siteIngestConfig.traffic_debloat ?? siteIngestConfig.ingest_strict_mode ?? false;
+  if (trafficDebloat && attributionSource.includes('Ads')) {
+    const gclid = params.get('gclid') || meta?.gclid || null;
+    const wbraid = params.get('wbraid') || meta?.wbraid || null;
+    const gbraid = params.get('gbraid') || meta?.gbraid || null;
+    if (!hasValidClickId({ gclid, wbraid, gbraid })) attributionSource = 'Direct';
+  }
   const deviceType =
     utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device) ? utm.device.toLowerCase() : deviceInfo.device_type;
 
@@ -188,24 +221,55 @@ async function doProcessSyncEvent(
     ? (job.consent_scopes as string[]).map((s) => String(s).toLowerCase())
     : [];
 
-  const session = await SessionService.handleSession(
-    siteIdUuid,
-    dbMonth,
-    {
-      client_sid,
-      url: safeUrl,
-      currentGclid,
-      meta,
-      params,
-      attributionSource,
-      deviceType,
-      fingerprint,
-      utm,
-      referrer,
-      consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
-    },
-    { ip, userAgent, geoInfo, deviceInfo }
-  );
+  const pageView10sReuse = siteIngestConfig.page_view_10s_session_reuse ?? siteIngestConfig.ingest_strict_mode ?? false;
+  const isPageView = event_action === 'page_view' || event_category === 'page';
+  let session: { id: string; created_month: string } | null = null;
+
+  if (pageView10sReuse && isPageView && fingerprint) {
+    const tenSecAgo = new Date(Date.now() - 10_000).toISOString();
+    const normalizedUrl = normalizeLandingUrl(safeUrl);
+    const { data: candidates } = await adminClient
+      .from('sessions')
+      .select('id, created_month, entry_page')
+      .eq('site_id', siteIdUuid)
+      .eq('fingerprint', fingerprint)
+      .gte('created_at', tenSecAgo)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (candidates?.length) {
+      for (const row of candidates) {
+        const entry = typeof row.entry_page === 'string' ? row.entry_page : '';
+        if (normalizeLandingUrl(entry) === normalizedUrl) {
+          session = { id: row.id, created_month: row.created_month };
+          try {
+            await adminClient.from('sessions').update({ updated_at: new Date().toISOString() }).eq('id', row.id).eq('created_month', row.created_month);
+          } catch { /* updated_at column may not exist */ }
+          break;
+        }
+      }
+    }
+  }
+
+  if (!session) {
+    session = await SessionService.handleSession(
+      siteIdUuid,
+      dbMonth,
+      {
+        client_sid,
+        url: safeUrl,
+        currentGclid,
+        meta,
+        params,
+        attributionSource,
+        deviceType,
+        fingerprint,
+        utm,
+        referrer,
+        consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
+      },
+      { ip, userAgent, geoInfo, deviceInfo }
+    );
+  }
 
   // Deterministik geo: GCLID + loc_physical_ms/loc_interest_ms → ADS geo
   const geoCriteriaId = utm?.loc_physical_ms || utm?.loc_interest_ms;
@@ -225,7 +289,7 @@ async function doProcessSyncEvent(
           await upsertSessionGeo({
             siteId: siteIdUuid,
             sessionId: session.id,
-            sessionMonth: dbMonth,
+            sessionMonth: session.created_month,
             city,
             district,
             source: 'ADS',

@@ -49,11 +49,24 @@ export interface GeoExtractionResult {
     deviceInfo: DeviceInfo;
 }
 
+/** Ghost geo sentinel cities (edge/proxy locations); case-insensitive. When strictGhostGeo, return Unknown/null. */
+const GHOST_GEO_CITIES = new Set(['rome', 'amsterdam', 'roma']);
+
+/** Returns true if value is a known ghost city/district (case-insensitive). */
+export function isGhostGeoCity(value: string | null | undefined): boolean {
+    if (value == null || typeof value !== 'string') return false;
+    return GHOST_GEO_CITIES.has(value.trim().toLowerCase());
+}
+
+export interface ExtractGeoInfoOptions {
+    /** When true, if resolved city/district is a ghost (Rome/Amsterdam/Roma), return city: 'Unknown', district: null. */
+    strictGhostGeo?: boolean;
+}
+
 /**
  * Extract geographic and device information from request headers and metadata.
  * 
- * Priority for geo (when behind proxy/SST, x-forwarded-* and x-city may carry real client location):
- * - Metadata override > Generic (x-city, x-forwarded-city) > Cloudflare > Vercel > Unknown
+ * Priority for geo (when behind proxy/SST): Metadata > CF (cf-ipcity/cf-ipcountry) > Vercel > Generic > Unknown.
  * 
  * Device type normalization:
  * - mobile/tablet/desktop (default: desktop)
@@ -61,12 +74,14 @@ export interface GeoExtractionResult {
  * @param req - Next.js request object
  * @param userAgent - User agent string
  * @param meta - Optional metadata object with city/district overrides
+ * @param options - strictGhostGeo: when true, ghost cities (Rome/Amsterdam/Roma) become Unknown/null
  * @returns GeoInfo and DeviceInfo
  */
 export function extractGeoInfo(
     req: NextRequest | null,
     userAgent: string,
-    meta?: IngestMeta
+    meta?: IngestMeta,
+    options?: ExtractGeoInfoOptions
 ): GeoExtractionResult {
     // Device & Geo Enrichment
     const parser = new UAParser(userAgent);
@@ -116,7 +131,7 @@ export function extractGeoInfo(
     };
 
     // Geo extraction from headers (Edge Runtime compatible)
-    // Priority: Metadata override > Cloudflare > Vercel > Generic > Unknown (CF first = visitor IP, not edge)
+    // Priority: Metadata > CF (cf-ipcity/cf-ipcountry) > Vercel > Generic > Unknown
     const cityFromCloudflare = req?.headers.get('cf-ipcity');
     const districtFromCloudflare = req?.headers.get('cf-ipdistrict');
     const countryFromCloudflare = req?.headers.get('cf-ipcountry');
@@ -124,28 +139,37 @@ export function extractGeoInfo(
     const cityFromVercel = req?.headers.get('x-vercel-ip-city');
     const countryFromVercel = req?.headers.get('x-vercel-ip-country');
 
-    // Proxy/SST may set these with real client location when x-forwarded-for is set
     const cityFromGeneric = req?.headers.get('x-city') ||
         req?.headers.get('x-forwarded-city');
     const districtFromGeneric = req?.headers.get('x-district');
     const countryFromGeneric = req?.headers.get('x-country');
 
-    // Prefer generic (proxy-set) over edge so Istanbul is used when proxy forwards correctly
-    const city = meta?.city ||
-        cityFromGeneric ||
-        cityFromCloudflare ||
-        cityFromVercel ||
+    // CF before Vercel so edge IP geo takes precedence over Vercel edge
+    let city = meta?.city ??
+        cityFromCloudflare ??
+        cityFromVercel ??
+        cityFromGeneric ??
         null;
 
-    const district = meta?.district ||
-        districtFromGeneric ||
-        districtFromCloudflare ||
+    let district = meta?.district ??
+        districtFromCloudflare ??
+        districtFromGeneric ??
         null;
 
-    const country = countryFromGeneric ||
-        countryFromCloudflare ||
-        countryFromVercel ||
+    let country = countryFromCloudflare ??
+        countryFromVercel ??
+        countryFromGeneric ??
         'Unknown';
+
+    // Ghost geo override: Rome/Amsterdam/Roma → Unknown/null (site-scoped via options)
+    if (options?.strictGhostGeo) {
+        const cityNorm = (city ?? '').trim().toLowerCase();
+        const districtNorm = (district ?? '').trim().toLowerCase();
+        if (GHOST_GEO_CITIES.has(cityNorm) || GHOST_GEO_CITIES.has(districtNorm)) {
+            city = 'Unknown';
+            district = null;
+        }
+    }
 
     // isp_asn: Cloudflare/Vercel or custom header (producer only; worker has no client req)
     const ispAsn = req?.headers.get('cf-connecting-ip-asn') ??

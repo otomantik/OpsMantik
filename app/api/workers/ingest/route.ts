@@ -14,8 +14,17 @@ import { logError } from '@/lib/logging/logger';
 import { isRecord, parseValidWorkerJobData } from '@/lib/types/ingest';
 import { SiteService } from '@/lib/services/site-service';
 import { runSyncGates } from '@/lib/ingest/sync-gates';
-import { processSyncEvent, DedupSkipError } from '@/lib/ingest/process-sync-event';
-import { deleteIdempotencyKeyForCompensation } from '@/lib/idempotency';
+import { processSyncEvent, DedupSkipError, getDedupEventIdForJob } from '@/lib/ingest/process-sync-event';
+import { getSiteIngestConfig } from '@/lib/ingest/site-ingest-config';
+import { isCommonBotUA, isAllowedReferrer, hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
+import { getFinalUrl } from '@/lib/types/ingest';
+import {
+  computeIdempotencyKey,
+  computeIdempotencyKeyV2,
+  getServerNowMs,
+  tryInsertIdempotencyKey,
+  deleteIdempotencyKeyForCompensation,
+} from '@/lib/idempotency';
 import { checkAndIncrementFraudFingerprint } from '@/lib/services/fraud-quarantine-service';
 import { isCallEventWorkerPayload } from '@/lib/ingest/call-event-worker-payload';
 import { processCallEvent } from '@/lib/ingest/process-call-event';
@@ -106,6 +115,70 @@ async function handler(req: NextRequest) {
             });
         } catch { /* best-effort; ack message anyway */ }
         return NextResponse.json({ ok: true, quarantine: true, reason: fraudCheck.reason });
+    }
+
+    // Traffic debloat: bot/referrer gates BEFORE runSyncGates; skip path inserts idempotency (billable: false), no usage increment
+    const siteIngestConfig = await getSiteIngestConfig(site.id);
+    const trafficDebloat = siteIngestConfig.traffic_debloat ?? siteIngestConfig.ingest_strict_mode ?? false;
+    if (trafficDebloat) {
+      const url = getFinalUrl(job as import('@/lib/types/ingest').ValidIngestPayload);
+      const ua = typeof job.ua === 'string' ? job.ua : '';
+      const referrer = typeof job.r === 'string' ? job.r : null;
+      let eventHost = '';
+      try {
+        eventHost = new URL(url).hostname || '';
+      } catch {
+        eventHost = '';
+      }
+      const meta = (job.meta ?? {}) as Record<string, unknown>;
+      let gclid: string | null = typeof meta.gclid === 'string' ? meta.gclid : null;
+      let wbraid: string | null = typeof meta.wbraid === 'string' ? meta.wbraid : null;
+      let gbraid: string | null = typeof meta.gbraid === 'string' ? meta.gbraid : null;
+      try {
+        const u = new URL(url);
+        if (!gclid && u.searchParams.get('gclid')) gclid = u.searchParams.get('gclid');
+        if (!wbraid && u.searchParams.get('wbraid')) wbraid = u.searchParams.get('wbraid');
+        if (!gbraid && u.searchParams.get('gbraid')) gbraid = u.searchParams.get('gbraid');
+      } catch { /* ignore */ }
+      const hasClickId = hasValidClickId({ gclid, wbraid, gbraid });
+
+      const botSkip = isCommonBotUA(ua, { allowPreviewUAs: siteIngestConfig.ingest_allow_preview_uas });
+      const referrerAllowed = isAllowedReferrer(referrer, url, {
+        allowlist: siteIngestConfig.referrer_allowlist,
+        blocklist: siteIngestConfig.referrer_blocklist,
+        eventHost,
+      });
+      const referrerSkip = !referrerAllowed && !hasClickId;
+
+      if (botSkip || referrerSkip) {
+        const skipReason = botSkip ? 'bot_ua' : 'referrer_blocked';
+        const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
+        const idempotencyKey =
+          idempotencyVersion === '2'
+            ? await computeIdempotencyKeyV2(site.id, job, getServerNowMs())
+            : await computeIdempotencyKey(site.id, job);
+        const idemResult = await tryInsertIdempotencyKey(site.id, idempotencyKey, {
+          billable: false,
+          billingReason: skipReason,
+          eventCategory: typeof job.ec === 'string' ? job.ec : null,
+          eventAction: typeof job.ea === 'string' ? job.ea : null,
+          eventLabel: typeof job.el === 'string' ? job.el : null,
+        });
+        if (idemResult.duplicate) return NextResponse.json({ ok: true, skipped: true, reason: skipReason });
+        const dedupEventId = await getDedupEventIdForJob(job, url, qstashMessageId);
+        try {
+          await adminClient.from('processed_signals').insert({
+            event_id: dedupEventId,
+            site_id: site.id,
+            status: 'skipped',
+          });
+        } catch (psErr) {
+          const code = (psErr as { code?: string })?.code;
+          const msg = String((psErr as { message?: string })?.message ?? '');
+          if (code !== '23505' && !/duplicate key/i.test(msg)) throw psErr;
+        }
+        return NextResponse.json({ ok: true, skipped: true, reason: skipReason });
+      }
     }
 
     const gatesResult = await runSyncGates(job, site.id);

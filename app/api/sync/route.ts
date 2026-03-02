@@ -34,6 +34,9 @@ const RL_WINDOW_MS = 60000;
 /** Max events per batch request. Batch support removes 400 batch_not_supported and reduces request count (fewer 429). */
 const MAX_BATCH_SIZE = 50;
 
+/** P1-2.2: Backpressure — hard cap per POST to prevent QStash queue saturation. Exceeding returns 429. */
+const MAX_EVENTS_PER_REQUEST = 100;
+
 /** Parse OPSMANTIK_SYNC_RL_SITE_OVERRIDE e.g. "siteId1:5000,siteId2:3000" → Map(siteId -> limit). Optional per-site override. */
 function getSiteRateLimitOverrides(): Map<string, number> {
   const raw = process.env.OPSMANTIK_SYNC_RL_SITE_OVERRIDE;
@@ -202,7 +205,23 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
                 { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'events_empty' } }
             );
         }
-        rawBodies = events.slice(0, MAX_BATCH_SIZE);
+        // P1-2.2: Backpressure — reject oversized batch before publish to prevent QStash saturation
+        if (events.length > MAX_EVENTS_PER_REQUEST) {
+            incrementBillingIngestRateLimited();
+            return NextResponse.json(
+                createSyncResponse(false, null, { error: 'Too many events per request', code: 'batch_limit_exceeded' }),
+                {
+                    status: 429,
+                    headers: {
+                        ...baseHeaders,
+                        'x-opsmantik-ratelimit': '1',
+                        'Retry-After': '60',
+                        'X-OpsMantik-Error-Code': 'batch_limit_exceeded',
+                    },
+                }
+            );
+        }
+        rawBodies = events.slice(0, MAX_EVENTS_PER_REQUEST);
     } else {
         rawBodies = [json];
     }
@@ -281,6 +300,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const ip = normalizeIp(clientIp);
     const ua = normalizeUserAgent(req.headers.get('user-agent'));
     const { extractGeoInfo } = await import('@/lib/geo');
+    const { getSiteIngestConfig } = await import('@/lib/ingest/site-ingest-config');
+    const siteIngestConfig = await getSiteIngestConfig(siteIdUuid);
+    const strictGhostGeo = siteIngestConfig.ghost_geo_strict ?? siteIngestConfig.ingest_strict_mode ?? false;
 
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; deduplicationId: string; retries: number }) => {
@@ -299,7 +321,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
           : [];
       if (!consentScopes.includes('analytics')) continue;
 
-      const { geoInfo } = extractGeoInfo(req, ua, b.meta);
+      const { geoInfo } = extractGeoInfo(req, ua, b.meta, { strictGhostGeo });
       const ingestId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       ingestIds.push(ingestId);
       Sentry.setTag('ingest_id', ingestId);
