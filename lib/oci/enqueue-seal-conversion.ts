@@ -19,6 +19,7 @@ import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
+import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -39,6 +40,7 @@ export interface EnqueueSealResult {
   | 'duplicate_session'
   | 'marketing_consent_required'
   | 'star_below_threshold'
+  | 'no_sale_amount'
   | 'error';
   value?: number;
   error?: string;
@@ -112,6 +114,15 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     });
     return { enqueued: false, reason: 'error', error: 'OCI_SEAL_CONFIRMED_AT_INVALID' };
   }
+  const { isWithinTemporalSanityWindow } = await import('@/lib/utils/temporal-sanity');
+  if (!isWithinTemporalSanityWindow(parsedDate)) {
+    logWarn('enqueue_seal_rejected', {
+      call_id: callId,
+      reason: 'OCI_SEAL_TEMPORAL_POISONING',
+      detail: 'confirmedAt outside [now - 90 days, now + 1 hour]',
+    });
+    return { enqueued: false, reason: 'error', error: 'OCI_SEAL_TEMPORAL_POISONING' };
+  }
 
   // 1. Click ID check
   const primarySource = await getPrimarySource(siteId, { callId });
@@ -142,14 +153,14 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const valueUnits = computeConversionValue(star, saleAmount, config);
 
   if (valueUnits === null) {
-    // null → star below threshold (or no star available)
+    const noSale = saleAmount == null || saleAmount === 0;
     logInfo('enqueue_seal_skip', {
       call_id: callId,
-      reason: 'star_below_threshold',
+      reason: noSale ? 'no_sale_amount' : 'star_below_threshold',
       star,
       min_star: config.min_star,
     });
-    return { enqueued: false, reason: 'star_below_threshold' };
+    return { enqueued: false, reason: noSale ? 'no_sale_amount' : 'star_below_threshold' };
   }
 
   const valueCents = Math.round(valueUnits * 100);
@@ -180,23 +191,38 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     }
   }
 
-  // 7. Insert into queue (Seal: conversion_time = confirmed_at, UTC/ISO; DB stores timestamptz)
+  // 7. Causal DNA for Seal path (Singularity)
+  const causalDna = buildMinimalCausalDna(
+    'V5_SEAL',
+    ['auth', 'consent', 'idempotency', 'usage'],
+    'Seal_Conversion',
+    { star, saleAmount, valueUnits },
+    { valueCents, currency: currencySafe }
+  );
+
+  // 8. Insert into queue (Seal: conversion_time = confirmed_at, UTC/ISO; DB stores timestamptz)
   try {
-    const { error } = await adminClient.from('offline_conversion_queue').insert({
-      site_id: siteId,
-      call_id: callId,
-      sale_id: null,
-      session_id: sessionId,
-      provider_key: 'google_ads',
-      conversion_time: confirmedAtTrimmed,
-      value_cents: valueCents,
-      currency: currencySafe,
-      gclid,
-      wbraid,
-      gbraid,
-      status: 'QUEUED',
-      // updated_at: handled by DB trigger
-    });
+    const { data: inserted, error } = await adminClient
+      .from('offline_conversion_queue')
+      .insert({
+        site_id: siteId,
+        call_id: callId,
+        sale_id: null,
+        session_id: sessionId,
+        provider_key: 'google_ads',
+        conversion_time: confirmedAtTrimmed,
+        value_cents: valueCents,
+        currency: currencySafe,
+        gclid,
+        wbraid,
+        gbraid,
+        status: 'QUEUED',
+        causal_dna: causalDna,
+        entropy_score: 0,
+        uncertainty_bit: false,
+      })
+      .select('id')
+      .single();
 
     if (error) {
       if (error.code === '23505') {
@@ -205,6 +231,18 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       }
       logWarn('enqueue_seal_failed', { call_id: callId, error: error.message });
       return { enqueued: false, reason: 'error', error: error.message };
+    }
+
+    const queueId = (inserted as { id: string } | null)?.id ?? null;
+    if (queueId) {
+      adminClient
+        .rpc('append_causal_dna_ledger', {
+          p_site_id: siteId,
+          p_aggregate_type: 'conversion',
+          p_aggregate_id: queueId,
+          p_causal_dna: causalDna,
+        })
+        .catch(() => {});
     }
 
     logInfo('enqueue_seal_ok', { call_id: callId, star, value_units: valueUnits, value_cents: valueCents });

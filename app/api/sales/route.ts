@@ -62,6 +62,13 @@ export async function POST(req: NextRequest) {
   if (Number.isNaN(occurredAtDate.getTime())) {
     return NextResponse.json({ error: 'occurred_at must be a valid ISO date string' }, { status: 400, headers: getBuildInfoHeaders() });
   }
+  const { isWithinTemporalSanityWindow } = await import('@/lib/utils/temporal-sanity');
+  if (!isWithinTemporalSanityWindow(occurredAtDate)) {
+    return NextResponse.json(
+      { error: 'occurred_at outside temporal sanity window [now - 90 days, now + 1 hour]' },
+      { status: 400, headers: getBuildInfoHeaders() }
+    );
+  }
 
   const amountCents = parseAmount(body);
   if (amountCents === null) {

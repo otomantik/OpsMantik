@@ -246,6 +246,7 @@ async function uploadClickConversions(
     headers['login-customer-id'] = loginCustomerId.replace(/-/g, '');
   }
 
+  // P1-2.1: Circuit breaker — timeout MUST throw ProviderTransientError (recognized by runner)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -261,7 +262,7 @@ async function uploadClickConversions(
     clearTimeout(timeoutId);
     const msg = err instanceof Error ? err.message : String(err);
     const isAbort = err instanceof Error && err.name === 'AbortError';
-    const isNetwork = /fetch|network|ECONNREFUSED|ETIMEDOUT/i.test(msg);
+    const isNetwork = /fetch|network|ECONNREFUSED|ETIMEDOUT|timeout/i.test(msg);
     if (isAbort || isNetwork) {
       throw new ProviderTransientError(
         `Google Ads API request failed (timeout/network): ${msg}`,
@@ -275,7 +276,27 @@ async function uploadClickConversions(
   }
   clearTimeout(timeoutId);
 
-  const text = await res.text();
+  // P1-2.1: Body read can also hang; race against timeout
+  let text: string;
+  try {
+    const textPromise = res.text();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Body read timeout')), REQUEST_TIMEOUT_MS);
+    });
+    text = await Promise.race([textPromise, timeoutPromise]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('timeout')) {
+      throw new ProviderTransientError(
+        `Google Ads API body read timed out after ${REQUEST_TIMEOUT_MS}ms`,
+        PROVIDER_KEY
+      );
+    }
+    throw new ProviderTransientError(
+      `Google Ads API request failed: ${msg}`,
+      PROVIDER_KEY
+    );
+  }
   if (!res.ok) {
     const classification = classifyGoogleAdsError(res.status, text, res.headers);
     if (classification.retryable) {

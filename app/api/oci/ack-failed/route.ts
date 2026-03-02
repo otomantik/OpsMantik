@@ -64,12 +64,31 @@ export async function POST(req: NextRequest) {
     }
 
     let siteUuid = siteId;
-    const byId = await adminClient.from('sites').select('id').eq('id', siteId).maybeSingle();
-    if (byId.data) {
-      siteUuid = (byId.data as { id: string }).id;
-    } else {
-      const byPublic = await adminClient.from('sites').select('id').eq('public_id', siteId).maybeSingle();
-      if (byPublic.data) siteUuid = (byPublic.data as { id: string }).id;
+    const byId = await adminClient.from('sites').select('id, oci_api_key').eq('id', siteId).maybeSingle();
+    const siteRow = byId.data ?? null;
+    let resolvedSite: { id: string; oci_api_key?: string | null } | null = siteRow as { id: string; oci_api_key?: string | null } | null;
+    if (!resolvedSite) {
+      const byPublic = await adminClient.from('sites').select('id, oci_api_key').eq('public_id', siteId).maybeSingle();
+      resolvedSite = byPublic.data as { id: string; oci_api_key?: string | null } | null;
+    }
+    if (resolvedSite) siteUuid = resolvedSite.id;
+
+    // P0-4.1: Tenant isolation — x-api-key auth MUST bind to site.oci_api_key
+    const usedApiKeyAuth = authed && !siteIdFromToken;
+    if (usedApiKeyAuth) {
+      if (!resolvedSite) {
+        return NextResponse.json(
+          { error: 'Tenant isolation violation: API key does not match requested site' },
+          { status: 403 }
+        );
+      }
+      const siteKey = resolvedSite.oci_api_key ?? '';
+      if (!siteKey || !timingSafeCompare(siteKey, apiKey)) {
+        return NextResponse.json(
+          { error: 'Tenant isolation violation: API key does not match requested site' },
+          { status: 403 }
+        );
+      }
     }
 
     if (queueIds.length === 0) {

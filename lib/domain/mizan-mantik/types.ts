@@ -28,6 +28,10 @@ export interface SignalPayload {
   signalDate: Date;
   valueCents?: number | null;
   conversionName?: string;
+  /** Singularity: optional fingerprint (e.g. hash(IP+UA)) for entropy_score / uncertainty_bit */
+  fingerprint?: string | null;
+  /** Axiom 3: synthetic discriminator (sequence/timestamp) — if present, V2_PULSE allows multiple intents per session */
+  discriminator?: string | null;
 }
 
 export interface EvaluateResult {
@@ -36,4 +40,6 @@ export interface EvaluateResult {
   pvId?: string | null;
   conversionValue: number;
   dropped?: boolean;
+  /** Singularity: Decision DNA for non-repudiable trace */
+  causalDna?: Record<string, unknown>;
 }

@@ -9,6 +9,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { PipelineStage } from '@/lib/types/database';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
+import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 
 export interface ProcessStageActionResult {
   success: boolean;
@@ -105,27 +106,55 @@ export class PipelineService {
     const config = (site.config || {}) as { currency?: string };
     const currency = config.currency?.trim() || 'TRY';
 
-    // 7. Enqueue to Google Ads OCI with the synthetic or custom value
-    const { error: ociErr } = await adminClient.from('offline_conversion_queue').insert({
-      site_id: siteId,
-      call_id: callId,
-      sale_id: null,
-      provider_key: 'google_ads',
-      action: stage.id,
-      gclid,
-      wbraid,
-      gbraid,
-      conversion_time: new Date().toISOString(),
-      value_cents: finalValueCents,
-      currency,
-      status: 'QUEUED',
-    });
+    // 7. Causal DNA for pipeline stage (Singularity)
+    const causalDna = buildMinimalCausalDna(
+      'PIPELINE_STAGE',
+      ['auth', 'consent', 'idempotency', 'usage'],
+      `Pipeline_${stage.id}`,
+      { stageId: stage.id, customAmountCents: customAmountCents ?? null },
+      { value_cents: finalValueCents, currency }
+    );
+
+    // 8. Enqueue to Google Ads OCI with the synthetic or custom value
+    const { data: inserted, error: ociErr } = await adminClient
+      .from('offline_conversion_queue')
+      .insert({
+        site_id: siteId,
+        call_id: callId,
+        sale_id: null,
+        provider_key: 'google_ads',
+        action: stage.id,
+        gclid,
+        wbraid,
+        gbraid,
+        conversion_time: new Date().toISOString(),
+        value_cents: finalValueCents,
+        currency,
+        status: 'QUEUED',
+        causal_dna: causalDna,
+        entropy_score: 0,
+        uncertainty_bit: false,
+      })
+      .select('id')
+      .single();
 
     if (ociErr) {
       if (ociErr.code === '23505') {
         return { success: true, oci_enqueued: false, reason: 'duplicate' };
       }
       throw new Error(`Failed to enqueue OCI: ${ociErr.message}`);
+    }
+
+    const queueId = (inserted as { id: string } | null)?.id ?? null;
+    if (queueId) {
+      adminClient
+        .rpc('append_causal_dna_ledger', {
+          p_site_id: siteId,
+          p_aggregate_type: 'conversion',
+          p_aggregate_id: queueId,
+          p_causal_dna: causalDna,
+        })
+        .catch(() => {});
     }
 
     return {

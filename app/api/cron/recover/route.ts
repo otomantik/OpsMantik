@@ -46,6 +46,12 @@ export async function GET(req: NextRequest) {
   let failed = 0;
 
   try {
+    // Axiom 1 (Phantom State): Reset PROCESSING zombies older than 15 min. No row "unwitnessed" > 15 min.
+    const { data: zombieRes } = await adminClient.rpc('recover_stuck_ingest_fallback', { p_min_age_minutes: 15 });
+    if (typeof zombieRes === 'number' && zombieRes > 0) {
+      logInfo('RECOVER_PHANTOM_STATE_RESET', { recovered: zombieRes, request_id: requestId });
+    }
+
     // Concurrency-safe: RPC uses FOR UPDATE SKIP LOCKED; marks rows PROCESSING
     const { data: rows, error: rpcError } = await adminClient.rpc('get_and_claim_fallback_batch', {
       p_limit: BATCH_SIZE,
@@ -149,27 +155,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Bulk update: PENDING (group by error_reason for batching)
-    const byError = new Map<string, string[]>();
-    for (const { id, error_reason } of failedUpdates) {
-      const ids = byError.get(error_reason);
-      if (ids) ids.push(id);
-      else byError.set(error_reason, [id]);
-    }
-    for (const [error_reason, ids] of byError) {
-      for (const chunk of chunkArray(ids, 500)) {
-        const { error } = await adminClient
-          .from('ingest_fallback_buffer')
-          .update({ status: 'PENDING', error_reason })
-          .in('id', chunk);
-        if (error) {
-          logError('RECOVER_FALLBACK_BULK_PENDING_FAILED', {
-            request_id: requestId,
-            chunk_size: chunk.length,
-            first_id: chunk[0],
-            error: error.message,
-          });
-        }
+    // Axiom 4 (Halting): Bounded retries via update_fallback_on_publish_failure. At 10 -> QUARANTINE.
+    if (failedUpdates.length > 0) {
+      const rowsJson = failedUpdates.map(({ id, error_reason }) => ({ id, error_reason }));
+      const { error: updateErr } = await adminClient.rpc('update_fallback_on_publish_failure', {
+        p_rows: rowsJson,
+      });
+      if (updateErr) {
+        logError('RECOVER_FALLBACK_UPDATE_FAILURE_RPC_FAILED', {
+          request_id: requestId,
+          count: failedUpdates.length,
+          error: updateErr.message,
+        });
       }
     }
 

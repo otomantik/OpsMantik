@@ -302,7 +302,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const { extractGeoInfo } = await import('@/lib/geo');
     const { getSiteIngestConfig } = await import('@/lib/ingest/site-ingest-config');
     const siteIngestConfig = await getSiteIngestConfig(siteIdUuid);
-    const strictGhostGeo = siteIngestConfig.ghost_geo_strict ?? siteIngestConfig.ingest_strict_mode ?? false;
+    const strictGhostGeo = siteIngestConfig.ghost_geo_strict || siteIngestConfig.ingest_strict_mode;
 
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; deduplicationId: string; retries: number }) => {

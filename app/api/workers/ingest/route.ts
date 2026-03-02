@@ -18,6 +18,7 @@ import { processSyncEvent, DedupSkipError, getDedupEventIdForJob } from '@/lib/i
 import { getSiteIngestConfig } from '@/lib/ingest/site-ingest-config';
 import { isCommonBotUA, isAllowedReferrer, hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { getFinalUrl } from '@/lib/types/ingest';
+import type { IngestResult, IngestSkipReason, CausalDna } from '@/lib/ingest/types';
 import {
   computeIdempotencyKey,
   computeIdempotencyKeyV2,
@@ -119,7 +120,7 @@ async function handler(req: NextRequest) {
 
     // Traffic debloat: bot/referrer gates BEFORE runSyncGates; skip path inserts idempotency (billable: false), no usage increment
     const siteIngestConfig = await getSiteIngestConfig(site.id);
-    const trafficDebloat = siteIngestConfig.traffic_debloat ?? siteIngestConfig.ingest_strict_mode ?? false;
+    const trafficDebloat = siteIngestConfig.traffic_debloat || siteIngestConfig.ingest_strict_mode;
     if (trafficDebloat) {
       const url = getFinalUrl(job as import('@/lib/types/ingest').ValidIngestPayload);
       const ua = typeof job.ua === 'string' ? job.ua : '';
@@ -151,7 +152,9 @@ async function handler(req: NextRequest) {
       const referrerSkip = !referrerAllowed && !hasClickId;
 
       if (botSkip || referrerSkip) {
-        const skipReason = botSkip ? 'bot_ua' : 'referrer_blocked';
+        const skipReasonApi = botSkip ? 'bot_ua' : 'referrer_blocked';
+        const skipResult: IngestResult = { status: 'SKIPPED', reason: botSkip ? 'BOT_UA' : 'REFERRER_DENIED', billable: false };
+        void skipResult;
         const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
         const idempotencyKey =
           idempotencyVersion === '2'
@@ -159,12 +162,12 @@ async function handler(req: NextRequest) {
             : await computeIdempotencyKey(site.id, job);
         const idemResult = await tryInsertIdempotencyKey(site.id, idempotencyKey, {
           billable: false,
-          billingReason: skipReason,
+          billingReason: skipReasonApi,
           eventCategory: typeof job.ec === 'string' ? job.ec : null,
           eventAction: typeof job.ea === 'string' ? job.ea : null,
           eventLabel: typeof job.el === 'string' ? job.el : null,
         });
-        if (idemResult.duplicate) return NextResponse.json({ ok: true, skipped: true, reason: skipReason });
+        if (idemResult.duplicate) return NextResponse.json({ ok: true, skipped: true, reason: skipReasonApi });
         const dedupEventId = await getDedupEventIdForJob(job, url, qstashMessageId);
         try {
           await adminClient.from('processed_signals').insert({
@@ -177,7 +180,7 @@ async function handler(req: NextRequest) {
           const msg = String((psErr as { message?: string })?.message ?? '');
           if (code !== '23505' && !/duplicate key/i.test(msg)) throw psErr;
         }
-        return NextResponse.json({ ok: true, skipped: true, reason: skipReason });
+        return NextResponse.json({ ok: true, skipped: true, reason: skipReasonApi });
       }
     }
 
@@ -235,7 +238,12 @@ async function handler(req: NextRequest) {
       incrementBillingIngestAllowed();
     }
 
-    return NextResponse.json({ success: true, score: processResult.score });
+    const processedResult: IngestResult = {
+      status: 'PROCESSED',
+      dna: { score: processResult.score } satisfies CausalDna,
+      billable: true,
+    };
+    return NextResponse.json({ success: true, score: processedResult.dna.score });
   } catch (error) {
     if (error instanceof DedupSkipError) {
       return NextResponse.json({ ok: true, dedup: true });

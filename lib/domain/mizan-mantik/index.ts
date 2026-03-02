@@ -12,3 +12,5 @@ export {
 export type { OpsGear, SignalPayload, EvaluateResult, LegacySignalType } from './types';
 export { LEGACY_TO_OPS_GEAR } from './types';
 export { OPSMANTIK_CONVERSION_NAMES } from './conversion-names';
+export { getEntropyScore, buildFingerprint, type EntropyResult } from './entropy-service';
+export { createCausalDna, appendBranch, toJsonb, buildMinimalCausalDna } from './causal-dna';

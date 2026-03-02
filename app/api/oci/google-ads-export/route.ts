@@ -290,12 +290,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // One per session: keep earliest conversion_time per matched_session_id
-    const byConversionTime = [...rawList].sort(
-      (a, b) =>
-        new Date((a as { conversion_time: string }).conversion_time).getTime() -
-        new Date((b as { conversion_time: string }).conversion_time).getTime()
-    );
+    // Axiom 2: Defensive sorting — isolate NaN/invalid dates, put them last (no temporal poisoning)
+    const { safeConversionTimeMs } = await import('@/lib/utils/temporal-sanity');
+    const byConversionTime = [...rawList].sort((a, b) => {
+      const ta = safeConversionTimeMs((a as { conversion_time: string }).conversion_time);
+      const tb = safeConversionTimeMs((b as { conversion_time: string }).conversion_time);
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return 1;
+      if (tb == null) return -1;
+      return ta - tb;
+    });
     const seenSessions = new Set<string>();
     const list: typeof rawList = [];
     const skippedIds: string[] = [];

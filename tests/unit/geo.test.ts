@@ -51,9 +51,24 @@ test('extractGeoInfo: strictGhostGeo false/absent => backward compatible, Rome r
     'cf-ipcountry': 'IT',
   });
   const { geoInfo } = extractGeoInfo(req, 'Mozilla/5.0', undefined);
-  assert.equal(geoInfo.city, 'Rome');
+  assert.equal(geoInfo.city, 'Rome', 'omitted options preserves original city');
   const { geoInfo: geo2 } = extractGeoInfo(req, 'Mozilla/5.0', undefined, { strictGhostGeo: false });
-  assert.equal(geo2.city, 'Rome');
+  assert.equal(geo2.city, 'Rome', 'strictGhostGeo: false preserves original city');
+});
+
+test('extractGeoInfo: strictGhostGeo true => Rome/Amsterdam from meta become Unknown (backward compat)', () => {
+  const { geoInfo } = extractGeoInfo(null, 'Mozilla/5.0', { city: 'Rome' } as import('@/lib/types/ingest').IngestMeta, { strictGhostGeo: true });
+  assert.equal(geoInfo.city, 'Unknown', 'meta.city Rome with strictGhostGeo true => Unknown');
+  assert.equal(geoInfo.district, null);
+  const { geoInfo: geo2 } = extractGeoInfo(null, 'Mozilla/5.0', { city: 'Amsterdam' } as import('@/lib/types/ingest').IngestMeta, { strictGhostGeo: true });
+  assert.equal(geo2.city, 'Unknown', 'meta.city Amsterdam with strictGhostGeo true => Unknown');
+});
+
+test('extractGeoInfo: strictGhostGeo false/omitted with meta.city => original city preserved', () => {
+  const { geoInfo } = extractGeoInfo(null, 'Mozilla/5.0', { city: 'Rome' } as import('@/lib/types/ingest').IngestMeta);
+  assert.equal(geoInfo.city, 'Rome', 'meta.city Rome without strictGhostGeo => Rome');
+  const { geoInfo: geo2 } = extractGeoInfo(null, 'Mozilla/5.0', { city: 'Rome' } as import('@/lib/types/ingest').IngestMeta, { strictGhostGeo: false });
+  assert.equal(geo2.city, 'Rome', 'meta.city Rome with strictGhostGeo false => Rome');
 });
 
 test('isGhostGeoCity: Rome, Amsterdam, Roma (case-insensitive) return true', () => {

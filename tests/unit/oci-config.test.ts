@@ -29,28 +29,31 @@ test('computeConversionValue: uses actual revenue if provided', () => {
     assert.equal(value, 500);
 });
 
-test('computeConversionValue: no sale (null) returns 0 regardless of star (V5_SEAL)', () => {
+test('computeConversionValue: no sale (null) returns null — 0 TL mühür olmaz (PR-OCI-1)', () => {
     const config = parseOciConfig({ min_star: 4 });
     const value = computeConversionValue(3, null, config);
-    assert.equal(value, 0, 'V5: no sale → 0 TL, star/min_star not used');
+    assert.equal(value, null, 'V5: no sale → null, caller must NOT enqueue');
 });
 
-test('computeConversionValue: no sale returns 0 (V5 bypasses weights proxy)', () => {
+test('computeConversionValue: no sale (0) returns null', () => {
+    const config = parseOciConfig({ min_star: 4 });
+    assert.equal(computeConversionValue(3, 0, config), null);
+});
+
+test('computeConversionValue: no sale returns null (V5 bypasses weights proxy)', () => {
     const config = parseOciConfig({
         base_value: 1000,
         weights: { 3: 0.5, 4: 0.8, 5: 1.0 }
     });
-    // V5: saleAmount null → 0; weights not used when no sale
-    assert.equal(computeConversionValue(3, null, config), 0);
-    assert.equal(computeConversionValue(4, null, config), 0);
-    assert.equal(computeConversionValue(5, null, config), 0);
+    assert.equal(computeConversionValue(3, null, config), null);
+    assert.equal(computeConversionValue(4, null, config), null);
+    assert.equal(computeConversionValue(5, null, config), null);
 });
 
-test('computeConversionValue: no sale returns 0 (star/weights not used)', () => {
+test('computeConversionValue: no sale returns null (star/weights not used)', () => {
     const config = parseOciConfig({
         base_value: 1000,
         weights: { 5: 1.0 }
     });
-    // V5: saleAmount null → 0; star/weights path not reached
-    assert.equal(computeConversionValue(4, null, config), 0);
+    assert.equal(computeConversionValue(4, null, config), null);
 });

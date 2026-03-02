@@ -28,8 +28,10 @@ async function runSweep() {
   const sinceIso = since.toISOString();
 
   try {
+    // P0-1.1: Cap to prevent memory exhaustion at scale
+    const QUEUE_SCAN_LIMIT = 5000;
     const [{ data: queueRows }, { data: sealedCalls, error: callsError }] = await Promise.all([
-      adminClient.from('offline_conversion_queue').select('call_id').not('call_id', 'is', null),
+      adminClient.from('offline_conversion_queue').select('call_id').not('call_id', 'is', null).limit(QUEUE_SCAN_LIMIT),
       adminClient
         .from('calls')
         .select('id, site_id, confirmed_at, sale_amount, currency, lead_score')

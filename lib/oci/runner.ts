@@ -161,9 +161,16 @@ async function syncQueueValuesFromCalls(
   }
 
   if (toUpdate.length > 0) {
+    // P0-1.5: Group by value_cents and bulk update instead of N+1
+    const byValueCents = new Map<number, string[]>();
+    const now = new Date().toISOString();
     for (const { id, value_cents } of toUpdate) {
-      const { error } = await adminClient.from('offline_conversion_queue').update({ value_cents, updated_at: new Date().toISOString() }).eq('id', id);
-      if (error) logRunnerError(prefix, 'Sync queue value_cents from call failed', error);
+      const ids = byValueCents.get(value_cents) ?? [];
+      ids.push(id);
+      byValueCents.set(value_cents, ids);
+    }
+    for (const [value_cents, ids] of byValueCents) {
+      await bulkUpdateQueue(ids, { value_cents, updated_at: now }, prefix, 'Sync queue value_cents from call');
     }
     logInfo('OCI_VALUE_SYNC', { site_id: siteIdUuid, updated_count: toUpdate.length, prefix });
   }
@@ -559,7 +566,30 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           }
           return true;
         });
-        const jobs = rowsWithValue.map((r) => queueRowToConversionJob(r));
+        // Axiom 4: Per-row isolation — one poison pill does not kill the batch
+        const jobs: Awaited<ReturnType<typeof queueRowToConversionJob>>[] = [];
+        const poisonRowIds: string[] = [];
+        for (const r of rowsWithValue) {
+          try {
+            jobs.push(queueRowToConversionJob(r));
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logRunnerError(prefix, 'queueRowToConversionJob poison pill (row isolated)', err);
+            poisonRowIds.push(r.id);
+          }
+        }
+        if (poisonRowIds.length > 0) {
+          await bulkUpdateQueue(
+            poisonRowIds,
+            {
+              status: 'FAILED',
+              last_error: 'POISON_PILL: Malformed payload or conversion_time',
+              updated_at: new Date().toISOString(),
+            },
+            prefix,
+            'Mark poison pill rows FAILED'
+          );
+        }
         const batchId = crypto.randomUUID();
         const startedAt = Date.now();
         let attemptCompleted = 0;
@@ -587,8 +617,9 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             logRunnerError(prefix, 'Adapter uploadConversions threw', err);
             attemptErrorCode = null;
             attemptErrorCategory = 'TRANSIENT';
+            const rowsToRetry = rowsWithValue.filter((r) => !poisonRowIds.includes(r.id));
             await bulkUpdateQueueGrouped(
-              rowsWithValue,
+              rowsToRetry,
               (r) => r.id,
               (row) => {
                 const count = (row.retry_count ?? 0) + 1;
@@ -617,7 +648,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               prefix,
               'Update RETRY/FAILED after throw failed'
             );
-            for (const row of rowsWithValue) {
+            for (const row of rowsToRetry) {
               const count = (row.retry_count ?? 0) + 1;
               const isFinal = count >= MAX_RETRY_ATTEMPTS;
               if (isFinal) {
@@ -628,6 +659,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 retry++;
               }
             }
+            attemptFailed += poisonRowIds.length;
+            failed += poisonRowIds.length;
           }
 
           if (results !== undefined) {
@@ -657,7 +690,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                   return payload;
                 }
                 const count = (row.retry_count ?? 0) + 1;
-                const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+                const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
                 const delaySec = nextRetryDelaySeconds(count);
                 const errorMsg = result.error_message ?? 'Unknown error';
                 const lastErrorFinal = isFatal
@@ -665,7 +698,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                   : errorMsg.slice(0, 1000);
                 return isFatal
                   ? {
-                    status: 'FATAL' as const,
+                    status: 'FAILED' as const,
                     retry_count: count,
                     last_error: lastErrorFinal,
                     updated_at: new Date().toISOString(),
@@ -699,7 +732,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 completed++;
               } else if (result.status === 'RETRY') {
                 const count = (row.retry_count ?? 0) + 1;
-                const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+                const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
                 if (isFatal) {
                   attemptFailed++;
                   failed++;
@@ -781,7 +814,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             );
             for (const row of siteRows) {
               const count = (row.retry_count ?? 0) + 1;
-              const isFatal = count >= 8;
+              const isFatal = count >= MAX_RETRY_ATTEMPTS;
               if (isFatal) failed++;
               else retry++;
             }
@@ -816,14 +849,37 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           return true;
         });
         const adapter = getProvider(providerKey);
-        const jobs = rowsWithValue.map(queueRowToConversionJob);
+        // Axiom 4: Per-row isolation — one poison pill does not kill the batch
+        const jobs: Awaited<ReturnType<typeof queueRowToConversionJob>>[] = [];
+        const poisonRowIdsCron: string[] = [];
+        for (const r of rowsWithValue) {
+          try {
+            jobs.push(queueRowToConversionJob(r));
+          } catch (err) {
+            logRunnerError(prefix, 'queueRowToConversionJob poison pill (cron row isolated)', err);
+            poisonRowIdsCron.push(r.id);
+          }
+        }
+        if (poisonRowIdsCron.length > 0) {
+          await bulkUpdateQueue(
+            poisonRowIdsCron,
+            {
+              status: 'FAILED',
+              last_error: 'POISON_PILL: Malformed payload or conversion_time',
+              updated_at: new Date().toISOString(),
+            },
+            prefix,
+            'Mark poison pill rows FAILED (cron)'
+          );
+        }
         let results: UploadResult[];
         try {
           results = await adapter.uploadConversions({ jobs, credentials });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          const rowsToRetryCron = rowsWithValue.filter((r) => !poisonRowIdsCron.includes(r.id));
           await bulkUpdateQueueGrouped(
-            rowsWithValue,
+            rowsToRetryCron,
             (r) => r.id,
             (row) => {
               const count = (row.retry_count ?? 0) + 1;
@@ -847,9 +903,9 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             prefix,
             'Update RETRY/FAILED (cron adapter throw) failed'
           );
-          for (const row of rowsWithValue) {
+          for (const row of rowsToRetryCron) {
             const count = (row.retry_count ?? 0) + 1;
-            const isFatal = count >= 8;
+            const isFatal = count >= MAX_RETRY_ATTEMPTS;
             if (isFatal) {
               failed++;
               groupFailed++;
@@ -858,6 +914,8 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               groupRetry++;
             }
           }
+          failed += poisonRowIdsCron.length;
+          groupFailed += poisonRowIdsCron.length;
           await writeProviderMetrics(siteIdUuid, providerKey, rowsToProcess.length, 0, groupFailed, groupRetry);
           await persistProviderOutcome(siteIdUuid, providerKey, false, true, prefix);
           logGroupOutcome(prefix, 'cron', providerKey, rowsToProcess.length, 0, groupFailed, groupRetry);
@@ -885,7 +943,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             }
             if (result.status === 'RETRY') {
               const count = (row.retry_count ?? 0) + 1;
-              const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+              const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
               const delay = nextRetryDelaySeconds(count);
               const lastErr = (result.error_message ?? '').slice(0, 1000);
               return isFatal
@@ -918,7 +976,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             groupCompleted++;
           } else if (result.status === 'RETRY') {
             const count = (row.retry_count ?? 0) + 1;
-            const isFatal = count >= 8 || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+            const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
             if (isFatal) {
               failed++;
               groupFailed++;

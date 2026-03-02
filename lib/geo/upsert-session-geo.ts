@@ -54,6 +54,10 @@ export async function upsertSessionGeo(params: UpsertSessionGeoParams): Promise<
     effectiveDistrict = null;
   }
 
+  // Sentinel 'Unknown' must map to NULL in DB so reports never show literal "Unknown" as city
+  if (effectiveCity?.toLowerCase() === 'unknown') effectiveCity = null;
+  if (effectiveDistrict?.toLowerCase() === 'unknown') effectiveDistrict = null;
+
   const updates: Record<string, unknown> = {
     geo_source: effectiveSource,
     geo_updated_at: new Date().toISOString(),

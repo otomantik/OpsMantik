@@ -22,6 +22,10 @@ export interface EmitSignalParams {
   gclid?: string | null;
   wbraid?: string | null;
   gbraid?: string | null;
+  /** Singularity: optional fingerprint (e.g. buildFingerprint(ip, userAgent)) for entropy_score */
+  fingerprint?: string | null;
+  /** Axiom 3: synthetic discriminator (sequence/timestamp) — if present, V2_PULSE allows multiple intents per session */
+  discriminator?: string | null;
 }
 
 /**
@@ -34,7 +38,7 @@ export async function emitSignal(params: EmitSignalParams): Promise<{
   conversionName: string;
   dropped?: boolean;
 } | null> {
-  const { siteId, callId, signalType, conversionName, aov, clickDate, signalDate, gclid, wbraid, gbraid } = params;
+  const { siteId, callId, signalType, conversionName, aov, clickDate, signalDate, gclid, wbraid, gbraid, fingerprint, discriminator } = params;
 
   const gear = resolveGearFromLegacy(signalType);
   const sigDate = signalDate ?? new Date();
@@ -49,6 +53,8 @@ export async function emitSignal(params: EmitSignalParams): Promise<{
     clickDate: clickDate instanceof Date ? clickDate : new Date(clickDate),
     signalDate: sigDate,
     conversionName: conversionName ?? `OpsMantik_${signalType}`,
+    fingerprint: fingerprint ?? null,
+    discriminator: discriminator ?? null,
   };
 
   const result = await evaluateAndRouteSignal(gear, payload);

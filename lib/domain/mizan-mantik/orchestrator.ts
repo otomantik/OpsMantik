@@ -3,14 +3,20 @@
  *
  * Gatekeeper and Ledger Router. Not a calculator — routes signals.
  * V1: Redis (value=0). V2-V4: marketing_signals (decay). V5: Iron Seal (no decay).
+ *
+ * Singularity: Every branch appends to Causal DNA; dropped paths logged to shadow_decisions.
  */
 
 import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
 import { calculateSignalEV } from './time-decay';
+import { createCausalDna, appendBranch, toJsonb } from './causal-dna';
+import { getEntropyScore } from './entropy-service';
 import type { OpsGear, SignalPayload, EvaluateResult } from './types';
 import { LEGACY_TO_OPS_GEAR, type LegacySignalType } from './types';
 import { OPSMANTIK_CONVERSION_NAMES } from './conversion-names';
+
+const MS_PER_DAY = 86400000;
 
 const PV_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 const V2_DEDUP_HOURS = 24;
@@ -80,6 +86,27 @@ async function hasRecentV2Pulse(siteId: string, callId?: string | null, gclid?: 
   return false;
 }
 
+/** Fire-and-forget shadow decision log (path not taken). */
+function logShadowDecision(
+  siteId: string,
+  aggregateType: 'conversion' | 'signal' | 'pv',
+  aggregateId: string | null,
+  rejectedBranch: string,
+  reason: string,
+  context: Record<string, unknown> = {}
+): void {
+  adminClient
+    .rpc('insert_shadow_decision', {
+      p_site_id: siteId,
+      p_aggregate_type: aggregateType,
+      p_aggregate_id: aggregateId,
+      p_rejected_gear_or_branch: rejectedBranch,
+      p_reason: reason,
+      p_context: context,
+    })
+    .catch(() => { /* best-effort */ });
+}
+
 /**
  * Evaluate and route signal.
  *
@@ -93,10 +120,18 @@ export async function evaluateAndRouteSignal(
   gear: OpsGear,
   payload: SignalPayload
 ): Promise<EvaluateResult> {
-  const { siteId, callId, gclid, aov, clickDate, signalDate, valueCents, conversionName } = payload;
+  const { siteId, callId, gclid, aov, clickDate, signalDate, valueCents, conversionName, fingerprint, discriminator } = payload;
+  const { score: entropyScore, uncertaintyBit } = await getEntropyScore(fingerprint ?? null);
+  let dna = createCausalDna(gear, ['auth']);
 
   // V1_PAGEVIEW: Redis pv:queue, value=0; meta = SECONDARY_OBSERVATION for DDA
   if (gear === 'V1_PAGEVIEW') {
+    dna = appendBranch(dna, 'V1_PAGEVIEW_Redis', ['auth', 'idempotency', 'pv_queue'], {
+      signalDate: signalDate.toISOString(),
+      gclid: payload.gclid ?? null,
+      wbraid: payload.wbraid ?? null,
+      gbraid: payload.gbraid ?? null,
+    }, { destination: 'pv:queue', value: 0 });
     const pvId = generatePvId();
     const pvPayload = {
       siteId,
@@ -112,27 +147,42 @@ export async function evaluateAndRouteSignal(
     pipeline.expire(pvQueueKey, PV_TTL_SEC);
     await pipeline.exec();
     await redis.set(`pv:data:${pvId}`, JSON.stringify(pvPayload), { ex: PV_TTL_SEC });
-    return { routed: true, pvId, conversionValue: 0 };
+    return { routed: true, pvId, conversionValue: 0, causalDna: toJsonb(dna) };
   }
 
   // V5_SEAL: Iron Seal — absolute value, no decay
   if (gear === 'V5_SEAL') {
     const cents = Number(valueCents);
     const conversionValue = Number.isFinite(cents) && cents > 0 ? Math.round((cents / 100) * 100) / 100 : 0;
-    return { routed: true, conversionValue };
+    dna = appendBranch(dna, 'V5_SEAL_Standard_Conversion', ['auth', 'idempotency', 'usage'], { valueCents: cents, raw: valueCents }, { conversionValue, math_version: 'v1.0.4' });
+    return { routed: true, conversionValue, causalDna: toJsonb(dna) };
   }
 
-  // V2_PULSE: Dedup check
+  // V2_PULSE: Dedup check — skip if discriminator present (Axiom 3: multiple intents per session)
   if (gear === 'V2_PULSE') {
-    const dup = await hasRecentV2Pulse(siteId, callId, gclid ?? undefined);
-    if (dup) return { routed: false, conversionValue: 0, dropped: true };
+    const hasDiscriminator = discriminator != null && String(discriminator).trim() !== '';
+    if (!hasDiscriminator) {
+      const dup = await hasRecentV2Pulse(siteId, callId, gclid ?? undefined);
+      if (dup) {
+        dna = appendBranch(dna, 'V2_PULSE_Dropped', ['auth', 'dedup_fail'], { callId, gclid: gclid ?? null }, { reason: 'hasRecentV2Pulse' });
+        logShadowDecision(siteId, 'signal', null, 'V2_PULSE', 'hasRecentV2Pulse: duplicate pulse in 24h', { callId: callId ?? null, gclid: gclid ?? null });
+        return { routed: false, conversionValue: 0, dropped: true, causalDna: toJsonb(dna) };
+      }
+      dna = appendBranch(dna, 'V2_PULSE_DedupPass', ['auth', 'dedup'], {}, {});
+    } else {
+      dna = appendBranch(dna, 'V2_PULSE_DiscriminatorPass', ['auth', 'dedup_bypass'], { discriminator }, {});
+    }
   }
 
   // V2–V4: marketing_signals
   const conversionValue = calculateSignalEV(gear, aov, clickDate, signalDate);
+  const elapsedMs = Math.max(0, signalDate.getTime() - clickDate.getTime());
+  const days = Math.ceil(elapsedMs / MS_PER_DAY);
+  dna = appendBranch(dna, `${gear}_marketing_signals`, ['auth', 'idempotency', 'usage'], { aov, clickDate: clickDate.toISOString(), signalDate: signalDate.toISOString(), days }, { conversionValue, days, logic_branch: 'Standard_Decay' });
   const legacyType = gearToLegacySignalType(gear);
   const name = conversionName ?? OPSMANTIK_CONVERSION_NAMES[gear];
 
+  const causalDnaJson = toJsonb(dna);
   const { data, error } = await adminClient
     .from('marketing_signals')
     .insert({
@@ -143,16 +193,35 @@ export async function evaluateAndRouteSignal(
       google_conversion_time: signalDate.toISOString(),
       conversion_value: conversionValue,
       dispatch_status: 'PENDING',
+      causal_dna: causalDnaJson,
+      entropy_score: entropyScore,
+      uncertainty_bit: uncertaintyBit,
     })
     .select('id')
     .single();
 
   if (error) {
+    // PR-OCI-3: Unique violation (23505) = duplicate (site, call, gear) → idempotent success
+    const code = (error as { code?: string })?.code;
+    if (code === '23505') {
+      dna = appendBranch(dna, 'marketing_signals_duplicate_ignored', ['auth', 'idempotency'], { callId: callId ?? null }, {});
+      return { routed: true, conversionValue, causalDna: toJsonb(dna) };
+    }
     console.error('[MizanMantik] marketing_signals insert error:', error.message);
-    return { routed: false, conversionValue: 0 };
+    dna = appendBranch(dna, 'marketing_signals_insert_failed', [], {}, { error: error.message });
+    return { routed: false, conversionValue: 0, causalDna: toJsonb(dna) };
   }
 
-  return { routed: true, signalId: (data as { id: string })?.id ?? null, conversionValue };
+  const signalId = (data as { id: string })?.id ?? null;
+  adminClient
+    .rpc('append_causal_dna_ledger', {
+      p_site_id: siteId,
+      p_aggregate_type: 'signal',
+      p_aggregate_id: signalId,
+      p_causal_dna: causalDnaJson,
+    })
+    .catch((err) => console.error('[MizanMantik] append_causal_dna_ledger failed:', err));
+  return { routed: true, signalId, conversionValue, causalDna: causalDnaJson };
 }
 
 /** Resolve OpsGear from legacy signal type */

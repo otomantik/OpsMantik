@@ -6,8 +6,11 @@
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
+import { adminClient } from '@/lib/supabase/admin';
 import { publishToQStash } from '@/lib/ingest/publish';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
+import { getPrimarySource } from '@/lib/conversation/primary-source';
+import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 
 // Brain Score logic moved to async worker
 
@@ -176,13 +179,13 @@ export async function processCallEvent(
 
   let insertPayload: Record<string, unknown> = payload.event_id ? insertWithEventId : baseInsert;
   const strippedCols = new Set<string>();
-  let callRecord: { id: string } | null = null;
+  let callRecord: { id: string; created_at?: string } | null = null;
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const { error: insertError, data: rData } = await tenantClient
       .from('calls')
       .insert({ ...insertPayload }) // TenantClient automatically adds site_id filter
-      .select('id')
+      .select('id, created_at')
       .single();
     callRecord = rData;
 
@@ -210,6 +213,31 @@ export async function processCallEvent(
 
   if (!callRecord?.id) {
     throw new Error('Call insert returned no record');
+  }
+
+  // ── PR-OCI-2: V2 "İlk Temas" signal (best-effort, does not block ingestion)
+  try {
+    const callCreatedAt = callRecord.created_at ?? new Date().toISOString();
+    const signalDate = new Date(callCreatedAt);
+    const { data: siteRow } = await adminClient
+      .from('sites')
+      .select('default_aov')
+      .eq('id', siteId)
+      .maybeSingle();
+    const aov = Number((siteRow as { default_aov?: number } | null)?.default_aov) || 100;
+    const primary = await getPrimarySource(siteId, { callId: callRecord.id });
+    await evaluateAndRouteSignal('V2_PULSE', {
+      siteId,
+      callId: callRecord.id,
+      gclid: primary?.gclid ?? null,
+      wbraid: primary?.wbraid ?? null,
+      gbraid: primary?.gbraid ?? null,
+      aov,
+      clickDate: signalDate,
+      signalDate,
+    });
+  } catch (v2Err) {
+    console.error('[PR-OCI-2] V2_PULSE emit failed (non-fatal):', (v2Err as Error)?.message ?? v2Err);
   }
 
   // ── STEP 2: Trigger Async Scoring via QStash ──────────────────────────────

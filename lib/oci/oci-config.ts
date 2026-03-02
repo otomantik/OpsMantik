@@ -85,7 +85,7 @@ export function parseOciConfig(raw: unknown): OciSiteConfig {
  * Compute the conversion value (in currency units, not cents) for a given star rating.
  *
  * - sale_amount > 0 → use actual revenue (operatör satış girmiş).
- * - sale_amount null veya 0 (görüşüldü, satış yok) → 0 TL gönder (lead_score/star proxy yok).
+ * - sale_amount null veya 0 (görüşüldü, satış yok) → return null → caller must NOT enqueue (0 TL mühür olmaz).
  * Returns null if the star is below min_star and no sale → caller should NOT enqueue.
  */
 export function computeConversionValue(
@@ -98,9 +98,9 @@ export function computeConversionValue(
         return saleAmount;
     }
 
-    // Görüşüldü / satış yok → Google'a 0 TL (yüksek proxy değer gitmesin)
+    // Görüşüldü / satış yok → enqueue etme (0 TL mühür Google'a gönderilmez)
     if (saleAmount === 0 || saleAmount == null) {
-        return 0;
+        return null;
     }
 
     // No star → can't compute (legacy path)

@@ -11,6 +11,8 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
+import { getPrimarySource } from '@/lib/conversation/primary-source';
+import { evaluateAndRouteSignal, OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,10 +84,10 @@ export async function POST(
 
     logInfo('seal request', { request_id: requestId, route, user_id: user.id });
 
-    // Lookup: admin only for id+site_id (do not trust client). Then gate by access; update with user client (RLS).
+    // Lookup: admin only for id+site_id+created_at (do not trust client). Then gate by access; update with user client (RLS).
     const { data: call, error: fetchError } = await adminClient
       .from('calls')
-      .select('id, site_id, version')
+      .select('id, site_id, version, created_at')
       .eq('id', callId)
       .maybeSingle();
 
@@ -156,9 +158,57 @@ export async function POST(
     // RPC returns jsonb → normalize shape for response
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
     const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
+    const callCreatedAt = (call as { created_at?: string | null })?.created_at ?? confirmedAt;
 
-    // Last-mile OCI: enqueue ONLY IF score is exactly 100 (Seal).
-    // Lower scores (e.g. 60=Görüşüldü, 80=Teklif) are saved locally but do not trigger an OCI queue row (Ghost Signal prevention).
+    // V3 (Görüşüldü) / V4 (Teklif): emit to marketing_signals for Google Ads funnel (PR-OCI-1)
+    if (leadScore === 60 || leadScore === 80) {
+      try {
+        const gear = leadScore === 60 ? 'V3_ENGAGE' : 'V4_INTENT';
+        const conversionName = leadScore === 60 ? OPSMANTIK_CONVERSION_NAMES.V3_ENGAGE : OPSMANTIK_CONVERSION_NAMES.V4_INTENT;
+        const { data: existing } = await adminClient
+          .from('marketing_signals')
+          .select('id')
+          .eq('site_id', siteId)
+          .eq('call_id', callId)
+          .eq('google_conversion_name', conversionName)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          logInfo('seal_v3v4_skip_dedup', { call_id: callId, gear });
+        } else {
+          const { data: siteRow } = await adminClient
+            .from('sites')
+            .select('default_aov')
+            .eq('id', siteId)
+            .maybeSingle();
+          const aov = Number((siteRow as { default_aov?: number } | null)?.default_aov) || 100;
+          const primary = await getPrimarySource(siteId, { callId });
+          const clickDate = new Date(callCreatedAt);
+          const signalDate = new Date(confirmedAt);
+          const result = await evaluateAndRouteSignal(gear, {
+            siteId,
+            callId,
+            gclid: primary?.gclid ?? null,
+            wbraid: primary?.wbraid ?? null,
+            gbraid: primary?.gbraid ?? null,
+            aov,
+            clickDate,
+            signalDate,
+          });
+          if (result.routed) {
+            logInfo('seal_v3v4_emitted', { call_id: callId, gear });
+          }
+        }
+      } catch (v3v4Err) {
+        logError('seal_v3v4_emit_failed', {
+          call_id: callId,
+          error: String((v3v4Err as Error)?.message ?? v3v4Err),
+        });
+        // Non-fatal: seal succeeded; V3/V4 emit is best-effort
+      }
+    }
+
+    // Last-mile OCI: enqueue ONLY IF score is exactly 100 (Seal) and conversion value is not null (0 TL mühür olmaz).
+    // Lower scores (e.g. 60=Görüşüldü, 80=Teklif) are saved locally and emit V3/V4 above; no queue row.
     if (leadScore === 100) {
       try {
         const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');

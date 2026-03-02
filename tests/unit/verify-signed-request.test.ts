@@ -17,7 +17,8 @@ test('timingSafeCompare: different lengths', () => {
   assert.equal(timingSafeCompare('short', 'a much longer string'), false);
 });
 
-test('verifySignedRequest: accepts correct signature', () => {
+// Sync test; no I/O. If this test is slow, the delay is usually from module/tsx load, not this code. Timeout prevents suite hang.
+test('verifySignedRequest: accepts correct signature', { timeout: 2000 }, () => {
   const secret = 'test-secret';
   const rawBody = JSON.stringify({ site_id: 'site_public_id', fingerprint: 'fp', phone_number: 'tel:123' });
   const ts = 1700000000;

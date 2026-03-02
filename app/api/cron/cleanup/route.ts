@@ -123,6 +123,7 @@ async function runCleanup(req: NextRequest) {
   let ociDeleted = 0;
   let signalsDeleted = 0;
   let intentsJunked = 0;
+  let merkleHeartbeat: Record<string, unknown> | undefined;
 
   try {
     // Phase 1: Zombie recovery (2h stuck PROCESSING)
@@ -182,6 +183,15 @@ async function runCleanup(req: NextRequest) {
       return NextResponse.json({ error: junkErr.message, step: 'cleanup_auto_junk_stale_intents' }, { status: 500 });
     }
     intentsJunked = typeof junkData === 'number' ? junkData : 0;
+
+    // Phase 6: Singularity — Merkle heartbeat every 1000 causal_dna_ledger entries
+    const { data: merkleData, error: merkleErr } = await adminClient.rpc('heartbeat_merkle_1000');
+    if (!merkleErr && merkleData && typeof merkleData === 'object') {
+      merkleHeartbeat = merkleData as Record<string, unknown>;
+      if (merkleHeartbeat.heartbeat) {
+        logInfo('CLEANUP_MERKLE_HEARTBEAT', merkleHeartbeat);
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logError('CLEANUP_CRON_FAIL', { error: msg });
@@ -212,6 +222,7 @@ async function runCleanup(req: NextRequest) {
       oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit },
       marketing_signals: { deleted: signalsDeleted, days: daysSignals, limit },
       auto_junk: { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents },
+      singularity_merkle: merkleHeartbeat,
       note: backlog ? 'Backlog may remain; run again or schedule daily.' : undefined,
     },
     { headers: getBuildInfoHeaders() }

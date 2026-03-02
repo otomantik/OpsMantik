@@ -11,6 +11,8 @@ import { normalizeLandingUrl } from '@/lib/ingest/normalize-landing-url';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { debugLog } from '@/lib/utils';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
+import type { IngestEventKind } from '@/lib/ingest/types';
+import { assertNever } from '@/lib/ingest/types';
 import { AttributionService } from '@/lib/services/attribution-service';
 import { SessionService } from '@/lib/services/session-service';
 import { EventService } from '@/lib/services/event-service';
@@ -70,6 +72,17 @@ export async function getDedupEventIdForJob(
     ? `qstash:${qstashMessageId}`
     : `fallback:${site_id}:${client_sid || ''}:${event_action || ''}:${url}`;
   return deterministicUuidFromString(dedupInput);
+}
+
+/** Exhaustive event kind for switch; must match IngestEventKind in lib/ingest/types.ts. */
+function getEventKind(event_category: string, event_action: string): IngestEventKind {
+  const ec = event_category;
+  const ea = event_action;
+  if (ea === 'heartbeat') return 'heartbeat';
+  if (ec === 'page' || ea === 'page_view') return 'page_view';
+  if (ea === 'click' || ec === 'click') return 'click';
+  if (ea === 'call_intent') return 'call_intent';
+  return 'other';
 }
 
 export type ProcessSyncEventResult = { success: true; score: number };
@@ -172,6 +185,22 @@ async function doProcessSyncEvent(
     await incrementCapturedSafe(site_id, hasGclid);
   }
 
+  const eventKind = getEventKind(event_category, event_action);
+  switch (eventKind) {
+    case 'heartbeat':
+      break;
+    case 'page_view':
+      break;
+    case 'click':
+      break;
+    case 'call_intent':
+      break;
+    case 'other':
+      break;
+    default:
+      assertNever(eventKind);
+  }
+
   const geoResult = extractGeoInfo(null, userAgent, meta);
   const { geoInfo, deviceInfo } = geoResult;
   if (typeof job.geo_city === 'string' && job.geo_city) geoInfo.city = job.geo_city;
@@ -187,7 +216,7 @@ async function doProcessSyncEvent(
 
   // Worker-side ghost geo: when site has strict mode, override ghost cities to Unknown/null (covers fallback/replay)
   const siteIngestConfig = await getSiteIngestConfig(siteIdUuid);
-  const ghostGeoStrict = siteIngestConfig.ghost_geo_strict ?? siteIngestConfig.ingest_strict_mode ?? false;
+  const ghostGeoStrict = siteIngestConfig.ghost_geo_strict || siteIngestConfig.ingest_strict_mode;
   if (ghostGeoStrict && (isGhostGeoCity(geoInfo.city) || isGhostGeoCity(geoInfo.district))) {
     geoInfo.city = 'Unknown';
     geoInfo.district = null;
@@ -207,7 +236,7 @@ async function doProcessSyncEvent(
   const { attribution, utm } = await AttributionService.resolveAttribution(siteIdUuid, currentGclid, fingerprint, safeUrl, referrer);
   let attributionSource = attribution.source;
   // When traffic_debloat: only attribute as Google Ads when valid click-id present (length >= 10)
-  const trafficDebloat = siteIngestConfig.traffic_debloat ?? siteIngestConfig.ingest_strict_mode ?? false;
+  const trafficDebloat = siteIngestConfig.traffic_debloat || siteIngestConfig.ingest_strict_mode;
   if (trafficDebloat && attributionSource.includes('Ads')) {
     const gclid = params.get('gclid') || meta?.gclid || null;
     const wbraid = params.get('wbraid') || meta?.wbraid || null;
@@ -221,7 +250,7 @@ async function doProcessSyncEvent(
     ? (job.consent_scopes as string[]).map((s) => String(s).toLowerCase())
     : [];
 
-  const pageView10sReuse = siteIngestConfig.page_view_10s_session_reuse ?? siteIngestConfig.ingest_strict_mode ?? false;
+  const pageView10sReuse = siteIngestConfig.page_view_10s_session_reuse || siteIngestConfig.ingest_strict_mode;
   const isPageView = event_action === 'page_view' || event_category === 'page';
   let session: { id: string; created_month: string } | null = null;
 
@@ -242,7 +271,7 @@ async function doProcessSyncEvent(
         if (normalizeLandingUrl(entry) === normalizedUrl) {
           session = { id: row.id, created_month: row.created_month };
           try {
-            await adminClient.from('sessions').update({ updated_at: new Date().toISOString() }).eq('id', row.id).eq('created_month', row.created_month);
+            await adminClient.from('sessions').update({ updated_at: new Date().toISOString() }).eq('site_id', siteIdUuid).eq('id', row.id).eq('created_month', row.created_month);
           } catch { /* updated_at column may not exist */ }
           break;
         }
