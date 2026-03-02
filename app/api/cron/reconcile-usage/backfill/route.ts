@@ -36,8 +36,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
         }
 
-        // Safety: Limit 12 months
-        const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+        // Safety: Limit 12 months (UTC-safe to avoid DST drift)
+        const diffMonths =
+            (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+            (end.getUTCMonth() - start.getUTCMonth());
         if (diffMonths > 12 || diffMonths < 0) {
             return NextResponse.json({ error: 'Range too large (max 12 months) or invalid' }, { status: 400 });
         }
@@ -45,10 +47,10 @@ export async function POST(req: NextRequest) {
         const months = [];
         const curr = new Date(start);
         while (curr <= end) {
-            const y = curr.getFullYear();
-            const m = String(curr.getMonth() + 1).padStart(2, '0');
+            const y = curr.getUTCFullYear();
+            const m = String(curr.getUTCMonth() + 1).padStart(2, '0');
             months.push(`${y}-${m}`);
-            curr.setMonth(curr.getMonth() + 1);
+            curr.setUTCMonth(curr.getUTCMonth() + 1);
         }
 
         // Find sites to backfill

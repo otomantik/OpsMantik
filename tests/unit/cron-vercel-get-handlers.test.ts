@@ -122,6 +122,23 @@ test('PR-4: sweep-unsent-conversions uses Date.now() based lookback, not .setDat
   );
 });
 
+// PR-10: reconcile-usage backfill month iteration uses UTC methods (not local)
+test('PR-10: reconcile-usage backfill uses UTC methods for month iteration, not local', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'reconcile-usage', 'backfill', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes('getUTCFullYear') && src.includes('getUTCMonth') && src.includes('setUTCMonth'),
+    'backfill must use getUTCFullYear, getUTCMonth, setUTCMonth for UTC-safe month iteration'
+  );
+  // Must not use local equivalents in the month iteration
+  const hasLocalGetFullYear = /curr\.getFullYear\(\)|start\.getFullYear\(\)|end\.getFullYear\(\)/.test(src);
+  const hasLocalGetMonth = /curr\.getMonth\(\)|start\.getMonth\(\)|end\.getMonth\(\)/.test(src);
+  const hasLocalSetMonth = /curr\.setMonth\(/.test(src);
+  assert.ok(!hasLocalGetFullYear, 'backfill must not use getFullYear (local); use getUTCFullYear');
+  assert.ok(!hasLocalGetMonth, 'backfill must not use getMonth (local); use getUTCMonth');
+  assert.ok(!hasLocalSetMonth, 'backfill must not use setMonth (local); use setUTCMonth');
+});
+
 // PR-9: idempotency-cleanup has top-level try/catch with IDEMPOTENCY_CLEANUP_ERROR
 test('PR-9: idempotency-cleanup contains IDEMPOTENCY_CLEANUP_ERROR and returns 500 in catch path', () => {
   const path = join(process.cwd(), 'app', 'api', 'cron', 'idempotency-cleanup', 'route.ts');
