@@ -121,3 +121,21 @@ test('PR-4: sweep-unsent-conversions uses Date.now() based lookback, not .setDat
     'sweep-unsent-conversions must use Date.now() - days*86400*1000 for UTC-aligned lookback'
   );
 });
+
+// PR-8: google-ads-oci worker never rethrows; generic catch returns 500
+test('PR-8: google-ads-oci worker does not throw err, logs GOOGLE_ADS_OCI_RUNNER_ERROR, returns 500 in generic catch', () => {
+  const path = join(process.cwd(), 'app', 'api', 'workers', 'google-ads-oci', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    !src.includes('throw err'),
+    'google-ads-oci must not rethrow errors; always return NextResponse'
+  );
+  assert.ok(
+    src.includes("'GOOGLE_ADS_OCI_RUNNER_ERROR'") || src.includes('"GOOGLE_ADS_OCI_RUNNER_ERROR"'),
+    'google-ads-oci must log GOOGLE_ADS_OCI_RUNNER_ERROR in generic catch path'
+  );
+  assert.ok(
+    src.includes('status: 500') && src.includes('ok: false'),
+    'google-ads-oci generic catch must return status 500 with ok: false'
+  );
+});

@@ -48,7 +48,12 @@ export async function POST(req: NextRequest) {
         { status: 500, headers: getBuildInfoHeaders() }
       );
     }
-    throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    logError('GOOGLE_ADS_OCI_RUNNER_ERROR', { error: msg });
+    return NextResponse.json(
+      { ok: false, error: msg },
+      { status: 500, headers: getBuildInfoHeaders() }
+    );
   }
 
   if (!result.ok) {
