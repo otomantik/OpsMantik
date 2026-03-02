@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 import { adminClient } from '@/lib/supabase/admin';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 
@@ -20,6 +21,7 @@ export const runtime = 'nodejs';
 
 const LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;
+const CRON_LOCK_TTL_SEC = 300; // 5 min — exceeds 15-min schedule
 
 async function runSweep() {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400 * 1000);
@@ -93,14 +95,29 @@ async function runSweep() {
   }
 }
 
+async function handlerWithLock() {
+  const acquired = await tryAcquireCronLock('sweep-unsent-conversions', CRON_LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { status: 200, headers: getBuildInfoHeaders() }
+    );
+  }
+  try {
+    return await runSweep();
+  } finally {
+    await releaseCronLock('sweep-unsent-conversions');
+  }
+}
+
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return runSweep();
+  return handlerWithLock();
 }
 
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return runSweep();
+  return handlerWithLock();
 }

@@ -3,11 +3,13 @@
  * Runs on cron (e.g. every 5 min); claims PENDING rows with FOR UPDATE SKIP LOCKED,
  * retries QStash publish; on success marks RECOVERED, on failure leaves PENDING for retry.
  * Reduced O(N) DB round-trips to bulk updates; publishes run with concurrency limit.
+ * Distributed lock prevents overlapping runs.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 import { adminClient } from '@/lib/supabase/admin';
 import { qstash } from '@/lib/qstash/client';
 import { logError, logInfo } from '@/lib/logging/logger';
@@ -16,6 +18,7 @@ import { chunkArray, mapWithConcurrency } from '@/lib/utils/batch';
 export const runtime = 'nodejs';
 
 const BATCH_SIZE = 100;
+const CRON_LOCK_TTL_SEC = 420; // 7 min — exceeds 5-min schedule
 
 function getWorkerBaseUrl(): string {
   const v = process.env.VERCEL_URL;
@@ -28,6 +31,14 @@ function getWorkerBaseUrl(): string {
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
+
+  const acquired = await tryAcquireCronLock('recover', CRON_LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { status: 200, headers: getBuildInfoHeaders() }
+    );
+  }
 
   const requestId = req.headers.get('x-request-id') ?? undefined;
   let claimed = 0;
@@ -193,5 +204,7 @@ export async function GET(req: NextRequest) {
       },
       { status: 500, headers: getBuildInfoHeaders() }
     );
+  } finally {
+    await releaseCronLock('recover');
   }
 }

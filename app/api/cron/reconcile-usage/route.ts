@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { BillingReconciliationService, type EnqueueResult, type ProcessResult } from '@/lib/services/billing-reconciliation';
 import { logError } from '@/lib/logging/logger';
 
 export const runtime = 'nodejs';
+
+const CRON_LOCK_TTL_SEC = 600; // 10 min — exceeds 15-min schedule
 
 /** Response shape for GET /api/cron/reconcile-usage */
 interface ReconcileCronResponse {
@@ -24,6 +27,14 @@ interface ReconcileCronResponse {
 export async function GET(req: NextRequest) {
     const forbidden = requireCronAuth(req);
     if (forbidden) return forbidden;
+
+    const acquired = await tryAcquireCronLock('reconcile-usage', CRON_LOCK_TTL_SEC);
+    if (!acquired) {
+        return NextResponse.json(
+            { ok: true, skipped: true, reason: 'lock_held' },
+            { status: 200, headers: getBuildInfoHeaders() }
+        );
+    }
 
     try {
         const action = req.nextUrl.searchParams.get('action');
@@ -55,5 +66,7 @@ export async function GET(req: NextRequest) {
             { ok: false, error: errorMsg },
             { status: 500, headers: getBuildInfoHeaders() }
         );
+    } finally {
+        await releaseCronLock('reconcile-usage');
     }
 }

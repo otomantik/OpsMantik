@@ -79,6 +79,40 @@ for (const route of PR3_ROUTES) {
   });
 }
 
+// PR-11: remaining overlap-risk crons use distributed cron locks
+test('PR-11: recover uses tryAcquireCronLock("recover")', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'recover', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes('tryAcquireCronLock(\'recover\''),
+    'recover must use tryAcquireCronLock("recover") for overlap prevention'
+  );
+  assert.ok(src.includes('releaseCronLock'), 'recover must release lock in finally');
+  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
+});
+
+test('PR-11: sweep-unsent-conversions uses tryAcquireCronLock("sweep-unsent-conversions")', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes('tryAcquireCronLock(\'sweep-unsent-conversions\''),
+    'sweep-unsent-conversions must use tryAcquireCronLock("sweep-unsent-conversions") for overlap prevention'
+  );
+  assert.ok(src.includes('releaseCronLock'), 'sweep-unsent-conversions must release lock in finally');
+  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
+});
+
+test('PR-11: reconcile-usage uses tryAcquireCronLock("reconcile-usage")', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'reconcile-usage', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes('tryAcquireCronLock(\'reconcile-usage\''),
+    'reconcile-usage must use tryAcquireCronLock("reconcile-usage") for overlap prevention'
+  );
+  assert.ok(src.includes('releaseCronLock'), 'reconcile-usage must release lock in finally');
+  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
+});
+
 // PR-7: reconcile-usage hardened against unhandled rejections
 test('PR-7: reconcile-usage has top-level try/catch with RECONCILE_CRON_ERROR and 500', () => {
   const path = join(process.cwd(), 'app', 'api', 'cron', 'reconcile-usage', 'route.ts');
