@@ -125,7 +125,7 @@ export async function POST(
       p_actor_type: 'user',
       p_actor_id: null,
       p_metadata: { route, request_id: requestId },
-      p_version: version, // NEW: Optimistic Locking
+      p_version: version ?? call.version, // NEW: Optimistic Locking (enforced even if frontend omits version)
     });
 
     if (updateError) {
