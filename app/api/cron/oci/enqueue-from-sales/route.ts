@@ -89,15 +89,19 @@ async function runEnqueueFromSales(req: NextRequest) {
         }
       }
 
-      // V5_SEAL: value_cents = sale_amount exactly (or 0). No proxy multipliers; bypasses legacy oci_config.
-      // sales.amount_cents is already in minor units — use as-is to match War Room output.
+      // V5_SEAL: value_cents = sale_amount. 0 TL mühür Google'a gönderilmez (policy = seal path).
+      const valueCents = sale.amount_cents ?? 0;
+      if (valueCents <= 0) {
+        skipped++;
+        continue;
+      }
       const { error: insertError } = await adminClient
         .from('offline_conversion_queue')
         .insert({
           site_id: sale.site_id,
           sale_id: sale.id,
           conversion_time: sale.occurred_at,
-          value_cents: sale.amount_cents ?? 0,
+          value_cents: valueCents,
           currency: sale.currency,
           gclid,
           wbraid,

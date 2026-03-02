@@ -558,14 +558,37 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         await syncQueueValuesFromCalls(siteIdUuid, siteRows, prefix);
 
         const adapter = getProvider(providerKey);
+        const blockedValueZeroIds: string[] = [];
         const rowsWithValue = siteRows.filter((r) => {
-          const v = (r as { value_cents?: number | null }).value_cents;
-          if (v == null || v === undefined) {
+          const raw = (r as { value_cents?: unknown }).value_cents;
+          const v = typeof raw === 'number' ? raw : Number(raw);
+          if (raw == null || raw === undefined) {
             logWarn('OCI_ROW_SKIP_NULL_VALUE', { queue_id: r.id, prefix });
+            blockedValueZeroIds.push(r.id);
             return false;
           }
+          if (!Number.isFinite(v) || v <= 0) {
+            logWarn('OCI_ROW_SKIP_VALUE_ZERO', { queue_id: r.id, prefix, raw_value_cents: raw ?? null });
+            blockedValueZeroIds.push(r.id);
+            return false;
+          }
+          (r as { value_cents: number }).value_cents = v;
           return true;
         });
+        if (blockedValueZeroIds.length > 0) {
+          await bulkUpdateQueue(
+            blockedValueZeroIds,
+            {
+              status: 'FAILED',
+              last_error: 'VALUE_ZERO',
+              provider_error_code: 'VALUE_ZERO',
+              provider_error_category: 'PERMANENT',
+              updated_at: new Date().toISOString(),
+            },
+            prefix,
+            'Mark value_cents<=0 rows FAILED'
+          );
+        }
         // Axiom 4: Per-row isolation — one poison pill does not kill the batch
         const jobs: Awaited<ReturnType<typeof queueRowToConversionJob>>[] = [];
         const poisonRowIds: string[] = [];
@@ -589,6 +612,10 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             prefix,
             'Mark poison pill rows FAILED'
           );
+        }
+        if (jobs.length === 0) {
+          // Nothing left to upload after policy blocks/poison isolation.
+          continue;
         }
         const batchId = crypto.randomUUID();
         const startedAt = Date.now();
@@ -840,14 +867,37 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
 
         await syncQueueValuesFromCalls(siteIdUuid, rowsToProcess, prefix);
 
+        const blockedValueZeroIdsCron: string[] = [];
         const rowsWithValue = rowsToProcess.filter((r) => {
-          const v = (r as { value_cents?: number | null }).value_cents;
-          if (v == null || v === undefined) {
+          const raw = (r as { value_cents?: unknown }).value_cents;
+          const v = typeof raw === 'number' ? raw : Number(raw);
+          if (raw == null || raw === undefined) {
             logWarn('OCI_ROW_SKIP_NULL_VALUE', { queue_id: r.id, prefix });
+            blockedValueZeroIdsCron.push(r.id);
             return false;
           }
+          if (!Number.isFinite(v) || v <= 0) {
+            logWarn('OCI_ROW_SKIP_VALUE_ZERO', { queue_id: r.id, prefix, raw_value_cents: raw ?? null });
+            blockedValueZeroIdsCron.push(r.id);
+            return false;
+          }
+          (r as { value_cents: number }).value_cents = v;
           return true;
         });
+        if (blockedValueZeroIdsCron.length > 0) {
+          await bulkUpdateQueue(
+            blockedValueZeroIdsCron,
+            {
+              status: 'FAILED',
+              last_error: 'VALUE_ZERO',
+              provider_error_code: 'VALUE_ZERO',
+              provider_error_category: 'PERMANENT',
+              updated_at: new Date().toISOString(),
+            },
+            prefix,
+            'Mark value_cents<=0 rows FAILED (cron)'
+          );
+        }
         const adapter = getProvider(providerKey);
         // Axiom 4: Per-row isolation — one poison pill does not kill the batch
         const jobs: Awaited<ReturnType<typeof queueRowToConversionJob>>[] = [];
@@ -871,6 +921,10 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             prefix,
             'Mark poison pill rows FAILED (cron)'
           );
+        }
+        if (jobs.length === 0) {
+          // Nothing left to upload after policy blocks/poison isolation.
+          continue;
         }
         let results: UploadResult[];
         try {

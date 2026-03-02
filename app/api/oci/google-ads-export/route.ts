@@ -367,6 +367,7 @@ export async function GET(req: NextRequest) {
     };
 
     const conversions: GoogleAdsConversionItem[] = [];
+    const blockedValueZeroIds: string[] = [];
     for (const row of list as QueueRow[]) {
       // Precedence: calls.confirmed_at > queue.conversion_time > queue.created_at
       const sealTs = row.call_id ? (callConfirmedAt[row.call_id] ?? null) : null;
@@ -384,7 +385,21 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const valueCents = Number(row.value_cents) || 0;
+      const rawValueCents = (row as { value_cents?: unknown }).value_cents;
+      const valueCents =
+        typeof rawValueCents === 'number'
+          ? rawValueCents
+          : Number(rawValueCents);
+      if (!Number.isFinite(valueCents) || valueCents <= 0) {
+        blockedValueZeroIds.push(row.id);
+        logWarn('OCI_EXPORT_SKIP_VALUE_ZERO', {
+          queue_id: row.id,
+          call_id: row.call_id ?? null,
+          raw_value_cents: rawValueCents ?? null,
+          conversion_time: conversionTime,
+        });
+        continue;
+      }
       const rowCurrency = row.currency || currency || 'TRY';
       const conversionValue = ensureNumericValue(minorToMajor(valueCents, rowCurrency));
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
@@ -410,6 +425,23 @@ export async function GET(req: NextRequest) {
         conversionValue,
         conversionCurrency,
       });
+    }
+
+    // P0: Fail-closed. If script is exporting (markAsExported=true), terminalize blocked rows so they never loop.
+    if (markAsExported && blockedValueZeroIds.length > 0) {
+      const now = new Date().toISOString();
+      await adminClient
+        .from('offline_conversion_queue')
+        .update({
+          status: 'FAILED',
+          last_error: 'VALUE_ZERO',
+          provider_error_code: 'VALUE_ZERO',
+          provider_error_category: 'PERMANENT',
+          updated_at: now,
+        })
+        .in('id', blockedValueZeroIds)
+        .eq('site_id', siteUuid)
+        .in('status', ['QUEUED', 'RETRY', 'PROCESSING']);
     }
 
     const combined = [...conversions, ...signalItems, ...pvItems].sort(

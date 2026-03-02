@@ -83,7 +83,7 @@ export class PipelineService {
     }
 
     // 4. If it's Junk or value is 0, we STOP here. Do not send to Google Ads OCI.
-    if (isJunk || finalValueCents === 0) {
+    if (isJunk || finalValueCents == null || !Number.isFinite(finalValueCents) || finalValueCents <= 0) {
       return { success: true, oci_enqueued: false, reason: 'junk_or_zero_value' };
     }
 

@@ -93,13 +93,13 @@ export function computeConversionValue(
     saleAmount: number | null,
     config: OciSiteConfig
 ): number | null {
-    // Gerçek satış girildiyse onu kullan
+    // Gerçek satış girildiyse onu kullan (negative = invalid, treat as no sale)
     if (saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0) {
         return saleAmount;
     }
 
-    // Görüşüldü / satış yok → enqueue etme (0 TL mühür Google'a gönderilmez)
-    if (saleAmount === 0 || saleAmount == null) {
+    // Görüşüldü / satış yok / negatif / NaN → enqueue etme (0 TL mühür Google'a gönderilmez)
+    if (saleAmount == null || !Number.isFinite(saleAmount) || saleAmount <= 0) {
         return null;
     }
 
