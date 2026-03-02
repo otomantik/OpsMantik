@@ -147,14 +147,14 @@ export class PipelineService {
 
     const queueId = (inserted as { id: string } | null)?.id ?? null;
     if (queueId) {
-      adminClient
+      void adminClient
         .rpc('append_causal_dna_ledger', {
           p_site_id: siteId,
           p_aggregate_type: 'conversion',
           p_aggregate_id: queueId,
           p_causal_dna: causalDna,
         })
-        .catch(() => {});
+        .then(() => {}, () => {});
     }
 
     return {

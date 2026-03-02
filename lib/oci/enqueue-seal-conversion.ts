@@ -235,14 +235,14 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
 
     const queueId = (inserted as { id: string } | null)?.id ?? null;
     if (queueId) {
-      adminClient
+      void adminClient
         .rpc('append_causal_dna_ledger', {
           p_site_id: siteId,
           p_aggregate_type: 'conversion',
           p_aggregate_id: queueId,
           p_causal_dna: causalDna,
         })
-        .catch(() => {});
+        .then(() => {}, () => {});
     }
 
     logInfo('enqueue_seal_ok', { call_id: callId, star, value_units: valueUnits, value_cents: valueCents });

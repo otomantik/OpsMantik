@@ -95,7 +95,7 @@ function logShadowDecision(
   reason: string,
   context: Record<string, unknown> = {}
 ): void {
-  adminClient
+  void adminClient
     .rpc('insert_shadow_decision', {
       p_site_id: siteId,
       p_aggregate_type: aggregateType,
@@ -104,7 +104,7 @@ function logShadowDecision(
       p_reason: reason,
       p_context: context,
     })
-    .catch(() => { /* best-effort */ });
+    .then(() => { /* best-effort */ }, () => { /* best-effort */ });
 }
 
 /**
@@ -213,14 +213,14 @@ export async function evaluateAndRouteSignal(
   }
 
   const signalId = (data as { id: string })?.id ?? null;
-  adminClient
+  void adminClient
     .rpc('append_causal_dna_ledger', {
       p_site_id: siteId,
       p_aggregate_type: 'signal',
       p_aggregate_id: signalId,
       p_causal_dna: causalDnaJson,
     })
-    .catch((err) => console.error('[MizanMantik] append_causal_dna_ledger failed:', err));
+    .then(() => {}, (err: unknown) => console.error('[MizanMantik] append_causal_dna_ledger failed:', err));
   return { routed: true, signalId, conversionValue, causalDna: causalDnaJson };
 }
 
