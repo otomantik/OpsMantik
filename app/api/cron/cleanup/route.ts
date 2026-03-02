@@ -24,6 +24,7 @@ const DEFAULT_DAYS_TO_KEEP = 90;
 const DEFAULT_CLEANUP_LIMIT = 5000;
 const DEFAULT_DAYS_ARCHIVE_FAILED = 30;
 const DEFAULT_DAYS_SIGNALS = 60;
+const DEFAULT_DAYS_PENDING_STALE = 30;
 const DEFAULT_DAYS_OLD_INTENTS = 7;
 const DEFAULT_LIMIT_INTENTS = 5000;
 const DEFAULT_ZOMBIE_MINUTES = 120;
@@ -52,6 +53,7 @@ async function runCleanup(req: NextRequest) {
   const limit = parseParam(req, 'limit', DEFAULT_CLEANUP_LIMIT, 1, 10000);
   const daysArchiveFailed = parseParam(req, 'days_archive_failed', DEFAULT_DAYS_ARCHIVE_FAILED, 1, 365);
   const daysSignals = parseParam(req, 'days_signals', DEFAULT_DAYS_SIGNALS, 1, 365);
+  const daysPendingStale = parseParam(req, 'days_pending_stale', DEFAULT_DAYS_PENDING_STALE, 1, 365);
   const daysOldIntents = parseParam(req, 'days_old_intents', DEFAULT_DAYS_OLD_INTENTS, 1, 365);
   const limitIntents = parseParam(req, 'limit_intents', DEFAULT_LIMIT_INTENTS, 1, 10000);
   const zombieMinutes = parseParam(req, 'zombie_minutes', DEFAULT_ZOMBIE_MINUTES, 15, 1440);
@@ -62,6 +64,7 @@ async function runCleanup(req: NextRequest) {
     limit,
     daysArchiveFailed,
     daysSignals,
+    daysPendingStale,
     daysOldIntents,
     limitIntents,
     zombieMinutes,
@@ -71,9 +74,10 @@ async function runCleanup(req: NextRequest) {
     const cutoffQueue = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000).toISOString();
     const cutoffArchive = new Date(Date.now() - daysArchiveFailed * 24 * 60 * 60 * 1000).toISOString();
     const cutoffSignals = new Date(Date.now() - daysSignals * 24 * 60 * 60 * 1000).toISOString();
+    const cutoffPendingStale = new Date(Date.now() - daysPendingStale * 24 * 60 * 60 * 1000).toISOString();
     const cutoffIntents = new Date(Date.now() - daysOldIntents * 24 * 60 * 60 * 1000).toISOString();
 
-    const [queueRes, archiveRes, signalsRes, intentsRes] = await Promise.all([
+    const [queueRes, archiveRes, signalsRes, pendingStaleRes, intentsRes] = await Promise.all([
       adminClient
         .from('offline_conversion_queue')
         .select('*', { count: 'exact', head: true })
@@ -90,6 +94,11 @@ async function runCleanup(req: NextRequest) {
         .eq('dispatch_status', 'SENT')
         .lt('created_at', cutoffSignals),
       adminClient
+        .from('marketing_signals')
+        .select('*', { count: 'exact', head: true })
+        .eq('dispatch_status', 'PENDING')
+        .lt('created_at', cutoffPendingStale),
+      adminClient
         .from('calls')
         .select('*', { count: 'exact', head: true })
         .or('status.eq.intent,status.is.null')
@@ -100,6 +109,7 @@ async function runCleanup(req: NextRequest) {
       wouldArchiveFailed: Math.min(archiveRes.count ?? 0, limit),
       wouldDeleteQueue: Math.min(queueRes.count ?? 0, limit),
       wouldDeleteSignals: Math.min(signalsRes.count ?? 0, limit),
+      wouldFailStalePendingSignals: Math.min(pendingStaleRes.count ?? 0, limit),
       wouldJunkIntents: Math.min(intentsRes.count ?? 0, limitIntents),
     });
 
@@ -111,6 +121,10 @@ async function runCleanup(req: NextRequest) {
         archive_failed: { would_archive: Math.min(archiveRes.count ?? 0, limit), days: daysArchiveFailed },
         oci_queue: { would_delete: Math.min(queueRes.count ?? 0, limit), days_to_keep: daysToKeep },
         marketing_signals: { would_delete: Math.min(signalsRes.count ?? 0, limit), days: daysSignals },
+        marketing_signals_pending_stale: {
+          would_fail: Math.min(pendingStaleRes.count ?? 0, limit),
+          days: daysPendingStale,
+        },
         auto_junk: { would_update: Math.min(intentsRes.count ?? 0, limitIntents), days_old: daysOldIntents },
       },
       { headers: getBuildInfoHeaders() }
@@ -122,6 +136,7 @@ async function runCleanup(req: NextRequest) {
   let archivedFailed = 0;
   let ociDeleted = 0;
   let signalsDeleted = 0;
+  let stalePendingFailed = 0;
   let intentsJunked = 0;
   let merkleHeartbeat: Record<string, unknown> | undefined;
 
@@ -173,6 +188,39 @@ async function runCleanup(req: NextRequest) {
     }
     signalsDeleted = typeof signalsData === 'number' ? signalsData : 0;
 
+    // Phase 4b: Fail stale PENDING marketing_signals (30d default)
+    const cutoffPendingStale = new Date(Date.now() - daysPendingStale * 24 * 60 * 60 * 1000).toISOString();
+    const { data: pendingIds, error: pendingSelectErr } = await adminClient
+      .from('marketing_signals')
+      .select('id')
+      .eq('dispatch_status', 'PENDING')
+      .lt('created_at', cutoffPendingStale)
+      .limit(limit);
+    if (pendingSelectErr) {
+      logError('CLEANUP_STALE_PENDING_SELECT_FAIL', { error: pendingSelectErr.message });
+      return NextResponse.json(
+        { error: pendingSelectErr.message, step: 'select_stale_pending_marketing_signals' },
+        { status: 500 }
+      );
+    }
+    const ids = (pendingIds ?? []).map((r: { id: string }) => r.id);
+    if (ids.length > 0) {
+      const { error: pendingUpdateErr } = await adminClient
+        .from('marketing_signals')
+        .update({ dispatch_status: 'FAILED' })
+        .in('id', ids)
+        .eq('dispatch_status', 'PENDING');
+      if (pendingUpdateErr) {
+        logError('CLEANUP_STALE_PENDING_UPDATE_FAIL', { error: pendingUpdateErr.message });
+        return NextResponse.json(
+          { error: pendingUpdateErr.message, step: 'fail_stale_pending_marketing_signals' },
+          { status: 500 }
+        );
+      }
+      stalePendingFailed = ids.length;
+      logInfo('CLEANUP_STALE_PENDING_FAILED', { count: stalePendingFailed, days: daysPendingStale });
+    }
+
     // Phase 5: Auto-junk stale intents (7d)
     const { data: junkData, error: junkErr } = await adminClient.rpc('cleanup_auto_junk_stale_intents', {
       p_days_old: daysOldIntents,
@@ -204,6 +252,7 @@ async function runCleanup(req: NextRequest) {
     archivedFailed,
     ociDeleted,
     signalsDeleted,
+    stalePendingFailed,
     intentsJunked,
   });
 
@@ -211,6 +260,7 @@ async function runCleanup(req: NextRequest) {
     archivedFailed >= limit ||
     ociDeleted >= limit ||
     signalsDeleted >= limit ||
+    stalePendingFailed >= limit ||
     intentsJunked >= limitIntents;
 
   return NextResponse.json(
@@ -221,6 +271,7 @@ async function runCleanup(req: NextRequest) {
       archive_failed: { archived: archivedFailed, days: daysArchiveFailed },
       oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit },
       marketing_signals: { deleted: signalsDeleted, days: daysSignals, limit },
+      marketing_signals_pending_stale: { failed: stalePendingFailed, days: daysPendingStale, limit },
       auto_junk: { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents },
       singularity_merkle: merkleHeartbeat,
       note: backlog ? 'Backlog may remain; run again or schedule daily.' : undefined,
