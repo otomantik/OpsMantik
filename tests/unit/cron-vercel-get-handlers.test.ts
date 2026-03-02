@@ -122,6 +122,20 @@ test('PR-4: sweep-unsent-conversions uses Date.now() based lookback, not .setDat
   );
 });
 
+// PR-9: idempotency-cleanup has top-level try/catch with IDEMPOTENCY_CLEANUP_ERROR
+test('PR-9: idempotency-cleanup contains IDEMPOTENCY_CLEANUP_ERROR and returns 500 in catch path', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'idempotency-cleanup', 'route.ts');
+  const src = readFileSync(path, 'utf-8');
+  assert.ok(
+    src.includes("'IDEMPOTENCY_CLEANUP_ERROR'") || src.includes('"IDEMPOTENCY_CLEANUP_ERROR"'),
+    'idempotency-cleanup must log IDEMPOTENCY_CLEANUP_ERROR on unexpected failure'
+  );
+  assert.ok(
+    src.includes('status: 500') && src.includes('ok: false'),
+    'idempotency-cleanup catch path must return 500 JSON { ok: false }'
+  );
+});
+
 // PR-8: google-ads-oci worker never rethrows; generic catch returns 500
 test('PR-8: google-ads-oci worker does not throw err, logs GOOGLE_ADS_OCI_RUNNER_ERROR, returns 500 in generic catch', () => {
   const path = join(process.cwd(), 'app', 'api', 'workers', 'google-ads-oci', 'route.ts');

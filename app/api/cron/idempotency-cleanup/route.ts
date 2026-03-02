@@ -29,9 +29,10 @@ function getYearMonthUtcOffset(monthsAgo: number): string {
  * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
 async function run(req: NextRequest) {
-    const dryRun = req.nextUrl.searchParams.get('dry_run') === 'true';
+    try {
+        const dryRun = req.nextUrl.searchParams.get('dry_run') === 'true';
 
-    // 1. Cutoff = 90 days ago
+        // 1. Cutoff = 90 days ago
     const now = new Date();
     const cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     const cutoffIso = cutoffDate.toISOString();
@@ -91,6 +92,14 @@ async function run(req: NextRequest) {
         batch_size: BATCH_SIZE,
         note: deletedCount >= BATCH_SIZE ? `Backlog may remain; run again or schedule more frequently.` : undefined,
     }, { headers: getBuildInfoHeaders() });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logError('IDEMPOTENCY_CLEANUP_ERROR', { error: msg });
+        return NextResponse.json(
+            { ok: false, error: msg },
+            { status: 500, headers: getBuildInfoHeaders() }
+        );
+    }
 }
 
 export async function GET(req: NextRequest) {
