@@ -74,6 +74,80 @@ export async function getPrimarySource(
   }
 }
 
+/**
+ * P0-1.3: Batch fetch primary sources for multiple call_ids in 2 queries instead of N.
+ * Returns Map<callId, PrimarySource | null>. Missing or errored calls map to null.
+ */
+export async function getPrimarySourceBatch(
+  siteId: string,
+  callIds: string[]
+): Promise<Map<string, PrimarySource | null>> {
+  const result = new Map<string, PrimarySource | null>();
+  if (callIds.length === 0) return result;
+
+  const uniqueCallIds = [...new Set(callIds)];
+  try {
+    const { data: callsData, error: callsError } = await adminClient
+      .from('calls')
+      .select('id, matched_session_id')
+      .eq('site_id', siteId)
+      .in('id', uniqueCallIds);
+
+    if (callsError || !callsData?.length) {
+      uniqueCallIds.forEach((id) => result.set(id, null));
+      return result;
+    }
+
+    const sessionIds = [...new Set(
+      callsData
+        .map((c: { matched_session_id?: string | null }) => c.matched_session_id)
+        .filter((s): s is string => Boolean(s))
+    )];
+
+    if (sessionIds.length === 0) {
+      callsData.forEach((c: { id: string }) => result.set(c.id, null));
+      uniqueCallIds.filter((id) => !result.has(id)).forEach((id) => result.set(id, null));
+      return result;
+    }
+
+    const { data: sessionsData, error: sessionsError } = await adminClient
+      .from('sessions')
+      .select('id, gclid, wbraid, gbraid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer_host')
+      .eq('site_id', siteId)
+      .in('id', sessionIds);
+
+    const sessionById = new Map<string, PrimarySource>();
+    if (!sessionsError && sessionsData) {
+      for (const s of sessionsData) {
+        const id = (s as { id: string }).id;
+        sessionById.set(id, {
+          gclid: (s as { gclid?: string | null }).gclid ?? null,
+          wbraid: (s as { wbraid?: string | null }).wbraid ?? null,
+          gbraid: (s as { gbraid?: string | null }).gbraid ?? null,
+          utm_source: (s as { utm_source?: string | null }).utm_source ?? null,
+          utm_medium: (s as { utm_medium?: string | null }).utm_medium ?? null,
+          utm_campaign: (s as { utm_campaign?: string | null }).utm_campaign ?? null,
+          utm_content: (s as { utm_content?: string | null }).utm_content ?? null,
+          utm_term: (s as { utm_term?: string | null }).utm_term ?? null,
+          referrer: (s as { referrer_host?: string | null }).referrer_host ?? null,
+        });
+      }
+    }
+
+    const callToSession = new Map(
+      callsData.map((c: { id: string; matched_session_id?: string | null }) => [c.id, c.matched_session_id])
+    );
+    for (const callId of uniqueCallIds) {
+      const sessionId = callToSession.get(callId);
+      result.set(callId, sessionId ? sessionById.get(sessionId) ?? null : null);
+    }
+    return result;
+  } catch {
+    uniqueCallIds.forEach((id) => result.set(id, null));
+    return result;
+  }
+}
+
 async function getPrimarySourceFromSession(
   siteId: string,
   sessionId: string
