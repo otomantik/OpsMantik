@@ -3,11 +3,15 @@
  * OCI kuyruga alma + reset (FAILED/RETRY/PROCESSING/COMPLETED-uploaded_at-null)
  * Seal: conversion_time = calls.confirmed_at. Null/gecersiz -> skip.
  *
+ * OPS-ONLY: Bypasses orchestrator (enqueue-from-sales, sweep-unsent-conversions).
+ * Do NOT run concurrently with cron enqueue-from-sales or sweep-unsent-conversions.
+ *
  * Kullanim:
  *   node scripts/db/oci-enqueue.mjs Eslamed
  *   node scripts/db/oci-enqueue.mjs Eslamed --today     # sadece bugunun muhurleri
  *   node scripts/db/oci-enqueue.mjs Eslamed --force-reset-completed  # tum COMPLETED -> QUEUED (toparlama)
  *   node scripts/db/oci-enqueue.mjs Eslamed --dry-run
+ *   node scripts/db/oci-enqueue.mjs Eslamed --skip-if-queued  # skip call_id already in queue (idempotency)
  */
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
@@ -30,6 +34,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run') || args.includes('-n');
 const todayOnly = args.includes('--today') || args.includes('-t');
 const forceResetCompleted = args.includes('--force-reset-completed') || args.includes('-f');
+const skipIfQueued = args.includes('--skip-if-queued') || args.includes('-s'); // parsed for ops; we always skip-if-queued
 const query = args.find((a) => !a.startsWith('-'));
 
 async function resolveSiteId(q) {
@@ -91,7 +96,8 @@ async function run() {
 
   const sessionMap = new Map((sessions || []).map((s) => [s.id, s]));
 
-  // Tum mevcut call_id'leri kontrol et (herhangi status) - duplicate INSERT onlenir
+  // --skip-if-queued: before insert, query offline_conversion_queue for same call_id; if exists, skip.
+  // We always do this (backward compat); flag makes intent explicit for ops.
   const { data: existingRows } = await supabase
     .from('offline_conversion_queue')
     .select('call_id')
@@ -143,6 +149,7 @@ async function run() {
 
   console.log('Sealed call:', calls?.length ?? 0);
   console.log('Tabloda zaten:', existingCallIds.size);
+  if (skipIfQueued) console.log('(--skip-if-queued: idempotency aktif)');
   console.log('Eklenecek:', toInsert.length);
 
   if (dryRun) {
