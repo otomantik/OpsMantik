@@ -1,34 +1,45 @@
 /**
- * MizanMantik 5-Gear — Time-Decay Math
+ * MizanMantik 5-Gear — Time-Decay Math (PR-VK-2: Config-driven ratios)
  *
- * getBaseValueForGear: V1=0, V2=2%, V3=10%, V4=30%, V5 handled outside.
+ * getBaseValueForGear: V1=0, V2–V4 from intentWeights, V5 sealed (ratio=1.0, handled outside).
  * getDecayProfileForGear: Soft (V2), Standard (V3), Aggressive (V4).
  */
 
+import { calculateDecayDays } from '@/lib/shared/time-utils';
 import type { OpsGear } from './types';
+import type { IntentWeights } from './value-config';
 
-const MS_PER_DAY = 86400000;
+/** Gear → Stage mapping (Value SSOT Contract Rule D) */
+export const GEAR_TO_STAGE: Record<OpsGear, keyof IntentWeights | null> = {
+  V1_PAGEVIEW: null,
+  V2_PULSE: 'pending',
+  V3_ENGAGE: 'qualified',
+  V4_INTENT: 'proposal',
+  V5_SEAL: 'sealed',
+};
+
+const DEFAULT_WEIGHTS: IntentWeights = {
+  pending: 0.02,
+  qualified: 0.2,
+  proposal: 0.3,
+  sealed: 1.0,
+};
 
 /**
- * Base value for gear (V5 returns exact value outside this func).
- * No AOV fallback — caller passes effective AOV (e.g. from value-calculator).
+ * Base value for gear (V5 sealed returns 0 — handled outside with exact valueCents).
+ * Uses intentWeights from DB; fallback to DEFAULT_WEIGHTS if key missing.
  */
-export function getBaseValueForGear(gear: OpsGear, aov: number): number {
+export function getBaseValueForGear(
+  gear: OpsGear,
+  aov: number,
+  intentWeights: IntentWeights = DEFAULT_WEIGHTS
+): number {
   const safeAov = Number.isFinite(aov) && aov >= 0 ? aov : 0;
-  switch (gear) {
-    case 'V1_PAGEVIEW':
-      return 0;
-    case 'V2_PULSE':
-      return safeAov * 0.02;
-    case 'V3_ENGAGE':
-      return safeAov * 0.1;
-    case 'V4_INTENT':
-      return safeAov * 0.3;
-    case 'V5_SEAL':
-      return 0; // Handled outside — exact valueCents
-    default:
-      return 0;
-  }
+  const stage = GEAR_TO_STAGE[gear];
+  if (!stage || gear === 'V1_PAGEVIEW') return 0;
+  if (gear === 'V5_SEAL') return 0; // Handled outside — exact valueCents, ratio=1.0, decay=0
+  const ratio = intentWeights[stage] ?? DEFAULT_WEIGHTS[stage];
+  return safeAov * ratio;
 }
 
 /**
@@ -60,24 +71,25 @@ export function getDecayProfileForGear(gear: OpsGear, days: number): number {
 }
 
 /**
- * Master EV for V2–V4 signals.
- * days = ceil(elapsedMs / 86400000)
- * EV = round(getBaseValueForGear * getDecayProfileForGear)
+ * Master EV for V2–V4 signals (PR-VK-7: integer cents SSOT).
+ * Returns integer cents only; no float. V5 sealed handled by caller.
+ * Formula: baseValueCents = round(aovCents * ratio); finalCents = round(baseValueCents * decay).
  */
 export function calculateSignalEV(
   gear: OpsGear,
-  aov: number,
+  aovCents: number,
   clickDate: Date,
-  signalDate: Date
+  signalDate: Date,
+  intentWeights?: IntentWeights
 ): number {
   if (gear === 'V1_PAGEVIEW') return 0;
-  if (gear === 'V5_SEAL') return 0; // Handled by caller with valueCents
+  if (gear === 'V5_SEAL') return 0; // Handled by caller with valueCents; ratio=1.0, decay=0
 
-  const elapsedMs = Math.max(0, signalDate.getTime() - clickDate.getTime());
-  const days = Math.ceil(elapsedMs / MS_PER_DAY);
+  const safeAovCents = Number.isFinite(aovCents) && aovCents >= 0 ? Math.round(aovCents) : 0;
+  const ratio = getBaseValueForGear(gear, 1, intentWeights ?? DEFAULT_WEIGHTS);
+  const days = calculateDecayDays(clickDate, signalDate, 'ceil');
+  const decay = getDecayProfileForGear(gear, days);
 
-  const base = getBaseValueForGear(gear, aov);
-  const multiplier = getDecayProfileForGear(gear, days);
-
-  return Math.round(base * multiplier * 100) / 100;
+  const baseValueCents = Math.round(safeAovCents * ratio);
+  return Math.round(baseValueCents * decay);
 }

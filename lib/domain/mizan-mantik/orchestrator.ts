@@ -9,14 +9,15 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
+import { calculateDecayDays } from '@/lib/shared/time-utils';
 import { calculateSignalEV } from './time-decay';
+import { getSiteValueConfig } from './value-config';
 import { createCausalDna, appendBranch, toJsonb } from './causal-dna';
 import { getEntropyScore } from './entropy-service';
 import type { OpsGear, SignalPayload, EvaluateResult } from './types';
 import { LEGACY_TO_OPS_GEAR, type LegacySignalType } from './types';
 import { OPSMANTIK_CONVERSION_NAMES } from './conversion-names';
 
-const MS_PER_DAY = 86400000;
 
 const PV_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 const V2_DEDUP_HOURS = 24;
@@ -174,11 +175,14 @@ export async function evaluateAndRouteSignal(
     }
   }
 
-  // V2–V4: marketing_signals
-  const conversionValue = calculateSignalEV(gear, aov, clickDate, signalDate);
-  const elapsedMs = Math.max(0, signalDate.getTime() - clickDate.getTime());
-  const days = Math.ceil(elapsedMs / MS_PER_DAY);
-  dna = appendBranch(dna, `${gear}_marketing_signals`, ['auth', 'idempotency', 'usage'], { aov, clickDate: clickDate.toISOString(), signalDate: signalDate.toISOString(), days }, { conversionValue, days, logic_branch: 'Standard_Decay' });
+  // V2–V4: marketing_signals (PR-VK-7: integer cents SSOT, dual-write for backward compat)
+  const config = await getSiteValueConfig(siteId);
+  const effectiveAovMajor = config.defaultAov ?? aov ?? 0;
+  const aovCents = Math.round(Number(effectiveAovMajor) * 100);
+  const finalCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config.intentWeights);
+  const conversionValue = finalCents / 100; // Major unit for API / Google Ads
+  const days = calculateDecayDays(clickDate, signalDate, 'ceil');
+  dna = appendBranch(dna, `${gear}_marketing_signals`, ['auth', 'idempotency', 'usage'], { aovCents, clickDate: clickDate.toISOString(), signalDate: signalDate.toISOString(), days }, { conversionValue, finalCents, days, logic_branch: 'Standard_Decay' });
   const legacyType = gearToLegacySignalType(gear);
   const name = conversionName ?? OPSMANTIK_CONVERSION_NAMES[gear];
 
@@ -191,6 +195,7 @@ export async function evaluateAndRouteSignal(
       signal_type: legacyType,
       google_conversion_name: name,
       google_conversion_time: signalDate.toISOString(),
+      expected_value_cents: finalCents,
       conversion_value: conversionValue,
       dispatch_status: 'PENDING',
       causal_dna: causalDnaJson,

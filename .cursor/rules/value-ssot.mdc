@@ -1,0 +1,33 @@
+---
+description: Value SSOT Contract — Mühendislik Anayasası (Golden Rules)
+globs: ["lib/domain/mizan-mantik/**", "**/orchestrator.ts", "**/runner.ts", "lib/oci/**", "lib/utils/mizan-mantik.ts"]
+alwaysApply: false
+---
+
+# Value SSOT Enforcement Rule
+
+**Applies to:** `lib/domain/mizan-mantik/**`, orchestrator.ts, runner.ts, lib/oci/**, lib/utils/mizan-mantik.ts
+
+## Golden Rules (Anayasa)
+
+| Kural | Tanım | Teknik Karşılık |
+|-------|-------|-----------------|
+| **A** Single Config Source | Oranlar asla kodda (.ts) yazılmaz | `getSiteValueConfig` üzerinden; sites.intent_weights, sites.default_aov |
+| **B** Single Time Math | Gün farkı tek fonksiyon | `calculateDecayDays` (mode: ceil, clamp: 365) |
+| **C** Single Writer | value_cents sadece enqueue'da yazılır | sync sadece denetim (alert); overwrite yasak |
+| **D** Integer Only Math | İç hesaplamalar cents | BIGINT / integer; float sadece export aşamasında |
+| **E** Consistent Mapping | Gear ↔ Stage sabit | V3→qualified, intent_weights bu isimlendirmeyi takip eder |
+
+## AI / Geliştirici Kuralları
+
+- DO NOT use hardcoded conversion ratios (0.02, 0.1, 0.2, 0.3). Always fetch via `getSiteValueConfig`.
+- DO NOT use Math.floor for decay days. Always use `calculateDecayDays` with 'ceil' mode.
+- ALWAYS perform monetary calculations in cents (integer). Round immediately after multiplication.
+- Ensure V3_ENGAGE uses 'qualified' weight (default 0.20).
+- For any value mismatch in sync tasks, log 'QUEUE_VALUE_MISMATCH' instead of overwriting.
+
+## Integer Cents Detay
+
+- Internal SSOT: `expected_value_cents`, `value_cents`; major unit sadece export / UI / Google Ads.
+- Örnek doğru: `baseValueCents = Math.round(aovCents * ratio); return Math.round(baseValueCents * decay);`
+- Yasak: `return base * multiplier;` (round yok), `conversion_value: aov * ratio * decay` (float zinciri)

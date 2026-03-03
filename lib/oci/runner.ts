@@ -34,6 +34,7 @@ import {
 } from '@/lib/oci/constants';
 import { chunkArray } from '@/lib/utils/batch';
 import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
+import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
 
 /** Options for runOfflineConversionRunner. */
@@ -118,14 +119,15 @@ async function bulkUpdateQueueGrouped<T>(
   }
 }
 
-/** Sprint 2: Re-read lead_score/sale_amount from calls and sync queue value_cents before send. Only for rows with call_id. */
+/** PR-VK-5: Re-read from calls, sanity-check value_cents. Single writer: enqueue is canonical; sync does NOT overwrite. */
 async function syncQueueValuesFromCalls(
   siteIdUuid: string,
   siteRows: QueueRow[],
   prefix: string
-): Promise<void> {
+): Promise<Set<string>> {
+  const mismatchIds = new Set<string>();
   const withCallId = siteRows.filter((r) => r.call_id);
-  if (withCallId.length === 0) return;
+  if (withCallId.length === 0) return mismatchIds;
 
   const callIds = [...new Set(withCallId.map((r) => r.call_id!).filter(Boolean))];
   const { data: callsData } = await adminClient
@@ -136,15 +138,16 @@ async function syncQueueValuesFromCalls(
     (callsData ?? []).map((c: { id: string; lead_score?: number | null; sale_amount?: number | null; currency?: string | null }) => [c.id, c])
   );
 
-  const { data: siteRow } = await adminClient.from('sites').select('oci_config').eq('id', siteIdUuid).maybeSingle();
-  const config = parseOciConfig((siteRow as { oci_config?: unknown } | null)?.oci_config ?? null);
+  const { data: siteRow } = await adminClient
+    .from('sites')
+    .select('oci_config, default_aov')
+    .eq('id', siteIdUuid)
+    .maybeSingle();
+  const config = parseOciConfig(
+    (siteRow as { oci_config?: unknown } | null)?.oci_config ?? null,
+    (siteRow as { default_aov?: number | null } | null)?.default_aov
+  );
 
-  function leadScoreToStar(leadScore: number | null): number | null {
-    if (leadScore == null || !Number.isFinite(leadScore)) return null;
-    return Math.round(Math.max(0, Math.min(100, leadScore)) / 20);
-  }
-
-  const toUpdate: { id: string; value_cents: number }[] = [];
   for (const row of withCallId) {
     const call = callsById.get(row.call_id!);
     if (!call) continue;
@@ -154,26 +157,20 @@ async function syncQueueValuesFromCalls(
     const valueUnits = computeConversionValue(star, saleAmount, config);
     const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
     const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
-    if (freshCents !== row.value_cents) {
-      (row as { value_cents: number }).value_cents = freshCents;
-      toUpdate.push({ id: row.id, value_cents: freshCents });
+    const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;
+    if (freshCents !== storedCents) {
+      logWarn('QUEUE_VALUE_MISMATCH', {
+        queue_id: row.id,
+        call_id: row.call_id,
+        stored_cents: storedCents,
+        computed_cents: freshCents,
+        prefix,
+      });
+      mismatchIds.add(row.id);
     }
   }
 
-  if (toUpdate.length > 0) {
-    // P0-1.5: Group by value_cents and bulk update instead of N+1
-    const byValueCents = new Map<number, string[]>();
-    const now = new Date().toISOString();
-    for (const { id, value_cents } of toUpdate) {
-      const ids = byValueCents.get(value_cents) ?? [];
-      ids.push(id);
-      byValueCents.set(value_cents, ids);
-    }
-    for (const [value_cents, ids] of byValueCents) {
-      await bulkUpdateQueue(ids, { value_cents, updated_at: now }, prefix, 'Sync queue value_cents from call');
-    }
-    logInfo('OCI_VALUE_SYNC', { site_id: siteIdUuid, updated_count: toUpdate.length, prefix });
-  }
+  return mismatchIds;
 }
 
 /** Shared persistence: record_provider_outcome (circuit breaker). Both worker and cron use this. */
@@ -555,11 +552,27 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           }
         }
 
-        await syncQueueValuesFromCalls(siteIdUuid, siteRows, prefix);
+        const mismatchIds = await syncQueueValuesFromCalls(siteIdUuid, siteRows, prefix);
+        const failClosed = process.env.QUEUE_VALUE_MISMATCH_FAIL_CLOSED === '1';
+
+        if (failClosed && mismatchIds.size > 0) {
+          await bulkUpdateQueue(
+            [...mismatchIds],
+            { status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() },
+            prefix,
+            'Release mismatch rows (fail-closed) to QUEUED'
+          );
+          logInfo('QUEUE_VALUE_MISMATCH_FAIL_CLOSED', {
+            site_id: siteIdUuid,
+            skipped_count: mismatchIds.size,
+            prefix,
+          });
+        }
 
         const adapter = getProvider(providerKey);
         const blockedValueZeroIds: string[] = [];
-        const rowsWithValue = siteRows.filter((r) => {
+        let rowsWithValue = siteRows.filter((r) => {
+          if (failClosed && mismatchIds.has(r.id)) return false;
           const raw = (r as { value_cents?: unknown }).value_cents;
           const v = typeof raw === 'number' ? raw : Number(raw);
           if (raw == null || raw === undefined) {
@@ -865,10 +878,26 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           }
         }
 
-        await syncQueueValuesFromCalls(siteIdUuid, rowsToProcess, prefix);
+        const mismatchIdsCron = await syncQueueValuesFromCalls(siteIdUuid, rowsToProcess, prefix);
+        const failClosedCron = process.env.QUEUE_VALUE_MISMATCH_FAIL_CLOSED === '1';
+
+        if (failClosedCron && mismatchIdsCron.size > 0) {
+          await bulkUpdateQueue(
+            [...mismatchIdsCron],
+            { status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() },
+            prefix,
+            'Release mismatch rows (fail-closed cron) to QUEUED'
+          );
+          logInfo('QUEUE_VALUE_MISMATCH_FAIL_CLOSED', {
+            site_id: siteIdUuid,
+            skipped_count: mismatchIdsCron.size,
+            prefix,
+          });
+        }
 
         const blockedValueZeroIdsCron: string[] = [];
         const rowsWithValue = rowsToProcess.filter((r) => {
+          if (failClosedCron && mismatchIdsCron.has(r.id)) return false;
           const raw = (r as { value_cents?: unknown }).value_cents;
           const v = typeof raw === 'number' ? raw : Number(raw);
           if (raw == null || raw === undefined) {

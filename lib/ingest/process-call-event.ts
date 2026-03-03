@@ -219,12 +219,6 @@ export async function processCallEvent(
   try {
     const callCreatedAt = callRecord.created_at ?? new Date().toISOString();
     const signalDate = new Date(callCreatedAt);
-    const { data: siteRow } = await adminClient
-      .from('sites')
-      .select('default_aov')
-      .eq('id', siteId)
-      .maybeSingle();
-    const aov = Number((siteRow as { default_aov?: number } | null)?.default_aov) || 100;
     const primary = await getPrimarySource(siteId, { callId: callRecord.id });
     await evaluateAndRouteSignal('V2_PULSE', {
       siteId,
@@ -232,7 +226,7 @@ export async function processCallEvent(
       gclid: primary?.gclid ?? null,
       wbraid: primary?.wbraid ?? null,
       gbraid: primary?.gbraid ?? null,
-      aov,
+      aov: 0,
       clickDate: signalDate,
       signalDate,
     });

@@ -175,12 +175,6 @@ export async function POST(
         if (existing && existing.length > 0) {
           logInfo('seal_v3v4_skip_dedup', { call_id: callId, gear });
         } else {
-          const { data: siteRow } = await adminClient
-            .from('sites')
-            .select('default_aov')
-            .eq('id', siteId)
-            .maybeSingle();
-          const aov = Number((siteRow as { default_aov?: number } | null)?.default_aov) || 100;
           const primary = await getPrimarySource(siteId, { callId });
           const clickDate = new Date(callCreatedAt);
           const signalDate = new Date(confirmedAt);
@@ -190,7 +184,7 @@ export async function POST(
             gclid: primary?.gclid ?? null,
             wbraid: primary?.wbraid ?? null,
             gbraid: primary?.gbraid ?? null,
-            aov,
+            aov: undefined,
             clickDate,
             signalDate,
           });

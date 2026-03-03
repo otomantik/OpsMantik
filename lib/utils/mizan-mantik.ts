@@ -82,7 +82,9 @@ export function calculateConversionValue(params: CalculateConversionValueParams)
     : (intentStage || 'pending').toLowerCase() === 'qualified' || (intentStage || '').toLowerCase() === 'real'
       ? 'V3_ENGAGE'
       : 'V2_PULSE';
-  return calculateSignalEV(gear, finalAov, clkDate, sigDate);
+  const aovCents = Math.round(finalAov * 100);
+  const cents = calculateSignalEV(gear, aovCents, clkDate, sigDate);
+  return cents / 100;
 }
 
 /** @deprecated Use domain calculateSignalEV */
@@ -92,5 +94,6 @@ export function calculateDecayedValue(
   signalDate: Date
 ): number {
   const aov = baseValue > 0 ? baseValue / 0.1 : 0;
-  return calculateSignalEV('V3_ENGAGE', aov, clickDate, signalDate);
+  const aovCents = Math.round(aov * 100);
+  return calculateSignalEV('V3_ENGAGE', aovCents, clickDate, signalDate) / 100;
 }

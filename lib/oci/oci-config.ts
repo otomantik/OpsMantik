@@ -43,10 +43,15 @@ export interface OciSiteConfig {
 /**
  * Parse a raw DB oci_config value into a validated OciSiteConfig.
  * Falls back to OCI_DEFAULT_CONFIG for any missing/invalid field.
+ * When base_value is missing, uses defaultAovFallback (sites.default_aov) if provided.
  */
-export function parseOciConfig(raw: unknown): OciSiteConfig {
+export function parseOciConfig(raw: unknown, defaultAovFallback?: number | null): OciSiteConfig {
+    const fallbackBase = defaultAovFallback != null && Number.isFinite(defaultAovFallback) && defaultAovFallback > 0
+        ? defaultAovFallback
+        : OCI_DEFAULT_CONFIG.base_value;
+
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        return { ...OCI_DEFAULT_CONFIG, weights: { ...OCI_DEFAULT_CONFIG.weights } };
+        return { ...OCI_DEFAULT_CONFIG, base_value: fallbackBase, weights: { ...OCI_DEFAULT_CONFIG.weights } };
     }
 
     const cfg = raw as Record<string, unknown>;
@@ -54,7 +59,7 @@ export function parseOciConfig(raw: unknown): OciSiteConfig {
     const baseValue =
         typeof cfg.base_value === 'number' && cfg.base_value > 0
             ? cfg.base_value
-            : OCI_DEFAULT_CONFIG.base_value;
+            : fallbackBase;
 
     const currency =
         typeof cfg.currency === 'string' && cfg.currency.trim().length >= 3

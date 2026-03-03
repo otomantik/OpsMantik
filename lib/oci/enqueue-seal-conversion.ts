@@ -19,6 +19,7 @@ import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
+import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 
 export interface EnqueueSealParams {
@@ -53,7 +54,7 @@ export interface EnqueueSealResult {
 async function loadSiteOciConfig(siteId: string) {
   const { data, error } = await adminClient
     .from('sites')
-    .select('oci_config, currency')
+    .select('oci_config, currency, default_aov')
     .eq('id', siteId)
     .maybeSingle();
 
@@ -62,21 +63,11 @@ async function loadSiteOciConfig(siteId: string) {
     return { config: parseOciConfig(null), siteCurrency: 'TRY' };
   }
 
+  const defaultAov = (data as { default_aov?: number | null }).default_aov;
   return {
-    config: parseOciConfig((data as { oci_config?: unknown }).oci_config),
+    config: parseOciConfig((data as { oci_config?: unknown }).oci_config, defaultAov),
     siteCurrency: (data as { currency?: string }).currency?.trim() || 'TRY',
   };
-}
-
-// ---------------------------------------------------------------------------
-// Legacy lead_score → star converter (backward compat)
-// lead_score: 0-100 scale where 20 = 1 star, 40 = 2 stars, …, 100 = 5 stars
-// ---------------------------------------------------------------------------
-
-function leadScoreToStar(leadScore: number | null): number | null {
-  if (leadScore == null || !Number.isFinite(leadScore)) return null;
-  const clamped = Math.max(0, Math.min(100, leadScore));
-  return Math.round(clamped / 20);
 }
 
 // ---------------------------------------------------------------------------
