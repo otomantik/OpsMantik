@@ -226,7 +226,7 @@ export async function POST(
             gclid: primary?.gclid ?? null,
             wbraid: primary?.wbraid ?? null,
             gbraid: primary?.gbraid ?? null,
-            aov: undefined,
+            aov: 0,
             clickDate,
             signalDate,
           });
