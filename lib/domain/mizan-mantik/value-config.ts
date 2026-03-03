@@ -19,6 +19,15 @@ export interface ValueConfig {
   minConversionValueCents: number;
 }
 
+/**
+ * Value floor for V2/V4 when no sale (MODULE 3).
+ * floor = max(min_conversion_value_cents, baseAov * 0.005) — ratio-based, not fixed.
+ */
+export function getValueFloorCents(config: ValueConfig): number {
+  const ratioCents = Math.round(config.defaultAov * 0.005 * 100);
+  return Math.max(config.minConversionValueCents, ratioCents, 1);
+}
+
 export const DEFAULT_WEIGHTS: IntentWeights = {
   pending: 0.02,
   qualified: 0.2,

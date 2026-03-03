@@ -10,8 +10,8 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
 import { calculateDecayDays } from '@/lib/shared/time-utils';
-import { calculateSignalEV } from './time-decay';
-import { getSiteValueConfig } from './value-config';
+import { calculateSignalEV, applyHalfLifeDecay, GEAR_TO_STAGE } from './time-decay';
+import { getSiteValueConfig, getValueFloorCents } from './value-config';
 import { createCausalDna, appendBranch, toJsonb } from './causal-dna';
 import { getEntropyScore } from './entropy-service';
 import type { OpsGear, SignalPayload, EvaluateResult } from './types';
@@ -175,13 +175,28 @@ export async function evaluateAndRouteSignal(
     }
   }
 
-  // V2–V4: marketing_signals (PR-VK-7: integer cents SSOT, dual-write for backward compat)
+  // V2–V4: marketing_signals (PR-VK-7: integer cents SSOT; MODULE 3: ratio-based floor)
   const config = await getSiteValueConfig(siteId);
   const effectiveAovMajor = config.defaultAov ?? aov ?? 0;
   const aovCents = Math.round(Number(effectiveAovMajor) * 100);
-  const finalCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config.intentWeights);
+  let finalCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config.intentWeights);
+  const floorCents = getValueFloorCents(config);
+  if (finalCents < floorCents) finalCents = floorCents;
   const conversionValue = finalCents / 100; // Major unit for API / Google Ads
   const days = calculateDecayDays(clickDate, signalDate, 'ceil');
+
+  // MODULE 4: Half-life shadow mode — compute and log, do NOT use for send
+  const stage = GEAR_TO_STAGE[gear];
+  const ratio = stage ? (config.intentWeights[stage] ?? 0.02) : 0;
+  const baseValueCents = Math.round(aovCents * ratio);
+  const halfLifeCents = applyHalfLifeDecay(baseValueCents, days);
+  logShadowDecision(siteId, 'signal', null, 'HALFLIFE_SHADOW', 'Shadow: half-life value for 30d comparison', {
+    discrete_cents: finalCents,
+    half_life_cents: halfLifeCents,
+    days,
+    gear,
+  });
+
   dna = appendBranch(dna, `${gear}_marketing_signals`, ['auth', 'idempotency', 'usage'], { aovCents, clickDate: clickDate.toISOString(), signalDate: signalDate.toISOString(), days }, { conversionValue, finalCents, days, logic_branch: 'Standard_Decay' });
   const legacyType = gearToLegacySignalType(gear);
   const name = conversionName ?? OPSMANTIK_CONVERSION_NAMES[gear];

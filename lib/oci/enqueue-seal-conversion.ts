@@ -16,6 +16,7 @@
 import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { adminClient } from '@/lib/supabase/admin';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
+import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
@@ -35,6 +36,8 @@ export interface EnqueueSealParams {
 
 export interface EnqueueSealResult {
   enqueued: boolean;
+  /** Queue row id when enqueued (for Fast-Track trigger) */
+  queueId?: string | null;
   reason?:
   | 'no_click_id'
   | 'duplicate'
@@ -115,11 +118,30 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     return { enqueued: false, reason: 'error', error: 'OCI_SEAL_TEMPORAL_POISONING' };
   }
 
-  // 1. Click ID check
-  const primarySource = await getPrimarySource(siteId, { callId });
-  const gclid = primarySource?.gclid?.trim() || null;
-  const wbraid = primarySource?.wbraid?.trim() || null;
-  const gbraid = primarySource?.gbraid?.trim() || null;
+  // 1. Click ID check (with Identity Stitcher: DIRECT → PHONE_STITCH → FINGERPRINT_STITCH)
+  const directSource = await getPrimarySource(siteId, { callId });
+  const { data: callCtx } = await adminClient
+    .from('calls')
+    .select('caller_phone_e164, matched_fingerprint, confirmed_at, created_at')
+    .eq('id', callId)
+    .eq('site_id', siteId)
+    .maybeSingle();
+
+  const callTime = (callCtx as { confirmed_at?: string; created_at?: string } | null)?.confirmed_at
+    ?? (callCtx as { created_at?: string } | null)?.created_at
+    ?? confirmedAtTrimmed;
+  const discovered = await getPrimarySourceWithDiscovery(siteId, directSource, {
+    callId,
+    callTime,
+    callerPhoneE164: (callCtx as { caller_phone_e164?: string | null } | null)?.caller_phone_e164 ?? null,
+    fingerprint: (callCtx as { matched_fingerprint?: string | null } | null)?.matched_fingerprint ?? null,
+  });
+
+  const gclid = discovered?.source?.gclid?.trim() || null;
+  const wbraid = discovered?.source?.wbraid?.trim() || null;
+  const gbraid = discovered?.source?.gbraid?.trim() || null;
+  const discoveryMethod = discovered?.discoveryMethod ?? null;
+  const discoveryConfidence = discovered?.discoveryConfidence ?? null;
 
   if (!gclid && !wbraid && !gbraid) {
     logInfo('enqueue_seal_skip', { call_id: callId, reason: 'no_click_id' });
@@ -193,25 +215,29 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
 
   // 8. Insert into queue (Seal: conversion_time = confirmed_at, UTC/ISO; DB stores timestamptz)
   try {
+    const insertPayload: Record<string, unknown> = {
+      site_id: siteId,
+      call_id: callId,
+      sale_id: null,
+      session_id: sessionId,
+      provider_key: 'google_ads',
+      conversion_time: confirmedAtTrimmed,
+      value_cents: valueCents,
+      currency: currencySafe,
+      gclid,
+      wbraid,
+      gbraid,
+      status: 'QUEUED',
+      causal_dna: causalDna,
+      entropy_score: 0,
+      uncertainty_bit: false,
+    };
+    if (discoveryMethod) insertPayload.discovery_method = discoveryMethod;
+    if (discoveryConfidence != null) insertPayload.discovery_confidence = discoveryConfidence;
+
     const { data: inserted, error } = await adminClient
       .from('offline_conversion_queue')
-      .insert({
-        site_id: siteId,
-        call_id: callId,
-        sale_id: null,
-        session_id: sessionId,
-        provider_key: 'google_ads',
-        conversion_time: confirmedAtTrimmed,
-        value_cents: valueCents,
-        currency: currencySafe,
-        gclid,
-        wbraid,
-        gbraid,
-        status: 'QUEUED',
-        causal_dna: causalDna,
-        entropy_score: 0,
-        uncertainty_bit: false,
-      })
+      .insert(insertPayload)
       .select('id')
       .single();
 
@@ -236,8 +262,8 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
         .then(() => {}, () => {});
     }
 
-    logInfo('enqueue_seal_ok', { call_id: callId, star, value_units: valueUnits, value_cents: valueCents });
-    return { enqueued: true, value: valueUnits };
+    logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, star, value_units: valueUnits, value_cents: valueCents });
+    return { enqueued: true, queueId, value: valueUnits };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logWarn('enqueue_seal_failed', { call_id: callId, error: message });

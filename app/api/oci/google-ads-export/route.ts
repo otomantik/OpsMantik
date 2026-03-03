@@ -11,6 +11,7 @@ import { verifySessionToken } from '@/lib/oci/session-auth';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 import { getPrimarySourceBatch } from '@/lib/conversation/primary-source';
+import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { redis } from '@/lib/upstash';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
 
@@ -170,7 +171,7 @@ export async function GET(req: NextRequest) {
     // Pipeline B: marketing_signals (PENDING)
     const { data: signalRows } = await adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING')
       .order('created_at', { ascending: true })
@@ -181,28 +182,76 @@ export async function GET(req: NextRequest) {
       logWarn('OCI_EXPORT_BATCH_HIT_LIMIT', { limit: EXPORT_SIGNALS_LIMIT, pipeline: 'marketing_signals' });
     }
 
-    // P0-1.3: Bulk fetch primary sources (2 queries) instead of N+1
+    // P0-1.3: Use row gclid/wbraid/gbraid if set (Self-Healing recovered), else primary source
     const signalCallIds = signalList
       .map((s) => (s as { call_id?: string | null }).call_id)
       .filter((id): id is string => Boolean(id));
     const sourceMap = await getPrimarySourceBatch(siteUuid, signalCallIds);
 
+    // Fetch call context for Identity Stitcher (caller_phone, fingerprint)
+    const { data: callsForStitch } = signalCallIds.length > 0
+      ? await adminClient.from('calls').select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at').eq('site_id', siteUuid).in('id', signalCallIds)
+      : { data: [] };
+    const callCtxByCallId = new Map<string, { caller_phone_e164?: string; matched_fingerprint?: string; callTime: string }>();
+    for (const c of callsForStitch ?? []) {
+      const id = (c as { id: string }).id;
+      const confirmed = (c as { confirmed_at?: string }).confirmed_at;
+      const created = (c as { created_at?: string }).created_at;
+      callCtxByCallId.set(id, {
+        caller_phone_e164: (c as { caller_phone_e164?: string }).caller_phone_e164 ?? undefined,
+        matched_fingerprint: (c as { matched_fingerprint?: string }).matched_fingerprint ?? undefined,
+        callTime: confirmed ?? created ?? new Date().toISOString(),
+      });
+    }
+
     const signalItems: GoogleAdsConversionItem[] = [];
     for (const sig of signalList) {
       const callId = (sig as { call_id?: string | null }).call_id;
       if (!callId) continue;
-      const source = sourceMap.get(callId) ?? null;
-      const gclid = (source?.gclid || '').trim();
-      const wbraid = (source?.wbraid || '').trim();
-      const gbraid = (source?.gbraid || '').trim();
-      const clickId = gclid || wbraid || gbraid;
-      if (!clickId) continue;
+
+      // Prefer recovered click_id from row (Self-Healing)
+      let gclid = (sig as { gclid?: string | null }).gclid?.trim() ?? '';
+      let wbraid = (sig as { wbraid?: string | null }).wbraid?.trim() ?? '';
+      let gbraid = (sig as { gbraid?: string | null }).gbraid?.trim() ?? '';
+      let clickId = gclid || wbraid || gbraid;
+
+      if (!clickId) {
+        const directSource = sourceMap.get(callId) ?? null;
+        const ctx = callCtxByCallId.get(callId);
+        const discovered = await getPrimarySourceWithDiscovery(siteUuid, directSource, {
+          callId,
+          callTime: ctx?.callTime ?? (sig as { google_conversion_time?: string }).google_conversion_time ?? new Date().toISOString(),
+          callerPhoneE164: ctx?.caller_phone_e164 ?? null,
+          fingerprint: ctx?.matched_fingerprint ?? null,
+        });
+        if (discovered?.source) {
+          gclid = (discovered.source.gclid ?? '').trim();
+          wbraid = (discovered.source.wbraid ?? '').trim();
+          gbraid = (discovered.source.gbraid ?? '').trim();
+          clickId = gclid || wbraid || gbraid;
+        }
+      }
+
+      if (!clickId) {
+        // Leave PENDING for Self-Healing; do NOT mark SKIPPED_NO_CLICK_ID
+        logWarn('OCI_EXPORT_SIGNAL_SKIP_NO_CLICK_ID', { signal_id: (sig as { id: string }).id, call_id: callId });
+        continue;
+      }
 
       const rawTime = (sig as { google_conversion_time: string }).google_conversion_time || '';
       const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
+      const numVal = rowValue == null ? NaN : Number(rowValue);
+      if (!Number.isFinite(numVal) || numVal <= 0) {
+        logWarn('OCI_EXPORT_SIGNAL_SKIP_VALUE', {
+          signal_id: (sig as { id: string }).id,
+          reason: rowValue == null ? 'NULL_CONVERSION_VALUE' : 'NON_POSITIVE_CONVERSION_VALUE',
+          raw: rowValue ?? null,
+        });
+        continue;
+      }
       const orderIdDDA = `${clickId}_${conversionName}_${conversionTime}`.slice(0, 128);
       signalItems.push({
         id: 'signal_' + (sig as { id: string }).id,
@@ -212,10 +261,12 @@ export async function GET(req: NextRequest) {
         gbraid: gbraid || '',
         conversionName,
         conversionTime,
-        conversionValue: Number(rowValue) || 0,
+        conversionValue: numVal,
         conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
       });
     }
+
+    // PENDING signals without click_id are left for Self-Healing Pulse to retry (no SKIPPED update here)
 
     // Pipeline C: Redis Page Views (Ops_PageView)
     const pvItems: GoogleAdsConversionItem[] = [];

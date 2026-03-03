@@ -47,6 +47,13 @@ export async function POST(
         { status: 400 }
       );
     }
+    // 0 TL ile mühür basılamaz — OCI queue ve Google Ads value pipeline için satış > 0 gerekli
+    if (leadScore === 100 && (saleAmount == null || saleAmount === 0)) {
+      return NextResponse.json(
+        { error: 'sale_amount must be greater than 0 to seal a call' },
+        { status: 400 }
+      );
+    }
 
     const authHeader = req.headers.get('authorization');
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -245,6 +252,7 @@ export async function POST(
 
     // Last-mile OCI: enqueue ONLY IF score is exactly 100 (Seal) and conversion value is not null (0 TL mühür olmaz).
     // Lower scores (e.g. 60=Görüşüldü, 80=Teklif) are saved locally and emit V3/V4 above; no queue row.
+    // OCI-9C: Fail closed — if enqueue fails, surface error and mark oci_status FAILED_ENQUEUE
     if (leadScore === 100) {
       try {
         const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
@@ -258,13 +266,42 @@ export async function POST(
         });
         if (result.enqueued) {
           logInfo('seal_oci_enqueued', { call_id: callId });
+          // Fast-Track (MODULE 5): fire-and-forget worker trigger for low latency
+          const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+          if (isProd && result.queueId) {
+            const workerUrl = process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}/api/workers/google-ads-oci`
+              : process.env.NEXT_PUBLIC_APP_URL
+                ? `${process.env.NEXT_PUBLIC_APP_URL}/api/workers/google-ads-oci`
+                : null;
+            if (workerUrl) {
+              const cronSecret = process.env.CRON_SECRET;
+              void fetch(workerUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
+                },
+              }).catch(() => {});
+            }
+          }
         }
       } catch (enqueueErr) {
-        logError('seal_oci_enqueue_failed', {
-          call_id: callId,
-          error: String((enqueueErr as Error)?.message ?? enqueueErr),
-        });
-        // Non-fatal: seal succeeded; OCI enqueue is best-effort
+        const errMsg = String((enqueueErr as Error)?.message ?? enqueueErr);
+        logError('seal_oci_enqueue_failed', { call_id: callId, error: errMsg });
+        Sentry.captureException(enqueueErr, { tags: { route, call_id: callId } });
+        await adminClient
+          .from('calls')
+          .update({
+            oci_status: 'FAILED_ENQUEUE',
+            oci_status_updated_at: new Date().toISOString(),
+          })
+          .eq('id', callId)
+          .eq('site_id', siteId);
+        return NextResponse.json(
+          { error: 'Seal saved but OCI enqueue failed. Please retry.' },
+          { status: 500 }
+        );
       }
     }
 

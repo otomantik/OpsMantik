@@ -71,6 +71,19 @@ export function getDecayProfileForGear(gear: OpsGear, days: number): number {
 }
 
 /**
+ * Half-life decay (MODULE 4 shadow): Value = BaseValue * (0.5 ^ (days/7))
+ * Used in shadow mode for 30d comparison; not sent to Google until validated.
+ */
+export function applyHalfLifeDecay(baseValueCents: number, days: number): number {
+  if (!Number.isFinite(baseValueCents) || baseValueCents <= 0) return 0;
+  if (!Number.isFinite(days) || days < 0) return baseValueCents;
+  const halfLife = 7;
+  const exponent = days / halfLife;
+  const multiplier = Math.pow(0.5, exponent);
+  return Math.round(baseValueCents * multiplier);
+}
+
+/**
  * Master EV for V2–V4 signals (PR-VK-7: integer cents SSOT).
  * Returns integer cents only; no float. V5 sealed handled by caller.
  * Formula: baseValueCents = round(aovCents * ratio); finalCents = round(baseValueCents * decay).
