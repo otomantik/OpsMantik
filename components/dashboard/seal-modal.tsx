@@ -9,18 +9,25 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, Trash2 } from 'lucide-react';
+import { ShieldCheck, Trash2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useSfx } from '@/lib/hooks/use-sfx';
+
+/** Extract digits for comparison. Used to detect clicked vs entered number mismatch. */
+function digitsOnly(s: string): string {
+  return (s ?? '').replace(/\D/g, '');
+}
 
 export interface SealModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currency: string;
   chipValues?: number[];
-  /** Called when user saves: amount, currency, leadScore (always 100 for Golden Signal). */
-  onConfirm: (saleAmount: number | null, currency: string, leadScore: number) => Promise<void>;
+  /** Clicked number from intent_target (tel:+90...) for comparison. Read-only. */
+  clickedNumber?: string | null;
+  /** Called when user saves: amount, currency, leadScore (always 100), optional callerPhone. */
+  onConfirm: (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => Promise<void>;
   /** Called when user clicks Junk: submit with score 0, status junk, then close. */
   onJunk?: () => Promise<void>;
   /** Called after successful Save (seal). */
@@ -34,6 +41,7 @@ export function SealModal({
   open,
   onOpenChange,
   currency,
+  clickedNumber,
   onConfirm,
   onJunk,
   onSuccess,
@@ -42,6 +50,7 @@ export function SealModal({
 }: SealModalProps) {
   const { t } = useTranslation();
   const [customAmount, setCustomAmount] = useState<string>('');
+  const [callerPhone, setCallerPhone] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [junking, setJunking] = useState(false);
   const [sealSuccessPulse, setSealSuccessPulse] = useState(false);
@@ -54,12 +63,19 @@ export function SealModal({
     customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null;
   const priceValid = effectiveAmount == null || (effectiveAmount >= 0 && Number.isFinite(effectiveAmount));
   const canSave = priceValid;
+  const callerPhoneTrimmed = callerPhone.trim().slice(0, 64);
+  const showMismatch =
+    callerPhoneTrimmed.length >= 7 &&
+    clickedNumber &&
+    digitsOnly(clickedNumber).length >= 7 &&
+    digitsOnly(callerPhoneTrimmed) !== digitsOnly(clickedNumber);
 
   const handleConfirm = useCallback(async () => {
     if (!canSave) return;
     setSaving(true);
     try {
-      await onConfirm(effectiveAmount ?? null, currency, 100);
+      const toSend = callerPhone.trim().slice(0, 64) || undefined;
+      await onConfirm(effectiveAmount ?? null, currency, 100, toSend);
 
       try {
         void playChaChing();
@@ -79,13 +95,14 @@ export function SealModal({
       onSuccess?.();
       onOpenChange(false);
       setCustomAmount('');
+      setCallerPhone('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('seal.errorSeal');
       onError?.(msg);
     } finally {
       setSaving(false);
     }
-  }, [canSave, effectiveAmount, currency, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
+  }, [canSave, effectiveAmount, currency, callerPhone, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
 
   const handleJunk = useCallback(async () => {
     if (!onJunk) return;
@@ -95,6 +112,7 @@ export function SealModal({
       onJunkSuccess?.();
       onOpenChange(false);
       setCustomAmount('');
+      setCallerPhone('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('seal.errorMarkJunk');
       onError?.(msg);
@@ -131,6 +149,38 @@ export function SealModal({
             />
             <p className="text-sm text-slate-600 mt-2">{t('seal.instruction')}</p>
           </div>
+
+          {clickedNumber && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+              <label className="block text-sm font-medium text-slate-700">{t('seal.clickedNumberLabel')}</label>
+              <div className="rounded border border-slate-200 bg-white px-4 py-3 text-slate-600 font-mono text-sm">
+                {clickedNumber}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-2">
+            <label htmlFor="seal-caller-phone" className="block text-sm font-medium text-slate-700">
+              {t('seal.callerPhoneLabel')}
+            </label>
+            <input
+              id="seal-caller-phone"
+              type="tel"
+              inputMode="tel"
+              maxLength={64}
+              placeholder="+90 532 123 45 67"
+              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+              value={callerPhone}
+              onChange={(e) => setCallerPhone(e.target.value)}
+              data-testid="seal-modal-caller-phone"
+            />
+            {showMismatch && (
+              <div className="flex items-center gap-2 text-amber-700 text-sm mt-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                <span>{t('seal.mismatchHint')}</span>
+              </div>
+            )}
+          </div>
         </div>
         <SheetFooter className="flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200 pb-safe">
           {onJunk && (
@@ -156,6 +206,7 @@ export function SealModal({
               onClick={() => {
                 onOpenChange(false);
                 setCustomAmount('');
+                setCallerPhone('');
               }}
             >
               {t('seal.cancel')}

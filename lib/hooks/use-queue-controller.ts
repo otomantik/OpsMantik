@@ -67,7 +67,7 @@ export type QueueControllerActions = {
   setSealModalOpen: (open: boolean) => void;
   clearSealIntent: () => void;
 
-  onSealConfirm: (saleAmount: number | null, currency: string, leadScore: number) => Promise<void>;
+  onSealConfirm: (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => Promise<void>;
   onSealJunk: () => Promise<void>;
   onSealSuccess: () => void;
   onSealJunkSuccess: () => void;
@@ -502,17 +502,25 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
   }, []);
 
   const onSealConfirm = useCallback(
-    async (saleAmount: number | null, currency: string, leadScore: number) => {
+    async (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => {
       if (!intentForSeal) return;
       const finalScore = leadScore >= 100 || leadScore > 5 ? 100 : leadScore * 20; // Ensure max is 100
+      const body: Record<string, unknown> = {
+        sale_amount: saleAmount ?? null,
+        currency,
+        lead_score: finalScore,
+      };
+      if (callerPhone?.trim()) {
+        body.caller_phone = callerPhone.trim().slice(0, 64);
+      }
+      const detail = detailsById[intentForSeal.id];
+      if (detail?.version != null) {
+        body.version = detail.version;
+      }
       const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sale_amount: saleAmount ?? null,
-          currency,
-          lead_score: finalScore,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));

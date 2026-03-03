@@ -15,6 +15,14 @@ import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 // Brain Score logic moved to async worker
 
 import { insertCallScoreAudit } from '@/lib/scoring/call-scores-audit';
+
+/** DIC: Derive phone_source_type for Trust Score (form_fill | click_to_call | manual_dial). */
+function derivePhoneSourceType(payload: CallEventWorkerPayload): string | null {
+  if (payload.source === 'click' && (payload.intent_action === 'phone' || payload.intent_action === 'whatsapp')) {
+    return 'click_to_call';
+  }
+  return null;
+}
 import { isMissingEventIdColumnError } from '@/lib/api/call-event/shared';
 import {
   extractMissingColumnName,
@@ -171,6 +179,9 @@ export async function processCallEvent(
     wbraid: payload.wbraid || null,
     gbraid: payload.gbraid || null,
     source_type: (payload.gclid || payload.wbraid || payload.gbraid || payload.click_id) ? 'paid' : 'organic',
+    // DIC: user_agent for ECL / device entropy; phone_source_type for Trust Score
+    ...(payload.ua != null && String(payload.ua).trim() !== '' ? { user_agent: String(payload.ua).trim() } : {}),
+    ...(derivePhoneSourceType(payload) ? { phone_source_type: derivePhoneSourceType(payload) } : {}),
   };
 
   const insertWithEventId = payload.event_id

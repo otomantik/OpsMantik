@@ -20,6 +20,15 @@ function toConversionDateTime(isoOrUnknown: unknown): string {
 }
 
 /**
+ * Normalize click ID for Google Ads API. GCLID/wbraid/gbraid are base64-encoded; when captured from
+ * URLs they may be stored as base64url (RFC 4648: _ and -). Google expects standard base64 (+ and /).
+ * "İçe aktarılan GCLID'nin kodu çözülemedi" often occurs when base64url is sent as-is.
+ */
+function normalizeClickIdForGoogle(clickId: string): string {
+  return clickId.replace(/-/g, '+').replace(/_/g, '/');
+}
+
+/**
  * Build one ClickConversionRequest from a job. Uses conversion_action from credentials.
  * Exactly one of gclid, wbraid, gbraid must be set for Google to accept; if none, we still emit the object
  * (adapter can skip or API will return validation error).
@@ -57,9 +66,9 @@ export function jobToClickConversion(
     order_id: orderId ?? undefined,
   };
 
-  if (gclid) req.gclid = gclid;
-  else if (wbraid) req.wbraid = wbraid;
-  else if (gbraid) req.gbraid = gbraid;
+  if (gclid) req.gclid = normalizeClickIdForGoogle(gclid);
+  else if (wbraid) req.wbraid = normalizeClickIdForGoogle(wbraid);
+  else if (gbraid) req.gbraid = normalizeClickIdForGoogle(gbraid);
 
   return req;
 }

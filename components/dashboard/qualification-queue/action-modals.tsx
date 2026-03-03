@@ -26,6 +26,7 @@ export function ActionModals({
           }}
           currency={state.siteCurrency}
           chipValues={state.bountyChips}
+          clickedNumber={state.intentForSeal?.intent_target ?? null}
           onConfirm={actions.onSealConfirm}
           onJunk={actions.onSealJunk}
           onSuccess={actions.onSealSuccess}

@@ -8,11 +8,13 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
-import { logInfo, logError } from '@/lib/logging/logger';
+import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal, OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
+import { normalizeToE164 } from '@/lib/dic/e164';
+import { hashPhoneForEC } from '@/lib/dic/identity-hash';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +117,46 @@ export async function POST(
     };
     if (leadScore != null) {
       updatePayload.lead_score = leadScore;
+    }
+
+    // Operator-verified caller phone (optional): trim, max 64; empty after trim = don't send
+    const callerPhoneRaw = typeof body.caller_phone === 'string' ? body.caller_phone.trim().slice(0, 64) : '';
+    if (callerPhoneRaw) {
+      try {
+        const { data: siteRow } = await adminClient
+          .from('sites')
+          .select('default_country_iso')
+          .eq('id', siteId)
+          .maybeSingle();
+        const countryIso = siteRow?.default_country_iso ?? 'TR';
+        if (!siteRow?.default_country_iso) {
+          logInfo('CALLER_PHONE_COUNTRY_ISO_FALLBACK', { call_id: callId, site_id: siteId });
+        }
+        const salt = process.env.OCI_PHONE_HASH_SALT ?? '';
+        const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+        if (isProd && !salt) {
+          logError('OCI_PHONE_HASH_SALT_EMPTY_PRODUCTION', { call_id: callId });
+          Sentry.captureMessage('OCI_PHONE_HASH_SALT_EMPTY_PRODUCTION', 'error');
+        }
+        const normalized = normalizeToE164(callerPhoneRaw, countryIso);
+        if (!normalized) {
+          logWarn('CALLER_PHONE_NORMALIZATION_FAILED', { call_id: callId, raw: callerPhoneRaw });
+          updatePayload.caller_phone_raw = callerPhoneRaw;
+          // e164 and hash stay null; seal continues (fail-soft)
+        } else {
+          const hash = hashPhoneForEC(normalized, salt);
+          updatePayload.caller_phone_raw = callerPhoneRaw;
+          updatePayload.caller_phone_e164 = normalized;
+          updatePayload.caller_phone_hash_sha256 = hash;
+          updatePayload.phone_source_type = 'operator_verified';
+        }
+      } catch (e) {
+        logWarn('CALLER_PHONE_PROCESSING_ERROR', {
+          call_id: callId,
+          error: String((e as Error)?.message ?? e),
+        });
+        updatePayload.caller_phone_raw = callerPhoneRaw;
+      }
     }
 
     // Apply via DB RPC to guarantee audit log + revert snapshot
