@@ -5,7 +5,10 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 
-const GHOST_GEO_CITIES = new Set(['rome', 'amsterdam', 'roma']);
+const GHOST_GEO_CITIES = new Set([
+  'rome', 'amsterdam', 'roma',
+  'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
+]);
 
 export type GeoSource = 'ADS' | 'IP' | 'OPERATOR' | 'UNKNOWN';
 

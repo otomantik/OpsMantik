@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: Opsmantik OCI BI Export API
+  description: |
+    Sealed Ledger verisini BI araçlarına (Metabase, Tableau, Looker Studio vb.) servis eder.
+    Query Taslağı: `docs/architecture/BI_EXPORT_QUERY_TASLAK.md`
+  version: 1.0.0-draft
+
+servers:
+  - url: https://console.opsmantik.com
+    description: Production
+
+paths:
+  /api/oci/export:
+    get:
+      summary: BI Export
+      description: |
+        granularity'ye göre mühürlenmiş ledger verisini döner.
+        - conversion: ROAS analizi (COMPLETED queue rows)
+        - call: Operasyonel çağrı trafiği
+        - session: Attribution / touchpoint analizi
+      operationId: getOciExport
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: siteId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Target site (UUID veya public_id)
+        - name: granularity
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [conversion, call, session]
+          description: Veri granülaritesi
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Başlangıç (ISO8601)
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Bitiş (ISO8601)
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+        - name: include_signals
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: marketing_signals enrichment (sadece granularity=conversion iken geçerli)
+      responses:
+        '200':
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResponse'
+            text/csv:
+              schema:
+                type: string
+                description: CSV formatında düz satırlar
+        '400':
+          description: Geçersiz parametre veya eksik siteId
+        '401':
+          description: Yetkisiz
+        '403':
+          description: Site yetkisi veya capability eksik
+        '404':
+          description: Site bulunamadı
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OCI session token (POST /api/oci/v2/verify ile alınır)
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Site-scoped OCI API key (sites.oci_api_key)
+
+  schemas:
+    ExportResponse:
+      type: object
+      required:
+        - meta
+        - data
+      properties:
+        meta:
+          type: object
+          required:
+            - total_rows
+            - granularity
+          properties:
+            total_rows:
+              type: integer
+              minimum: 0
+            granularity:
+              type: string
+              enum: [conversion, call, session]
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportRow'
+
+    ExportRow:
+      oneOf:
+        - $ref: '#/components/schemas/ConversionRow'
+        - $ref: '#/components/schemas/CallRow'
+        - $ref: '#/components/schemas/SessionRow'
+
+    ConversionRow:
+      type: object
+      description: granularity=conversion
+      properties:
+        conversion_id:
+          type: string
+          format: uuid
+        click_id:
+          type: string
+          description: gclid | wbraid | gbraid (ilk dolu)
+        conversion_time:
+          type: string
+          format: date-time
+        conversion_value:
+          type: number
+          format: double
+        currency:
+          type: string
+        call_id:
+          type: string
+          format: uuid
+        attribution:
+          type: object
+          properties:
+            source:
+              type: string
+            campaign:
+              type: string
+            medium:
+              type: string
+            ads_network:
+              type: string
+        signals:
+          type: object
+          description: include_signals=true iken dolu
+          properties:
+            intent:
+              type: string
+            conversion_name:
+              type: string
+            value:
+              type: number
+
+    CallRow:
+      type: object
+      description: granularity=call
+      properties:
+        call_id:
+          type: string
+          format: uuid
+        call_time:
+          type: string
+          format: date-time
+        call_status:
+          type: string
+        oci_status:
+          type: string
+        session_id:
+          type: string
+          format: uuid
+        attribution_source:
+          type: string
+        utm_source:
+          type: string
+        utm_medium:
+          type: string
+        utm_campaign:
+          type: string
+        proximity_seconds:
+          type: number
+          description: Session-call zaman farkı (saniye)
+
+    SessionRow:
+      type: object
+      description: granularity=session
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        session_time:
+          type: string
+          format: date-time
+        attribution_source:
+          type: string
+        utm_source:
+          type: string
+        utm_medium:
+          type: string
+        utm_campaign:
+          type: string
+        ads_network:
+          type: string

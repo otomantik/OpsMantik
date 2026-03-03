@@ -2,7 +2,19 @@ import { adminClient } from '@/lib/supabase/admin';
 import { debugLog, debugWarn } from '@/lib/utils';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import { determineTrafficSource } from '@/lib/analytics/source-classifier';
+import { sanitizeClickId, computeUtmUpdates } from '@/lib/attribution';
 import type { IngestMeta } from '@/lib/types/ingest';
+
+/** PR-OCI-7.3.1: Evidence-based weights for monotonic attribution (never downgrade Paid → Organic) */
+const ATTRIBUTION_WEIGHTS: Record<string, number> = {
+    'First Click (Paid)': 100,
+    'Paid (UTM)': 80,
+    'Ads Assisted': 60,
+    'Paid Social': 40,
+    Organic: 20,
+    Direct: 10,
+    Unknown: 0,
+};
 
 interface SessionContext {
     ip: string;
@@ -58,7 +70,7 @@ export class SessionService {
             // Lookup existing session in the correct partition
             const { data: existingSession, error: lookupError } = await adminClient
                 .from('sessions')
-                .select('id, created_month, attribution_source, gclid')
+                .select('id, created_month, attribution_source, gclid, wbraid, gbraid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, utm_adgroup, ads_network, ads_placement, ads_adposition, matchtype, device_model, ads_target_id, ads_feed_item_id, loc_interest_ms, loc_physical_ms')
                 .eq('id', client_sid)
                 .eq('created_month', dbMonth)
                 .maybeSingle();
@@ -86,7 +98,17 @@ export class SessionService {
         return session;
     }
 
-    private static async updateSessionIfNecesary(session: { id: string; created_month: string; attribution_source?: string | null; gclid?: string | null }, data: IncomingData, context: SessionContext, dbMonth: string) {
+    private static async updateSessionIfNecesary(
+        session: {
+            id: string; created_month: string; attribution_source?: string | null; gclid?: string | null; wbraid?: string | null; gbraid?: string | null;
+            utm_source?: string | null; utm_medium?: string | null; utm_campaign?: string | null; utm_term?: string | null; utm_content?: string | null;
+            utm_adgroup?: string | null; ads_network?: string | null; ads_placement?: string | null; ads_adposition?: string | null; matchtype?: string | null;
+            device_model?: string | null; ads_target_id?: string | null; ads_feed_item_id?: string | null; loc_interest_ms?: string | null; loc_physical_ms?: string | null;
+        },
+        data: IncomingData,
+        context: SessionContext,
+        dbMonth: string
+    ) {
         const { utm, currentGclid, params, meta, attributionSource, deviceType, fingerprint } = data;
         const { geoInfo, deviceInfo } = context;
 
@@ -113,11 +135,28 @@ export class SessionService {
                 msclkid: params.get('msclkid') || meta?.msclkid || null,
             });
 
-            // Sprint 3 GCLID Phase 2: If existing session is Organic, do not accept click IDs from payload (ghost attribution).
+            const rawGclid = currentGclid ?? null;
+            const rawWbraid = params.get('wbraid') || meta?.wbraid || null;
+            const rawGbraid = params.get('gbraid') || meta?.gbraid || null;
+            const sanitizedGclid = sanitizeClickId(rawGclid) ?? null;
+            const sanitizedWbraid = sanitizeClickId(rawWbraid) ?? null;
+            const sanitizedGbraid = sanitizeClickId(rawGbraid) ?? null;
+
+            const hasExistingGclid = session.gclid != null && String(session.gclid).trim() !== '';
+            const hasExistingWbraid = session.wbraid != null && String(session.wbraid).trim() !== '';
+            const hasExistingGbraid = session.gbraid != null && String(session.gbraid).trim() !== '';
+
+            // PR-OCI-7.3.2: Click-ID immutability - do not overwrite when session already has valid click ID
             const sessionIsOrganic = session.attribution_source === 'Organic';
-            const safeGclidUpdate = sessionIsOrganic ? (session.gclid ?? null) : (currentGclid || session.gclid || null);
-            const newWbraid = params.get('wbraid') || meta?.wbraid;
-            const newGbraid = params.get('gbraid') || meta?.gbraid;
+            const safeGclidUpdate = sessionIsOrganic
+                ? (session.gclid ?? null)
+                : (hasExistingGclid ? session.gclid ?? null : (sanitizedGclid || session.gclid || null));
+            const safeWbraidUpdate = sessionIsOrganic
+                ? null
+                : (hasExistingWbraid ? session.wbraid ?? null : (sanitizedWbraid || session.wbraid || null));
+            const safeGbraidUpdate = sessionIsOrganic
+                ? null
+                : (hasExistingGbraid ? session.gbraid ?? null : (sanitizedGbraid || session.gbraid || null));
 
             const updates: Record<string, unknown> = {
                 device_type: deviceType,
@@ -129,31 +168,27 @@ export class SessionService {
                 traffic_source: traffic.traffic_source,
                 traffic_medium: traffic.traffic_medium,
             };
-            if (sessionIsOrganic) {
+            if (!sessionIsOrganic) {
+                if (safeWbraidUpdate != null) updates.wbraid = safeWbraidUpdate;
+                if (safeGbraidUpdate != null) updates.gbraid = safeGbraidUpdate;
+            } else {
                 updates.wbraid = null;
                 updates.gbraid = null;
-            } else {
-                if (newWbraid) updates.wbraid = newWbraid;
-                if (newGbraid) updates.gbraid = newGbraid;
             }
 
-            // UTM merging logic
-            updates.attribution_source = attributionSource;
-            updates.utm_term = utm?.term ?? null;
-            updates.matchtype = utm?.matchtype ?? null;
-            updates.utm_source = utm?.source ?? null;
-            updates.utm_medium = utm?.medium ?? null;
-            updates.utm_campaign = utm?.campaign ?? null;
-            updates.utm_content = utm?.content ?? null;
-            updates.utm_adgroup = utm?.adgroup ?? null;
-            updates.ads_network = utm?.network ?? null;
-            updates.ads_placement = utm?.placement ?? null;
-            updates.ads_adposition = utm?.adposition ?? null;
-            updates.device_model = utm?.device_model ?? null;
-            updates.ads_target_id = utm?.target_id ?? null;
-            updates.ads_feed_item_id = utm?.feed_item_id ?? null;
-            updates.loc_interest_ms = utm?.loc_interest_ms ?? null;
-            updates.loc_physical_ms = utm?.loc_physical_ms ?? null;
+            // PR-OCI-7.3.2: Monotonic attribution - only upgrade, never downgrade
+            const currentWeight = ATTRIBUTION_WEIGHTS[session.attribution_source ?? 'Unknown'] ?? 0;
+            const newWeight = ATTRIBUTION_WEIGHTS[attributionSource] ?? 0;
+            if (newWeight >= currentWeight) {
+                updates.attribution_source = attributionSource;
+            }
+
+            // PR-OCI-7.1: UTM overwrite rule - overwrite only on strict upgrade; enrichment (NULL→value) always allowed
+            const isUpgrade = newWeight > currentWeight;
+            const utmUpdates = computeUtmUpdates(session, utm ?? undefined, isUpgrade);
+            for (const [k, v] of Object.entries(utmUpdates)) {
+                (updates as Record<string, unknown>)[k] = v;
+            }
             updates.telco_carrier = geoInfo.telco_carrier ?? null;
             updates.browser = deviceInfo.browser || null;
             updates.isp_asn = geoInfo.isp_asn ?? null;
@@ -233,10 +268,14 @@ export class SessionService {
         }
 
         // Sprint 3 GCLID Phase 2: If session is Organic, do not persist click IDs from payload (ghost attribution safety).
+        // PR-OCI-7.1.3: sanitizeClickId for values from URL/meta before persisting
         const isOrganic = attributionSource === 'Organic' || ['Direct', 'SEO', 'Referral'].includes(traffic.traffic_source || '');
-        const safeGclid = isOrganic ? null : (currentGclid ?? null);
-        const safeWbraid = isOrganic ? null : (params.get('wbraid') || meta?.wbraid || null);
-        const safeGbraid = isOrganic ? null : (params.get('gbraid') || meta?.gbraid || null);
+        const rawGclid = currentGclid ?? null;
+        const rawWbraid = params.get('wbraid') || meta?.wbraid || null;
+        const rawGbraid = params.get('gbraid') || meta?.gbraid || null;
+        const safeGclid = isOrganic ? null : (sanitizeClickId(rawGclid) ?? null);
+        const safeWbraid = isOrganic ? null : (sanitizeClickId(rawWbraid) ?? null);
+        const safeGbraid = isOrganic ? null : (sanitizeClickId(rawGbraid) ?? null);
 
         const sessionPayload: Record<string, unknown> = {
             id: sessionId,

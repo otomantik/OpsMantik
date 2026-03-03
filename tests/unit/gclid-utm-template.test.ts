@@ -1,12 +1,10 @@
 /**
  * GCLID + Google Ads tam tracking şablonu: tüm parametrelerin yakalanması.
- * Template: utm_source, utm_medium, utm_campaign, utm_adgroup, utm_content, utm_term,
- * device, devicemodel, targetid, network, adposition, feeditemid,
- * loc_interest_ms, loc_physical_ms, matchtype, gclid, wbraid, gbraid
+ * PR-OCI-7: Sentinel and DSA surrogate regression tests.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractUTM, computeAttribution } from '@/lib/attribution';
+import { extractUTM, computeAttribution, sanitizeParam } from '@/lib/attribution';
 
 const BASE = 'https://example.com/landing';
 
@@ -74,10 +72,16 @@ test('extractUTM: hash ile prefix (4?utm_term=x) formatı yakalanır', () => {
 
 test('extractUTM: sadece UTM/ads parametreleri yoksa null döner', () => {
   const urlOnlyGclid = BASE + '?gclid=abc123';
-  assert.equal(extractUTM(urlOnlyGclid), null, 'URL with only gclid returns null (no utm/ads params)');
+  // PR-OCI-7: DSA surrogate adds term from path when empty; gclid-only URL yields term=dsa:landing, no other UTM
+  const utmGclid = extractUTM(urlOnlyGclid);
+  assert.ok(utmGclid?.term?.startsWith('dsa:'), 'DSA surrogate from path when no UTM');
+  assert.equal(utmGclid?.source, undefined, 'no utm_source');
+  assert.equal(utmGclid?.medium, undefined, 'no utm_medium');
 
+  // PR-OCI-7: DSA surrogate adds term from path; base URL with path /landing yields term=dsa:landing
   const urlEmpty = BASE;
-  assert.equal(extractUTM(urlEmpty), null, 'URL with no params returns null');
+  const utmEmpty = extractUTM(urlEmpty);
+  assert.ok(utmEmpty?.term === 'dsa:landing', 'base URL with path: DSA surrogate adds term from path');
 });
 
 test('computeAttribution: gclid varsa First Click (Paid)', () => {
@@ -105,4 +109,25 @@ test('extractUTM: placement ve adposition ayrı ayrı yakalanır', () => {
 test('extractUTM: geçersiz URL null döner', () => {
   assert.equal(extractUTM('not-a-url'), null);
   assert.equal(extractUTM(''), null);
+});
+
+// PR-OCI-7: Sentinel regression - (not set) never stored; DSA surrogate applies
+test('extractUTM: utm_term=(not set) sanitized, DSA surrogate from path', () => {
+  const url = BASE + '?utm_term=(not%20set)&utm_source=google&utm_medium=cpc';
+  const utm = extractUTM(url);
+  assert.ok(utm);
+  assert.notEqual(utm!.term, '(not set)', 'sentinel must not be stored');
+  assert.ok(utm!.term?.startsWith('dsa:') ?? true, 'surrogate or undefined');
+});
+
+// PR-OCI-7: DSA surrogate regression
+test('extractUTM: empty term + content → dsa:content', () => {
+  const url = BASE + '?utm_content=banner_a&utm_source=google&utm_medium=cpc';
+  const utm = extractUTM(url);
+  assert.ok(utm);
+  assert.equal(utm!.term, 'dsa:banner_a');
+});
+
+test('sanitizeParam: {keyword} template → undefined', () => {
+  assert.equal(sanitizeParam('{keyword}'), undefined);
 });

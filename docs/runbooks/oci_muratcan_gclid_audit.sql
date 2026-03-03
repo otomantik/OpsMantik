@@ -5,7 +5,7 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1) GHOST ORANI — Rome/Amsterdam IP geo + GCLID var = yanlış şehir gösteriliyor
+-- 1) GHOST ORANI — Rome/Amsterdam/Düsseldorf/Ashburn IP geo + GCLID var = yanlış şehir
 --    Oran = ghost_count / total_gclid_calls
 -- -----------------------------------------------------------------------------
 WITH gclid_calls AS (
@@ -19,7 +19,7 @@ WITH gclid_calls AS (
 ghost AS (
   SELECT COUNT(*) AS cnt
   FROM gclid_calls
-  WHERE session_city IN ('Rome', 'Amsterdam', 'Roma')
+  WHERE session_city IN ('Rome', 'Amsterdam', 'Roma', 'Düsseldorf', 'Dusseldorf', 'Ashburn', 'Frankfurt', 'London')
 )
 SELECT
   (SELECT COUNT(*) FROM gclid_calls) AS total_gclid_calls,
@@ -81,7 +81,7 @@ WHERE c.site_id = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'
 
 
 -- -----------------------------------------------------------------------------
--- 4) GHOST KAYITLAR DETAY — Rome/Amsterdam session city + GCLID dolu call'lar
+-- 4) GHOST KAYITLAR DETAY — Rome/Amsterdam/Düsseldorf/Ashburn session city + GCLID dolu call'lar
 -- -----------------------------------------------------------------------------
 SELECT
   c.id AS call_id,
@@ -93,7 +93,7 @@ SELECT
 FROM calls c
 JOIN sessions sess ON sess.id = c.matched_session_id AND sess.site_id = c.site_id
 WHERE c.site_id = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'
-  AND sess.city IN ('Rome', 'Amsterdam', 'Roma')
+  AND sess.city IN ('Rome', 'Amsterdam', 'Roma', 'Düsseldorf', 'Dusseldorf', 'Ashburn', 'Frankfurt', 'London')
   AND (c.gclid IS NOT NULL OR sess.gclid IS NOT NULL)
   AND c.matched_at >= (current_date - interval '30 days')
 ORDER BY c.matched_at DESC

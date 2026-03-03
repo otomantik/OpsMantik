@@ -21,7 +21,7 @@ import {
   parseValueAllowNull,
   type EventIdMode,
 } from '@/lib/api/call-event/shared';
-import { findRecentSessionByFingerprint } from '@/lib/api/call-event/match-session-by-fingerprint';
+import { findRecentSessionByFingerprint, BRIDGE_LOOKBACK_DAYS } from '@/lib/api/call-event/match-session-by-fingerprint';
 import { AdsContextOptionalSchema } from '@/lib/ingest/call-event-worker-payload';
 import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
 import { getBuildInfoHeaders } from '@/lib/build-info';
@@ -338,15 +338,16 @@ export async function POST(req: NextRequest) {
     // No call insert without session analytics consent.
     // Marketing consent required for OCI enqueue (enforce in enqueueSealConversion, PipelineService, confirm_sale_and_enqueue).
     //
-    // Find recent session by fingerprint (site-scoped; indexed: sessions(site_id, id, created_month)).
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    // Find best session by fingerprint (PR-OCI-7.4: GCLID-preferring, 14-day lookback).
+    const lookbackCutoff = new Date(Date.now() - BRIDGE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const recentMonths = getRecentMonths(2);
     const matchedAt = new Date().toISOString();
     const matchResult = await findRecentSessionByFingerprint(adminClient, {
       siteId: siteUuidFinal,
       fingerprint,
       recentMonths,
-      thirtyMinutesAgo,
+      lookbackCutoff,
+      callTime: matchedAt,
     });
 
     const matchedSessionId = matchResult.matchedSessionId;

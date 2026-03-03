@@ -80,3 +80,20 @@ test('isGhostGeoCity: Rome, Amsterdam, Roma (case-insensitive) return true', () 
   assert.equal(isGhostGeoCity(null), false);
   assert.equal(isGhostGeoCity(''), false);
 });
+
+test('isGhostGeoCity: Düsseldorf, Ashburn, Frankfurt, London (CDN edge) return true', () => {
+  assert.equal(isGhostGeoCity('Düsseldorf'), true);
+  assert.equal(isGhostGeoCity('dusseldorf'), true);
+  assert.equal(isGhostGeoCity('Ashburn'), true);
+  assert.equal(isGhostGeoCity('Frankfurt'), true);
+  assert.equal(isGhostGeoCity('London'), true);
+});
+
+test('extractGeoInfo: strictGhostGeo true => Düsseldorf/Ashburn become Unknown', () => {
+  const req1 = reqWithHeaders({ 'cf-ipcity': 'Düsseldorf', 'cf-ipcountry': 'DE' });
+  const { geoInfo: g1 } = extractGeoInfo(req1, 'Mozilla/5.0', undefined, { strictGhostGeo: true });
+  assert.equal(g1.city, 'Unknown');
+  const req2 = reqWithHeaders({ 'cf-ipcity': 'Ashburn', 'cf-ipcountry': 'US' });
+  const { geoInfo: g2 } = extractGeoInfo(req2, 'Mozilla/5.0', undefined, { strictGhostGeo: true });
+  assert.equal(g2.city, 'Unknown');
+});

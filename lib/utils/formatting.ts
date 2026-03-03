@@ -116,8 +116,11 @@ export function maskFingerprint(fp: string | null | undefined): string {
     return `${fp.slice(0, 4)}...${fp.slice(-4)}`;
 }
 
-/** Ghost geo cities (IP edge / proxy locations, not real client). Never display. */
-const GHOST_GEO_CITIES = new Set(['rome', 'amsterdam', 'roma']);
+/** Ghost geo cities (IP edge / CDN / proxy locations, not real client). Never display. */
+const GHOST_GEO_CITIES = new Set([
+  'rome', 'amsterdam', 'roma',
+  'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
+]);
 
 /**
  * Format location for display. UI Gate (PR1): call geo when location_source='gclid', else session geo.

@@ -12,7 +12,7 @@ const SESSION_A_ID = '10000000-0000-0000-0000-000000000001';
 const SESSION_B_ID = '20000000-0000-0000-0000-000000000002';
 const FINGERPRINT = 'same-fp-across-sites';
 const MONTH = '2026-02-01';
-const THIRTY_MIN_AGO = new Date(Date.now() - 29 * 60 * 1000).toISOString();
+const LOOKBACK_CUTOFF = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
 function makeMockClient(siteIdToSession: Record<string, string>) {
   let lastSeenSiteId: string | null = null;
@@ -58,18 +58,23 @@ function makeMockClient(siteIdToSession: Record<string, string>) {
             };
           }
           if (isSessions) {
+            const sessionResolver = async () => {
+              const sessionId = lastSeenSiteId ? siteIdToSession[lastSeenSiteId] : null;
+              if (sessionId) {
+                return {
+                  data: { id: sessionId, created_at: new Date().toISOString(), created_month: MONTH, consent_scopes: [], gclid: null, wbraid: null, gbraid: null },
+                  error: null,
+                };
+              }
+              return { data: null, error: { message: 'not found' } };
+            };
             return {
               eq: (col2: string, val2: string | number) => {
                 if (col2 === 'site_id' && typeof val2 === 'string') lastSeenSiteId = val2;
                 return {
                   eq: () => ({
-                    single: async () => {
-                      const sessionId = lastSeenSiteId ? siteIdToSession[lastSeenSiteId] : null;
-                      if (sessionId) {
-                        return { data: { id: sessionId, created_at: new Date().toISOString(), created_month: MONTH }, error: null };
-                      }
-                      return { data: null, error: { message: 'not found' } };
-                    },
+                    single: sessionResolver,
+                    maybeSingle: sessionResolver,
                   }),
                 };
               },
@@ -101,7 +106,7 @@ test('findRecentSessionByFingerprint: same fingerprint for site A never returns 
     siteId: SITE_A_ID,
     fingerprint: FINGERPRINT,
     recentMonths: [MONTH],
-    thirtyMinutesAgo: THIRTY_MIN_AGO,
+    lookbackCutoff: LOOKBACK_CUTOFF,
   });
 
   assert.equal(resultA.matchedSessionId, SESSION_A_ID, 'Site A request must match session A');
@@ -118,7 +123,7 @@ test('findRecentSessionByFingerprint: same fingerprint for site B never returns 
     siteId: SITE_B_ID,
     fingerprint: FINGERPRINT,
     recentMonths: [MONTH],
-    thirtyMinutesAgo: THIRTY_MIN_AGO,
+    lookbackCutoff: LOOKBACK_CUTOFF,
   });
 
   assert.equal(resultB.matchedSessionId, SESSION_B_ID, 'Site B request must match session B');
@@ -134,7 +139,7 @@ test('findRecentSessionByFingerprint: site with no events returns null session',
     siteId: SITE_B_ID,
     fingerprint: FINGERPRINT,
     recentMonths: [MONTH],
-    thirtyMinutesAgo: THIRTY_MIN_AGO,
+    lookbackCutoff: LOOKBACK_CUTOFF,
   });
 
   assert.equal(resultB.matchedSessionId, null, 'Site B with no data must return null session');

@@ -1,17 +1,23 @@
 /**
- * Call-event session matching: find most recent session by fingerprint for a given site.
+ * Call-event session matching: find best session by fingerprint for a given site.
+ * PR-OCI-7.4: 14-day lookback, GCLID-preferring ranking (never lose paid attribution).
  * All queries MUST be scoped by site_id to prevent cross-tenant matching.
- * Used by /api/call-event/v2 and /api/call-event (legacy). Scoring: V1.1 (bonus cap + confidence).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeScoreV1_1, deriveCallStatus } from '@/lib/scoring/compute-score-v1_1';
 
+/** Configurable lookback for fingerprint→session bridge. 14 days covers typical cookie expiry. */
+export const BRIDGE_LOOKBACK_DAYS = 14;
+
 export interface MatchSessionParams {
   siteId: string;
   fingerprint: string;
   recentMonths: string[];
-  thirtyMinutesAgo: string;
+  /** ISO timestamp: events/sessions created_at >= this (replaces thirtyMinutesAgo). */
+  lookbackCutoff: string;
+  /** ISO timestamp of call time; used for tie-break when multiple sessions have click IDs (prefer closest). */
+  callTime?: string;
 }
 
 export interface MatchSessionResult {
@@ -20,21 +26,36 @@ export interface MatchSessionResult {
   leadScore: number;
   scoreBreakdown: Record<string, unknown> | null;
   callStatus: string | null;
-  /** V1.1: linear confidence 0–100 */
   confidenceScore: number | null;
-  /** Consent scopes from session (for analytics gate). Indexed: sessions(site_id, id, created_month). */
   consentScopes: string[] | null;
 }
 
+type SessionRow = {
+  id: string;
+  created_at: string;
+  created_month: string;
+  consent_scopes: unknown;
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
+};
+
+function hasClickId(s: SessionRow): boolean {
+  const g = s.gclid != null && String(s.gclid).trim() !== '';
+  const w = s.wbraid != null && String(s.wbraid).trim() !== '';
+  const b = s.gbraid != null && String(s.gbraid).trim() !== '';
+  return g || w || b;
+}
+
 /**
- * Find the most recent session for the given site and fingerprint.
- * REQUIRED: siteId is applied at SQL level to every query (no cross-tenant data).
+ * Find the best session for the given site and fingerprint.
+ * PR-OCI-7.4: Rank by GCLID presence first, then created_at. 14-day lookback.
  */
 export async function findRecentSessionByFingerprint(
   client: SupabaseClient,
   params: MatchSessionParams
 ): Promise<MatchSessionResult> {
-  const { siteId, fingerprint, recentMonths, thirtyMinutesAgo } = params;
+  const { siteId, fingerprint, recentMonths, lookbackCutoff } = params;
 
   const result: MatchSessionResult = {
     matchedSessionId: null,
@@ -52,31 +73,57 @@ export async function findRecentSessionByFingerprint(
     .eq('site_id', siteId)
     .eq('metadata->>fingerprint', fingerprint)
     .in('session_month', recentMonths)
-    .gte('created_at', thirtyMinutesAgo)
+    .gte('created_at', lookbackCutoff)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
-    .limit(1);
+    .limit(50);
 
   if (eventsError || !recentEvents || recentEvents.length === 0) {
     return result;
   }
 
-  const matchedSessionId = recentEvents[0].session_id;
-  const sessionMonth = recentEvents[0].session_month;
+  const uniquePairs = new Map<string, string>();
+  for (const e of recentEvents) {
+    const key = `${e.session_id}::${e.session_month}`;
+    if (!uniquePairs.has(key)) uniquePairs.set(key, e.session_month);
+  }
+
+  const sessions: SessionRow[] = [];
+  for (const [key, sessionMonth] of uniquePairs) {
+    const sessionId = key.split('::')[0];
+    const { data: sess, error } = await client
+      .from('sessions')
+      .select('id, created_at, created_month, consent_scopes, gclid, wbraid, gbraid')
+      .eq('id', sessionId)
+      .eq('site_id', siteId)
+      .eq('created_month', sessionMonth)
+      .maybeSingle();
+
+    if (!error && sess) sessions.push(sess as SessionRow);
+  }
+
+  const callTimeMs = params.callTime ? new Date(params.callTime).getTime() : null;
+  sessions.sort((a, b) => {
+    const aHas = hasClickId(a) ? 1 : 0;
+    const bHas = hasClickId(b) ? 1 : 0;
+    if (bHas !== aHas) return bHas - aHas;
+    if (callTimeMs != null && aHas && bHas) {
+      const aDiff = Math.abs(new Date(a.created_at).getTime() - callTimeMs);
+      const bDiff = Math.abs(new Date(b.created_at).getTime() - callTimeMs);
+      if (aDiff !== bDiff) return aDiff - bDiff;
+    }
+    const createdDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    if (createdDiff !== 0) return createdDiff;
+    return (b.id ?? '').localeCompare(a.id ?? '');
+  });
+
+  const session = sessions[0];
+  if (!session) return result;
+
+  const matchedSessionId = session.id;
+  const sessionMonth = session.created_month;
   const matchedAt = new Date().toISOString();
   const matchTime = new Date(matchedAt).getTime();
-
-  const { data: session, error: sessionError } = await client
-    .from('sessions')
-    .select('id, created_at, created_month, consent_scopes, gclid, wbraid, gbraid')
-    .eq('id', matchedSessionId)
-    .eq('site_id', siteId)
-    .eq('created_month', sessionMonth)
-    .single();
-
-  if (sessionError || !session) {
-    return result;
-  }
 
   const scopes = (session.consent_scopes ?? []) as string[];
   result.consentScopes = scopes;
@@ -85,15 +132,7 @@ export async function findRecentSessionByFingerprint(
 
   const sessionCreatedAt = new Date(session.created_at).getTime();
   const elapsedSeconds = Math.max(0, (matchTime - sessionCreatedAt) / 1000);
-
-  const gclid = (session as { gclid?: string | null }).gclid;
-  const wbraid = (session as { wbraid?: string | null }).wbraid;
-  const gbraid = (session as { gbraid?: string | null }).gbraid;
-  const hasClickId = Boolean(
-    (gclid && String(gclid).trim() !== '') ||
-      (wbraid && String(wbraid).trim() !== '') ||
-      (gbraid && String(gbraid).trim() !== '')
-  );
+  const hasClickIdVal = hasClickId(session);
 
   const { data: sessionEvents, error: sessionEventsError } = await client
     .from('events')
@@ -116,7 +155,7 @@ export async function findRecentSessionByFingerprint(
     conversionCount,
     interactionCount,
     bonusFromEvents,
-    hasClickId,
+    hasClickId: hasClickIdVal,
     elapsedSeconds,
     eventCount,
   });
