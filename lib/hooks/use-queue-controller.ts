@@ -513,10 +513,6 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       if (callerPhone?.trim()) {
         body.caller_phone = callerPhone.trim().slice(0, 64);
       }
-      const detail = detailsById[intentForSeal.id];
-      if (detail?.version != null) {
-        body.version = detail.version;
-      }
       const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
