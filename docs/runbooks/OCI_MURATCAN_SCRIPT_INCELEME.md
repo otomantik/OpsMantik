@@ -16,6 +16,8 @@
 | **pendingConfirmation** | Script `sendAck(..., true)` kullanıyor; backend `UPLOADED` yapıyor. ✅ |
 | **Conversion name** | `OpsMantik_V5_DEMIR_MUHUR` — backend `OPSMANTIK_CONVERSION_NAMES.V5_SEAL` ile aynı. ✅ |
 | **Click ID önceliği** | Script `gclid \|\| wbraid \|\| gbraid`; backend ile aynı sıra. ✅ |
+| **Click ID format** | Script Validator sadece `[A-Za-z0-9_-]` kabul ediyordu → GCLID standart base64 (`+`, `/`, `=`) reddediliyordu. Regex `[A-Za-z0-9_+/=\\-]+` olarak güncellendi (Muratcan + Eslamed deploy). ✅ |
+| **Google "GCLID decode" hatası** | CSV import standart base64 (`+`, `/`) ile "kod çözülemedi" diyor. Gönderimden önce **base64url** yapıldı: `Validator.normalizeClickIdForCsv(clickId)` → `+`→`-`, `/`→`_`. Upload’ta artık `clickIdForCsv` kullanılıyor. ✅ |
 | **markAsExported** | `?markAsExported=true` ile export; claim RPC çağrılıyor. ✅ |
 
 ---

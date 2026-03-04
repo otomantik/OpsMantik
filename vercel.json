@@ -8,6 +8,7 @@
     {"path": "/api/cron/process-offline-conversions", "schedule": "*/10 * * * *"},
     {"path": "/api/cron/pulse-recovery", "schedule": "*/30 * * * *"},
     {"path": "/api/cron/providers/recover-processing", "schedule": "5-59/10 * * * *"},
+    {"path": "/api/cron/oci/process-outbox-events", "schedule": "*/2 * * * *"},
     {"path": "/api/cron/oci/attempt-cap", "schedule": "*/15 * * * *"},
     {"path": "/api/cron/dispatch-conversions", "schedule": "*/2 * * * *"},
     {"path": "/api/cron/sweep-unsent-conversions", "schedule": "*/15 * * * *"},

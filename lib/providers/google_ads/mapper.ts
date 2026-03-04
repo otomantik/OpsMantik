@@ -1,11 +1,19 @@
 /**
  * Map ConversionJob + credentials -> ClickConversionRequest[] for uploadClickConversions.
  * PR-G3: Canonical payload (conversion_time, value_cents, currency, click_ids, order_id) -> Google format.
+ * Abyss Protocol: OMEGA-1/2 click & hashed_phone; OMEGA-3 cryptographic order_id; OMEGA-4 Object.freeze.
  */
 
+import { createHash } from 'node:crypto';
 import { minorToMajor } from '@/lib/i18n/currency';
 import type { ConversionJob } from '../types';
 import type { GoogleAdsCredentials, ClickConversionRequest } from './types';
+
+const HASHED_PHONE_LENGTH = 64;
+const HASHED_PHONE_HEX_REGEX = /^[a-f0-9]{64}$/i;
+
+/** Google Ads order_id max 55 chars (API); we use 50 for safety and collision resistance via hash. */
+const ORDER_ID_MAX_LENGTH = 50;
 
 /** conversion_date_time format: "yyyy-mm-dd hh:mm:ss+|-hh:mm" (no milliseconds; e.g. "2024-01-15 12:30:00+00:00"). */
 function toConversionDateTime(isoOrUnknown: unknown): string {
@@ -22,16 +30,46 @@ function toConversionDateTime(isoOrUnknown: unknown): string {
 /**
  * Normalize click ID for Google Ads API. GCLID/wbraid/gbraid are base64-encoded; when captured from
  * URLs they may be stored as base64url (RFC 4648: _ and -). Google expects standard base64 (+ and /).
- * "İçe aktarılan GCLID'nin kodu çözülemedi" often occurs when base64url is sent as-is.
  */
 function normalizeClickIdForGoogle(clickId: string): string {
   return clickId.replace(/-/g, '+').replace(/_/g, '/');
 }
 
+type ClickIdType = 'gclid' | 'wbraid' | 'gbraid';
+
+/**
+ * OMEGA-1: Extract single click identifier with strict validation. No implicit coercion.
+ * Precedence: gclid > wbraid > gbraid. Call only when at least one raw value is non-empty.
+ */
+function getClickIdStrict(clickIds: { gclid?: string | null; wbraid?: string | null; gbraid?: string | null }): { clickId: string; idType: ClickIdType } | null {
+  const rawGclid = clickIds.gclid != null ? String(clickIds.gclid).trim() : '';
+  const rawWbraid = clickIds.wbraid != null ? String(clickIds.wbraid).trim() : '';
+  const rawGbraid = clickIds.gbraid != null ? String(clickIds.gbraid).trim() : '';
+
+  const clickId = rawGclid || rawWbraid || rawGbraid;
+  if (!clickId || clickId === 'undefined' || clickId === 'null') {
+    return null;
+  }
+  const idType: ClickIdType = rawGclid ? 'gclid' : rawWbraid ? 'wbraid' : 'gbraid';
+  return { clickId, idType };
+}
+
+/**
+ * OMEGA-2: Assert hashed_phone_number is exactly 64-char hex. Idempotent: accept existing hash.
+ */
+function validateHashedPhone(raw: string | null | undefined): string | undefined {
+  if (raw == null || typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  if (trimmed.length !== HASHED_PHONE_LENGTH || !HASHED_PHONE_HEX_REGEX.test(trimmed)) {
+    throw new Error(`ABYSS_ERR: Invalid hashed_phone_number length or format (expected ${HASHED_PHONE_LENGTH} hex chars)`);
+  }
+  return trimmed.toLowerCase();
+}
+
 /**
  * Build one ClickConversionRequest from a job. Uses conversion_action from credentials.
- * Exactly one of gclid, wbraid, gbraid must be set for Google to accept; if none, we still emit the object
- * (adapter can skip or API will return validation error).
+ * Exactly one of gclid, wbraid, gbraid must be set for Google to accept.
  */
 export function jobToClickConversion(
   job: ConversionJob,
@@ -43,44 +81,44 @@ export function jobToClickConversion(
     currency?: string;
     click_ids?: { gclid?: string | null; wbraid?: string | null; gbraid?: string | null };
     order_id?: string | null;
-    /** Enhanced Conversions: SHA-256 hashed phone (hex). */
     hashed_phone_number?: string | null;
   } | undefined;
+
   const clickIds = payload?.click_ids ?? job.click_ids ?? {};
-  const gclid = (clickIds.gclid ?? job.click_ids?.gclid)?.trim() || null;
-  const wbraid = (clickIds.wbraid ?? job.click_ids?.wbraid)?.trim() || null;
-  const gbraid = (clickIds.gbraid ?? job.click_ids?.gbraid)?.trim() || null;
+  const strict = getClickIdStrict(clickIds);
+  if (!strict) return null;
 
-  if (!gclid && !wbraid && !gbraid) {
-    return null;
-  }
-
+  const { clickId, idType } = strict;
   const conversionTime = payload?.conversion_time ?? job.occurred_at;
+  const conversionDateTime = toConversionDateTime(conversionTime);
   const valueCents = typeof payload?.value_cents === 'number' ? payload.value_cents : job.amount_cents;
   if (typeof valueCents !== 'number' || !Number.isFinite(valueCents) || valueCents <= 0) {
     throw new Error('INVALID_VALUE_CENTS');
   }
-  const currency = (payload?.currency ?? job.currency ?? 'USD').slice(0, 3);
-  const orderId = payload?.order_id ?? null;
+  const currency = String(payload?.currency ?? job.currency ?? 'USD').slice(0, 3);
+
+  // OMEGA-3: Cryptographic deduplication. Never pass raw long string (e.g. GCLID_action_date) — Google limit 55.
+  const actionStr = String(job.action_key ?? job.id).trim() || job.id;
+  const dedupeSeed = `${clickId}_${actionStr}_${conversionDateTime}`;
+  const secureOrderId = createHash('sha256').update(dedupeSeed, 'utf8').digest('hex').substring(0, ORDER_ID_MAX_LENGTH);
 
   const req: ClickConversionRequest = {
     conversion_action: conversionActionResourceName,
-    conversion_date_time: toConversionDateTime(conversionTime),
+    conversion_date_time: conversionDateTime,
     conversion_value: minorToMajor(valueCents, currency),
     currency_code: currency,
-    order_id: orderId ?? undefined,
+    order_id: secureOrderId,
   };
 
-  if (gclid) req.gclid = normalizeClickIdForGoogle(gclid);
-  else if (wbraid) req.wbraid = normalizeClickIdForGoogle(wbraid);
-  else if (gbraid) req.gbraid = normalizeClickIdForGoogle(gbraid);
+  req[idType] = normalizeClickIdForGoogle(clickId);
 
-  // Enhanced Conversions: user_identifiers (hashed_phone_number / hashed_email)
-  const hashedPhone = payload?.hashed_phone_number?.trim();
-  if (hashedPhone && hashedPhone.length === 64 && /^[a-f0-9]+$/.test(hashedPhone)) {
+  const hashedPhone = validateHashedPhone(payload?.hashed_phone_number);
+  if (hashedPhone) {
     req.user_identifiers = [{ hashed_phone_number: hashedPhone }];
   }
 
+  // OMEGA-4: Seal payload against downstream mutation.
+  Object.freeze(req);
   return req;
 }
 

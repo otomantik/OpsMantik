@@ -14,6 +14,7 @@ import { getPrimarySourceBatch } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { redis } from '@/lib/upstash';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
+import { hashPhoneForEC } from '@/lib/dic/identity-hash';
 
 const PV_BATCH_MAX = 500;
 /** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
@@ -46,6 +47,8 @@ export interface GoogleAdsConversionItem {
   conversionValue: number;
   /** ISO currency code, e.g. TRY. */
   conversionCurrency: string;
+  /** Optional: SHA-256 hex (64 char) for Enhanced Conversions. */
+  hashed_phone_number?: string | null;
 }
 
 /**
@@ -327,17 +330,21 @@ export async function GET(req: NextRequest) {
     const callIds = rawList.map((r: { call_id: string | null }) => r.call_id).filter(Boolean) as string[];
     const sessionByCall: Record<string, string> = {};
     const callConfirmedAt: Record<string, string> = {};
+    const callPhoneByCallId: Record<string, string> = {};
     if (callIds.length > 0) {
       const { data: calls } = await adminClient
         .from('calls')
-        .select('id, matched_session_id, confirmed_at')
+        .select('id, matched_session_id, confirmed_at, caller_phone_e164')
         .eq('site_id', siteUuid)
         .in('id', callIds);
       for (const c of calls ?? []) {
+        const id = (c as { id: string }).id;
         const sid = (c as { matched_session_id?: string | null }).matched_session_id;
-        if (sid) sessionByCall[(c as { id: string }).id] = sid;
+        if (sid) sessionByCall[id] = sid;
         const confirmed = (c as { confirmed_at?: string | null }).confirmed_at;
-        if (confirmed) callConfirmedAt[(c as { id: string }).id] = confirmed;
+        if (confirmed) callConfirmedAt[id] = confirmed;
+        const phone = (c as { caller_phone_e164?: string | null }).caller_phone_e164;
+        if (phone && String(phone).trim()) callPhoneByCallId[id] = String(phone).trim();
       }
     }
 
@@ -465,6 +472,15 @@ export async function GET(req: NextRequest) {
         valueCents
       );
 
+      let hashedPhone: string | null = null;
+      if (row.call_id && callPhoneByCallId[row.call_id]) {
+        try {
+          hashedPhone = hashPhoneForEC(callPhoneByCallId[row.call_id]);
+        } catch {
+          // Non-critical; export continues without hashed_phone
+        }
+      }
+
       conversions.push({
         id: fallbackOrderId,
         orderId: orderIdDDA || fallbackOrderId,
@@ -475,6 +491,7 @@ export async function GET(req: NextRequest) {
         conversionTime,
         conversionValue,
         conversionCurrency,
+        ...(hashedPhone && { hashed_phone_number: hashedPhone }),
       });
     }
 

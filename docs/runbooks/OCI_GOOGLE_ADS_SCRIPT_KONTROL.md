@@ -5,7 +5,7 @@
 
 ---
 
-## 1. Site `oci_sync_method` — Worker sadece `api` siteleri işler ✅ Phase 2 migration
+## 1. Site `oci_sync_method` — Worker (api) vs Script
 
 **Ne:** `list_offline_conversion_groups` ve `claim_offline_conversion_jobs_v2` yalnızca **`sites.oci_sync_method = 'api'`** olan siteleri döner / claim eder.
 
@@ -13,11 +13,11 @@
 - Eğer Muratcan (veya başka bir site) bir şekilde **`script`** kalmışsa, **worker bu sitenin kuyruk satırlarını hiç claim etmez**; kuyruk dolsa bile gönderim yapılmaz.
 
 **Phase 2 (DB config):** Muratcan’ı worker’a açmak için migration eklendi:  
-`supabase/migrations/20260707000000_muratcan_oci_sync_method_api.sql` — site `c644fff7-9d7a-440d-b9bf-99f3a0f86073` için `oci_sync_method = 'api'` yapar (zaten api ise no-op). Deploy sonrası worker kuyruğu claim edebilir.
+`supabase/migrations/20260708000000_sites_oci_sync_method_script.sql` — `oci_sync_method = 'api'` olan tüm siteleri `script` yapar. API yok, tüm siteler script export ile çalışır.
 
 **Kontrol (RECON):**  
 `SELECT id, name, oci_sync_method FROM sites WHERE id = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073';`  
-Muratcan için `oci_sync_method = 'api'` olmalı.
+Tüm siteler script ise `oci_sync_method = 'script'` olmalı.
 
 ---
 
@@ -126,3 +126,29 @@ Aynı site için hem `api` hem script’i aynı anda kullanırsanız, sync_metho
 ---
 
 **Sonuç:** Phase 2 migration ile Muratcan `oci_sync_method = 'api'` yapıldığında worker kuyruğu claim eder. Phase 3 SOP ile Script Properties’ten Muratcan site id kaldırılarak tek kanal netleştirilir.
+
+---
+
+## 8. GCLID "kodu çözülemedi" + Telefonla gönderim (Enhanced Conversions)
+
+**Ne:** Google Ads yükleme sonrası "İçe aktarılan GCLID'nin kodu çözülemedi" hatası. Bazı tıklama kimlikleri (ör. `0AAAAA9/Qf/oX0U8e9DNFyMEzOkKBuKTKO`) Google tarafında decode edilemeyebilir (kaynak/farklı encoding).
+
+**Yapılan:**
+- Script CSV’de GCLID **base64url** gönderiliyor: `normalizeClickIdForCsv` ile `+` → `-`, `/` → `_`.
+- **Telefon eşleştirme:** Export API dönüşüm satırına `hashed_phone_number` (SHA256, E.164) ekliyor; Script CSV’ye **"Phone"** kolonu ile bu değeri yazıyor. Google Ads hesabında **Gelişmiş dönüşümler (Enhanced Conversions for leads)** açıksa, GCLID decode hatası olsa bile **hashed phone** ile eşleşme yapılabilir.
+- **Kontrol:** Google Ads → Araçlar → Yüklemeler’de hata detayı; hesap ayarlarında "Gelişmiş dönüşümler" / "Enhanced Conversions" açık olmalı.
+
+**Nitelikli görüşmeler listelenmedi:** V3 (Nitelikli Görüşme) sinyalleri `marketing_signals` tablosundan gelir; export’a yalnızca **PENDING** ve uyumlu conversion_name olanlar eklenir. Listelenmeme sebepleri: zaten **SENT**, **click_id yok** (skip), veya export limiti. Kuyruk raporu: `oci-muratcan-kuyruk-rapor.mjs` / `oci-muratcan-kuyruk-donusum-tarama.mjs`.
+
+---
+
+## 9. Muratcan: Tüm gün + gitmemiş dönüşümleri kuyruğa al
+
+**Amaç:** Muratcan için bugünkü mühürleri ve daha önce FAILED/RETRY kalan tüm dönüşümleri tekrar kuyruğa almak.
+
+| Adım | Komut | Açıklama |
+|------|--------|----------|
+| 1 | `node scripts/db/oci-enqueue.mjs Muratcan --days 2` | Son 2 gün (dün + bugün) mühürleri kuyruğa ekler; zaten QUEUED olanlar skip-if-queued ile atlanır. |
+| 2 | `node scripts/db/oci-requeue-all-failed.mjs` | Tüm sitelerdeki FAILED/RETRY satırları QUEUED yapar (Muratcan dahil). İsteğe: `--dry-run` ile önizleme. |
+
+Sadece bugün: `node scripts/db/oci-enqueue.mjs Muratcan --today`

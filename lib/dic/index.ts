@@ -7,6 +7,8 @@ export { normalizeToE164 } from './e164';
 export {
   sha256HexUtf8,
   sha256Base64Utf8,
+  sha256Hex64,
+  sanitizePhoneForHash,
   hashPhoneForEC,
   hashPhoneForECBase64,
 } from './identity-hash';

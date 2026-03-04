@@ -92,12 +92,18 @@ class Validator {
     return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{4}$/.test(s);
   }
 
-  /** GCLID/WBRAID/GBRAID: alphanumeric, reasonable length (prevent obviously broken IDs). */
+  /** GCLID/WBRAID/GBRAID: base64 or base64url (Google uses + / = or _ -). */
   static isValidClickId(clickId) {
     if (!clickId || typeof clickId !== 'string') return false;
     var s = clickId.trim();
     if (s.length < 10 || s.length > 256) return false;
-    return /^[A-Za-z0-9_-]+$/.test(s);
+    return /^[A-Za-z0-9_+\/=\-]+$/.test(s);
+  }
+
+  /** CSV import expects base64url: replace + with -, / with _ (Google "GCLID decode" hatasini onler). */
+  static normalizeClickIdForCsv(clickId) {
+    if (!clickId || typeof clickId !== 'string') return clickId || '';
+    return String(clickId).trim().replace(/\+/g, '-').replace(/\//g, '_');
   }
 
   /** Conversion value: non-negative number. */
@@ -296,9 +302,10 @@ class UploadEngine {
       var orderIdRaw = row.orderId || row.id || '';
       var orderId = String(orderIdRaw).substring(0, 64);  // Google Ads Order ID max 64 karakter
       var gclidShort = (validation.clickId || '').substring(0, 20) + ((validation.clickId || '').length > 20 ? '...' : '');
+      var clickIdForCsv = Validator.normalizeClickIdForCsv(validation.clickId);
       upload.append({
         'Order ID': orderId,
-        'Google Click ID': validation.clickId,
+        'Google Click ID': clickIdForCsv,
         'Conversion name': (row.conversionName || '').trim() || CONVERSION_EVENTS.V5_SEAL,
         'Conversion time': row.conversionTime,
         'Conversion value': Math.max(0, conversionValue),

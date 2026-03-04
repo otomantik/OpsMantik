@@ -11,8 +11,6 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
-import { getPrimarySource } from '@/lib/conversation/primary-source';
-import { evaluateAndRouteSignal, OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { normalizeToE164 } from '@/lib/dic/e164';
 import { hashPhoneForEC } from '@/lib/dic/identity-hash';
 
@@ -204,106 +202,11 @@ export async function POST(
       );
     }
 
-    // RPC returns jsonb → normalize shape for response
+    // RPC returns jsonb → normalize shape for response.
+    // Phase 1 Outbox: V3/V4/V5 are no longer written here; IntentSealed was written to outbox_events
+    // in the same transaction as the call update. The outbox worker cron processes them.
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
     const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
-    const callCreatedAt = (call as { created_at?: string | null })?.created_at ?? confirmedAt;
-
-    // V3 (Görüşüldü) / V4 (Teklif): emit to marketing_signals for Google Ads funnel (PR-OCI-1)
-    if (leadScore === 60 || leadScore === 80) {
-      try {
-        const gear = leadScore === 60 ? 'V3_ENGAGE' : 'V4_INTENT';
-        const conversionName = leadScore === 60 ? OPSMANTIK_CONVERSION_NAMES.V3_ENGAGE : OPSMANTIK_CONVERSION_NAMES.V4_INTENT;
-        const { data: existing } = await adminClient
-          .from('marketing_signals')
-          .select('id')
-          .eq('site_id', siteId)
-          .eq('call_id', callId)
-          .eq('google_conversion_name', conversionName)
-          .limit(1);
-        if (existing && existing.length > 0) {
-          logInfo('seal_v3v4_skip_dedup', { call_id: callId, gear });
-        } else {
-          const primary = await getPrimarySource(siteId, { callId });
-          const clickDate = new Date(callCreatedAt);
-          const signalDate = new Date(confirmedAt);
-          const result = await evaluateAndRouteSignal(gear, {
-            siteId,
-            callId,
-            gclid: primary?.gclid ?? null,
-            wbraid: primary?.wbraid ?? null,
-            gbraid: primary?.gbraid ?? null,
-            aov: 0,
-            clickDate,
-            signalDate,
-          });
-          if (result.routed) {
-            logInfo('seal_v3v4_emitted', { call_id: callId, gear });
-          }
-        }
-      } catch (v3v4Err) {
-        logError('seal_v3v4_emit_failed', {
-          call_id: callId,
-          error: String((v3v4Err as Error)?.message ?? v3v4Err),
-        });
-        // Non-fatal: seal succeeded; V3/V4 emit is best-effort
-      }
-    }
-
-    // Last-mile OCI: enqueue ONLY IF score is exactly 100 (Seal) and conversion value is not null (0 TL mühür olmaz).
-    // Lower scores (e.g. 60=Görüşüldü, 80=Teklif) are saved locally and emit V3/V4 above; no queue row.
-    // OCI-9C: Fail closed — if enqueue fails, surface error and mark oci_status FAILED_ENQUEUE
-    if (leadScore === 100) {
-      try {
-        const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
-        const result = await enqueueSealConversion({
-          callId,
-          siteId,
-          confirmedAt,
-          saleAmount,
-          currency,
-          leadScore,
-        });
-        if (result.enqueued) {
-          logInfo('seal_oci_enqueued', { call_id: callId });
-          // Fast-Track (MODULE 5): fire-and-forget worker trigger for low latency
-          const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-          if (isProd && result.queueId) {
-            const workerUrl = process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}/api/workers/google-ads-oci`
-              : process.env.NEXT_PUBLIC_APP_URL
-                ? `${process.env.NEXT_PUBLIC_APP_URL}/api/workers/google-ads-oci`
-                : null;
-            if (workerUrl) {
-              const cronSecret = process.env.CRON_SECRET;
-              void fetch(workerUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
-                },
-              }).catch(() => {});
-            }
-          }
-        }
-      } catch (enqueueErr) {
-        const errMsg = String((enqueueErr as Error)?.message ?? enqueueErr);
-        logError('seal_oci_enqueue_failed', { call_id: callId, error: errMsg });
-        Sentry.captureException(enqueueErr, { tags: { route, call_id: callId } });
-        await adminClient
-          .from('calls')
-          .update({
-            oci_status: 'FAILED_ENQUEUE',
-            oci_status_updated_at: new Date().toISOString(),
-          })
-          .eq('id', callId)
-          .eq('site_id', siteId);
-        return NextResponse.json(
-          { error: 'Seal saved but OCI enqueue failed. Please retry.' },
-          { status: 500 }
-        );
-      }
-    }
 
     return NextResponse.json({
       success: true,

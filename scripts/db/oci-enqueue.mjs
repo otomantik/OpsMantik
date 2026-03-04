@@ -9,6 +9,7 @@
  * Kullanim:
  *   node scripts/db/oci-enqueue.mjs Eslamed
  *   node scripts/db/oci-enqueue.mjs Eslamed --today     # sadece bugunun muhurleri
+ *   node scripts/db/oci-enqueue.mjs Eslamed --days 2    # dun + bugun (son 2 gun)
  *   node scripts/db/oci-enqueue.mjs Eslamed --force-reset-completed  # tum COMPLETED -> QUEUED (toparlama)
  *   node scripts/db/oci-enqueue.mjs Eslamed --dry-run
  *   node scripts/db/oci-enqueue.mjs Eslamed --skip-if-queued  # skip call_id already in queue (idempotency)
@@ -33,9 +34,12 @@ const supabase = createClient(url, key);
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run') || args.includes('-n');
 const todayOnly = args.includes('--today') || args.includes('-t');
+const daysArg = args.find((a) => a.startsWith('--days='));
+const daysNum = daysArg ? parseInt(daysArg.split('=')[1], 10) : (args.includes('--days') ? parseInt(args[args.indexOf('--days') + 1], 10) : 0);
+const lastNDays = Number.isFinite(daysNum) && daysNum >= 1 ? daysNum : 0;
 const forceResetCompleted = args.includes('--force-reset-completed') || args.includes('-f');
 const skipIfQueued = args.includes('--skip-if-queued') || args.includes('-s'); // parsed for ops; we always skip-if-queued
-const query = args.find((a) => !a.startsWith('-'));
+const query = args.find((a) => !a.startsWith('-') && a !== '--days' && !/^\d+$/.test(a));
 
 async function resolveSiteId(q) {
   if (!q) return null;
@@ -60,12 +64,20 @@ async function run() {
     process.exit(1);
   }
 
+  const { data: siteRow } = await supabase.from('sites').select('default_aov, currency').eq('id', siteId).maybeSingle();
+  const defaultAov = siteRow?.default_aov != null && Number(siteRow.default_aov) > 0 ? Number(siteRow.default_aov) : 500;
+  const siteCurrency = (siteRow?.currency || 'TRY').trim().toUpperCase().replace(/[^A-Z]/g, '') || 'TRY';
+
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
   const todayIso = todayStart.toISOString().slice(0, 10);
   const tomorrow = new Date(todayStart);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+  const yesterdayIso = yesterdayStart.toISOString().slice(0, 10);
 
   let callsQuery = supabase
     .from('calls')
@@ -75,6 +87,11 @@ async function run() {
     .eq('oci_status', 'sealed');
   if (todayOnly) {
     callsQuery = callsQuery.gte('confirmed_at', todayIso).lt('confirmed_at', tomorrowIso);
+  } else if (lastNDays >= 1) {
+    const fromDate = new Date(todayStart);
+    fromDate.setUTCDate(fromDate.getUTCDate() - (lastNDays - 1));
+    const fromIso = fromDate.toISOString().slice(0, 10);
+    callsQuery = callsQuery.gte('confirmed_at', fromIso).lt('confirmed_at', tomorrowIso);
   }
   const { data: calls, error: callsErr } = await callsQuery;
 
@@ -84,7 +101,7 @@ async function run() {
   }
 
   if (!calls?.length) {
-    console.log('Sealed call yok' + (todayOnly ? ' (bugun)' : '') + '. Reset devam edecek.');
+    console.log('Sealed call yok' + (todayOnly ? ' (bugun)' : lastNDays ? ` (son ${lastNDays} gun)` : '') + '. Reset devam edecek.');
   }
 
   const sessionIds = calls?.length ? [...new Set(calls.map((c) => c.matched_session_id).filter(Boolean))] : [];
@@ -125,12 +142,11 @@ async function run() {
       continue;
     }
 
-    // V5_SEAL: value_cents = sale_amount exactly (or 0). No proxy multipliers; bypasses legacy oci_config.
-    // calls.sale_amount is in major units — use majorToMinor to match War Room output (JPY/KWD-aware).
-    const currency = (c.currency || 'TRY').trim().toUpperCase().replace(/[^A-Z]/g, '') || 'TRY';
+    // V5_SEAL: value_cents = sale_amount exactly; if 0, use default_aov so export does not skip (value_cents <= 0 excluded by API).
+    const currency = (c.currency || siteCurrency).trim().toUpperCase().replace(/[^A-Z]/g, '') || 'TRY';
     const valueCents = c.sale_amount != null && c.sale_amount > 0
       ? majorToMinor(c.sale_amount, currency)
-      : 0;
+      : majorToMinor(defaultAov, currency);
 
     toInsert.push({
       site_id: siteId,
@@ -197,6 +213,7 @@ async function run() {
   if (resetC?.length) console.log('COMPLETED' + (forceResetCompleted ? ' (tumu)' : ' (uploaded_at null)') + ' -> QUEUED:', resetC.length);
 
   if (todayOnly) console.log('(--today: sadece bugunun muhurleri)');
+  if (lastNDays) console.log('(--days ' + lastNDays + ': dun + bugun dahil son ' + lastNDays + ' gun)');
   console.log('Bitti. Google Ads script calistir.');
 }
 

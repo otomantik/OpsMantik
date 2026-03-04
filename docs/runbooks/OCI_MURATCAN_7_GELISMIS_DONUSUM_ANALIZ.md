@@ -22,6 +22,9 @@
 Derin analiz scripti (tarihler + session/kuyruk karşılaştırması):  
 `node scripts/db/oci-muratcan-derin-analiz.mjs`
 
+**FAILED nedeni: MAX_ATTEMPTS_EXCEEDED**  
+Script export her claim'de `attempt_count` artar. Cron `attempt-cap` (MAX_ATTEMPTS=5) `attempt_count >= 5` olan satırları FAILED yapar (`provider_error_code: MAX_ATTEMPTS`). Yani satır 5 kez export edilip ack/COMPLETED olmamış (script hata vermiş, ack gitmemiş veya Google reddetmiş). Tekrar denemek için: `node scripts/db/oci-requeue-all-failed.mjs` ile QUEUED yapılır (attempt_count sıfırlanmaz ama status QUEUED olunca script tekrar alabilir; attempt_count RPC'de sadece claim'de artar, requeue sadece status değiştirir).
+
 ---
 
 ## Şu an hangi aşamadayız?
