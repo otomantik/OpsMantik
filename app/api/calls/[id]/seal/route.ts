@@ -39,16 +39,11 @@ export async function POST(
         ? Math.round(leadScoreRaw)
         : null;
 
+    // Relaxed check: Humans can seal a lead with 0 value if they choose.
+    // OCI worker will still use a floor if configured, or export as 0.
     if (saleAmount != null && (Number.isNaN(saleAmount) || saleAmount < 0)) {
       return NextResponse.json(
         { error: 'sale_amount must be a non-negative number' },
-        { status: 400 }
-      );
-    }
-    // 0 TL ile mühür basılamaz — OCI queue ve Google Ads value pipeline için satış > 0 gerekli
-    if (leadScore === 100 && (saleAmount == null || saleAmount === 0)) {
-      return NextResponse.json(
-        { error: 'sale_amount must be greater than 0 to seal a call' },
         { status: 400 }
       );
     }
@@ -82,10 +77,7 @@ export async function POST(
       user = u ?? null;
     }
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!userClient) {
+    if (!user || !userClient) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -104,12 +96,15 @@ export async function POST(
 
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, userClient);
-    if (!access.allowed) {
+    if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
       return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
     }
-    if (!access.role || !hasCapability(access.role, 'queue:operate')) {
-      return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
-    }
+
+    // Determine lifecycle state for OCI pipeline
+    // lead_score 100 = V5 SEAL (Aggressive)
+    // lead_score >= 10 = V4 INTENT (Standard)
+    // lead_score < 10 or null = ignored by OCI worker
+    const ociStatus = leadScore === 100 ? 'sealed' : leadScore != null && leadScore >= 10 ? 'intent' : 'skipped';
 
     const updatePayload: Record<string, unknown> = {
       sale_amount: saleAmount,
@@ -117,12 +112,10 @@ export async function POST(
       status: 'confirmed',
       confirmed_at: new Date().toISOString(),
       confirmed_by: user.id,
-      oci_status: leadScore === 100 ? 'sealed' : 'skipped',
+      oci_status: ociStatus,
       oci_status_updated_at: new Date().toISOString(),
+      lead_score: leadScore,
     };
-    if (leadScore != null) {
-      updatePayload.lead_score = leadScore;
-    }
 
     // Operator-verified caller phone (optional): trim, max 64; empty after trim = don't send
     const callerPhoneRaw = typeof body.caller_phone === 'string' ? body.caller_phone.trim().slice(0, 64) : '';
