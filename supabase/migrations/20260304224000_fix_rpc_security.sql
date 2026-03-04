@@ -157,4 +157,48 @@ BEGIN
 END;
 $$;
 
+-- 3. GRANTS: Ensure authenticated users can call the new signature
+REVOKE ALL ON FUNCTION public.apply_call_action_v1(uuid, text, jsonb, text, uuid, jsonb, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.apply_call_action_v1(uuid, text, jsonb, text, uuid, jsonb, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_call_action_v1(uuid, text, jsonb, text, uuid, jsonb, integer) TO service_role;
+
+-- 4. TRIGGER: Allow score_breakdown updates for junk/manual scoring
+CREATE OR REPLACE FUNCTION public.calls_enforce_update_columns()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.role() = 'service_role' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Allowed columns: sale_amount, estimated_value, currency, status, confirmed_at, confirmed_by, cancelled_at,
+  -- note, lead_score, oci_status, oci_status_updated_at, updated_at, VERSION, and SCORE_BREAKDOWN.
+  IF OLD.id IS DISTINCT FROM NEW.id
+     OR OLD.site_id IS DISTINCT FROM NEW.site_id
+     OR OLD.phone_number IS DISTINCT FROM NEW.phone_number
+     OR OLD.matched_session_id IS DISTINCT FROM NEW.matched_session_id
+     OR OLD.matched_fingerprint IS DISTINCT FROM NEW.matched_fingerprint
+     OR OLD.created_at IS DISTINCT FROM NEW.created_at
+     OR OLD.intent_page_url IS DISTINCT FROM NEW.intent_page_url
+     OR OLD.click_id IS DISTINCT FROM NEW.click_id
+     OR OLD.source IS DISTINCT FROM NEW.source
+     OR OLD.intent_action IS DISTINCT FROM NEW.intent_action
+     OR OLD.intent_target IS DISTINCT FROM NEW.intent_target
+     OR OLD.intent_stamp IS DISTINCT FROM NEW.intent_stamp
+     OR OLD.oci_uploaded_at IS DISTINCT FROM NEW.oci_uploaded_at
+     OR OLD.oci_matched_at IS DISTINCT FROM NEW.oci_matched_at
+     OR OLD.oci_batch_id IS DISTINCT FROM NEW.oci_batch_id
+     OR OLD.oci_error IS DISTINCT FROM NEW.oci_error
+  THEN
+    RAISE EXCEPTION 'calls: only UI fields, version and score_breakdown are updatable by app'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 COMMIT;

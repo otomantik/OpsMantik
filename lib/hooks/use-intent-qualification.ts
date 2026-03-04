@@ -165,48 +165,19 @@ export function useIntentQualification(
           return { success: true };
         }
 
-        // Junk: direct update (no OCI enqueue).
-        const updatePayload = {
-          lead_score: leadScore,
-          status: 'junk',
-          confirmed_at: null,
-          confirmed_by: user.id,
-          note: params.note || null,
-          score_breakdown: {
-            manual_score: params.score,
-            qualified_by: 'user',
-            timestamp: new Date().toISOString(),
-          },
-          oci_status: 'skipped',
-          oci_status_updated_at: new Date().toISOString(),
-        };
+        // Junk: Route through Status API to use SECURITY DEFINER RPC (bypasses RLS/Trigger issues)
+        const res = await fetch(`/api/intents/${intentId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'junk',
+            lead_score: leadScore,
+          }),
+        });
 
-        const doSessionUpdate = Boolean(matchedSessionId && String(matchedSessionId).trim().length > 0);
-        const updateQuery = doSessionUpdate
-          ? supabase
-            .from('calls')
-            .update(updatePayload)
-            .eq('site_id', siteId)
-            .eq('matched_session_id', matchedSessionId as string)
-            .eq('source', 'click')
-            .in('status', ['intent', null])
-            .select('id')
-          : supabase
-            .from('calls')
-            .update(updatePayload)
-            .eq('id', intentId)
-            .eq('site_id', siteId)
-            .in('status', ['intent', null])
-            .select('id');
-
-        const { data: updatedRows, error: updateError } = await updateQuery;
-        if (updateError) throw updateError;
-
-        const didUpdate = Array.isArray(updatedRows) ? updatedRows.length > 0 : Boolean(updatedRows);
-        if (!didUpdate) {
-          const msg = doSessionUpdate
-            ? t('toast.error.sessionAlreadyQualified')
-            : t('toast.error.intentAlreadyQualified');
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const msg = (data as { error?: string }).error || t('toast.error.qualifyFailed');
           setError(msg);
           return { success: false, error: msg };
         }

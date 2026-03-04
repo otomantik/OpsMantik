@@ -34,10 +34,15 @@ export async function POST(
     // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
     const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
     const version = body.version != null ? Number(body.version) : null;
-    const leadScore =
+    let leadScore =
       leadScoreRaw != null && Number.isFinite(leadScoreRaw) && leadScoreRaw >= 0 && leadScoreRaw <= 100
         ? Math.round(leadScoreRaw)
         : null;
+
+    // Calibrate scaling: If leadScore is 1-5, interpolate to 20-100 for backward compatibility
+    if (leadScore != null && leadScore > 0 && leadScore <= 5) {
+      leadScore = leadScore * 20;
+    }
 
     // Relaxed check: Humans can seal a lead with 0 value if they choose.
     // OCI worker will still use a floor if configured, or export as 0.
