@@ -626,6 +626,35 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             'Mark poison pill rows FAILED'
           );
         }
+        // Enhanced Conversions: enrich job.payload with caller_phone_hash_sha256 from calls (hashed_phone_number)
+        const callIds = [...new Set(rowsWithValue.map((r) => (r as { call_id?: string | null }).call_id).filter(Boolean))] as string[];
+        if (callIds.length > 0 && jobs.length > 0) {
+          try {
+            const rowIdToRow = new Map(rowsWithValue.map((r) => [r.id, r]));
+            const { data: callsData } = await adminClient
+              .from('calls')
+              .select('id, caller_phone_hash_sha256')
+              .in('id', callIds);
+            const hashByCallId = new Map<string, string>();
+            for (const c of callsData ?? []) {
+              const hash = (c as { caller_phone_hash_sha256?: string | null }).caller_phone_hash_sha256;
+              if (hash && typeof hash === 'string' && hash.trim().length === 64) {
+                hashByCallId.set((c as { id: string }).id, hash.trim());
+              }
+            }
+            for (let i = 0; i < jobs.length; i++) {
+              const row = rowIdToRow.get(jobs[i].id);
+              if (!row) continue;
+              const callId = (row as { call_id?: string | null }).call_id;
+              const hashedPhone = callId ? hashByCallId.get(callId) : null;
+              if (hashedPhone) {
+                jobs[i].payload = { ...(jobs[i].payload ?? {}), hashed_phone_number: hashedPhone };
+              }
+            }
+          } catch {
+            // Non-critical; upload continues without user_identifiers
+          }
+        }
         if (jobs.length === 0) {
           // Nothing left to upload after policy blocks/poison isolation.
           continue;
@@ -950,6 +979,35 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             prefix,
             'Mark poison pill rows FAILED (cron)'
           );
+        }
+        // Enhanced Conversions: enrich job.payload with caller_phone_hash_sha256 from calls
+        const callIdsCron = [...new Set(rowsWithValue.map((r) => (r as { call_id?: string | null }).call_id).filter(Boolean))] as string[];
+        if (callIdsCron.length > 0 && jobs.length > 0) {
+          try {
+            const rowIdToRowCron = new Map(rowsWithValue.map((r) => [r.id, r]));
+            const { data: callsDataCron } = await adminClient
+              .from('calls')
+              .select('id, caller_phone_hash_sha256')
+              .in('id', callIdsCron);
+            const hashByCallIdCron = new Map<string, string>();
+            for (const c of callsDataCron ?? []) {
+              const hash = (c as { caller_phone_hash_sha256?: string | null }).caller_phone_hash_sha256;
+              if (hash && typeof hash === 'string' && hash.trim().length === 64) {
+                hashByCallIdCron.set((c as { id: string }).id, hash.trim());
+              }
+            }
+            for (let i = 0; i < jobs.length; i++) {
+              const row = rowIdToRowCron.get(jobs[i].id);
+              if (!row) continue;
+              const callId = (row as { call_id?: string | null }).call_id;
+              const hashedPhone = callId ? hashByCallIdCron.get(callId) : null;
+              if (hashedPhone) {
+                jobs[i].payload = { ...(jobs[i].payload ?? {}), hashed_phone_number: hashedPhone };
+              }
+            }
+          } catch {
+            // Non-critical
+          }
         }
         if (jobs.length === 0) {
           // Nothing left to upload after policy blocks/poison isolation.

@@ -1,6 +1,7 @@
 /**
  * Best-effort primary_source extraction from call or session (gclid, wbraid, gbraid, utm_*).
  * Tenant-safe: all reads filtered by site_id. Returns null on any error or uncertain partition resolution.
+ * OCI-9E: Bounded retry (2 retries, 50–150ms jitter) for replica lag; Sentry on final failure.
  *
  * Attribution precedence (for fan-out from conversation_links): Call > Session > Event.
  * Call is treated as higher intent; when resolving GCLID from multiple linked entities, prefer the call's
@@ -8,6 +9,8 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { logWarn } from '@/lib/logging/logger';
+import * as Sentry from '@sentry/nextjs';
 
 export interface PrimarySourceInput {
   callId?: string;
@@ -26,22 +29,45 @@ export type PrimarySource = {
   referrer?: string | null;
 };
 
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS_MIN = 50;
+const RETRY_DELAY_MS_MAX = 150;
+
+function jitterMs(): number {
+  return RETRY_DELAY_MS_MIN + Math.floor(Math.random() * (RETRY_DELAY_MS_MAX - RETRY_DELAY_MS_MIN + 1));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Fetch primary_source jsonb for conversation. Best-effort; returns null if session/call not found or any error.
- * Always scopes reads by site_id for tenant safety.
+ * OCI-9E: Retries up to 3 times with jitter to mitigate replica lag; logs and Sentry on final failure.
  * Precedence: when both callId and sessionId could apply, call is used first (higher intent).
  */
 export async function getPrimarySource(
   siteId: string,
   input: PrimarySourceInput
 ): Promise<PrimarySource | null> {
-  try {
-    if (input.callId) {
+  if (input.callId) {
+    let lastError: unknown = null;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
       const { data: rows, error } = await adminClient.rpc('get_call_session_for_oci', {
         p_call_id: input.callId,
         p_site_id: siteId,
       });
-      if (error || !Array.isArray(rows) || rows.length === 0) return null;
+      if (error) {
+        lastError = error;
+        if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
+        continue;
+      }
+      if (!Array.isArray(rows) || rows.length === 0) {
+        lastError = new Error('PRIMARY_SOURCE_NOT_FOUND');
+        if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
+        continue;
+      }
       const row = rows[0] as {
         gclid?: string | null;
         wbraid?: string | null;
@@ -64,14 +90,30 @@ export async function getPrimarySource(
         utm_term: row.utm_term ?? null,
         referrer: row.referrer_host ?? null,
       };
+    } catch (e) {
+      lastError = e;
+      if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
     }
-    if (input.sessionId) {
-      return getPrimarySourceFromSession(siteId, input.sessionId);
-    }
-    return null;
-  } catch {
-    return null;
   }
+
+  const msg = lastError instanceof Error ? lastError.message : String(lastError);
+  logWarn('getPrimarySource returned null', {
+    callId: input.callId,
+    siteId,
+    reason: 'PRIMARY_SOURCE_NOT_FOUND',
+    attempts: RETRY_ATTEMPTS,
+    lastError: msg,
+  });
+  Sentry.captureMessage('getPrimarySource returned null', {
+    level: 'warning',
+    extra: { callId: input.callId, siteId, reason: 'PRIMARY_SOURCE_NOT_FOUND', lastError: msg },
+  });
+  return null;
+  }
+  if (input.sessionId) {
+    return getPrimarySourceFromSession(siteId, input.sessionId);
+  }
+  return null;
 }
 
 /**

@@ -219,6 +219,7 @@ export const en = {
   'seal.callerPhoneLabel': 'Caller phone (verified)',
   'seal.clickedNumberLabel': 'Clicked number',
   'seal.mismatchHint': 'Does this number differ from the ad number?',
+  'seal.zeroAmountHint': 'Cannot seal with 0. Sale amount must be greater than 0 to send value to Google Ads.',
   'seal.mute': 'Mute',
   'seal.unmute': 'Unmute',
   'seal.starAria': '{star} star',

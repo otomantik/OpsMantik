@@ -43,6 +43,8 @@ export function jobToClickConversion(
     currency?: string;
     click_ids?: { gclid?: string | null; wbraid?: string | null; gbraid?: string | null };
     order_id?: string | null;
+    /** Enhanced Conversions: SHA-256 hashed phone (hex). */
+    hashed_phone_number?: string | null;
   } | undefined;
   const clickIds = payload?.click_ids ?? job.click_ids ?? {};
   const gclid = (clickIds.gclid ?? job.click_ids?.gclid)?.trim() || null;
@@ -55,6 +57,9 @@ export function jobToClickConversion(
 
   const conversionTime = payload?.conversion_time ?? job.occurred_at;
   const valueCents = typeof payload?.value_cents === 'number' ? payload.value_cents : job.amount_cents;
+  if (typeof valueCents !== 'number' || !Number.isFinite(valueCents) || valueCents <= 0) {
+    throw new Error('INVALID_VALUE_CENTS');
+  }
   const currency = (payload?.currency ?? job.currency ?? 'USD').slice(0, 3);
   const orderId = payload?.order_id ?? null;
 
@@ -69,6 +74,12 @@ export function jobToClickConversion(
   if (gclid) req.gclid = normalizeClickIdForGoogle(gclid);
   else if (wbraid) req.wbraid = normalizeClickIdForGoogle(wbraid);
   else if (gbraid) req.gbraid = normalizeClickIdForGoogle(gbraid);
+
+  // Enhanced Conversions: user_identifiers (hashed_phone_number / hashed_email)
+  const hashedPhone = payload?.hashed_phone_number?.trim();
+  if (hashedPhone && hashedPhone.length === 64 && /^[a-f0-9]+$/.test(hashedPhone)) {
+    req.user_identifiers = [{ hashed_phone_number: hashedPhone }];
+  }
 
   return req;
 }

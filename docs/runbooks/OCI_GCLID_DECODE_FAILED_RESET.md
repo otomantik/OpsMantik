@@ -80,7 +80,21 @@ WHERE status = 'FAILED'
 - Deploy’da mapper değişikliği (base64url → base64) canlıda olmalı.
 - Worker veya cron bir sonraki çalışmada bu satırları `QUEUED` olarak claim edip tekrar Google’a gönderecek; GCLID artık normalize edildiği için başarılı olması beklenir.
 
-## INVALID_CLICK_ID_FORMAT (Muratcan)
+## INVALID_CLICK_ID_FORMAT — Neden Alıyoruz?
+
+Google Ads API bu hatayı, gönderilen **tıklama kimliğinin (GCLID / wbraid / gbraid) formatının geçersiz veya parse edilemez** olduğunu söylediğinde döner. Bizde string standart base64 görünse bile aşağıdaki nedenlerle reddedilebilir:
+
+| Neden | Açıklama |
+|--------|----------|
+| **Sadece bir ID gönderilmeli** | Aynı conversion için hem `gclid` hem `gbraid`/`wbraid` gönderilirse API hata verebilir. Backend mapper tek ID gönderiyor (gclid > wbraid > gbraid) ama kuyrukta **hem gclid hem gbraid dolu** satırlarda bazı hesaplar yine de reddedebilir; kuyrukta **sadece gclid** bırakmak işe yarar. |
+| **Hesap gbraid/wbraid kabul etmiyor** | Bazı hesaplar veya conversion action’lar sadece **gclid** kabul eder. Sadece gbraid olan satırlar `INVALID_CLICK_ID_FORMAT` alır; session’dan gclid backfill veya GCLID bridge gerekir. |
+| **Yanlış encoding** | URL’den gelen base64url (`_`, `-`) standart base64’e çevrilmeli (`lib/providers/google_ads/mapper.ts` → `normalizeClickIdForGoogle`). Eski/bozuk kayıtlar normalize edilmeden gönderilmiş olabilir. |
+| **Tıklama bu hesaba ait değil** | GCLID başka bir Google Ads müşterisine (veya SA360/DV360) aitse API “click not found” veya format hatası dönebilir. |
+| **Süresi dolmuş tıklama** | Google tıklamaları genelde **90 gün** saklar; conversion daha eski bir tıklamaya bağlanıyorsa reddedilebilir. |
+
+Backend’de her conversion için **tek** click ID gönderiliyor (gclid varsa o, yoksa wbraid, yoksa gbraid). Sorun çoğunlukla: kuyrukta birden fazla ID dolu olması, hesabın gbraid kabul etmemesi veya ID’nin bu hesaba/geçerlilik süresine ait olmamasıdır.
+
+## INVALID_CLICK_ID_FORMAT (Muratcan) — Ne Yapılır?
 
 Hata "GCLID decode" değil **INVALID_CLICK_ID_FORMAT** ise ve GCLID'ler zaten standart base64 ise:
 
@@ -89,7 +103,7 @@ Hata "GCLID decode" değil **INVALID_CLICK_ID_FORMAT** ise ve GCLID'ler zaten st
 3. **Sadece gbraid olanlar:** önce session'dan gclid dene, yoksa **GCLID Bridge**:
    - `node scripts/db/oci-muratcan-backfill-gclid-from-session.mjs` (mevcut session'da gclid)
    - `node scripts/db/oci-muratcan-gclid-bridge.mjs` (aynı fingerprint, son 14 gün, GCLID'li başka session)
-4. OCI worker/cron çalıştır.
+4. FAILED satırları tekrar kuyruğa al (QUEUED + next_retry_at geçmişe), sonra OCI worker/cron çalıştır.
 
 ## GCLID Bridge (Fingerprint-to-GCLID)
 

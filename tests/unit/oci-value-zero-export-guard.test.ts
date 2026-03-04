@@ -43,6 +43,18 @@ test('PR-OCI-4: export should log a marker for skipped zero-value rows', () => {
   );
 });
 
+test('PR-OCI-9A: export Pipeline B (signals) must skip null or non-positive conversion_value', () => {
+  const src = readFileSync(EXPORT_ROUTE, 'utf-8');
+  assert.ok(
+    src.includes('NULL_CONVERSION_VALUE') || src.includes('NON_POSITIVE_CONVERSION_VALUE'),
+    'Expected explicit skip reason for signal conversion_value'
+  );
+  assert.ok(
+    src.includes('OCI_EXPORT_SIGNAL_SKIP_VALUE'),
+    'Expected log marker for skipped signal value rows'
+  );
+});
+
 test('PR-OCI-4: export (markAsExported) should terminalize blocked rows as FAILED/VALUE_ZERO', () => {
   const src = readFileSync(EXPORT_ROUTE, 'utf-8');
   assert.ok(src.includes("status: 'FAILED'") || src.includes('status: "FAILED"'), 'Expected status FAILED update for blocked rows');

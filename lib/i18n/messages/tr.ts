@@ -198,6 +198,7 @@ export const tr = {
   "seal.callerPhoneLabel": "Arayan Numara (Teyit Edilen)",
   "seal.clickedNumberLabel": "Tıklanan Numara",
   "seal.mismatchHint": "Bu numara reklamdaki numara ile eşleşmiyor mu?",
+  "seal.zeroAmountHint": "0 TL ile mühür basılamaz. Google Ads'e gönderilecek değer için satış tutarı 0'dan büyük olmalıdır.",
   "seal.mute": "Sesi kapat",
   "seal.unmute": "Sesi aç",
   "seal.starAria": "{star} yıldız",

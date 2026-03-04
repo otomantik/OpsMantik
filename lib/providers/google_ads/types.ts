@@ -40,7 +40,13 @@ export const GOOGLE_ADS = {
   OAUTH_SCOPE: 'https://www.googleapis.com/auth/adwords',
 } as const;
 
-/** ClickConversion for uploadClickConversions (one of gclid, wbraid, gbraid required). */
+/** User identifier for Enhanced Conversions (hashed_phone_number or hashed_email). */
+export interface UserIdentifierRequest {
+  hashed_phone_number?: string | null;
+  hashed_email?: string | null;
+}
+
+/** ClickConversion for uploadClickConversions (one of gclid, wbraid, gbraid required). user_identifiers for Enhanced Conversions. */
 export interface ClickConversionRequest {
   gclid?: string | null;
   wbraid?: string | null;
@@ -50,6 +56,8 @@ export interface ClickConversionRequest {
   conversion_value?: number;
   currency_code?: string;
   order_id?: string | null;
+  /** Enhanced Conversions: hashed user data (max 5 per conversion). */
+  user_identifiers?: UserIdentifierRequest[];
 }
 
 export interface UploadClickConversionsRequest {

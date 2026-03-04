@@ -198,6 +198,7 @@ export const it = {
   "seal.callerPhoneLabel": "Numero chiamante (verificato)",
   "seal.clickedNumberLabel": "Numero cliccato",
   "seal.mismatchHint": "Questo numero è diverso dal numero nell'annuncio?",
+  "seal.zeroAmountHint": "Impossibile sigillare con 0. L'importo di vendita deve essere maggiore di 0 per inviare il valore a Google Ads.",
   "seal.mute": "Silenzia",
   "seal.unmute": "Attiva audio",
   "seal.starAria": "{star} stelle",

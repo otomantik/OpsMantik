@@ -157,6 +157,7 @@ function isRetryablePartialError(message: string): boolean {
   if (
     m.includes('CONVERSION_PRECEDES_CLICK') ||
     m.includes('TOO_RECENT_CONVERSION') ||
+    m.includes('INVALID_CLICK_ID_FORMAT') ||
     m.includes('INVALID_GCLID') ||
     m.includes('UNPARSEABLE_GCLID') ||
     m.includes('INVALID_FIELD_VALUES') ||
@@ -179,12 +180,15 @@ function isRetryablePartialError(message: string): boolean {
   );
 }
 
-/** Extract Google Ads error code from message for provider_error_code (e.g. INVALID_GCLID, DateError.INVALID_FIELD_VALUES). */
+/** Extract Google Ads error code from message for provider_error_code (e.g. INVALID_GCLID, INVALID_CLICK_ID_FORMAT). */
 function extractGoogleErrorCode(message: string): string {
   const m = message;
   const patterns = [
+    /INVALID_CLICK_ID_FORMAT/i,
     /INVALID_GCLID/i,
     /UNPARSEABLE_GCLID/i,
+    /UNPARSEABLE_GBRAID/i,
+    /UNPARSEABLE_WBRAID/i,
     /CONVERSION_PRECEDES_CLICK/i,
     /TOO_RECENT_CONVERSION/i,
     /DateError\.INVALID_FIELD_VALUES/i,

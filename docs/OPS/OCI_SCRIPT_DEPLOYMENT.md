@@ -44,6 +44,10 @@ For local mock runs (`node scripts/google-ads-oci/GoogleAdsScript.js`):
 - **Upload Failure Invariant:** On `upload.apply()` exception, script returns `uploadFailed: true` and does **not** call ACK
 - **DETERMINISTIC_SKIP Audit:** Skipped V1 items are sent as `skippedIds` to ACK endpoint; backend marks them COMPLETED with `provider_error_category = 'DETERMINISTIC_SKIP'`
 
+## Sites migrated to API (Worker)
+
+When a site is switched to **Worker (API)** — `oci_sync_method = 'api'` — it must be **removed from the Apps Script** so only the worker processes its queue (no dual-channel). See **SOP: Apps Script Quarantine (Sunset Maneuver)** in `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_KONTROL.md` (Phase 3): remove the site ID from Script Properties (`OPSMANTIK_SITE_ID` or equivalent).
+
 ## Verification
 
 1. Run the script in Google Ads (Test or Production)

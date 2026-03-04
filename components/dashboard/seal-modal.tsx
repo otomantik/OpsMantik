@@ -62,7 +62,8 @@ export function SealModal({
   const effectiveAmount =
     customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null;
   const priceValid = effectiveAmount == null || (effectiveAmount >= 0 && Number.isFinite(effectiveAmount));
-  const canSave = priceValid;
+  // Mühür için satış tutarı zorunlu ve > 0 — OCI / Google Ads value pipeline
+  const canSave = priceValid && effectiveAmount != null && effectiveAmount > 0;
   const callerPhoneTrimmed = callerPhone.trim().slice(0, 64);
   const showMismatch =
     callerPhoneTrimmed.length >= 7 &&
@@ -148,6 +149,12 @@ export function SealModal({
               data-testid="seal-modal-custom-amount"
             />
             <p className="text-sm text-slate-600 mt-2">{t('seal.instruction')}</p>
+            {effectiveAmount === 0 && (
+              <div className="flex items-center gap-2 text-amber-700 text-sm mt-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                <span>{t('seal.zeroAmountHint')}</span>
+              </div>
+            )}
           </div>
 
           {clickedNumber && (

@@ -104,15 +104,5 @@ export function computeConversionValue(
     }
 
     // Görüşüldü / satış yok / negatif / NaN → enqueue etme (0 TL mühür Google'a gönderilmez)
-    if (saleAmount == null || !Number.isFinite(saleAmount) || saleAmount <= 0) {
-        return null;
-    }
-
-    // No star → can't compute (legacy path)
-    if (star == null || !Number.isFinite(star)) return null;
-
-    const s = Math.round(star);
-    if (s < config.min_star) return null;
-    const weight = config.weights[s] ?? 1.0;
-    return Math.round(config.base_value * weight * 100) / 100;
+    return null;
 }
