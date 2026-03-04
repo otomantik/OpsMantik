@@ -104,5 +104,7 @@ export function calculateSignalEV(
   const decay = getDecayProfileForGear(gear, days);
 
   const baseValueCents = Math.round(safeAovCents * ratio);
-  return Math.round(baseValueCents * decay);
+  // Phase 2.3: Maximum Time Decay Floor (Never drop below 10% of EV)
+  const finalDecay = Math.max(decay, 0.1);
+  return Math.round(baseValueCents * finalDecay);
 }

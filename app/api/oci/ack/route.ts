@@ -19,7 +19,8 @@ import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
-import { logError } from '@/lib/logging/logger';
+import { logError, logWarn } from '@/lib/logging/logger';
+import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,27 +32,52 @@ export async function POST(req: NextRequest) {
     const apiKey = (req.headers.get('x-api-key') || '').trim();
     const envKey = (process.env.OCI_API_KEY || '').trim();
 
-    let authed = false;
+    let authedByGlobalKey = false;
     let siteIdFromToken = '';
 
     if (sessionToken) {
       const parsed = verifySessionToken(sessionToken);
       if (parsed) {
-        authed = true;
         siteIdFromToken = parsed.siteId;
       }
     }
-    if (!authed && envKey && timingSafeCompare(apiKey, envKey)) {
-      authed = true;
+
+    if (envKey && apiKey && timingSafeCompare(apiKey, envKey)) {
+      authedByGlobalKey = true;
     }
 
-    if (!authed) {
+    // P0-4.1: Proceed if valid session OR API key attempt
+    const hasAuthAttempt = !!siteIdFromToken || !!apiKey;
+
+    if (!hasAuthAttempt) {
       const clientId = RateLimitService.getClientId(req);
       await RateLimitService.checkWithMode(clientId, 30, 60 * 1000, {
         mode: 'fail-closed',
         namespace: 'oci-ack-authfail',
       });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Phase 8.2: JWS Asymmetric Signature Verification
+    const signature = req.headers.get('x-oci-signature');
+    const publicKeyB64 = process.env.VOID_PUBLIC_KEY;
+    if (publicKeyB64) {
+      if (!signature) {
+        logWarn('OCI_ACK_MISSING_CRYPTO_SIGNATURE', { siteId: (req.headers.get('x-site-id')) });
+        return NextResponse.json({ error: 'Missing Cryptographic Signature', code: 'CRYPTO_REQUIRED' }, { status: 401 });
+      }
+      try {
+        const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
+        await jose.jwtVerify(signature, publicKey, {
+          issuer: 'opsmantik-oci-script',
+          audience: 'opsmantik-api',
+        });
+      } catch (err) {
+        logError('OCI_ACK_CRYPTO_MISMATCH', { error: err instanceof Error ? err.message : String(err) });
+        return NextResponse.json({ error: 'Cryptographic Mismatch', code: 'AUTH_FAILED' }, { status: 401 });
+      }
+    } else {
+      logWarn('OCI_ACK_CRYPTO_DISABLED', { msg: 'VOID_PUBLIC_KEY missing; asymmetric verification bypassed (DEV ONLY).' });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -81,21 +107,18 @@ export async function POST(req: NextRequest) {
     }
     if (resolvedSite) siteUuid = resolvedSite.id;
 
-    // P0-4.1: Tenant isolation — x-api-key auth MUST bind to site.oci_api_key
-    const usedApiKeyAuth = authed && !siteIdFromToken;
-    if (usedApiKeyAuth) {
+    // P0-4.1: Final Authentication Verification
+    if (apiKey && !authedByGlobalKey) {
       if (!resolvedSite) {
-        return NextResponse.json(
-          { error: 'Tenant isolation violation: API key does not match requested site' },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: 'Unauthorized: Site not found' }, { status: 401 });
       }
       const siteKey = resolvedSite.oci_api_key ?? '';
       if (!siteKey || !timingSafeCompare(siteKey, apiKey)) {
-        return NextResponse.json(
-          { error: 'Tenant isolation violation: API key does not match requested site' },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: 'Unauthorized: Invalid API key' }, { status: 401 });
+      }
+    } else if (siteIdFromToken) {
+      if (siteIdFromToken !== resolvedSite?.id) {
+        return NextResponse.json({ error: 'Forbidden: Token site mismatch' }, { status: 403 });
       }
     }
 

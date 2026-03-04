@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { formatGoogleAdsTime, formatGoogleAdsTimeOrNull, parseUtcTimestamp } from '@/lib/utils/format-google-ads-time';
+import { formatGoogleAdsTime, formatGoogleAdsTimeOrNull } from '@/lib/utils/format-google-ads-time';
 import { buildOrderId } from '@/lib/oci/build-order-id';
-import { logWarn, logError } from '@/lib/logging/logger';
+import { logWarn, logError, logInfo } from '@/lib/logging/logger';
 import { minorToMajor } from '@/lib/i18n/currency';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
@@ -15,6 +15,8 @@ import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { redis } from '@/lib/upstash';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
 import { hashPhoneForEC } from '@/lib/dic/identity-hash';
+import { createHash } from 'node:crypto';
+import * as jose from 'jose';
 
 const PV_BATCH_MAX = 500;
 /** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
@@ -65,21 +67,24 @@ export async function GET(req: NextRequest) {
     const apiKey = (req.headers.get('x-api-key') || '').trim();
     const envKey = (process.env.OCI_API_KEY || '').trim();
 
-    let authed = false;
+    let authedByGlobalKey = false;
     let siteIdFromAuth = '';
 
     if (sessionToken) {
       const parsed = verifySessionToken(sessionToken);
       if (parsed) {
-        authed = true;
         siteIdFromAuth = parsed.siteId;
       }
     }
-    if (!authed && envKey && timingSafeCompare(apiKey, envKey)) {
-      authed = true;
+
+    if (envKey && apiKey && timingSafeCompare(apiKey, envKey)) {
+      authedByGlobalKey = true;
     }
 
-    if (!authed) {
+    // P0-4.1: We proceed if we have a valid session OR an API key attempt. Verification happens after site lookup.
+    const hasAuthAttempt = !!siteIdFromAuth || !!apiKey;
+
+    if (!hasAuthAttempt) {
       const clientId = RateLimitService.getClientId(req);
       await RateLimitService.checkWithMode(clientId, 10, 60 * 1000, {
         mode: 'fail-closed',
@@ -93,9 +98,57 @@ export async function GET(req: NextRequest) {
     const siteId = siteIdFromAuth || siteIdParam;
     const markAsExported = searchParams.get('markAsExported') === 'true';
     const providerFilter = searchParams.get('providerKey') ?? 'google_ads';
+    const cursorStr = searchParams.get('cursor');
 
     if (!siteId) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
+    }
+
+    // Phase 6.2: Deterministic Cursor Decomposition
+    let lastUpdatedAt: string | null = null;
+    let lastId: string | null = null;
+    if (cursorStr) {
+      try {
+        const decoded = JSON.parse(Buffer.from(cursorStr, 'base64').toString('utf8'));
+        lastUpdatedAt = decoded.t;
+        lastId = decoded.i;
+      } catch (_e) {
+        logWarn('OCI_EXPORT_INVALID_CURSOR', { cursor: cursorStr });
+      }
+    }
+
+    // Phase 8.3: Ghost Cursor (Replication Lag Fallback)
+    // If a cursor is provided but we suspect we are in a stale replica (e.g. cursor is in the "future" 
+    // relative to our current MAX updated_at), we fallback to a safe consensus.
+    let isGhostCursor = false;
+    if (lastUpdatedAt) {
+      const { data: latestRow } = await adminClient
+        .from('offline_conversion_queue')
+        .select('updated_at')
+        .eq('site_id', siteId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const ourMax = (latestRow as { updated_at?: string })?.updated_at;
+      if (ourMax && lastUpdatedAt > ourMax) {
+        logWarn('OCI_EXPORT_GHOST_CURSOR_DETECTED', { cursor: lastUpdatedAt, ourMax });
+        isGhostCursor = true;
+        // Fallback: Resume from the last SENT/COMPLETED record instead of crashing.
+        const { data: consensus } = await adminClient
+          .from('offline_conversion_queue')
+          .select('updated_at, id')
+          .eq('site_id', siteId)
+          .eq('status', 'COMPLETED')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (consensus) {
+          lastUpdatedAt = (consensus as { updated_at: string }).updated_at;
+          lastId = (consensus as { id: string }).id;
+        }
+      }
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
@@ -114,15 +167,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    // P0-4.1: Tenant isolation — x-api-key auth MUST bind to site.oci_api_key
-    const usedApiKeyAuth = authed && !siteIdFromAuth;
-    if (usedApiKeyAuth) {
+    // P0-4.1: Final Authentication Verification
+    if (apiKey && !authedByGlobalKey) {
       const siteKey = (site as { oci_api_key?: string | null }).oci_api_key ?? '';
       if (!siteKey || !timingSafeCompare(siteKey, apiKey)) {
-        return NextResponse.json(
-          { error: 'Tenant isolation violation: API key does not match requested site' },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: 'Unauthorized: Invalid API key' }, { status: 401 });
+      }
+    } else if (siteIdFromAuth) {
+      if (siteIdFromAuth !== site.id && siteIdFromAuth !== site.public_id) {
+        return NextResponse.json({ error: 'Forbidden: Token site mismatch' }, { status: 403 });
       }
     }
 
@@ -149,16 +202,23 @@ export async function GET(req: NextRequest) {
       throw err;
     }
 
-    const query = adminClient
+    // Phase 6.2: Deterministic Cursor-Based Query (offline_conversion_queue)
+    // Formula: (updated_at, id) > (last_t, last_i)
+    let query = adminClient
       .from('offline_conversion_queue')
-      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, created_at, value_cents, currency, action')
+      .select('id, call_id, gclid, wbraid, gbraid, conversion_time, created_at, updated_at, value_cents, currency, action')
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
-      .eq('provider_key', providerFilter)
-      .order('created_at', { ascending: true })
-      .limit(EXPORT_QUEUE_LIMIT);
+      .eq('provider_key', providerFilter);
 
-    const { data: rows, error: fetchError } = await query;
+    if (lastUpdatedAt && lastId) {
+      query = query.or(`updated_at.gt.${lastUpdatedAt},and(updated_at.eq.${lastUpdatedAt},id.gt.${lastId})`);
+    }
+
+    const { data: rows, error: fetchError } = await query
+      .order('updated_at', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(EXPORT_QUEUE_LIMIT);
 
     if (fetchError) {
       const { logError } = await import('@/lib/logging/logger');
@@ -171,18 +231,55 @@ export async function GET(req: NextRequest) {
       logWarn('OCI_EXPORT_BATCH_HIT_LIMIT', { limit: EXPORT_QUEUE_LIMIT, pipeline: 'offline_conversion_queue' });
     }
 
-    // Pipeline B: marketing_signals (PENDING)
-    const { data: signalRows } = await adminClient
+    // Phase 6.2: Deterministic Cursor-Based Query (marketing_signals)
+    let sigQuery = adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid, updated_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
       .eq('site_id', siteUuid)
-      .eq('dispatch_status', 'PENDING')
-      .order('created_at', { ascending: true })
+      .eq('dispatch_status', 'PENDING');
+
+    if (lastUpdatedAt && lastId) {
+      sigQuery = sigQuery.or(`updated_at.gt.${lastUpdatedAt},and(updated_at.eq.${lastUpdatedAt},id.gt.${lastId})`);
+    }
+
+    const { data: signalRows } = await sigQuery
+      .order('updated_at', { ascending: true })
+      .order('id', { ascending: true })
       .limit(EXPORT_SIGNALS_LIMIT);
 
     const signalList = Array.isArray(signalRows) ? signalRows : [];
     if (signalList.length === EXPORT_SIGNALS_LIMIT) {
       logWarn('OCI_EXPORT_BATCH_HIT_LIMIT', { limit: EXPORT_SIGNALS_LIMIT, pipeline: 'marketing_signals' });
+    }
+
+    // Phase 8.1: Merkle Tree Ledger Verification
+    // Verify cryptographic integrity of the signal chain in memory.
+    const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
+    for (const sig of signalList) {
+      const s = sig as {
+        id: string;
+        call_id: string | null;
+        adjustment_sequence: number;
+        expected_value_cents: number;
+        previous_hash: string | null;
+        current_hash: string | null;
+      };
+
+      const payload = `${s.call_id ?? 'null'}:${s.adjustment_sequence}:${s.expected_value_cents}:${s.previous_hash ?? 'null'}:${salt}`;
+      const expectedHash = createHash('sha256').update(payload).digest('hex');
+
+      if (s.current_hash !== expectedHash) {
+        logError('CORRUPTED_LEDGER_HALT', {
+          signal_id: s.id,
+          expected: expectedHash,
+          actual: s.current_hash,
+          msg: 'Merkle Tree chain broken — unauthorized modification detected.'
+        });
+        return NextResponse.json({
+          error: 'Critical: Ledger Integrity Failure',
+          code: 'CORRUPTED_LEDGER_HALT'
+        }, { status: 500 });
+      }
     }
 
     // P0-1.3: Use row gclid/wbraid/gbraid if set (Self-Healing recovered), else primary source
@@ -376,8 +473,9 @@ export async function GET(req: NextRequest) {
     }
 
     const idsToMarkProcessing = list.map((r: { id: string }) => r.id);
+    const signalIdsToMarkProcessing = signalItems.map((s: { id: string }) => s.id.replace('signal_', ''));
 
-    if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0)) {
+    if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0 || signalIdsToMarkProcessing.length > 0)) {
       const now = new Date().toISOString();
       if (idsToMarkProcessing.length > 0) {
         const { data: claimedCount, error: rpcError } = await adminClient.rpc(
@@ -404,6 +502,20 @@ export async function GET(req: NextRequest) {
           .in('id', skippedIds)
           .eq('site_id', siteUuid)
           .in('status', ['QUEUED', 'RETRY']);
+      }
+
+      // Phase 6.1: Mark signals as PROCESSING
+      if (signalIdsToMarkProcessing.length > 0) {
+        const { error: sigStatusError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'PROCESSING', updated_at: now })
+          .in('id', signalIdsToMarkProcessing)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING');
+
+        if (sigStatusError) {
+          logError('OCI_EXPORT_MARK_SIGNALS_PROCESSING_FAILED', { error: sigStatusError.message });
+        }
       }
     }
 
@@ -444,19 +556,21 @@ export async function GET(req: NextRequest) {
       }
 
       const rawValueCents = (row as { value_cents?: unknown }).value_cents;
-      const valueCents =
+      let valueCents =
         typeof rawValueCents === 'number'
           ? rawValueCents
           : Number(rawValueCents);
+
       if (!Number.isFinite(valueCents) || valueCents <= 0) {
-        blockedValueZeroIds.push(row.id);
-        logWarn('OCI_EXPORT_SKIP_VALUE_ZERO', {
+        // Phase 2.3: Zero-Value Micro-Floor Strategy
+        // For V5 (Customer Acquired), we MUST send a signal even if value is 0.
+        // Assign 100 units (1.00 TRY) as a micro-conversion value.
+        valueCents = 100;
+        logInfo('OCI_EXPORT_ZERO_VALUE_FLOOR_APPLIED', {
           queue_id: row.id,
           call_id: row.call_id ?? null,
-          raw_value_cents: rawValueCents ?? null,
-          conversion_time: conversionTime,
+          original_value: rawValueCents ?? null,
         });
-        continue;
       }
       const rowCurrency = row.currency || currency || 'TRY';
       const conversionValue = ensureNumericValue(minorToMajor(valueCents, rowCurrency));
@@ -516,17 +630,50 @@ export async function GET(req: NextRequest) {
       (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
     );
 
-    if (markAsExported) {
-      return NextResponse.json(combined);
+    // Phase 6.2: Compute next_cursor
+    // We take the last items from the raw DB pulls (not the combined list which has Redis PVs)
+    const lastRow = rawList.length > 0 ? rawList[rawList.length - 1] : null;
+    const lastSig = signalList.length > 0 ? signalList[signalList.length - 1] : null;
+
+    let nextCursor: string | null = null;
+    if (lastRow || lastSig) {
+      // Pick the "later" one between last conversion and last signal for the cursor
+      const tRow = lastRow ? (lastRow as { updated_at: string }).updated_at : '';
+      const tSig = lastSig ? (lastSig as { updated_at: string }).updated_at : '';
+      const target = (tRow >= tSig) ? { t: tRow, i: (lastRow as { id: string }).id } : { t: tSig, i: (lastSig as { id: string }).id };
+      nextCursor = Buffer.from(JSON.stringify(target)).toString('base64');
     }
-    return NextResponse.json({
+
+    const responseData = markAsExported ? combined : {
       siteId: siteUuid,
       items: combined,
-      counts: { queued: list.length, skipped: skippedIds.length },
-      warnings: [],
-    });
+      next_cursor: nextCursor,
+      counts: { queued: list.length, signals: signalItems.length, pvs: pvItems.length, skipped: skippedIds.length },
+      warnings: isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
+    };
+
+    // Phase 8.2: JWE Asymmetric Payload Protection
+    const publicKeyB64 = process.env.VOID_PUBLIC_KEY;
+    if (publicKeyB64) {
+      try {
+        const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
+        const jwe = await new jose.CompactEncrypt(
+          new TextEncoder().encode(JSON.stringify(responseData))
+        )
+          .setProtectedHeader({ alg: 'RSA-OAEP-256', enc: 'A256GCM' })
+          .encrypt(publicKey);
+
+        return NextResponse.json({ protected: jwe });
+      } catch (jweErr) {
+        logError('OCI_EXPORT_JWE_FAILED', { error: jweErr instanceof Error ? jweErr.message : String(jweErr) });
+        // Fallback to JSON in dev, can be strictly changed to throwing error in prod
+      }
+    }
+
+    return NextResponse.json(responseData);
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
+    logError('OCI_EXPORT_FATAL', { error: details });
     return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
   }
 }

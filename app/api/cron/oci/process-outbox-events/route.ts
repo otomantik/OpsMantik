@@ -89,6 +89,48 @@ async function runProcessOutbox() {
             logInfo('outbox_v3v4_emitted', { outbox_id: id, call_id: callId, gear });
           }
         } else if (leadScore === 100) {
+          // Phase 2.2: Temporal Funnel Backfill
+          // Google Ads ML profile requires gradual funnel signals (V3 -> V4 -> V5).
+          // If a direct V5 (Won) comes in, we MUST inject missing V3/V4 if they don't exist.
+          const { data: existingSignals } = await adminClient
+            .from('marketing_signals')
+            .select('signal_type')
+            .eq('call_id', callId)
+            .in('signal_type', ['V3_ENGAGE', 'V4_INTENT']);
+
+          const existingTypes = new Set(existingSignals?.map(s => s.signal_type) ?? []);
+          const primary = await getPrimarySource(siteId, { callId });
+          const baseTimeMs = new Date(confirmedAt).getTime();
+
+          // Sequential Injection
+          if (!existingTypes.has('V3_ENGAGE')) {
+            await evaluateAndRouteSignal('V3_ENGAGE', {
+              siteId,
+              callId,
+              gclid: primary?.gclid ?? null,
+              wbraid: primary?.wbraid ?? null,
+              gbraid: primary?.gbraid ?? null,
+              aov: 0,
+              clickDate: new Date(payload?.created_at ?? confirmedAt),
+              signalDate: new Date(baseTimeMs - 2000), // T-2000ms
+            });
+            logInfo('outbox_funnel_backfill_v3', { call_id: callId });
+          }
+
+          if (!existingTypes.has('V4_INTENT')) {
+            await evaluateAndRouteSignal('V4_INTENT', {
+              siteId,
+              callId,
+              gclid: primary?.gclid ?? null,
+              wbraid: primary?.wbraid ?? null,
+              gbraid: primary?.gbraid ?? null,
+              aov: 0,
+              clickDate: new Date(payload?.created_at ?? confirmedAt),
+              signalDate: new Date(baseTimeMs - 1000), // T-1000ms
+            });
+            logInfo('outbox_funnel_backfill_v4', { call_id: callId });
+          }
+
           const result = await enqueueSealConversion({
             callId,
             siteId,
@@ -115,7 +157,7 @@ async function runProcessOutbox() {
                     'Content-Type': 'application/json',
                     ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
                   },
-                }).catch(() => {});
+                }).catch(() => { });
               }
             }
           } else {

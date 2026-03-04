@@ -7,6 +7,7 @@
  * Singularity: Every branch appends to Causal DNA; dropped paths logged to shadow_decisions.
  */
 
+import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
 import { calculateDecayDays } from '@/lib/shared/time-utils';
@@ -200,8 +201,34 @@ export async function evaluateAndRouteSignal(
   dna = appendBranch(dna, `${gear}_marketing_signals`, ['auth', 'idempotency', 'usage'], { aovCents, clickDate: clickDate.toISOString(), signalDate: signalDate.toISOString(), days }, { conversionValue, finalCents, days, logic_branch: 'Standard_Decay' });
   const legacyType = gearToLegacySignalType(gear);
   const name = conversionName ?? OPSMANTIK_CONVERSION_NAMES[gear];
-
   const causalDnaJson = toJsonb(dna);
+
+  // Phase 8.1: Append-Only Ledger Sequence & Merkle Logic
+  // Automatically increment adjustment_sequence and chain hashes.
+  let sequence = 0;
+  let previousHash: string | null = null;
+
+  if (callId) {
+    const { data: existing } = await adminClient
+      .from('marketing_signals')
+      .select('adjustment_sequence, current_hash')
+      .eq('site_id', siteId)
+      .eq('call_id', callId)
+      .eq('google_conversion_name', name)
+      .order('adjustment_sequence', { ascending: false })
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      sequence = (existing[0].adjustment_sequence ?? 0) + 1;
+      previousHash = existing[0].current_hash ?? null;
+    }
+  }
+
+  // Cryptographic Ledger Verification Hash
+  const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
+  const hashPayload = `${callId ?? 'null'}:${sequence}:${finalCents}:${previousHash ?? 'null'}:${salt}`;
+  const currentHash = createHash('sha256').update(hashPayload).digest('hex');
+
   const { data, error } = await adminClient
     .from('marketing_signals')
     .insert({
@@ -216,15 +243,18 @@ export async function evaluateAndRouteSignal(
       causal_dna: causalDnaJson,
       entropy_score: entropyScore,
       uncertainty_bit: uncertaintyBit,
+      adjustment_sequence: sequence,
+      previous_hash: previousHash,
+      current_hash: currentHash,
     })
     .select('id')
     .single();
 
   if (error) {
-    // PR-OCI-3: Unique violation (23505) = duplicate (site, call, gear) → idempotent success
+    // PR-OCI-3: Unique violation (23505) = duplicate (site, call, gear, sequence) → idempotent success
     const code = (error as { code?: string })?.code;
     if (code === '23505') {
-      dna = appendBranch(dna, 'marketing_signals_duplicate_ignored', ['auth', 'idempotency'], { callId: callId ?? null }, {});
+      dna = appendBranch(dna, 'marketing_signals_duplicate_ignored', ['auth', 'idempotency'], { callId: callId ?? null, sequence, hash: currentHash }, {});
       return { routed: true, conversionValue, causalDna: toJsonb(dna) };
     }
     console.error('[MizanMantik] marketing_signals insert error:', error.message);
@@ -240,7 +270,7 @@ export async function evaluateAndRouteSignal(
       p_aggregate_id: signalId,
       p_causal_dna: causalDnaJson,
     })
-    .then(() => {}, (err: unknown) => console.error('[MizanMantik] append_causal_dna_ledger failed:', err));
+    .then(() => { }, (err: unknown) => console.error('[MizanMantik] append_causal_dna_ledger failed:', err));
   return { routed: true, signalId, conversionValue, causalDna: causalDnaJson };
 }
 
