@@ -86,6 +86,9 @@ export function useIntentQualification(
           const callIds: string[] = [];
           const doSessionUpdate = Boolean(matchedSessionId && String(matchedSessionId).trim().length > 0);
 
+          // ALWAYS include the intent the user clicked on!
+          callIds.push(intentId);
+
           if (doSessionUpdate) {
             const { data: rows, error: fetchError } = await supabase
               .from('calls')
@@ -94,16 +97,15 @@ export function useIntentQualification(
               .eq('matched_session_id', matchedSessionId as string)
               .eq('source', 'click')
               .in('status', ['intent', null]);
-            if (fetchError) throw fetchError;
-            callIds.push(...(rows ?? []).map((r) => r.id));
-          } else {
-            callIds.push(intentId);
+            if (!fetchError && rows) {
+              const extraIds = rows.map((r) => r.id).filter(id => id !== intentId);
+              callIds.push(...extraIds);
+            }
           }
 
           if (callIds.length === 0) {
-            const msg = doSessionUpdate
-              ? t('toast.error.sessionAlreadyQualified')
-              : t('toast.error.intentAlreadyQualified');
+            // This should never happen now, but keeping for safety
+            const msg = t('toast.error.intentAlreadyQualified');
             setError(msg);
             return { success: false, error: msg };
           }
