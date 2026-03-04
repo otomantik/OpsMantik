@@ -22,6 +22,9 @@ function getHeader(req: NextRequest | Request, name: string): string | null {
  */
 export function getClientIp(req: NextRequest | Request): string | null {
   const xff = getHeader(req, 'x-forwarded-for');
+  if (!xff) {
+    // SST failure detection potentially needed here.
+  }
   const first = xff ? xff.split(',')[0]?.trim() : null;
   if (first) return first;
 

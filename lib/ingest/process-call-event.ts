@@ -6,7 +6,6 @@
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
-import { adminClient } from '@/lib/supabase/admin';
 import { publishToQStash } from '@/lib/ingest/publish';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
@@ -82,8 +81,8 @@ export async function processCallEvent(
   const sessionMonth = payload.matched_session_month ?? (payload.matched_at ? new Date(payload.matched_at).toISOString().slice(0, 7) + '-01' : null);
   const payloadHasClickIds = Boolean(
     (payload.gclid && String(payload.gclid).trim()) ||
-      (payload.wbraid && String(payload.wbraid).trim()) ||
-      (payload.gbraid && String(payload.gbraid).trim())
+    (payload.wbraid && String(payload.wbraid).trim()) ||
+    (payload.gbraid && String(payload.gbraid).trim())
   );
   if (payload.matched_session_id && sessionMonth && payloadHasClickIds) {
     try {
@@ -240,6 +239,7 @@ export async function processCallEvent(
       aov: 0,
       clickDate: signalDate,
       signalDate,
+      clientIp: payload.clientIp,
     });
   } catch (v2Err) {
     console.error('[PR-OCI-2] V2_PULSE emit failed (non-fatal):', (v2Err as Error)?.message ?? v2Err);

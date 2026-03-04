@@ -63,9 +63,9 @@ test('OCI Multi-Site: Independent Ledger & Signature Isolation', async (t) => {
             .setAudience('opsmantik-api')
             .sign(keysA.privateKey);
 
-        // Site B signs an ACK for its records
+        // Site B signs an ACK for its records (kept to verify it doesn't cross-validate with Site A's key)
         const ackIdB = ['sig_B_0'];
-        const signatureB = await new jose.SignJWT({ action: 'ack', ids: ackIdB })
+        void await new jose.SignJWT({ action: 'ack', ids: ackIdB })
             .setProtectedHeader({ alg: 'RS256' })
             .setIssuer('opsmantik-oci-script')
             .setAudience('opsmantik-api')
@@ -92,7 +92,8 @@ test('OCI Multi-Site: Independent Ledger & Signature Isolation', async (t) => {
         // Site A TAMPERED
         siteA_Ledger[0].val = 99999;
 
-        const verify = (ledger: any[], salt: string) => {
+        interface LedgerEntry { call_id: string; seq: number; val: number; curr: string; }
+        const verify = (ledger: LedgerEntry[], salt: string) => {
             for (const entry of ledger) {
                 const e = calculateMerkleHash(entry.call_id, entry.seq, entry.val, null, salt);
                 if (entry.curr !== e) return false;

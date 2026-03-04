@@ -51,8 +51,8 @@ export interface GeoExtractionResult {
 
 /** Ghost geo sentinel cities (edge/proxy/CDN locations); case-insensitive. When strictGhostGeo, return Unknown/null. */
 const GHOST_GEO_CITIES = new Set([
-  'rome', 'amsterdam', 'roma',
-  'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
+    'rome', 'amsterdam', 'roma',
+    'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
 ]);
 
 /** Returns true if value is a known ghost city/district (case-insensitive). */
@@ -159,7 +159,7 @@ export function extractGeoInfo(
         districtFromGeneric ??
         null;
 
-    let country = countryFromCloudflare ??
+    const country = countryFromCloudflare ??
         countryFromVercel ??
         countryFromGeneric ??
         'Unknown';

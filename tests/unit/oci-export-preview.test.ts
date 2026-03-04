@@ -10,8 +10,8 @@ import { join } from 'node:path';
 test('google-ads-export route: markAsExported true returns flat array', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('if (markAsExported)'), 'branch on markAsExported');
-  assert.ok(src.includes('return NextResponse.json(combined)'), 'flat array when true');
+  assert.ok(src.includes('markAsExported ? combined :'), 'branch on markAsExported via ternary');
+  assert.ok(src.includes('NextResponse.json(responseData)'), 'structured response fallback');
 });
 
 test('google-ads-export route: markAsExported false returns structured preview', () => {

@@ -152,11 +152,33 @@ export async function evaluateAndRouteSignal(
     return { routed: true, pvId, conversionValue: 0, causalDna: toJsonb(dna) };
   }
 
-  // V5_SEAL: Iron Seal — absolute value, no decay
+  // V2–V5: Require site configuration for value & weights
+  const config = await getSiteValueConfig(siteId);
+
+  // Phase 19: Forensic SST & Geo-Fence Reinforcement
+  const clientIp = payload.clientIp;
+  if (!clientIp) {
+    dna = appendBranch(dna, 'SST_HEADER_FAIL', ['audit'], {}, { reason: 'missing_xff' });
+  } else {
+    // Basic Geo-Fence for TR sites (Düsseldorf Paradox prevention)
+    const isTurkishSite =
+      (config.siteName || '').includes('Muratcan') ||
+      (config.siteName || '').includes('Yap') ||
+      siteId === 'e0f47012-7dec-11d0-a765-00a0c91e6bf6'; // Muratcan Akü / Mock
+    if (isTurkishSite) {
+      // Trace Geo-Fence context in DNA
+      dna = appendBranch(dna, 'GEO_FENCE_TR_CHECK', ['audit'], { clientIp }, { isTurkishSite });
+    }
+  }
+
+  // V5_SEAL: Iron Seal — absolute value or AOV Floor (The 1000 TL Axiom)
   if (gear === 'V5_SEAL') {
-    const cents = Number(valueCents);
-    const conversionValue = Number.isFinite(cents) && cents > 0 ? Math.round((cents / 100) * 100) / 100 : 0;
-    dna = appendBranch(dna, 'V5_SEAL_Standard_Conversion', ['auth', 'idempotency', 'usage'], { valueCents: cents, raw: valueCents }, { conversionValue, math_version: 'v1.0.4' });
+    let cents = Number(valueCents);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      cents = config.minConversionValueCents;
+    }
+    const conversionValue = Math.round((cents / 100) * 100) / 100;
+    dna = appendBranch(dna, 'V5_SEAL_Standard_Conversion', ['auth', 'idempotency', 'usage'], { valueCents: cents, raw: valueCents, fallback: cents !== Number(valueCents) }, { conversionValue, math_version: 'v1.0.5' });
     return { routed: true, conversionValue, causalDna: toJsonb(dna) };
   }
 
@@ -177,7 +199,6 @@ export async function evaluateAndRouteSignal(
   }
 
   // V2–V4: marketing_signals (PR-VK-7: integer cents SSOT; MODULE 3: ratio-based floor)
-  const config = await getSiteValueConfig(siteId);
   const effectiveAovMajor = config.defaultAov ?? aov ?? 0;
   const aovCents = Math.round(Number(effectiveAovMajor) * 100);
   let finalCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config.intentWeights);

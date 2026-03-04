@@ -28,6 +28,20 @@
     "file": "app/api/customers/invite/route.ts",
     "table": "customer_invite_audit",
     "reason": "Global audit log (not tenant scoped by site_id)."
+  },
+  {
+    "file": "scripts/forensics-audit.ts",
+    "table": "sites",
+    "reason": "Global diagnostics/forensics needs to inventory all sites."
+  },
+  {
+    "file": "scripts/forensics-audit.ts",
+    "table": "marketing_signals",
+    "reason": "Global diagnostics/forensics needs to inventory all signals."
+  },
+  {
+    "file": "scripts/forensics-audit.ts",
+    "table": "offline_conversion_queue",
+    "reason": "Global diagnostics/forensics needs to inventory all queue items."
   }
 ]
-

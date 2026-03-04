@@ -55,16 +55,16 @@ export function calculateConversionValueMinor({
       ? minConversionValueCents
       : majorToMinor(AOV_FLOOR_MAJOR, currency ?? 'TRY');
 
-  // V1: Always 0
+  // V1: Never return 0. Return 1 minor unit (0.01 TL) for DDA visibility.
   if (gear === 'V1_PAGEVIEW') {
-    return 0;
+    return 1;
   }
 
-  // V5: Sale amount or 0 (no AOV, no decay)
+  // V5: Sale amount or aovFloorMinor fallback (The 1000 TL Axiom)
   if (gear === 'V5_SEAL') {
     return saleAmountMinor != null && Number.isFinite(saleAmountMinor) && saleAmountMinor > 0
       ? saleAmountMinor
-      : 0;
+      : aovFloorMinor;
   }
 
   // V2–V4: AOV-based training signal (ratio from intentWeights; floor from DB or fallback)

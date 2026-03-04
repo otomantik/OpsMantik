@@ -19,7 +19,7 @@ import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
-import { logError, logWarn } from '@/lib/logging/logger';
+import { logError, logWarn, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     let siteIdFromToken = '';
 
     if (sessionToken) {
-      const parsed = verifySessionToken(sessionToken);
+      const parsed = await verifySessionToken(sessionToken);
       if (parsed) {
         siteIdFromToken = parsed.siteId;
       }
@@ -58,14 +58,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Phase 8.2: JWS Asymmetric Signature Verification
+    // Phase 8.2: JWS Asymmetric Signature Verification (Optional enforcement)
+    // If signature is present, we verify. If not, we fall back to API Key / Session auth.
     const signature = req.headers.get('x-oci-signature');
     const publicKeyB64 = process.env.VOID_PUBLIC_KEY;
-    if (publicKeyB64) {
-      if (!signature) {
-        logWarn('OCI_ACK_MISSING_CRYPTO_SIGNATURE', { siteId: (req.headers.get('x-site-id')) });
-        return NextResponse.json({ error: 'Missing Cryptographic Signature', code: 'CRYPTO_REQUIRED' }, { status: 401 });
-      }
+    if (publicKeyB64 && signature) {
       try {
         const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
         await jose.jwtVerify(signature, publicKey, {
@@ -76,8 +73,8 @@ export async function POST(req: NextRequest) {
         logError('OCI_ACK_CRYPTO_MISMATCH', { error: err instanceof Error ? err.message : String(err) });
         return NextResponse.json({ error: 'Cryptographic Mismatch', code: 'AUTH_FAILED' }, { status: 401 });
       }
-    } else {
-      logWarn('OCI_ACK_CRYPTO_DISABLED', { msg: 'VOID_PUBLIC_KEY missing; asymmetric verification bypassed (DEV ONLY).' });
+    } else if (publicKeyB64 && !signature) {
+      logInfo('OCI_ACK_SIMPLE_AUTH', { msg: 'No crypto signature; proceeding with API Key validation.' });
     }
 
     const body = await req.json().catch(() => ({}));

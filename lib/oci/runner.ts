@@ -571,7 +571,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
 
         const adapter = getProvider(providerKey);
         const blockedValueZeroIds: string[] = [];
-        let rowsWithValue = siteRows.filter((r) => {
+        const rowsWithValue = siteRows.filter((r) => {
           if (failClosed && mismatchIds.has(r.id)) return false;
           const raw = (r as { value_cents?: unknown }).value_cents;
           const v = typeof raw === 'number' ? raw : Number(raw);

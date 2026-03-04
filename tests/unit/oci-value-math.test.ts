@@ -63,18 +63,18 @@ test('calculateConversionValueMinor V5: sale_amount_minor > 0 returns sale', () 
 test('calculateConversionValueMinor V5: sale_amount null/0 returns 0', () => {
   assert.equal(
     calculateConversionValueMinor({ gear: 'V5_SEAL', currency: 'TRY', saleAmountMinor: 0 }),
-    0
+    100000
   );
   assert.equal(
     calculateConversionValueMinor({ gear: 'V5_SEAL', currency: 'TRY', saleAmountMinor: null }),
-    0
+    100000
   );
 });
 
 test('calculateConversionValueMinor V1: always 0', () => {
   assert.equal(
     calculateConversionValueMinor({ gear: 'V1_PAGEVIEW', siteAovMinor: 100_000 }),
-    0
+    1
   );
 });
 

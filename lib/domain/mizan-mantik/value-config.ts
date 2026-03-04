@@ -14,6 +14,7 @@ export interface IntentWeights {
 
 export interface ValueConfig {
   siteId: string;
+  siteName?: string | null;
   defaultAov: number;
   intentWeights: IntentWeights;
   minConversionValueCents: number;
@@ -69,7 +70,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
 
   const { data: site, error } = await adminClient
     .from('sites')
-    .select('default_aov, intent_weights, min_conversion_value_cents')
+    .select('name, default_aov, intent_weights, min_conversion_value_cents')
     .eq('id', siteId)
     .single();
 
@@ -80,6 +81,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
     );
     const fallback: ValueConfig = {
       siteId,
+      siteName: 'Unknown Site',
       defaultAov: GLOBAL_FALLBACK_AOV,
       intentWeights: { ...DEFAULT_WEIGHTS },
       minConversionValueCents: GLOBAL_MIN_VALUE_CENTS,
@@ -110,6 +112,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
 
   const config: ValueConfig = {
     siteId,
+    siteName: site.name,
     defaultAov,
     intentWeights: finalWeights,
     minConversionValueCents,

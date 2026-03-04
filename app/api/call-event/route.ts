@@ -25,6 +25,7 @@ import type { ScoreBreakdown } from '@/lib/types/call-event';
 import { AdsContextOptionalSchema } from '@/lib/ingest/call-event-worker-payload';
 import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { getClientIp } from '@/lib/request-client-ip';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -495,6 +496,7 @@ export async function POST(req: NextRequest) {
             gbraid: body.gbraid || null,
             signature_hash: signatureHash,
             ua: body.ua || req.headers.get('user-agent'),
+            clientIp: getClientIp(req),
             ...(event_id ? { event_id } : {}),
             ...(value !== null ? { _client_value: value } : {}),
             ...(body.ads_context ? { ads_context: body.ads_context } : {}),

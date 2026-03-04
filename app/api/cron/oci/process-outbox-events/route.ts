@@ -13,6 +13,7 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { adminClient } from '@/lib/supabase/admin';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
+import { OpsGear } from '@/lib/domain/mizan-mantik/types';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
@@ -69,29 +70,9 @@ async function runProcessOutbox() {
       const currency = (payload?.currency ?? 'TRY').trim() || 'TRY';
 
       try {
-        if (leadScore === 60 || leadScore === 80) {
-          const gear = leadScore === 60 ? 'V3_ENGAGE' : 'V4_INTENT';
-          const callCreatedAt = payload?.created_at ?? confirmedAt;
-          const primary = await getPrimarySource(siteId, { callId });
-          const clickDate = new Date(callCreatedAt);
-          const signalDate = new Date(confirmedAt);
-          const result = await evaluateAndRouteSignal(gear, {
-            siteId,
-            callId,
-            gclid: primary?.gclid ?? null,
-            wbraid: primary?.wbraid ?? null,
-            gbraid: primary?.gbraid ?? null,
-            aov: 0,
-            clickDate,
-            signalDate,
-          });
-          if (result.routed) {
-            logInfo('outbox_v3v4_emitted', { outbox_id: id, call_id: callId, gear });
-          }
-        } else if (leadScore === 100) {
-          // Phase 2.2: Temporal Funnel Backfill
-          // Google Ads ML profile requires gradual funnel signals (V3 -> V4 -> V5).
-          // If a direct V5 (Won) comes in, we MUST inject missing V3/V4 if they don't exist.
+        const score = leadScore ?? 0;
+        if (score >= 90) {
+          // Phase 2.2: Temporal Funnel Backfill (V5 case)
           const { data: existingSignals } = await adminClient
             .from('marketing_signals')
             .select('signal_type')
@@ -112,7 +93,7 @@ async function runProcessOutbox() {
               gbraid: primary?.gbraid ?? null,
               aov: 0,
               clickDate: new Date(payload?.created_at ?? confirmedAt),
-              signalDate: new Date(baseTimeMs - 2000), // T-2000ms
+              signalDate: new Date(baseTimeMs - 2000),
             });
             logInfo('outbox_funnel_backfill_v3', { call_id: callId });
           }
@@ -126,7 +107,7 @@ async function runProcessOutbox() {
               gbraid: primary?.gbraid ?? null,
               aov: 0,
               clickDate: new Date(payload?.created_at ?? confirmedAt),
-              signalDate: new Date(baseTimeMs - 1000), // T-1000ms
+              signalDate: new Date(baseTimeMs - 1000),
             });
             logInfo('outbox_funnel_backfill_v4', { call_id: callId });
           }
@@ -141,28 +122,33 @@ async function runProcessOutbox() {
           });
           if (result.enqueued) {
             logInfo('outbox_v5_enqueued', { outbox_id: id, call_id: callId, queue_id: result.queueId });
-            const isProd =
-              process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-            if (isProd && result.queueId) {
-              const workerUrl = process.env.VERCEL_URL
-                ? `https://${process.env.VERCEL_URL}/api/workers/google-ads-oci`
-                : process.env.NEXT_PUBLIC_APP_URL
-                  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/workers/google-ads-oci`
-                  : null;
-              if (workerUrl) {
-                const cronSecret = process.env.CRON_SECRET;
-                void fetch(workerUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
-                  },
-                }).catch(() => { });
-              }
-            }
-          } else {
-            logWarn('outbox_v5_skip', { outbox_id: id, call_id: callId, reason: result.reason });
           }
+        } else if (score >= 10) {
+          // Threshold Banding for V2, V3, V4
+          let gear: OpsGear = 'V2_PULSE';
+          if (score >= 70) gear = 'V4_INTENT';
+          else if (score >= 50) gear = 'V3_ENGAGE';
+
+          const callCreatedAt = payload?.created_at ?? confirmedAt;
+          const primary = await getPrimarySource(siteId, { callId });
+          const clickDate = new Date(callCreatedAt);
+          const signalDate = new Date(confirmedAt);
+
+          const result = await evaluateAndRouteSignal(gear, {
+            siteId,
+            callId,
+            gclid: primary?.gclid ?? null,
+            wbraid: primary?.wbraid ?? null,
+            gbraid: primary?.gbraid ?? null,
+            aov: 0,
+            clickDate,
+            signalDate,
+          });
+          if (result.routed) {
+            logInfo('outbox_signal_emitted', { outbox_id: id, call_id: callId, gear, score });
+          }
+        } else {
+          logInfo('outbox_score_too_low', { outbox_id: id, score, message: 'Ignoring junk or low-interest click' });
         }
 
         await adminClient

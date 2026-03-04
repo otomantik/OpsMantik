@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     let siteIdFromAuth = '';
 
     if (sessionToken) {
-      const parsed = verifySessionToken(sessionToken);
+      const parsed = await verifySessionToken(sessionToken);
       if (parsed) {
         siteIdFromAuth = parsed.siteId;
       }
@@ -112,7 +112,8 @@ export async function GET(req: NextRequest) {
         const decoded = JSON.parse(Buffer.from(cursorStr, 'base64').toString('utf8'));
         lastUpdatedAt = decoded.t;
         lastId = decoded.i;
-      } catch (_e) {
+      } catch (_e: unknown) {
+        void _e;
         logWarn('OCI_EXPORT_INVALID_CURSOR', { cursor: cursorStr });
       }
     }
@@ -344,7 +345,7 @@ export async function GET(req: NextRequest) {
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
       const numVal = rowValue == null ? NaN : Number(rowValue);
-      if (!Number.isFinite(numVal) || numVal <= 0) {
+      if (!Number.isFinite(numVal) || numVal < 0) {
         logWarn('OCI_EXPORT_SIGNAL_SKIP_VALUE', {
           signal_id: (sig as { id: string }).id,
           reason: rowValue == null ? 'NULL_CONVERSION_VALUE' : 'NON_POSITIVE_CONVERSION_VALUE',
@@ -652,9 +653,10 @@ export async function GET(req: NextRequest) {
       warnings: isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
     };
 
-    // Phase 8.2: JWE Asymmetric Payload Protection
+    // Phase 8.2: JWE Asymmetric Payload Protection (Optional side-channel)
     const publicKeyB64 = process.env.VOID_PUBLIC_KEY;
-    if (publicKeyB64) {
+    const wantsJwe = req.headers.get('x-oci-jwe-accept') === 'true';
+    if (publicKeyB64 && wantsJwe) {
       try {
         const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
         const jwe = await new jose.CompactEncrypt(
@@ -662,11 +664,9 @@ export async function GET(req: NextRequest) {
         )
           .setProtectedHeader({ alg: 'RSA-OAEP-256', enc: 'A256GCM' })
           .encrypt(publicKey);
-
         return NextResponse.json({ protected: jwe });
       } catch (jweErr) {
         logError('OCI_EXPORT_JWE_FAILED', { error: jweErr instanceof Error ? jweErr.message : String(jweErr) });
-        // Fallback to JSON in dev, can be strictly changed to throwing error in prod
       }
     }
 

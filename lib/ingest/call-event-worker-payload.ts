@@ -52,6 +52,7 @@ export type CallEventWorkerPayload = {
   gbraid?: string | null;
   signature_hash: string | null;
   ua?: string | null;
+  clientIp?: string | null;
   event_id?: string | null;
   _client_value?: number | null;
   ads_context?: AdsContext | null;

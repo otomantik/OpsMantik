@@ -30,6 +30,8 @@ export interface SignalPayload {
   conversionName?: string;
   /** Singularity: optional fingerprint (e.g. hash(IP+UA)) for entropy_score / uncertainty_bit */
   fingerprint?: string | null;
+  /** Phase 19: Real client IP from SST headers (XFF) for geo-fencing and forensic trace */
+  clientIp?: string | null;
   /** Axiom 3: synthetic discriminator (sequence/timestamp) — if present, V2_PULSE allows multiple intents per session */
   discriminator?: string | null;
 }
