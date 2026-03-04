@@ -66,7 +66,7 @@ function ActiveDeckCard({
     fireQualify(params, true);
   };
 
-  const handleSeal = ({ id }: { id: string; stars?: number }) => {
+  const handleSeal = ({ id }: { id: string }) => {
     // Legacy maps 1-5 to a fixed sealed rate, or handle freely. In UI it's usually 100 max.
     const s = 100; // Seal forces the max limit we defined under the hood.
     // Step 1: remove immediately
@@ -83,7 +83,7 @@ function ActiveDeckCard({
     fireQualify({ score: s, status: 'confirmed' });
   };
 
-  const handleJunk = ({ id }: { id: string; stars?: number }) => {
+  const handleJunk = ({ id }: { id: string }) => {
     onOptimisticRemove(id);
     pushHistoryRow({
       id,
@@ -110,7 +110,7 @@ function ActiveDeckCard({
           intent={intent}
           traffic_source={intent.traffic_source ?? null}
           traffic_medium={intent.traffic_medium ?? null}
-          onSeal={({ id, stars }) => handleSeal({ id, stars })}
+          onSeal={({ id }) => handleSeal({ id })}
           onSealDeal={onSealDeal}
           onJunk={({ id }) => handleJunk({ id })}
           onSkip={() => onSkip()}

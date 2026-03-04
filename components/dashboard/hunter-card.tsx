@@ -193,9 +193,9 @@ export function HunterCard({
   intent: HunterIntent;
   traffic_source?: string | null;
   traffic_medium?: string | null;
-  onSeal: (params: { id: string; stars: number; score: number }) => void;
+  onSeal: (params: { id: string; score: number }) => void;
   onSealDeal?: () => void;
-  onJunk: (params: { id: string; stars: number; score: number }) => void;
+  onJunk: (params: { id: string; score: number }) => void;
   onSkip: (params: { id: string }) => void;
   onQualify?: (params: { score: 60 | 80; status: 'confirmed' }) => void;
   readOnly?: boolean;
@@ -361,7 +361,7 @@ export function HunterCard({
             variant="outline"
             size="sm"
             className="flex-1 min-h-[44px] min-w-[70px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs transition-colors"
-            onClick={() => onJunk({ id: intent.id, stars: 0, score: displayScore })}
+            onClick={() => onJunk({ id: intent.id, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
@@ -410,7 +410,7 @@ export function HunterCard({
           <Button
             size="sm"
             className="flex-2 min-h-[44px] min-w-[100px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-colors"
-            onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, stars: 0, score: displayScore })}
+            onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
             data-testid="hunter-card-seal-deal"

@@ -141,7 +141,6 @@ export function IntentCard({
 
   // Keep existing logic: use same qualification hook, but make the UI "game-like".
   // Default score is 3/5; user can bump quickly if needed.
-  const [score, setScore] = useState<1 | 2 | 3 | 4 | 5>(3);
   const { qualify, saving, error, clearError } = useIntentQualification(
     siteId,
     intent.id,
@@ -171,7 +170,7 @@ export function IntentCard({
   }, [intent.utm_term]);
 
   const handleJunk = async () => {
-    const res = await qualify({ score, status: 'junk' });
+    const res = await qualify({ score: 0, status: 'junk' });
     if (res.success) {
       setFlash('junk');
       setTimeout(() => setFlash(null), 900);
@@ -180,7 +179,7 @@ export function IntentCard({
   };
 
   const handleSeal = async () => {
-    const res = await qualify({ score, status: 'confirmed' });
+    const res = await qualify({ score: 5, status: 'confirmed' });
     if (res.success) {
       setFlash('sealed');
       setTimeout(() => setFlash(null), 900);
@@ -357,29 +356,7 @@ export function IntentCard({
           </div>
         )}
 
-        {/* Quick score picker (kept for legacy logic, but gamified + optional) */}
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="text-sm text-muted-foreground">{t('hunter.leadQuality')}</div>
-          <div className="flex items-center gap-1">
-            {([1, 2, 3, 4, 5] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setScore(s)}
-                disabled={saving}
-                className={cn(
-                  'h-8 w-8 rounded-md border text-sm font-medium tabular-nums transition-colors',
-                  score === s
-                    ? 'border-amber-300 bg-amber-100 text-amber-900'
-                    : 'border-border bg-background text-muted-foreground hover:bg-muted'
-                )}
-                aria-pressed={score === s}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Note: leadQuality score picker removed as per user request to 'clean stars from root' */}
 
         {/* Inline error (since we don't have a global toast system) */}
         {error && (
