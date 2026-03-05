@@ -47,7 +47,7 @@
     "diagnostics": "node scripts/run-diagnostics.mjs",
     "load:smoke": "k6 run tests/load/smoke-load.js",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
-    "test:integration": "node --import tsx --test tests/integration/strict-ingest-skip-db.test.ts tests/integration/pageview-10s-reuse-db.test.ts tests/integration/ads-attribution-strict-db.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/strict-ingest-skip-db.test.ts tests/integration/pageview-10s-reuse-db.test.ts tests/integration/ads-attribution-strict-db.test.ts tests/integration/junk-stays-hidden-queue.test.ts",
     "test:intent-flow": "node --import tsx --test tests/intent-flow.test.ts",
     "test:verify-handshake": "node --import tsx --test tests/api-verify-handshake.test.ts",
     "test:ledger": "node --import tsx --test tests/ledger-immutability.test.ts",

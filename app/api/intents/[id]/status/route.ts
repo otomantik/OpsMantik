@@ -94,13 +94,15 @@ export async function POST(
     const payload: Record<string, unknown> = {};
     if (lead_score !== undefined) payload.lead_score = lead_score;
 
-    const { data: updatedCall, error: updateError } = await supabase.rpc('apply_call_action_v1', {
+    // Use adminClient (service_role) so the write is not blocked by RLS. We already validated
+    // site access and queue:operate; without this, member role 'owner' or RLS can prevent UPDATE.
+    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
       p_call_id: callId,
       p_action_type: actionType,
       p_payload: payload,
-      p_actor_type: 'user',
-      p_actor_id: null,
-      p_metadata: { route, request_id: requestId },
+      p_actor_type: 'system',
+      p_actor_id: user.id,
+      p_metadata: { route, request_id: requestId, user_id: user.id },
     });
 
     if (updateError) {
@@ -112,6 +114,9 @@ export async function POST(
     }
 
     const callObj = Array.isArray(updatedCall) && updatedCall.length === 1 ? updatedCall[0] : updatedCall;
+    if (!callObj) {
+      logError('intent status update returned no row', { request_id: requestId, route, callId, actionType });
+    }
 
     return NextResponse.json({
       success: true,
