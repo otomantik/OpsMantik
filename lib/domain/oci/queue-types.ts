@@ -1,27 +1,31 @@
 /**
  * OCI Queue domain types and validation (shared by API routes and OCI Control UI).
- * Deterministic queue: terminal states COMPLETED | FAILED; attempt_count cap.
+ * Deterministic queue: terminal states COMPLETED | COMPLETED_UNVERIFIED | FAILED | DEAD_LETTER_QUARANTINE.
  */
 
 import { z } from 'zod';
 
-/** Queue row status. Terminal: COMPLETED, FAILED. */
+/** Queue row status. Terminal: COMPLETED, COMPLETED_UNVERIFIED, FAILED, DEAD_LETTER_QUARANTINE. */
 export type QueueStatus =
   | 'QUEUED'
   | 'RETRY'
   | 'PROCESSING'
+  | 'UPLOADED'
   | 'COMPLETED'
-  | 'FAILED';
+  | 'COMPLETED_UNVERIFIED'
+  | 'FAILED'
+  | 'DEAD_LETTER_QUARANTINE';
 
 /** Provider error category for FAILED rows. PERMANENT = terminal non-retry (e.g. attempt cap, manual). */
 export type ProviderErrorCategory =
   | 'VALIDATION'
   | 'TRANSIENT'
+  | 'RATE_LIMIT'
   | 'PERMANENT'
   | 'DETERMINISTIC_SKIP'
   | 'AUTH';
 
-/** After this many export claims, attempt-cap marks row FAILED. */
+/** After this many export claims, attempt-cap escalates rows to dead-letter. */
 export const MAX_ATTEMPTS = 5;
 
 /** All valid queue statuses for validation. */
@@ -29,14 +33,18 @@ export const QUEUE_STATUSES: QueueStatus[] = [
   'QUEUED',
   'RETRY',
   'PROCESSING',
+  'UPLOADED',
   'COMPLETED',
+  'COMPLETED_UNVERIFIED',
   'FAILED',
+  'DEAD_LETTER_QUARANTINE',
 ];
 
 /** All valid provider error categories. */
 export const PROVIDER_ERROR_CATEGORIES: ProviderErrorCategory[] = [
   'VALIDATION',
   'TRANSIENT',
+  'RATE_LIMIT',
   'PERMANENT',
   'DETERMINISTIC_SKIP',
   'AUTH',

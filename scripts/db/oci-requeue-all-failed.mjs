@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tüm FAILED/RETRY (google_ads) dönüşümleri QUEUED yap.
+ * Tüm FAILED/RETRY (google_ads) dönüşümleri RETRY yap (manual retry; DB trigger FAILED→RETRY izin verir, QUEUED vermez).
  * Script export ile çalışacak siteler için. İsteğe bağlı: hem gclid hem gbraid olanlarda sadece gclid bırak.
  *
  * Kullanım: node scripts/db/oci-requeue-all-failed.mjs
@@ -27,7 +27,7 @@ const dryRun = process.argv.includes('--dry-run');
 const oneMinAgo = new Date(Date.now() - 60 * 1000).toISOString();
 
 async function run() {
-  console.log('Tüm FAILED/RETRY (google_ads) → QUEUED');
+  console.log('Tüm FAILED/RETRY (google_ads) → RETRY (manual retry)');
   if (dryRun) console.log('--dry-run: Değişiklik yapılmayacak.\n');
 
   const { data: rows, error } = await supabase
@@ -65,32 +65,38 @@ async function run() {
     console.log('1) Sadece gclid:', hasGclidAndOther.length, 'satırda wbraid/gbraid temizlenecek.');
   }
 
-  // Tümünü QUEUED yap
+  // Tümünü RETRY yap (next_retry_at geçmişte → worker hemen alır; FAILED→RETRY trigger’da izinli)
   const ids = rows.map((r) => r.id);
   if (!dryRun) {
-    const { error: upErr } = await supabase
-      .from('offline_conversion_queue')
-      .update({
-        status: 'QUEUED',
-        next_retry_at: oneMinAgo,
+    const createdAt = new Date().toISOString();
+    const transitionRows = ids.map((id) => ({
+      queue_id: id,
+      new_status: 'RETRY',
+      error_payload: {
         retry_count: 0,
         attempt_count: 0,
-        last_error: null,
-        provider_error_code: null,
-        provider_error_category: null,
-        claimed_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('provider_key', 'google_ads')
-      .in('id', ids);
+        next_retry_at: oneMinAgo,
+        clear_fields: ['last_error', 'provider_error_code', 'provider_error_category', 'claimed_at'],
+      },
+      actor: 'MANUAL',
+      created_at: createdAt,
+    }));
 
-    if (upErr) {
-      console.error('QUEUED güncelleme hatası:', upErr.message);
-      process.exit(1);
+    for (let i = 0; i < transitionRows.length; i += 500) {
+      const chunk = transitionRows.slice(i, i + 500);
+      const { error: upErr } = await supabase
+        .from('oci_queue_transitions')
+        .insert(chunk);
+
+      if (upErr) {
+        console.error('RETRY ledger insert hatası:', upErr.message);
+        process.exit(1);
+      }
     }
-    console.log('2) Tüm', ids.length, 'satır QUEUED yapıldı. Script export ile alınabilir.');
+
+    console.log('2) Tüm', ids.length, 'satır RETRY yapıldı. Worker script export ile alır.');
   } else {
-    console.log('2) Tüm', rows.length, 'satır QUEUED yapılacak.');
+    console.log('2) Tüm', rows.length, 'satır RETRY yapılacak.');
   }
 }
 

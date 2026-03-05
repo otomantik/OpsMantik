@@ -32,13 +32,7 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const siteUuid = auth.siteUuid;
 
-  const totals: Record<QueueStatus, number> = {
-    QUEUED: 0,
-    RETRY: 0,
-    PROCESSING: 0,
-    COMPLETED: 0,
-    FAILED: 0,
-  };
+  const totals = Object.fromEntries(QUEUE_STATUSES.map((status) => [status, 0])) as Record<QueueStatus, number>;
 
   const { data: rows, error: countError } = await adminClient
     .from('offline_conversion_queue')

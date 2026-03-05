@@ -12,6 +12,7 @@ import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 import { getPrimarySourceBatch } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
+import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { redis } from '@/lib/upstash';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
 import { hashPhoneForEC } from '@/lib/dic/identity-hash';
@@ -426,7 +427,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (rawList.length === 0 && signalItems.length === 0 && pvItems.length === 0) {
-      return NextResponse.json([]);
+      return NextResponse.json({ items: [], next_cursor: null });
     }
 
     const callIds = rawList.map((r: { call_id: string | null }) => r.call_id).filter(Boolean) as string[];
@@ -501,12 +502,33 @@ export async function GET(req: NextRequest) {
         }
       }
       if (skippedIds.length > 0) {
-        await adminClient
+        const { data: skippedClaimedCount, error: skippedRpcError } = await adminClient.rpc(
+          'claim_offline_conversion_rows_for_script_export',
+          { p_ids: skippedIds, p_site_id: siteUuid }
+        );
+        if (skippedRpcError) {
+          logError('OCI_GOOGLE_ADS_EXPORT_SKIP_CLAIM_FAILED', { code: (skippedRpcError as { code?: string })?.code });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        if (typeof skippedClaimedCount !== 'number' || skippedClaimedCount !== skippedIds.length) {
+          logWarn('OCI_GOOGLE_ADS_EXPORT_SKIP_CLAIM_PARTIAL', {
+            requested: skippedIds.length,
+            claimed: skippedClaimedCount,
+          });
+        }
+
+        const { data: skippedRows } = await adminClient
           .from('offline_conversion_queue')
-          .update({ status: 'COMPLETED', updated_at: now })
+          .select('id')
           .in('id', skippedIds)
           .eq('site_id', siteUuid)
-          .in('status', ['QUEUED', 'RETRY']);
+          .eq('status', 'PROCESSING');
+        await insertQueueTransitions(
+          adminClient,
+          (Array.isArray(skippedRows) ? skippedRows : []).map((row) =>
+            queueSnapshotPayloadToTransition(row.id, { status: 'COMPLETED', updated_at: now }, 'SCRIPT')
+          )
+        );
       }
 
       // Phase 6.1: Mark signals as PROCESSING
@@ -617,18 +639,28 @@ export async function GET(req: NextRequest) {
     // P0: Fail-closed. If script is exporting (markAsExported=true), terminalize blocked rows so they never loop.
     if (markAsExported && blockedValueZeroIds.length > 0) {
       const now = new Date().toISOString();
-      await adminClient
+      const { data: blockedRows } = await adminClient
         .from('offline_conversion_queue')
-        .update({
-          status: 'FAILED',
-          last_error: 'VALUE_ZERO',
-          provider_error_code: 'VALUE_ZERO',
-          provider_error_category: 'PERMANENT',
-          updated_at: now,
-        })
+        .select('id')
         .in('id', blockedValueZeroIds)
         .eq('site_id', siteUuid)
         .in('status', ['QUEUED', 'RETRY', 'PROCESSING']);
+      await insertQueueTransitions(
+        adminClient,
+        (Array.isArray(blockedRows) ? blockedRows : []).map((row) =>
+          queueSnapshotPayloadToTransition(
+            row.id,
+            {
+              status: 'FAILED',
+              last_error: 'VALUE_ZERO',
+              provider_error_code: 'VALUE_ZERO',
+              provider_error_category: 'PERMANENT',
+              updated_at: now,
+            },
+            'SCRIPT'
+          )
+        )
+      );
     }
 
     const combined = [...conversions, ...signalItems, ...pvItems].sort(
@@ -649,13 +681,15 @@ export async function GET(req: NextRequest) {
       nextCursor = Buffer.from(JSON.stringify(target)).toString('base64');
     }
 
-    const responseData = markAsExported ? combined : {
-      siteId: siteUuid,
-      items: combined,
-      next_cursor: nextCursor,
-      counts: { queued: list.length, signals: signalItems.length, pvs: pvItems.length, skipped: skippedIds.length },
-      warnings: isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
-    };
+    const responseData = markAsExported
+      ? { items: combined, next_cursor: nextCursor }
+      : {
+          siteId: siteUuid,
+          items: combined,
+          next_cursor: nextCursor,
+          counts: { queued: list.length, signals: signalItems.length, pvs: pvItems.length, skipped: skippedIds.length },
+          warnings: isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
+        };
 
     // Phase 8.2: JWE Asymmetric Payload Protection (Optional side-channel)
     const publicKeyB64 = process.env.VOID_PUBLIC_KEY;

@@ -24,8 +24,18 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OciQueueStats, OciQueueRow, QueueStatus } from '@/lib/domain/oci/queue-types';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
-const STATUS_ORDER: QueueStatus[] = ['QUEUED', 'RETRY', 'PROCESSING', 'COMPLETED', 'FAILED'];
+const STATUS_ORDER: QueueStatus[] = [
+  'QUEUED',
+  'RETRY',
+  'PROCESSING',
+  'UPLOADED',
+  'COMPLETED',
+  'COMPLETED_UNVERIFIED',
+  'FAILED',
+  'DEAD_LETTER_QUARANTINE',
+];
 
 export function OciControlPanel({
   siteId,
@@ -34,6 +44,7 @@ export function OciControlPanel({
   siteId: string;
   siteName?: string;
 }) {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<OciQueueStats | null>(null);
   const [rows, setRows] = useState<OciQueueRow[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
@@ -43,6 +54,27 @@ export function OciControlPanel({
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [actionBusy, setActionBusy] = useState(false);
+  const labels = {
+    title: t('ociControl.title'),
+    allStatuses: t('ociControl.allStatuses'),
+    refresh: t('ociControl.refresh'),
+    autoRefresh10s: t('ociControl.autoRefresh10s'),
+    retrySelected: t('ociControl.retrySelected'),
+    resetToQueued: t('ociControl.resetToQueued'),
+    markFailed: t('ociControl.markFailed'),
+    select: t('ociControl.selectShort'),
+    callId: t('ociControl.callId'),
+    errorCode: t('ociControl.errorCode'),
+    id: t('ociControl.id'),
+    status: t('ociControl.status'),
+    category: t('ociControl.category'),
+    stuck: t('ociControl.stuck'),
+    lastError: t('ociControl.lastError'),
+    attempts: t('ociControl.attempts'),
+    updated: t('ociControl.updated'),
+    actions: t('ociControl.actions'),
+    loading: t('ociControl.loading'),
+  };
 
   const fetchStats = useCallback(async () => {
     try {
@@ -153,7 +185,7 @@ export function OciControlPanel({
                 {siteName || siteId}
               </Link>
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                OCI Control
+                {labels.title}
               </span>
             </div>
           </div>
@@ -192,7 +224,7 @@ export function OciControlPanel({
               <CardHeader className="p-3 pb-0">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  Stuck
+                  {labels.stuck}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 pt-1">
@@ -210,7 +242,7 @@ export function OciControlPanel({
             onChange={(e) => setStatusFilter(e.target.value)}
             className="min-h-[44px] rounded-md border border-slate-200 bg-white px-3 text-sm"
           >
-            <option value="">All statuses</option>
+            <option value="">{labels.allStatuses}</option>
             {STATUS_ORDER.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -223,7 +255,7 @@ export function OciControlPanel({
             disabled={loading}
           >
             <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
-            Refresh
+            {labels.refresh}
           </Button>
           <label className="flex items-center gap-2 min-h-[44px] cursor-pointer">
             <input
@@ -232,7 +264,7 @@ export function OciControlPanel({
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="rounded border-slate-300"
             />
-            <span className="text-sm text-slate-700">Auto-refresh 10s</span>
+            <span className="text-sm text-slate-700">{labels.autoRefresh10s}</span>
           </label>
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -243,7 +275,7 @@ export function OciControlPanel({
                 onClick={() => runAction('RETRY_SELECTED', Array.from(selectedIds))}
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
-                Retry ({selectedIds.size})
+                {labels.retrySelected} ({selectedIds.size})
               </Button>
               <Button
                 variant="outline"
@@ -251,7 +283,7 @@ export function OciControlPanel({
                 disabled={actionBusy}
                 onClick={() => runAction('RESET_TO_QUEUED', Array.from(selectedIds))}
               >
-                Reset to QUEUED
+                {labels.resetToQueued}
               </Button>
               <Button
                 variant="outline"
@@ -260,7 +292,7 @@ export function OciControlPanel({
                 onClick={() => runAction('MARK_FAILED', Array.from(selectedIds), 'MANUALLY_MARKED_FAILED')}
               >
                 <Ban className="h-4 w-4 mr-2" />
-                Mark FAILED
+                {labels.markFailed}
               </Button>
             </div>
           )}
@@ -270,23 +302,23 @@ export function OciControlPanel({
           <Table>
             <TableHeader>
               <TableRow className="border-slate-200">
-                <TableHead className="w-10 min-h-[44px]">Sel</TableHead>
-                <TableHead className="min-h-[44px]">ID</TableHead>
-                <TableHead className="min-h-[44px]">Call ID</TableHead>
-                <TableHead className="min-h-[44px]">Status</TableHead>
-                <TableHead className="min-h-[44px]">Error Code</TableHead>
-                <TableHead className="min-h-[44px]">Category</TableHead>
-                <TableHead className="min-h-[44px]">Last Error</TableHead>
-                <TableHead className="min-h-[44px]">Attempts</TableHead>
-                <TableHead className="min-h-[44px]">Updated</TableHead>
-                <TableHead className="min-h-[44px]">Actions</TableHead>
+                <TableHead className="w-10 min-h-[44px]">{labels.select}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.id}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.callId}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.status}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.errorCode}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.category}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.lastError}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.attempts}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.updated}</TableHead>
+                <TableHead className="min-h-[44px]">{labels.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8 text-slate-500">
-                    Loading...
+                    {labels.loading}...
                   </TableCell>
                 </TableRow>
               ) : (

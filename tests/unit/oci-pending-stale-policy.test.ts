@@ -1,5 +1,5 @@
 /**
- * PR-OCI-5 (P1): stale PENDING marketing_signals must be terminalized (FAILED)
+ * PR-OCI-5 (P1): stale PENDING marketing_signals must be terminalized
  * to avoid infinite resend attempts and silent backlog growth.
  * Source-inspection tests (fast, stable, DB-free).
  */
@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 const CLEANUP_ROUTE = join(process.cwd(), 'app', 'api', 'cron', 'cleanup', 'route.ts');
 
-test('PR-OCI-5: cleanup cron implements stale PENDING -> FAILED policy (default 30d)', () => {
+test('PR-OCI-5: cleanup cron implements stale PENDING -> STALLED_FOR_HUMAN_AUDIT policy (default 30d)', () => {
   const src = readFileSync(CLEANUP_ROUTE, 'utf-8');
 
   assert.ok(
@@ -24,7 +24,7 @@ test('PR-OCI-5: cleanup cron implements stale PENDING -> FAILED policy (default 
   );
 
   assert.ok(
-    src.includes("dispatch_status: 'FAILED'") || src.includes('dispatch_status: "FAILED"'),
-    'Expected cleanup cron to update dispatch_status to FAILED for stale PENDING rows'
+    src.includes("dispatch_status: 'STALLED_FOR_HUMAN_AUDIT'") || src.includes('dispatch_status: "STALLED_FOR_HUMAN_AUDIT"'),
+    'Expected cleanup cron to update dispatch_status to STALLED_FOR_HUMAN_AUDIT for stale PENDING rows'
   );
 });

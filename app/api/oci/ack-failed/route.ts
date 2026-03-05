@@ -13,11 +13,23 @@ import { adminClient } from '@/lib/supabase/admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
+import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
+import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
+import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+type AckFailedCategory = 'VALIDATION' | 'TRANSIENT' | 'AUTH';
+
+function getAuditErrorCategory(category: AckFailedCategory, maxAttemptsHit: boolean): 'PERMANENT' | 'VALIDATION' | 'AUTH' | 'MAX_ATTEMPTS' {
+  if (maxAttemptsHit) return 'MAX_ATTEMPTS';
+  if (category === 'VALIDATION') return 'VALIDATION';
+  if (category === 'AUTH') return 'AUTH';
+  return 'PERMANENT';
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -80,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     const errorCode = typeof body.errorCode === 'string' ? body.errorCode.trim().slice(0, 64) : 'VALIDATION_FAILED';
     const errorMessage = typeof body.errorMessage === 'string' ? body.errorMessage.trim().slice(0, 1024) : errorCode;
-    const category = ['VALIDATION', 'TRANSIENT', 'AUTH'].includes(body.errorCategory)
+    const category: AckFailedCategory = ['VALIDATION', 'TRANSIENT', 'AUTH'].includes(body.errorCategory)
       ? body.errorCategory
       : 'VALIDATION';
 
@@ -134,68 +146,190 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const nextRetryAt = new Date(Date.now() + 30 * 1000).toISOString();
     let updatedCount = 0;
+    const deadLetterAuditEntries: Parameters<typeof insertDeadLetterAuditLogs>[0] = [];
 
-    // Handle Transient/Validation Failures (Retryable or FAILED)
     if (sealFailedIds.length > 0) {
-      const { data } = await adminClient
+      const { data: sealRows } = await adminClient
         .from('offline_conversion_queue')
-        .update({
-          status: 'FAILED',
-          last_error: errorMessage,
-          provider_error_code: errorCode,
-          provider_error_category: category,
-          updated_at: now,
-        })
+        .select('id, call_id, attempt_count')
         .in('id', sealFailedIds)
         .eq('site_id', siteUuid)
-        .in('status', ['PROCESSING'])
-        .select('id');
-      updatedCount += Array.isArray(data) ? data.length : 0;
+        .eq('status', 'PROCESSING');
+
+      const sealRowsList = Array.isArray(sealRows)
+        ? sealRows as Array<{ id: string; call_id: string | null; attempt_count: number | null }>
+        : [];
+
+      const retryableSealIds = sealRowsList
+        .filter((row) => category === 'TRANSIENT' && (row.attempt_count ?? 0) < MAX_ATTEMPTS)
+        .map((row) => row.id);
+      const failedSealIds = sealRowsList
+        .filter((row) => category !== 'TRANSIENT' && (row.attempt_count ?? 0) < MAX_ATTEMPTS)
+        .map((row) => row.id);
+      const deadLetterSealRows = sealRowsList.filter((row) => (row.attempt_count ?? 0) >= MAX_ATTEMPTS);
+
+      if (retryableSealIds.length > 0) {
+        updatedCount += await insertQueueTransitions(
+          adminClient,
+          retryableSealIds.map((id) =>
+            queueSnapshotPayloadToTransition(
+              id,
+              {
+                status: 'RETRY',
+                next_retry_at: nextRetryAt,
+                last_error: errorMessage,
+                provider_error_code: errorCode,
+                provider_error_category: 'TRANSIENT',
+                updated_at: now,
+              },
+              'SCRIPT'
+            )
+          )
+        );
+      }
+
+      if (failedSealIds.length > 0) {
+        updatedCount += await insertQueueTransitions(
+          adminClient,
+          failedSealIds.map((id) =>
+            queueSnapshotPayloadToTransition(
+              id,
+              {
+                status: 'FAILED',
+                last_error: errorMessage,
+                provider_error_code: errorCode,
+                provider_error_category: category,
+                updated_at: now,
+              },
+              'SCRIPT'
+            )
+          )
+        );
+      }
+
+      if (deadLetterSealRows.length > 0) {
+        updatedCount += await insertQueueTransitions(
+          adminClient,
+          deadLetterSealRows.map((row) =>
+            queueSnapshotPayloadToTransition(
+              row.id,
+              {
+                status: 'DEAD_LETTER_QUARANTINE',
+                last_error: errorMessage,
+                provider_error_code: errorCode,
+                provider_error_category: 'PERMANENT',
+                updated_at: now,
+              },
+              'SCRIPT'
+            )
+          )
+        );
+        deadLetterAuditEntries.push(
+          ...deadLetterSealRows.map((row) => ({
+            siteId: siteUuid,
+            resourceType: 'oci_queue' as const,
+            resourceId: row.id,
+            callId: row.call_id,
+            errorCode,
+            errorMessage,
+            errorCategory: getAuditErrorCategory(category, true),
+            attemptCount: row.attempt_count ?? MAX_ATTEMPTS,
+            pipeline: 'SCRIPT' as const,
+          }))
+        );
+      }
     }
 
     if (signalFailedIds.length > 0) {
+      const updatePayload = category === 'TRANSIENT'
+        ? { dispatch_status: 'PENDING' as const, updated_at: now }
+        : { dispatch_status: 'FAILED' as const, updated_at: now };
       const { data } = await adminClient
         .from('marketing_signals')
-        .update({
-          dispatch_status: 'FAILED',
-          updated_at: now,
-        })
+        .update(updatePayload)
         .in('id', signalFailedIds)
         .eq('site_id', siteUuid)
-        .eq('dispatch_status', 'PENDING') // Strictly only if pending or processing if we had that
+        .eq('dispatch_status', 'PROCESSING')
         .select('id');
       updatedCount += Array.isArray(data) ? data.length : 0;
     }
 
-    // Phase 6.3: Handle Fatal Poison Pills (Quarantine)
+    // Explicit poison/fatal ids always hard-transition to dead letter.
     if (sealFatalIds.length > 0) {
-      const { data } = await adminClient
+      const { data: fatalRows } = await adminClient
         .from('offline_conversion_queue')
-        .update({
-          status: 'DEAD_LETTER_QUARANTINE',
-          last_error: `POISON_PILL: ${errorMessage}`,
-          provider_error_code: 'FATAL_POISON_PILL',
-          provider_error_category: 'PERMANENT',
-          updated_at: now,
-        })
+        .select('id, call_id, attempt_count')
         .in('id', sealFatalIds)
         .eq('site_id', siteUuid)
-        .select('id');
-      updatedCount += Array.isArray(data) ? data.length : 0;
+        .eq('status', 'PROCESSING');
+      const fatalRowsList = Array.isArray(fatalRows)
+        ? fatalRows as Array<{ id: string; call_id: string | null; attempt_count: number | null }>
+        : [];
+      updatedCount += await insertQueueTransitions(
+        adminClient,
+        fatalRowsList.map((row) =>
+          queueSnapshotPayloadToTransition(
+            row.id,
+            {
+              status: 'DEAD_LETTER_QUARANTINE',
+              last_error: errorMessage,
+              provider_error_code: errorCode,
+              provider_error_category: 'PERMANENT',
+              updated_at: now,
+            },
+            'SCRIPT'
+          )
+        )
+      );
+      deadLetterAuditEntries.push(
+        ...fatalRowsList.map((row) => ({
+          siteId: siteUuid,
+          resourceType: 'oci_queue' as const,
+          resourceId: row.id,
+          callId: row.call_id,
+          errorCode,
+          errorMessage,
+          errorCategory: getAuditErrorCategory(category, false),
+          attemptCount: row.attempt_count ?? 0,
+          pipeline: 'SCRIPT' as const,
+        }))
+      );
     }
 
     if (signalFatalIds.length > 0) {
       const { data } = await adminClient
         .from('marketing_signals')
         .update({
-          dispatch_status: 'DEAD_LETTER_QUARANTINE', // We might need to ensure this status exists/works
+          dispatch_status: 'DEAD_LETTER_QUARANTINE',
           updated_at: now,
         })
         .in('id', signalFatalIds)
         .eq('site_id', siteUuid)
-        .select('id');
-      updatedCount += Array.isArray(data) ? data.length : 0;
+        .eq('dispatch_status', 'PROCESSING')
+        .select('id, trace_id');
+      const updatedRows = Array.isArray(data)
+        ? data as Array<{ id: string; trace_id: string | null }>
+        : [];
+      updatedCount += updatedRows.length;
+      deadLetterAuditEntries.push(
+        ...updatedRows.map((row) => ({
+          siteId: siteUuid,
+          resourceType: 'marketing_signal' as const,
+          resourceId: row.id,
+          traceId: row.trace_id,
+          errorCode,
+          errorMessage,
+          errorCategory: getAuditErrorCategory(category, false),
+          attemptCount: 0,
+          pipeline: 'SCRIPT' as const,
+        }))
+      );
+    }
+
+    if (deadLetterAuditEntries.length > 0) {
+      await insertDeadLetterAuditLogs(deadLetterAuditEntries);
     }
 
     if (updatedCount > 0) {
@@ -204,6 +338,7 @@ export async function POST(req: NextRequest) {
         count: updatedCount,
         error_code: errorCode,
         error_category: category,
+        retry_count: category === 'TRANSIENT' ? sealFailedIds.length + signalFailedIds.length : 0,
         fatal_count: fatalIds.length,
       });
     }

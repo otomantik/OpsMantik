@@ -188,7 +188,7 @@ async function runCleanup(req: NextRequest) {
     }
     signalsDeleted = typeof signalsData === 'number' ? signalsData : 0;
 
-    // Phase 4b: Fail stale PENDING marketing_signals (30d default)
+    // Phase 4b: Terminalize stale PENDING marketing_signals for human review (30d default)
     const cutoffPendingStale = new Date(Date.now() - daysPendingStale * 24 * 60 * 60 * 1000).toISOString();
     const { data: pendingIds, error: pendingSelectErr } = await adminClient
       .from('marketing_signals')
@@ -207,18 +207,18 @@ async function runCleanup(req: NextRequest) {
     if (ids.length > 0) {
       const { error: pendingUpdateErr } = await adminClient
         .from('marketing_signals')
-        .update({ dispatch_status: 'FAILED' })
+        .update({ dispatch_status: 'STALLED_FOR_HUMAN_AUDIT' })
         .in('id', ids)
         .eq('dispatch_status', 'PENDING');
       if (pendingUpdateErr) {
         logError('CLEANUP_STALE_PENDING_UPDATE_FAIL', { error: pendingUpdateErr.message });
         return NextResponse.json(
-          { error: pendingUpdateErr.message, step: 'fail_stale_pending_marketing_signals' },
+          { error: pendingUpdateErr.message, step: 'stall_stale_pending_marketing_signals' },
           { status: 500 }
         );
       }
       stalePendingFailed = ids.length;
-      logInfo('CLEANUP_STALE_PENDING_FAILED', { count: stalePendingFailed, days: daysPendingStale });
+      logInfo('CLEANUP_STALE_PENDING_STALLED', { count: stalePendingFailed, days: daysPendingStale });
     }
 
     // Phase 5: Auto-junk stale intents (7d)

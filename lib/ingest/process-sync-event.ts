@@ -18,6 +18,8 @@ import { SessionService } from '@/lib/services/session-service';
 import { EventService } from '@/lib/services/event-service';
 import { IntentService } from '@/lib/services/intent-service';
 import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
+import { getPrimarySource } from '@/lib/conversation/primary-source';
+import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 
 export type WorkerJob = Record<string, unknown> & {
   s: string;
@@ -358,12 +360,32 @@ async function doProcessSyncEvent(
   });
 
   if (event_action !== 'heartbeat') {
-    await IntentService.handleIntent(
+    const callId = await IntentService.handleIntent(
       siteIdUuid,
       { id: session.id },
       { fingerprint, event_action, event_label, meta, url: safeUrl, currentGclid, params },
       leadScore
     );
+    if (callId) {
+      try {
+        const primary = await getPrimarySource(siteIdUuid, { callId });
+        const now = new Date();
+        await evaluateAndRouteSignal('V2_PULSE', {
+          siteId: siteIdUuid,
+          callId,
+          gclid: primary?.gclid ?? null,
+          wbraid: primary?.wbraid ?? null,
+          gbraid: primary?.gbraid ?? null,
+          aov: 0,
+          clickDate: now,
+          signalDate: now,
+          clientIp: ip,
+          traceId: null,
+        });
+      } catch (v2Err) {
+        debugLog('[PROCESS_SYNC_EVENT] V2_PULSE emit failed (non-fatal)', { call_id: callId, error: (v2Err as Error)?.message });
+      }
+    }
   }
 
   await adminClient

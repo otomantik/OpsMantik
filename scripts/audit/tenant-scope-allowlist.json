@@ -43,5 +43,10 @@
     "file": "scripts/forensics-audit.ts",
     "table": "offline_conversion_queue",
     "reason": "Global diagnostics/forensics needs to inventory all queue items."
+  },
+  {
+    "file": "lib/oci/vacuum-worker.ts",
+    "table": "sessions",
+    "reason": "Session geo lookup is derived from already site-scoped marketing_signals and calls rows; sessions has no site_id filter available in this query shape."
   }
 ]

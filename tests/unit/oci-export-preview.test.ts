@@ -7,10 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-test('google-ads-export route: markAsExported true returns flat array', () => {
+test('google-ads-export route: markAsExported returns { items, next_cursor } for script', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('markAsExported ? combined :'), 'branch on markAsExported via ternary');
+  assert.ok(src.includes('items: combined') && src.includes('next_cursor'), 'script gets items and next_cursor');
   assert.ok(src.includes('NextResponse.json(responseData)'), 'structured response fallback');
 });
 

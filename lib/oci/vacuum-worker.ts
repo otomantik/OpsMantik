@@ -52,9 +52,14 @@ export async function runVacuum(): Promise<{
   const callIds = rows
     .map((r) => (r as { call_id?: string | null }).call_id)
     .filter((id): id is string => Boolean(id));
+  const siteIds = [...new Set(rows.map((r) => (r as { site_id: string }).site_id))];
 
   const { data: calls } = callIds.length > 0
-    ? await adminClient.from('calls').select('id, site_id, matched_session_id').in('id', callIds)
+    ? await adminClient
+        .from('calls')
+        .select('id, site_id, matched_session_id')
+        .in('id', callIds)
+        .in('site_id', siteIds)
     : { data: [] };
 
   const callByCallId = new Map<string, { site_id: string; matched_session_id?: string | null }>();
@@ -66,7 +71,6 @@ export async function runVacuum(): Promise<{
     });
   }
 
-  const siteIds = [...new Set(rows.map((r) => (r as { site_id: string }).site_id))];
   const { data: sites } = await adminClient
     .from('sites')
     .select('id, name')

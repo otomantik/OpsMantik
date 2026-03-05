@@ -42,7 +42,7 @@ export class IntentService {
 
         const shouldCreateIntent = !!session && (!!fingerprint || !!session.id) && (isPhone || isWa || legacyPhoneSignal || legacyWaSignal);
 
-        if (!shouldCreateIntent) return;
+        if (!shouldCreateIntent) return null;
 
         // 1. Normalize Action & Target
         const canonicalAction: 'phone' | 'whatsapp' = (isPhone || legacyPhoneSignal) ? 'phone' : 'whatsapp';
@@ -82,7 +82,7 @@ export class IntentService {
                 site_id: siteId,
                 session_id: session.id,
             });
-            return;
+            return null;
         }
 
         debugLog('[SYNC_API] ✅ Session intent ensured:', {
@@ -90,6 +90,7 @@ export class IntentService {
             call_id: ensuredId ?? null,
             action: canonicalAction,
         });
+        return typeof ensuredId === 'string' ? ensuredId : Array.isArray(ensuredId) ? (ensuredId[0] as string) ?? null : null;
     }
 
     private static normalizeTelTarget(v: string): string {

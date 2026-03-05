@@ -19,6 +19,7 @@ import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
+import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
@@ -151,41 +152,54 @@ export async function POST(req: NextRequest) {
         : { status: 'COMPLETED' as const, uploaded_at: now, updated_at: now };
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .update(updatePayload)
+        .select('id')
         .in('id', sealIds)
         .eq('site_id', siteUuid)
-        .in('status', ['PROCESSING'])
-        .select('id');
+        .in('status', ['PROCESSING']);
 
       if (error) {
         logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      totalUpdated += Array.isArray(data) ? data.length : 0;
+      const eligibleRows = Array.isArray(data) ? data as Array<{ id: string }> : [];
+      totalUpdated += await insertQueueTransitions(
+        adminClient,
+        eligibleRows.map((row) => queueSnapshotPayloadToTransition(row.id, updatePayload, 'SCRIPT'))
+      );
     }
 
     if (sealSkippedIds.length > 0) {
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .update({
-          status: 'COMPLETED',
-          provider_error_code: 'V1_SAMPLED_OUT',
-          provider_error_category: 'DETERMINISTIC_SKIP',
-          updated_at: now,
-        })
+        .select('id')
         .in('id', sealSkippedIds)
         .eq('site_id', siteUuid)
-        .in('status', ['PROCESSING'])
-        .select('id');
+        .in('status', ['PROCESSING']);
 
       if (error) {
         logError('OCI_ACK_SKIPPED_SQL_ERROR', { code: (error as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      totalUpdated += Array.isArray(data) ? data.length : 0;
+      const eligibleRows = Array.isArray(data) ? data as Array<{ id: string }> : [];
+      totalUpdated += await insertQueueTransitions(
+        adminClient,
+        eligibleRows.map((row) =>
+          queueSnapshotPayloadToTransition(
+            row.id,
+            {
+              status: 'COMPLETED',
+              provider_error_code: 'V1_SAMPLED_OUT',
+              provider_error_category: 'DETERMINISTIC_SKIP',
+              updated_at: now,
+            },
+            'SCRIPT'
+          )
+        )
+      );
     }
 
     if (signalIds.length > 0) {
+      // Export already set these rows to PROCESSING when returning them; ack must match PROCESSING (not PENDING).
       const { data, error } = await adminClient
         .from('marketing_signals')
         .update({
@@ -194,7 +208,7 @@ export async function POST(req: NextRequest) {
         })
         .in('id', signalIds)
         .eq('site_id', siteUuid)
-        .eq('dispatch_status', 'PENDING')
+        .eq('dispatch_status', 'PROCESSING')
         .select('id');
 
       if (error) {

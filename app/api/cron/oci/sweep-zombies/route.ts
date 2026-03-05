@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { OuroborosWatchdog } from '@/lib/oci/ouroboros-watchdog';
 import { redis } from '@/lib/upstash';
 
@@ -162,17 +163,22 @@ async function runSweep() {
     // Phase 2: OCI Queue Zombie Sweeper (PROCESSING)
     // ─────────────────────────────────────────────────────────────────────────
     try {
+        const rescueNow = new Date().toISOString();
         const { data: queueRescued, error: queueRescuedError } = await adminClient
             .from('offline_conversion_queue')
-            .update({ status: 'QUEUED', updated_at: new Date().toISOString() })
+            .select('id')
             .eq('status', 'PROCESSING')
             .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
-            .select('id');
+            ;
 
         if (queueRescuedError) {
             logError('sweep_zombies_queue_processing_failed', { error: queueRescuedError.message });
         } else {
-            stats.queueRescued = queueRescued?.length ?? 0;
+            const rescuedRows = Array.isArray(queueRescued) ? queueRescued : [];
+            stats.queueRescued = await insertQueueTransitions(
+                adminClient,
+                rescuedRows.map((row) => queueSnapshotPayloadToTransition(row.id, { status: 'QUEUED', updated_at: rescueNow }, 'SWEEPER'))
+            );
             if (stats.queueRescued > 0) {
                 logInfo('sweep_zombies_queue_processing_rescued', { count: stats.queueRescued });
             }
@@ -208,17 +214,22 @@ async function runSweep() {
     // Phase 3: OCI Queue — Close stale UPLOADED rows
     // ─────────────────────────────────────────────────────────────────────────
     try {
+        const closeNow = new Date().toISOString();
         const { data: queueClosed, error: queueError } = await adminClient
             .from('offline_conversion_queue')
-            .update({ status: 'COMPLETED_UNVERIFIED', updated_at: new Date().toISOString() })
+            .select('id')
             .eq('status', 'UPLOADED')
             .lt('updated_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
-            .select('id');
+            ;
 
         if (queueError) {
             logError('sweep_zombies_queue_failed', { error: queueError.message });
         } else {
-            stats.queueClosed = queueClosed?.length ?? 0;
+            const closedRows = Array.isArray(queueClosed) ? queueClosed : [];
+            stats.queueClosed = await insertQueueTransitions(
+                adminClient,
+                closedRows.map((row) => queueSnapshotPayloadToTransition(row.id, { status: 'COMPLETED_UNVERIFIED', updated_at: closeNow }, 'SWEEPER'))
+            );
             if (stats.queueClosed > 0) {
                 logInfo('sweep_zombies_queue_closed', { count: stats.queueClosed });
             }

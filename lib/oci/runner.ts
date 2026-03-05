@@ -3,8 +3,8 @@
  * Used by /api/workers/google-ads-oci (mode: worker) and /api/cron/process-offline-conversions (mode: cron).
  * No behavior change; consolidation only.
  *
- * Transaction safety: claim_offline_conversion_jobs_v2 (migration 20260220110000) uses
- * FOR UPDATE SKIP LOCKED; no double-claim. Queue updates are per-row (atomic).
+ * Transaction safety: claim_offline_conversion_jobs_v2 uses
+ * FOR UPDATE SKIP LOCKED; no double-claim. Queue transitions are appended per-row and snapped atomically.
  * Failure parity: both modes use MAX_RETRY_ATTEMPTS from constants.ts, increment retry_count,
  * and set provider_error_code / provider_error_category (worker) or last_error (cron).
  */
@@ -32,6 +32,12 @@ import {
   MAX_LIMIT_CRON,
   LIST_GROUPS_LIMIT,
 } from '@/lib/oci/constants';
+import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
+import {
+  insertQueueTransitions,
+  queueSnapshotPayloadToTransition,
+  type QueueSnapshotUpdatePayload,
+} from '@/lib/oci/queue-transition-ledger';
 import { chunkArray } from '@/lib/utils/batch';
 import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
 import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
@@ -76,37 +82,71 @@ function logRunnerError(prefix: string, message: string, err: unknown): void {
   loggerError(message, { prefix, error: detail });
 }
 
-/** Bulk update queue rows by ids. Reduced O(N) round-trips to O(N/500). */
+function getQueueAttemptCount(row: QueueRow, fallback: number): number {
+  const raw = (row as QueueRow & { attempt_count?: number | null }).attempt_count;
+  const value = raw ?? fallback;
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+async function writeQueueDeadLetterAudit(
+  siteId: string,
+  rows: QueueRow[],
+  errorCode: string,
+  errorMessage: string,
+  errorCategory: 'PERMANENT' | 'VALIDATION' | 'AUTH' | 'MAX_ATTEMPTS'
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  await insertDeadLetterAuditLogs(
+    rows.map((row) => ({
+      siteId,
+      resourceType: 'oci_queue',
+      resourceId: row.id,
+      callId: row.call_id,
+      errorCode,
+      errorMessage,
+      errorCategory,
+      attemptCount: getQueueAttemptCount(row, row.retry_count ?? 0),
+      pipeline: 'WORKER',
+    }))
+  );
+}
+
+/** Bulk append queue transitions by ids. Reduced O(N) round-trips to O(N/500). */
 async function bulkUpdateQueue(
   ids: string[],
-  payload: Record<string, unknown>,
+  payload: QueueSnapshotUpdatePayload,
   prefix: string,
   logLabel: string
 ): Promise<void> {
   const chunks = chunkArray(ids, 500);
   const start = Date.now();
   for (const chunk of chunks) {
-    const { error } = await adminClient
-      .from('offline_conversion_queue')
-      .update(payload)
-      .in('id', chunk);
-    if (error) logRunnerError(prefix, logLabel, error);
+    try {
+      await insertQueueTransitions(
+        adminClient,
+        chunk.map((id) => queueSnapshotPayloadToTransition(id, payload, 'WORKER')),
+        chunk.length
+      );
+    } catch (error) {
+      logRunnerError(prefix, logLabel, error);
+    }
   }
   const durationMs = Date.now() - start;
   if (ids.length > 0) {
-    logInfo('OCI_BULK_UPDATE', { idsCount: ids.length, chunks: chunks.length, durationMs, prefix });
+    logInfo('OCI_BULK_LEDGER_APPEND', { idsCount: ids.length, chunks: chunks.length, durationMs, prefix });
   }
 }
 
-/** Group rows by identical payload; bulk update each group. */
+/** Group rows by identical transition payload; bulk append each group. */
 async function bulkUpdateQueueGrouped<T>(
   rows: T[],
   idFn: (r: T) => string,
-  payloadFn: (r: T) => Record<string, unknown>,
+  payloadFn: (r: T) => QueueSnapshotUpdatePayload,
   prefix: string,
   logLabel: string
 ): Promise<void> {
-  const byKey = new Map<string, { payload: Record<string, unknown>; ids: string[] }>();
+  const byKey = new Map<string, { payload: QueueSnapshotUpdatePayload; ids: string[] }>();
   for (const row of rows) {
     const payload = payloadFn(row);
     const key = JSON.stringify(payload);
@@ -614,12 +654,21 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           await bulkUpdateQueue(
             poisonRowIds,
             {
-              status: 'FAILED',
+              status: 'DEAD_LETTER_QUARANTINE',
               last_error: 'POISON_PILL: Malformed payload or conversion_time',
+              provider_error_code: 'POISON_PILL',
+              provider_error_category: 'PERMANENT',
               updated_at: new Date().toISOString(),
             },
             prefix,
-            'Mark poison pill rows FAILED'
+            'Mark poison pill rows DEAD_LETTER'
+          );
+          await writeQueueDeadLetterAudit(
+            siteIdUuid,
+            rowsWithValue.filter((row) => poisonRowIds.includes(row.id)),
+            'POISON_PILL',
+            'POISON_PILL: Malformed payload or conversion_time',
+            'PERMANENT'
           );
         }
         // Enhanced Conversions: enrich job.payload with caller_phone_hash_sha256 from calls (hashed_phone_number)
@@ -683,6 +732,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             attemptErrorCode = null;
             attemptErrorCategory = 'TRANSIENT';
             const rowsToRetry = rowsWithValue.filter((r) => !poisonRowIds.includes(r.id));
+            const rowsToDeadLetter = rowsToRetry.filter((row) => (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS);
             await bulkUpdateQueueGrouped(
               rowsToRetry,
               (r) => r.id,
@@ -693,12 +743,12 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 const lastErrorFinal = `Max retries reached: ${msg}`.slice(0, 1000);
                 return isFinal
                   ? {
-                    status: 'FAILED' as const,
+                    status: 'DEAD_LETTER_QUARANTINE' as const,
                     retry_count: count,
                     last_error: lastErrorFinal,
                     updated_at: new Date().toISOString(),
-                    provider_error_code: null,
-                    provider_error_category: 'TRANSIENT' as const,
+                    provider_error_code: 'MAX_ATTEMPTS',
+                    provider_error_category: 'PERMANENT' as const,
                   }
                   : {
                     status: 'RETRY' as const,
@@ -711,8 +761,9 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                   };
               },
               prefix,
-              'Update RETRY/FAILED after throw failed'
+              'Update RETRY/DEAD_LETTER after throw failed'
             );
+            await writeQueueDeadLetterAudit(siteIdUuid, rowsToDeadLetter, 'MAX_ATTEMPTS', msg, 'MAX_ATTEMPTS');
             for (const row of rowsToRetry) {
               const count = (row.retry_count ?? 0) + 1;
               const isFinal = count >= MAX_RETRY_ATTEMPTS;
@@ -736,13 +787,18 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               if (!row) continue;
               updates.push({ row, result });
             }
+            const deadLetterUpdates = updates.filter(({ row, result }) => {
+              if (result.status !== 'RETRY') return false;
+              const count = (row.retry_count ?? 0) + 1;
+              return count >= MAX_RETRY_ATTEMPTS;
+            });
             await bulkUpdateQueueGrouped(
               updates,
               (u) => u.row.id,
-              ({ row, result }) => {
+              ({ row, result }): QueueSnapshotUpdatePayload => {
                 if (result.status === 'COMPLETED') {
                   if (result.provider_request_id && attemptRequestId == null) attemptRequestId = result.provider_request_id;
-                  const payload: Record<string, unknown> = {
+                  const payload: QueueSnapshotUpdatePayload = {
                     status: 'COMPLETED',
                     last_error: null,
                     updated_at: new Date().toISOString(),
@@ -755,20 +811,21 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                   return payload;
                 }
                 const count = (row.retry_count ?? 0) + 1;
-                const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+                const maxAttemptsHit = count >= MAX_RETRY_ATTEMPTS;
+                const isFatal = maxAttemptsHit || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
                 const delaySec = nextRetryDelaySeconds(count);
                 const errorMsg = result.error_message ?? 'Unknown error';
                 const lastErrorFinal = isFatal
-                  ? `FATAL: ${errorMsg}`.slice(0, 1000)
+                  ? `FINAL: ${errorMsg}`.slice(0, 1000)
                   : errorMsg.slice(0, 1000);
                 return isFatal
                   ? {
-                    status: 'FAILED' as const,
+                    status: maxAttemptsHit ? 'DEAD_LETTER_QUARANTINE' as const : 'FAILED' as const,
                     retry_count: count,
                     last_error: lastErrorFinal,
                     updated_at: new Date().toISOString(),
-                    provider_error_code: result.error_code ?? null,
-                    provider_error_category: result.provider_error_category ?? null,
+                    provider_error_code: maxAttemptsHit ? 'MAX_ATTEMPTS' : result.error_code ?? null,
+                    provider_error_category: maxAttemptsHit ? 'PERMANENT' : result.provider_error_category ?? null,
                   }
                   : {
                     status: 'RETRY' as const,
@@ -790,6 +847,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               },
               prefix,
               'Update COMPLETED/RETRY/FAILED (partial) failed'
+            );
+            await writeQueueDeadLetterAudit(
+              siteIdUuid,
+              deadLetterUpdates.map(({ row }) => row),
+              'MAX_ATTEMPTS',
+              'Queue row exhausted retry budget after provider response',
+              'MAX_ATTEMPTS'
             );
             for (const { row, result } of updates) {
               if (result.status === 'COMPLETED') {
@@ -861,10 +925,12 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 const isFinal = count >= MAX_RETRY_ATTEMPTS;
                 return isFinal
                   ? {
-                    status: 'FAILED' as const,
+                    status: 'DEAD_LETTER_QUARANTINE' as const,
                     retry_count: count,
                     last_error: 'CIRCUIT_OPEN',
                     updated_at: new Date().toISOString(),
+                    provider_error_code: 'MAX_ATTEMPTS',
+                    provider_error_category: 'PERMANENT' as const,
                   }
                   : {
                     status: 'RETRY' as const,
@@ -876,6 +942,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               },
               prefix,
               'Update CIRCUIT_OPEN failed'
+            );
+            await writeQueueDeadLetterAudit(
+              siteIdUuid,
+              siteRows.filter((row) => (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS),
+              'MAX_ATTEMPTS',
+              'CIRCUIT_OPEN',
+              'MAX_ATTEMPTS'
             );
             for (const row of siteRows) {
               const count = (row.retry_count ?? 0) + 1;
@@ -968,12 +1041,21 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           await bulkUpdateQueue(
             poisonRowIdsCron,
             {
-              status: 'FAILED',
+              status: 'DEAD_LETTER_QUARANTINE',
               last_error: 'POISON_PILL: Malformed payload or conversion_time',
+              provider_error_code: 'POISON_PILL',
+              provider_error_category: 'PERMANENT',
               updated_at: new Date().toISOString(),
             },
             prefix,
-            'Mark poison pill rows FAILED (cron)'
+            'Mark poison pill rows DEAD_LETTER (cron)'
+          );
+          await writeQueueDeadLetterAudit(
+            siteIdUuid,
+            rowsWithValue.filter((row) => poisonRowIdsCron.includes(row.id)),
+            'POISON_PILL',
+            'POISON_PILL: Malformed payload or conversion_time',
+            'PERMANENT'
           );
         }
         // Enhanced Conversions: enrich job.payload with caller_phone_hash_sha256 from calls
@@ -1015,6 +1097,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const rowsToRetryCron = rowsWithValue.filter((r) => !poisonRowIdsCron.includes(r.id));
+          const rowsToDeadLetterCron = rowsToRetryCron.filter((row) => (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS);
           await bulkUpdateQueueGrouped(
             rowsToRetryCron,
             (r) => r.id,
@@ -1024,10 +1107,12 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
               const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
               return isFinal
                 ? {
-                  status: 'FAILED' as const,
+                  status: 'DEAD_LETTER_QUARANTINE' as const,
                   retry_count: count,
                   last_error: msg.slice(0, 1000),
                   updated_at: new Date().toISOString(),
+                  provider_error_code: 'MAX_ATTEMPTS',
+                  provider_error_category: 'PERMANENT' as const,
                 }
                 : {
                   status: 'RETRY' as const,
@@ -1038,8 +1123,9 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
                 };
             },
             prefix,
-            'Update RETRY/FAILED (cron adapter throw) failed'
+            'Update RETRY/DEAD_LETTER (cron adapter throw) failed'
           );
+          await writeQueueDeadLetterAudit(siteIdUuid, rowsToDeadLetterCron, 'MAX_ATTEMPTS', msg, 'MAX_ATTEMPTS');
           for (const row of rowsToRetryCron) {
             const count = (row.retry_count ?? 0) + 1;
             const isFatal = count >= MAX_RETRY_ATTEMPTS;
@@ -1066,6 +1152,10 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           if (!row) continue;
           cronUpdates.push({ row, result });
         }
+        const cronDeadLetterUpdates = cronUpdates.filter(({ row, result }) => {
+          if (result.status !== 'RETRY') return false;
+          return (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS;
+        });
         await bulkUpdateQueueGrouped(
           cronUpdates,
           (u) => u.row.id,
@@ -1080,15 +1170,18 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
             }
             if (result.status === 'RETRY') {
               const count = (row.retry_count ?? 0) + 1;
-              const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
+              const maxAttemptsHit = count >= MAX_RETRY_ATTEMPTS;
+              const isFatal = maxAttemptsHit || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
               const delay = nextRetryDelaySeconds(count);
               const lastErr = (result.error_message ?? '').slice(0, 1000);
               return isFatal
                 ? {
-                  status: 'FATAL' as const,
+                  status: maxAttemptsHit ? 'DEAD_LETTER_QUARANTINE' as const : 'FAILED' as const,
                   retry_count: count,
                   last_error: lastErr,
                   updated_at: new Date().toISOString(),
+                  provider_error_code: maxAttemptsHit ? 'MAX_ATTEMPTS' : result.error_code ?? null,
+                  provider_error_category: maxAttemptsHit ? 'PERMANENT' : result.provider_error_category ?? null,
                 }
                 : {
                   status: 'RETRY' as const,
@@ -1106,6 +1199,13 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           },
           prefix,
           'Update COMPLETED/RETRY/FAILED (cron results) failed'
+        );
+        await writeQueueDeadLetterAudit(
+          siteIdUuid,
+          cronDeadLetterUpdates.map(({ row }) => row),
+          'MAX_ATTEMPTS',
+          'Queue row exhausted retry budget in cron runner',
+          'MAX_ATTEMPTS'
         );
         for (const { row, result } of cronUpdates) {
           if (result.status === 'COMPLETED') {

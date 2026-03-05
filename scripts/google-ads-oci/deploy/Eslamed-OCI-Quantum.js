@@ -8,7 +8,7 @@
  */
 
 const CONFIG = {
-  API_URL: 'https://api.opsmantik.com',
+  API_URL: 'https://console.opsmantik.com',
   SITE_ID: '81d957f3c7534f53b12ff305f9f07ae7',
   X_API_KEY: 'becaef33f722de5f08691091bbe2cbb7fba0594e56ccbfb4c8a15b3ebedd2cf1',
   TIMEZONE: '+0300',
@@ -135,6 +135,7 @@ function processChunk(items) {
 }
 
 function sendAck(successIds) {
+  if (!successIds || successIds.length === 0) return;
   const payload = { siteId: CONFIG.SITE_ID, queueIds: successIds, pendingConfirmation: true };
   const options = {
     method: 'post',
@@ -143,7 +144,11 @@ function sendAck(successIds) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
-  UrlFetchApp.fetch(`${CONFIG.API_URL}/api/oci/ack`, options);
+  const response = UrlFetchApp.fetch(`${CONFIG.API_URL}/api/oci/ack`, options);
+  const code = response.getResponseCode();
+  if (code !== 200) {
+    Logger.log('[ERROR] Ack failed. Code: ' + code + ' | Response: ' + response.getContentText().slice(0, 300));
+  }
 }
 
 function sendNack(fatalIds, code, message, category) {
