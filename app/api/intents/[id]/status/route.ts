@@ -96,6 +96,7 @@ export async function POST(
 
     // Use adminClient (service_role) so the write is not blocked by RLS. We already validated
     // site access and queue:operate; without this, member role 'owner' or RLS can prevent UPDATE.
+    // Pass p_version so Postgres picks the 7-param overload (DB has 6-param and 7-param versions).
     const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
       p_call_id: callId,
       p_action_type: actionType,
@@ -103,6 +104,7 @@ export async function POST(
       p_actor_type: 'system',
       p_actor_id: user.id,
       p_metadata: { route, request_id: requestId, user_id: user.id },
+      p_version: null,
     });
 
     if (updateError) {

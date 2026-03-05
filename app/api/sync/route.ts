@@ -271,9 +271,22 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const strictGhostGeo = siteIngestConfig.ghost_geo_strict || siteIngestConfig.ingest_strict_mode;
 
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
-    const doPublish = deps?.publish ?? (async (args: { url: string; body: unknown; deduplicationId: string; retries: number }) => {
-      await publishToQStash({ url: args.url, body: args.body as Record<string, unknown>, deduplicationId: args.deduplicationId, retries: args.retries });
-    });
+    const useDirectWorker = process.env.OPSMANTIK_SYNC_DIRECT_WORKER === '1' || process.env.OPSMANTIK_SYNC_DIRECT_WORKER === 'true';
+    const doPublish = deps?.publish ?? (useDirectWorker
+      ? (async (args: { url: string; body: unknown }) => {
+          const res = await fetch(args.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(args.body),
+          });
+          if (!res.ok) {
+            const t = await res.text().catch(() => '');
+            throw new Error(`direct_worker_${res.status}: ${t.slice(0, 200)}`);
+          }
+        })
+      : (async (args: { url: string; body: unknown; deduplicationId: string; retries: number }) => {
+          await publishToQStash({ url: args.url, body: args.body as Record<string, unknown>, deduplicationId: args.deduplicationId, retries: args.retries });
+        }));
 
     let queued = 0;
     let degraded = 0;

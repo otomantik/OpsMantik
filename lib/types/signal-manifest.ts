@@ -27,10 +27,11 @@ const eventBaseSchema = z.object({
   r: z.string().trim().max(MAX_REFERRER_LEN).optional(),
 });
 
-/** Single event: s required, url OR u required */
+/** Single event: s required, url OR u required. consent_scopes preserved for sync 204/202 path. */
 export const SignalManifestSingleSchema = eventBaseSchema.extend({
   url: z.string().trim().max(MAX_URL_LEN).optional(),
   u: z.string().trim().max(MAX_URL_LEN).optional(),
+  consent_scopes: z.array(z.string()).optional(),
 }).refine(
   (v) => {
     const url = (v.url ?? '').trim();

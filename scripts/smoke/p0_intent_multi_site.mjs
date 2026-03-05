@@ -115,12 +115,19 @@ async function runTestForSite(siteInfo, index) {
     body: JSON.stringify(payload),
   });
 
+  const rawText = await res.text().catch(() => '');
   if (!res.ok) {
-    throw new Error(`sync_http_${res.status}: ${await res.text().catch(() => '')}`);
+    throw new Error(`sync_http_${res.status}: ${rawText.slice(0, 300)}`);
   }
-  const body = await res.json().catch(() => ({}));
+  let body = {};
+  try {
+    body = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    throw new Error(`sync_not_json: status=${res.status} body=${rawText.slice(0, 200)}`);
+  }
   if (!body?.ok) {
-    throw new Error(`sync_not_ok: ${JSON.stringify(body)}`);
+    const hint = res.status === 204 ? ' (204 No Content — consent_scopes veya payload kontrol et)' : '';
+    throw new Error(`sync_not_ok: ${JSON.stringify(body)}${hint}`);
   }
 
   const eventRow = await retry(`DB events [${domain}]`, async () => {

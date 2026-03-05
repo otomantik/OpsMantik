@@ -28,3 +28,20 @@ npm run smoke:intent-multi-site
 ```bash
 P0_SITES="yapiozmendanismanlik.com,poyrazantika.com,yoursite.com" npm run smoke:intent-multi-site
 ```
+
+## Lokalden test (QStash olmadan)
+
+Canlıya dokunmadan gate’i geçmek için testi lokale yönlendirip sync’in worker’a doğrudan HTTP atmasını sağlayabilirsin. Worker normalde QStash imzası ister; lokalde imza olmadan kabul etmesi için bypass gerekir.
+
+1. **.env.local** içine ekle:
+   ```env
+   OPSMANTIK_SYNC_DIRECT_WORKER=1
+   ALLOW_INSECURE_DEV_WORKER=true
+   ```
+   (`ALLOW_INSECURE_DEV_WORKER=true` olmazsa worker 403 QSTASH_SIGNATURE_MISSING döner, sync 503 olur.)
+2. Uygulamayı başlat (veya yeniden başlat): `npm run dev`
+3. Başka bir terminalde:  
+   `$env:SYNC_API_URL="http://localhost:3000/api/sync"; npm run smoke:intent-multi-site`  
+   (Windows PowerShell; macOS/Linux: `SYNC_API_URL=http://localhost:3000/api/sync npm run smoke:intent-multi-site`)
+
+Sync, QStash yerine `/api/workers/ingest`’e doğrudan istek atar; worker imza kontrolünü atlar; event/call DB’ye yazılır ve test PASS olur.
