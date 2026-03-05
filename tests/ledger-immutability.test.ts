@@ -17,7 +17,7 @@ function getEnv(key: string): string {
   return val;
 }
 
-test('Ledger: revenue_snapshots UPDATE must fail', async (t) => {
+test('Ledger: revenue_snapshots UPDATE must fail', async (_t) => {
   const supabaseUrl = getEnv('NEXT_PUBLIC_SUPABASE_URL');
   const serviceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -55,7 +55,7 @@ test('Ledger: revenue_snapshots UPDATE must fail', async (t) => {
     return;
   }
 
-  t.after(async () => {
+  _t.after(async () => {
     // We cannot DELETE due to trigger — test verifies that
     // Leave row; it's append-only. Or use a dedicated test cleanup.
   });
@@ -69,12 +69,13 @@ test('Ledger: revenue_snapshots UPDATE must fail', async (t) => {
   assert.ok(updateErr, 'UPDATE on revenue_snapshots must fail');
   assert.ok(
     updateErr.message?.toLowerCase().includes('immutable') ||
-      updateErr.message?.toLowerCase().includes('updates not allowed'),
+    updateErr.message?.toLowerCase().includes('updates not allowed'),
     `Expected immutable/updates error, got: ${updateErr.message}`
   );
 });
 
-test('Ledger: revenue_snapshots DELETE must fail', async (t) => {
+test('Ledger: revenue_snapshots DELETE must fail', async (_t) => {
+  void _t;
   const supabaseUrl = getEnv('NEXT_PUBLIC_SUPABASE_URL');
   const serviceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -109,7 +110,7 @@ test('Ledger: revenue_snapshots DELETE must fail', async (t) => {
   assert.ok(deleteErr, 'DELETE on revenue_snapshots must fail');
   assert.ok(
     deleteErr.message?.toLowerCase().includes('immutable') ||
-      deleteErr.message?.toLowerCase().includes('deletes not allowed'),
+    deleteErr.message?.toLowerCase().includes('deletes not allowed'),
     `Expected immutable/deletes error, got: ${deleteErr.message}`
   );
 });

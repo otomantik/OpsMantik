@@ -240,6 +240,7 @@ export async function processCallEvent(
       clickDate: signalDate,
       signalDate,
       clientIp: payload.clientIp,
+      traceId: requestId ?? null,
     });
   } catch (v2Err) {
     console.error('[PR-OCI-2] V2_PULSE emit failed (non-fatal):', (v2Err as Error)?.message ?? v2Err);

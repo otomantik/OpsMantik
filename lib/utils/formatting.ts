@@ -118,24 +118,25 @@ export function maskFingerprint(fp: string | null | undefined): string {
 
 /** Ghost geo cities (IP edge / CDN / proxy locations, not real client). Never display. */
 const GHOST_GEO_CITIES = new Set([
-  'rome', 'amsterdam', 'roma',
-  'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
+    'rome', 'amsterdam', 'roma',
+    'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
 ]);
 
 /**
  * Format location for display. UI Gate (PR1): call geo when location_source='gclid', else session geo.
  * Rome/Amsterdam ghost ALWAYS returns null (UI shows Unknown) — deterministic quarantine.
+ * Third param (location_source) accepted for API consistency; callers use it for badges (e.g. gclid).
  */
 export function formatDisplayLocation(
-  city?: string | null,
-  district?: string | null,
-  locationSource?: string | null
+    city?: string | null,
+    district?: string | null,
+    _locationSource?: string | null,
 ): string | null {
-  const cityNorm = (city || '').toString().trim().toLowerCase();
-  const districtNorm = (district || '').toString().trim().toLowerCase();
-  if (GHOST_GEO_CITIES.has(cityNorm) || GHOST_GEO_CITIES.has(districtNorm)) return null;
-  const out = formatLocation(city, district);
-  return out === '—' ? null : out;
+    const cityNorm = (city || '').toString().trim().toLowerCase();
+    const districtNorm = (district || '').toString().trim().toLowerCase();
+    if (GHOST_GEO_CITIES.has(cityNorm) || GHOST_GEO_CITIES.has(districtNorm)) return null;
+    const out = formatLocation(city, district);
+    return out === '—' ? null : out;
 }
 
 /**

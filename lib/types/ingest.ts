@@ -103,6 +103,8 @@ export type ValidIngestPayload =
  */
 export type WorkerJobData = IngestPayload & {
   ingest_id?: string;
+  /** Phase 20: OM-TRACE-UUID for forensic chain (sync → QStash → worker → DB) */
+  om_trace_uuid?: string;
   ip?: string;
   ua?: string;
 

@@ -29,7 +29,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export function createCausalDna(gear: OpsGear, gatesPassed: string[] = []): CausalDna {
+export function createCausalDna(gear: OpsGear): CausalDna {
   return {
     branches: [],
     input_gear: gear,

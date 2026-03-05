@@ -51,6 +51,8 @@ export interface GoogleAdsConversionItem {
   conversionCurrency: string;
   /** Optional: SHA-256 hex (64 char) for Enhanced Conversions. */
   hashed_phone_number?: string | null;
+  /** Phase 20: OM-TRACE-UUID for conversion_custom_variable (forensic chain) */
+  om_trace_uuid?: string | null;
 }
 
 /**
@@ -235,7 +237,7 @@ export async function GET(req: NextRequest) {
     // Phase 6.2: Deterministic Cursor-Based Query (marketing_signals)
     let sigQuery = adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid, updated_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid, trace_id, updated_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING');
 
@@ -354,6 +356,7 @@ export async function GET(req: NextRequest) {
         continue;
       }
       const orderIdDDA = `${clickId}_${conversionName}_${conversionTime}`.slice(0, 128);
+      const traceId = (sig as { trace_id?: string | null }).trace_id ?? null;
       signalItems.push({
         id: 'signal_' + (sig as { id: string }).id,
         orderId: orderIdDDA || 'signal_' + (sig as { id: string }).id,
@@ -364,6 +367,7 @@ export async function GET(req: NextRequest) {
         conversionTime,
         conversionValue: numVal,
         conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
+        ...(traceId && { om_trace_uuid: traceId }),
       });
     }
 

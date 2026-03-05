@@ -134,10 +134,10 @@ export function OciControlPanel({
     });
   };
 
-  const selectAll = () => {
-    if (selectedIds.size === rows.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(rows.map((r) => r.id)));
-  };
+  // const selectAll = () => {
+  //   if (selectedIds.size === rows.length) setSelectedIds(new Set());
+  //   else setSelectedIds(new Set(rows.map((r) => r.id)));
+  // };
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">

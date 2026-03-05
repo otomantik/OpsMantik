@@ -27,6 +27,7 @@ test_output*.txt
 
 # misc
 .DS_Store
+/tmp
 *.pem
 Untitled
 debug-error.png

@@ -11,6 +11,9 @@
 
 BEGIN;
 
+-- GiST composite (site_id, sys_period) requires btree_gist for uuid
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 -- Step 1: Add bitemporal columns
 ALTER TABLE public.marketing_signals
   ADD COLUMN IF NOT EXISTS sys_period    tstzrange
@@ -21,8 +24,8 @@ ALTER TABLE public.marketing_signals
     DEFAULT tstzrange(now(), 'infinity', '[)');
 
 -- Step 2: Backfill existing rows from existing timestamps
--- sys_period:   created_at → infinity  (system first recorded it at created_at)
--- valid_period: google_conversion_time → infinity (business event from conversion time)
+-- sys_period and valid_period: both use created_at to avoid casting empty/invalid google_conversion_time (SQLSTATE 22007).
+-- New rows will have valid_period set from application logic using google_conversion_time when present.
 UPDATE public.marketing_signals
 SET
   sys_period   = tstzrange(
@@ -31,15 +34,7 @@ SET
     '[)'
   ),
   valid_period = tstzrange(
-    COALESCE(
-      CASE 
-        WHEN google_conversion_time IS NOT NULL AND google_conversion_time != ''
-        THEN google_conversion_time::timestamptz
-        ELSE created_at
-      END,
-      created_at,
-      now()
-    ),
+    COALESCE(created_at, now()),
     'infinity',
     '[)'
   )

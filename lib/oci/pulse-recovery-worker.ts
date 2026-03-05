@@ -11,7 +11,7 @@ import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 
-const FIRST_RETRY_HOURS = 2;
+
 const BACKOFF_HOURS = [2, 6, 24] as const; // 1st retry after 2h, 2nd after 6h, 3rd after 24h
 const MAX_RECOVERY_ATTEMPTS = 3;
 const BATCH_LIMIT = 100;

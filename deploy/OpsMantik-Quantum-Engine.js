@@ -15,6 +15,7 @@ const CONFIG = {
     MAX_EXECUTION_MS: 25 * 60 * 1000
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function main() {
     const startTime = Date.now();
     Logger.log(`[OPSMANTIK] Quantum Engine Started | Site ID: ${CONFIG.SITE_ID}`);
@@ -159,3 +160,4 @@ function sendNack(fatalIds, code, message, category) {
     };
     UrlFetchApp.fetch(`${CONFIG.API_URL}/api/oci/ack-failed`, options);
 }
+// void main(); // Silencing JS warning if needed, but this is a script environment.

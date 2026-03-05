@@ -9,7 +9,8 @@ import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/logging/logger';
 import { buildFallbackRow } from '@/lib/sync-fallback';
 import { getClientIp } from '@/lib/request-client-ip';
-import { getFinalUrl, normalizeIp, normalizeUserAgent, parseValidIngestPayload } from '@/lib/types/ingest';
+import { getFinalUrl, normalizeIp, normalizeUserAgent } from '@/lib/types/ingest';
+import { parseSignalManifest, toValidIngestPayload } from '@/lib/types/signal-manifest';
 import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '@/lib/idempotency';
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
 import { publishToQStash } from '@/lib/ingest/publish';
@@ -31,8 +32,6 @@ const DEFAULT_RL_LIMIT =
     : 2000;
 const RL_WINDOW_MS = 60000;
 
-/** Max events per batch request. Batch support removes 400 batch_not_supported and reduces request count (fewer 429). */
-const MAX_BATCH_SIZE = 50;
 
 /** P1-2.2: Backpressure — hard cap per POST to prevent QStash queue saturation. Exceeding returns 429. */
 const MAX_EVENTS_PER_REQUEST = 100;
@@ -53,74 +52,74 @@ function getSiteRateLimitOverrides(): Map<string, number> {
 }
 
 export async function GET(req: NextRequest) {
-    // NOTE: /api/sync is designed for POST ingestion. A browser-open GET should return 405.
-    // For production debugging of Cloudflare vs Vercel geo headers, we expose an explicit
-    // diagnostic mode that does NOT reveal client IP.
-    //
-    // Usage after deploy: https://console.opsmantik.com/api/sync?diag=1
-    const url = new URL(req.url);
-    if (url.searchParams.get('diag') !== '1') {
-        return NextResponse.json(
-            { error: 'Method not allowed. Use POST.', diag: 'Add ?diag=1 for header diagnostics.' },
-            { status: 405, headers: { ...getBuildInfoHeaders(), 'Allow': 'POST, OPTIONS' } }
-        );
-    }
-
-    const ua = req.headers.get('user-agent') || 'Unknown';
-    const { extractGeoInfo } = await import('@/lib/geo');
-    const { geoInfo } = extractGeoInfo(req, ua, undefined);
-
-    const cf = {
-        city: req.headers.get('cf-ipcity'),
-        district: req.headers.get('cf-ipdistrict'),
-        country: req.headers.get('cf-ipcountry'),
-        timezone: req.headers.get('cf-timezone'),
-        asn: req.headers.get('cf-connecting-ip-asn'),
-        org: req.headers.get('cf-as-organization'),
-        ray: req.headers.get('cf-ray'),
-    };
-    const vercel = {
-        city: req.headers.get('x-vercel-ip-city'),
-        country: req.headers.get('x-vercel-ip-country'),
-        asn: req.headers.get('x-vercel-ip-asn'),
-        id: req.headers.get('x-vercel-id'),
-    };
-
-    const headersPresent = {
-        cf_ipcity: Boolean(cf.city),
-        cf_ipdistrict: Boolean(cf.district),
-        cf_ipcountry: Boolean(cf.country),
-        x_vercel_ip_city: Boolean(vercel.city),
-        x_vercel_ip_country: Boolean(vercel.country),
-    };
-
+  // NOTE: /api/sync is designed for POST ingestion. A browser-open GET should return 405.
+  // For production debugging of Cloudflare vs Vercel geo headers, we expose an explicit
+  // diagnostic mode that does NOT reveal client IP.
+  //
+  // Usage after deploy: https://console.opsmantik.com/api/sync?diag=1
+  const url = new URL(req.url);
+  if (url.searchParams.get('diag') !== '1') {
     return NextResponse.json(
-        {
-            ok: true,
-            v: OPSMANTIK_VERSION,
-            headers_present: headersPresent,
-            chosen: {
-                city: geoInfo.city,
-                district: geoInfo.district,
-                country: geoInfo.country,
-                timezone: geoInfo.timezone,
-            },
-            cf,
-            vercel,
-        },
-        { headers: { ...getBuildInfoHeaders(), 'Cache-Control': 'no-store' } }
+      { error: 'Method not allowed. Use POST.', diag: 'Add ?diag=1 for header diagnostics.' },
+      { status: 405, headers: { ...getBuildInfoHeaders(), 'Allow': 'POST, OPTIONS' } }
     );
+  }
+
+  const ua = req.headers.get('user-agent') || 'Unknown';
+  const { extractGeoInfo } = await import('@/lib/geo');
+  const { geoInfo } = extractGeoInfo(req, ua, undefined);
+
+  const cf = {
+    city: req.headers.get('cf-ipcity'),
+    district: req.headers.get('cf-ipdistrict'),
+    country: req.headers.get('cf-ipcountry'),
+    timezone: req.headers.get('cf-timezone'),
+    asn: req.headers.get('cf-connecting-ip-asn'),
+    org: req.headers.get('cf-as-organization'),
+    ray: req.headers.get('cf-ray'),
+  };
+  const vercel = {
+    city: req.headers.get('x-vercel-ip-city'),
+    country: req.headers.get('x-vercel-ip-country'),
+    asn: req.headers.get('x-vercel-ip-asn'),
+    id: req.headers.get('x-vercel-id'),
+  };
+
+  const headersPresent = {
+    cf_ipcity: Boolean(cf.city),
+    cf_ipdistrict: Boolean(cf.district),
+    cf_ipcountry: Boolean(cf.country),
+    x_vercel_ip_city: Boolean(vercel.city),
+    x_vercel_ip_country: Boolean(vercel.country),
+  };
+
+  return NextResponse.json(
+    {
+      ok: true,
+      v: OPSMANTIK_VERSION,
+      headers_present: headersPresent,
+      chosen: {
+        city: geoInfo.city,
+        district: geoInfo.district,
+        country: geoInfo.country,
+        timezone: geoInfo.timezone,
+      },
+      cf,
+      vercel,
+    },
+    { headers: { ...getBuildInfoHeaders(), 'Cache-Control': 'no-store' } }
+  );
 }
 
 export async function OPTIONS(req: NextRequest) {
-    const origin = req.headers.get('origin');
-    const headers = getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION });
-    const res = new NextResponse(null, { status: 200, headers });
-    // Force credentials header on Response so it is not stripped (preflight requires it when request uses credentials).
-    if (origin) {
-        res.headers.set('Access-Control-Allow-Credentials', 'true');
-    }
-    return res;
+  const origin = req.headers.get('origin');
+  const headers = getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION });
+  const res = new NextResponse(null, { status: 200, headers });
+  // Force credentials header on Response so it is not stripped (preflight requires it when request uses credentials).
+  if (origin) {
+    res.headers.set('Access-Control-Allow-Credentials', 'true');
+  }
+  return res;
 }
 
 /**
@@ -166,87 +165,54 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
   return async function POST(req: NextRequest) {
     const origin = req.headers.get('origin');
     const baseHeaders: Record<string, string> = {
-        ...getBuildInfoHeaders(),
-        ...getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION }),
+      ...getBuildInfoHeaders(),
+      ...getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION }),
     };
 
     const contentLength = req.headers.get('content-length');
     if (contentLength !== null && contentLength !== undefined) {
-        const len = parseInt(contentLength, 10);
-        if (!Number.isNaN(len) && len > 256 * 1024) {
-            return NextResponse.json(createSyncResponse(false, null, { error: 'Payload too large' }), { status: 413, headers: baseHeaders });
-        }
+      const len = parseInt(contentLength, 10);
+      if (!Number.isNaN(len) && len > 256 * 1024) {
+        return NextResponse.json(createSyncResponse(false, null, { error: 'Payload too large' }), { status: 413, headers: baseHeaders });
+      }
     }
 
     // --- 1. Parse body once (needed for site-scoped rate limit key and later validation) ---
     let json: unknown;
     try {
-        json = await req.json();
+      json = await req.json();
     } catch {
-        const clientId = RateLimitService.getClientId(req);
-        const rl = deps?.checkRateLimit
-            ? await deps.checkRateLimit()
-            : await RateLimitService.checkWithMode(clientId, 100, 60000, { mode: 'fail-closed' });
-        if (!rl.allowed) {
-            incrementBillingIngestRateLimited();
-            const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
-            return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
-        }
-        return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'invalid_json' } });
+      const clientId = RateLimitService.getClientId(req);
+      const rl = deps?.checkRateLimit
+        ? await deps.checkRateLimit()
+        : await RateLimitService.checkWithMode(clientId, 100, 60000, { mode: 'fail-closed' });
+      if (!rl.allowed) {
+        incrementBillingIngestRateLimited();
+        const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
+        return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
+      }
+      return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'invalid_json' } });
     }
 
-    // --- 1.5 Normalize to array: single payload or { events: [ ... ] }. Batch supported (no more 400 batch_not_supported).
-    let rawBodies: unknown[];
-    if (typeof json === 'object' && json !== null && Array.isArray((json as Record<string, unknown>).events)) {
-        const events = (json as Record<string, unknown>).events as unknown[];
-        if (events.length === 0) {
-            return NextResponse.json(
-                { ok: false, error: 'invalid_payload', code: 'events_empty' },
-                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'events_empty' } }
-            );
-        }
-        // P1-2.2: Backpressure — reject oversized batch before publish to prevent QStash saturation
-        if (events.length > MAX_EVENTS_PER_REQUEST) {
-            incrementBillingIngestRateLimited();
-            return NextResponse.json(
-                createSyncResponse(false, null, { error: 'Too many events per request', code: 'batch_limit_exceeded' }),
-                {
-                    status: 429,
-                    headers: {
-                        ...baseHeaders,
-                        'x-opsmantik-ratelimit': '1',
-                        'Retry-After': '60',
-                        'X-OpsMantik-Error-Code': 'batch_limit_exceeded',
-                    },
-                }
-            );
-        }
-        rawBodies = events.slice(0, MAX_EVENTS_PER_REQUEST);
-    } else {
-        rawBodies = [json];
+    // --- 1.5 Phase 20: Strict Zod SignalManifest validation. Non-compliant → 422 Unprocessable Entity.
+    const parsed = parseSignalManifest(json);
+    if (parsed.ok === false) {
+      return NextResponse.json(
+        { ok: false, error: 'invalid_payload', code: parsed.code },
+        { status: 422, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': parsed.code } }
+      );
     }
 
-    // --- 2. Validate all payloads and require same site_id ---
     type ValidIngestPayload = import('@/lib/types/ingest').ValidIngestPayload;
-    const bodies: ValidIngestPayload[] = [];
-    for (let i = 0; i < rawBodies.length; i++) {
-        const parsed = parseValidIngestPayload(rawBodies[i]);
-        if (parsed.kind === 'invalid') {
-            return NextResponse.json(
-                { ok: false, error: 'invalid_payload', code: parsed.error },
-                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': parsed.error } }
-            );
-        }
-        bodies.push(parsed.data);
-    }
+    const bodies: ValidIngestPayload[] = parsed.data.events.map(toValidIngestPayload);
     const firstSiteId = bodies[0].s;
     for (let i = 1; i < bodies.length; i++) {
-        if (bodies[i].s !== firstSiteId) {
-            return NextResponse.json(
-                { ok: false, error: 'invalid_payload', code: 'batch_mixed_sites' },
-                { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_mixed_sites' } }
-            );
-        }
+      if (bodies[i].s !== firstSiteId) {
+        return NextResponse.json(
+          { ok: false, error: 'invalid_payload', code: 'batch_mixed_sites' },
+          { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_mixed_sites' } }
+        );
+      }
     }
     const body = bodies[0];
 
@@ -254,10 +220,10 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const validateSiteFn = deps?.validateSite ?? SiteService.validateSite;
     const { valid: siteValid, site } = await validateSiteFn(body.s);
     if (!siteValid || !site) {
-        return NextResponse.json(
-            createSyncResponse(false, null, { error: 'Site not found or invalid', code: 'site_not_found' }),
-            { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'site_not_found' } }
-        );
+      return NextResponse.json(
+        createSyncResponse(false, null, { error: 'Site not found or invalid', code: 'site_not_found' }),
+        { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'site_not_found' } }
+      );
     }
     const siteIdUuid = site.id;
 
@@ -268,25 +234,25 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const limitOverrides = getSiteRateLimitOverrides();
     const rlLimit = (siteIdForRl && limitOverrides.has(siteIdForRl)) ? limitOverrides.get(siteIdForRl)! : DEFAULT_RL_LIMIT;
     const rl = deps?.checkRateLimit
-        ? await deps.checkRateLimit()
-        : await RateLimitService.checkWithMode(rateLimitKey, rlLimit, RL_WINDOW_MS, { mode: 'fail-closed' });
+      ? await deps.checkRateLimit()
+      : await RateLimitService.checkWithMode(rateLimitKey, rlLimit, RL_WINDOW_MS, { mode: 'fail-closed' });
     if (!rl.allowed) {
-        incrementBillingIngestRateLimited();
-        const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
-        return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
+      incrementBillingIngestRateLimited();
+      const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
+      return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
     }
 
     // COMPLIANCE INVARIANT — validateSite → consent → publish (idempotency/quota run in worker). Return 204 without publish when analytics consent missing.
     if (bodies.length === 1) {
-        const singleConsentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
-            ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
-            : Array.isArray(body.meta?.consent_scopes)
-                ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
-                : [];
-        if (!singleConsentScopes.includes('analytics')) {
-            const consentHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' };
-            return new NextResponse(null, { status: 204, headers: consentHeaders });
-        }
+      const singleConsentScopes = Array.isArray((body as Record<string, unknown>).consent_scopes)
+        ? ((body as Record<string, unknown>).consent_scopes as string[]).map((s) => String(s).toLowerCase())
+        : Array.isArray(body.meta?.consent_scopes)
+          ? (body.meta.consent_scopes as string[]).map((s) => String(s).toLowerCase())
+          : [];
+      if (!singleConsentScopes.includes('analytics')) {
+        const consentHeaders = { ...baseHeaders, 'x-opsmantik-consent-missing': 'analytics' };
+        return new NextResponse(null, { status: 204, headers: consentHeaders });
+      }
     }
 
     const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
@@ -327,10 +293,12 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       Sentry.setTag('ingest_id', ingestId);
       Sentry.setContext('sync_producer', { ingest_id: ingestId, site_id: b.s, url: getFinalUrl(b).slice(0, 200) });
 
-      const workerPayload = {
+      const omTraceUuid = req.headers.get('om-trace-uuid') || req.headers.get('x-request-id') || undefined;
+    const workerPayload = {
         ...b,
         consent_scopes: consentScopes,
         ingest_id: ingestId,
+        om_trace_uuid: omTraceUuid,
         ip,
         ua,
         geo_city: geoInfo.city !== 'Unknown' ? geoInfo.city : undefined,

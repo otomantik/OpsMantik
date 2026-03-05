@@ -18,7 +18,7 @@ import { processSyncEvent, DedupSkipError, getDedupEventIdForJob } from '@/lib/i
 import { getSiteIngestConfig } from '@/lib/ingest/site-ingest-config';
 import { isCommonBotUA, isAllowedReferrer, hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { getFinalUrl } from '@/lib/types/ingest';
-import type { IngestResult, IngestSkipReason, CausalDna } from '@/lib/ingest/types';
+import type { IngestResult, CausalDna } from '@/lib/ingest/types';
 import {
   computeIdempotencyKey,
   computeIdempotencyKeyV2,
@@ -102,20 +102,20 @@ async function handler(req: NextRequest) {
     siteDbId = site.id;
 
     const fingerprint = (job.meta && typeof (job.meta as Record<string, unknown>).fp === 'string')
-        ? String((job.meta as Record<string, unknown>).fp).trim()
-        : (typeof job.sid === 'string' ? job.sid.trim() : '');
+      ? String((job.meta as Record<string, unknown>).fp).trim()
+      : (typeof job.sid === 'string' ? job.sid.trim() : '');
     const fraudCheck = await checkAndIncrementFraudFingerprint(site.id, fingerprint);
     if (fraudCheck.quarantine) {
-        try {
-            await adminClient.from('ingest_fraud_quarantine').insert({
-                site_id: site.id,
-                payload: rawBody as Record<string, unknown>,
-                reason: fraudCheck.reason,
-                fingerprint: fingerprint || null,
-                ip_address: typeof job.ip === 'string' ? job.ip : null,
-            });
-        } catch { /* best-effort; ack message anyway */ }
-        return NextResponse.json({ ok: true, quarantine: true, reason: fraudCheck.reason });
+      try {
+        await adminClient.from('ingest_fraud_quarantine').insert({
+          site_id: site.id,
+          payload: rawBody as Record<string, unknown>,
+          reason: fraudCheck.reason,
+          fingerprint: fingerprint || null,
+          ip_address: typeof job.ip === 'string' ? job.ip : null,
+        });
+      } catch { /* best-effort; ack message anyway */ }
+      return NextResponse.json({ ok: true, quarantine: true, reason: fraudCheck.reason });
     }
 
     // Traffic debloat: bot/referrer gates BEFORE runSyncGates; skip path inserts idempotency (billable: false), no usage increment

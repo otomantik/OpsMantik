@@ -135,227 +135,227 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
   return (
     <SiteModulesProvider siteId={siteId} activeModules={activeModules}>
-    <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
-      {/* ENTERPRISE GLOBAL STATUS BAR */}
-      <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-60 relative">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
-            {t('sidebar.operationsCenter').toUpperCase()} • {t('statusBar.ociActive')}
+      <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
+        {/* ENTERPRISE GLOBAL STATUS BAR */}
+        <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-60 relative">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full animate-pulse bg-emerald-500" />
+              {t('sidebar.operationsCenter').toUpperCase()} • {t('statusBar.ociActive')}
+            </div>
+            <div className="hidden sm:block opacity-70 text-slate-500">
+              {t('statusBar.latency')}: {loading ? '...' : '12ms'}
+            </div>
           </div>
-          <div className="hidden sm:block opacity-70 text-slate-500">
-            {t('statusBar.latency')}: {loading ? '...' : '12ms'}
-          </div>
+          <LiveClock />
         </div>
-        <LiveClock />
-      </div>
 
-      {/* Desktop-first Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
-        <div className="mx-auto max-w-7xl px-6 py-4 w-full min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0 shrink-0">
-              <Link
-                href="/dashboard"
-                className={cn(
-                  buttonVariants({ variant: 'ghost' }),
-                  "-ml-2 h-10 px-3 inline-flex items-center gap-2 min-w-0 hover:bg-slate-100 transition-colors rounded-lg"
-                )}
-              >
-                <Home className="h-5 w-5 shrink-0 text-slate-600" />
-                <span className="text-base font-bold tracking-tight text-slate-800 truncate max-w-[240px] sm:max-w-none">
-                  {siteName || siteDomain || 'OpsMantik'}
-                </span>
-              </Link>
-              <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{t('sidebar.p0CommandCenter')}</div>
+        {/* Desktop-first Header */}
+        <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
+          <div className="mx-auto max-w-7xl px-6 py-4 w-full min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0 shrink-0">
+                <Link
+                  href="/dashboard"
+                  className={cn(
+                    buttonVariants({ variant: 'ghost' }),
+                    "-ml-2 h-10 px-3 inline-flex items-center gap-2 min-w-0 hover:bg-slate-100 transition-colors rounded-lg"
+                  )}
+                >
+                  <Home className="h-5 w-5 shrink-0 text-slate-600" />
+                  <span className="text-base font-bold tracking-tight text-slate-800 truncate max-w-[240px] sm:max-w-none">
+                    {siteName || siteDomain || 'OpsMantik'}
+                  </span>
+                </Link>
+                <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{t('sidebar.p0CommandCenter')}</div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 min-w-0">
+                {/* Desktop: LocaleSwitcher visible; Mobile: moved into dropdown to free space */}
+                <div className="hidden sm:block shrink-0">
+                  <LocaleSwitcher />
+                </div>
+                <Link
+                  href={`/dashboard/site/${siteId}/activity`}
+                  className={cn(
+                    buttonVariants({ variant: 'outline' }),
+                    'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
+                  )}
+                >
+                  {t('dashboard.activityLog')}
+                </Link>
+                <Link
+                  href={`/dashboard/site/${siteId}/oci-control`}
+                  className={cn(
+                    buttonVariants({ variant: 'outline' }),
+                    'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
+                  )}
+                >
+                  OCI Control
+                </Link>
+                <div className="shrink-0 flex flex-col items-end">
+                  {(() => {
+                    const status = getBadgeStatus({
+                      isConnected: realtime.isConnected,
+                      lastSignalAt: realtime.lastSignalAt,
+                    });
+                    return (
+                      <div
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-full border px-2 sm:px-3 py-1 text-[10px] font-black uppercase tracking-tighter transition-all duration-500 shrink-0',
+                          status === 'active'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : status === 'connected'
+                              ? 'border-amber-200 bg-amber-50 text-amber-800'
+                              : 'border-red-200 bg-red-50 text-red-800'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full shrink-0',
+                            status === 'active' ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
+                          )}
+                        />
+                        <span className="hidden min-[420px]:inline">
+                          {status === 'disconnected' ? t('statusBar.offline') : t('statusBar.uptimeActive')}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" data-testid="header-overflow-menu-trigger">
+                      <MoreHorizontal className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-100 shadow-2xl" data-testid="header-overflow-menu-content">
+                    <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('dashboard.timeline')}</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => setSelectedDay('yesterday')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
+                      {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
+                      {t('dashboard.yesterdayPerformance')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSelectedDay('today')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
+                      {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
+                      {t('dashboard.realtimeToday')}
+                    </DropdownMenuItem>
+                    {/* Mobile: LocaleSwitcher moved here to free header space */}
+                    <div className="sm:hidden mt-2 pt-2 border-t border-slate-700">
+                      <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('common.language')}</DropdownMenuLabel>
+                      <div className="mt-2">
+                        <LocaleSwitcher />
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-700">
+                      <form action="/auth/signout" method="post" className="w-full">
+                        <button type="submit" className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-bold text-slate-300 hover:text-red-300 hover:bg-slate-800 rounded cursor-pointer" data-testid="menu-item-signout">
+                          <LogOut className="h-4 w-4 shrink-0" />
+                          {t('dashboard.signOut')}
+                        </button>
+                      </form>
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 min-w-0">
-              {/* Desktop: LocaleSwitcher visible; Mobile: moved into dropdown to free space */}
-              <div className="hidden sm:block shrink-0">
-                <LocaleSwitcher />
+            {statsError && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+                {statsError}
               </div>
-              <Link
-                href={`/dashboard/site/${siteId}/activity`}
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
-                )}
-              >
-                {t('dashboard.activityLog')}
-              </Link>
-              <Link
-                href={`/dashboard/site/${siteId}/oci-control`}
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
-                )}
-              >
-                OCI Control
-              </Link>
-              <div className="shrink-0 flex flex-col items-end">
-                {(() => {
-                  const status = getBadgeStatus({
-                    isConnected: realtime.isConnected,
-                    lastSignalAt: realtime.lastSignalAt,
-                  });
-                  return (
-                    <div
-                      className={cn(
-                        'inline-flex items-center gap-2 rounded-full border px-2 sm:px-3 py-1 text-[10px] font-black uppercase tracking-tighter transition-all duration-500 shrink-0',
-                        status === 'active'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : status === 'connected'
-                            ? 'border-amber-200 bg-amber-50 text-amber-800'
-                            : 'border-red-200 bg-red-50 text-red-800'
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'h-1.5 w-1.5 rounded-full shrink-0',
-                          status === 'active' ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
-                        )}
-                      />
-                      <span className="hidden min-[420px]:inline">
-                        {status === 'disconnected' ? t('statusBar.offline') : t('statusBar.uptimeActive')}
-                      </span>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full flex-shrink-0" data-testid="header-overflow-menu-trigger">
-                    <MoreHorizontal className="h-5 w-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-100 shadow-2xl" data-testid="header-overflow-menu-content">
-                  <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('dashboard.timeline')}</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => setSelectedDay('yesterday')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
-                    {selectedDay === 'yesterday' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
-                    {t('dashboard.yesterdayPerformance')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedDay('today')} className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
-                    {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
-                    {t('dashboard.realtimeToday')}
-                  </DropdownMenuItem>
-                  {/* Mobile: LocaleSwitcher moved here to free header space */}
-                  <div className="sm:hidden mt-2 pt-2 border-t border-slate-700">
-                    <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('common.language')}</DropdownMenuLabel>
-                    <div className="mt-2">
-                      <LocaleSwitcher />
-                    </div>
+            )}
+            {/* Scoreboard */}
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: t('kpi.capture'), value: captured, icon: Target, sub: t('kpi.verified') },
+                { label: t('kpi.shield'), value: filtered, icon: Shield, sub: t('kpi.redacted') },
+                { label: t('kpi.efficiency'), value: `${gclidRatio}%`, icon: Zap, sub: t('kpi.gclidRatio') },
+                { label: t('kpi.interest'), value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: t('kpi.avgScroll') }
+              ].map((item, idx) => (
+                <div key={idx} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm flex flex-col justify-between min-h-[72px]">
+                  <div className="flex items-center gap-2">
+                    <item.icon className="h-4 w-4 text-slate-500" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</span>
                   </div>
-                  <div className="mt-2 pt-2 border-t border-slate-700">
-                    <form action="/auth/signout" method="post" className="w-full">
-                      <button type="submit" className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-bold text-slate-300 hover:text-red-300 hover:bg-slate-800 rounded cursor-pointer" data-testid="menu-item-signout">
-                        <LogOut className="h-4 w-4 shrink-0" />
-                        {t('dashboard.signOut')}
-                      </button>
-                    </form>
+                  <div className="mt-2">
+                    <div className="text-xl sm:text-2xl font-bold tabular-nums leading-tight text-slate-900">{item.value}</div>
+                    <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{item.sub}</div>
                   </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                </div>
+              ))}
             </div>
           </div>
+        </header>
 
-          {statsError && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-              {statsError}
+        {/* Desktop: Live Queue first (left), then Reports; full-width Breakdown below */}
+        <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
+          {/* TOP: Ad Spend (when module active) else CRO */}
+          {hasSpendModule ? (
+            <div className="mb-8">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-slate-800">{t('adSpend.title')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('adSpend.subtitle')}</p>
+              </div>
+              <AdSpendWidget siteId={siteId} />
+            </div>
+          ) : (
+            <div className="mb-8">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
+              </div>
+              <CROInsights metrics={metrics} loading={analyticsLoading} />
             </div>
           )}
-          {/* Scoreboard */}
-          <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[
-              { label: t('kpi.capture'), value: captured, icon: Target, sub: t('kpi.verified') },
-              { label: t('kpi.shield'), value: filtered, icon: Shield, sub: t('kpi.redacted') },
-              { label: t('kpi.efficiency'), value: `${gclidRatio}%`, icon: Zap, sub: t('kpi.gclidRatio') },
-              { label: t('kpi.interest'), value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: t('kpi.avgScroll') }
-            ].map((item, idx) => (
-              <div key={idx} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm flex flex-col justify-between min-h-[72px]">
-                <div className="flex items-center gap-2">
-                  <item.icon className="h-4 w-4 text-slate-500" />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</span>
-                </div>
-                <div className="mt-2">
-                  <div className="text-xl sm:text-2xl font-bold tabular-nums leading-tight text-slate-900">{item.value}</div>
-                  <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{item.sub}</div>
-                </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-slate-800">{t('sidebar.liveQueue')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.liveQueueSubtitle')}</p>
               </div>
-            ))}
+              <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
+            </div>
+            <div className="lg:col-span-5 space-y-6">
+              <div className="mb-1">
+                <h2 className="text-base font-semibold text-slate-800">{t('sidebar.reports')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.reportsSubtitle')}</p>
+              </div>
+              <TrafficSourceBreakdown
+                siteId={siteId}
+                dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
+              />
+              {!hasSpendModule && <AdSpendWidget siteId={siteId} />}
+              <PulseProjectionWidgets
+                siteId={siteId}
+                dateRange={queueRange}
+                scope="all"
+              />
+            </div>
           </div>
-        </div>
-      </header>
 
-      {/* Desktop: Live Queue first (left), then Reports; full-width Breakdown below */}
-      <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
-        {/* TOP: Ad Spend (when module active) else CRO */}
-        {hasSpendModule ? (
-          <div className="mb-8">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('adSpend.title')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('adSpend.subtitle')}</p>
+          {/* CRO moved below when Ad Spend is at top */}
+          {hasSpendModule && (
+            <div className="mt-8 pt-6 border-t border-slate-200">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
+              </div>
+              <CROInsights metrics={metrics} loading={analyticsLoading} />
             </div>
-            <AdSpendWidget siteId={siteId} />
-          </div>
-        ) : (
-          <div className="mb-8">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
-            </div>
-            <CROInsights metrics={metrics} loading={analyticsLoading} />
-          </div>
-        )}
+          )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('sidebar.liveQueue')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.liveQueueSubtitle')}</p>
-            </div>
-            <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
-          </div>
-          <div className="lg:col-span-5 space-y-6">
-            <div className="mb-1">
-              <h2 className="text-base font-semibold text-slate-800">{t('sidebar.reports')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.reportsSubtitle')}</p>
-            </div>
-            <TrafficSourceBreakdown
+          {/* Breakdown: full-width row */}
+          <div className="mt-8 pt-6 border-t border-slate-200">
+            <BreakdownWidgets
               siteId={siteId}
               dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-            />
-            {!hasSpendModule && <AdSpendWidget siteId={siteId} />}
-            <PulseProjectionWidgets
-              siteId={siteId}
-              dateRange={queueRange}
-              scope="all"
+              adsOnly={false}
             />
           </div>
-        </div>
-
-        {/* CRO moved below when Ad Spend is at top */}
-        {hasSpendModule && (
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
-            </div>
-            <CROInsights metrics={metrics} loading={analyticsLoading} />
-          </div>
-        )}
-
-        {/* Breakdown: full-width row */}
-        <div className="mt-8 pt-6 border-t border-slate-200">
-          <BreakdownWidgets
-            siteId={siteId}
-            dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-            adsOnly={false}
-          />
-        </div>
-      </main>
-    </div>
+        </main>
+      </div>
     </SiteModulesProvider>
   );
 }

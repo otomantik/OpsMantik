@@ -163,7 +163,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const star = starParam ?? leadScoreToStar(leadScore);
 
   // 5. Compute conversion value
-  const valueUnits = computeConversionValue(star, saleAmount, config);
+  const valueUnits = computeConversionValue(star, saleAmount);
 
   if (valueUnits === null) {
     const noSale = saleAmount == null || saleAmount === 0;
@@ -259,7 +259,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
           p_aggregate_id: queueId,
           p_causal_dna: causalDna,
         })
-        .then(() => {}, () => {});
+        .then(() => { }, () => { });
     }
 
     logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, star, value_units: valueUnits, value_cents: valueCents });

@@ -10,7 +10,7 @@ import { logInfo, logError } from '@/lib/logging/logger';
  * Auth: requireCronAuth (x-vercel-cron or Bearer CRON_SECRET). Schedule: vercel.json "0 2 * * *"
  * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
-async function run(_req: NextRequest) {
+async function run() {
     try {
         const nowIso = new Date().toISOString();
         const { error, count } = await adminClient
@@ -39,11 +39,11 @@ async function run(_req: NextRequest) {
 export async function GET(req: NextRequest) {
     const forbidden = requireCronAuth(req);
     if (forbidden) return forbidden;
-    return run(req);
+    return run();
 }
 
 export async function POST(req: NextRequest) {
     const forbidden = requireCronAuth(req);
     if (forbidden) return forbidden;
-    return run(req);
+    return run();
 }

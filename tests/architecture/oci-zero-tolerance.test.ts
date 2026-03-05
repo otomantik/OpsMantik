@@ -1,5 +1,5 @@
 import { calculateConversionValueMinor } from '../../lib/domain/mizan-mantik/value-calculator';
-import { OpsGear } from '../../lib/domain/mizan-mantik/types';
+
 
 /**
  * Phase 16: Zero Tolerance OCI Audit - Safety Net

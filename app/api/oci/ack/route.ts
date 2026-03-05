@@ -19,7 +19,7 @@ import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
-import { logError, logWarn, logInfo } from '@/lib/logging/logger';
+import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';

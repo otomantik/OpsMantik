@@ -10,8 +10,8 @@ export type IntentWeightsRecord = Record<string, number>;
 
 /** Row shape for site valuation (default_aov, intent_weights) from sites table. */
 export interface SiteValuationRow {
-  default_aov: number | null;
-  intent_weights: IntentWeightsRecord | null;
+    default_aov: number | null;
+    intent_weights: IntentWeightsRecord | null;
 }
 
 /** Default weights applied when site has no config */
@@ -96,7 +96,6 @@ export function parseOciConfig(raw: unknown, defaultAovFallback?: number | null)
 export function computeConversionValue(
     star: number | null,
     saleAmount: number | null,
-    config: OciSiteConfig
 ): number | null {
     // Gerçek satış girildiyse onu kullan (negative = invalid, treat as no sale)
     if (saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0) {

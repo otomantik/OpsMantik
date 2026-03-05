@@ -16,7 +16,7 @@ import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { OpsGear } from '@/lib/domain/mizan-mantik/types';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
-import { logInfo, logError, logWarn } from '@/lib/logging/logger';
+import { logInfo, logError } from '@/lib/logging/logger';
 
 export const runtime = 'nodejs';
 

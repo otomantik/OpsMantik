@@ -84,7 +84,7 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
     r: null,
     ip: '127.0.0.1',
     consent_scopes: ['analytics'],
-  } as import('@/lib/types/ingest').ValidIngestPayload;
+  } as unknown as import('@/lib/types/ingest').ValidIngestPayload;
 
   const yearMonth = getCurrentYearMonthUTC();
   const usageBefore = await getUsagePgCount(siteIdUuid, yearMonth);
@@ -107,7 +107,9 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
     blocklist: config_.referrer_blocklist,
     eventHost,
   });
-  const referrerSkip = !referrerAllowed && !hasClickId;
+  void referrerAllowed;
+  const referrerSkip = !referrerAllowed && !hasClickId; // unused
+  void referrerSkip;
   assert.ok(botSkip, 'curl must be detected as bot');
   assert.ok(!hasClickId, 'no click id');
 

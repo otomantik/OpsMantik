@@ -2,6 +2,7 @@ import '../mock-env';
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { evaluateAndRouteSignal } from '../../lib/domain/mizan-mantik/orchestrator';
+import type { SignalPayload } from '../../lib/domain/mizan-mantik/types';
 
 /**
  * Phase 19 Forensic Fix Verification
@@ -23,7 +24,7 @@ describe('OCI Forensic Fixes (Phase 19)', () => {
     const mockSiteId = 'e0f47012-7dec-11d0-a765-00a0c91e6bf6'; // Muratcan Akü (Turkish Site ID)
     const now = new Date();
 
-    const basePayload = {
+    const basePayload: SignalPayload = {
         siteId: mockSiteId,
         aov: 1000,
         clickDate: now,
@@ -31,13 +32,13 @@ describe('OCI Forensic Fixes (Phase 19)', () => {
     };
 
     test('Should inject SST_HEADER_FAIL when clientIp is missing', async () => {
-        // We mock the DB configuration globally or just rely on the fallback logic
-        const result = await evaluateAndRouteSignal('V2_PULSE', { ...basePayload } as any);
-        const dna = result.causalDna as any;
-        const gates = dna.gates_passed || [];
+        const result = await evaluateAndRouteSignal('V2_PULSE', basePayload);
+        const dna = result.causalDna as Record<string, unknown>;
+        const gates = (dna.gates_passed as string[]) || [];
         assert.ok(gates.includes('audit'), 'Should have audit gate');
 
-        const branch = dna.branches.find((b: any) => b.logic_branch === 'SST_HEADER_FAIL');
+        const branches = (dna.branches as Array<{ logic_branch: string }>) || [];
+        const branch = branches.find((b) => b.logic_branch === 'SST_HEADER_FAIL');
         assert.ok(branch, 'Should have SST_HEADER_FAIL branch');
     });
 
@@ -45,10 +46,11 @@ describe('OCI Forensic Fixes (Phase 19)', () => {
         const result = await evaluateAndRouteSignal('V3_ENGAGE', {
             ...basePayload,
             clientIp: '176.234.0.1' // Turkish IP 
-        } as any);
-        const dna = result.causalDna as any;
-        const branch = dna.branches.find((b: any) => b.logic_branch === 'GEO_FENCE_TR_CHECK');
+        });
+        const dna = result.causalDna as Record<string, unknown>;
+        const branches = (dna.branches as Array<{ logic_branch: string; transformed_state?: { isTurkishSite?: boolean } }>) || [];
+        const branch = branches.find((b) => b.logic_branch === 'GEO_FENCE_TR_CHECK');
         assert.ok(branch, 'Should have GEO_FENCE_TR_CHECK branch');
-        assert.strictEqual(branch.transformed_state.isTurkishSite, true);
+        assert.strictEqual(branch.transformed_state?.isTurkishSite, true);
     });
 });

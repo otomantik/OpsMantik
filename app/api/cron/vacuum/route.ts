@@ -1,16 +1,13 @@
 /**
- * GET/POST /api/cron/pulse-recovery — Self-Healing Pulse (MODULE 2)
- *
- * Retries PENDING marketing_signals with Identity Stitcher.
- * Backoff: 2h → 6h → 24h. Max 3 attempts.
- *
- * Auth: requireCronAuth.
+ * Phase 20: Vacuum cron — PENDING > 15m → STALLED_FOR_HUMAN_AUDIT.
+ * Düsseldorf kill-switch: no gclid + non-TR geo → purge.
+ * Run every 5–15 minutes.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
-import { runPulseRecovery } from '@/lib/oci/pulse-recovery-worker';
+import { runVacuum } from '@/lib/oci/vacuum-worker';
 
 export const runtime = 'nodejs';
 
@@ -28,12 +25,9 @@ export async function POST(req: NextRequest) {
 
 async function run() {
   try {
-    const result = await runPulseRecovery();
+    const result = await runVacuum();
     return NextResponse.json(
-      {
-        ok: true,
-        ...result,
-      },
+      { ok: true, ...result },
       { headers: getBuildInfoHeaders() }
     );
   } catch (err) {

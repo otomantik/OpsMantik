@@ -19,7 +19,7 @@ import { EventService } from '@/lib/services/event-service';
 import { IntentService } from '@/lib/services/intent-service';
 import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
 
-type WorkerJob = Record<string, unknown> & {
+export type WorkerJob = Record<string, unknown> & {
   s: string;
   sid?: string;
   sm?: string;
@@ -96,15 +96,15 @@ export async function processSyncEvent(
   siteIdUuid: string,
   qstashMessageId: string | null
 ): Promise<ProcessSyncEventResult> {
-  const site_id = job.s;
+  // const site_id = job.s; // unused
   const client_sid = typeof job.sid === 'string' ? job.sid : '';
   const session_month = typeof job.sm === 'string' ? job.sm : '';
   const event_action = typeof job.ea === 'string' ? job.ea : '';
   const url = getFinalUrl(job as import('@/lib/types/ingest').ValidIngestPayload);
   const meta: IngestMeta = (job.meta ?? {}) as IngestMeta;
-        const referrer = typeof job.r === 'string' ? job.r : null;
-        const userAgent = typeof job.ua === 'string' ? job.ua : 'Unknown';
-        const ip = typeof job.ip === 'string' ? job.ip : '0.0.0.0';
+  const referrer = typeof job.r === 'string' ? job.r : null;
+  const userAgent = typeof job.ua === 'string' ? job.ua : 'Unknown';
+  const ip = typeof job.ip === 'string' ? job.ip : '0.0.0.0';
   const event_category = typeof job.ec === 'string' ? job.ec : '';
   const event_label = typeof job.el === 'string' ? job.el : '';
   const event_value: number | null =
@@ -112,9 +112,9 @@ export async function processSyncEvent(
       ? Number.isFinite(job.ev) ? job.ev : null
       : typeof job.ev === 'string'
         ? (() => {
-            const n = Number(job.ev);
-            return Number.isFinite(n) ? n : null;
-          })()
+          const n = Number(job.ev);
+          return Number.isFinite(n) ? n : null;
+        })()
         : null;
 
   const dedupEventId = await getDedupEventIdForJob(job, url, qstashMessageId);
@@ -163,6 +163,7 @@ async function doProcessSyncEvent(
   client_sid: string
 ): Promise<ProcessSyncEventResult> {
   const site_id = job.s;
+  void site_id;
 
   let urlObj: URL;
   let params: URLSearchParams;

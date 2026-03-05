@@ -34,6 +34,8 @@ export interface SignalPayload {
   clientIp?: string | null;
   /** Axiom 3: synthetic discriminator (sequence/timestamp) — if present, V2_PULSE allows multiple intents per session */
   discriminator?: string | null;
+  /** Phase 20: OM-TRACE-UUID for forensic chain and conversion_custom_variable */
+  traceId?: string | null;
 }
 
 export interface EvaluateResult {

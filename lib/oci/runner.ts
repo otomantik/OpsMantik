@@ -35,7 +35,7 @@ import {
 import { chunkArray } from '@/lib/utils/batch';
 import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
 import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
-import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
+import { computeConversionValue } from '@/lib/oci/oci-config';
 
 /** Options for runOfflineConversionRunner. */
 export interface RunnerOptions {
@@ -138,15 +138,11 @@ async function syncQueueValuesFromCalls(
     (callsData ?? []).map((c: { id: string; lead_score?: number | null; sale_amount?: number | null; currency?: string | null }) => [c.id, c])
   );
 
-  const { data: siteRow } = await adminClient
+  await adminClient
     .from('sites')
-    .select('oci_config, default_aov')
+    .select('id')
     .eq('id', siteIdUuid)
     .maybeSingle();
-  const config = parseOciConfig(
-    (siteRow as { oci_config?: unknown } | null)?.oci_config ?? null,
-    (siteRow as { default_aov?: number | null } | null)?.default_aov
-  );
 
   for (const row of withCallId) {
     const call = callsById.get(row.call_id!);
@@ -154,7 +150,7 @@ async function syncQueueValuesFromCalls(
     const leadScore = call.lead_score ?? null;
     const saleAmount = call.sale_amount != null && Number.isFinite(Number(call.sale_amount)) ? Number(call.sale_amount) : null;
     const star = leadScoreToStar(leadScore);
-    const valueUnits = computeConversionValue(star, saleAmount, config);
+    const valueUnits = computeConversionValue(star, saleAmount);
     const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
     const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
     const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;
@@ -609,7 +605,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           try {
             jobs.push(queueRowToConversionJob(r));
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            // const msg = err instanceof Error ? err.message : String(err); // unused
             logRunnerError(prefix, 'queueRowToConversionJob poison pill (row isolated)', err);
             poisonRowIds.push(r.id);
           }

@@ -31,7 +31,7 @@ test('MODULE 3: getValueFloorCents — floor = max(min_cents, baseAov * 0.005)',
     minConversionValueCents: 50,
   };
   const floor = getValueFloorCents(cfg);
-  const ratioCents = Math.round(1000 * 0.005 * 100); // 500 cents
+  // const ratioCents = Math.round(1000 * 0.005 * 100); // 500 cents (unused)
   assert.strictEqual(floor, 500, 'max(50, 500) = 500');
   const cfg2 = { ...cfg, minConversionValueCents: 600 };
   assert.strictEqual(getValueFloorCents(cfg2), 600, 'max(600, 500) = 600');
