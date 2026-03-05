@@ -45,6 +45,7 @@ export function useIntentQualification(
         const response = await fetch(`/api/intents/${callId}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             status: 'intent',
             lead_score: null,
@@ -167,10 +168,11 @@ export function useIntentQualification(
           return { success: true };
         }
 
-        // Junk: Route through Status API to use SECURITY DEFINER RPC (bypasses RLS/Trigger issues)
+        // Junk: Route through Status API (server uses adminClient so write always persists)
         const res = await fetch(`/api/intents/${intentId}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             status: 'junk',
             lead_score: leadScore,

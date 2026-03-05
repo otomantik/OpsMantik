@@ -114,8 +114,12 @@ export async function POST(
     }
 
     const callObj = Array.isArray(updatedCall) && updatedCall.length === 1 ? updatedCall[0] : updatedCall;
-    if (!callObj) {
+    if (!callObj || (typeof callObj === 'object' && !('id' in callObj))) {
       logError('intent status update returned no row', { request_id: requestId, route, callId, actionType });
+      return NextResponse.json(
+        { error: 'Update did not persist; please retry.' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
