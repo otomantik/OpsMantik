@@ -45,6 +45,9 @@ test('MODULE 2: pulse-recovery backoff 2h → 6h → 24h', () => {
   assert.ok(src.includes('BACKOFF_HOURS'), 'exponential backoff');
   assert.ok(src.includes('recovery_attempt_count'), 'recovery attempt count');
   assert.ok(src.includes('last_recovery_attempt_at'), 'last recovery timestamp');
+  assert.ok(src.includes('recoverMissingV2Signals'), 'backfills missing V2 signals');
+  assert.ok(src.includes("signal_type', 'INTENT_CAPTURED'"), 'targets missing INTENT_CAPTURED rows');
+  assert.ok(src.includes("evaluateAndRouteSignal('V2_PULSE'"), 're-emits V2 pulse for orphan intents');
 });
 
 test('MODULE 1: identity-stitcher discovery_confidence and PHONE_STITCH safeguards', () => {
@@ -54,4 +57,14 @@ test('MODULE 1: identity-stitcher discovery_confidence and PHONE_STITCH safeguar
   assert.ok(src.includes('FINGERPRINT_STITCH'), 'FINGERPRINT_STITCH');
   assert.ok(src.includes('confirmed') || src.includes('qualified') || src.includes('real'), 'source call status filter');
   assert.ok(src.includes('session_created_at') || src.includes('sessionCreated'), 'session temporal check');
+});
+
+test('marketing-signals insert persists recovered click ids', () => {
+  const src = readFileSync(
+    join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'gears', 'marketing-signals-insert.ts'),
+    'utf-8'
+  );
+  assert.ok(src.includes('gclid: gclid ?? null'), 'persists gclid');
+  assert.ok(src.includes('wbraid: wbraid ?? null'), 'persists wbraid');
+  assert.ok(src.includes('gbraid: gbraid ?? null'), 'persists gbraid');
 });

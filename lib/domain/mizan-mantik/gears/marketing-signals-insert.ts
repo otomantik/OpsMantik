@@ -43,7 +43,7 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   duplicate?: boolean;
 }> {
   const { siteId, callId, traceId, gear, payload, config, dna, entropyScore, uncertaintyBit } = params;
-  const { aov, clickDate, signalDate, conversionName } = payload;
+  const { aov, clickDate, signalDate, conversionName, gclid, wbraid, gbraid } = payload;
 
   const effectiveAovMajor = config?.defaultAov ?? aov ?? 0;
   const aovCents = Math.round(Number(effectiveAovMajor) * 100);
@@ -108,6 +108,9 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
       causal_dna: causalDnaJson,
       entropy_score: entropyScore,
       uncertainty_bit: uncertaintyBit,
+      gclid: gclid ?? null,
+      wbraid: wbraid ?? null,
+      gbraid: gbraid ?? null,
       adjustment_sequence: sequence,
       previous_hash: previousHash,
       current_hash: currentHash,

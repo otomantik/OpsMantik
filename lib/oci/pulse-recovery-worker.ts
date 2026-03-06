@@ -9,12 +9,15 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
+import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 
 
 const BACKOFF_HOURS = [2, 6, 24] as const; // 1st retry after 2h, 2nd after 6h, 3rd after 24h
 const MAX_RECOVERY_ATTEMPTS = 3;
 const BATCH_LIMIT = 100;
+const MISSING_V2_LOOKBACK_HOURS = 48;
+const MISSING_V2_BATCH_LIMIT = 100;
 
 function getBackoffMs(attemptIndex: number): number {
   const hours = BACKOFF_HOURS[Math.min(attemptIndex, BACKOFF_HOURS.length - 1)];
@@ -30,12 +33,18 @@ export async function runPulseRecovery(): Promise<{
   recovered: number;
   attempted: number;
   exhausted: number;
+  missing_signal_checked: number;
+  missing_signal_recovered: number;
+  missing_signal_dropped: number;
 }> {
   const now = new Date();
   let processed = 0;
   let recovered = 0;
   let attempted = 0;
   let exhausted = 0;
+  let missingSignalChecked = 0;
+  let missingSignalRecovered = 0;
+  let missingSignalDropped = 0;
 
   const { data: signals, error } = await adminClient
     .from('marketing_signals')
@@ -47,7 +56,15 @@ export async function runPulseRecovery(): Promise<{
 
   if (error) {
     logWarn('pulse_recovery_fetch_failed', { error: error.message });
-    return { processed: 0, recovered: 0, attempted: 0, exhausted: 0 };
+    return {
+      processed: 0,
+      recovered: 0,
+      attempted: 0,
+      exhausted: 0,
+      missing_signal_checked: 0,
+      missing_signal_recovered: 0,
+      missing_signal_dropped: 0,
+    };
   }
 
   const rows = Array.isArray(signals) ? signals : [];
@@ -63,7 +80,18 @@ export async function runPulseRecovery(): Promise<{
     }
   }
 
-  if (due.length === 0) return { processed: 0, recovered: 0, attempted: 0, exhausted: 0 };
+  if (due.length === 0) {
+    const backfill = await recoverMissingV2Signals(now);
+    return {
+      processed: 0,
+      recovered: 0,
+      attempted: 0,
+      exhausted: 0,
+      missing_signal_checked: backfill.checked,
+      missing_signal_recovered: backfill.recovered,
+      missing_signal_dropped: backfill.dropped,
+    };
+  }
 
   // Fetch call context for stitcher (caller_phone, fingerprint)
   const callIds = due
@@ -161,8 +189,108 @@ export async function runPulseRecovery(): Promise<{
     processed++;
   }
 
-  if (processed > 0) {
-    logInfo('pulse_recovery_complete', { processed, recovered, attempted, exhausted });
+  const backfill = await recoverMissingV2Signals(now);
+  missingSignalChecked = backfill.checked;
+  missingSignalRecovered = backfill.recovered;
+  missingSignalDropped = backfill.dropped;
+
+  if (processed > 0 || missingSignalChecked > 0) {
+    logInfo('pulse_recovery_complete', {
+      processed,
+      recovered,
+      attempted,
+      exhausted,
+      missing_signal_checked: missingSignalChecked,
+      missing_signal_recovered: missingSignalRecovered,
+      missing_signal_dropped: missingSignalDropped,
+    });
   }
-  return { processed, recovered, attempted, exhausted };
+  return {
+    processed,
+    recovered,
+    attempted,
+    exhausted,
+    missing_signal_checked: missingSignalChecked,
+    missing_signal_recovered: missingSignalRecovered,
+    missing_signal_dropped: missingSignalDropped,
+  };
+}
+
+async function recoverMissingV2Signals(
+  now: Date
+): Promise<{ checked: number; recovered: number; dropped: number }> {
+  const sinceIso = new Date(now.getTime() - MISSING_V2_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
+
+  const { data: calls, error } = await adminClient
+    .from('calls')
+    .select('id, site_id, created_at, matched_fingerprint')
+    .eq('status', 'intent')
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: true })
+    .limit(MISSING_V2_BATCH_LIMIT);
+
+  if (error) {
+    logWarn('pulse_recovery_missing_v2_fetch_failed', { error: error.message });
+    return { checked: 0, recovered: 0, dropped: 0 };
+  }
+
+  const rows = Array.isArray(calls) ? calls : [];
+  if (rows.length === 0) return { checked: 0, recovered: 0, dropped: 0 };
+
+  const callIds = rows.map((row) => row.id);
+  const { data: existingSignals, error: existingError } = await adminClient
+    .from('marketing_signals')
+    .select('call_id')
+    .eq('signal_type', 'INTENT_CAPTURED')
+    .in('call_id', callIds);
+
+  if (existingError) {
+    logWarn('pulse_recovery_missing_v2_existing_failed', { error: existingError.message });
+    return { checked: 0, recovered: 0, dropped: 0 };
+  }
+
+  const existingCallIds = new Set(
+    (existingSignals ?? [])
+      .map((row) => (row as { call_id?: string | null }).call_id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const missing = rows.filter((row) => !existingCallIds.has(row.id));
+
+  let checked = 0;
+  let recovered = 0;
+  let dropped = 0;
+
+  for (const row of missing) {
+    checked++;
+    const primary = await getPrimarySource(row.site_id, { callId: row.id });
+    const signalDate = row.created_at ? new Date(row.created_at) : now;
+    const result = await evaluateAndRouteSignal('V2_PULSE', {
+      siteId: row.site_id,
+      callId: row.id,
+      gclid: primary?.gclid ?? null,
+      wbraid: primary?.wbraid ?? null,
+      gbraid: primary?.gbraid ?? null,
+      aov: 0,
+      clickDate: signalDate,
+      signalDate,
+      fingerprint: row.matched_fingerprint ?? null,
+      traceId: null,
+    });
+
+    if (result.routed) {
+      recovered++;
+    } else {
+      dropped++;
+      logWarn('pulse_recovery_missing_v2_not_routed', {
+        site_id: row.site_id,
+        call_id: row.id,
+        dropped: result.dropped ?? false,
+        has_gclid: Boolean(primary?.gclid),
+        has_wbraid: Boolean(primary?.wbraid),
+        has_gbraid: Boolean(primary?.gbraid),
+      });
+    }
+  }
+
+  return { checked, recovered, dropped };
 }

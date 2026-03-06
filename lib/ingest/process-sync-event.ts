@@ -10,6 +10,7 @@ import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { normalizeLandingUrl } from '@/lib/ingest/normalize-landing-url';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { debugLog } from '@/lib/utils';
+import { logWarn } from '@/lib/logging/logger';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
 import type { IngestEventKind } from '@/lib/ingest/types';
 import { assertNever } from '@/lib/ingest/types';
@@ -370,7 +371,7 @@ async function doProcessSyncEvent(
       try {
         const primary = await getPrimarySource(siteIdUuid, { callId });
         const now = new Date();
-        await evaluateAndRouteSignal('V2_PULSE', {
+        const v2Result = await evaluateAndRouteSignal('V2_PULSE', {
           siteId: siteIdUuid,
           callId,
           gclid: primary?.gclid ?? null,
@@ -382,6 +383,16 @@ async function doProcessSyncEvent(
           clientIp: ip,
           traceId: null,
         });
+        if (!v2Result.routed) {
+          logWarn('V2_PULSE_NOT_ROUTED', {
+            site_id: siteIdUuid,
+            call_id: callId,
+            dropped: v2Result.dropped ?? false,
+            has_gclid: Boolean(primary?.gclid),
+            has_wbraid: Boolean(primary?.wbraid),
+            has_gbraid: Boolean(primary?.gbraid),
+          });
+        }
       } catch (v2Err) {
         debugLog('[PROCESS_SYNC_EVENT] V2_PULSE emit failed (non-fatal)', { call_id: callId, error: (v2Err as Error)?.message });
       }
