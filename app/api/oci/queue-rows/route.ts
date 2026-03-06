@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
   let query = adminClient
     .from('offline_conversion_queue')
-    .select('id, call_id, status, provider_error_code, provider_error_category, last_error, attempt_count, created_at, updated_at')
+    .select('id, call_id, status, provider_error_code, provider_error_category, last_error, attempt_count, brain_score, match_score, queue_priority, score_version, score_flags, created_at, updated_at')
     .eq('site_id', siteUuid);
 
   if (statusFilter && QUEUE_STATUSES.includes(statusFilter as QueueStatus)) {
@@ -84,6 +84,11 @@ export async function GET(req: NextRequest) {
       provider_error_category: string | null;
       last_error: string | null;
       attempt_count: number;
+      brain_score?: number | null;
+      match_score?: number | null;
+      queue_priority?: number | null;
+      score_version?: number | null;
+      score_flags?: number | null;
       created_at: string;
       updated_at: string;
     };
@@ -99,6 +104,11 @@ export async function GET(req: NextRequest) {
         : null,
       last_error: row.last_error ?? null,
       attempt_count: Number(row.attempt_count) || 0,
+      brain_score: typeof row.brain_score === 'number' ? row.brain_score : null,
+      match_score: typeof row.match_score === 'number' ? row.match_score : null,
+      queue_priority: Number.isFinite(Number(row.queue_priority)) ? Number(row.queue_priority) : 0,
+      score_version: typeof row.score_version === 'number' ? row.score_version : null,
+      score_flags: Number.isFinite(Number(row.score_flags)) ? Number(row.score_flags) : 0,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };

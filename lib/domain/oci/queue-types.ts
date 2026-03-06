@@ -96,6 +96,11 @@ export interface OciQueueRow {
   provider_error_category: ProviderErrorCategory | null;
   last_error: string | null;
   attempt_count: number;
+  brain_score?: number | null;
+  match_score?: number | null;
+  queue_priority?: number;
+  score_version?: number | null;
+  score_flags?: number;
   created_at: string;
   updated_at: string;
 }

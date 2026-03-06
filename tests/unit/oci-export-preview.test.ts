@@ -26,7 +26,7 @@ test('google-ads-export route: markAsExported false returns structured preview',
 test('google-ads-export route: claim uses RPC not direct update', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('claim_offline_conversion_rows_for_script_export'), 'uses claim RPC');
+  assert.ok(src.includes('append_script_claim_transition_batch'), 'uses actor-owned batch claim RPC');
 });
 
 test('claim RPC migration: increments attempt_count', () => {

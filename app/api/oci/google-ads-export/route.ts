@@ -485,8 +485,8 @@ export async function GET(req: NextRequest) {
       const now = new Date().toISOString();
       if (idsToMarkProcessing.length > 0) {
         const { data: claimedCount, error: rpcError } = await adminClient.rpc(
-          'claim_offline_conversion_rows_for_script_export',
-          { p_ids: idsToMarkProcessing, p_site_id: siteUuid }
+          'append_script_claim_transition_batch',
+          { p_queue_ids: idsToMarkProcessing, p_claimed_at: now }
         );
         if (rpcError) {
           const { logError } = await import('@/lib/logging/logger');
@@ -503,8 +503,8 @@ export async function GET(req: NextRequest) {
       }
       if (skippedIds.length > 0) {
         const { data: skippedClaimedCount, error: skippedRpcError } = await adminClient.rpc(
-          'claim_offline_conversion_rows_for_script_export',
-          { p_ids: skippedIds, p_site_id: siteUuid }
+          'append_script_claim_transition_batch',
+          { p_queue_ids: skippedIds, p_claimed_at: now }
         );
         if (skippedRpcError) {
           logError('OCI_GOOGLE_ADS_EXPORT_SKIP_CLAIM_FAILED', { code: (skippedRpcError as { code?: string })?.code });

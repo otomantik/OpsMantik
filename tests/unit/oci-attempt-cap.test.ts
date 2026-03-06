@@ -32,13 +32,14 @@ test('attempt-cap migration: RPC sets FAILED with MAX_ATTEMPTS', () => {
     process.cwd(),
     'supabase',
     'migrations',
-    '20260330000000_oci_claim_and_attempt_cap.sql'
+    '20261105030000_phase23c_bypass_purge_script_and_attempt_cap.sql'
   );
   const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes("status = 'FAILED'"), 'sets FAILED');
-  assert.ok(src.includes("provider_error_code = 'MAX_ATTEMPTS'"), 'sets provider_error_code');
-  assert.ok(src.includes("provider_error_category = 'PERMANENT'"), 'sets PERMANENT');
-  assert.ok(src.includes("last_error = 'MAX_ATTEMPTS_EXCEEDED'"), 'sets last_error');
+  assert.ok(src.includes('append_worker_transition_batch'), 'delegates to worker batch RPC');
+  assert.ok(src.includes("'FAILED'"), 'sets FAILED');
+  assert.ok(src.includes("'MAX_ATTEMPTS'"), 'sets provider_error_code');
+  assert.ok(src.includes("'PERMANENT'"), 'sets PERMANENT');
+  assert.ok(src.includes("'MAX_ATTEMPTS_EXCEEDED'"), 'sets last_error');
 });
 
 test('MAX_ATTEMPTS constant is 5', async () => {

@@ -3,7 +3,7 @@
  * Used by /api/workers/google-ads-oci (mode: worker) and /api/cron/process-offline-conversions (mode: cron).
  * No behavior change; consolidation only.
  *
- * Transaction safety: claim_offline_conversion_jobs_v2 uses
+ * Transaction safety: claim_offline_conversion_jobs_v3 uses
  * FOR UPDATE SKIP LOCKED; no double-claim. Queue transitions are appended per-row and snapped atomically.
  * Failure parity: both modes use MAX_RETRY_ATTEMPTS from constants.ts, increment retry_count,
  * and set provider_error_code / provider_error_category (worker) or last_error (cron).
@@ -369,7 +369,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
           state === 'HALF_OPEN'
             ? Math.min(probeLimit, remaining)
             : Math.min(claimLimits.get(key) ?? Math.max(1, Math.floor(remaining / (maxGroups - i))), remaining);
-        const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
+        const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v3', {
           p_site_id: siteId,
           p_provider_key: provKey,
           p_limit: claimLimit,
@@ -381,7 +381,7 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
         bySiteAndProvider.set(key, claimedRows);
       } else {
         const claimLimit = Math.min(remaining, Math.max(1, Number(g.queued_count ?? 0)));
-        const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v2', {
+        const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v3', {
           p_site_id: siteId,
           p_provider_key: provKey,
           p_limit: claimLimit,

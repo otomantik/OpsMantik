@@ -2,7 +2,7 @@
  * PR-G4: Worker loop (process-offline-conversions) tests.
  * - Backoff: nextRetryDelaySeconds
  * - Route: requireCronAuth, query params, RPC name
- * - Migration: claim_offline_conversion_jobs_v2 exists
+ * - Migration: claim_offline_conversion_jobs_v3 exists
  */
 
 import test from 'node:test';
@@ -33,21 +33,22 @@ test('process-offline-conversions route: uses requireCronAuth', () => {
   assert.ok(src.includes('requireCronAuth'), 'route uses cron auth');
 });
 
-test('process-offline-conversions route: PR6 per-group claim via list_offline_conversion_groups and claim_offline_conversion_jobs_v2', () => {
+test('process-offline-conversions route: PR6 per-group claim via list_offline_conversion_groups and claim_offline_conversion_jobs_v3', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'cron', 'process-offline-conversions', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
   assert.ok(src.includes('runOfflineConversionRunner'), 'route uses OCI runner (PR-C4)');
   const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
   const runnerSrc = readFileSync(runnerPath, 'utf8');
-  assert.ok(runnerSrc.includes('claim_offline_conversion_jobs_v2'), 'runner calls v2 RPC');
+  assert.ok(runnerSrc.includes('claim_offline_conversion_jobs_v3'), 'runner calls v3 RPC');
   assert.ok(runnerSrc.includes('list_offline_conversion_groups'), 'runner lists groups');
   assert.ok(runnerSrc.includes('p_site_id') && runnerSrc.includes('p_provider_key') && runnerSrc.includes('p_limit'), 'per-group claim params');
 });
 
-test('G4 migration: defines claim_offline_conversion_jobs_v2 and next_retry_at', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260218140000_process_offline_conversions_worker.sql');
+test('Phase 23C migration: defines claim_offline_conversion_jobs_v3 and priority-first ordering', () => {
+  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261105020000_phase23c_priority_first_claiming.sql');
   const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('claim_offline_conversion_jobs_v2'), 'RPC defined');
+  assert.ok(src.includes('claim_offline_conversion_jobs_v3'), 'RPC defined');
+  assert.ok(src.includes('queue_priority DESC'), 'priority-first ordering');
   assert.ok(src.includes('next_retry_at'), 'uses next_retry_at');
   assert.ok(src.includes('QUEUED') && src.includes('RETRY'), 'claims QUEUED and RETRY');
 });
