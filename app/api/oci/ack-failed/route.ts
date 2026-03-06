@@ -244,8 +244,8 @@ export async function POST(req: NextRequest) {
 
     if (signalFailedIds.length > 0) {
       const updatePayload = category === 'TRANSIENT'
-        ? { dispatch_status: 'PENDING' as const, updated_at: now }
-        : { dispatch_status: 'FAILED' as const, updated_at: now };
+        ? { dispatch_status: 'PENDING' as const }
+        : { dispatch_status: 'FAILED' as const };
       const { data } = await adminClient
         .from('marketing_signals')
         .update(updatePayload)

@@ -662,7 +662,7 @@ export async function GET(req: NextRequest) {
       if (signalIdsToMarkProcessing.length > 0) {
         const { data, error: sigStatusError } = await adminClient
           .from('marketing_signals')
-          .update({ dispatch_status: 'PROCESSING', updated_at: now })
+          .update({ dispatch_status: 'PROCESSING' })
           .in('id', signalIdsToMarkProcessing)
           .eq('site_id', siteUuid)
           .eq('dispatch_status', 'PENDING')
@@ -684,7 +684,7 @@ export async function GET(req: NextRequest) {
       if (blockedSignalIds.length > 0) {
         const { data, error: blockedSignalsError } = await adminClient
           .from('marketing_signals')
-          .update({ dispatch_status: 'JUNK_ABORTED', updated_at: now })
+          .update({ dispatch_status: 'JUNK_ABORTED' })
           .in('id', blockedSignalIds)
           .eq('site_id', siteUuid)
           .eq('dispatch_status', 'PENDING')
@@ -702,7 +702,7 @@ export async function GET(req: NextRequest) {
       if (blockedSignalValueIds.length > 0) {
         const { data, error: blockedSignalValueError } = await adminClient
           .from('marketing_signals')
-          .update({ dispatch_status: 'FAILED', updated_at: now })
+          .update({ dispatch_status: 'FAILED' })
           .in('id', blockedSignalValueIds)
           .eq('site_id', siteUuid)
           .eq('dispatch_status', 'PENDING')
