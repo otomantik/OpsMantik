@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase/admin';
 import { getRecentMonths } from '@/lib/sync-utils';
-import { computeAttribution, extractUTM } from '@/lib/attribution';
+import { computeAttribution, extractUTM, sanitizeClickId } from '@/lib/attribution';
 
 export interface ResolveAttributionOptions {
     /** For tests: inject a mock client so past-GCLID lookup is site-scoped in the test double. */
@@ -23,10 +23,11 @@ export class AttributionService {
         options?: ResolveAttributionOptions
     ) {
         const client = options?.client ?? adminClient;
+        const sanitizedCurrentGclid = sanitizeClickId(currentGclid) ?? null;
 
         // 1. Check for past GCLID (Multi-touch) — MUST be site-scoped + fingerprint in SQL
         let hasPastGclid = false;
-        if (!currentGclid && fingerprint) {
+        if (!sanitizedCurrentGclid && fingerprint) {
             const recentMonths = getRecentMonths(6);
             const { data: pastEvents } = await client
                 .from('events')
@@ -46,7 +47,7 @@ export class AttributionService {
 
         // 3. Compute Attribution
         const attribution = computeAttribution({
-            gclid: currentGclid,
+            gclid: sanitizedCurrentGclid,
             utm,
             referrer: referrer || null,
             fingerprint,

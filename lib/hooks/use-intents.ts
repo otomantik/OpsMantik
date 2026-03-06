@@ -12,7 +12,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { DateRange } from './use-dashboard-date-range';
 
-export type IntentStatus = 'intent' | 'confirmed' | 'qualified' | 'real' | 'junk' | 'suspicious' | null;
+export type IntentStatus = 'intent' | 'confirmed' | 'qualified' | 'real' | 'junk' | 'suspicious' | 'cancelled' | null;
 export type IntentFilter = 'all' | 'pending' | 'sealed' | 'junk' | 'suspicious';
 
 export interface IntentRow {

@@ -18,7 +18,12 @@ This list covers steps to complete after Revenue Kernel deploy (dispute-export, 
   - Billing metrics are written to Redis; `GET /api/metrics` reads from Redis (`ingest_source: redis`).  
   - Otherwise metrics remain in-memory only (per instance).
 
-- [ ] **CRON_SECRET:** Bearer token set for cron routes (cleanup, reconcile, invoice-freeze, metrics).
+- [ ] **CRON dual-key:** Production cron execution now requires both trusted Vercel provenance (`X-Vercel-Cron: 1` + `x-vercel-id`) and `Authorization: Bearer <CRON_SECRET>`.
+  - `CRON_SECRET` must be non-empty and not a placeholder/default value.
+  - Header-only prod calls must fail closed with `CRON_FORBIDDEN`.
+
+- [ ] **Tracker shadow mode flag:** If you are monitoring tracker rollout drift, set `OPSMANTIK_TRACKER_SHADOW_MODE=true` in production before the smoke window.
+  - Backend accepts traffic but logs `STALE_TRACKER_DETECTED` when payloads miss `meta.om_tracker_version`.
 
 ---
 
@@ -26,6 +31,13 @@ This list covers steps to complete after Revenue Kernel deploy (dispute-export, 
 
 - [ ] **Lifecycle test:** Run `tests/billing/lifecycle.test.ts` (with Supabase + CRON_SECRET env).  
   - Old rows (91 days) must be deleted; current month rows must not be deleted.
+- [ ] **Focused release gates:** Run `npm run test:release-gates` before production deploy.  
+  - This must cover `test:tenant-boundary`, `test:oci-kernel`, and `smoke:intent-multi-site` without failures.
+  - `npm run predeploy` now maps to the same full gate.
+- [ ] **Evidence artifact:** Run `npm run release:evidence` and keep the generated markdown with the release record.  
+  - Default artifact path: `tmp/release-gates-latest.md`.
+  - CI path: `.github/workflows/release-gates.yml` uploads `release-gate-evidence` automatically on `master` / `main` pushes.
+  - GitHub enforcement setup: `docs/runbooks/GITHUB_RELEASE_GATES_REQUIRED_CHECK.md`.
 
 ---
 
@@ -42,6 +54,8 @@ This list covers steps to complete after Revenue Kernel deploy (dispute-export, 
 
 ## 5. Smoke (one-time)
 
+- [ ] **Release-gate record:** Attach or note the successful `npm run test:release-gates` run in the release evidence.  
+  - Do not treat deploy as complete if tenant-boundary or OCI-kernel gates were skipped.
 - [ ] **Cleanup dry_run:**  
   `curl -X POST "https://<APP_URL>/api/cron/idempotency-cleanup?dry_run=true" -H "Authorization: Bearer $CRON_SECRET"`  
   → 200, `would_delete` or 0.
@@ -58,4 +72,4 @@ This list covers steps to complete after Revenue Kernel deploy (dispute-export, 
 
 ---
 
-**Note:** All cron routes use `requireCronAuth`; `Authorization: Bearer <CRON_SECRET>` is required.
+**Note:** All cron routes use `requireCronAuth`; in production hybrid mode, Vercel cron headers plus `Authorization: Bearer <CRON_SECRET>` are both required.

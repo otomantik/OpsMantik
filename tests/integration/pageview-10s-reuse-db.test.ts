@@ -8,22 +8,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from 'dotenv';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { processSyncEvent, getDedupEventIdForJob } from '@/lib/ingest/process-sync-event';
 import { getFinalUrl } from '@/lib/types/ingest';
+import { requireStrictEnv, resolveStrictTestSiteId } from '@/tests/helpers/strict-ingest-helpers';
 
 config({ path: join(process.cwd(), '.env.local') });
-
-const TEST_SITE_ID = process.env.STRICT_INGEST_TEST_SITE_ID?.trim();
-const HAS_SUPABASE =
-  !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function requireEnv() {
-  if (!TEST_SITE_ID || !HAS_SUPABASE) {
-    return { skip: true, reason: 'STRICT_INGEST_TEST_SITE_ID and Supabase env required' };
-  }
-  return { skip: false };
-}
 
 function baseJob(publicId: string, url: string, fingerprint: string, sid: string) {
   return {
@@ -42,13 +33,17 @@ function baseJob(publicId: string, url: string, fingerprint: string, sid: string
 }
 
 test('pageview 10s reuse: same fingerprint + same URL → one session, two events', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for pageview reuse integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')
@@ -71,12 +66,13 @@ test('pageview 10s reuse: same fingerprint + same URL → one session, two event
 
   const publicId = (siteRow.public_id as string) || siteIdUuid;
   const url = 'https://example.com/landing';
-  const fingerprint = 'fp-10s-reuse-same';
-  const job1 = baseJob(publicId, url, fingerprint, 'sid-pv-1');
-  const job2 = baseJob(publicId, url, fingerprint, 'sid-pv-2');
+  const runId = randomUUID();
+  const fingerprint = `fp-10s-reuse-same-${runId}`;
+  const job1 = baseJob(publicId, url, fingerprint, `sid-pv-1-${runId}`);
+  const job2 = baseJob(publicId, url, fingerprint, `sid-pv-2-${runId}`);
 
-  const msg1 = 'pv-reuse-msg-1';
-  const msg2 = 'pv-reuse-msg-2';
+  const msg1 = `pv-reuse-msg-1-${runId}`;
+  const msg2 = `pv-reuse-msg-2-${runId}`;
   const dedupId1 = await getDedupEventIdForJob(
     job1 as import('@/lib/ingest/process-sync-event').WorkerJob,
     getFinalUrl(job1 as import('@/lib/types/ingest').ValidIngestPayload),
@@ -154,13 +150,17 @@ test('pageview 10s reuse: same fingerprint + same URL → one session, two event
 });
 
 test('pageview 10s reuse: different URL → new session', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for pageview reuse integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')
@@ -181,11 +181,12 @@ test('pageview 10s reuse: different URL → new session', async (t) => {
   });
 
   const publicId = (siteRow.public_id as string) || siteIdUuid;
-  const fingerprint = 'fp-10s-reuse-diff-url';
-  const job1 = baseJob(publicId, 'https://example.com/page-a', fingerprint, 'sid-diff-1');
-  const job2 = baseJob(publicId, 'https://example.com/page-b', fingerprint, 'sid-diff-2');
-  const msg1 = 'pv-diff-url-1';
-  const msg2 = 'pv-diff-url-2';
+  const runId = randomUUID();
+  const fingerprint = `fp-10s-reuse-diff-url-${runId}`;
+  const job1 = baseJob(publicId, 'https://example.com/page-a', fingerprint, `sid-diff-1-${runId}`);
+  const job2 = baseJob(publicId, 'https://example.com/page-b', fingerprint, `sid-diff-2-${runId}`);
+  const msg1 = `pv-diff-url-1-${runId}`;
+  const msg2 = `pv-diff-url-2-${runId}`;
   const dedupId1 = await getDedupEventIdForJob(job1 as import('@/lib/ingest/process-sync-event').WorkerJob, getFinalUrl(job1 as import('@/lib/types/ingest').ValidIngestPayload), msg1);
   const dedupId2 = await getDedupEventIdForJob(job2 as import('@/lib/ingest/process-sync-event').WorkerJob, getFinalUrl(job2 as import('@/lib/types/ingest').ValidIngestPayload), msg2);
 
@@ -218,13 +219,17 @@ test('pageview 10s reuse: different URL → new session', async (t) => {
 });
 
 test('pageview 10s reuse: different fingerprint → new session', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for pageview reuse integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')
@@ -246,10 +251,13 @@ test('pageview 10s reuse: different fingerprint → new session', async (t) => {
 
   const publicId = (siteRow.public_id as string) || siteIdUuid;
   const url = 'https://example.com/same-page';
-  const job1 = baseJob(publicId, url, 'fp-diff-a', 'sid-fp-1');
-  const job2 = baseJob(publicId, url, 'fp-diff-b', 'sid-fp-2');
-  const msg1 = 'pv-diff-fp-1';
-  const msg2 = 'pv-diff-fp-2';
+  const runId = randomUUID();
+  const fpA = `fp-diff-a-${runId}`;
+  const fpB = `fp-diff-b-${runId}`;
+  const job1 = baseJob(publicId, url, fpA, `sid-fp-1-${runId}`);
+  const job2 = baseJob(publicId, url, fpB, `sid-fp-2-${runId}`);
+  const msg1 = `pv-diff-fp-1-${runId}`;
+  const msg2 = `pv-diff-fp-2-${runId}`;
   const dedupId1 = await getDedupEventIdForJob(job1 as import('@/lib/ingest/process-sync-event').WorkerJob, getFinalUrl(job1 as import('@/lib/types/ingest').ValidIngestPayload), msg1);
   const dedupId2 = await getDedupEventIdForJob(job2 as import('@/lib/ingest/process-sync-event').WorkerJob, getFinalUrl(job2 as import('@/lib/types/ingest').ValidIngestPayload), msg2);
 
@@ -264,11 +272,11 @@ test('pageview 10s reuse: different fingerprint → new session', async (t) => {
   });
 
   await processSyncEvent(job1 as import('@/lib/ingest/process-sync-event').WorkerJob, siteIdUuid, msg1);
-  const { data: list1 } = await adminClient.from('sessions').select('id, created_month').eq('site_id', siteIdUuid).in('fingerprint', ['fp-diff-a', 'fp-diff-b']);
+  const { data: list1 } = await adminClient.from('sessions').select('id, created_month').eq('site_id', siteIdUuid).in('fingerprint', [fpA, fpB]);
   list1?.forEach((r) => { sessionIds.push(r.id); sessionMonths.push(r.created_month); });
 
   await processSyncEvent(job2 as import('@/lib/ingest/process-sync-event').WorkerJob, siteIdUuid, msg2);
-  const { data: list2 } = await adminClient.from('sessions').select('id, created_month').eq('site_id', siteIdUuid).in('fingerprint', ['fp-diff-a', 'fp-diff-b']);
+  const { data: list2 } = await adminClient.from('sessions').select('id, created_month').eq('site_id', siteIdUuid).in('fingerprint', [fpA, fpB]);
   list2?.forEach((r) => {
     if (!sessionIds.includes(r.id)) { sessionIds.push(r.id); sessionMonths.push(r.created_month); }
   });
@@ -277,6 +285,6 @@ test('pageview 10s reuse: different fingerprint → new session', async (t) => {
     .from('sessions')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteIdUuid)
-    .in('fingerprint', ['fp-diff-a', 'fp-diff-b']);
+    .in('fingerprint', [fpA, fpB]);
   assert.equal(sessionCount, 2, 'different fingerprint → two sessions');
 });

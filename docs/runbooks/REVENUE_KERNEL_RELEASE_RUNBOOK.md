@@ -34,20 +34,84 @@ This runbook aims to:
 
 To deploy:
 
-### ✅ A. Test Gate
+### ✅ A. Enforced Release Gate
+
+The enforced gate chain for this repo is the one wired in `package.json`,
+`scripts/release/collect-gate-evidence.mjs`, and `.github/workflows/release-gates.yml`.
+
+For deploy readiness, the required command is:
 
 ```bash
-node --import tsx --test tests/unit/revenue-kernel-gates.test.ts
-node --import tsx --test tests/billing/financial-proofing.test.ts
-npm run test:unit
+npm run test:release-gates
 ```
+
+This command runs:
+
+- `npm run test:tenant-boundary`
+- `npm run test:oci-kernel`
+- `npm run smoke:intent-multi-site`
 
 **Conditions:**
 
-- 0 fail
-- PR gate tests green
-- Idempotency + Quota tests green
-- Financial Proofing (Dispute/Freeze) tests green
+- 0 fail in the enforced gate chain
+- Tenant-boundary adversarial gate green
+- OCI kernel adversarial gate green
+- Multi-site intent smoke green (`2/2` sites)
+
+### ✅ A.1 Combined Gate
+
+For a single operator command, run:
+
+```bash
+npm run test:release-gates
+```
+
+This command runs:
+
+- `npm run test:tenant-boundary`
+- `npm run test:oci-kernel`
+- `npm run smoke:intent-multi-site`
+
+For PR-safe checks only, run:
+
+```bash
+npm run test:release-gates:pr
+```
+
+This command runs:
+
+- `npm run test:tenant-boundary`
+- `npm run test:oci-kernel`
+
+Deploy hooks:
+
+- `npm run predeploy` now executes `npm run test:release-gates`
+
+To generate a markdown evidence artifact for the release record, run:
+
+```bash
+npm run release:evidence
+```
+
+Default output:
+
+- `tmp/release-gates-latest.md`
+
+For PR-safe evidence only, run:
+
+```bash
+npm run release:evidence:pr
+```
+
+PR-safe output:
+
+- `tmp/release-gates-pr.md`
+
+CI automation:
+
+- GitHub Actions workflow: `.github/workflows/release-gates.yml`
+- Trigger: pull request to `master` / `main` runs safe gates only; push to `master` / `main` and manual dispatch run live release proof
+- Artifacts: `release-gate-evidence-pr`, `release-gate-evidence`
 
 ### ✅ B. Static Invariant Check
 
@@ -59,7 +123,21 @@ The following must exist in code:
 - `billable=false` update on quota reject
 - return 500 before publish on idempotency error
 
-### ✅ C. Migration Safety (Schema değiştiyse)
+### ✅ C. Supplemental Operator Suite
+
+These checks are recommended for high-risk billing changes, but they are not the
+GitHub-enforced merge barrier unless they are added to `test:release-gates`:
+
+```bash
+node --import tsx --test tests/unit/revenue-kernel-gates.test.ts
+node --import tsx --test tests/billing/financial-proofing.test.ts
+npm run test:unit
+```
+
+Use them when the PR changes billing proofs, dispute/export behavior, or broad
+shared runtime code and you want extra operator confidence beyond the enforced gate.
+
+### ✅ D. Migration Safety (Schema değiştiyse)
 
 - Migration additive olmalı
 - Enum değişiklikleri backward compatible olmalı
@@ -126,7 +204,7 @@ curl.exe -s -D - -X POST "$CONSOLE_URL/api/cron/reconcile-usage/run" -H "Authori
 
 ## 4.5 Cron auth doğrulama (CRON_FORBIDDEN önlemi)
 
-CRON_FORBIDDEN genelde shell'de CRON_SECRET boş/yanlış olduğunda olur. Kalıcı çözüm: `$env:CRON_SECRET` set et (profil veya çağrıdan önce), çağrıda `-H "Authorization: Bearer $env:CRON_SECRET"` kullan.
+CRON_FORBIDDEN genelde prod çağrısında `CRON_SECRET` boş/yanlış/placeholder olduğunda veya Vercel provenance header'ı olmadan direkt execution denendiğinde olur. Prod hybrid model artık dual-key'dir: `X-Vercel-Cron: 1` + `x-vercel-id` yalnızca provenance sağlar; gerçek execution için ayrıca `Authorization: Bearer $env:CRON_SECRET` gerekir.
 
 Cron smoke geçerli sayılmadan önce auth 200 dönmeli. PowerShell’de `$CRON_SECRET` boşsa header `Bearer ` gider → 403.
 
@@ -147,7 +225,7 @@ curl.exe -s -D - -X GET "$CONSOLE_URL/api/cron/watchtower" -H "Authorization: Be
 ```
 
 - **200** → secret doğru, cron smoke geçerli.
-- **403** → secret yanlış veya prod env’de `CRON_SECRET` yok/değişti.
+- **403** → secret yanlış/placeholder, prod env’de `CRON_SECRET` yok/değişti veya dual-key provenance eksik.
 
 **3) If header escaping is suspect (safe method)**
 
@@ -296,6 +374,8 @@ Bir Revenue PR ancak şu durumda DONE sayılır:
 
 - Unit tests green
 - PR gates green
+- Tenant-boundary gate green
+- OCI kernel gate green
 - Smoke testi tamam
 - Evidence doc güncel
 - Runbook checklist işaretli

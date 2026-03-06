@@ -7,7 +7,7 @@
  * Coverage:
  *   1. No cron auth → 403 CRON_FORBIDDEN
  *   2. Wrong bearer token in prod → 403
- *   3. x-vercel-cron: 1 header → passes auth guard (worker may fail due to missing env, that's ok)
+ *   3. trusted Vercel cron headers → pass auth guard (worker may fail due to missing env, that's ok)
  *   4. Bearer CRON_SECRET in dev mode (ALLOW_BEARER_CRON=true) → passes auth guard
  */
 
@@ -75,7 +75,7 @@ test('POST /api/cron/dispatch-conversions: wrong bearer token returns 403', asyn
 // 3. x-vercel-cron passes auth (worker may throw without credentials — that's 500, not 403)
 // ---------------------------------------------------------------------------
 
-test('POST /api/cron/dispatch-conversions: x-vercel-cron passes auth guard', async () => {
+test('POST /api/cron/dispatch-conversions: trusted Vercel cron headers pass auth guard', async () => {
     const saved = stashEnv(['GOOGLE_ADS_CREDENTIALS']);
     try {
         // Ensure worker throws due to missing creds (500), proving auth was passed
@@ -84,7 +84,7 @@ test('POST /api/cron/dispatch-conversions: x-vercel-cron passes auth guard', asy
         const { POST } = await import('@/app/api/cron/dispatch-conversions/route');
         const req = new NextRequest('http://localhost/api/cron/dispatch-conversions', {
             method: 'POST',
-            headers: { 'x-vercel-cron': '1' },
+            headers: { 'x-vercel-cron': '1', 'x-vercel-id': 'fra1::dispatch' },
         });
         const res = await POST(req);
         // 500 = auth passed, worker failed. 403 = auth failed (test fails).

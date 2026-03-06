@@ -5,8 +5,8 @@ import { logInfo, logError } from '@/lib/logging/logger';
 
 /**
  * GET/POST /api/cron/auto-junk
- * Nightly Cron: Auto-Junk Stale Leads
- * Target: status = 'pending' AND expires_at < now()
+ * Nightly Cron: Auto-Junk Stale Intent Leads
+ * Target: status = 'intent' AND expires_at < now()
  * Auth: requireCronAuth (x-vercel-cron or Bearer CRON_SECRET). Schedule: vercel.json "0 2 * * *"
  * Vercel Cron sends GET; POST kept for manual/Bearer calls.
  */
@@ -16,7 +16,7 @@ async function run() {
         const { error, count } = await adminClient
             .from('calls')
             .update({ status: 'junk' })
-            .eq('status', 'pending')
+            .eq('status', 'intent')
             .lt('expires_at', nowIso);
 
         if (error) throw error;

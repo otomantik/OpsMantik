@@ -165,8 +165,8 @@ export class WatchtowerService {
                 }
             };
 
-            if (overallStatus === 'alarm') {
-                this.notify(healthCheck);
+            if (this.shouldNotify(overallStatus)) {
+                await this.notify(healthCheck);
             }
 
             return healthCheck;
@@ -192,8 +192,12 @@ export class WatchtowerService {
 
     /**
      * Dispatch alerts.
-     * Logs to console and sends Telegram notification for critical alarms.
+     * Logs to console and sends Telegram notification for degraded/alarm/critical states.
      */
+    private static shouldNotify(status: WatchtowerStatus): boolean {
+        return status === 'degraded' || status === 'alarm' || status === 'critical';
+    }
+
     private static async notify(health: WatchtowerHealth) {
         const issues: string[] = [];
         if (health.checks.sessionsLastHour.status === 'alarm') {
@@ -202,12 +206,38 @@ export class WatchtowerService {
         if (health.checks.gclidLast3Hours.status === 'alarm') {
             issues.push(`- 💸 **Ads Blindness:** No GCLID (ad click) recorded in last 3 hours.`);
         }
+        if (health.checks.ingestPublishFailuresLast15m.status === 'degraded') {
+            issues.push(`- 🟡 **Ingest Publish Failures:** ${health.checks.ingestPublishFailuresLast15m.count} publish failures in the last 15 minutes.`);
+        }
+        if (health.checks.ingestPublishFailuresLast15m.status === 'critical') {
+            issues.push(`- 🚨 **Critical Ingest Failures:** ${health.checks.ingestPublishFailuresLast15m.count} publish failures in the last 15 minutes.`);
+        }
+        if (health.checks.ingestPublishFailuresLast15m.status === 'unknown') {
+            issues.push(`- ❓ **Ingest Visibility Lost:** publish failure check returned unknown.`);
+        }
+        if (health.checks.billingReconciliationDriftLast1h.status === 'degraded') {
+            issues.push(`- 📐 **Billing Drift:** ${health.checks.billingReconciliationDriftLast1h.count} site(s) exceeded reconciliation drift in the last hour.`);
+        }
+
+        const titleByStatus: Record<WatchtowerStatus, string> = {
+            ok: 'WATCHTOWER STATUS OK',
+            degraded: 'WATCHTOWER DEGRADED',
+            alarm: 'WATCHTOWER DETECTED PIPELINE STALL',
+            critical: 'WATCHTOWER CRITICAL',
+        };
+        const levelByStatus: Record<WatchtowerStatus, 'warning' | 'alarm' | 'info'> = {
+            ok: 'info',
+            degraded: 'warning',
+            alarm: 'alarm',
+            critical: 'alarm',
+        };
 
         const alertMessage = `
-**WATCHTOWER DETECTED PIPELINE STALL**
+**${titleByStatus[health.status]}**
 
 Environment: \`${health.details.environment}\`
 Time: ${health.details.timestamp}
+Status: ${health.status}
 
 **Detected Issues:**
 ${issues.join('\n')}
@@ -215,14 +245,16 @@ ${issues.join('\n')}
 **Diagnostics:**
 - Sessions (1h): ${health.checks.sessionsLastHour.count}
 - GCLIDs (3h): ${health.checks.gclidLast3Hours.count}
+- Ingest publish failures (15m): ${health.checks.ingestPublishFailuresLast15m.count}
+- Billing drift sites (1h): ${health.checks.billingReconciliationDriftLast1h.count}
 
 _Immediate investigation required._
         `.trim();
 
         // 1. Log for Sentry/Logs
-        logError('WATCHTOWER_ALARM_STATE', { status: health.status, checks: health.checks });
+        logError('WATCHTOWER_ALERT_STATE', { status: health.status, checks: health.checks });
 
         // 2. Send Telegram Notification
-        await TelegramService.sendMessage(alertMessage, 'alarm');
+        await TelegramService.sendMessage(alertMessage, levelByStatus[health.status]);
     }
 }

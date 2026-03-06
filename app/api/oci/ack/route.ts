@@ -19,7 +19,6 @@ import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
-import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
@@ -96,12 +95,12 @@ export async function POST(req: NextRequest) {
     }
 
     let siteUuid = siteId;
-    const byId = await adminClient.from('sites').select('id, oci_api_key').eq('id', siteId).maybeSingle();
+    const byId = await adminClient.from('sites').select('id, public_id, oci_api_key').eq('id', siteId).maybeSingle();
     const siteRow = byId.data ?? null;
-    let resolvedSite: { id: string; oci_api_key?: string | null } | null = siteRow as { id: string; oci_api_key?: string | null } | null;
+    let resolvedSite: { id: string; public_id?: string | null; oci_api_key?: string | null } | null = siteRow as { id: string; public_id?: string | null; oci_api_key?: string | null } | null;
     if (!resolvedSite) {
-      const byPublic = await adminClient.from('sites').select('id, oci_api_key').eq('public_id', siteId).maybeSingle();
-      resolvedSite = byPublic.data as { id: string; oci_api_key?: string | null } | null;
+      const byPublic = await adminClient.from('sites').select('id, public_id, oci_api_key').eq('public_id', siteId).maybeSingle();
+      resolvedSite = byPublic.data as { id: string; public_id?: string | null; oci_api_key?: string | null } | null;
     }
     if (resolvedSite) siteUuid = resolvedSite.id;
 
@@ -141,15 +140,12 @@ export async function POST(req: NextRequest) {
       else pvSkippedIds.push(s);
     }
 
-    const siteRedisKey = siteId;
+    const siteRedisKey = resolvedSite?.public_id?.trim() || siteId;
 
     const now = new Date().toISOString();
     let totalUpdated = 0;
 
     if (sealIds.length > 0) {
-      const updatePayload = pendingConfirmation
-        ? { status: 'UPLOADED' as const, updated_at: now }
-        : { status: 'COMPLETED' as const, uploaded_at: now, updated_at: now };
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
         .select('id')
@@ -162,10 +158,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
       const eligibleRows = Array.isArray(data) ? data as Array<{ id: string }> : [];
-      totalUpdated += await insertQueueTransitions(
-        adminClient,
-        eligibleRows.map((row) => queueSnapshotPayloadToTransition(row.id, updatePayload, 'SCRIPT'))
-      );
+      if (eligibleRows.length !== sealIds.length) {
+        logError('OCI_ACK_QUEUE_MISMATCH', { requested: sealIds.length, eligible: eligibleRows.length });
+        return NextResponse.json({ error: 'Queue rows not in PROCESSING state', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      }
+      const clearFields = ['last_error', 'provider_error_code', 'provider_error_category', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'];
+      const errorPayload = pendingConfirmation
+        ? { uploaded_at: now, clear_fields: clearFields }
+        : { uploaded_at: now, clear_fields: clearFields };
+      const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+        p_queue_ids: eligibleRows.map((row) => row.id),
+        p_new_status: pendingConfirmation ? 'UPLOADED' : 'COMPLETED',
+        p_created_at: now,
+        p_error_payload: errorPayload,
+      });
+      if (rpcError || typeof updatedCount !== 'number' || updatedCount !== eligibleRows.length) {
+        logError('OCI_ACK_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: eligibleRows.length, updated: updatedCount });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      totalUpdated += updatedCount;
     }
 
     if (sealSkippedIds.length > 0) {
@@ -181,21 +192,26 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
       const eligibleRows = Array.isArray(data) ? data as Array<{ id: string }> : [];
-      totalUpdated += await insertQueueTransitions(
-        adminClient,
-        eligibleRows.map((row) =>
-          queueSnapshotPayloadToTransition(
-            row.id,
-            {
-              status: 'COMPLETED',
-              provider_error_code: 'V1_SAMPLED_OUT',
-              provider_error_category: 'DETERMINISTIC_SKIP',
-              updated_at: now,
-            },
-            'SCRIPT'
-          )
-        )
-      );
+      if (eligibleRows.length !== sealSkippedIds.length) {
+        logError('OCI_ACK_SKIPPED_QUEUE_MISMATCH', { requested: sealSkippedIds.length, eligible: eligibleRows.length });
+        return NextResponse.json({ error: 'Skipped queue rows not in PROCESSING state', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      }
+      const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+        p_queue_ids: eligibleRows.map((row) => row.id),
+        p_new_status: 'COMPLETED',
+        p_created_at: now,
+        p_error_payload: {
+          uploaded_at: now,
+          provider_error_code: 'V1_SAMPLED_OUT',
+          provider_error_category: 'DETERMINISTIC_SKIP',
+          clear_fields: ['last_error', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+        },
+      });
+      if (rpcError || typeof updatedCount !== 'number' || updatedCount !== eligibleRows.length) {
+        logError('OCI_ACK_SKIPPED_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: eligibleRows.length, updated: updatedCount });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      totalUpdated += updatedCount;
     }
 
     if (signalIds.length > 0) {
@@ -215,7 +231,12 @@ export async function POST(req: NextRequest) {
         logError('OCI_ACK_SIGNALS_SQL_ERROR', { code: (error as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      totalUpdated += Array.isArray(data) ? data.length : 0;
+      const updatedSignals = Array.isArray(data) ? data.length : 0;
+      if (updatedSignals !== signalIds.length) {
+        logError('OCI_ACK_SIGNAL_MISMATCH', { requested: signalIds.length, updated: updatedSignals });
+        return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+      }
+      totalUpdated += updatedSignals;
     }
 
     const failedRedisCleanups: string[] = [];

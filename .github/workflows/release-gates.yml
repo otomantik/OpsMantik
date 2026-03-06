@@ -1,0 +1,72 @@
+name: Release Gates
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Assert release gate secrets
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          test -n "$NEXT_PUBLIC_SUPABASE_URL" || (echo "NEXT_PUBLIC_SUPABASE_URL is required" && exit 1)
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || (echo "SUPABASE_SERVICE_ROLE_KEY is required" && exit 1)
+
+      - name: Run safe PR release gates
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run release:evidence:pr
+
+      - name: Run live release proof and collect evidence
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_API_URL: ${{ secrets.SYNC_API_URL || 'https://console.opsmantik.com/api/sync' }}
+          P0_SITES: ${{ secrets.P0_SITES || 'yapiozmendanismanlik.com,poyrazantika.com' }}
+        run: npm run release:evidence
+
+      - name: Upload PR release gate evidence
+        if: ${{ always() && hashFiles('tmp/release-gates-pr.md') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-evidence-pr
+          path: tmp/release-gates-pr.md
+          retention-days: 14
+
+      - name: Upload live release gate evidence
+        if: ${{ always() && hashFiles('tmp/release-gates-latest.md') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-evidence
+          path: tmp/release-gates-latest.md
+          retention-days: 14

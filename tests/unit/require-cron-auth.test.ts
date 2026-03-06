@@ -29,23 +29,48 @@ function requestWithHeaders(headers: Record<string, string>): Request {
   });
 }
 
-test('requireCronAuth: x-vercel-cron=1 => allowed (null)', () => {
+test('requireCronAuth: x-vercel-cron truthy (non-1) => forbidden', async () => {
+  const req = requestWithHeaders({ 'x-vercel-cron': 'true', 'x-vercel-id': 'fra1::abc123' });
+  const result = requireCronAuth(req);
+  assert.notEqual(result, null);
+  assert.equal(result!.status, 403);
+  const text = await result!.text();
+  const json = JSON.parse(text);
+  assert.equal(json.code, 'CRON_FORBIDDEN');
+});
+
+test('requireCronAuth: x-vercel-cron=1 without x-vercel-id => forbidden', async () => {
   const req = requestWithHeaders({ 'x-vercel-cron': '1' });
   const result = requireCronAuth(req);
-  assert.equal(result, null);
+  assert.notEqual(result, null);
+  assert.equal(result!.status, 403);
+  const text = await result!.text();
+  const json = JSON.parse(text);
+  assert.equal(json.code, 'CRON_FORBIDDEN');
 });
 
-test('requireCronAuth: x-vercel-cron truthy (non-1) => allowed (null)', () => {
-  const req = requestWithHeaders({ 'x-vercel-cron': 'true' });
-  const result = requireCronAuth(req);
-  assert.equal(result, null);
-});
-
-test('requireCronAuth: no x-vercel-cron, valid Authorization Bearer CRON_SECRET => allowed', () => {
-  const envKeys = ['CRON_SECRET'];
+test('requireCronAuth: non-production allows trusted Vercel provenance without bearer', () => {
+  const envKeys = ['NODE_ENV', 'CRON_SECRET', 'CRON_AUTH_MODE'];
   const saved = stashEnv(envKeys);
   try {
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'development';
+    delete process.env.CRON_SECRET;
+    delete process.env.CRON_AUTH_MODE;
+    const req = requestWithHeaders({ 'x-vercel-cron': '1', 'x-vercel-id': 'fra1::abc123' });
+    const result = requireCronAuth(req);
+    assert.equal(result, null);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('requireCronAuth: non-production allows valid bearer for manual runs', () => {
+  const envKeys = ['NODE_ENV', 'CRON_SECRET', 'CRON_AUTH_MODE'];
+  const saved = stashEnv(envKeys);
+  try {
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'development';
     process.env.CRON_SECRET = CRON_SECRET;
+    delete process.env.CRON_AUTH_MODE;
     const req = requestWithHeaders({ authorization: `Bearer ${CRON_SECRET}` });
     const result = requireCronAuth(req);
     assert.equal(result, null);
@@ -55,9 +80,10 @@ test('requireCronAuth: no x-vercel-cron, valid Authorization Bearer CRON_SECRET 
 });
 
 test('requireCronAuth: no x-vercel-cron, invalid bearer => 403 with code CRON_FORBIDDEN', async () => {
-  const envKeys = ['CRON_SECRET'];
+  const envKeys = ['NODE_ENV', 'CRON_SECRET'];
   const saved = stashEnv(envKeys);
   try {
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'development';
     process.env.CRON_SECRET = CRON_SECRET;
     const req = requestWithHeaders({ authorization: 'Bearer wrong-token' });
     const result = requireCronAuth(req);
@@ -72,12 +98,87 @@ test('requireCronAuth: no x-vercel-cron, invalid bearer => 403 with code CRON_FO
   }
 });
 
-test('requireCronAuth: no x-vercel-cron, CRON_SECRET missing => 403', async () => {
-  const envKeys = ['CRON_SECRET'];
+test('requireCronAuth: production rejects Vercel provenance without bearer', async () => {
+  const envKeys = ['CRON_SECRET', 'NODE_ENV', 'CRON_AUTH_MODE'];
   const saved = stashEnv(envKeys);
   try {
-    delete process.env.CRON_SECRET;
-    const req = requestWithHeaders({ authorization: 'Bearer anything' });
+    process.env.CRON_SECRET = CRON_SECRET;
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
+    delete process.env.CRON_AUTH_MODE;
+    const req = requestWithHeaders({ 'x-vercel-cron': '1', 'x-vercel-id': 'fra1::abc123' });
+    const result = requireCronAuth(req);
+    assert.notEqual(result, null, 'production must require bearer in addition to Vercel provenance');
+    assert.equal(result!.status, 403);
+    const text = await result!.text();
+    const json = JSON.parse(text);
+    assert.equal(json.code, 'CRON_FORBIDDEN');
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('requireCronAuth: production rejects bearer without Vercel provenance in hybrid mode', async () => {
+  const envKeys = ['CRON_SECRET', 'NODE_ENV', 'CRON_AUTH_MODE'];
+  const saved = stashEnv(envKeys);
+  try {
+    process.env.CRON_SECRET = CRON_SECRET;
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
+    const req = requestWithHeaders({ authorization: `Bearer ${CRON_SECRET}` });
+    const result = requireCronAuth(req);
+    assert.notEqual(result, null);
+    assert.equal(result!.status, 403);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('requireCronAuth: production allows dual-key Vercel provenance plus bearer', () => {
+  const envKeys = ['CRON_SECRET', 'NODE_ENV', 'CRON_AUTH_MODE'];
+  const saved = stashEnv(envKeys);
+  try {
+    process.env.CRON_SECRET = CRON_SECRET;
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
+    delete process.env.CRON_AUTH_MODE;
+    const req = requestWithHeaders({
+      'x-vercel-cron': '1',
+      'x-vercel-id': 'fra1::abc123',
+      authorization: `Bearer ${CRON_SECRET}`,
+    });
+    const result = requireCronAuth(req);
+    assert.equal(result, null);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('requireCronAuth: production rejects placeholder secret even with dual-key headers', async () => {
+  const envKeys = ['CRON_SECRET', 'NODE_ENV', 'CRON_AUTH_MODE'];
+  const saved = stashEnv(envKeys);
+  try {
+    process.env.CRON_SECRET = 'changeme';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
+    delete process.env.CRON_AUTH_MODE;
+    const req = requestWithHeaders({
+      'x-vercel-cron': '1',
+      'x-vercel-id': 'fra1::abc123',
+      authorization: 'Bearer changeme',
+    });
+    const result = requireCronAuth(req);
+    assert.notEqual(result, null);
+    assert.equal(result!.status, 403);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('requireCronAuth: bearer_only mode rejects trusted vercel headers', async () => {
+  const envKeys = ['CRON_SECRET', 'CRON_AUTH_MODE', 'NODE_ENV'];
+  const saved = stashEnv(envKeys);
+  try {
+    process.env.CRON_SECRET = CRON_SECRET;
+    process.env.CRON_AUTH_MODE = 'bearer_only';
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
+    const req = requestWithHeaders({ 'x-vercel-cron': '1', 'x-vercel-id': 'fra1::abc123' });
     const result = requireCronAuth(req);
     assert.notEqual(result, null);
     assert.equal(result!.status, 403);
@@ -89,32 +190,13 @@ test('requireCronAuth: no x-vercel-cron, CRON_SECRET missing => 403', async () =
   }
 });
 
-test('requireCronAuth: production without ALLOW_BEARER_CRON => Bearer rejected even with valid CRON_SECRET', async () => {
-  const envKeys = ['CRON_SECRET', 'NODE_ENV', 'ALLOW_BEARER_CRON'];
+test('requireCronAuth: bearer_only mode allows valid bearer in production', () => {
+  const envKeys = ['CRON_SECRET', 'CRON_AUTH_MODE', 'NODE_ENV'];
   const saved = stashEnv(envKeys);
   try {
     process.env.CRON_SECRET = CRON_SECRET;
+    process.env.CRON_AUTH_MODE = 'bearer_only';
     (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
-    delete process.env.ALLOW_BEARER_CRON;
-    const req = requestWithHeaders({ authorization: `Bearer ${CRON_SECRET}` });
-    const result = requireCronAuth(req);
-    assert.notEqual(result, null, 'production without ALLOW_BEARER_CRON must reject Bearer');
-    assert.equal(result!.status, 403);
-    const text = await result!.text();
-    const json = JSON.parse(text);
-    assert.equal(json.code, 'CRON_FORBIDDEN');
-  } finally {
-    restoreEnv(saved);
-  }
-});
-
-test('requireCronAuth: production with ALLOW_BEARER_CRON=true => Bearer allowed', () => {
-  const envKeys = ['CRON_SECRET', 'NODE_ENV', 'ALLOW_BEARER_CRON'];
-  const saved = stashEnv(envKeys);
-  try {
-    process.env.CRON_SECRET = CRON_SECRET;
-    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
-    process.env.ALLOW_BEARER_CRON = 'true';
     const req = requestWithHeaders({ authorization: `Bearer ${CRON_SECRET}` });
     const result = requireCronAuth(req);
     assert.equal(result, null);

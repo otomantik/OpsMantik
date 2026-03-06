@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
         // 2. Logic: Fast-Track Routing
         const isFastTrack = brainScore >= 80;
-        const finalStatus = isFastTrack ? 'qualified' : 'pending';
+        const finalStatus = isFastTrack ? 'qualified' : 'intent';
 
         // 3. Update Call Record (Optimistic Locking)
         // We fetch the current record to get the 'version' for concurrency control.

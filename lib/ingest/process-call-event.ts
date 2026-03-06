@@ -2,7 +2,7 @@
  * Process call-event worker payload: insert call + audit.
  * Pre-condition: HMAC, replay, consent already validated in receiver.
  * HOTFIX: calls_status_check only allows ['intent','confirmed','junk','qualified','real','cancelled'] or NULL.
- * deriveCallStatus returns 'suspicious' which is invalid — sanitize to 'intent'.
+ * Click-origin leads must therefore enter the canonical intent ontology immediately.
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
@@ -10,6 +10,7 @@ import { publishToQStash } from '@/lib/ingest/publish';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
+import { sanitizeClickId } from '@/lib/attribution';
 
 // Brain Score logic moved to async worker
 
@@ -45,6 +46,10 @@ export async function processCallEvent(
 ): Promise<ProcessCallEventResult> {
   const siteId = payload.site_id;
   const tenantClient = createTenantClient(siteId);
+  const sanitizedClickId = sanitizeClickId(payload.click_id) ?? null;
+  const sanitizedGclid = sanitizeClickId(payload.gclid) ?? sanitizedClickId;
+  const sanitizedWbraid = sanitizeClickId(payload.wbraid) ?? null;
+  const sanitizedGbraid = sanitizeClickId(payload.gbraid) ?? null;
 
   // ── GCLID-first geo: prefer AdsContext over IP-derived (Rome/Amsterdam vs Istanbul) ────────────
   const adsCtx = payload.ads_context ?? null;
@@ -80,9 +85,9 @@ export async function processCallEvent(
   // Early-call fix 1: session lacks GCLID; payload has gclid/wbraid/gbraid → persist to session for OCI
   const sessionMonth = payload.matched_session_month ?? (payload.matched_at ? new Date(payload.matched_at).toISOString().slice(0, 7) + '-01' : null);
   const payloadHasClickIds = Boolean(
-    (payload.gclid && String(payload.gclid).trim()) ||
-    (payload.wbraid && String(payload.wbraid).trim()) ||
-    (payload.gbraid && String(payload.gbraid).trim())
+    sanitizedGclid ||
+    sanitizedWbraid ||
+    sanitizedGbraid
   );
   if (payload.matched_session_id && sessionMonth && payloadHasClickIds) {
     try {
@@ -101,9 +106,9 @@ export async function processCallEvent(
         await tenantClient
           .from('sessions')
           .update({
-            gclid: payload.gclid || null,
-            wbraid: payload.wbraid || null,
-            gbraid: payload.gbraid || null,
+            gclid: sanitizedGclid,
+            wbraid: sanitizedWbraid,
+            gbraid: sanitizedGbraid,
           })
           .eq('id', payload.matched_session_id)
           .eq('site_id', siteId)
@@ -131,10 +136,10 @@ export async function processCallEvent(
   }
 
   // ── ARCHITECTURAL HARDENING: Async Scoring ──────────────────────
-  // We no longer calculate brain score in-line. 
-  // Status is set to 'pending_score' to allow instant ingestion.
-  // The 'Fast-Track' logic will move to the calc-brain-score worker.
-  const initialStatus = 'pending_score';
+  // Click-origin leads enter the existing queue ontology as intent immediately.
+  // Async scoring may later fast-track them to qualified, but must never create a
+  // status family that the DB state machine, queue UI, or cleanup jobs do not own.
+  const initialStatus = 'intent';
 
   const baseInsert: Record<string, unknown> = {
     site_id: siteId,
@@ -156,7 +161,7 @@ export async function processCallEvent(
     intent_target: payload.intent_target,
     intent_stamp: payload.intent_stamp,
     intent_page_url: payload.intent_page_url,
-    click_id: payload.click_id,
+    click_id: sanitizedClickId,
     ...(payload._client_value != null ? { _client_value: payload._client_value } : {}),
     ...(payload.signature_hash ? { signature_hash: payload.signature_hash } : {}),
     // Google Ads enrichment
@@ -174,10 +179,10 @@ export async function processCallEvent(
     ...(resolvedDistrictName ? { district_name: resolvedDistrictName } : {}),
     ...(locationSource ? { location_source: locationSource } : {}),
     // AdTech Metadata
-    gclid: payload.gclid || payload.click_id,
-    wbraid: payload.wbraid || null,
-    gbraid: payload.gbraid || null,
-    source_type: (payload.gclid || payload.wbraid || payload.gbraid || payload.click_id) ? 'paid' : 'organic',
+    gclid: sanitizedGclid,
+    wbraid: sanitizedWbraid,
+    gbraid: sanitizedGbraid,
+    source_type: (sanitizedGclid || sanitizedWbraid || sanitizedGbraid || sanitizedClickId) ? 'paid' : 'organic',
     // DIC: user_agent for ECL / device entropy; phone_source_type for Trust Score
     ...(payload.ua != null && String(payload.ua).trim() !== '' ? { user_agent: String(payload.ua).trim() } : {}),
     ...(derivePhoneSourceType(payload) ? { phone_source_type: derivePhoneSourceType(payload) } : {}),
@@ -265,7 +270,7 @@ export async function processCallEvent(
     });
   } catch (qError) {
     console.error('[HARDENING] Failed to trigger async scoring:', qError);
-    // Non-critical for ingestion, but will leave lead as 'pending_score'
+    // Non-critical for ingestion, but the lead remains in canonical intent state.
   }
 
   if (

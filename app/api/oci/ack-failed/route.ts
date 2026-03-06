@@ -15,7 +15,6 @@ import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
 import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
 import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
-import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
@@ -161,6 +160,10 @@ export async function POST(req: NextRequest) {
       const sealRowsList = Array.isArray(sealRows)
         ? sealRows as Array<{ id: string; call_id: string | null; attempt_count: number | null }>
         : [];
+      if (sealRowsList.length !== sealFailedIds.length) {
+        logError('OCI_ACK_FAILED_QUEUE_MISMATCH', { requested: sealFailedIds.length, eligible: sealRowsList.length });
+        return NextResponse.json({ error: 'Queue rows not in PROCESSING state', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      }
 
       const retryableSealIds = sealRowsList
         .filter((row) => category === 'TRANSIENT' && (row.attempt_count ?? 0) < MAX_ATTEMPTS)
@@ -171,61 +174,61 @@ export async function POST(req: NextRequest) {
       const deadLetterSealRows = sealRowsList.filter((row) => (row.attempt_count ?? 0) >= MAX_ATTEMPTS);
 
       if (retryableSealIds.length > 0) {
-        updatedCount += await insertQueueTransitions(
-          adminClient,
-          retryableSealIds.map((id) =>
-            queueSnapshotPayloadToTransition(
-              id,
-              {
-                status: 'RETRY',
-                next_retry_at: nextRetryAt,
-                last_error: errorMessage,
-                provider_error_code: errorCode,
-                provider_error_category: 'TRANSIENT',
-                updated_at: now,
-              },
-              'SCRIPT'
-            )
-          )
-        );
+        const { data: batchCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: retryableSealIds,
+          p_new_status: 'RETRY',
+          p_created_at: now,
+          p_error_payload: {
+            next_retry_at: nextRetryAt,
+            last_error: errorMessage,
+            provider_error_code: errorCode,
+            provider_error_category: 'TRANSIENT',
+            clear_fields: ['uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (rpcError || typeof batchCount !== 'number' || batchCount !== retryableSealIds.length) {
+          logError('OCI_ACK_FAILED_RETRY_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: retryableSealIds.length, updated: batchCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        updatedCount += batchCount;
       }
 
       if (failedSealIds.length > 0) {
-        updatedCount += await insertQueueTransitions(
-          adminClient,
-          failedSealIds.map((id) =>
-            queueSnapshotPayloadToTransition(
-              id,
-              {
-                status: 'FAILED',
-                last_error: errorMessage,
-                provider_error_code: errorCode,
-                provider_error_category: category,
-                updated_at: now,
-              },
-              'SCRIPT'
-            )
-          )
-        );
+        const { data: batchCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: failedSealIds,
+          p_new_status: 'FAILED',
+          p_created_at: now,
+          p_error_payload: {
+            last_error: errorMessage,
+            provider_error_code: errorCode,
+            provider_error_category: category,
+            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (rpcError || typeof batchCount !== 'number' || batchCount !== failedSealIds.length) {
+          logError('OCI_ACK_FAILED_TERMINAL_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: failedSealIds.length, updated: batchCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        updatedCount += batchCount;
       }
 
       if (deadLetterSealRows.length > 0) {
-        updatedCount += await insertQueueTransitions(
-          adminClient,
-          deadLetterSealRows.map((row) =>
-            queueSnapshotPayloadToTransition(
-              row.id,
-              {
-                status: 'DEAD_LETTER_QUARANTINE',
-                last_error: errorMessage,
-                provider_error_code: errorCode,
-                provider_error_category: 'PERMANENT',
-                updated_at: now,
-              },
-              'SCRIPT'
-            )
-          )
-        );
+        const { data: batchCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: deadLetterSealRows.map((row) => row.id),
+          p_new_status: 'DEAD_LETTER_QUARANTINE',
+          p_created_at: now,
+          p_error_payload: {
+            last_error: errorMessage,
+            provider_error_code: errorCode,
+            provider_error_category: 'PERMANENT',
+            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (rpcError || typeof batchCount !== 'number' || batchCount !== deadLetterSealRows.length) {
+          logError('OCI_ACK_FAILED_DEAD_LETTER_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: deadLetterSealRows.length, updated: batchCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        updatedCount += batchCount;
         deadLetterAuditEntries.push(
           ...deadLetterSealRows.map((row) => ({
             siteId: siteUuid,
@@ -253,7 +256,12 @@ export async function POST(req: NextRequest) {
         .eq('site_id', siteUuid)
         .eq('dispatch_status', 'PROCESSING')
         .select('id');
-      updatedCount += Array.isArray(data) ? data.length : 0;
+      const updatedSignals = Array.isArray(data) ? data.length : 0;
+      if (updatedSignals !== signalFailedIds.length) {
+        logError('OCI_ACK_FAILED_SIGNAL_MISMATCH', { requested: signalFailedIds.length, updated: updatedSignals });
+        return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+      }
+      updatedCount += updatedSignals;
     }
 
     // Explicit poison/fatal ids always hard-transition to dead letter.
@@ -267,22 +275,26 @@ export async function POST(req: NextRequest) {
       const fatalRowsList = Array.isArray(fatalRows)
         ? fatalRows as Array<{ id: string; call_id: string | null; attempt_count: number | null }>
         : [];
-      updatedCount += await insertQueueTransitions(
-        adminClient,
-        fatalRowsList.map((row) =>
-          queueSnapshotPayloadToTransition(
-            row.id,
-            {
-              status: 'DEAD_LETTER_QUARANTINE',
-              last_error: errorMessage,
-              provider_error_code: errorCode,
-              provider_error_category: 'PERMANENT',
-              updated_at: now,
-            },
-            'SCRIPT'
-          )
-        )
-      );
+      if (fatalRowsList.length !== sealFatalIds.length) {
+        logError('OCI_ACK_FAILED_FATAL_QUEUE_MISMATCH', { requested: sealFatalIds.length, eligible: fatalRowsList.length });
+        return NextResponse.json({ error: 'Queue rows not in PROCESSING state', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      }
+      const { data: batchCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+        p_queue_ids: fatalRowsList.map((row) => row.id),
+        p_new_status: 'DEAD_LETTER_QUARANTINE',
+        p_created_at: now,
+        p_error_payload: {
+          last_error: errorMessage,
+          provider_error_code: errorCode,
+          provider_error_category: 'PERMANENT',
+          clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+        },
+      });
+      if (rpcError || typeof batchCount !== 'number' || batchCount !== fatalRowsList.length) {
+        logError('OCI_ACK_FAILED_FATAL_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: fatalRowsList.length, updated: batchCount });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      updatedCount += batchCount;
       deadLetterAuditEntries.push(
         ...fatalRowsList.map((row) => ({
           siteId: siteUuid,
@@ -312,6 +324,10 @@ export async function POST(req: NextRequest) {
       const updatedRows = Array.isArray(data)
         ? data as Array<{ id: string; trace_id: string | null }>
         : [];
+      if (updatedRows.length !== signalFatalIds.length) {
+        logError('OCI_ACK_FAILED_FATAL_SIGNAL_MISMATCH', { requested: signalFatalIds.length, updated: updatedRows.length });
+        return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+      }
       updatedCount += updatedRows.length;
       deadLetterAuditEntries.push(
         ...updatedRows.map((row) => ({

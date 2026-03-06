@@ -22,6 +22,7 @@ import { publishToQStash } from '@/lib/ingest/publish';
 export const runtime = 'nodejs';
 
 const ERROR_MESSAGE_MAX_LEN = 500;
+const TRACKER_VERSION_META_KEY = 'om_tracker_version';
 
 const OPSMANTIK_VERSION = '2.1.0-upstash';
 
@@ -49,6 +50,17 @@ function getSiteRateLimitOverrides(): Map<string, number> {
     }
   }
   return map;
+}
+
+function isTrackerShadowModeEnabled(): boolean {
+  const raw = process.env.OPSMANTIK_TRACKER_SHADOW_MODE?.trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'on';
+}
+
+function hasTrackerVersionStamp(body: import('@/lib/types/ingest').ValidIngestPayload): boolean {
+  const meta = body.meta as Record<string, unknown> | undefined;
+  const value = meta?.[TRACKER_VERSION_META_KEY];
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 export async function GET(req: NextRequest) {
@@ -226,6 +238,21 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       );
     }
     const siteIdUuid = site.id;
+
+    if (isTrackerShadowModeEnabled()) {
+      const missingTrackerStampCount = bodies.filter((item) => !hasTrackerVersionStamp(item)).length;
+      if (missingTrackerStampCount > 0) {
+        logError('STALE_TRACKER_DETECTED', {
+          route: '/api/sync',
+          site_id: siteIdUuid,
+          site_public_id: body.s,
+          missing_tracker_stamp_count: missingTrackerStampCount,
+          batch_size: bodies.length,
+          user_agent: req.headers.get('user-agent') || null,
+          referer: req.headers.get('referer') || null,
+        });
+      }
+    }
 
     // --- 4. Rate Limit (abuse/DoS). One check per request (batch counts as one). ---
     const siteIdForRl = extractSiteIdForRateLimit(json);

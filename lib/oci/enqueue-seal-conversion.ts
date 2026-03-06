@@ -20,6 +20,7 @@ import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
+import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 
@@ -221,6 +222,12 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       sale_id: null,
       session_id: sessionId,
       provider_key: 'google_ads',
+      external_id: computeOfflineConversionExternalId({
+        providerKey: 'google_ads',
+        action: 'purchase',
+        callId,
+        sessionId,
+      }),
       conversion_time: confirmedAtTrimmed,
       value_cents: valueCents,
       currency: currencySafe,

@@ -19,6 +19,10 @@ const RL_IDENTIFIER_WINDOW = 60 * 60 * 1000; // 1h
 const RL_IP_LIMIT = 60;
 const RL_IP_WINDOW = 60 * 60 * 1000; // 1h
 
+function isGdprConsentSigningDisabled(): boolean {
+  return process.env.GDPR_CONSENT_SIGNING_DISABLED === '1' || process.env.GDPR_CONSENT_SIGNING_DISABLED === 'true';
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest) {
   }
   const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
 
-  const signingDisabled = process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
+  const signingDisabled = isGdprConsentSigningDisabled();
   let headerSiteId = '';
 
   if (!signingDisabled) {

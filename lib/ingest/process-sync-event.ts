@@ -60,6 +60,28 @@ async function deterministicUuidFromString(input: string): Promise<string> {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20, 32)}`;
 }
 
+function buildFallbackDedupFingerprint(job: WorkerJob, url: string): string {
+  const meta = (job.meta ?? {}) as IngestMeta;
+  const compact = {
+    site_id: typeof job.s === 'string' ? job.s : '',
+    client_sid: typeof job.sid === 'string' ? job.sid : '',
+    session_month: typeof job.sm === 'string' ? job.sm : '',
+    event_category: typeof job.ec === 'string' ? job.ec : '',
+    event_action: typeof job.ea === 'string' ? job.ea : '',
+    event_label: typeof job.el === 'string' ? job.el : '',
+    event_value: job.ev ?? null,
+    url,
+    referrer: typeof job.r === 'string' ? job.r : '',
+    ingest_id: typeof job.ingest_id === 'string' ? job.ingest_id : '',
+    om_trace_uuid: typeof job.om_trace_uuid === 'string' ? job.om_trace_uuid : '',
+    fingerprint: typeof meta.fp === 'string' ? meta.fp : '',
+    gclid: typeof meta.gclid === 'string' ? meta.gclid : '',
+    wbraid: typeof meta.wbraid === 'string' ? meta.wbraid : '',
+    gbraid: typeof meta.gbraid === 'string' ? meta.gbraid : '',
+  };
+  return JSON.stringify(compact);
+}
+
 /**
  * Compute dedup event id for a job (used by worker skip path and processSyncEvent).
  */
@@ -68,12 +90,19 @@ export async function getDedupEventIdForJob(
   url: string,
   qstashMessageId: string | null
 ): Promise<string> {
-  const site_id = job.s;
-  const client_sid = typeof job.sid === 'string' ? job.sid : '';
-  const event_action = typeof job.ea === 'string' ? job.ea : '';
+  const ingestId = typeof job.ingest_id === 'string' && job.ingest_id.trim() !== ''
+    ? job.ingest_id.trim()
+    : null;
+  const traceId = typeof job.om_trace_uuid === 'string' && job.om_trace_uuid.trim() !== ''
+    ? job.om_trace_uuid.trim()
+    : null;
   const dedupInput = qstashMessageId
     ? `qstash:${qstashMessageId}`
-    : `fallback:${site_id}:${client_sid || ''}:${event_action || ''}:${url}`;
+    : ingestId
+      ? `ingest:${ingestId}`
+      : traceId
+        ? `trace:${traceId}`
+        : `fallback:${buildFallbackDedupFingerprint(job, url)}`;
   return deterministicUuidFromString(dedupInput);
 }
 
@@ -302,6 +331,9 @@ async function doProcessSyncEvent(
       },
       { ip, userAgent, geoInfo, deviceInfo }
     );
+  }
+  if (!session) {
+    throw new Error('session_resolution_failed');
   }
 
   // Deterministik geo: GCLID + loc_physical_ms/loc_interest_ms → ADS geo

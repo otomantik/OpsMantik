@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Clock, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, AlertTriangle, XOctagon } from 'lucide-react';
 import { IntentStatus } from '@/lib/hooks/use-intents';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from '@/lib/i18n/useTranslation';
@@ -33,6 +33,15 @@ export function IntentStatusBadge({ status, sealedAt }: IntentStatusBadgeProps) 
       <Badge variant="destructive" className="gap-1">
         <XCircle className="h-4 w-4" />
         {t('dashboard.commandCenter.queue.junk')}
+      </Badge>
+    );
+  }
+
+  if (status === 'cancelled') {
+    return (
+      <Badge variant="secondary" className="gap-1">
+        <XOctagon className="h-4 w-4" />
+        {t('activity.statusCancelled')}
       </Badge>
     );
   }

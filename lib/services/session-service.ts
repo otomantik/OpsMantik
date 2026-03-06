@@ -70,8 +70,9 @@ export class SessionService {
             // Lookup existing session in the correct partition
             const { data: existingSession, error: lookupError } = await adminClient
                 .from('sessions')
-                .select('id, created_month, attribution_source, gclid, wbraid, gbraid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, utm_adgroup, ads_network, ads_placement, ads_adposition, matchtype, device_model, ads_target_id, ads_feed_item_id, loc_interest_ms, loc_physical_ms')
+                .select('id, site_id, created_month, attribution_source, gclid, wbraid, gbraid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, utm_adgroup, ads_network, ads_placement, ads_adposition, matchtype, device_model, ads_target_id, ads_feed_item_id, loc_interest_ms, loc_physical_ms')
                 .eq('id', client_sid)
+                .eq('site_id', siteId)
                 .eq('created_month', dbMonth)
                 .maybeSingle();
 
@@ -81,7 +82,7 @@ export class SessionService {
             } else if (existingSession) {
                 debugLog('[SYNC_API] Found existing session:', client_sid, 'in partition:', dbMonth);
                 session = existingSession;
-                await this.updateSessionIfNecesary(session, data, context, dbMonth);
+                await this.updateSessionIfNecesary(session, siteId, data, context, dbMonth);
             } else {
                 debugLog('[SYNC_API] No existing session found for UUID:', client_sid, 'in partition:', dbMonth);
             }
@@ -100,11 +101,12 @@ export class SessionService {
 
     private static async updateSessionIfNecesary(
         session: {
-            id: string; created_month: string; attribution_source?: string | null; gclid?: string | null; wbraid?: string | null; gbraid?: string | null;
+            id: string; site_id?: string; created_month: string; attribution_source?: string | null; gclid?: string | null; wbraid?: string | null; gbraid?: string | null;
             utm_source?: string | null; utm_medium?: string | null; utm_campaign?: string | null; utm_term?: string | null; utm_content?: string | null;
             utm_adgroup?: string | null; ads_network?: string | null; ads_placement?: string | null; ads_adposition?: string | null; matchtype?: string | null;
             device_model?: string | null; ads_target_id?: string | null; ads_feed_item_id?: string | null; loc_interest_ms?: string | null; loc_physical_ms?: string | null;
         },
+        siteId: string,
         data: IncomingData,
         context: SessionContext,
         dbMonth: string
@@ -221,6 +223,7 @@ export class SessionService {
                 .from('sessions')
                 .update(updates)
                 .eq('id', session.id)
+                .eq('site_id', siteId)
                 .eq('created_month', dbMonth);
         }
     }
@@ -350,14 +353,22 @@ export class SessionService {
 
         if (sError) {
             if (sError.code === '23505') {
-                debugLog('[SYNC_API] Session insert duplicate (id, created_month) — idempotent re-select');
+                debugLog('[SYNC_API] Session insert duplicate (id, created_month) — scoped idempotent re-select');
                 const { data: existing } = await adminClient
                     .from('sessions')
                     .select('id, created_month')
                     .eq('id', sessionId)
+                    .eq('site_id', siteId)
                     .eq('created_month', dbMonth)
                     .single();
                 if (existing) return existing;
+
+                debugWarn('[SYNC_API] Cross-tenant session id collision detected, generating tenant-safe replacement session id', {
+                    requested_session_id: sessionId,
+                    site_id: siteId,
+                    partition: dbMonth,
+                });
+                return this.createSession(this.generateUUID(), siteId, dbMonth, data, context);
             }
             console.error('[SYNC_API] Session insert failed:', {
                 message: sError.message,

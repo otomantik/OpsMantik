@@ -46,37 +46,39 @@ export async function POST(req: NextRequest) {
 
   const primaryCallId = hasCall ? body.primary_call_id! : null;
   const primarySessionId = hasSession ? body.primary_session_id! : null;
+  const primaryEntityType = primaryCallId ? 'call' : 'session';
+  const primaryEntityId = primaryCallId ?? primarySessionId!;
   const primarySource = await getPrimarySource(siteId, {
     callId: primaryCallId ?? undefined,
     sessionId: primarySessionId ?? undefined,
   });
 
-  const { data: conversation, error: convError } = await supabase
-    .from('conversations')
-    .insert({
-      site_id: siteId,
-      status: 'OPEN',
-      primary_call_id: primaryCallId,
-      primary_session_id: primarySessionId,
-      primary_source: primarySource as Record<string, unknown> ?? null,
-    })
-    .select('id, site_id, status, primary_call_id, primary_session_id, primary_source, created_at, updated_at')
-    .single();
+  const { data, error: convError } = await supabase.rpc('create_conversation_with_primary_entity', {
+    p_site_id: siteId,
+    p_primary_entity_type: primaryEntityType,
+    p_primary_entity_id: primaryEntityId,
+    p_primary_source: primarySource as Record<string, unknown> ?? null,
+  });
 
   if (convError) {
+    if (convError.code === '23505') {
+      return NextResponse.json({ error: 'Conversation already exists for this primary entity' }, { status: 409, headers: getBuildInfoHeaders() });
+    }
+    if (convError.message === 'access_denied') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: getBuildInfoHeaders() });
+    }
+    if (convError.message === 'invalid_primary_entity_type' || convError.message === 'primary_entity_site_mismatch') {
+      return NextResponse.json(
+        { error: 'Primary entity not found or does not belong to this site', code: 'PRIMARY_ENTITY_SITE_MISMATCH' },
+        { status: 400, headers: getBuildInfoHeaders() }
+      );
+    }
     return NextResponse.json({ error: convError.message }, { status: 500, headers: getBuildInfoHeaders() });
   }
 
-  const entityType = primaryCallId ? 'call' : 'session';
-  const entityId = primaryCallId ?? primarySessionId!;
-  const { error: linkError } = await supabase.from('conversation_links').insert({
-    conversation_id: conversation.id,
-    entity_type: entityType,
-    entity_id: entityId,
-  });
-
-  if (linkError) {
-    return NextResponse.json({ error: linkError.message }, { status: 500, headers: getBuildInfoHeaders() });
+  const conversation = Array.isArray(data) ? data[0] : data;
+  if (!conversation || typeof conversation !== 'object') {
+    return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500, headers: getBuildInfoHeaders() });
   }
 
   return NextResponse.json(conversation, { status: 201, headers: getBuildInfoHeaders() });

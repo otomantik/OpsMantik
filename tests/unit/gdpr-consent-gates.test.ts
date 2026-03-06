@@ -9,6 +9,7 @@ import { join } from 'node:path';
 const SYNC_ROUTE = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
 const ENQUEUE_SEAL = join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts');
 const PIPELINE = join(process.cwd(), 'lib', 'services', 'pipeline-service.ts');
+const GDPR_CONSENT_ROUTE = join(process.cwd(), 'app', 'api', 'gdpr', 'consent', 'route.ts');
 
 test('validateSite before consent gate, consent gate before publish', () => {
   const src = readFileSync(SYNC_ROUTE, 'utf8');
@@ -44,4 +45,10 @@ test('Erase RPC does not touch partition keys', () => {
   const src = readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260226000002_erase_pii_rpc.sql'), 'utf8');
   assert.ok(!src.includes('created_month'), 'erase must not modify created_month (partition key)');
   assert.ok(!src.includes('session_month'), 'erase must not modify session_month (partition key)');
+});
+
+test('GDPR consent route uses isolated signing toggle, not call-event rollback switch', () => {
+  const src = readFileSync(GDPR_CONSENT_ROUTE, 'utf8');
+  assert.ok(src.includes('GDPR_CONSENT_SIGNING_DISABLED'), 'consent route must use its own signing toggle');
+  assert.ok(!src.includes('CALL_EVENT_SIGNING_DISABLED'), 'consent route must not depend on call-event signing rollback switch');
 });

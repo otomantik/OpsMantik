@@ -3,7 +3,6 @@ import { adminClient } from '@/lib/supabase/admin';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { getBuildInfoHeaders } from '@/lib/build-info';
-import { insertQueueTransitions, queueSnapshotPayloadToTransition } from '@/lib/oci/queue-transition-ledger';
 import { OuroborosWatchdog } from '@/lib/oci/ouroboros-watchdog';
 import { redis } from '@/lib/upstash';
 
@@ -141,7 +140,9 @@ async function runSweep() {
             .from('outbox_events')
             .update({
                 status: 'PENDING',
-                last_error: 'Rescued by zombie sweeper (stuck in PROCESSING > 10m)'
+                last_error: 'Rescued by zombie sweeper (stuck in PROCESSING > 10m)',
+                processed_at: null,
+                updated_at: new Date().toISOString(),
             })
             .eq('status', 'PROCESSING')
             .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
@@ -163,22 +164,15 @@ async function runSweep() {
     // Phase 2: OCI Queue Zombie Sweeper (PROCESSING)
     // ─────────────────────────────────────────────────────────────────────────
     try {
-        const rescueNow = new Date().toISOString();
-        const { data: queueRescued, error: queueRescuedError } = await adminClient
-            .from('offline_conversion_queue')
-            .select('id')
-            .eq('status', 'PROCESSING')
-            .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
-            ;
+        const { data: recoveredCount, error: queueRecoveryError } = await adminClient.rpc(
+            'recover_stuck_offline_conversion_jobs',
+            { p_min_age_minutes: 10 }
+        );
 
-        if (queueRescuedError) {
-            logError('sweep_zombies_queue_processing_failed', { error: queueRescuedError.message });
+        if (queueRecoveryError) {
+            logError('sweep_zombies_queue_processing_failed', { error: queueRecoveryError.message });
         } else {
-            const rescuedRows = Array.isArray(queueRescued) ? queueRescued : [];
-            stats.queueRescued = await insertQueueTransitions(
-                adminClient,
-                rescuedRows.map((row) => queueSnapshotPayloadToTransition(row.id, { status: 'QUEUED', updated_at: rescueNow }, 'SWEEPER'))
-            );
+            stats.queueRescued = typeof recoveredCount === 'number' ? recoveredCount : 0;
             if (stats.queueRescued > 0) {
                 logInfo('sweep_zombies_queue_processing_rescued', { count: stats.queueRescued });
             }
@@ -226,10 +220,22 @@ async function runSweep() {
             logError('sweep_zombies_queue_failed', { error: queueError.message });
         } else {
             const closedRows = Array.isArray(queueClosed) ? queueClosed : [];
-            stats.queueClosed = await insertQueueTransitions(
-                adminClient,
-                closedRows.map((row) => queueSnapshotPayloadToTransition(row.id, { status: 'COMPLETED_UNVERIFIED', updated_at: closeNow }, 'SWEEPER'))
-            );
+            const closedIds = closedRows.map((row) => row.id);
+            const { data: closedCount, error: closeError } = await adminClient.rpc('append_sweeper_transition_batch', {
+                p_queue_ids: closedIds,
+                p_new_status: 'COMPLETED_UNVERIFIED',
+                p_created_at: closeNow,
+                p_last_error: null,
+            });
+            if (closeError || typeof closedCount !== 'number' || closedCount !== closedIds.length) {
+                logError('sweep_zombies_queue_close_append_failed', {
+                    code: (closeError as { code?: string })?.code,
+                    requested: closedIds.length,
+                    updated: closedCount,
+                });
+            } else {
+                stats.queueClosed = closedCount;
+            }
             if (stats.queueClosed > 0) {
                 logInfo('sweep_zombies_queue_closed', { count: stats.queueClosed });
             }

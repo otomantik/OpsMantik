@@ -29,6 +29,41 @@ test('google-ads-export route: claim uses RPC not direct update', () => {
   assert.ok(src.includes('append_script_claim_transition_batch'), 'uses actor-owned batch claim RPC');
 });
 
+test('google-ads-export route: next_cursor keeps queue and signal streams separate', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('const target: ExportCursorState'), 'cursor state object exists');
+  assert.ok(src.includes('q: lastRow ?'), 'queue cursor is encoded independently');
+  assert.ok(src.includes('s: lastSig ?'), 'signal cursor is encoded independently');
+  assert.ok(src.includes('readExportCursorMark(decoded?.q ?? decoded)'), 'route is backward compatible with legacy cursor');
+});
+
+test('google-ads-export route: deterministic skips keep provenance on terminal rows', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes("last_error: 'SESSION_DEDUPLICATED_AT_EXPORT'"), 'dedup terminalization keeps human-readable reason');
+  assert.ok(src.includes("provider_error_code: 'DETERMINISTIC_SKIP'"), 'dedup terminalization seals provider_error_code');
+  assert.ok(src.includes("provider_error_category: 'DETERMINISTIC_SKIP'"), 'dedup terminalization seals provider_error_category');
+});
+
+test('google-ads-export route: partial claims fail closed before cursor advances', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes("code: 'QUEUE_CLAIM_MISMATCH'"), 'queue claim mismatches must fail closed');
+  assert.ok(src.includes("code: 'SIGNAL_CLAIM_MISMATCH'"), 'signal claim mismatches must fail closed');
+  assert.ok(src.includes('append_script_transition_batch'), 'script terminalization must use DB-owned atomic batch RPC');
+});
+
+test('google-ads-export route: signal and pageview orderIds use collision-resistant builder', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('buildOrderId('), 'route must use shared orderId builder');
+  assert.ok(src.includes('row.external_id || computeOfflineConversionExternalId'), 'seal exports must prefer DB-authoritative external_id');
+  assert.ok(src.includes('`signal_${signalRowId}`') || src.includes("`signal_${signalRowId}`"), 'signal fallback id must include signal row id');
+  assert.ok(!src.includes('`${clickId}_${conversionName}_${conversionTime}`.slice(0, 128)'), 'signal path must not build raw second-level orderId');
+  assert.ok(!src.includes('`${clickId}_${OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW}_${conversionTime}`.slice(0, 128)'), 'pageview path must not build raw second-level orderId');
+});
+
 test('claim RPC migration: increments attempt_count', () => {
   const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260330000000_oci_claim_and_attempt_cap.sql');
   const src = readFileSync(migrationPath, 'utf8');

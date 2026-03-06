@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: OpsMantik First-Party Proxy
- * Description: First-party signer/proxy for OpsMantik call-events. Browser sends event to this site; server signs and forwards to OpsMantik Console.
+ * Description: First-party proxy for OpsMantik sync and signed call-events. Browser sends events to this site; server forwards to OpsMantik Console.
  * Version: 0.1.0
  * Author: OpsMantik
  *
@@ -52,6 +52,11 @@ function opsmantik_hmac_sha256_hex($secret, $message) {
 }
 
 add_action('rest_api_init', function () {
+  register_rest_route('opsmantik/v1', '/sync', array(
+    'methods' => 'POST',
+    'permission_callback' => '__return_true',
+    'callback' => 'opsmantik_handle_sync',
+  ));
   register_rest_route('opsmantik/v1', '/call-event', array(
     'methods' => 'POST',
     'permission_callback' => '__return_true',
@@ -59,52 +64,35 @@ add_action('rest_api_init', function () {
   ));
 });
 
-function opsmantik_handle_call_event(WP_REST_Request $request) {
-  // Best-effort origin guard (do not hard fail; WordPress installs vary).
-  if (!opsmantik_best_effort_same_origin()) {
-    return new WP_REST_Response(array('error' => 'Forbidden'), 403);
-  }
-
-  $secret = opsmantik_get_secret();
-  if (!$secret || strlen($secret) < 16) {
-    return new WP_REST_Response(array('error' => 'Proxy not configured'), 500);
-  }
-
+function opsmantik_get_raw_json_body(WP_REST_Request $request) {
   $rawBody = $request->get_body();
   if (!is_string($rawBody)) $rawBody = '';
   if (strlen($rawBody) > 65536) {
-    return new WP_REST_Response(array('error' => 'Payload too large'), 413);
+    return new WP_Error('opsmantik_payload_too_large', 'Payload too large', array('status' => 413));
   }
 
   $json = json_decode($rawBody, true);
   if (!is_array($json)) {
-    return new WP_REST_Response(array('error' => 'Invalid JSON'), 400);
+    return new WP_Error('opsmantik_invalid_json', 'Invalid JSON', array('status' => 400));
   }
 
-  $siteId = isset($json['site_id']) ? trim(strval($json['site_id'])) : '';
-  if (!$siteId) {
-    return new WP_REST_Response(array('error' => 'Missing site_id'), 400);
-  }
+  return array($rawBody, $json);
+}
 
-  $ts = time();
-  $sig = opsmantik_hmac_sha256_hex($secret, strval($ts) . '.' . $rawBody);
-
+function opsmantik_forward_json($path, $rawBody, $headers = array()) {
   $console = opsmantik_get_console_url();
-  $url = $console . '/api/call-event/v2';
+  $url = $console . $path;
   $proxyHost = parse_url(home_url(), PHP_URL_HOST);
   if (!$proxyHost && isset($_SERVER['HTTP_HOST'])) $proxyHost = $_SERVER['HTTP_HOST'];
 
   $resp = wp_remote_post($url, array(
     'timeout' => 4,
-    'headers' => array(
+    'headers' => array_merge(array(
       'Content-Type' => 'application/json',
-      'X-Ops-Site-Id' => $siteId,
-      'X-Ops-Ts' => strval($ts),
-      'X-Ops-Signature' => $sig,
       'X-Ops-Proxy' => '1',
       'X-Ops-Proxy-Host' => is_string($proxyHost) ? $proxyHost : '',
       'User-Agent' => 'OpsMantik-WP-Proxy/' . OPSMANTIK_PROXY_VERSION,
-    ),
+    ), $headers),
     'body' => $rawBody,
   ));
 
@@ -121,6 +109,65 @@ function opsmantik_handle_call_event(WP_REST_Request $request) {
     return new WP_REST_Response($decoded, $code);
   }
   return new WP_REST_Response(array('ok' => ($code >= 200 && $code < 300)), $code);
+}
+
+function opsmantik_handle_sync(WP_REST_Request $request) {
+  if (!opsmantik_best_effort_same_origin()) {
+    return new WP_REST_Response(array('error' => 'Forbidden'), 403);
+  }
+
+  $parsed = opsmantik_get_raw_json_body($request);
+  if (is_wp_error($parsed)) {
+    return new WP_REST_Response(array('error' => $parsed->get_error_message()), intval($parsed->get_error_data()['status']));
+  }
+
+  list($rawBody, $json) = $parsed;
+  if (!isset($json['s']) && !isset($json['events']) && !isset($json['batch'])) {
+    return new WP_REST_Response(array('error' => 'Missing tracker payload'), 400);
+  }
+
+  if (isset($json['batch']) && !isset($json['events']) && is_array($json['batch'])) {
+    $normalized = array('events' => $json['batch']);
+    $encoded = wp_json_encode($normalized);
+    if (!is_string($encoded) || $encoded === '') {
+      return new WP_REST_Response(array('error' => 'Invalid JSON'), 400);
+    }
+    $rawBody = $encoded;
+  }
+
+  return opsmantik_forward_json('/api/sync', $rawBody);
+}
+
+function opsmantik_handle_call_event(WP_REST_Request $request) {
+  // Best-effort origin guard (do not hard fail; WordPress installs vary).
+  if (!opsmantik_best_effort_same_origin()) {
+    return new WP_REST_Response(array('error' => 'Forbidden'), 403);
+  }
+
+  $secret = opsmantik_get_secret();
+  if (!$secret || strlen($secret) < 16) {
+    return new WP_REST_Response(array('error' => 'Proxy not configured'), 500);
+  }
+
+  $parsed = opsmantik_get_raw_json_body($request);
+  if (is_wp_error($parsed)) {
+    return new WP_REST_Response(array('error' => $parsed->get_error_message()), intval($parsed->get_error_data()['status']));
+  }
+
+  list($rawBody, $json) = $parsed;
+  $siteId = isset($json['site_id']) ? trim(strval($json['site_id'])) : '';
+  if (!$siteId) {
+    return new WP_REST_Response(array('error' => 'Missing site_id'), 400);
+  }
+
+  $ts = time();
+  $sig = opsmantik_hmac_sha256_hex($secret, strval($ts) . '.' . $rawBody);
+
+  return opsmantik_forward_json('/api/call-event/v2', $rawBody, array(
+    'X-Ops-Site-Id' => $siteId,
+    'X-Ops-Ts' => strval($ts),
+    'X-Ops-Signature' => $sig,
+  ));
 }
 
 // Minimal settings UI (admin only)
@@ -157,7 +204,7 @@ function opsmantik_proxy_settings_page() {
     </form>
 
     <h2>Endpoint</h2>
-    <p>Your site endpoint: <code>/wp-json/opsmantik/v1/call-event</code></p>
+    <p>Your site endpoints: <code>/wp-json/opsmantik/v1/sync</code> and <code>/wp-json/opsmantik/v1/call-event</code></p>
   </div>
   <?php
 }

@@ -6,9 +6,17 @@
 (() => {
   // lib/tracker/config.js
   var scriptTag = typeof document !== "undefined" ? document.currentScript || document.querySelector("script[data-ops-site-id], script[data-site-id]") : null;
+  var proxyUrl = scriptTag ? scriptTag.getAttribute("data-ops-proxy-url") : null;
+  var syncProxyUrl = scriptTag ? scriptTag.getAttribute("data-ops-sync-proxy-url") : null;
   var dataApi = scriptTag ? scriptTag.getAttribute("data-api") : null;
+  var runtimeConfig = typeof window !== "undefined" ? window.opsmantikConfig || window.opmantikConfig || {} : {};
+  function deriveSyncProxyUrl(url) {
+    if (!url || typeof url !== "string") return "";
+    return url.replace(/\/call-event\/?$/i, "/sync");
+  }
   var CONFIG = {
-    apiUrl: dataApi || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : ""),
+    apiUrl: syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : ""),
+    trackerVersion: runtimeConfig.opsTrackerVersion || "core-shadow-2026-11-05",
     sessionKey: "opsmantik_session_sid",
     fingerprintKey: "opsmantik_session_fp",
     contextKey: "opsmantik_session_context",
@@ -351,6 +359,37 @@
     }
     return void 0;
   }
+  function getUnloadPriority(envelope) {
+    const payload = envelope?.payload || {};
+    const category = payload.ec;
+    const action = payload.ea;
+    if (category === "conversion" && (action === "phone_call" || action === "whatsapp_click")) return 0;
+    if (category === "conversion") return 1;
+    if (action === "session_end") return 2;
+    return 3;
+  }
+  function buildUnloadBeaconBody(queue) {
+    const prioritized = [...queue].sort((a, b) => {
+      const pa = getUnloadPriority(a);
+      const pb = getUnloadPriority(b);
+      if (pa !== pb) return pa - pb;
+      return (a?.ts || 0) - (b?.ts || 0);
+    });
+    const selected = [];
+    let totalBytes = 0;
+    for (const envelope of prioritized) {
+      const payload = envelope?.payload;
+      if (!payload) continue;
+      const serialized = JSON.stringify(payload);
+      const size = serialized.length;
+      if (selected.length > 0 && totalBytes + size > PAYLOAD_CAP_BYTES) break;
+      selected.push(payload);
+      totalBytes += size;
+      if (selected.length >= MAX_BATCH) break;
+    }
+    if (selected.length === 0) return null;
+    return selected.length === 1 ? selected[0] : { events: selected };
+  }
   async function processOutbox() {
     if (isProcessing) return;
     const queue = getQueue();
@@ -559,7 +598,9 @@
   function lastGaspFlush() {
     const queue = getQueue();
     if (queue.length > 0 && navigator.sendBeacon) {
-      navigator.sendBeacon(CONFIG.apiUrl, new Blob([JSON.stringify(queue[0].payload)], { type: "application/json" }));
+      const body = buildUnloadBeaconBody(queue);
+      if (!body) return;
+      navigator.sendBeacon(CONFIG.apiUrl, new Blob([JSON.stringify(body)], { type: "application/json" }));
     }
   }
 
@@ -608,7 +649,8 @@
       fp: session.fingerprint,
       gclid: session.context,
       wbraid: session.wbraid || void 0,
-      gbraid: session.gbraid || void 0
+      gbraid: session.gbraid || void 0,
+      om_tracker_version: CONFIG.trackerVersion
     };
     if (session.urlParams && typeof session.urlParams === "object") {
       Object.keys(session.urlParams).forEach((k) => {
@@ -656,7 +698,7 @@
     const base = CONFIG.apiUrl ? CONFIG.apiUrl.replace(/\/api\/sync\/?$/, "") : window.location.origin;
     const callEventUrl = base + "/api/call-event/v2";
     const scriptTag2 = document.currentScript || document.querySelector("script[data-ops-site-id]");
-    const proxyUrl = scriptTag2?.getAttribute("data-ops-proxy-url") || (window.opsmantikConfig || window.opmantikConfig || {})?.opsProxyUrl || "";
+    const proxyUrl2 = scriptTag2?.getAttribute("data-ops-proxy-url") || (window.opsmantikConfig || window.opmantikConfig || {})?.opsProxyUrl || "";
     const eventId = generateUUID();
     const adsCtx = getAdsContext();
     const payloadObj = {
@@ -673,8 +715,8 @@
     };
     if (adsCtx) payloadObj.ads_context = adsCtx;
     const payload = JSON.stringify(payloadObj);
-    if (proxyUrl) {
-      fetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {
+    if (proxyUrl2) {
+      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {
       });
       return;
     }
@@ -700,8 +742,9 @@
       });
       return;
     }
-    fetch(callEventUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {
-    });
+    if (typeof console !== "undefined") {
+      console.warn("[OpsMantik] call-event not sent: missing proxyUrl or signing secret");
+    }
   }
   function initAutoTracking() {
     console.log("[OPSMANTIK] Auto-tracking initialized");

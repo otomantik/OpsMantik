@@ -84,32 +84,10 @@ export function useIntentQualification(
 
         if (isConfirmed) {
           // Route through Seal API so enqueueSealConversion() runs (OCI queue).
-          const callIds: string[] = [];
-          const doSessionUpdate = Boolean(matchedSessionId && String(matchedSessionId).trim().length > 0);
-
-          // ALWAYS include the intent the user clicked on!
-          callIds.push(intentId);
-
-          if (doSessionUpdate) {
-            const { data: rows, error: fetchError } = await supabase
-              .from('calls')
-              .select('id')
-              .eq('site_id', siteId)
-              .eq('matched_session_id', matchedSessionId as string)
-              .eq('source', 'click')
-              .in('status', ['intent', null]);
-            if (!fetchError && rows) {
-              const extraIds = rows.map((r) => r.id).filter(id => id !== intentId);
-              callIds.push(...extraIds);
-            }
-          }
-
-          if (callIds.length === 0) {
-            // This should never happen now, but keeping for safety
-            const msg = t('toast.error.intentAlreadyQualified');
-            setError(msg);
-            return { success: false, error: msg };
-          }
+          // P0 symmetry hardening: one UI qualification action only mutates the clicked call,
+          // so Undo can deterministically revert the exact same call.
+          void matchedSessionId;
+          const callIds = [intentId];
 
           const body = {
             lead_score: leadScore,
@@ -125,7 +103,7 @@ export function useIntentQualification(
             });
             if (!res.ok) {
               const data = await res.json().catch(() => ({}));
-              const msg = (data as { error?: string }).error || (res.status === 404 ? (doSessionUpdate ? t('toast.error.sessionAlreadyQualified') : t('toast.error.intentAlreadyQualified')) : t('toast.error.qualifyFailed'));
+              const msg = (data as { error?: string }).error || (res.status === 404 ? t('toast.error.intentAlreadyQualified') : t('toast.error.qualifyFailed'));
               setError(msg);
               return { success: false, error: msg };
             }

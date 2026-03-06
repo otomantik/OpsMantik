@@ -1,17 +1,20 @@
 /**
  * Helpers for PR-T1.1–T1.3 DB-level integration tests (strict ingest).
- * Env-gated: use getStrictTestSiteId() and requireStrictEnv() so tests skip when env is missing.
+ * Env-gated: prefer explicit test site ids, but can auto-resolve a fallback site
+ * when service-role Supabase env is available.
  */
 
 import { adminClient } from '@/lib/supabase/admin';
 
 const TEST_SITE_ID_KEY = 'STRICT_INGEST_TEST_SITE_ID';
+const GENERIC_TEST_SITE_ID_KEY = 'TEST_SITE_ID';
 const SUPABASE_URL_KEY = 'NEXT_PUBLIC_SUPABASE_URL';
 const SUPABASE_SERVICE_KEY = 'SUPABASE_SERVICE_ROLE_KEY';
 
 export function getStrictTestSiteId(): string | null {
   const id = process.env[TEST_SITE_ID_KEY]?.trim();
-  return id || null;
+  const generic = process.env[GENERIC_TEST_SITE_ID_KEY]?.trim();
+  return id || generic || null;
 }
 
 export function hasStrictIngestEnv(): boolean {
@@ -22,12 +25,30 @@ export function hasStrictIngestEnv(): boolean {
 }
 
 /**
- * Return { skip: true, reason } when STRICT_INGEST_TEST_SITE_ID or Supabase env is missing.
+ * Resolve a site id for DB-backed tests.
+ * Priority: explicit env keys → first site row in DB.
+ */
+export async function resolveStrictTestSiteId(extraEnvKeys: string[] = []): Promise<string | null> {
+  for (const key of [TEST_SITE_ID_KEY, GENERIC_TEST_SITE_ID_KEY, ...extraEnvKeys]) {
+    const id = process.env[key]?.trim();
+    if (id) return id;
+  }
+  if (!hasStrictIngestEnv()) {
+    return null;
+  }
+  const { data, error } = await adminClient
+    .from('sites')
+    .select('id')
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return data?.id ?? null;
+}
+
+/**
+ * Return { skip: true, reason } when Supabase env is missing.
  */
 export function requireStrictEnv(): { skip: false } | { skip: true; reason: string } {
-  if (!getStrictTestSiteId()) {
-    return { skip: true, reason: `${TEST_SITE_ID_KEY} required` };
-  }
   if (!hasStrictIngestEnv()) {
     return { skip: true, reason: 'Supabase env (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) required' };
   }

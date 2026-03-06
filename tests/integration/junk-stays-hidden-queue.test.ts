@@ -1,7 +1,8 @@
 /**
- * Junk-stays-hidden: Çöp tıklandıktan sonra kuyrukta (get_recent_intents_lite_v1) geri gelmemeli.
+ * Queue visibility: Çöp tıklandıktan sonra junk satır geri gelmemeli,
+ * ama aynı session'daki farklı pending satır görünmez olmamalı.
  * - apply_call_action_v1(call_id, 'junk') ile satır junk olur.
- * - Aynı session'daki tüm call'lar lite RPC'de listelenmemeli (migration 20261002000001).
+ * - Aynı session'daki diğer intent satırı lite RPC'de görünmeye devam eder.
  *
  * Requires: JUNK_FLOW_TEST_SITE_ID (UUID) veya STRICT_INGEST_TEST_SITE_ID, Supabase env.
  */
@@ -11,29 +12,22 @@ import { config } from 'dotenv';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
+import { requireStrictEnv, resolveStrictTestSiteId } from '@/tests/helpers/strict-ingest-helpers';
 
 config({ path: join(process.cwd(), '.env.local') });
 
-const TEST_SITE_ID =
-  process.env.JUNK_FLOW_TEST_SITE_ID?.trim() || process.env.STRICT_INGEST_TEST_SITE_ID?.trim();
-const HAS_SUPABASE =
-  !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function requireEnv() {
-  if (!TEST_SITE_ID || !HAS_SUPABASE) {
-    return { skip: true, reason: 'JUNK_FLOW_TEST_SITE_ID or STRICT_INGEST_TEST_SITE_ID and Supabase env required' };
-  }
-  return { skip: false };
-}
-
-test('junk flow: apply_call_action_v1 junk → get_recent_intents_lite_v1 excludes that call and same session', async (t) => {
-  const env = requireEnv();
+test('junk flow: apply_call_action_v1 junk hides only junked row, not same-session sibling', async (t) => {
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteId = TEST_SITE_ID!;
+  const siteId = await resolveStrictTestSiteId(['JUNK_FLOW_TEST_SITE_ID']);
+  if (!siteId) {
+    t.skip('No test site available for junk flow integration test');
+    return;
+  }
   const sessionId = randomUUID();
   const now = new Date();
   const fromIso = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
@@ -114,6 +108,7 @@ test('junk flow: apply_call_action_v1 junk → get_recent_intents_lite_v1 exclud
     p_actor_type: 'system',
     p_actor_id: null,
     p_metadata: { test: 'junk-stays-hidden' },
+    p_version: null,
   });
 
   assert.ifError(junkErr);
@@ -121,7 +116,7 @@ test('junk flow: apply_call_action_v1 junk → get_recent_intents_lite_v1 exclud
   assert.ok(updatedRow, 'apply_call_action_v1 must return updated row');
   assert.equal((updatedRow as { status?: string })?.status, 'junk', 'call1 status must be junk');
 
-  // 4) After junk: lite must NOT return call1 nor call2 (session hidden)
+  // 4) After junk: lite must NOT return call1, but must keep call2 visible.
   const { data: afterLite, error: errAfter } = await adminClient.rpc('get_recent_intents_lite_v1', {
     p_site_id: siteId,
     p_date_from: fromIso,
@@ -134,5 +129,5 @@ test('junk flow: apply_call_action_v1 junk → get_recent_intents_lite_v1 exclud
   const afterList = Array.isArray(afterLite) ? afterLite : [];
   const afterIds = afterList.map((r: { id?: string }) => r?.id).filter(Boolean);
   assert.ok(!afterIds.includes(call1Id), 'after junk: junked call must not appear in lite');
-  assert.ok(!afterIds.includes(call2Id), 'after junk: same-session call must not appear in lite (session hidden)');
+  assert.ok(afterIds.includes(call2Id), 'after junk: same-session pending call must remain visible in lite');
 });

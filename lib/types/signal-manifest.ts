@@ -80,6 +80,15 @@ export function parseSignalManifest(input: unknown):
     return { ok: false, errors: [], code: 'payload_not_object' };
   }
   const rec = input as Record<string, unknown>;
+  if (Array.isArray(rec.batch)) {
+    const compatBatch = SignalManifestBatchSchema.safeParse({ events: rec.batch });
+    if (compatBatch.success) {
+      return { ok: true, data: { events: compatBatch.data.events } };
+    }
+    const first = compatBatch.error.issues[0];
+    const code = (first?.path?.join('.') as string) || 'batch_validation_failed';
+    return { ok: false, errors: compatBatch.error.issues, code };
+  }
   if (Array.isArray(rec.events)) {
     const batch = SignalManifestBatchSchema.safeParse(input);
     if (batch.success) {

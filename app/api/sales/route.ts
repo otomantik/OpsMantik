@@ -20,6 +20,73 @@ function parseAmount(body: { amount?: number; amount_cents?: number }): number |
   return null;
 }
 
+async function validateConversationSite(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  siteId: string,
+  conversationId: string | null
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  if (!conversationId) return { ok: true };
+
+  const { data: conversation, error } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('id', conversationId)
+    .eq('site_id', siteId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: error.message }, { status: 500, headers: getBuildInfoHeaders() }),
+    };
+  }
+
+  if (!conversation) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'conversation_id does not belong to this site', code: 'CONVERSATION_SITE_MISMATCH' },
+        { status: 400, headers: getBuildInfoHeaders() }
+      ),
+    };
+  }
+
+  return { ok: true };
+}
+
+async function updateExistingDraftSale(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  saleId: string,
+  payload: {
+    amountCents: number;
+    occurredAtIso: string;
+    currency: string;
+    customerHash: string | null;
+    conversationId: string | null;
+    notes: string | null;
+  }
+): Promise<{ data: unknown; error: { message: string; code?: string } | null }> {
+  const { error } = await supabase
+    .from('sales')
+    .update({
+      amount_cents: payload.amountCents,
+      occurred_at: payload.occurredAtIso,
+      currency: payload.currency,
+      customer_hash: payload.customerHash ?? undefined,
+      conversation_id: payload.conversationId ?? undefined,
+      notes: payload.notes ?? undefined,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', saleId);
+
+  if (error) {
+    return { data: null, error: { message: error.message, code: error.code } };
+  }
+
+  const { data } = await supabase.from('sales').select('*').eq('id', saleId).single();
+  return { data, error: null };
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -79,8 +146,14 @@ export async function POST(req: NextRequest) {
   const externalRefRaw = body.external_ref != null ? String(body.external_ref) : null;
   const externalRef = externalRefRaw != null && externalRefRaw.trim() !== '' ? externalRefRaw.trim() : null;
   const customerHash = body.customer_hash != null ? String(body.customer_hash) : null;
-  const conversationId = body.conversation_id != null ? String(body.conversation_id) : null;
+  const conversationIdRaw = body.conversation_id != null ? String(body.conversation_id) : null;
+  const conversationId = conversationIdRaw != null && conversationIdRaw.trim() !== '' ? conversationIdRaw.trim() : null;
   const notes = body.notes != null ? String(body.notes) : null;
+
+  const conversationValidation = await validateConversationSite(supabase, siteId, conversationId);
+  if (!conversationValidation.ok) {
+    return conversationValidation.response;
+  }
 
   if (externalRef) {
     const { data: existing, error: fetchError } = await supabase
@@ -95,21 +168,31 @@ export async function POST(req: NextRequest) {
     }
 
     if (existing) {
-      const { error: updateError } = await supabase
-        .from('sales')
-        .update({
-          amount_cents: amountCents,
-          occurred_at: occurredAtDate.toISOString(),
-          conversation_id: conversationId ?? existing.conversation_id,
-          notes: notes ?? existing.notes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
+      if (existing.status !== 'DRAFT') {
+        return NextResponse.json(
+          { error: 'Finalized sales cannot be mutated via external_ref replay', code: 'SALE_FINALIZED_IMMUTABLE' },
+          { status: 409, headers: getBuildInfoHeaders() }
+        );
+      }
+
+      const { data: updated, error: updateError } = await updateExistingDraftSale(supabase, existing.id, {
+        amountCents,
+        occurredAtIso: occurredAtDate.toISOString(),
+        currency,
+        customerHash,
+        conversationId: conversationId ?? existing.conversation_id ?? null,
+        notes: notes ?? existing.notes ?? null,
+      });
 
       if (updateError) {
+        if (updateError.message.includes('finalized identity fields are immutable')) {
+          return NextResponse.json(
+            { error: 'Finalized sales cannot be mutated via external_ref replay', code: 'SALE_FINALIZED_IMMUTABLE' },
+            { status: 409, headers: getBuildInfoHeaders() }
+          );
+        }
         return NextResponse.json({ error: updateError.message }, { status: 500, headers: getBuildInfoHeaders() });
       }
-      const { data: updated } = await supabase.from('sales').select('*').eq('id', existing.id).single();
       return NextResponse.json(updated, { status: 200, headers: getBuildInfoHeaders() });
     }
   }
@@ -139,19 +222,28 @@ export async function POST(req: NextRequest) {
         .eq('external_ref', externalRef)
         .maybeSingle();
       if (!fetch2 && existing2) {
-        const { error: updateErr } = await supabase
-          .from('sales')
-          .update({
-            amount_cents: amountCents,
-            occurred_at: occurredAtDate.toISOString(),
-            conversation_id: conversationId ?? existing2.conversation_id,
-            notes: notes ?? existing2.notes,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing2.id);
+        if (existing2.status !== 'DRAFT') {
+          return NextResponse.json(
+            { error: 'Finalized sales cannot be mutated via external_ref replay', code: 'SALE_FINALIZED_IMMUTABLE' },
+            { status: 409, headers: getBuildInfoHeaders() }
+          );
+        }
+        const { data: updated, error: updateErr } = await updateExistingDraftSale(supabase, existing2.id, {
+          amountCents,
+          occurredAtIso: occurredAtDate.toISOString(),
+          currency,
+          customerHash,
+          conversationId: conversationId ?? existing2.conversation_id ?? null,
+          notes: notes ?? existing2.notes ?? null,
+        });
         if (!updateErr) {
-          const { data: updated } = await supabase.from('sales').select('*').eq('id', existing2.id).single();
           return NextResponse.json(updated, { status: 200, headers: getBuildInfoHeaders() });
+        }
+        if (updateErr.message.includes('finalized identity fields are immutable')) {
+          return NextResponse.json(
+            { error: 'Finalized sales cannot be mutated via external_ref replay', code: 'SALE_FINALIZED_IMMUTABLE' },
+            { status: 409, headers: getBuildInfoHeaders() }
+          );
         }
       }
     }

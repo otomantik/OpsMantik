@@ -19,6 +19,44 @@ export const dynamic = 'force-dynamic';
 
 const route = '/api/intents/[id]/status';
 
+async function invalidatePendingOciArtifactsForCall(
+  callId: string,
+  siteId: string,
+  reason: string,
+  now: string
+): Promise<void> {
+  await Promise.all([
+    adminClient
+      .from('outbox_events')
+      .update({
+        status: 'FAILED',
+        last_error: reason,
+        processed_at: now,
+      })
+      .eq('site_id', siteId)
+      .eq('call_id', callId)
+      .in('status', ['PENDING', 'PROCESSING']),
+    adminClient
+      .from('marketing_signals')
+      .update({
+        dispatch_status: 'JUNK_ABORTED',
+        updated_at: now,
+      })
+      .eq('site_id', siteId)
+      .eq('call_id', callId)
+      .eq('dispatch_status', 'PENDING'),
+    adminClient
+      .from('marketing_signals')
+      .update({
+        dispatch_status: 'FAILED',
+        updated_at: now,
+      })
+      .eq('site_id', siteId)
+      .eq('call_id', callId)
+      .eq('dispatch_status', 'PROCESSING'),
+  ]);
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -73,7 +111,7 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Route through apply_call_action_v1 to guarantee audit log + revert snapshot.
+    // Route through DB-owned actions so audit log + revert snapshot remain authoritative.
     // This endpoint is primarily used for junk/restore/cancel flows; seal happens via /api/calls/[id]/seal.
     const actionType =
       status === 'junk'
@@ -96,16 +134,27 @@ export async function POST(
 
     // Use adminClient (service_role) so the write is not blocked by RLS. We already validated
     // site access and queue:operate; without this, member role 'owner' or RLS can prevent UPDATE.
-    // Pass p_version so Postgres picks the 7-param overload (DB has 6-param and 7-param versions).
-    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
-      p_call_id: callId,
-      p_action_type: actionType,
-      p_payload: payload,
-      p_actor_type: 'system',
-      p_actor_id: user.id,
-      p_metadata: { route, request_id: requestId, user_id: user.id },
-      p_version: null,
-    });
+    // Restore must go through undo_last_action_v1; apply_call_action_v1 has no restore branch.
+    const metadata = { route, request_id: requestId, user_id: user.id };
+    const rpcName = actionType === 'restore' ? 'undo_last_action_v1' : 'apply_call_action_v1';
+    const rpcArgs = actionType === 'restore'
+      ? {
+          p_call_id: callId,
+          p_actor_type: 'user',
+          p_actor_id: user.id,
+          p_metadata: metadata,
+        }
+      : {
+          p_call_id: callId,
+          p_action_type: actionType,
+          p_payload: payload,
+          p_actor_type: 'user',
+          p_actor_id: user.id,
+          p_metadata: metadata,
+          p_version: null,
+        };
+
+    const { data: updatedCall, error: updateError } = await adminClient.rpc(rpcName, rpcArgs);
 
     if (updateError) {
       logError('intent status update failed', { request_id: requestId, route, error: updateError.message });
@@ -122,6 +171,11 @@ export async function POST(
         { error: 'Update did not persist; please retry.' },
         { status: 500 }
       );
+    }
+
+    if (actionType === 'restore' || actionType === 'cancel' || actionType === 'junk') {
+      const now = new Date().toISOString();
+      await invalidatePendingOciArtifactsForCall(callId, siteId, `CALL_STATUS_REVERSED:${actionType.toUpperCase()}`, now);
     }
 
     return NextResponse.json({

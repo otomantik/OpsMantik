@@ -17,6 +17,7 @@ import { OpsGear } from '@/lib/domain/mizan-mantik/types';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { logInfo, logError } from '@/lib/logging/logger';
+import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
 
 export const runtime = 'nodejs';
 
@@ -70,6 +71,28 @@ async function runProcessOutbox() {
       const currency = (payload?.currency ?? 'TRY').trim() || 'TRY';
 
       try {
+        const { data: currentCall } = await adminClient
+          .from('calls')
+          .select('status, oci_status')
+          .eq('id', callId)
+          .eq('site_id', siteId)
+          .maybeSingle();
+        const callStatus = (currentCall as { status?: string | null } | null)?.status ?? null;
+        const ociStatus = (currentCall as { oci_status?: string | null } | null)?.oci_status ?? null;
+        if (!isCallSendableForSealExport(callStatus, ociStatus)) {
+          await adminClient
+            .from('outbox_events')
+            .update({
+              status: 'FAILED',
+              last_error: 'CALL_NOT_SENDABLE_FOR_OCI',
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', id);
+          failed++;
+          continue;
+        }
+
         const score = leadScore ?? 0;
         if (score >= 90) {
           // Phase 2.2: Temporal Funnel Backfill (V5 case)
@@ -153,7 +176,7 @@ async function runProcessOutbox() {
 
         await adminClient
           .from('outbox_events')
-          .update({ status: 'PROCESSED', processed_at: new Date().toISOString() })
+          .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq('id', id);
         processed++;
       } catch (err) {
@@ -169,6 +192,7 @@ async function runProcessOutbox() {
           .update({
             status: nextStatus,
             last_error: msg.slice(0, 1000),
+            updated_at: new Date().toISOString(),
           })
           .eq('id', id);
       }

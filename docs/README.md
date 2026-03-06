@@ -51,6 +51,9 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 | [TEMP_QUOTA_UNBLOCK_SITES_2026-02-15.md](runbooks/TEMP_QUOTA_UNBLOCK_SITES_2026-02-15.md) | Temporary quota unblock procedure |
 | [RUNBOOK_QSTASH_DEGRADED_PROOF.md](runbooks/RUNBOOK_QSTASH_DEGRADED_PROOF.md) | QStash degraded-mode proof |
 | [PR_GATE_WATCHTOWER_BUILDINFO.md](runbooks/PR_GATE_WATCHTOWER_BUILDINFO.md) | Watchtower build-info PR gate |
+| [TENANT_BOUNDARY_ADVERSARIAL_GATE.md](runbooks/TENANT_BOUNDARY_ADVERSARIAL_GATE.md) | Cross-site mutation adversarial test gate |
+| [OCI_KERNEL_ADVERSARIAL_GATE.md](runbooks/OCI_KERNEL_ADVERSARIAL_GATE.md) | OCI export/runner/recovery adversarial gate |
+| [GITHUB_RELEASE_GATES_REQUIRED_CHECK.md](runbooks/GITHUB_RELEASE_GATES_REQUIRED_CHECK.md) | GitHub required-check setup for release gates |
 
 ---
 

@@ -13,7 +13,7 @@ test('recover route: GET with cron auth returns 200 and body shape', { skip: !pr
   const { GET } = await import('@/app/api/cron/recover/route');
   const req = new NextRequest('http://localhost:3000/api/cron/recover', {
     method: 'GET',
-    headers: { 'x-vercel-cron': '1' },
+    headers: { 'x-vercel-cron': '1', 'x-vercel-id': 'fra1::recover' },
   });
   const res = await GET(req);
   assert.equal(res.status, 200, 'recover with cron auth must return 200 (empty batch or processed)');

@@ -124,6 +124,13 @@ test('PR9 google-ads-oci worker: sets upload proof fields (uploaded_at, provider
   assert.ok(src.includes('provider_error_category'), 'FAILED/RETRY set provider_error_category');
 });
 
+test('runner bulk ledger append fails closed when any chunk write fails', () => {
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const src = readFileSync(runnerPath, 'utf8');
+  assert.ok(src.includes('const failures: string[] = [];'), 'runner tracks failed ledger chunks');
+  assert.ok(src.includes('throw new Error(`${logLabel}: ${failures.length} chunk(s) failed:'), 'runner must throw after partial ledger failure');
+});
+
 test('PR10 migration: provider_upload_attempts table exists with required columns', () => {
   const migrationPath = join(
     process.cwd(),

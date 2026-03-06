@@ -9,24 +9,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from 'dotenv';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { processSyncEvent, getDedupEventIdForJob } from '@/lib/ingest/process-sync-event';
 import { getFinalUrl } from '@/lib/types/ingest';
+import { requireStrictEnv, resolveStrictTestSiteId } from '@/tests/helpers/strict-ingest-helpers';
 
 config({ path: join(process.cwd(), '.env.local') });
 
-const TEST_SITE_ID = process.env.STRICT_INGEST_TEST_SITE_ID?.trim();
-const HAS_SUPABASE =
-  !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 const GOOGLE_ADS_SOURCES = ['First Click (Paid)', 'Ads Assisted'];
-
-function requireEnv() {
-  if (!TEST_SITE_ID || !HAS_SUPABASE) {
-    return { skip: true, reason: 'STRICT_INGEST_TEST_SITE_ID and Supabase env required' };
-  }
-  return { skip: false };
-}
 
 function job(publicId: string, url: string, referrer: string | null, gclid: string | null, sid: string, msgId: string) {
   const u = gclid ? `${url}${url.includes('?') ? '&' : '?'}gclid=${gclid}` : url;
@@ -52,17 +43,19 @@ async function runAndGetAttribution(
   gclid: string | null,
   msgId: string
 ): Promise<{ attribution_source: string; sessionId: string; sessionMonth: string; dedupEventId: string }> {
+  const runId = randomUUID();
   const url = 'https://example.com/attr-test';
-  const j = job(publicId, url, referrer, gclid, `sid-${msgId}`, msgId);
+  const uniqueMsgId = `${msgId}-${runId}`;
+  const j = job(publicId, url, referrer, gclid, `sid-${uniqueMsgId}`, uniqueMsgId);
   const dedupId = await getDedupEventIdForJob(
     j as import('@/lib/ingest/process-sync-event').WorkerJob,
     getFinalUrl(j as import('@/lib/types/ingest').ValidIngestPayload),
-    msgId
+    uniqueMsgId
   );
   await processSyncEvent(
     j as import('@/lib/ingest/process-sync-event').WorkerJob,
     siteIdUuid,
-    msgId
+    uniqueMsgId
   );
   const { data: ev } = await adminClient
     .from('events')
@@ -86,13 +79,17 @@ async function runAndGetAttribution(
 }
 
 test('ads attribution Case A: referrer google, no gclid → NOT Google Ads', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for ads attribution integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')
@@ -127,13 +124,17 @@ test('ads attribution Case A: referrer google, no gclid → NOT Google Ads', asy
 });
 
 test('ads attribution Case B: gclid length < 10 → NOT Google Ads', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for ads attribution integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')
@@ -168,13 +169,17 @@ test('ads attribution Case B: gclid length < 10 → NOT Google Ads', async (t) =
 });
 
 test('ads attribution Case C: gclid valid length >= 10 → Google Ads', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for ads attribution integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')

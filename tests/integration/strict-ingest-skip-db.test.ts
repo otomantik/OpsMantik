@@ -8,6 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from 'dotenv';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { getSiteIngestConfig } from '@/lib/ingest/site-ingest-config';
 import { isCommonBotUA, hasValidClickId, isAllowedReferrer } from '@/lib/ingest/bot-referrer-gates';
@@ -15,28 +16,22 @@ import { getFinalUrl } from '@/lib/types/ingest';
 import { computeIdempotencyKey, tryInsertIdempotencyKey } from '@/lib/idempotency';
 import { getDedupEventIdForJob } from '@/lib/ingest/process-sync-event';
 import { getUsagePgCount, getCurrentYearMonthUTC } from '@/lib/quota';
+import { requireStrictEnv, resolveStrictTestSiteId } from '@/tests/helpers/strict-ingest-helpers';
 
 config({ path: join(process.cwd(), '.env.local') });
 
-const TEST_SITE_ID = process.env.STRICT_INGEST_TEST_SITE_ID?.trim();
-const HAS_SUPABASE =
-  !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function requireEnv() {
-  if (!TEST_SITE_ID || !HAS_SUPABASE) {
-    return { skip: true, reason: 'STRICT_INGEST_TEST_SITE_ID and Supabase env required' };
-  }
-  return { skip: false };
-}
-
 test('strict ingest skip path: bot UA → idempotency billable=false, no session, processed_signals terminal', async (t) => {
-  const env = requireEnv();
+  const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
     return;
   }
 
-  const siteIdUuid = TEST_SITE_ID!;
+  const siteIdUuid = await resolveStrictTestSiteId();
+  if (!siteIdUuid) {
+    t.skip('No test site available for strict ingest integration test');
+    return;
+  }
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('id, public_id, config')
@@ -71,6 +66,8 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
   });
 
   const publicId = (siteRow.public_id as string) || siteIdUuid;
+  const fingerprint = `fp-skip-${randomUUID()}`;
+  const sessionSid = `test-sid-skip-${randomUUID()}`;
   const url = 'https://example.com/page';
   const job = {
     s: publicId,
@@ -78,8 +75,8 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
     ec: 'page',
     ea: 'page_view',
     el: '',
-    sid: 'test-sid-skip',
-    meta: { fp: 'fp-skip-1' },
+    sid: sessionSid,
+    meta: { fp: fingerprint },
     ua: 'curl/8.0',
     r: null,
     ip: '127.0.0.1',
@@ -88,10 +85,11 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
 
   const yearMonth = getCurrentYearMonthUTC();
   const usageBefore = await getUsagePgCount(siteIdUuid, yearMonth);
-  const { count: sessionCountBefore } = await adminClient
+  const { count: matchingSessionsBefore } = await adminClient
     .from('sessions')
     .select('*', { count: 'exact', head: true })
-    .eq('site_id', siteIdUuid);
+    .eq('site_id', siteIdUuid)
+    .eq('fingerprint', fingerprint);
 
   const config_ = await getSiteIngestConfig(siteIdUuid);
   const trafficDebloat = config_.traffic_debloat || config_.ingest_strict_mode;
@@ -137,13 +135,14 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
   });
 
   const usageAfter = await getUsagePgCount(siteIdUuid, yearMonth);
-  const { count: sessionCountAfter } = await adminClient
+  const { count: matchingSessionsAfter } = await adminClient
     .from('sessions')
     .select('*', { count: 'exact', head: true })
-    .eq('site_id', siteIdUuid);
+    .eq('site_id', siteIdUuid)
+    .eq('fingerprint', fingerprint);
 
   assert.equal(usageAfter, usageBefore, 'usage must not increment (billable count unchanged)');
-  assert.equal(sessionCountAfter, sessionCountBefore, 'no new session');
+  assert.equal(matchingSessionsAfter, matchingSessionsBefore, 'no new session for skipped fingerprint');
 
   const { data: idemRow } = await adminClient
     .from('ingest_idempotency')
@@ -177,6 +176,7 @@ test('strict ingest skip path: bot UA → idempotency billable=false, no session
   const { count: sessionCountAfterRetry } = await adminClient
     .from('sessions')
     .select('*', { count: 'exact', head: true })
-    .eq('site_id', siteIdUuid);
-  assert.equal(sessionCountAfterRetry, sessionCountBefore, 'still no new session after retry');
+    .eq('site_id', siteIdUuid)
+    .eq('fingerprint', fingerprint);
+  assert.equal(sessionCountAfterRetry, matchingSessionsBefore, 'still no new session after retry for skipped fingerprint');
 });

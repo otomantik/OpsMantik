@@ -50,7 +50,7 @@ export function ActivityLogInline({
               const isRestoring = restoringIds.has(h.call_id);
               const s = (h.new_status || 'intent').toLowerCase();
               const canUndo = h.is_latest_for_call && (h.action_type || '').toLowerCase() !== 'undo';
-              const canCancel = h.is_latest_for_call && s === 'confirmed';
+              const canCancel = h.is_latest_for_call && ['confirmed', 'qualified', 'real'].includes(s);
               return (
                 <div
                   key={`${h.id}-${h.at}`}
