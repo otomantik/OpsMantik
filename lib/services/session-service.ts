@@ -235,7 +235,7 @@ export class SessionService {
         dbMonth: string,
         data: IncomingData,
         context: SessionContext
-    ) {
+    ): Promise<{ id: string; created_month: string }> {
         const { utm, currentGclid, params, meta, attributionSource, deviceType, fingerprint, url } = data;
         const { geoInfo, deviceInfo, ip } = context;
 
