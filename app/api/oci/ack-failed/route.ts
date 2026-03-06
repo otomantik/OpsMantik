@@ -35,9 +35,7 @@ export async function POST(req: NextRequest) {
     const bearer = (req.headers.get('authorization') || '').trim();
     const sessionToken = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
     const apiKey = (req.headers.get('x-api-key') || '').trim();
-    const envKey = (process.env.OCI_API_KEY || '').trim();
 
-    let authedByGlobalKey = false;
     let siteIdFromToken = '';
 
     if (sessionToken) {
@@ -47,11 +45,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (envKey && apiKey && timingSafeCompare(apiKey, envKey)) {
-      authedByGlobalKey = true;
-    }
-
-    // P0-4.1: Proceed if valid session OR API key attempt
+    // Proceed only if we have a valid session token or a per-site API key attempt.
+    // Global OCI_API_KEY bypass was removed (tenant isolation violation).
     const hasAuthAttempt = !!siteIdFromToken || !!apiKey;
 
     if (!hasAuthAttempt) {
@@ -109,8 +104,8 @@ export async function POST(req: NextRequest) {
     }
     if (resolvedSite) siteUuid = resolvedSite.id;
 
-    // P0-4.1: Final Authentication Verification
-    if (apiKey && !authedByGlobalKey) {
+    // Final Authentication Verification — per-site only, no global bypass.
+    if (apiKey) {
       if (!resolvedSite) {
         return NextResponse.json({ error: 'Unauthorized: Site not found' }, { status: 401 });
       }
@@ -122,6 +117,8 @@ export async function POST(req: NextRequest) {
       if (siteIdFromToken !== resolvedSite?.id) {
         return NextResponse.json({ error: 'Forbidden: Token site mismatch' }, { status: 403 });
       }
+    } else {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (queueIds.length === 0 && fatalIds.length === 0) {

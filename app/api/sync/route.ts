@@ -181,10 +181,14 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       ...getIngestCorsHeaders(origin, { 'X-OpsMantik-Version': OPSMANTIK_VERSION }),
     };
 
+    const BODY_SIZE_LIMIT = 256 * 1024; // 256 KB
+
+    // Fast pre-check on the Content-Length header. This is a courtesy early-exit only;
+    // the header can be omitted or spoofed, so a second check runs on the actual body below.
     const contentLength = req.headers.get('content-length');
     if (contentLength !== null && contentLength !== undefined) {
       const len = parseInt(contentLength, 10);
-      if (!Number.isNaN(len) && len > 256 * 1024) {
+      if (!Number.isNaN(len) && len > BODY_SIZE_LIMIT) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Payload too large' }), { status: 413, headers: baseHeaders });
       }
     }
@@ -204,6 +208,18 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
         return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
       }
       return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'invalid_json' } });
+    }
+
+    // Actual body size guard — enforced on the parsed value regardless of Content-Length header.
+    // A spoofed or missing Content-Length header cannot bypass this check.
+    try {
+      const actualSize = Buffer.byteLength(JSON.stringify(json), 'utf8');
+      if (actualSize > BODY_SIZE_LIMIT) {
+        return NextResponse.json(createSyncResponse(false, null, { error: 'Payload too large' }), { status: 413, headers: baseHeaders });
+      }
+    } catch {
+      // JSON.stringify can throw for circular structures; treat as bad payload
+      return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: baseHeaders });
     }
 
     // --- 1.5 Phase 20: Strict Zod SignalManifest validation. Non-compliant → 422 Unprocessable Entity.

@@ -205,43 +205,31 @@ async function runSweep() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Phase 3: OCI Queue — Close stale UPLOADED rows
+    // Phase 3: OCI Queue — Close stale UPLOADED rows (atomic DB-side close)
+    //
+    // Previously: SELECT ids → pass to append_sweeper_transition_batch (TOCTOU race).
+    // Two concurrent sweeper runs could both SELECT the same rows and both attempt
+    // to transition them, causing the second to report a count mismatch.
+    //
+    // Fix: call close_stale_uploaded_conversions RPC which does SELECT + UPDATE in
+    // one transaction. Only rows still in UPLOADED state at commit time are closed.
     // ─────────────────────────────────────────────────────────────────────────
     try {
-        const closeNow = new Date().toISOString();
-        const { data: queueClosed, error: queueError } = await adminClient
-            .from('offline_conversion_queue')
-            .select('id')
-            .eq('status', 'UPLOADED')
-            .lt('updated_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
-            ;
+        const { data: closedCount, error: closeError } = await adminClient.rpc(
+            'close_stale_uploaded_conversions',
+            { p_min_age_hours: 48 }
+        );
 
-        if (queueError) {
-            logError('sweep_zombies_queue_failed', { error: queueError.message });
+        if (closeError) {
+            logError('sweep_zombies_queue_close_error', { code: (closeError as { code?: string })?.code, error: closeError.message });
         } else {
-            const closedRows = Array.isArray(queueClosed) ? queueClosed : [];
-            const closedIds = closedRows.map((row) => row.id);
-            const { data: closedCount, error: closeError } = await adminClient.rpc('append_sweeper_transition_batch', {
-                p_queue_ids: closedIds,
-                p_new_status: 'COMPLETED_UNVERIFIED',
-                p_created_at: closeNow,
-                p_last_error: null,
-            });
-            if (closeError || typeof closedCount !== 'number' || closedCount !== closedIds.length) {
-                logError('sweep_zombies_queue_close_append_failed', {
-                    code: (closeError as { code?: string })?.code,
-                    requested: closedIds.length,
-                    updated: closedCount,
-                });
-            } else {
-                stats.queueClosed = closedCount;
-            }
+            stats.queueClosed = typeof closedCount === 'number' ? closedCount : 0;
             if (stats.queueClosed > 0) {
                 logInfo('sweep_zombies_queue_closed', { count: stats.queueClosed });
             }
         }
     } catch (err) {
-        logError('sweep_zombies_queue_close_error', { error: err instanceof Error ? err.message : String(err) });
+        logError('sweep_zombies_queue_close_exception', { error: err instanceof Error ? err.message : String(err) });
     }
 
     return NextResponse.json(

@@ -57,6 +57,7 @@ async function validateConversationSite(
 async function updateExistingDraftSale(
   supabase: Awaited<ReturnType<typeof createClient>>,
   saleId: string,
+  siteId: string,
   payload: {
     amountCents: number;
     occurredAtIso: string;
@@ -77,13 +78,14 @@ async function updateExistingDraftSale(
       notes: payload.notes ?? undefined,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', saleId);
+    .eq('id', saleId)
+    .eq('site_id', siteId);
 
   if (error) {
     return { data: null, error: { message: error.message, code: error.code } };
   }
 
-  const { data } = await supabase.from('sales').select('*').eq('id', saleId).single();
+  const { data } = await supabase.from('sales').select('*').eq('id', saleId).eq('site_id', siteId).single();
   return { data, error: null };
 }
 
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const { data: updated, error: updateError } = await updateExistingDraftSale(supabase, existing.id, {
+      const { data: updated, error: updateError } = await updateExistingDraftSale(supabase, existing.id, siteId, {
         amountCents,
         occurredAtIso: occurredAtDate.toISOString(),
         currency,
@@ -228,7 +230,7 @@ export async function POST(req: NextRequest) {
             { status: 409, headers: getBuildInfoHeaders() }
           );
         }
-        const { data: updated, error: updateErr } = await updateExistingDraftSale(supabase, existing2.id, {
+        const { data: updated, error: updateErr } = await updateExistingDraftSale(supabase, existing2.id, siteId, {
           amountCents,
           occurredAtIso: occurredAtDate.toISOString(),
           currency,

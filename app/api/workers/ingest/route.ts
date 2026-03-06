@@ -211,22 +211,51 @@ async function handler(req: NextRequest) {
             p_kind: 'revenue_events',
           });
         } catch (compErr) {
+          const compErrMsg = String(compErr);
           logError('WORKERS_INGEST_COMPENSATION_FAILED', {
             route: 'workers_ingest',
             site_id: site.id,
             idempotency_key: gatesResult.idempotencyKey,
-            error: String(compErr),
+            error: compErrMsg,
           });
+          // Write to DLQ so a reconciliation cron can fix the phantom usage increment.
+          try {
+            await adminClient.from('billing_compensation_failures').insert({
+              site_id: site.id,
+              idempotency_key: gatesResult.idempotencyKey,
+              month: currentMonthStart,
+              kind: 'revenue_events',
+              failure_type: 'decrement_rpc',
+              error_message: compErrMsg.slice(0, 2000),
+              qstash_message_id: qstashMessageId,
+            });
+          } catch {
+            // Best-effort: if DLQ insert also fails, Sentry will capture the original error below.
+          }
         }
         try {
           await deleteIdempotencyKeyForCompensation(site.id, gatesResult.idempotencyKey);
         } catch (delErr) {
+          const delErrMsg = String(delErr);
           logError('WORKERS_INGEST_IDEMPOTENCY_DELETE_FAILED', {
             route: 'workers_ingest',
             site_id: site.id,
             idempotency_key: gatesResult.idempotencyKey,
-            error: String(delErr),
+            error: delErrMsg,
           });
+          try {
+            await adminClient.from('billing_compensation_failures').insert({
+              site_id: site.id,
+              idempotency_key: gatesResult.idempotencyKey,
+              month: currentMonthStart,
+              kind: 'revenue_events',
+              failure_type: 'delete_idempotency_key',
+              error_message: delErrMsg.slice(0, 2000),
+              qstash_message_id: qstashMessageId,
+            });
+          } catch {
+            // Best-effort.
+          }
         }
       }
       throw syncError;

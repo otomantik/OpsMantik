@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
+import { logError } from '@/lib/logging/logger';
 import { computeLeadScore } from '@/lib/security/scoring';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import type { IngestMeta } from '@/lib/types/ingest';
@@ -108,9 +109,10 @@ export class EventService {
                 debugLog('[SYNC_API] Event insert duplicate (ingest_dedup_id) — idempotent skip');
                 return { leadScore: 0 };
             }
-            console.error('[SYNC_API] Event insert failed:', {
+            logError('EVENT_INSERT_FAILED', {
                 message: eError.message,
-                session_id: session.id
+                code: eError.code,
+                session_id: session.id,
             });
             throw eError;
         }

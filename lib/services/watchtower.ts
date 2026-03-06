@@ -8,11 +8,11 @@ export interface WatchtowerHealth {
     status: WatchtowerStatus;
     checks: {
         sessionsLastHour: {
-            status: 'ok' | 'alarm';
+            status: 'ok' | 'alarm' | 'unknown';
             count: number;
         };
         gclidLast3Hours: {
-            status: 'ok' | 'alarm';
+            status: 'ok' | 'alarm' | 'unknown';
             count: number;
         };
         ingestPublishFailuresLast15m: {
@@ -39,7 +39,6 @@ export class WatchtowerService {
     static async checkSessionVitality(): Promise<number> {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-        // Using adminClient to bypass RLS and ensure we see all data
         const { count, error } = await adminClient
             .from('sessions')
             .select('*', { count: 'exact', head: true })
@@ -47,7 +46,7 @@ export class WatchtowerService {
 
         if (error) {
             logError('WATCHTOWER_session_vitality_failed', { error: error.message });
-            throw error;
+            return -1; // unknown — do not conflate DB failure with zero traffic
         }
 
         return count ?? 0;
@@ -106,7 +105,7 @@ export class WatchtowerService {
 
         if (error) {
             logError('WATCHTOWER_attribution_liveness_failed', { error: error.message });
-            throw error;
+            return -1; // unknown — do not conflate DB failure with ads blindness
         }
 
         return count ?? 0;
@@ -125,15 +124,21 @@ export class WatchtowerService {
                 this.checkBillingReconciliationDriftLast1h(),
             ]);
 
-            const sessionStatus = sessionsCount > 0 ? 'ok' : 'alarm';
-            const gclidStatus = gclidCount > 0 ? 'ok' : 'alarm';
+            // -1 means DB query failed — treat as unknown (degraded), not alarm.
+            // Conflating a DB failure with zero traffic would fire false-positive pages.
+            const sessionStatus: 'ok' | 'alarm' | 'unknown' = sessionsCount === -1 ? 'unknown' : sessionsCount > 0 ? 'ok' : 'alarm';
+            const gclidStatus: 'ok' | 'alarm' | 'unknown' = gclidCount === -1 ? 'unknown' : gclidCount > 0 ? 'ok' : 'alarm';
             const ingestFailureStatus: 'ok' | 'degraded' | 'critical' | 'unknown' =
                 failureCount === -1 ? 'unknown' : failureCount === 0 ? 'ok' : failureCount > 5 ? 'critical' : 'degraded';
             const driftStatus: 'ok' | 'degraded' =
                 driftCount === -1 ? 'ok' : driftCount > 0 ? 'degraded' : 'ok';
 
             let overallStatus: WatchtowerStatus =
-                sessionStatus === 'ok' && gclidStatus === 'ok' ? 'ok' : 'alarm';
+                sessionStatus === 'alarm' || gclidStatus === 'alarm'
+                    ? 'alarm'
+                    : sessionStatus === 'unknown' || gclidStatus === 'unknown'
+                        ? 'degraded'
+                        : 'ok';
             if (failureCount > 5) overallStatus = 'critical';
             else if (failureCount > 0) overallStatus = overallStatus === 'ok' ? 'degraded' : overallStatus;
             else if (failureCount === -1) overallStatus = overallStatus === 'ok' ? 'degraded' : overallStatus;
@@ -175,10 +180,10 @@ export class WatchtowerService {
             logError('WATCHTOWER_diagnostics_failed', { error: error instanceof Error ? error.message : String(error) });
             // Fail open but loud
             return {
-                status: 'alarm',
+                status: 'degraded',
                 checks: {
-                    sessionsLastHour: { status: 'alarm', count: -1 },
-                    gclidLast3Hours: { status: 'alarm', count: -1 },
+                    sessionsLastHour: { status: 'unknown', count: -1 },
+                    gclidLast3Hours: { status: 'unknown', count: -1 },
                     ingestPublishFailuresLast15m: { status: 'unknown', count: -1 },
                     billingReconciliationDriftLast1h: { status: 'ok', count: 0 }
                 },

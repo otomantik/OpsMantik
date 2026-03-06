@@ -10,6 +10,7 @@ import { PipelineStage } from '@/lib/types/database';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
+import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/gears/shared';
 
 export interface ProcessStageActionResult {
   success: boolean;
@@ -147,14 +148,7 @@ export class PipelineService {
 
     const queueId = (inserted as { id: string } | null)?.id ?? null;
     if (queueId) {
-      void adminClient
-        .rpc('append_causal_dna_ledger', {
-          p_site_id: siteId,
-          p_aggregate_type: 'conversion',
-          p_aggregate_id: queueId,
-          p_causal_dna: causalDna,
-        })
-        .then(() => {}, () => {});
+      appendCausalDnaLedgerSafe(siteId, 'conversion', queueId, causalDna);
     }
 
     return {

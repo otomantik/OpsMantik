@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog } from '@/lib/utils';
+import { logError, logWarn } from '@/lib/logging/logger';
 
 export class SiteService {
     /**
@@ -30,7 +31,7 @@ export class SiteService {
                 .eq('id', normalizedUuid)
                 .maybeSingle();
             if (byId.error) {
-                console.error('[SYNC_ERROR] Site query error:', siteId, byId.error?.message, byId.error?.code);
+                logError('SITE_QUERY_ERROR', { site_id: siteId, error: byId.error.message, code: byId.error.code });
                 return { valid: false, error: 'Site validation failed' };
             }
             if (byId.data) return { valid: true, site: byId.data };
@@ -40,11 +41,11 @@ export class SiteService {
                 .eq('public_id', trimmed)
                 .maybeSingle();
             if (byPublicId.error) {
-                console.error('[SYNC_ERROR] Site query error:', siteId, byPublicId.error?.message, byPublicId.error?.code);
+                logError('SITE_QUERY_ERROR', { site_id: siteId, error: byPublicId.error.message, code: byPublicId.error.code });
                 return { valid: false, error: 'Site validation failed' };
             }
             if (byPublicId.data) return { valid: true, site: byPublicId.data };
-            console.error('[SYNC_ERROR] Site not found:', siteId);
+            logWarn('SITE_NOT_FOUND', { site_id: siteId });
             return { valid: false, error: 'Site not found' };
         }
 
@@ -57,12 +58,12 @@ export class SiteService {
             .maybeSingle();
 
         if (siteError) {
-            console.error('[SYNC_ERROR] Site query error:', siteId, siteError?.message, siteError?.code);
+            logError('SITE_QUERY_ERROR', { site_id: siteId, error: siteError.message, code: siteError.code });
             return { valid: false, error: 'Site validation failed' };
         }
 
         if (!site) {
-            console.error('[SYNC_ERROR] Site not found:', siteId);
+            logWarn('SITE_NOT_FOUND', { site_id: siteId });
             return { valid: false, error: 'Site not found' };
         }
 

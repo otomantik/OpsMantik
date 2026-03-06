@@ -104,7 +104,10 @@ async function runProcessOutbox() {
 
           const existingTypes = new Set(existingSignals?.map(s => s.signal_type) ?? []);
           const primary = await getPrimarySource(siteId, { callId });
-          const baseTimeMs = new Date(confirmedAt).getTime();
+          // Use real call timestamps — never inject artificial offsets.
+          // V3_ENGAGE = when the call came in (created_at); V4_INTENT = when it was sealed (confirmedAt).
+          const callCreatedAt = new Date(payload?.created_at ?? confirmedAt);
+          const callConfirmedAt = new Date(confirmedAt);
 
           // Sequential Injection
           if (!existingTypes.has('V3_ENGAGE')) {
@@ -115,8 +118,8 @@ async function runProcessOutbox() {
               wbraid: primary?.wbraid ?? null,
               gbraid: primary?.gbraid ?? null,
               aov: 0,
-              clickDate: new Date(payload?.created_at ?? confirmedAt),
-              signalDate: new Date(baseTimeMs - 2000),
+              clickDate: callCreatedAt,
+              signalDate: callCreatedAt,
             });
             logInfo('outbox_funnel_backfill_v3', { call_id: callId });
           }
@@ -129,8 +132,8 @@ async function runProcessOutbox() {
               wbraid: primary?.wbraid ?? null,
               gbraid: primary?.gbraid ?? null,
               aov: 0,
-              clickDate: new Date(payload?.created_at ?? confirmedAt),
-              signalDate: new Date(baseTimeMs - 1000),
+              clickDate: callCreatedAt,
+              signalDate: callConfirmedAt,
             });
             logInfo('outbox_funnel_backfill_v4', { call_id: callId });
           }
@@ -185,12 +188,14 @@ async function runProcessOutbox() {
         errors.push(`${id}: ${msg}`);
         failed++;
 
-        const attemptCount = (row as { attempt_count?: number }).attempt_count ?? 1;
-        const nextStatus = attemptCount >= MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
+        const attemptCount = (row as { attempt_count?: number }).attempt_count ?? 0;
+        const nextAttemptCount = attemptCount + 1;
+        const nextStatus = nextAttemptCount >= MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
         await adminClient
           .from('outbox_events')
           .update({
             status: nextStatus,
+            attempt_count: nextAttemptCount,
             last_error: msg.slice(0, 1000),
             updated_at: new Date().toISOString(),
           })

@@ -30,9 +30,7 @@ export async function POST(req: NextRequest) {
     const bearer = (req.headers.get('authorization') || '').trim();
     const sessionToken = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
     const apiKey = (req.headers.get('x-api-key') || '').trim();
-    const envKey = (process.env.OCI_API_KEY || '').trim();
 
-    let authedByGlobalKey = false;
     let siteIdFromToken = '';
 
     if (sessionToken) {
@@ -42,11 +40,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (envKey && apiKey && timingSafeCompare(apiKey, envKey)) {
-      authedByGlobalKey = true;
-    }
-
-    // P0-4.1: Proceed if valid session OR API key attempt
+    // Proceed only if we have a valid session token or a per-site API key attempt.
+    // Global OCI_API_KEY bypass was removed (tenant isolation violation).
     const hasAuthAttempt = !!siteIdFromToken || !!apiKey;
 
     if (!hasAuthAttempt) {
@@ -104,8 +99,8 @@ export async function POST(req: NextRequest) {
     }
     if (resolvedSite) siteUuid = resolvedSite.id;
 
-    // P0-4.1: Final Authentication Verification
-    if (apiKey && !authedByGlobalKey) {
+    // Final Authentication Verification — per-site only, no global bypass.
+    if (apiKey) {
       if (!resolvedSite) {
         return NextResponse.json({ error: 'Unauthorized: Site not found' }, { status: 401 });
       }
@@ -117,6 +112,8 @@ export async function POST(req: NextRequest) {
       if (siteIdFromToken !== resolvedSite?.id) {
         return NextResponse.json({ error: 'Forbidden: Token site mismatch' }, { status: 403 });
       }
+    } else {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const sealIds: string[] = [];
@@ -145,112 +142,146 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
     let totalUpdated = 0;
 
+    // Idempotent ack logic: rows already in a terminal state (COMPLETED, UPLOADED) count
+    // as already-acked and are returned as successes. Only rows in genuinely unexpected
+    // states (QUEUED, RETRY, VOIDED_BY_REVERSAL, FAILED, or not found) produce warnings.
+    // This makes the ack operation safe to retry after a network cut mid-response.
+    const TERMINAL_STATES = ['COMPLETED', 'UPLOADED', 'COMPLETED_UNVERIFIED'];
+
     if (sealIds.length > 0) {
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .select('id')
+        .select('id, status')
         .in('id', sealIds)
-        .eq('site_id', siteUuid)
-        .in('status', ['PROCESSING']);
+        .eq('site_id', siteUuid);
 
       if (error) {
         logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      const eligibleRows = Array.isArray(data) ? data as Array<{ id: string }> : [];
-      if (eligibleRows.length !== sealIds.length) {
-        logError('OCI_ACK_QUEUE_MISMATCH', { requested: sealIds.length, eligible: eligibleRows.length });
-        return NextResponse.json({ error: 'Queue rows not in PROCESSING state', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string }> : [];
+      const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
+      const toTransition = allRows.filter(r => r.status === 'PROCESSING');
+      const unexpected = allRows.filter(r => !TERMINAL_STATES.includes(r.status) && r.status !== 'PROCESSING');
+
+      if (unexpected.length > 0) {
+        logError('OCI_ACK_UNEXPECTED_STATE', { ids: unexpected.map(r => r.id), states: unexpected.map(r => r.status) });
       }
-      const clearFields = ['last_error', 'provider_error_code', 'provider_error_category', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'];
-      const errorPayload = pendingConfirmation
-        ? { uploaded_at: now, clear_fields: clearFields }
-        : { uploaded_at: now, clear_fields: clearFields };
-      const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
-        p_queue_ids: eligibleRows.map((row) => row.id),
-        p_new_status: pendingConfirmation ? 'UPLOADED' : 'COMPLETED',
-        p_created_at: now,
-        p_error_payload: errorPayload,
-      });
-      if (rpcError || typeof updatedCount !== 'number' || updatedCount !== eligibleRows.length) {
-        logError('OCI_ACK_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: eligibleRows.length, updated: updatedCount });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      if (alreadyDone.length > 0) {
+        logInfo('OCI_ACK_IDEMPOTENT_SKIP', { already_done: alreadyDone.length, requested: sealIds.length });
       }
-      totalUpdated += updatedCount;
+      totalUpdated += alreadyDone.length;
+
+      if (toTransition.length > 0) {
+        const clearFields = ['last_error', 'provider_error_code', 'provider_error_category', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'];
+        const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: toTransition.map((row) => row.id),
+          p_new_status: pendingConfirmation ? 'UPLOADED' : 'COMPLETED',
+          p_created_at: now,
+          p_error_payload: { uploaded_at: now, clear_fields: clearFields },
+        });
+        if (rpcError || typeof updatedCount !== 'number') {
+          logError('OCI_ACK_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: toTransition.length, updated: updatedCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        totalUpdated += updatedCount;
+      }
     }
 
     if (sealSkippedIds.length > 0) {
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .select('id')
+        .select('id, status')
         .in('id', sealSkippedIds)
-        .eq('site_id', siteUuid)
-        .in('status', ['PROCESSING']);
+        .eq('site_id', siteUuid);
 
       if (error) {
         logError('OCI_ACK_SKIPPED_SQL_ERROR', { code: (error as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      const eligibleRows = Array.isArray(data) ? data as Array<{ id: string }> : [];
-      if (eligibleRows.length !== sealSkippedIds.length) {
-        logError('OCI_ACK_SKIPPED_QUEUE_MISMATCH', { requested: sealSkippedIds.length, eligible: eligibleRows.length });
-        return NextResponse.json({ error: 'Skipped queue rows not in PROCESSING state', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string }> : [];
+      const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
+      const toTransition = allRows.filter(r => r.status === 'PROCESSING');
+
+      totalUpdated += alreadyDone.length;
+
+      if (toTransition.length > 0) {
+        const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: toTransition.map((row) => row.id),
+          p_new_status: 'COMPLETED',
+          p_created_at: now,
+          p_error_payload: {
+            uploaded_at: now,
+            provider_error_code: 'V1_SAMPLED_OUT',
+            provider_error_category: 'DETERMINISTIC_SKIP',
+            clear_fields: ['last_error', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (rpcError || typeof updatedCount !== 'number') {
+          logError('OCI_ACK_SKIPPED_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: toTransition.length, updated: updatedCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        totalUpdated += updatedCount;
       }
-      const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
-        p_queue_ids: eligibleRows.map((row) => row.id),
-        p_new_status: 'COMPLETED',
-        p_created_at: now,
-        p_error_payload: {
-          uploaded_at: now,
-          provider_error_code: 'V1_SAMPLED_OUT',
-          provider_error_category: 'DETERMINISTIC_SKIP',
-          clear_fields: ['last_error', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
-        },
-      });
-      if (rpcError || typeof updatedCount !== 'number' || updatedCount !== eligibleRows.length) {
-        logError('OCI_ACK_SKIPPED_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: eligibleRows.length, updated: updatedCount });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-      }
-      totalUpdated += updatedCount;
     }
 
     if (signalIds.length > 0) {
-      // Export already set these rows to PROCESSING when returning them; ack must match PROCESSING (not PENDING).
-      const { data, error } = await adminClient
+      // Export already set these rows to PROCESSING; ack must match PROCESSING (idempotent: SENT also counts).
+      const { data: allSignals, error: fetchErr } = await adminClient
         .from('marketing_signals')
-        .update({
-          dispatch_status: 'SENT',
-          google_sent_at: now,
-        })
+        .select('id, dispatch_status')
         .in('id', signalIds)
-        .eq('site_id', siteUuid)
-        .eq('dispatch_status', 'PROCESSING')
-        .select('id');
+        .eq('site_id', siteUuid);
 
-      if (error) {
-        logError('OCI_ACK_SIGNALS_SQL_ERROR', { code: (error as { code?: string })?.code });
+      if (fetchErr) {
+        logError('OCI_ACK_SIGNALS_SQL_ERROR', { code: (fetchErr as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      const updatedSignals = Array.isArray(data) ? data.length : 0;
-      if (updatedSignals !== signalIds.length) {
-        logError('OCI_ACK_SIGNAL_MISMATCH', { requested: signalIds.length, updated: updatedSignals });
-        return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+      const signalRows = Array.isArray(allSignals) ? allSignals as Array<{ id: string; dispatch_status: string }> : [];
+      const alreadySentSignals = signalRows.filter(r => r.dispatch_status === 'SENT');
+      const toUpdateSignals = signalRows.filter(r => r.dispatch_status === 'PROCESSING');
+
+      totalUpdated += alreadySentSignals.length;
+
+      if (toUpdateSignals.length > 0) {
+        const { data: updated, error } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'SENT', google_sent_at: now })
+          .in('id', toUpdateSignals.map(r => r.id))
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PROCESSING')
+          .select('id');
+
+        if (error) {
+          logError('OCI_ACK_SIGNALS_UPDATE_ERROR', { code: (error as { code?: string })?.code });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        totalUpdated += Array.isArray(updated) ? updated.length : 0;
       }
-      totalUpdated += updatedSignals;
     }
 
     const failedRedisCleanups: string[] = [];
     const allPvIds = [...pvIds, ...pvSkippedIds];
     if (allPvIds.length > 0) {
       const processingKey = `pv:processing:${siteRedisKey}`;
-      for (const pvId of allPvIds) {
-        try {
-          await redis.del(`pv:data:${pvId}`);
-          await redis.lrem(processingKey, 0, pvId);
+      // Run all del + lrem operations in parallel instead of serial await per ID.
+      // For 500 IDs this reduces ~1000 sequential round-trips to a single parallel fan-out.
+      const results = await Promise.allSettled(
+        allPvIds.map(async (pvId) => {
+          await Promise.all([
+            redis.del(`pv:data:${pvId}`),
+            redis.lrem(processingKey, 0, pvId),
+          ]);
+          return pvId;
+        })
+      );
+      for (let i = 0; i < results.length; i++) {
+        if (results[i].status === 'fulfilled') {
           totalUpdated += 1;
-        } catch (redisErr) {
-          logError('OCI_ACK_PV_REDIS_ERROR', { pvId, error: redisErr instanceof Error ? redisErr.message : String(redisErr) });
-          failedRedisCleanups.push(pvId);
+        } else {
+          const err = (results[i] as PromiseRejectedResult).reason;
+          logError('OCI_ACK_PV_REDIS_ERROR', { pvId: allPvIds[i], error: err instanceof Error ? err.message : String(err) });
+          failedRedisCleanups.push(allPvIds[i]);
         }
       }
     }

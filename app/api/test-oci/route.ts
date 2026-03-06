@@ -14,29 +14,35 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function getTestCredentials(): GoogleAdsCredentials {
-  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID ?? '525-429-9323';
-  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? '854-075-5158';
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? 'hlw_ulOQ8RpqwulGcm_Snw';
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID;
+  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
   const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  const conversionActionResourceName = process.env.GOOGLE_ADS_CONVERSION_ACTION_RESOURCE_NAME;
 
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error(
-      'Missing env: GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN'
-    );
+  const missing: string[] = [];
+  if (!customerId) missing.push('GOOGLE_ADS_CUSTOMER_ID');
+  if (!loginCustomerId) missing.push('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+  if (!developerToken) missing.push('GOOGLE_ADS_DEVELOPER_TOKEN');
+  if (!clientId) missing.push('GOOGLE_ADS_CLIENT_ID');
+  if (!clientSecret) missing.push('GOOGLE_ADS_CLIENT_SECRET');
+  if (!refreshToken) missing.push('GOOGLE_ADS_REFRESH_TOKEN');
+  if (!conversionActionResourceName) missing.push('GOOGLE_ADS_CONVERSION_ACTION_RESOURCE_NAME');
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required env vars: ${missing.join(', ')}`);
   }
 
   return {
-    customer_id: customerId,
-    developer_token: developerToken,
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: refreshToken,
-    login_customer_id: loginCustomerId,
-    conversion_action_resource_name:
-      process.env.GOOGLE_ADS_CONVERSION_ACTION_RESOURCE_NAME ??
-      'customers/5254299323/conversionActions/123456789',
+    customer_id: customerId!,
+    developer_token: developerToken!,
+    client_id: clientId!,
+    client_secret: clientSecret!,
+    refresh_token: refreshToken!,
+    login_customer_id: loginCustomerId!,
+    conversion_action_resource_name: conversionActionResourceName!,
   };
 }
 
@@ -45,9 +51,13 @@ function toConversionDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
 }
 
-/** Dev/sandbox only; not available in production. */
+function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+/** Dev/sandbox only; not available in production or Vercel production deployments. */
 export async function GET() {
-  if (process.env.NODE_ENV === 'production') {
+  if (isProductionEnvironment()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   try {
@@ -59,7 +69,7 @@ export async function GET() {
       conversions: [
         {
           gclid: 'TeSt_GCLID_For_Connection_Check',
-          conversion_action: 'customers/5254299323/conversionActions/123456789',
+          conversion_action: creds.conversion_action_resource_name,
           conversion_date_time: conversionDateTime,
           conversion_value: 100.0,
         },

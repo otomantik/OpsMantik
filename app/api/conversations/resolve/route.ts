@@ -5,6 +5,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { logError } from '@/lib/logging/logger';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v);
+}
 
 export const runtime = 'nodejs';
 
@@ -25,8 +31,8 @@ export async function POST(req: NextRequest) {
   }
 
   const conversationId = body.conversation_id;
-  if (!conversationId || typeof conversationId !== 'string') {
-    return NextResponse.json({ error: 'conversation_id is required' }, { status: 400, headers: getBuildInfoHeaders() });
+  if (!isValidUuid(conversationId)) {
+    return NextResponse.json({ error: 'conversation_id is required and must be a valid UUID' }, { status: 400, headers: getBuildInfoHeaders() });
   }
 
   const status = body.status;
@@ -37,8 +43,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const note = body.note != null ? String(body.note) : null;
-  const saleId = body.sale_id != null ? String(body.sale_id) : null;
+  const note = body.note != null ? String(body.note).slice(0, 2000) : null;
+  const saleId = body.sale_id != null
+    ? (isValidUuid(body.sale_id) ? body.sale_id : null)
+    : null;
+  if (body.sale_id != null && saleId === null) {
+    return NextResponse.json({ error: 'sale_id must be a valid UUID' }, { status: 400, headers: getBuildInfoHeaders() });
+  }
   const { data, error: resolveError } = await supabase.rpc('resolve_conversation_with_sale_link', {
     p_conversation_id: conversationId,
     p_status: status,
@@ -74,7 +85,8 @@ export async function POST(req: NextRequest) {
         { status: 409, headers: getBuildInfoHeaders() }
       );
     }
-    return NextResponse.json({ error: resolveError.message }, { status: 500, headers: getBuildInfoHeaders() });
+    logError('CONVERSATION_RESOLVE_UNEXPECTED_ERROR', { conversation_id: conversationId, error: resolveError.message, code: resolveError.code });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: getBuildInfoHeaders() });
   }
 
   const updated = Array.isArray(data) ? data[0] : data;

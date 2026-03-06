@@ -3,9 +3,13 @@ import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-/** Dev/sandbox only; not available in production. */
+function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+/** Dev/sandbox only; not available in production or Vercel production deployments. */
 export async function POST() {
-  if (process.env.NODE_ENV === 'production') {
+  if (isProductionEnvironment()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   try {

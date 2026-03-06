@@ -80,9 +80,7 @@ export async function GET(req: NextRequest) {
     const bearer = (req.headers.get('authorization') || '').trim();
     const sessionToken = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
     const apiKey = (req.headers.get('x-api-key') || '').trim();
-    const envKey = (process.env.OCI_API_KEY || '').trim();
 
-    let authedByGlobalKey = false;
     let siteIdFromAuth = '';
 
     if (sessionToken) {
@@ -92,11 +90,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (envKey && apiKey && timingSafeCompare(apiKey, envKey)) {
-      authedByGlobalKey = true;
-    }
-
-    // P0-4.1: We proceed if we have a valid session OR an API key attempt. Verification happens after site lookup.
+    // Proceed only if we have a valid session token or a per-site API key attempt.
+    // Global OCI_API_KEY bypass was removed (tenant isolation violation).
     const hasAuthAttempt = !!siteIdFromAuth || !!apiKey;
 
     if (!hasAuthAttempt) {
@@ -189,8 +184,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    // P0-4.1: Final Authentication Verification
-    if (apiKey && !authedByGlobalKey) {
+    // Final Authentication Verification — per-site only, no global bypass.
+    if (apiKey) {
       const siteKey = (site as { oci_api_key?: string | null }).oci_api_key ?? '';
       if (!siteKey || !timingSafeCompare(siteKey, apiKey)) {
         return NextResponse.json({ error: 'Unauthorized: Invalid API key' }, { status: 401 });
@@ -199,6 +194,8 @@ export async function GET(req: NextRequest) {
       if (siteIdFromAuth !== site.id && siteIdFromAuth !== site.public_id) {
         return NextResponse.json({ error: 'Forbidden: Token site mismatch' }, { status: 403 });
       }
+    } else {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Explicit Partitioning: Export only works for sites configured as 'script'

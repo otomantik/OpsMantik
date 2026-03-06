@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { debugLog, debugWarn } from '@/lib/utils';
+import { logWarn, logError } from '@/lib/logging/logger';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import { determineTrafficSource } from '@/lib/analytics/source-classifier';
 import { sanitizeClickId, computeUtmUpdates } from '@/lib/attribution';
@@ -219,12 +220,24 @@ export class SessionService {
                 updates.device_type = utm.device.toLowerCase();
             }
 
-            await adminClient
+            const { error: updateErr } = await adminClient
                 .from('sessions')
                 .update(updates)
                 .eq('id', session.id)
                 .eq('site_id', siteId)
                 .eq('created_month', dbMonth);
+
+            if (updateErr) {
+                // Log but do not throw — session enrichment failure must not abort event processing.
+                // The core session record already exists; the update failure only loses enrichment
+                // fields (geo, UTM, device) for this request. The next event for this session will retry.
+                logWarn('SESSION_UPDATE_FAILED', {
+                    session_id: session.id,
+                    site_id: siteId,
+                    error: updateErr.message,
+                    code: updateErr.code,
+                });
+            }
         }
     }
 
@@ -234,7 +247,8 @@ export class SessionService {
         siteId: string,
         dbMonth: string,
         data: IncomingData,
-        context: SessionContext
+        context: SessionContext,
+        _retryDepth = 0
     ): Promise<{ id: string; created_month: string }> {
         const { utm, currentGclid, params, meta, attributionSource, deviceType, fingerprint, url } = data;
         const { geoInfo, deviceInfo, ip } = context;
@@ -363,17 +377,33 @@ export class SessionService {
                     .single();
                 if (existing) return existing;
 
-                debugWarn('[SYNC_API] Cross-tenant session id collision detected, generating tenant-safe replacement session id', {
+                // Cross-tenant UUID collision: another site already owns this UUID.
+                // Retry with a fresh UUID, but cap retries to avoid infinite recursion.
+                // In practice crypto.randomUUID() collisions are astronomically rare (one per ~10^18 UUIDs),
+                // so hitting the cap means something is structurally broken (e.g. non-random UUIDs).
+                const MAX_RETRY_DEPTH = 3;
+                if (_retryDepth >= MAX_RETRY_DEPTH) {
+                    logError('SESSION_CREATE_UUID_COLLISION_EXHAUSTED', {
+                        session_id: sessionId,
+                        site_id: siteId,
+                        partition: dbMonth,
+                        retry_depth: _retryDepth,
+                    });
+                    throw new Error(`Session UUID collision retry limit (${MAX_RETRY_DEPTH}) exceeded — non-random UUIDs suspected`);
+                }
+                logWarn('SESSION_UUID_CROSS_TENANT_COLLISION', {
                     requested_session_id: sessionId,
                     site_id: siteId,
                     partition: dbMonth,
+                    retry_depth: _retryDepth,
                 });
-                return this.createSession(this.generateUUID(), siteId, dbMonth, data, context);
+                return this.createSession(this.generateUUID(), siteId, dbMonth, data, context, _retryDepth + 1);
             }
-            console.error('[SYNC_API] Session insert failed:', {
+            logError('SESSION_INSERT_FAILED', {
                 message: sError.message,
                 session_id: sessionId,
-                partition: dbMonth
+                partition: dbMonth,
+                code: sError.code,
             });
             throw sError;
         }

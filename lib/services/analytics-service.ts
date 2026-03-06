@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import { logError } from '@/lib/logging/logger';
 
 /**
  * Funnel Analysis Service for CRO Optimization
@@ -20,7 +21,7 @@ export class AnalyticsService {
         });
 
         if (error) {
-            console.error('[ANALYTICS] Failed to fetch funnel analysis:', error);
+            logError('ANALYTICS_FUNNEL_QUERY_FAILED', { site_id: siteId, error: error.message, code: error.code });
             return null;
         }
 

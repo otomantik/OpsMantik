@@ -4,6 +4,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { logError } from '@/lib/logging/logger';
 
 export type AuditEventStage =
   | 'RECEIVED'
@@ -33,6 +34,6 @@ export async function insertAuditLog(entry: AuditLogEntry): Promise<void> {
       site_id: entry.site_id ?? null,
     });
   } catch (err) {
-    console.error('[AuditLogger] insert failed:', err);
+    logError('AUDIT_LOG_INSERT_FAILED', { error: err instanceof Error ? err.message : String(err) });
   }
 }

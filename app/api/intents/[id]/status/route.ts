@@ -25,7 +25,7 @@ async function invalidatePendingOciArtifactsForCall(
   reason: string,
   now: string
 ): Promise<void> {
-  await Promise.all([
+  const [outboxResult, signalPendingResult, signalProcessingResult] = await Promise.all([
     adminClient
       .from('outbox_events')
       .update({
@@ -55,6 +55,16 @@ async function invalidatePendingOciArtifactsForCall(
       .eq('call_id', callId)
       .eq('dispatch_status', 'PROCESSING'),
   ]);
+
+  if (outboxResult.error) {
+    logError('INVALIDATE_OCI_OUTBOX_FAILED', { call_id: callId, site_id: siteId, reason, error: outboxResult.error.message });
+  }
+  if (signalPendingResult.error) {
+    logError('INVALIDATE_OCI_SIGNALS_PENDING_FAILED', { call_id: callId, site_id: siteId, reason, error: signalPendingResult.error.message });
+  }
+  if (signalProcessingResult.error) {
+    logError('INVALIDATE_OCI_SIGNALS_PROCESSING_FAILED', { call_id: callId, site_id: siteId, reason, error: signalProcessingResult.error.message });
+  }
 }
 
 export async function POST(

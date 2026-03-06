@@ -44,20 +44,50 @@ export type WorkerJob = Record<string, unknown> & {
   consent_scopes?: string[];
 };
 
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const hash = await globalThis.crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+/**
+ * RFC 4122 UUID v5: SHA-1 of (namespace_bytes || name_bytes), with version and
+ * variant bits set per spec. Uses a fixed opsmantik-specific namespace UUID so
+ * the same logical input always produces the same dedup event UUID.
+ *
+ * Previous implementation used SHA-256 with non-standard bit manipulation and
+ * discarded 50% of the hash entropy. This is the correct implementation.
+ */
+
+// Fixed namespace UUID for opsmantik dedup events (randomly generated, stable forever).
+// Changing this would invalidate all existing dedup event IDs in processed_signals.
+const OPSMANTIK_DEDUP_NAMESPACE = '7d9e2f1a-4c3b-5a8e-9f0d-2b1c6e4a7d8f';
+
+function namespaceUuidToBytes(uuid: string): Uint8Array {
+  const hex = uuid.replace(/-/g, '');
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
 async function deterministicUuidFromString(input: string): Promise<string> {
-  const hex = await sha256Hex(input);
-  let raw = hex.slice(0, 32);
-  raw = raw.slice(0, 12) + '5' + raw.slice(13);
-  raw = raw.slice(0, 16) + 'a' + raw.slice(17);
-  return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20, 32)}`;
+  const nsBytes = namespaceUuidToBytes(OPSMANTIK_DEDUP_NAMESPACE);
+  const nameBytes = new TextEncoder().encode(input);
+
+  // Concatenate namespace bytes + name bytes for SHA-1
+  const combined = new Uint8Array(nsBytes.length + nameBytes.length);
+  combined.set(nsBytes, 0);
+  combined.set(nameBytes, nsBytes.length);
+
+  const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', combined);
+  const h = new Uint8Array(hashBuffer);
+
+  // RFC 4122 §4.3: set version = 5 (top 4 bits of octet 6)
+  h[6] = (h[6] & 0x0f) | 0x50;
+  // RFC 4122 §4.1.1: set variant = 10xx (top 2 bits of octet 8)
+  h[8] = (h[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(h.slice(0, 16))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 function buildFallbackDedupFingerprint(job: WorkerJob, url: string): string {

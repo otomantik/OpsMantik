@@ -9,6 +9,11 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v);
+}
+
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
@@ -35,11 +40,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: getBuildInfoHeaders() });
   }
 
-  const hasCall = body.primary_call_id && typeof body.primary_call_id === 'string';
-  const hasSession = body.primary_session_id && typeof body.primary_session_id === 'string';
+  const hasCall = isValidUuid(body.primary_call_id);
+  const hasSession = isValidUuid(body.primary_session_id);
   if (hasCall === hasSession) {
     return NextResponse.json(
-      { error: 'Exactly one of primary_call_id or primary_session_id is required' },
+      { error: 'Exactly one of primary_call_id or primary_session_id is required (must be a valid UUID)' },
       { status: 400, headers: getBuildInfoHeaders() }
     );
   }

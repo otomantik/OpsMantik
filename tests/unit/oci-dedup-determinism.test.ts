@@ -10,13 +10,16 @@ import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 
 const ENQUEUE_PATH = join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts');
 
-test('PR-OCI-9F: enqueue checks duplicate_session before insert', () => {
+test('PR-OCI-9F: enqueue relies on DB unique index for dedup — no app-layer TOCTOU pre-check', () => {
   const src = readFileSync(ENQUEUE_PATH, 'utf-8');
-  assert.ok(src.includes('duplicate_session'), 'Expected duplicate_session pre-check');
+  // The TOCTOU app-layer pre-check (duplicate_session select before insert) was intentionally
+  // removed. Dedup is now enforced by the DB unique index on (site_id, provider_key, external_id).
+  // A concurrent worker that passes any app-layer check will hit a 23505 on insert (caught below).
   assert.ok(
-    src.includes("'QUEUED', 'RETRY', 'PROCESSING'") || src.includes('QUEUED", "RETRY", "PROCESSING"'),
-    'Expected status filter for pending rows'
+    !src.includes("in('status', ['QUEUED', 'RETRY', 'PROCESSING'])"),
+    'App-layer TOCTOU pre-check must not exist; dedup is DB-enforced'
   );
+  assert.ok(src.includes('23505'), 'Expected 23505 (unique violation) handling as the true dedup gate');
 });
 
 test('PR-OCI-9F: enqueue handles 23505 as duplicate', () => {

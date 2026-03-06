@@ -12,7 +12,8 @@ import type { OpsGear, SignalPayload } from '../types';
 import type { CausalDna } from '../causal-dna';
 import { appendBranch, toJsonb } from '../causal-dna';
 import { OPSMANTIK_CONVERSION_NAMES } from '../conversion-names';
-import { logShadowDecision } from './shared';
+import { logShadowDecision, appendCausalDnaLedgerSafe } from './shared';
+import { logError } from '@/lib/logging/logger';
 
 function gearToLegacySignalType(gear: OpsGear): string {
   switch (gear) {
@@ -125,18 +126,13 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
         { callId, sequence, hash: currentHash }, {});
       return { success: true, conversionValue, causalDna: toJsonb(dnaOut), duplicate: true };
     }
-    console.error('[MizanMantik] marketing_signals insert error:', error.message);
+    logError('MARKETING_SIGNALS_INSERT_FAILED', { error: error.message, code: error.code });
     dnaOut = appendBranch(dnaOut, 'marketing_signals_insert_failed', [], {}, { error: error.message });
     return { success: false, conversionValue: 0, causalDna: toJsonb(dnaOut) };
   }
 
   const signalId = (data as { id: string })?.id ?? null;
-  void adminClient.rpc('append_causal_dna_ledger', {
-    p_site_id: siteId,
-    p_aggregate_type: 'signal',
-    p_aggregate_id: signalId,
-    p_causal_dna: causalDnaJson,
-  }).then(() => {}, (err: unknown) => console.error('[MizanMantik] append_causal_dna_ledger failed:', err));
+  appendCausalDnaLedgerSafe(siteId, 'signal', signalId, causalDnaJson);
 
   return { success: true, signalId, conversionValue, causalDna: causalDnaJson };
 }

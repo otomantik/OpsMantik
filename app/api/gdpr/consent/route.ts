@@ -19,8 +19,42 @@ const RL_IDENTIFIER_WINDOW = 60 * 60 * 1000; // 1h
 const RL_IP_LIMIT = 60;
 const RL_IP_WINDOW = 60 * 60 * 1000; // 1h
 
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+/**
+ * GDPR consent signing may only be disabled in non-production environments (local dev, CI).
+ * Attempting to disable it in production is a configuration error — the route will hard-reject
+ * ALL requests rather than silently accept unauthenticated consent updates.
+ */
 function isGdprConsentSigningDisabled(): boolean {
-  return process.env.GDPR_CONSENT_SIGNING_DISABLED === '1' || process.env.GDPR_CONSENT_SIGNING_DISABLED === 'true';
+  const flagSet = process.env.GDPR_CONSENT_SIGNING_DISABLED === '1' || process.env.GDPR_CONSENT_SIGNING_DISABLED === 'true';
+  if (flagSet && isProduction()) {
+    // Boot-time misconfiguration — do NOT silently disable auth in production.
+    // Caller will receive a 500 from the boot guard below rather than bypassed auth.
+    return false;
+  }
+  return flagSet;
+}
+
+/**
+ * Returns a 500 response with a clear message if GDPR signing is disabled in production.
+ * Must be called before any auth logic.
+ */
+function getProductionSigningMisconfigError(): Response | null {
+  const flagSet = process.env.GDPR_CONSENT_SIGNING_DISABLED === '1' || process.env.GDPR_CONSENT_SIGNING_DISABLED === 'true';
+  if (flagSet && isProduction()) {
+    return NextResponse.json(
+      {
+        error: 'Server misconfiguration',
+        code: 'GDPR_SIGNING_DISABLED_IN_PRODUCTION',
+        detail: 'GDPR_CONSENT_SIGNING_DISABLED must not be set in production. Remove this flag and redeploy.',
+      },
+      { status: 500 }
+    );
+  }
+  return null;
 }
 
 export async function OPTIONS() {
@@ -35,6 +69,10 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  // Boot-time guard: reject all requests if signing is disabled in production.
+  const misconfigError = getProductionSigningMisconfigError();
+  if (misconfigError) return misconfigError;
+
   const rawBody = await req.text();
   const clientId = RateLimitService.getClientId(req);
 

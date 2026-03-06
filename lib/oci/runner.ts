@@ -229,12 +229,6 @@ async function syncQueueValuesFromCalls(
     (callsData ?? []).map((c: { id: string; lead_score?: number | null; sale_amount?: number | null; currency?: string | null }) => [c.id, c])
   );
 
-  await adminClient
-    .from('sites')
-    .select('id')
-    .eq('id', siteIdUuid)
-    .maybeSingle();
-
   for (const row of withCallId) {
     const call = callsById.get(row.call_id!);
     if (!call) continue;

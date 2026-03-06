@@ -23,6 +23,7 @@ import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
+import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/gears/shared';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -180,7 +181,10 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const valueCents = Math.round(valueUnits * 100);
   const currencySafe = currency?.trim() || config.currency || siteCurrency;
 
-  // 6. Resolve session_id and enforce 1 conversion per session (dedupe before insert)
+  // 6. Resolve session_id for attribution — deduplication is enforced by the DB unique index
+  // on (site_id, provider_key, external_id), NOT by an application-layer pre-check.
+  // A pre-check is a TOCTOU race: two concurrent workers can both pass the check and both
+  // attempt the insert; the second will get a 23505 which is caught below.
   const tenantClient = createTenantClient(siteId);
   let sessionId: string | null = null;
   const { data: callRow } = await tenantClient
@@ -189,21 +193,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     .eq('id', callId)
     .maybeSingle();
   sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id ?? null;
-
-  if (sessionId) {
-    const { data: existingList } = await adminClient
-      .from('offline_conversion_queue')
-      .select('id')
-      .eq('site_id', siteId)
-      .eq('session_id', sessionId)
-      .in('status', ['QUEUED', 'RETRY', 'PROCESSING'])
-      .limit(1);
-    const existing = Array.isArray(existingList) ? existingList[0] : null;
-    if (existing) {
-      logInfo('enqueue_seal_skip', { call_id: callId, reason: 'duplicate_session', session_id: sessionId });
-      return { enqueued: false, reason: 'duplicate_session' };
-    }
-  }
 
   // 7. Causal DNA for Seal path (Singularity)
   const causalDna = buildMinimalCausalDna(
@@ -259,14 +248,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
 
     const queueId = (inserted as { id: string } | null)?.id ?? null;
     if (queueId) {
-      void adminClient
-        .rpc('append_causal_dna_ledger', {
-          p_site_id: siteId,
-          p_aggregate_type: 'conversion',
-          p_aggregate_id: queueId,
-          p_causal_dna: causalDna,
-        })
-        .then(() => { }, () => { });
+      appendCausalDnaLedgerSafe(siteId, 'conversion', queueId, causalDna);
     }
 
     logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, star, value_units: valueUnits, value_cents: valueCents });

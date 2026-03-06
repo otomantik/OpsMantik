@@ -6,6 +6,7 @@
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
+import { logError, logWarn } from '@/lib/logging/logger';
 import { publishToQStash } from '@/lib/ingest/publish';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
@@ -248,7 +249,7 @@ export async function processCallEvent(
       traceId: requestId ?? null,
     });
   } catch (v2Err) {
-    console.error('[PR-OCI-2] V2_PULSE emit failed (non-fatal):', (v2Err as Error)?.message ?? v2Err);
+    logWarn('V2_PULSE_EMIT_FAILED', { error: (v2Err as Error)?.message ?? String(v2Err) });
   }
 
   // ── STEP 2: Trigger Async Scoring via QStash ──────────────────────────────
@@ -269,7 +270,7 @@ export async function processCallEvent(
       deduplicationId: `score-${callRecord.id}`,
     });
   } catch (qError) {
-    console.error('[HARDENING] Failed to trigger async scoring:', qError);
+    logWarn('ASYNC_SCORING_PUBLISH_FAILED', { error: (qError as Error)?.message ?? String(qError) });
     // Non-critical for ingestion, but the lead remains in canonical intent state.
   }
 
