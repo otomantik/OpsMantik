@@ -294,6 +294,13 @@ export class SessionService {
         const safeWbraid = isOrganic ? null : (sanitizeClickId(rawWbraid) ?? null);
         const safeGbraid = isOrganic ? null : (sanitizeClickId(rawGbraid) ?? null);
 
+        // Always use the current server-side UTC month for partition routing.
+        // The browser's sm/dbMonth can be stale (e.g. QStash replays across month boundaries,
+        // long-lived browser sessions). The BEFORE trigger trg_sessions_set_created_month will
+        // compute created_month from NOW() and would conflict with a stale past-month value.
+        const insertNow = new Date();
+        const insertMonth = `${insertNow.getUTCFullYear()}-${String(insertNow.getUTCMonth() + 1).padStart(2, '0')}-01`;
+
         const sessionPayload: Record<string, unknown> = {
             id: sessionId,
             site_id: siteId,
@@ -302,9 +309,9 @@ export class SessionService {
             gclid: safeGclid,
             wbraid: safeWbraid,
             gbraid: safeGbraid,
-            // NOTE: created_month will be set by trigger (trg_sessions_set_created_month)
-            // We still pass dbMonth for backward compatibility, but trigger overrides it
-            created_month: dbMonth,
+            // insertMonth matches what trg_sessions_set_created_month will compute from now().
+            // dbMonth (browser's sm) is ONLY used for lookups, never for INSERT routing.
+            created_month: insertMonth,
             attribution_source: attributionSource,
             traffic_source: traffic.traffic_source,
             traffic_medium: traffic.traffic_medium,
@@ -373,7 +380,7 @@ export class SessionService {
                     .select('id, created_month')
                     .eq('id', sessionId)
                     .eq('site_id', siteId)
-                    .eq('created_month', dbMonth)
+                    .eq('created_month', insertMonth)
                     .single();
                 if (existing) return existing;
 
