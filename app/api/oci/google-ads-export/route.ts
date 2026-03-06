@@ -16,7 +16,7 @@ import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { redis } from '@/lib/upstash';
 import type { SiteValuationRow } from '@/lib/oci/oci-config';
 import { hashPhoneForEC } from '@/lib/dic/identity-hash';
-import { isCallSendableForSealExport, isCallStatusSendableForOci } from '@/lib/oci/call-sendability';
+import { isCallSendableForSealExport, isCallStatusSendableForOci, isCallStatusSendableForSignal } from '@/lib/oci/call-sendability';
 import { validateOciQueueValueCents, validateOciSignalConversionValue } from '@/lib/oci/export-value-guard';
 import { createHash } from 'node:crypto';
 import * as jose from 'jose';
@@ -261,11 +261,18 @@ export async function GET(req: NextRequest) {
       sigQuery = sigQuery.or(`updated_at.gt.${signalCursorUpdatedAt},and(updated_at.eq.${signalCursorUpdatedAt},id.gt.${signalCursorId})`);
     }
 
-    const { data: signalRows } = await sigQuery
+    const { data: signalRows, error: signalFetchError } = await sigQuery
       .order('updated_at', { ascending: true })
       .order('id', { ascending: true })
       .limit(EXPORT_SIGNALS_LIMIT);
 
+    if (signalFetchError) {
+      logError('OCI_EXPORT_SIGNAL_QUERY_FAILED', {
+        code: (signalFetchError as { code?: string })?.code,
+        message: (signalFetchError as { message?: string })?.message,
+        site_id: siteUuid,
+      });
+    }
     const signalList = Array.isArray(signalRows) ? signalRows : [];
     if (signalList.length === EXPORT_SIGNALS_LIMIT) {
       logWarn('OCI_EXPORT_BATCH_HIT_LIMIT', { limit: EXPORT_SIGNALS_LIMIT, pipeline: 'marketing_signals' });
@@ -273,6 +280,9 @@ export async function GET(req: NextRequest) {
 
     // Phase 8.1: Merkle Tree Ledger Verification
     // Verify cryptographic integrity of the signal chain in memory.
+    // Signals with current_hash=null are pre-Merkle legacy records — they are trusted as-is
+    // (the hash feature was introduced after these signals were created). Only signals with a
+    // non-null hash are verified to prevent tampering.
     const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
     for (const sig of signalList) {
       const s = sig as {
@@ -283,6 +293,8 @@ export async function GET(req: NextRequest) {
         previous_hash: string | null;
         current_hash: string | null;
       };
+
+      if (s.current_hash === null) continue; // Legacy signal, pre-Merkle — skip hash check
 
       const payload = `${s.call_id ?? 'null'}:${s.adjustment_sequence}:${s.expected_value_cents}:${s.previous_hash ?? 'null'}:${salt}`;
       const expectedHash = createHash('sha256').update(payload).digest('hex');
@@ -331,7 +343,8 @@ export async function GET(req: NextRequest) {
       const callId = (sig as { call_id?: string | null }).call_id;
       if (!callId) continue;
       const ctx = callCtxByCallId.get(callId);
-      if (!isCallStatusSendableForOci(ctx?.status ?? null)) {
+      const sigType = (sig as { signal_type?: string }).signal_type ?? '';
+      if (!isCallStatusSendableForSignal(ctx?.status ?? null, sigType)) {
         blockedSignalIds.push((sig as { id: string }).id);
         continue;
       }
