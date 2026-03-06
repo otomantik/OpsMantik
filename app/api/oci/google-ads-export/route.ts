@@ -251,18 +251,19 @@ export async function GET(req: NextRequest) {
     }
 
     // Phase 6.2: Deterministic Cursor-Based Query (marketing_signals)
+    // NOTE: marketing_signals has no updated_at column — use created_at for ordering and cursors.
     let sigQuery = adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid, trace_id, updated_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid, trace_id, created_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING');
 
     if (signalCursorUpdatedAt && signalCursorId) {
-      sigQuery = sigQuery.or(`updated_at.gt.${signalCursorUpdatedAt},and(updated_at.eq.${signalCursorUpdatedAt},id.gt.${signalCursorId})`);
+      sigQuery = sigQuery.or(`created_at.gt.${signalCursorUpdatedAt},and(created_at.eq.${signalCursorUpdatedAt},id.gt.${signalCursorId})`);
     }
 
     const { data: signalRows, error: signalFetchError } = await sigQuery
-      .order('updated_at', { ascending: true })
+      .order('created_at', { ascending: true })
       .order('id', { ascending: true })
       .limit(EXPORT_SIGNALS_LIMIT);
 
@@ -858,7 +859,7 @@ export async function GET(req: NextRequest) {
     if (lastRow || lastSig) {
       const target: ExportCursorState = {
         q: lastRow ? { t: (lastRow as { updated_at: string }).updated_at, i: (lastRow as { id: string }).id } : null,
-        s: lastSig ? { t: (lastSig as { updated_at: string }).updated_at, i: (lastSig as { id: string }).id } : null,
+        s: lastSig ? { t: (lastSig as { created_at: string }).created_at, i: (lastSig as { id: string }).id } : null,
       };
       nextCursor = Buffer.from(JSON.stringify(target)).toString('base64');
     }
