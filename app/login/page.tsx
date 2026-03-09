@@ -14,20 +14,40 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
-  // Check if user is already logged in
+  // Check if user is already logged in (with timeout to avoid endless loading)
   useEffect(() => {
-    const checkUser = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+    const CHECK_TIMEOUT_MS = 6000;
+    let done = false;
 
-      if (user) {
-        router.push('/dashboard');
-      } else {
-        setIsChecking(false);
+    const finish = (showLogin = true) => {
+      if (done) return;
+      done = true;
+      if (showLogin) setIsChecking(false);
+    };
+
+    const fallback = setTimeout(() => finish(true), CHECK_TIMEOUT_MS);
+
+    const checkUser = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (done) return;
+        done = true;
+        clearTimeout(fallback);
+        if (user) {
+          router.push('/dashboard');
+        } else {
+          setIsChecking(false);
+        }
+      } catch (err) {
+        console.warn('[AUTH] checkUser failed:', err);
+        clearTimeout(fallback);
+        finish(true);
       }
     };
 
     checkUser();
+    return () => clearTimeout(fallback);
   }, [router]);
 
   const handleSignIn = async () => {

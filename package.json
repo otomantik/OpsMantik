@@ -71,7 +71,8 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:setup-secret": "node scripts/get-e2e-call-event-secret.mjs",
-    "e2e:auth": "playwright test tests/auth.setup.ts --project=chromium --headed"
+    "e2e:auth": "playwright test tests/auth.setup.ts --project=chromium --headed",
+    "probe:token": "node scripts/get-probe-test-token.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
