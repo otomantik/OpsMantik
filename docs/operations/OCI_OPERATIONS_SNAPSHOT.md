@@ -216,6 +216,17 @@ SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROU
 
 ---
 
+## 8b. Sunset Execution Plan (Phase 34)
+
+| Item | Target |
+|------|--------|
+| call-event v1 | Sunset 2026-05-10; X-Ops-Deprecated header. Pre-sunset: client migration; v1 → 410 after sunset. |
+| OCI Script Quarantine | Remove site from Script Properties per SOP. See `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_KONTROL.md` — Sunset Maneuver. |
+| Dual-channel cutover | No dual-channel; Script Quarantine before worker cutover. |
+| Legacy RPCs | v2 mandatory date; v1 fallback deprecated. |
+
+---
+
 ## 9. Referans Dokümanlar
 
 **Charter / kontrat (hedef mimari):**

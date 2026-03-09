@@ -12,6 +12,7 @@ import { decryptJson } from '@/lib/security/vault';
 import { getProvider } from '@/lib/providers/registry';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { ProviderAuthError, ProviderValidationError } from '@/lib/providers/errors';
+import { sanitizeErrorForClient } from '@/lib/security/sanitize-error';
 
 export const runtime = 'nodejs';
 
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
     }
     if (err instanceof ProviderValidationError) {
       return NextResponse.json(
-        { error: err.message, code: 'PROVIDER_VALIDATION' },
+        { error: sanitizeErrorForClient(err), code: 'PROVIDER_VALIDATION' },
         { status: 400, headers: HEADERS() }
       );
     }

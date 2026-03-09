@@ -110,7 +110,7 @@ async function runSweep() {
                             'Ouroboros Watchdog triggered halt. Manual investigation required.',
                         ].join('\n'),
                     }),
-                }).catch(() => { });
+                }).catch((err) => { logWarn('OUROBOROS_ALERT_FAILED', { error: err instanceof Error ? err.message : String(err) }); });
             }
 
             // Return early: do NOT rescue zombies during active degradation.

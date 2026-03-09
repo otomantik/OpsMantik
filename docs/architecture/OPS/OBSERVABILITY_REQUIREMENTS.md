@@ -43,6 +43,57 @@
 
 ---
 
+## External Dependency Failure Modes (Phase 23)
+
+| Dependency | Failure Mode | Current | Target |
+|------------|--------------|---------|--------|
+| QStash | Timeout or 5xx | Fallback to ingest_fallback_buffer | Document: fallback path; recovery cron retries. No double-bill. |
+| Redis | Down | Rate limit fail-closed (Phase 5) | sync/call-event return 503 when Redis unavailable. |
+| Supabase | Connection exhaustion | Pooler port 6543; query timeout 10s | Document in PRO_UPGRADE; apply withQueryTimeout to heavy RPCs. |
+| Google Ads API | 429 / quota | Script retries with backoff | Document max retries; DLQ for permanent failures. |
+
+---
+
+## Early-Warning Thresholds (Phase 36)
+
+| Item | Target |
+|------|--------|
+| Redis | Alert if P99 > 50ms or unavailable; Vercel KV or custom check. |
+| DB pool | Alert if connection wait > 2s; Supabase pooler metrics. |
+| QStash backlog | Alert if ingest backlog > N; expose via /api/metrics. |
+| Export rate | Optional: baseline value_cents/day; alert spike/drop. P2. |
+
+---
+
+## Health Check Gates (Phase 39)
+
+| Gate | Status |
+|------|--------|
+| smoke:intent-multi-site | Deploy gate in deploy-gate-intent.mdc; 2/2 PASS before deploy. |
+| /api/health | If exists: checks DB, Redis; 503 if any down. |
+| Contract tests | Optional: schema tests for sync/call-event; build fails on drift. P2. |
+| Vercel deploy | Doc: run smoke before deploy; no auto-block. |
+
+---
+
+## Query Timeout Resource Leak (Phase 28)
+
+`withQueryTimeout` rejects when timeout fires; underlying Supabase/Postgres query is **not cancelled**. Connection and query continue until completion. Document: timeout races response; DB query runs to completion. P2: Postgres-level statement_timeout for heavy RPCs.
+
+---
+
+## Trace Propagation (Phase 27)
+
+| Flow | Header / Payload | Target |
+|------|------------------|--------|
+| Sync route | om-trace-uuid, x-request-id | Pass in QStash payload to worker |
+| QStash worker | body.om_trace_uuid | Worker logs with trace; process-sync-event / process-call-event |
+| Ledger | correlation_id | Populate from trace when available |
+
+**Rule:** x-request-id and om-trace-uuid propagate across sync → worker → process-sync-event. QStash payload must include trace fields for correlation.
+
+---
+
 ## Investigation Playbook
 
 ### sync_error_rate_high

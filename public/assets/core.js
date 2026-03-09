@@ -1250,7 +1250,8 @@
     if (adsCtx) payloadObj.ads_context = adsCtx;
     const payload = JSON.stringify(payloadObj);
     if (proxyUrl2) {
-      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {
+      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(function(e) {
+        if (typeof console !== "undefined") console.warn("[OpsMantik] TRACKER_FETCH_FAILED", "call-event", e?.message || e);
       });
       return;
     }
@@ -1297,7 +1298,8 @@
         gbraid
       }),
       keepalive: true
-    }).catch(() => {
+    }).catch(function(e) {
+      if (typeof console !== "undefined") console.warn("[OpsMantik] TRACKER_FETCH_FAILED", "pv-pulse", e?.message || e);
     });
   }
   function initAutoTracking() {

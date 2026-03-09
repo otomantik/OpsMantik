@@ -10,6 +10,7 @@ import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { withQueryTimeout } from '@/lib/utils/query-timeout';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { sanitizeErrorForClient } from '@/lib/security/sanitize-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,7 +84,10 @@ export async function GET(req: NextRequest) {
         { status: 504, headers: getBuildInfoHeaders() }
       );
     }
-    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+    return NextResponse.json(
+      { error: sanitizeErrorForClient(err), code: 'SERVER_ERROR' },
+      { status: 500, headers: getBuildInfoHeaders() }
+    );
   } finally {
     await release();
   }

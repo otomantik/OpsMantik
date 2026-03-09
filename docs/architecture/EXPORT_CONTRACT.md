@@ -18,6 +18,14 @@
 
 Deterministik external_id: `call_id + stage + policy_version` kombinasyonundan türetilir. ACK routing temiz; aynı logical conversion her zaman aynı external_id'ye map edilir.
 
+### orderId Collision (Phase 21 / EXTINCTION DOSSIER)
+
+**Problem:** İki farklı conversion aynı gclid + saniye hassasiyetli conversion_time → aynı orderId → Google dedupe → sessiz eksik sayım.
+
+**Current formula:** `${clickId}_V5_SEAL_${sanitizedOccurredAt}` slice(0,128).
+
+**Mitigation:** `call_id` veya `queue_id` suffix eklenebilir (128 char izin verirse). P2. Ayrıntı: `docs/runbooks/EXTINCTION_DOSSIER_ABYSSAL_AUDIT.md`.
+
 ---
 
 ## Export Item Shape (GoogleAdsConversionItem)

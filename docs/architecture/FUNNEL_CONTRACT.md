@@ -72,6 +72,29 @@ Verilen `call_id`, verilen `site_id` ile eşleşmiyorsa event append fail olmal�
 
 ---
 
+## Terminal States and Void Cascade (Phase 32)
+
+| Item | Semantics |
+|------|-----------|
+| JUNK / CANCELLED | Cannot be sealed. State machine lockdown. Document in EXPORT_CONTRACT: terminal states. |
+| void_pending_oci_queue_on_call_reversal | VOIDs QUEUED/RETRY when call junked/cancelled/restored. Trigger fires on calls.status UPDATE; voided rows excluded from export. |
+| Undo / restore | undo_last_action_v1, revert_snapshot: undo appends to call_actions; revert_snapshot stores pre-update state. |
+| Restore from junk | restore → intent; void_pending triggers. |
+
+---
+
+## Immutability Contract (Phase 33)
+
+| Table | Semantics |
+|-------|-----------|
+| marketing_signals | Append-only; only dispatch_status, google_sent_at updatable. |
+| call_funnel_ledger | Append-only. |
+| invoice_snapshot, revenue_snapshots | Immutable (no UPDATE/DELETE). |
+| call_actions | Append-only audit trail; revert_snapshot for undo. |
+| offline_conversion_queue | Immutable after COMPLETED/FAILED. |
+
+---
+
 ## İnvariant
 
 V5 var ise projection'da `funnel_completeness = complete`; aksi halde repair worker veya BLOCKED.

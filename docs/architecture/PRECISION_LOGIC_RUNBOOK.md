@@ -41,6 +41,17 @@ if (edge.isEdgeProxyOrBot) {
 
 ---
 
+## 1.3 Partition Boundary Semantics (Phase 30)
+
+| Item | Behavior |
+|------|----------|
+| `session_month` | UTC month of `created_at`. Boundary edge: event at `2025-01-31T23:59:59` vs `2025-02-01T00:00:01` — different months. |
+| `event_month` | Derived from session; cascade on session insert via `events_set_session_month_from_session`. |
+| `calls.session_created_month` | Enforced by `calls_enforce_session_created_month`; orphan prevention. |
+| Month boundary | 23:59:59 vs 00:00:01 — precision matters for partition pruning and reporting. |
+
+---
+
 ## 2. Supabase DB Optimization
 
 ### 2.1 Partition Pruning — COALESCE Kaldırma
