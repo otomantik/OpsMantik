@@ -91,6 +91,10 @@ opsmantik-v1/
 - ✅ Partitioned Database (monthly)
 - ✅ Row Level Security (RLS)
 
+## Operations
+
+- **[OCI Operations Snapshot](docs/operations/OCI_OPERATIONS_SNAPSHOT.md)** — Canlı OCI durumu, metrikler, transition status. Onboarding, incident response, debug için.
+
 ## 📊 Database Schema
 
 - **sites** - Site ownership (multi-tenant)

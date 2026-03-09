@@ -13,6 +13,7 @@
     {"path": "/api/cron/funnel-projection", "schedule": "*/5 * * * *"},
     {"path": "/api/cron/funnel-repair", "schedule": "*/1 * * * *"},
     {"path": "/api/cron/oci/sweep-zombies", "schedule": "*/10 * * * *"},
+    {"path": "/api/cron/oci/recover-stuck-signals", "schedule": "*/15 * * * *"},
     {"path": "/api/cron/oci/attempt-cap", "schedule": "*/15 * * * *"},
     {"path": "/api/cron/sweep-unsent-conversions", "schedule": "*/15 * * * *"},
     {"path": "/api/cron/auto-junk", "schedule": "0 2 * * *"},

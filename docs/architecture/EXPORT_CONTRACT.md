@@ -4,6 +4,8 @@
 
 `USE_FUNNEL_PROJECTION=true` iken export tek kaynak: `call_funnel_projection`.
 
+> **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)
+
 ---
 
 ## Export Item Identity

@@ -18,3 +18,8 @@ test('vercel schedules OCI sweep-zombies recovery cron', () => {
   const src = readFileSync(VERCEL_PATH, 'utf8');
   assert.ok(src.includes('/api/cron/oci/sweep-zombies'), 'vercel cron must schedule OCI sweep-zombies');
 });
+
+test('vercel schedules OCI recover-stuck-signals cron', () => {
+  const src = readFileSync(VERCEL_PATH, 'utf8');
+  assert.ok(src.includes('/api/cron/oci/recover-stuck-signals'), 'vercel cron must schedule OCI recover-stuck-signals');
+});

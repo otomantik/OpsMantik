@@ -4,6 +4,8 @@
 
 Bu doküman kernel ontolojisini ve kırmızı çizgileri tanımlar. Uygulama bu kontrata göre geliştirilir.
 
+> **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)
+
 ---
 
 ## Stratejik Karar: V1 Kernel Dışı

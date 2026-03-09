@@ -46,6 +46,20 @@ test('recover-processing: without cron auth returns 403', async () => {
   assert.equal(res.status, 403);
 });
 
+test('recover-stuck-signals route: requireCronAuth and calls recover_stuck_marketing_signals RPC', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'cron', 'oci', 'recover-stuck-signals', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('requireCronAuth'), 'cron auth');
+  assert.ok(src.includes('recover_stuck_marketing_signals'), 'calls recovery RPC');
+});
+
+test('recover-stuck-signals: without cron auth returns 403', async () => {
+  const { POST } = await import('@/app/api/cron/oci/recover-stuck-signals/route');
+  const req = new NextRequest('http://localhost:3000/api/cron/oci/recover-stuck-signals', { method: 'POST' });
+  const res = await POST(req);
+  assert.equal(res.status, 403);
+});
+
 test('seed-credentials route: hard-blocked in production (403)', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'cron', 'providers', 'seed-credentials', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
