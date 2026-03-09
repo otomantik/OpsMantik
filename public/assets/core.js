@@ -20,11 +20,22 @@
     if (/\/sync\/?$/i.test(url)) return url.replace(/\/sync\/?$/i, "/track/pv");
     return "";
   }
+  var resolvedApiUrl = syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : "");
+  if (typeof window !== "undefined" && resolvedApiUrl) {
+    try {
+      const apiHost = new URL(resolvedApiUrl).hostname;
+      const pageHost = window.location.hostname;
+      if (apiHost === pageHost) {
+        console.warn(
+          "[OPSMANTIK] Sync URL is same-origin (" + resolvedApiUrl + '). Events will not reach OpsMantik. Set data-api (or data-ops-sync-proxy-url) on the script tag to your OpsMantik backend, e.g. data-api="https://YOUR_APP.vercel.app/api/sync"'
+        );
+      }
+    } catch (_) {
+    }
+  }
   var CONFIG = {
-    apiUrl: syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : ""),
-    pvUrl: runtimeConfig.opsTrackPvUrl || deriveTrackPvUrl(
-      syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || ""
-    ) || (typeof window !== "undefined" ? window.location.origin + "/api/track/pv" : ""),
+    apiUrl: resolvedApiUrl,
+    pvUrl: runtimeConfig.opsTrackPvUrl || deriveTrackPvUrl(resolvedApiUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/track/pv" : ""),
     trackerVersion: runtimeConfig.opsTrackerVersion || "core-shadow-2026-11-05",
     sessionKey: "opsmantik_session_sid",
     fingerprintKey: "opsmantik_session_fp",

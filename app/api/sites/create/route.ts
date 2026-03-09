@@ -161,9 +161,18 @@ export async function POST(req: NextRequest) {
     if (createError) {
       const err = createError as { code?: string; message?: string; details?: string };
       logError('SITES_CREATE_INSERT_FAILED', { code: err?.code, message: err?.message, details: err?.details });
-      const msg = err?.code === '23505' ? 'A site with this domain or ID already exists.' : 'Failed to create site. Check that the database has the sites table and required columns (name, domain, public_id, user_id).';
+      let msg: string;
+      if (err?.code === '23505') {
+        msg = 'A site with this domain or ID already exists.';
+      } else if (err?.code === '42703') {
+        msg = 'Database schema mismatch: a required column may be missing. Run all Supabase migrations (supabase db push or apply migrations).';
+      } else if (err?.code === 'PGRST301' || (err?.message && err.message.includes('relation'))) {
+        msg = 'sites table or RLS may be missing. Run Supabase migrations.';
+      } else {
+        msg = `Failed to create site. (${err?.code ?? 'unknown'}) Check Vercel logs for SITES_CREATE_INSERT_FAILED.`;
+      }
       return NextResponse.json(
-        { error: msg, code: 'INSERT_FAILED' },
+        { error: msg, code: 'INSERT_FAILED', dbCode: err?.code ?? undefined },
         { status: 500 }
       );
     }

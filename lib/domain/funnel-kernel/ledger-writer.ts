@@ -24,7 +24,8 @@ export type FunnelEventSource =
   | 'OUTBOX_CRON'
   | 'SEAL_ROUTE'
   | 'WORKER'
-  | 'REPAIR';
+  | 'REPAIR'
+  | 'PROBE';
 
 export interface AppendFunnelEventInput {
   callId: string;

@@ -17,6 +17,7 @@ import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { getChronologyFloorForCall } from '@/lib/oci/chronology-guard';
 import { appendAuditLog } from '@/lib/audit/audit-log';
+import { verifyProbeSignature } from '@/lib/probe/verify-signature';
 
 export const dynamic = 'force-dynamic';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
@@ -40,6 +41,112 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => ({}));
+    const deviceId = req.headers.get('x-ops-device-id')?.trim();
+    const isProbe = Boolean(deviceId && typeof body.signature === 'string' && body.signature.trim());
+
+    // ——— Probe (Android Edge-Node) path: ECDSA signature auth ———
+    if (isProbe) {
+      const { data: call } = await adminClient
+        .from('calls')
+        .select('id, site_id, version')
+        .eq('id', callId)
+        .maybeSingle();
+      if (!call) {
+        return NextResponse.json({ error: 'Call not found' }, { status: 404 });
+      }
+      const { data: device } = await adminClient
+        .from('probe_devices')
+        .select('id, public_key_pem')
+        .eq('site_id', call.site_id)
+        .eq('device_id', deviceId)
+        .maybeSingle();
+      if (!device?.public_key_pem) {
+        return NextResponse.json({ error: 'Device not registered' }, { status: 401 });
+      }
+      const probePayload = {
+        callId,
+        saleAmount: body.saleAmount,
+        currency: body.currency ?? 'TRY',
+        merchantNotes: body.merchantNotes,
+        timestamp: body.timestamp,
+      };
+      const sigResult = verifyProbeSignature(
+        device.public_key_pem as string,
+        probePayload,
+        (body.signature as string).trim()
+      );
+      if (!sigResult.ok) {
+        logWarn('PROBE_SEAL_SIGNATURE_REJECTED', { route, call_id: callId, error: sigResult.error });
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+      }
+      const saleAmountProbe = body.saleAmount != null ? Number(body.saleAmount) : null;
+      const currencyProbe = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
+      const merchantNotes = typeof body.merchantNotes === 'string' ? body.merchantNotes.trim().slice(0, 500) : '';
+      if (saleAmountProbe != null && (Number.isNaN(saleAmountProbe) || saleAmountProbe < 0)) {
+        return NextResponse.json({ error: 'saleAmount must be non-negative' }, { status: 400 });
+      }
+      const confirmedAtIso = new Date().toISOString();
+      const occurredAtMeta = resolveSealOccurredAt({
+        saleOccurredAt: body.timestamp != null && Number.isFinite(body.timestamp) ? new Date(body.timestamp).toISOString() : null,
+        fallbackConfirmedAt: confirmedAtIso,
+      });
+      const updatePayload: Record<string, unknown> = {
+        sale_amount: saleAmountProbe,
+        currency: currencyProbe,
+        status: 'confirmed',
+        confirmed_at: confirmedAtIso,
+        confirmed_by: null,
+        oci_status: 'sealed',
+        oci_status_updated_at: confirmedAtIso,
+        lead_score: 100,
+        sale_occurred_at: occurredAtMeta.occurredAt,
+        sale_source_timestamp: occurredAtMeta.sourceTimestamp,
+        sale_time_confidence: occurredAtMeta.timeConfidence,
+        sale_occurred_at_source: occurredAtMeta.occurredAtSource,
+        sale_is_backdated: false,
+        sale_backdated_seconds: 0,
+        sale_review_status: 'NONE',
+        sale_review_requested_at: null,
+      };
+      if (merchantNotes) updatePayload.sale_entry_reason = merchantNotes;
+      const { data: updated, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
+        p_call_id: callId,
+        p_action_type: 'seal',
+        p_payload: updatePayload,
+        p_actor_type: 'system',
+        p_actor_id: deviceId,
+        p_metadata: { route, request_id: requestId, source: 'probe' },
+        p_version: call.version,
+      });
+      if (updateError) {
+        if (updateError.code === 'P0003' || updateError.message?.includes('cannot_seal_from_junk_or_cancelled')) {
+          return NextResponse.json({ error: 'Cannot seal: call is junk or cancelled.' }, { status: 409 });
+        }
+        if (updateError.code === 'P0002' || updateError.message?.includes('version mismatch')) {
+          return NextResponse.json({ error: 'Concurrency conflict.' }, { status: 409 });
+        }
+        return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+      }
+      if (!updated) {
+        return NextResponse.json({ error: 'Call not updated' }, { status: 409 });
+      }
+      const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
+      return NextResponse.json({
+        success: true,
+        approval_required: false,
+        call: {
+          id: (callObj as { id?: string }).id,
+          sale_amount: (callObj as { sale_amount?: number | null }).sale_amount ?? saleAmountProbe,
+          currency: (callObj as { currency?: string }).currency ?? currencyProbe,
+          status: (callObj as { status?: string }).status ?? 'confirmed',
+          confirmed_at: (callObj as { confirmed_at?: string }).confirmed_at ?? confirmedAtIso,
+          sale_occurred_at: (callObj as { sale_occurred_at?: string | null }).sale_occurred_at ?? occurredAtMeta.occurredAt,
+          oci_status: (callObj as { oci_status?: string | null }).oci_status ?? 'sealed',
+        },
+      });
+    }
+
+    // ——— Bearer (dashboard) path ———
     const saleAmount = body.sale_amount != null ? Number(body.sale_amount) : null;
     const currency = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
     const saleOccurredAtRaw = typeof body.sale_occurred_at === 'string' ? body.sale_occurred_at.trim() : '';

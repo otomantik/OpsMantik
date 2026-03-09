@@ -2,6 +2,7 @@
 -- Action item from DONUSUM_SINYAL_DURUM_RAPORU. Script ack çağırmazsa PROCESSING kalır; bu RPC
 -- 4 saatten eski satırları PENDING'e çekerek export'un tekrar seçebilmesini sağlar.
 -- Uses lower(sys_period) as "last updated" (bitemporal); no schema change to marketing_signals.
+-- Idempotent: CREATE OR REPLACE. (Version 20261112100000 to avoid schema_migrations duplicate with 20261112000000.)
 
 BEGIN;
 
