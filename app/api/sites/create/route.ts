@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { logError } from '@/lib/logging/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -67,9 +68,9 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id);
 
     if (listErr) {
-      console.error('[SITES_CREATE] Failed to list sites for upsert:', listErr);
+      logError('SITES_CREATE_LIST_FAILED', { message: listErr.message, code: (listErr as { code?: string })?.code });
       return NextResponse.json(
-        { error: 'Failed to validate existing sites' },
+        { error: 'Failed to load sites. Check server configuration (Supabase URL and service role key).', code: 'LIST_FAILED' },
         { status: 500 }
       );
     }
@@ -97,10 +98,11 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (updateErr) {
-        const { logError } = await import('@/lib/logging/logger');
-        logError('SITES_CREATE_UPDATE_FAILED', { code: (updateErr as { code?: string })?.code });
+        const err = updateErr as { code?: string; message?: string; details?: string };
+        logError('SITES_CREATE_UPDATE_FAILED', { code: err?.code, message: err?.message, details: err?.details });
+        const msg = err?.code === '23505' ? 'A site with this name or domain already exists.' : 'Failed to update site. Please try again.';
         return NextResponse.json(
-          { error: 'Something went wrong', code: 'SERVER_ERROR' },
+          { error: msg, code: 'UPDATE_FAILED' },
           { status: 500 }
         );
       }
@@ -157,10 +159,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (createError) {
-      const { logError } = await import('@/lib/logging/logger');
-      logError('SITES_CREATE_INSERT_FAILED', { code: (createError as { code?: string })?.code });
+      const err = createError as { code?: string; message?: string; details?: string };
+      logError('SITES_CREATE_INSERT_FAILED', { code: err?.code, message: err?.message, details: err?.details });
+      const msg = err?.code === '23505' ? 'A site with this domain or ID already exists.' : 'Failed to create site. Check that the database has the sites table and required columns (name, domain, public_id, user_id).';
       return NextResponse.json(
-        { error: 'Something went wrong', code: 'SERVER_ERROR' },
+        { error: msg, code: 'INSERT_FAILED' },
         { status: 500 }
       );
     }
@@ -171,11 +174,15 @@ export async function POST(req: NextRequest) {
       message: 'Site created successfully',
     });
   } catch (error: unknown) {
-    const { logError } = await import('@/lib/logging/logger');
-    logError('SITES_CREATE_EXCEPTION', { error: error instanceof Error ? error.message : String(error) });
+    const message = error instanceof Error ? error.message : String(error);
+    logError('SITES_CREATE_EXCEPTION', { error: message, stack: error instanceof Error ? error.stack : undefined });
+    const isEnvMissing = typeof message === 'string' && message.includes('Missing required environment variables');
+    const clientMessage = isEnvMissing
+      ? 'Server misconfiguration: Supabase URL or service role key not set. Check Vercel environment variables.'
+      : 'Something went wrong. Check server logs (Vercel Functions) for SITES_CREATE_EXCEPTION.';
     return NextResponse.json(
-      { error: 'Something went wrong', code: 'SERVER_ERROR' },
-      { status: 500 }
+      { error: clientMessage, code: isEnvMissing ? 'CONFIG_MISSING' : 'SERVER_ERROR' },
+      { status: isEnvMissing ? 503 : 500 }
     );
   }
 }

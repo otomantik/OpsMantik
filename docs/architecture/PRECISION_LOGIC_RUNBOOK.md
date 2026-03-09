@@ -1,29 +1,29 @@
 # Precision Logic Runbook — Edge Proxy IP & DB Optimization
 
-**Amaç:** Vercel/Cloudflare edge IP (Düsseldorf/Frankfurt) yerine gerçek kullanıcı IP'si kullanımı ve Supabase partition pruning / performans optimizasyonu.
+**Goal:** Use real client IP instead of Vercel/Cloudflare edge IP (Düsseldorf/Frankfurt), and Supabase partition pruning / performance optimization.
 
 ---
 
 ## 1. Edge Validation Logic
 
-### 1.1 IP Header Önceliği
+### 1.1 IP Header Priority
 
-Şu an uygulama `lib/request-client-ip` (getClientIp) kullanıyor. Edge/proxy ayrımı ileride eklenebilir; o zaman header önceliği: `cf-connecting-ip` → `x-real-ip` → `x-forwarded-for` (ilk).
+The app currently uses `lib/request-client-ip` (getClientIp). Edge/proxy discrimination may be added later; when it is, header priority will be: `cf-connecting-ip` → `x-real-ip` → `x-forwarded-for` (first).
 
-| Öncelik | Header | Açıklama |
-|---------|--------|----------|
-| 1 | `cf-connecting-ip` | Cloudflare gerçek client IP |
-| 2 | `x-real-ip` | Son proxy'nin gördüğü IP |
-| 3 | `x-forwarded-for` (ilk) | Chain'deki ilk IP |
+| Priority | Header | Description |
+|----------|--------|-------------|
+| 1 | `cf-connecting-ip` | Cloudflare real client IP |
+| 2 | `x-real-ip` | IP as seen by the last proxy |
+| 3 | `x-forwarded-for` (first) | First IP in the chain |
 
-### 1.2 Bot / Edge Proxy Etiketleme
+### 1.2 Bot / Edge Proxy Tagging
 
-- Geo city **Düsseldorf** veya **Frankfurt** **ve**
-- User-Agent **AdsBot** veya **Googlebot** içeriyorsa
-→ `tag: 'SYSTEM_BOT'` — DB'ye geo yazma, etiketle.
-- Sadece ghost city (bot yok) → `tag: 'EDGE_PROXY'` — geo yazma.
+- If geo city is **Düsseldorf** or **Frankfurt** **and**
+- User-Agent contains **AdsBot** or **Googlebot**
+→ `tag: 'SYSTEM_BOT'` — do not write geo to DB; tag only.
+- If only ghost city (no bot) → `tag: 'EDGE_PROXY'` — do not write geo.
 
-**Entegrasyon (sync/ingest):** Şu an `getClientIp` (lib/request-client-ip) kullanın. Edge/proxy ayrımı eklenecekse aynı header önceliği ve geo+UA kuralları uygulanacak; örnek kod runbook’ta saklanmıyor (modül kaldırıldı).
+**Integration (sync/ingest):** Use `getClientIp` (lib/request-client-ip) for now. When edge/proxy discrimination is added, the same header priority and geo+UA rules will apply; example code is not kept in this runbook (module was removed).
 
 ---
 
@@ -40,28 +40,28 @@
 
 ## 2. Supabase DB Optimization
 
-### 2.1 Partition Pruning — COALESCE Kaldırma
+### 2.1 Partition Pruning — Removing COALESCE
 
-**Sorun:** `s.created_month = COALESCE(c.session_created_month, date_trunc(...))` partition pruning'ı bozar; planner tüm partition'ları taramak zorunda kalır.
+**Problem:** `s.created_month = COALESCE(c.session_created_month, date_trunc(...))` breaks partition pruning; the planner has to scan all partitions.
 
-**Çözüm:** `calls.session_created_month` kolonunu zorunlu yap; COALESCE kaldır.
+**Solution:** Make `calls.session_created_month` mandatory; remove COALESCE.
 
 ### 2.2 Migration: session_created_month Constraint + Trigger
 
 ```sql
 -- Migration: 20260625000000_precision_logic_session_created_month.sql
--- Calls tablosunda session_created_month: matched_session_id varsa ZORUNLU
+-- calls table: session_created_month REQUIRED when matched_session_id is set
 
 BEGIN;
 
--- 1) Backfill: tüm NULL'ları doldur
+-- 1) Backfill: fill all NULLs
 UPDATE public.calls c
 SET session_created_month = date_trunc('month', c.matched_at AT TIME ZONE 'utc')::date
 WHERE c.session_created_month IS NULL
   AND c.matched_session_id IS NOT NULL
   AND c.matched_at IS NOT NULL;
 
--- 2) Trigger: INSERT/UPDATE'te matched_session_id varsa session_created_month zorunlu
+-- 2) Trigger: when matched_session_id is set on INSERT/UPDATE, session_created_month is required
 CREATE OR REPLACE FUNCTION public.trg_calls_enforce_session_created_month()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -88,19 +88,19 @@ COMMENT ON FUNCTION public.trg_calls_enforce_session_created_month() IS
 COMMIT;
 ```
 
-### 2.3 COALESCE Kaldırılmış RPC (get_call_session_for_oci)
+### 2.3 RPC Without COALESCE (get_call_session_for_oci)
 
 ```sql
--- s.created_month = c.session_created_month (COALESCE YOK)
+-- s.created_month = c.session_created_month (NO COALESCE)
 AND s.created_month = c.session_created_month
 ```
 
-**Not:** `session_created_month` NULL olan eski çağrılar için JOIN'de eşleşme olmaz; bu beklenen davranış (zaten backfill yapıldı).
+**Note:** For legacy calls where `session_created_month` is NULL, the JOIN will not match; this is expected (backfill is applied first).
 
-### 2.4 Covering Index Önerileri
+### 2.4 Covering Index Recommendations
 
 ```sql
--- calls: Index-Only Scan için (BI Export, dashboard filtreleri)
+-- calls: for index-only scan (BI export, dashboard filters)
 CREATE INDEX IF NOT EXISTS idx_calls_site_status_created_covering
   ON public.calls (site_id, status, created_at DESC)
   INCLUDE (matched_session_id, session_created_month, lead_score, intent_action);
@@ -124,13 +124,13 @@ CREATE INDEX IF NOT EXISTS idx_marketing_signals_site_pending_covering
 
 ### 3.1 Repair Procedure — Düsseldorf → Istanbul/Proxy
 
-GCLID varsa: gerçek kullanıcı (İstanbul hedefli); yoksa: Proxy.
+If GCLID present: real user (Istanbul-targeted); otherwise: Proxy.
 
 ```sql
--- Repair: sessions tablosunda Düsseldorf/Frankfurt ghost → normalize
--- Çalıştırma: Supabase SQL Editor, site/tenant scope uygulanabilir
+-- Repair: Düsseldorf/Frankfurt ghost in sessions table → normalize
+-- Run in: Supabase SQL Editor; can be scoped by site/tenant
 
--- sessions: city + geo_city (RPC'ler city kullanır; geo_city master)
+-- sessions: city + geo_city (RPCs use city; geo_city is master)
 DO $$
 DECLARE
   v_updated int;
@@ -171,15 +171,15 @@ BEGIN
 END $$;
 ```
 
-**Dikkat:** `sessions` partition olduğu için UPDATE `created_month` ile birlikte yapılmalı. Partition key değiştirilemez; yalnızca `city`/`district` veya `geo_city`/`geo_district` güncellenir.
+**Caution:** Because `sessions` is partitioned, UPDATE must respect `created_month`. The partition key cannot be changed; only `city`/`district` or `geo_city`/`geo_district` are updated.
 
-### 3.2 marketing_signals Autovacuum (Index Bloat Önleme)
+### 3.2 marketing_signals Autovacuum (Index Bloat Prevention)
 
 ```sql
--- marketing_signals: append-only, sık INSERT; bloat riski yüksek
+-- marketing_signals: append-only, frequent INSERTs; high bloat risk
 ALTER TABLE public.marketing_signals SET (
-  autovacuum_vacuum_scale_factor = 0.02,   -- %2 dead row'da vacuum
-  autovacuum_analyze_scale_factor = 0.01,  -- %1'de analyze
+  autovacuum_vacuum_scale_factor = 0.02,   -- vacuum at 2% dead rows
+  autovacuum_analyze_scale_factor = 0.01,  -- analyze at 1%
   autovacuum_vacuum_cost_delay = 2,
   autovacuum_vacuum_cost_limit = 1000
 );
@@ -192,13 +192,13 @@ COMMENT ON TABLE public.marketing_signals IS
 
 ## 4. Refactored BI Export SQL
 
-Partition pruning uyumlu, COALESCE kaldırılmış, covering index kullanımına uygun.
+Partition-pruning friendly, COALESCE removed, aligned with covering index usage.
 
 ### 4.1 Conversion Granularity (ROAS)
 
 ```sql
 -- BI Export: conversion (partition-safe, no COALESCE)
--- Önkoşul: session_created_month trigger ile zorunlu
+-- Prerequisite: session_created_month enforced by trigger
 SELECT
   oq.id AS conversion_id,
   oq.gclid,
@@ -227,7 +227,7 @@ JOIN calls c ON oq.call_id = c.id AND oq.site_id = c.site_id
 LEFT JOIN sessions s
   ON s.id = c.matched_session_id
   AND s.site_id = c.site_id
-  AND s.created_month = c.session_created_month  -- Partition pruning, COALESCE yok
+  AND s.created_month = c.session_created_month  -- Partition pruning, no COALESCE
 LEFT JOIN marketing_signals ms
   ON ms.call_id = c.id AND ms.site_id = c.site_id
 WHERE oq.site_id = :site_id
@@ -236,7 +236,7 @@ WHERE oq.site_id = :site_id
 ORDER BY oq.conversion_time DESC;
 ```
 
-### 4.2 Call Granularity (Operasyonel)
+### 4.2 Call Granularity (Operational)
 
 ```sql
 -- BI Export: call (partition-safe)
@@ -266,15 +266,15 @@ WHERE c.site_id = :site_id
 ORDER BY c.created_at DESC;
 ```
 
-**Uyarı:** `c.session_created_month` NULL olan call'larda sessions JOIN eşleşmez. Repair + trigger sonrası yeni kayıtlarda NULL olmayacak.
+**Warning:** For calls where `c.session_created_month` is NULL, the sessions JOIN will not match. After repair + trigger, new rows will not have NULL.
 
 ---
 
-## 5. Uygulama Sırası
+## 5. Implementation Order
 
 1. **Migration:** `20260625000000_precision_logic_session_created_month.sql` (trigger + backfill)
-2. **Index'ler:** Covering index migration
+2. **Indexes:** Covering index migration
 3. **Autovacuum:** marketing_signals ALTER
-4. **Repair:** Ghost scrub (bir kez, bakım penceresinde)
-5. **Kod:** Edge/proxy ayrımı → sync/call-event entegrasyonu (header önceliği + ghost city/UA kuralları)
-6. **RPC/BI:** COALESCE kaldırılmış sorgulara geçiş
+4. **Repair:** Ghost scrub (once, in a maintenance window)
+5. **Code:** Edge/proxy discrimination → sync/call-event integration (header priority + ghost city/UA rules)
+6. **RPC/BI:** Switch to queries without COALESCE
