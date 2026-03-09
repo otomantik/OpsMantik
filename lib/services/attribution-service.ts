@@ -29,7 +29,7 @@ export class AttributionService {
         let hasPastGclid = false;
         if (!sanitizedCurrentGclid && fingerprint) {
             const recentMonths = getRecentMonths(6);
-            const { data: pastEvents } = await client
+            const { data: pastEvent } = await client
                 .from('events')
                 .select('id')
                 .eq('site_id', siteId)
@@ -37,9 +37,10 @@ export class AttributionService {
                 .not('metadata->gclid', 'is', null)
                 .in('session_month', recentMonths)
                 .order('created_at', { ascending: false })
-                .limit(1);
+                .limit(1)
+                .maybeSingle();
 
-            hasPastGclid = !!(pastEvents && pastEvents.length > 0);
+            hasPastGclid = pastEvent != null;
         }
 
         // 2. Extract UTM

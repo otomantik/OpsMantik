@@ -18,7 +18,7 @@ function makeMockClient(siteIdWithPastGclid: string) {
 
   const from = (table: string) => {
     if (table !== 'events')
-      return { select: () => ({ eq: () => ({ not: () => ({ in: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }) }) };
+      return { select: () => ({ eq: () => ({ not: () => ({ in: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }) }) }) };
 
     return {
       select: () => ({
@@ -29,13 +29,15 @@ function makeMockClient(siteIdWithPastGclid: string) {
               not: () => ({
                 in: () => ({
                   order: () => ({
-                    limit: async () => {
-                      const hasEvent = capturedSiteId === siteIdWithPastGclid;
-                      return {
-                        data: hasEvent ? [{ id: 'event-with-gclid' }] : [],
-                        error: null,
-                      };
-                    },
+                    limit: () => ({
+                      maybeSingle: async () => {
+                        const hasEvent = capturedSiteId === siteIdWithPastGclid;
+                        return {
+                          data: hasEvent ? { id: 'event-with-gclid' } : null,
+                          error: null,
+                        };
+                      },
+                    }),
                   }),
                 }),
               }),
@@ -88,7 +90,7 @@ test('AttributionService: with current GCLID does not query past events', async 
       select: () => ({
         eq: () => {
           queryCalled = true;
-          return { eq: () => ({ not: () => ({ in: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }) };
+          return { eq: () => ({ not: () => ({ in: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }) }) };
         },
       }),
     }),

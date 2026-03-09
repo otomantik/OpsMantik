@@ -50,9 +50,9 @@ export class StatsService {
         if (!data) return { captured: 0, gclid: 0, junk: 0 };
 
         return {
-            captured: parseInt(String(data.captured || 0)),
-            gclid: parseInt(String(data.gclid || 0)),
-            junk: parseInt(String(data.junk || 0))
+            captured: parseInt(String(data.captured || 0), 10),
+            gclid: parseInt(String(data.gclid || 0), 10),
+            junk: parseInt(String(data.junk || 0), 10)
         };
     }
 }

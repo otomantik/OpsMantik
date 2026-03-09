@@ -24,13 +24,13 @@ const STAGE_WEIGHTS: Record<ProjectionStage, number> = {
 
 /** Quality score 1..5 → weight 0.2..1.0 linear */
 export function getQualityWeight(score: number | null | undefined): number {
-  if (score == null || !Number.isFinite(score) || score < 1 || score > 5) return 0.5;
+  if (score === null || score === undefined || !Number.isFinite(score) || score < 1 || score > 5) return 0.5;
   return 0.2 + (score - 1) * 0.2; // 1→0.2, 2→0.4, 3→0.6, 4→0.8, 5→1.0
 }
 
 /** Confidence 0..1 → pass-through (attribution güveni) */
 export function getConfidenceWeight(confidence: number | null | undefined): number {
-  if (confidence == null || !Number.isFinite(confidence)) return 0.5;
+  if (confidence === null || confidence === undefined || !Number.isFinite(confidence)) return 0.5;
   if (confidence < 0 || confidence > 1) return 0.5;
   return confidence;
 }

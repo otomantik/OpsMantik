@@ -24,7 +24,6 @@ import {
   computeIdempotencyKeyV2,
   getServerNowMs,
   tryInsertIdempotencyKey,
-  deleteIdempotencyKeyForCompensation,
 } from '@/lib/idempotency';
 import { checkAndIncrementFraudFingerprint } from '@/lib/services/fraud-quarantine-service';
 import { isCallEventWorkerPayload } from '@/lib/ingest/call-event-worker-payload';
@@ -205,9 +204,11 @@ async function handler(req: NextRequest) {
       if (gatesResult.billable && gatesResult.idempotencyKey) {
         const currentMonthStart = `${getCurrentYearMonthUTC()}-01`;
         try {
-          await adminClient.rpc('decrement_usage_compensation', {
+          // Phase 12: Atomic compensation — decrement + delete idempotency in one transaction.
+          await adminClient.rpc('decrement_and_delete_idempotency', {
             p_site_id: site.id,
             p_month: currentMonthStart,
+            p_idempotency_key: gatesResult.idempotencyKey,
             p_kind: 'revenue_events',
           });
         } catch (compErr) {
@@ -218,43 +219,18 @@ async function handler(req: NextRequest) {
             idempotency_key: gatesResult.idempotencyKey,
             error: compErrMsg,
           });
-          // Write to DLQ so a reconciliation cron can fix the phantom usage increment.
           try {
             await adminClient.from('billing_compensation_failures').insert({
               site_id: site.id,
               idempotency_key: gatesResult.idempotencyKey,
               month: currentMonthStart,
               kind: 'revenue_events',
-              failure_type: 'decrement_rpc',
+              failure_type: 'decrement_and_delete_rpc',
               error_message: compErrMsg.slice(0, 2000),
               qstash_message_id: qstashMessageId,
             });
           } catch {
-            // Best-effort: if DLQ insert also fails, Sentry will capture the original error below.
-          }
-        }
-        try {
-          await deleteIdempotencyKeyForCompensation(site.id, gatesResult.idempotencyKey);
-        } catch (delErr) {
-          const delErrMsg = String(delErr);
-          logError('WORKERS_INGEST_IDEMPOTENCY_DELETE_FAILED', {
-            route: 'workers_ingest',
-            site_id: site.id,
-            idempotency_key: gatesResult.idempotencyKey,
-            error: delErrMsg,
-          });
-          try {
-            await adminClient.from('billing_compensation_failures').insert({
-              site_id: site.id,
-              idempotency_key: gatesResult.idempotencyKey,
-              month: currentMonthStart,
-              kind: 'revenue_events',
-              failure_type: 'delete_idempotency_key',
-              error_message: delErrMsg.slice(0, 2000),
-              qstash_message_id: qstashMessageId,
-            });
-          } catch {
-            // Best-effort.
+            // Best-effort: if DLQ insert also fails, Sentry will capture the original error.
           }
         }
       }

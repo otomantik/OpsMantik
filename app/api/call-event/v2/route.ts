@@ -207,8 +207,11 @@ export async function POST(req: NextRequest) {
     const eventIdColumnOk = eventIdMode === 'on';
     const value = parseValueAllowNull(body.value);
 
-    // Replay cache (stronger than timestamp window). Degraded mode falls back locally on redis errors.
-    const replaySiteKey = resolvedSiteUuid ?? legacyPublicId ?? 'unknown';
+    // Replay cache. Phase 14: fail if site unresolved; no 'unknown'.
+    const replaySiteKey = resolvedSiteUuid ?? legacyPublicId;
+    if (!replaySiteKey) {
+      return NextResponse.json({ error: 'Site not resolved' }, { status: 400, headers: baseHeaders });
+    }
     const replayKey = ReplayCacheService.makeReplayKey({ siteId: replaySiteKey, eventId: event_id, signature: headerSig || null });
     const replay = await ReplayCacheService.checkAndStore(replayKey, 10 * 60 * 1000, { mode: 'degraded', namespace: 'call-event-v2' });
     if (replay.isReplay) {
@@ -293,15 +296,15 @@ export async function POST(req: NextRequest) {
     const proxyHost = proxyHostRaw && proxyHostRaw.length <= 255 ? proxyHostRaw.replace(/[^a-z0-9.-]/g, '').slice(0, 128) : 'unknown';
     const CALL_EVENT_RL_LIMIT = 150; // per site|proxy|client per minute (burst: multiple clicks + retries)
     const rl = await RateLimitService.checkWithMode(`${siteUuidFinal}|${proxyHost}|${clientId}`, CALL_EVENT_RL_LIMIT, 60 * 1000, {
-      mode: 'degraded',
+      mode: 'fail-closed',
       namespace: 'call-event-v2',
-      fallbackMaxRequests: 30,
     });
     if (!rl.allowed) {
+      const isRedisDown = rl.redisUnavailable === true;
       return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000) },
+        { error: isRedisDown ? 'Rate limit service temporarily unavailable' : 'Rate limit exceeded', retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000) },
         {
-          status: 429,
+          status: rl.redisUnavailable ? 503 : 429,
           headers: {
             ...baseHeaders,
             'X-RateLimit-Limit': String(CALL_EVENT_RL_LIMIT),
@@ -315,15 +318,15 @@ export async function POST(req: NextRequest) {
     // Per-fingerprint rate limit (brute-force session probing guard)
     const FINGERPRINT_RL_LIMIT = 20;
     const rlFp = await RateLimitService.checkWithMode(`fp:${siteUuidFinal}:${fingerprint}`, FINGERPRINT_RL_LIMIT, 60 * 1000, {
-      mode: 'degraded',
+      mode: 'fail-closed',
       namespace: 'call-event-v2',
-      fallbackMaxRequests: 10,
     });
     if (!rlFp.allowed) {
+      const isRedisDown = rlFp.redisUnavailable === true;
       return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: Math.ceil((rlFp.resetAt - Date.now()) / 1000) },
+        { error: isRedisDown ? 'Rate limit service temporarily unavailable' : 'Rate limit exceeded', retryAfter: Math.ceil((rlFp.resetAt - Date.now()) / 1000) },
         {
-          status: 429,
+          status: rlFp.redisUnavailable ? 503 : 429,
           headers: {
             ...baseHeaders,
             'X-RateLimit-Limit': String(FINGERPRINT_RL_LIMIT),

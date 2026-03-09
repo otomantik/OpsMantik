@@ -33,6 +33,12 @@ export async function POST(
       return NextResponse.json({ error: 'Missing call id' }, { status: 400 });
     }
 
+    // Kill switch: OCI_SEAL_PAUSED — emergency pause without redeploy (Phase 40)
+    if (process.env.OCI_SEAL_PAUSED === 'true' || process.env.OCI_SEAL_PAUSED === '1') {
+      logWarn('OCI_SEAL_PAUSED', { msg: 'Seal paused via OCI_SEAL_PAUSED env' });
+      return NextResponse.json({ error: 'Seal paused', code: 'SEAL_PAUSED' }, { status: 503 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const saleAmount = body.sale_amount != null ? Number(body.sale_amount) : null;
     const currency = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
@@ -40,7 +46,11 @@ export async function POST(
     const entryReason = typeof body.entry_reason === 'string' ? body.entry_reason.trim().slice(0, 500) : '';
     // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
     const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
-    const version = body.version != null ? Number(body.version) : null;
+    const versionRaw = body.version != null ? Number(body.version) : null;
+    const version =
+      versionRaw !== null && versionRaw !== undefined && Number.isFinite(versionRaw)
+        ? Math.round(versionRaw)
+        : null;
     let leadScore =
       leadScoreRaw != null && Number.isFinite(leadScoreRaw) && leadScoreRaw >= 0 && leadScoreRaw <= 100
         ? Math.round(leadScoreRaw)
@@ -59,6 +69,13 @@ export async function POST(
         { status: 400 }
       );
     }
+    if (version === null) {
+      return NextResponse.json(
+        { error: 'version is required for optimistic locking; omit to reject concurrent seals' },
+        { status: 400 }
+      );
+    }
+
     if (saleOccurredAtRaw && !parseWithinTemporalSanityWindow(saleOccurredAtRaw)) {
       return NextResponse.json(
         { error: 'sale_occurred_at outside temporal sanity window [now - 90 days, now + 1 hour]' },

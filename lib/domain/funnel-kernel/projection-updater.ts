@@ -63,6 +63,41 @@ export async function processCallProjection(callId: string, siteId: string): Pro
     logWarn('processCallProjection upsert failed', { callId, siteId, error: upsertErr.message });
     throw upsertErr;
   }
+
+  // Phase 13: Funnel invariant enforcement — log violations (e.g. V5 without V2)
+  const violations = checkFunnelInvariants(projection);
+  for (const v of violations) {
+    try {
+      const { error } = await adminClient.from('funnel_invariant_violations').insert({
+        site_id: siteId,
+        call_id: callId,
+        violation_code: v.code,
+        details_json: v.details,
+      });
+      if (error) {
+        // 23505 = unique_violation (duplicate open violation) — suppress
+        if (error.code !== '23505') logWarn('funnel_invariant_insert_failed', { callId, siteId, code: v.code, error: error.message });
+      }
+    } catch (e) {
+      logWarn('funnel_invariant_insert_failed', { callId, siteId, code: v.code, error: (e as Error)?.message });
+    }
+  }
+}
+
+function checkFunnelInvariants(proj: Partial<CallFunnelProjection>): { code: string; details: Record<string, unknown> }[] {
+  const violations: { code: string; details: Record<string, unknown> }[] = [];
+  const v5 = proj.v5_at != null;
+  const v4 = proj.v4_at != null;
+  const v3 = proj.v3_at != null;
+  const v2 = proj.v2_at != null;
+
+  if (v5 && !v2) violations.push({ code: 'V5_WITHOUT_V2', details: { v5_at: proj.v5_at, v2_at: proj.v2_at } });
+  if (v5 && !v3) violations.push({ code: 'V5_WITHOUT_V3', details: { v5_at: proj.v5_at, v3_at: proj.v3_at } });
+  if (v5 && !v4) violations.push({ code: 'V5_WITHOUT_V4', details: { v5_at: proj.v5_at, v4_at: proj.v4_at } });
+  if (v4 && !v3) violations.push({ code: 'V4_WITHOUT_V3', details: { v4_at: proj.v4_at, v3_at: proj.v3_at } });
+  if (v3 && !v2) violations.push({ code: 'V3_WITHOUT_V2', details: { v3_at: proj.v3_at, v2_at: proj.v2_at } });
+
+  return violations;
 }
 
 /**

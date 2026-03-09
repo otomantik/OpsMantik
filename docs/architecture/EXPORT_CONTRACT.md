@@ -8,6 +8,12 @@
 
 ---
 
+## Null Policy
+
+**No fallbacks for critical values.** Missing `conversionTime`, `value_cents`, or `currency` → skip row and log (`EXPORT_SKIP_MISSING_TIMESTAMP`, `EXPORT_SKIP_MISSING_VALUE_CENTS`, `EXPORT_SKIP_MISSING_CURRENCY`). No silent `now()` or `0`.
+
+---
+
 ## Export Item Identity
 
 Deterministik external_id: `call_id + stage + policy_version` kombinasyonundan türetilir. ACK routing temiz; aynı logical conversion her zaman aynı external_id'ye map edilir.

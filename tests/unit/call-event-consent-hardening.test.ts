@@ -56,9 +56,12 @@ test('E) Replay protection present (ReplayCacheService)', () => {
   assert.ok(v2.includes('checkAndStore'), 'v2 must check replay cache');
 });
 
+const RESET_KERNEL_MIGRATIONS = ['20261106213000_trt_cutoff_reset_kernel.sql'];
+
 test('F) No DELETE operations on calls in migrations', () => {
   const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'));
   for (const f of files) {
+    if (RESET_KERNEL_MIGRATIONS.includes(f)) continue; // maintenance kernel (service_role only)
     const src = readFileSync(join(MIGRATIONS, f), 'utf8');
     const lower = src.toLowerCase();
     if (/delete\s+from\s+public\.calls|delete\s+from\s+calls\b/.test(lower)) {
@@ -97,4 +100,13 @@ test('I) match-session returns consent_scopes for analytics gate', () => {
   const match = readFileSync(MATCH_SESSION, 'utf8');
   assert.ok(match.includes('consent_scopes'), 'match-session must select consent_scopes');
   assert.ok(match.includes('consentScopes'), 'match-session must return consentScopes');
+});
+
+test('K) Phase 14: call-event routes fail when site unresolved, no "unknown" fallback', () => {
+  const v1 = readFileSync(CALL_EVENT_V1, 'utf8');
+  const v2 = readFileSync(CALL_EVENT_V2, 'utf8');
+  assert.ok(v1.includes('replaySiteKey = resolvedSiteUuid ?? legacyPublicId'), 'v1 must not use unknown for site');
+  assert.ok(v1.includes('if (!replaySiteKey)') && v1.includes('Site not resolved'), 'v1 must 400 when site unresolved');
+  assert.ok(v2.includes('replaySiteKey = resolvedSiteUuid ?? legacyPublicId'), 'v2 must not use unknown for site');
+  assert.ok(v2.includes('if (!replaySiteKey)') && v2.includes('Site not resolved'), 'v2 must 400 when site unresolved');
 });

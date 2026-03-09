@@ -3,7 +3,7 @@ export type OciValueGuardResult =
   | { ok: false; reason: 'NULL_VALUE' | 'NON_FINITE_VALUE' | 'NON_POSITIVE_VALUE' };
 
 export function validateOciQueueValueCents(raw: unknown): OciValueGuardResult {
-  if (raw == null) {
+  if (raw === null || raw === undefined) {
     return { ok: false, reason: 'NULL_VALUE' };
   }
 
@@ -19,7 +19,7 @@ export function validateOciQueueValueCents(raw: unknown): OciValueGuardResult {
 }
 
 export function validateOciSignalConversionValue(raw: unknown): OciValueGuardResult {
-  if (raw == null) {
+  if (raw === null || raw === undefined) {
     return { ok: false, reason: 'NULL_VALUE' };
   }
 

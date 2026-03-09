@@ -51,3 +51,13 @@ test('projection-updater reduces V2_CONTACT and V2_SYNTHETIC to v2_source', asyn
   assert.ok(src.includes('V2_SYNTHETIC') && src.includes("'SYNTHETIC'"), 'must set v2_source for synthetic');
   assert.ok(src.includes('V2_CONTACT') && src.includes("'REAL'"), 'must set v2_source for real');
 });
+
+test('projection-updater inserts funnel invariant violations on V5 without V2', async () => {
+  const src = readFileSync(
+    join(process.cwd(), 'lib', 'domain', 'funnel-kernel', 'projection-updater.ts'),
+    'utf8'
+  );
+  assert.ok(src.includes('V5_WITHOUT_V2'), 'must detect V5 without V2');
+  assert.ok(src.includes('funnel_invariant_violations'), 'must insert into violations table');
+  assert.ok(src.includes('23505'), 'must treat duplicate violation as idempotent');
+});

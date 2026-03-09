@@ -176,7 +176,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const valueUnits = computeConversionValue(star, saleAmount);
 
   if (valueUnits === null) {
-    const noSale = saleAmount == null || saleAmount === 0;
+    const noSale = saleAmount === null || saleAmount === undefined || saleAmount === 0;
     logInfo('enqueue_seal_skip', {
       call_id: callId,
       reason: noSale ? 'no_sale_amount' : 'star_below_threshold',

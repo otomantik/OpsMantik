@@ -206,7 +206,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       if (!rl.allowed) {
         incrementBillingIngestRateLimited();
         const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
-        return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
+        const status = rl.redisUnavailable ? 503 : 429;
+        const msg = rl.redisUnavailable ? 'Rate limit service temporarily unavailable' : 'Rate limit';
+        return NextResponse.json(createSyncResponse(false, null, { error: msg }), { status, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
       }
       return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'invalid_json' } });
     }
@@ -283,7 +285,9 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     if (!rl.allowed) {
       incrementBillingIngestRateLimited();
       const retryAfterSec = rl.resetAt != null ? Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)) : 60;
-      return NextResponse.json(createSyncResponse(false, null, { error: 'Rate limit' }), { status: 429, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
+      const status = rl.redisUnavailable ? 503 : 429;
+      const msg = rl.redisUnavailable ? 'Rate limit service temporarily unavailable' : 'Rate limit';
+      return NextResponse.json(createSyncResponse(false, null, { error: msg }), { status, headers: { ...baseHeaders, 'x-opsmantik-ratelimit': '1', 'Retry-After': String(retryAfterSec) } });
     }
 
     // COMPLIANCE INVARIANT — validateSite → consent → publish (idempotency/quota run in worker). Return 204 without publish when analytics consent missing.

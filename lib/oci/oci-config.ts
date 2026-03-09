@@ -3,7 +3,11 @@
  *
  * Stored as `oci_config` JSONB on the `sites` table.
  * All fields are optional — system falls back to safe defaults.
+ *
+ * Value SSOT: V5 sealed value delegates to funnel-kernel computeSealedValue.
  */
+
+import { computeSealedValue } from '@/lib/domain/funnel-kernel/value-formula';
 
 /** Intent stage weights from sites.intent_weights (JSONB). Used for valuation. */
 export type IntentWeightsRecord = Record<string, number>;
@@ -87,21 +91,17 @@ export function parseOciConfig(raw: unknown, defaultAovFallback?: number | null)
 }
 
 /**
- * Compute the conversion value (in currency units, not cents) for a given star rating.
+ * Compute V5 sealed conversion value (currency units). Delegates to funnel-kernel computeSealedValue.
  *
- * - sale_amount > 0 → use actual revenue (operatör satış girmiş).
- * - sale_amount null veya 0 (görüşüldü, satış yok) → return null → caller must NOT enqueue (0 TL mühür olmaz).
- * Returns null if the star is below min_star and no sale → caller should NOT enqueue.
+ * - sale_amount > 0 → use actual revenue (operatör satış girmiş). SSOT: funnel-kernel computeSealedValue.
+ * - sale_amount null/0/negative → return null → caller must NOT enqueue (0 TL mühür olmaz).
  */
 export function computeConversionValue(
-    star: number | null,
+    _star: number | null,
     saleAmount: number | null,
 ): number | null {
-    // Gerçek satış girildiyse onu kullan (negative = invalid, treat as no sale)
-    if (saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0) {
-        return saleAmount;
+    if (saleAmount === null || saleAmount === undefined || !Number.isFinite(saleAmount) || saleAmount <= 0) {
+        return null;
     }
-
-    // Görüşüldü / satış yok / negatif / NaN → enqueue etme (0 TL mühür Google'a gönderilmez)
-    return null;
+    return computeSealedValue(Math.round(saleAmount * 100));
 }

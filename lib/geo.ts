@@ -57,7 +57,7 @@ const GHOST_GEO_CITIES = new Set([
 
 /** Returns true if value is a known ghost city/district (case-insensitive). */
 export function isGhostGeoCity(value: string | null | undefined): boolean {
-    if (value == null || typeof value !== 'string') return false;
+    if (value === null || value === undefined || typeof value !== 'string') return false;
     return GHOST_GEO_CITIES.has(value.trim().toLowerCase());
 }
 

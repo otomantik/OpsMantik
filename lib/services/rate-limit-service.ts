@@ -33,7 +33,7 @@ export class RateLimitService {
         maxRequests: number,
         windowMs: number,
         opts?: { mode?: 'fail-open' | 'fail-closed' | 'degraded'; namespace?: string; fallbackMaxRequests?: number }
-    ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+    ): Promise<{ allowed: boolean; remaining: number; resetAt: number; redisUnavailable?: boolean }> {
         const mode = opts?.mode ?? (process.env.OPSMANTIK_RATE_LIMIT_FAIL_MODE as 'fail-open' | 'fail-closed' | 'degraded') ?? 'fail-closed';
         const ns = opts?.namespace ? `${opts.namespace}:` : '';
         const key = `ratelimit:${ns}${clientId}`;
@@ -74,7 +74,7 @@ export class RateLimitService {
             }
 
             if (mode === 'fail-closed') {
-                return { allowed: false, remaining: 0, resetAt: now + windowMs };
+                return { allowed: false, remaining: 0, resetAt: now + windowMs, redisUnavailable: true };
             }
 
             // degraded: strict best-effort local limiter with lower limits

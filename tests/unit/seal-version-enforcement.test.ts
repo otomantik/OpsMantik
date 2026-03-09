@@ -18,11 +18,19 @@ test('PR-OCI-6: seal route fetches call.version (server-side source of truth)', 
   );
 });
 
-test('PR-OCI-6: seal route passes p_version = version ?? call.version', () => {
+test('PR-OCI-6: seal route requires version and returns 400 when omitted', () => {
   const src = readFileSync(SEAL_ROUTE, 'utf-8');
   assert.ok(
-    /p_version\s*:\s*version\s*\?\?\s*call\.version/.test(src),
-    'Expected p_version fallback to call.version when body.version is missing'
+    src.includes('version === null') && src.includes('status: 400'),
+    'Expected seal route to return 400 when version is missing (Phase 8: require version)'
+  );
+});
+
+test('PR-OCI-6: seal route passes p_version to RPC', () => {
+  const src = readFileSync(SEAL_ROUTE, 'utf-8');
+  assert.ok(
+    /p_version\s*:/.test(src),
+    'Expected seal route to pass p_version to apply_call_action_v1'
   );
 });
 

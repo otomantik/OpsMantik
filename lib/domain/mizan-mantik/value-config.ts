@@ -77,8 +77,8 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
 
   if (error || !site) {
     console.warn(
-      `[VALUE_CONFIG_FALLBACK] Site ${siteId} bulunamadı veya hata oluştu. Global değerler kullanılıyor.`,
-      { error: error?.message }
+      '[SITE_MISSING_DEFAULT_AOV] Site not found or error; using global fallback (default_aov=1000, min_conversion_value_cents=100000)',
+      { siteId, error: error?.message }
     );
     const fallback: ValueConfig = {
       siteId,
@@ -99,7 +99,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
     sealed: typeof dbWeights.sealed === 'number' ? dbWeights.sealed : DEFAULT_WEIGHTS.sealed,
   };
 
-  if (dbWeights.proposal == null || dbWeights.qualified == null) {
+  if (dbWeights.proposal === null || dbWeights.proposal === undefined || dbWeights.qualified === null || dbWeights.qualified === undefined) {
     console.info(`[VALUE_CONFIG_MERGE] Site ${siteId} için eksik weight'ler fallback ile tamamlandı.`);
   }
 

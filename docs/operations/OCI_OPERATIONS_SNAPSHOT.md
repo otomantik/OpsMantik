@@ -199,11 +199,29 @@ SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROU
 
 ---
 
-## 8. Referans Dokümanlar
+## 8. Determinism Contract
+
+**Single source of truth:** Funnel Kernel (ledger + projection). No dual-headed export paths.
+
+| Kural | Uygulama |
+|-------|----------|
+| No null fallbacks in critical paths | conversionTime, value_cents, currency: missing → skip row and log (EXPORT_SKIP_*). No silent `now()` or `0`. |
+| No best-effort in critical path | Seal V3/V4 emit and enqueue: fail loud (503) on error; no silent swallow. |
+| Version required for seal | `body.version` required; 400 if omitted. Optimistic locking enforced. |
+| Value SSOT | funnel-kernel computeSealedValue / computeExportValue. oci-config delegates. |
+| Env secrets | OCI_SESSION_SECRET, VOID_LEDGER_SALT: no empty fallback in production; log when insecure fallback used. |
+| Kill switch | OCI_EXPORT_PAUSED, OCI_SEAL_PAUSED: set to `true` or `1` to pause export/seal; returns 503. |
+
+**Related:** `docs/architecture/DETERMINISM_CONTRACT.md`
+
+---
+
+## 9. Referans Dokümanlar
 
 **Charter / kontrat (hedef mimari):**
 - `docs/architecture/FUNNEL_CONTRACT.md` — Funnel Kernel Charter
 - `docs/architecture/EXPORT_CONTRACT.md` — Export Contract
+- `docs/architecture/DETERMINISM_CONTRACT.md` — Determinism rules (null policy, fail-closed, SSOT)
 - `docs/architecture/MASTER_ARCHITECTURE_MAP.md` — Tek sayfa mimari harita
 
 **Operasyon / audit:**
@@ -214,7 +232,7 @@ SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROU
 
 ---
 
-## 9. Doküman Kalitesi Değerlendirmesi
+## 10. Doküman Kalitesi Değerlendirmesi
 
 | Kriter | Değerlendirme |
 |--------|---------------|

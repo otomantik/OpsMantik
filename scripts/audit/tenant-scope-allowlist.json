@@ -48,5 +48,10 @@
     "file": "lib/oci/vacuum-worker.ts",
     "table": "sessions",
     "reason": "Session geo lookup is derived from already site-scoped marketing_signals and calls rows; sessions has no site_id filter available in this query shape."
+  },
+  {
+    "file": "lib/oci/pulse-recovery-worker.ts",
+    "table": "sites",
+    "reason": "Pulse recovery cron iterates all sites to recover stale PV processing keys (system-wide worker)."
   }
 ]

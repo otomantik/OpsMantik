@@ -117,6 +117,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
     }
 
+    // Kill switch: OCI_EXPORT_PAUSED — emergency pause without redeploy (Phase 40)
+    if (process.env.OCI_EXPORT_PAUSED === 'true' || process.env.OCI_EXPORT_PAUSED === '1') {
+      logWarn('OCI_EXPORT_PAUSED', { msg: 'Export paused via OCI_EXPORT_PAUSED env' });
+      return NextResponse.json({ error: 'Export paused', code: 'EXPORT_PAUSED' }, { status: 503 });
+    }
+
     // Phase 6.2: Deterministic Cursor Decomposition
     let queueCursorUpdatedAt: string | null = null;
     let queueCursorId: string | null = null;
@@ -224,8 +230,8 @@ export async function GET(req: NextRequest) {
       throw err;
     }
 
-    // USE_FUNNEL_PROJECTION: Export from call_funnel_projection (single SSOT)
-    const useFunnelProjection = process.env.USE_FUNNEL_PROJECTION === 'true';
+    // Phase 1: Projection is SSOT. USE_FUNNEL_PROJECTION=false allows legacy fallback during cutover.
+    const useFunnelProjection = process.env.USE_FUNNEL_PROJECTION !== 'false';
     if (useFunnelProjection) {
       try {
         const { data: projRows } = await adminClient
@@ -279,12 +285,24 @@ export async function GET(req: NextRequest) {
             if (!clickId) continue;
 
             const conversionTime = formatGoogleAdsTimeOrNull(v5At, (site as { timezone?: string | null }).timezone);
-            if (!conversionTime) continue;
+            if (!conversionTime) {
+              logWarn('EXPORT_SKIP_MISSING_TIMESTAMP', { call_id: callId, v5_at: v5At ?? null });
+              continue;
+            }
 
-            const currency = rowCurrency ?? (site as { currency?: string })?.currency ?? 'TRY';
-            const valueUnits = valueCents != null && Number.isFinite(valueCents) && valueCents > 0
-              ? minorToMajor(valueCents, currency)
-              : 0.01; // fallback
+            const siteCurrency = (site as { currency?: string })?.currency;
+            const rawCurrency = rowCurrency ?? siteCurrency;
+            if (!rawCurrency || typeof rawCurrency !== 'string' || rawCurrency.trim().length < 3) {
+              logWarn('EXPORT_SKIP_MISSING_CURRENCY', { call_id: callId });
+              continue;
+            }
+            const currency = rawCurrency.trim().toUpperCase().slice(0, 3);
+
+            if (valueCents == null || !Number.isFinite(valueCents) || valueCents <= 0) {
+              logWarn('EXPORT_SKIP_MISSING_VALUE_CENTS', { call_id: callId, value_cents: valueCents ?? null });
+              continue;
+            }
+            const valueUnits = minorToMajor(valueCents, currency);
 
             const convName = OPSMANTIK_CONVERSION_NAMES.V5_SEAL;
             const orderId = buildOrderId(convName, clickId, conversionTime, `proj_${callId}`, callId, Math.round(valueUnits * 100));
@@ -389,7 +407,11 @@ export async function GET(req: NextRequest) {
     // Signals with current_hash=null are pre-Merkle legacy records — they are trusted as-is
     // (the hash feature was introduced after these signals were created). Only signals with a
     // non-null hash are verified to prevent tampering.
-    const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
+    let salt = process.env.VOID_LEDGER_SALT?.trim();
+    if (!salt) {
+      logWarn('VOID_LEDGER_SALT_MISSING', { msg: 'Using insecure fallback; set VOID_LEDGER_SALT in production.' });
+      salt = 'void_consensus_salt_insecure';
+    }
     for (const sig of signalList) {
       const s = sig as {
         id: string;

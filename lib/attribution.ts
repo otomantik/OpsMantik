@@ -15,7 +15,7 @@ const SENTINEL_VALUES = new Set([
 const TEMPLATE_PATTERN = /^(\{[a-z_]+\}|\{\{[a-z_]+\}\}|\[%[a-z_]+%\]|%7b[a-z_]+%7d)$/i;
 
 function normalizeToken(v: string | null | undefined): string {
-  if (v == null || typeof v !== 'string') return '';
+  if (v === null || v === undefined || typeof v !== 'string') return '';
   let s = v.trim();
   if (!s) return '';
   try {
@@ -52,7 +52,7 @@ export function sanitizeClickId(value: string | null | undefined): string | unde
  * Preserves original casing for storage.
  */
 export function sanitizeParam(value: string | null | undefined): string | undefined {
-  if (value == null || typeof value !== 'string') return undefined;
+  if (value === null || value === undefined || typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   if (isSentinelToken(trimmed)) return undefined;

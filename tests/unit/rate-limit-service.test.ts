@@ -48,6 +48,7 @@ test('RateLimitService.checkWithMode: fail-closed denies on redis error', async 
 
   const res = await RateLimitService.checkWithMode('c2', 1, 1000, { mode: 'fail-closed', namespace: 't' });
   assert.equal(res.allowed, false);
+  assert.equal(res.redisUnavailable, true, 'Phase 5: fail-closed must set redisUnavailable when Redis down');
 });
 
 test('RateLimitService.checkWithMode: degraded uses local fallback with lower limits', async () => {
