@@ -139,7 +139,7 @@ async function verifyArchitecture() {
     const componentFiles = [
       'components/dashboard/session-group.tsx',
       'components/dashboard-v2/DashboardShell.tsx',
-      'docs/ARCHITECTURE.md',
+      'docs/architecture/ARCH.md',
     ];
 
     let allComponentsExist = true;
@@ -179,7 +179,7 @@ async function verifyArchitecture() {
     } else {
       console.log('\n⚠️  Some components need attention.');
       console.log('   Run: supabase db push');
-      console.log('   Check: docs/ARCHITECTURE.md');
+      console.log('   Check: docs/architecture/ARCH.md');
     }
 
   } catch (error) {

@@ -1,10 +1,10 @@
 # 🎯 OPSMANTIK - Google Ads Attribution & Lead Intelligence Platform
 
-Real-time tracking ve multi-touch attribution platformu. Google Ads kampanyalarınızın ROI'sini takip edin, lead'leri skorlayın ve canlı dashboard ile marketing ekibinizi güçlendirin.
+Real-time tracking and multi-touch attribution platform. Track Google Ads campaign ROI, score leads, and empower your marketing team with a live dashboard.
 
-## 🚀 Hızlı Başlangıç
+## 🚀 Quick Start
 
-### 1. Dependencies Kurulumu
+### 1. Install Dependencies
 
 ```bash
 npm install
@@ -18,7 +18,7 @@ npm install
 cp .env.local.example .env.local
 ```
 
-Gerekli değişkenler:
+Required variables:
 - `NEXT_PUBLIC_SUPABASE_URL` - Supabase proje URL'iniz
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
@@ -28,16 +28,16 @@ Gerekli değişkenler:
 
 ### 3. Supabase Migration
 
-Supabase CLI ile migration'ları uygulayın:
+Apply migrations with the Supabase CLI:
 
 ```bash
 # Supabase CLI kurulumu (eğer yoksa)
 npm i -g supabase
 
-# Proje bağlantısı
+# Link project
 supabase link --project-ref YOUR_PROJECT_REF
 
-# Migration'ları uygula
+# Apply migrations
 supabase db push
 ```
 
@@ -47,9 +47,9 @@ supabase db push
 npm run dev
 ```
 
-Uygulama `http://localhost:3000` adresinde çalışacak.
+The app will run at `http://localhost:3000`.
 
-## 📁 Proje Yapısı
+## 📁 Project Structure
 
 ```
 opsmantik-v1/
@@ -91,9 +91,10 @@ opsmantik-v1/
 - ✅ Partitioned Database (monthly)
 - ✅ Row Level Security (RLS)
 
-## Operations
+## Documentation
 
-- **[OCI Operations Snapshot](docs/operations/OCI_OPERATIONS_SNAPSHOT.md)** — Canlı OCI durumu, metrikler, transition status. Onboarding, incident response, debug için.
+- **[Platform Overview](docs/overview/PLATFORM_OVERVIEW.md)** — Executive + technical summary. New developer onboarding, investor/partner narrative, architecture quick view.
+- **[OCI Operations Snapshot](docs/operations/OCI_OPERATIONS_SNAPSHOT.md)** — Live OCI status, metrics, transition status. For incident response and debug.
 
 ## 📊 Database Schema
 
@@ -121,8 +122,8 @@ Tracker script'i test etmek için:
 ></script>
 ```
 
-## 📝 Notlar
+## 📝 Notes
 
-- Migration'lar otomatik olarak mevcut ay için partition oluşturur
-- RLS (Row Level Security) aktif - kullanıcılar sadece kendi sitelerini görebilir
+- Migrations automatically create the partition for the current month
+- RLS (Row Level Security) is active — users can only see their own sites
 - Rate limiting: 100 req/min (sync), 50 req/min (call-event)

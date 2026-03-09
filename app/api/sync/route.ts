@@ -167,8 +167,11 @@ export type SyncHandlerDeps = {
   /** When set, used instead of fallback buffer insert (for assertions). */
   insertFallback?: (row: unknown) => Promise<{ error: unknown }>;
   /** When set, used instead of RateLimitService.check (for tests: avoid 429). */
-  checkRateLimit?: () => Promise<{ allowed: boolean; resetAt?: number }>;
-};
+  checkRateLimit?: () => Promise<SyncRateLimitResult>;
+}
+
+/** Result shape from rate limit check; sync route uses redisUnavailable to return 503 when Redis is down. */
+export type SyncRateLimitResult = { allowed: boolean; resetAt?: number; redisUnavailable?: boolean };
 
 /**
  * Factory for POST handler. 202 Accepted async ingest.
@@ -200,7 +203,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       json = await req.json();
     } catch {
       const clientId = RateLimitService.getClientId(req);
-      const rl = deps?.checkRateLimit
+      const rl: SyncRateLimitResult = deps?.checkRateLimit
         ? await deps.checkRateLimit()
         : await RateLimitService.checkWithMode(clientId, 100, 60000, { mode: 'fail-closed' });
       if (!rl.allowed) {
@@ -279,7 +282,7 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
     const rateLimitKey = siteIdForRl ? `${siteIdForRl}:${clientId}` : clientId;
     const limitOverrides = getSiteRateLimitOverrides();
     const rlLimit = (siteIdForRl && limitOverrides.has(siteIdForRl)) ? limitOverrides.get(siteIdForRl)! : DEFAULT_RL_LIMIT;
-    const rl = deps?.checkRateLimit
+    const rl: SyncRateLimitResult = deps?.checkRateLimit
       ? await deps.checkRateLimit()
       : await RateLimitService.checkWithMode(rateLimitKey, rlLimit, RL_WINDOW_MS, { mode: 'fail-closed' });
     if (!rl.allowed) {

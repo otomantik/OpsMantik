@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { writeFileSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -163,8 +163,9 @@ async function main() {
   }, 'Last 30 Days'));
 
   // Write results
-  const outputPath = join(__dirname, '../docs/_archive/2026-02-02/WAR_ROOM/REPORTS/RPC_PERF_PROOF_V2_2.md');
-  
+  const outputPath = join(__dirname, '../tmp/RPC_PERF_PROOF_V2_2.md');
+  mkdirSync(join(__dirname, '../tmp'), { recursive: true });
+
   let report = `# RPC Performance Proof v2.2\n\n**Date**: ${new Date().toISOString()}\n**Test Site**: ${siteId}\n\n`;
   report += `## Note\n\n`;
   report += `Supabase RPCs cannot be EXPLAINed directly via client. `;

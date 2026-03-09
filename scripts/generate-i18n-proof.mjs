@@ -2,14 +2,14 @@
 /**
  * Generate I18N proof doc: scanner report + dictionary audit.
  * Usage: node scripts/generate-i18n-proof.mjs [output-path]
- * Default: docs/_evidence/I18N_DASHBOARD_PROOF_PHASE_3_3.md
+ * Default: docs/evidence/I18N_EVIDENCE.md
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const defaultPath = path.join(ROOT, "docs/_evidence/I18N_DASHBOARD_PROOF_PHASE_3_3.md");
+const defaultPath = path.join(ROOT, "docs/evidence/I18N_EVIDENCE.md");
 const outputPath = process.argv[2] || defaultPath;
 
 // Ensure output dir exists

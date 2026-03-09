@@ -63,6 +63,7 @@ export async function evaluateAndRouteSignal(
 }
 
 /** Resolve OpsGear from legacy signal type */
+/** @deprecated Unused; legacy signal mapping. Kept for API. */
 export function resolveGearFromLegacy(legacy: LegacySignalType): OpsGear {
   return LEGACY_TO_OPS_GEAR[legacy];
 }

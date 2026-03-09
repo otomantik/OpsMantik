@@ -1,4 +1,0 @@
-PASS
-site_id=85db0db7-529f-405b-ba26-58032a07cd4b
-ads_only=true total=0
-ads_only=false total=0

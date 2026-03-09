@@ -72,7 +72,7 @@ export function incrementBillingReconciliationRunFailed(): void {
 }
 
 /** Sync: in-memory only (per-instance). Use getBillingMetricsFromRedis for cross-instance totals. */
-export function getBillingMetrics(): Record<string, number> {
+  export function getBillingMetrics(): Record<string, number> {
   return { ...counters };
 }
 
@@ -96,9 +96,3 @@ export async function getBillingMetricsFromRedis(): Promise<Record<string, numbe
   }
 }
 
-/** Reset all counters (for tests only). Does not clear Redis. */
-export function resetBillingMetrics(): void {
-  for (const key of Object.keys(counters)) {
-    counters[key] = 0;
-  }
-}

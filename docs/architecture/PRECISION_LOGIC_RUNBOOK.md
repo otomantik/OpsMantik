@@ -8,7 +8,7 @@
 
 ### 1.1 IP Header Önceliği
 
-`lib/edge-client-ip.ts` kullanın; standart `ip` veya Vercel geo objesini doğrudan kullanmayın.
+Şu an uygulama `lib/request-client-ip` (getClientIp) kullanıyor. Edge/proxy ayrımı ileride eklenebilir; o zaman header önceliği: `cf-connecting-ip` → `x-real-ip` → `x-forwarded-for` (ilk).
 
 | Öncelik | Header | Açıklama |
 |---------|--------|----------|
@@ -23,21 +23,7 @@
 → `tag: 'SYSTEM_BOT'` — DB'ye geo yazma, etiketle.
 - Sadece ghost city (bot yok) → `tag: 'EDGE_PROXY'` — geo yazma.
 
-**Entegrasyon örneği (sync/ingest):**
-
-```ts
-import { resolveEdgeClient } from '@/lib/edge-client-ip';
-import { extractGeoInfo } from '@/lib/geo';
-
-const city = req.headers.get('cf-ipcity') ?? req.headers.get('x-vercel-ip-city');
-const edge = resolveEdgeClient(req, { geoCity: city });
-
-if (edge.isEdgeProxyOrBot) {
-  // geo_city = null, geo_source = 'UNKNOWN' veya tag kaydet
-  return;
-}
-// Normal geo extraction devam eder
-```
+**Entegrasyon (sync/ingest):** Şu an `getClientIp` (lib/request-client-ip) kullanın. Edge/proxy ayrımı eklenecekse aynı header önceliği ve geo+UA kuralları uygulanacak; örnek kod runbook’ta saklanmıyor (modül kaldırıldı).
 
 ---
 
@@ -290,5 +276,5 @@ ORDER BY c.created_at DESC;
 2. **Index'ler:** Covering index migration
 3. **Autovacuum:** marketing_signals ALTER
 4. **Repair:** Ghost scrub (bir kez, bakım penceresinde)
-5. **Kod:** `lib/edge-client-ip.ts` → sync/call-event entegrasyonu
+5. **Kod:** Edge/proxy ayrımı → sync/call-event entegrasyonu (header önceliği + ghost city/UA kuralları)
 6. **RPC/BI:** COALESCE kaldırılmış sorgulara geçiş

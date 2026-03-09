@@ -12,4 +12,4 @@ export {
   computeExportValue,
   type ProjectionForValue,
 } from './funnel-policy';
-export { computeSealedValue, computeEstimatedValue } from './value-formula';
+export { computeSealedValue } from './value-formula';

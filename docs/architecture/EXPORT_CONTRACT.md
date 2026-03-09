@@ -1,8 +1,8 @@
 # Export Contract (EXPORT_CONTRACT)
 
-**Projection-based export item shape ve ACK routing**
+**Projection-based export item shape and ACK routing**
 
-`USE_FUNNEL_PROJECTION=true` iken export tek kaynak: `call_funnel_projection`.
+When `USE_FUNNEL_PROJECTION=true`, export single source is `call_funnel_projection`.
 
 > **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)
 
@@ -16,24 +16,24 @@
 
 ## Export Item Identity
 
-Deterministik external_id: `call_id + stage + policy_version` kombinasyonundan türetilir. ACK routing temiz; aynı logical conversion her zaman aynı external_id'ye map edilir.
+Deterministic external_id: derived from `call_id + stage + policy_version`. ACK routing is clean; the same logical conversion always maps to the same external_id.
 
 ### orderId Collision (Phase 21 / EXTINCTION DOSSIER)
 
-**Problem:** İki farklı conversion aynı gclid + saniye hassasiyetli conversion_time → aynı orderId → Google dedupe → sessiz eksik sayım.
+**Problem:** Two distinct conversions with same gclid + second-precision conversion_time → same orderId → Google dedup → silent undercount.
 
 **Current formula:** `${clickId}_V5_SEAL_${sanitizedOccurredAt}` slice(0,128).
 
-**Mitigation:** `call_id` veya `queue_id` suffix eklenebilir (128 char izin verirse). P2. Ayrıntı: `docs/runbooks/EXTINCTION_DOSSIER_ABYSSAL_AUDIT.md`.
+**Mitigation:** `call_id` or `queue_id` suffix can be added (if 128 char allows). P2. Details: `docs/runbooks/EXTINCTION_DOSSIER_ABYSSAL_AUDIT.md`.
 
 ---
 
 ## Export Item Shape (GoogleAdsConversionItem)
 
-| Alan | Tip | Açıklama |
-| ---- | --- | -------- |
+| Field | Type | Description |
+| ----- | ---- | ----------- |
 | id | string | Queue/projection row id — idempotency / ACK |
-| orderId | string | Google Ads dedupe — aynı orderId → ikinci upload ignore |
+| orderId | string | Google Ads dedup — same orderId → second upload ignored |
 | gclid | string | Google Click ID |
 | wbraid | string | iOS web conversions |
 | gbraid | string | iOS app conversions |
@@ -46,12 +46,12 @@ Deterministik external_id: `call_id + stage + policy_version` kombinasyonundan t
 
 ---
 
-## READY Koşulu
+## READY Condition
 
-`export_status = 'READY'` yalnızca `funnel_completeness = complete` iken mümkün.
+`export_status = 'READY'` only when `funnel_completeness = complete`.
 
 ---
 
 ## ACK Routing
 
-ACK geldiğinde projection satırı güncellenir: `export_status = 'ACKED'`. Deterministik external_id sayesinde doğru satır bulunur.
+When ACK is received, projection row is updated: `export_status = 'ACKED'`. Deterministic external_id ensures the correct row is found.

@@ -56,9 +56,3 @@ export async function getEntitlements(
   }
 }
 
-/**
- * Get entitlements using service_role (adminClient). Use in API routes that have no user cookie (e.g. sync, OCI export-batch/ack).
- */
-export async function getEntitlementsForSite(siteId: string): Promise<Entitlements> {
-  return getEntitlements(siteId, adminClient);
-}

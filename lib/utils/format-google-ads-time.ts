@@ -87,26 +87,6 @@ function _formatDate(d: Date, tz: string): string {
 }
 
 /**
- * Format a UTC/ISO timestamp for Google Ads conversion_time.
- * Returns yyyy-MM-dd HH:mm:ss±HH:mm in the given IANA timezone.
- *
- * NOTE: If the input is null/undefined/invalid, this falls back to current time.
- * Use formatGoogleAdsTimeOrNull when you need explicit null-safety (export pipeline).
- *
- * @param utcDate - ISO string (e.g. "2026-02-28T07:15:10.000Z") or Date
- * @param timezoneString - IANA timezone. Default: Europe/Istanbul
- */
-export function formatGoogleAdsTime(
-  utcDate: Date | string,
-  timezoneString?: string | null
-): string {
-  const tz = normalizeTimezone(timezoneString, 'Europe/Istanbul');
-  const d = typeof utcDate === 'string' ? parseUtcTimestamp(utcDate) : utcDate;
-  const resolved = d instanceof Date && !Number.isNaN(d.getTime()) ? d : new Date();
-  return _formatDate(resolved, tz);
-}
-
-/**
  * Null-safe variant for the export pipeline.
  * Returns null if the input is null/undefined/invalid/future instead of silently using current time.
  * Export callers MUST skip the row when this returns null.
@@ -124,28 +104,4 @@ export function formatGoogleAdsTimeOrNull(
   if (!(d instanceof Date) || Number.isNaN(d.getTime()) || d.getTime() <= 0) return null;
   const result = _formatDate(d, tz);
   return GOOGLE_ADS_TIME_REGEX.test(result) ? result : null;
-}
-
-/**
- * Format for Google Ads OCI: yyyy-MM-dd HH:mm:ss±HH:mm.
- * @deprecated Use formatGoogleAdsTime directly.
- */
-export function formatGoogleAdsTimeCompact(
-  utcDate: Date | string,
-  timezoneString?: string | null
-): string {
-  return formatGoogleAdsTime(utcDate, timezoneString);
-}
-
-/**
- * Strict variant that throws on invalid input.
- * For Seal events: use confirmed_at. For Intent: use created_at.
- */
-export function formatGoogleAdsTimeStrict(
-  utcDate: Date | string | null | undefined,
-  timezoneString: string | null | undefined,
-  context: string
-): string {
-  assertValidTimestamp(utcDate, context);
-  return formatGoogleAdsTime(utcDate as Date | string, timezoneString);
 }

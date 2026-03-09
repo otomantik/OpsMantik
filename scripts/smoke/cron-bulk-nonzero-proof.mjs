@@ -213,10 +213,10 @@ async function main() {
     non_zero: processed > 0 || frozen > 0 || claimed > 0,
   });
 
-  const outPath = resolve(process.cwd(), 'docs/_evidence/cron-bulk-nonzero-proof.log');
+  const outPath = resolve(process.cwd(), 'docs/evidence/cron-bulk-nonzero-proof.log');
   try {
     const fs = await import('fs');
-    const dir = resolve(process.cwd(), 'docs/_evidence');
+    const dir = resolve(process.cwd(), 'docs/evidence');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(outPath, EVIDENCE.join('\n'), 'utf8');
     log('Evidence written', { path: outPath });

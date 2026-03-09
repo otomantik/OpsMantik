@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { writeFileSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -156,7 +156,8 @@ async function main() {
   };
 
   // Write evidence file
-  const outputPath = join(__dirname, '../docs/_archive/2026-02-02/WAR_ROOM/EVIDENCE/v2_2/sql_verification_results.json');
+  const outputPath = join(__dirname, '../tmp/sql_verification_results.json');
+  mkdirSync(join(__dirname, '../tmp'), { recursive: true });
   writeFileSync(outputPath, JSON.stringify(evidence, null, 2));
   
   console.log('\n✅ Verification complete!');

@@ -12,6 +12,7 @@
     "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs",
     "audit:i18n": "node --import tsx scripts/audit-i18n-dictionaries.mjs",
     "verify:i18n:keys": "node scripts/verify-i18n-keys.mjs",
+    "report:i18n:unused": "node scripts/find-unused-i18n-keys.mjs",
     "sync:i18n": "node --import tsx scripts/sync-i18n.mjs",
     "proof:i18n": "node scripts/generate-i18n-proof.mjs",
     "dev": "next dev",

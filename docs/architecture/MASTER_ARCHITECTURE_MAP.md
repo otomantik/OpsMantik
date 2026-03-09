@@ -1,6 +1,6 @@
 # OpsMantik Master Architecture Map
 
-**Tek sayfalık mimari harita** — sistemin tamamını tek diyagramda.
+**Single-page architecture map** — entire system in one diagram.
 
 ---
 
@@ -66,27 +66,27 @@ flowchart TB
 
 ---
 
-## Bileşen Özeti
+## Component Summary
 
-| # | Bileşen | Açıklama |
-|---|---------|----------|
+| # | Component | Description |
+|---|------------|-------------|
 | 1 | **Ingress** | sync (events), call-event (intent), track/pv (pageview) |
 | 2 | **Identity Stitch** | session → fingerprint, call → matched_session, GCLID resolution |
 | 3 | **Funnel Kernel** | ledger (append-only), projection (SSOT), policy/weights |
-| 4 | **Projection** | export_status READY/BLOCKED, dual-write ile beslenir |
-| 5 | **Export** | google-ads-export API, Script veya Runner, Google Ads upload |
-| 6 | **Recovery** | sweep-zombies (10 dk), recover-stuck-signals (4 sa), queue recover |
-| 7 | **Policy Engine** | V1–V5, değer formülü, floor/decay |
+| 4 | **Projection** | export_status READY/BLOCKED, fed by dual-write |
+| 5 | **Export** | google-ads-export API, Script or Runner, Google Ads upload |
+| 6 | **Recovery** | sweep-zombies (10 min), recover-stuck-signals (4 hr), queue recover |
+| 7 | **Policy Engine** | V1–V5, value formula, floor/decay |
 
 ---
 
 ## Legacy vs Target
 
-| Yol | Bileşenler | Durum |
+| Path | Components | Status |
 |-----|------------|-------|
 | **Target** | Ingress → ledger → projection → Export | SHADOW MODE |
 | **Legacy** | marketing_signals + offline_conversion_queue + Redis V1 → Export | ACTIVE |
 
 ---
 
-**Referans:** `docs/operations/OCI_OPERATIONS_SNAPSHOT.md`
+**Reference:** [Platform Overview](../overview/PLATFORM_OVERVIEW.md) | [OCI Operations Snapshot](../operations/OCI_OPERATIONS_SNAPSHOT.md)

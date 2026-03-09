@@ -7,7 +7,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
  * Connection resilience (Pro Upgrade): This client uses the Supabase REST API and does not
  * hold Postgres connections. For direct Postgres usage (e.g. Prisma, Drizzle, raw pg),
  * use SUPABASE_POOLER_URL (Transaction Pooler, port 6543) to avoid connection exhaustion.
- * See docs/PRO_UPGRADE_PERFORMANCE_PLAN.md.
+ * For connection pooling, use SUPABASE_POOLER_URL (port 6543) when using direct Postgres.
  */
 
 // Lazy initialization to avoid build-time errors when env vars are not set

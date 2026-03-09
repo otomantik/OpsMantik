@@ -8,11 +8,13 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 
 | Folder | Purpose |
 |--------|---------|
-| **[architecture/](architecture/)** | Core system design, schemas, ADRs, and standards |
-| **[runbooks/](runbooks/)** | Deployment, testing, and operational guides |
-| **[evidence/](evidence/)** | Proof of work, smoke-test logs, and execution evidence |
-| **[sprints/](sprints/)** | Current active sprint planning and checklists |
-| **[archive/](archive/)** | Historical context (old sprints, legacy reports, deprecated plans) |
+| **[overview/](overview/)** | Platform overview, system brief (onboarding, investors) |
+| **[architecture/](architecture/)** | Core system design, contracts, schemas, standards |
+| **[operations/](operations/)** | Live operations snapshot (OCI, metrics) |
+| **[runbooks/](runbooks/)** | Deployment, incident, and testing procedures |
+| **[OPS/](OPS/)** | Deploy gates, ingest contract, OCI ops |
+| **[evidence/](evidence/)** | Proof of work and execution evidence |
+| **[sprints/](sprints/)** | Active sprint planning (if in use) |
 
 ---
 
@@ -54,6 +56,11 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 | [TENANT_BOUNDARY_ADVERSARIAL_GATE.md](runbooks/TENANT_BOUNDARY_ADVERSARIAL_GATE.md) | Cross-site mutation adversarial test gate |
 | [OCI_KERNEL_ADVERSARIAL_GATE.md](runbooks/OCI_KERNEL_ADVERSARIAL_GATE.md) | OCI export/runner/recovery adversarial gate |
 | [GITHUB_RELEASE_GATES_REQUIRED_CHECK.md](runbooks/GITHUB_RELEASE_GATES_REQUIRED_CHECK.md) | GitHub required-check setup for release gates |
+| [OCI_GOOGLE_ADS_SCRIPT_CONTROL.md](runbooks/OCI_GOOGLE_ADS_SCRIPT_CONTROL.md) | Google Ads OCI script troubleshooting and quarantine SOP |
+| [OCI_SYSTEM_DEEP_ANALYSIS.md](runbooks/OCI_SYSTEM_DEEP_ANALYSIS.md) | OCI 5 sets, dual-head, flow analysis |
+| [OCI_CONVERSION_INTENT_FLOW_DIAGRAM.md](runbooks/OCI_CONVERSION_INTENT_FLOW_DIAGRAM.md) | UI → conversion mapping |
+| [CONVERSION_LOGIC_ERRORS_RUNBOOK.md](runbooks/CONVERSION_LOGIC_ERRORS_RUNBOOK.md) | Conversion logic errors and value SSOT |
+| [CONVERSION_SIGNAL_STATUS_REPORT.md](runbooks/CONVERSION_SIGNAL_STATUS_REPORT.md) | Conversion signal status (see OCI_OPERATIONS_SNAPSHOT) |
 
 ---
 
@@ -65,7 +72,7 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 |----------|----------|
 | **Proof logs** | CRON_BULK_NONZERO_PROOF, cron-bulk-nonzero-proof.log |
 | **Implementation evidence** | REVENUE_KERNEL_IMPLEMENTATION_EVIDENCE |
-| **i18n / dashboards** | I18N_* reports, GLOBAL_SAAS_ANALYSIS_2026 |
+| **i18n** | I18N_EVIDENCE (consolidated i18n audit) |
 
 ---
 
@@ -80,28 +87,9 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 
 ---
 
-## archive/
-
-**Historical context. Do not use for active development.**
-
-### Archive Summary (for LLMs)
-
-The `archive/` folder contains:
-
-- **root-legacy/**: Old sprint notes (I18N, GDPR, compliance, conversation layer), diagnostic checklists (SYNC_400, SQL_INTENT), and market reports (SAAS_PUAN_RAPORU, OCI_DURUM_RAPORU, OPSMANTIK_URUN_PAZAR_RAPORU).
-- **OPS-legacy/**: Past PR reports (PR8A, PR9, PR10, PR11, PR-C1, PR-C4, PR17), code quality audits, vault/credentials notes, G1/G5 status, revenue kernel status reports.
-- **AUDIT-legacy/**: Legacy system audit reports.
-- **historical-missions/**: Deploy checklists, audit scans, cleanup backlogs, system scans, rollout plans, hardening notes.
-- **2026-02-02/**: WAR_ROOM evidence, root-exports, audit-ad-hoc SQL, diagnostic queries.
-
-Use `archive/` when you need historical decisions, past sprint context, or deprecated designs. For current architecture and runbooks, use `architecture/` and `runbooks/`.
-
----
-
 ## Documentation Policy
 
-**All active documentation MUST be written in Professional English.**  
-The `archive/` directory contains legacy mixed-language files which are not to be translated.
+All documentation is in English. Breaking architecture or API changes must be reflected here before deployment.
 
 ---
 

@@ -2,14 +2,14 @@
 
 **Last updated:** 2026-03-09  
 **Owner:** OpsMantik Core  
-**Sürüm:** Operations Snapshot v1 — ✅ Production Ready  
-**Amaç:** OCI (Offline Conversion Import) ve dönüşüm sinyallerinin mevcut durumunun tek bakışta özeti. Onboarding, incident response, debug, mimari geçiş için.
+**Version:** Operations Snapshot v1 — ✅ Production Ready  
+**Purpose:** Single-glance summary of current OCI (Offline Conversion Import) and conversion signal state. For onboarding, incident response, debug, and architecture transition.
 
-**Kategori:** Production Operations Documentation
+**Category:** Production Operations Documentation
 
 ---
 
-## Mimari Özet
+## Architecture Summary
 
 ```mermaid
 flowchart TB
@@ -35,11 +35,11 @@ flowchart TB
 
 ---
 
-> **Charter bağlantıları:** Bu belge tek başına geleceği değil, bugünü anlatır. Hedef mimari ve kontratlar için:
+> **Charter links:** This document describes the current state, not the future. For target architecture and contracts:
 > - `docs/architecture/FUNNEL_CONTRACT.md` — Funnel Kernel Charter
 > - `docs/architecture/EXPORT_CONTRACT.md` — Export Contract
 
-**Etiket açıklaması:** `CURRENT` = bugün canlı, `TARGET` = hedef SSOT, `TRANSITIONAL` = geçiş döneminde, `RETIRED_SOON` = emekliye ayrılacak.
+**Label:** `CURRENT` = live today, `TARGET` = target SSOT, `TRANSITIONAL` = in transition, `RETIRED_SOON` = to be retired.
 
 ---
 
@@ -55,145 +55,145 @@ flowchart TB
 
 ---
 
-## 1. Özet — Beş Dönüşüm Seti (V1–V5) `CURRENT`
+## 1. Summary — Five Conversion Sets (V1–V5) `CURRENT`
 
-| Set | Google Ads adı | Depo | Oluşma yeri | Export'ta | Ack sonrası |
-|-----|----------------|------|--------------|-----------|-------------|
+| Set | Google Ads name | Store | Origin | In export | After ack |
+|-----|----------------|------|--------|-----------|-----------|
 | **V1** | OpsMantik_V1_Nabiz | **Redis** (pv:queue, pv:data) | POST /api/track/pv → V1PageViewGear | Redis LMOVE | pv_* → Redis DEL |
-| **V2** | OpsMantik_V2_Ilk_Temas | **marketing_signals** | process-call-event, process-sync-event | PENDING seçilir | signal_* → SENT |
+| **V2** | OpsMantik_V2_Ilk_Temas | **marketing_signals** | process-call-event, process-sync-event | PENDING selected | signal_* → SENT |
 | **V3** | OpsMantik_V3_Nitelikli_Gorusme | **marketing_signals** | Seal lead_score=60 | PENDING | signal_* → SENT |
 | **V4** | OpsMantik_V4_Sicak_Teklif | **marketing_signals** | Seal lead_score=80 | PENDING | signal_* → SENT |
 | **V5** | OpsMantik_V5_DEMIR_MUHUR | **offline_conversion_queue** | Seal lead_score=100 + sale_amount | QUEUED/RETRY | seal_* → UPLOADED |
 
-Üç depo: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue (V5). Export üçünü birleştirip Script'e tek JSON döner; ack prefix'e göre ilgili depoyu günceller.
+Three stores: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue (V5). Export merges them into a single JSON for Script; ack updates the relevant store by prefix.
 
-**Mimari Not**
+**Architecture note**
 
-> Bu rapor mevcut canlı durumun özetidir. **Funnel Kernel hedef SSOT'tur.** `marketing_signals` ve `offline_conversion_queue` şu an hâlâ canlı **compatibility katmanlarıdır.** Nihai export truth hedefi `call_funnel_projection`'dır.
+> This report is a summary of current live state. **Funnel Kernel is the target SSOT.** `marketing_signals` and `offline_conversion_queue` are currently live **compatibility layers.** The final export truth target is `call_funnel_projection`.
 
 ---
 
-## 2. Canlı Metrikler (GET /api/metrics) `CURRENT` + `TARGET`
+## 2. Live Metrics (GET /api/metrics) `CURRENT` + `TARGET`
 
-Cron veya admin auth ile `GET /api/metrics` şu funnel_kernel metriklerini döner:
+With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 
-| Metrik | Etiket | Açıklama |
-|--------|--------|----------|
-| `ledger_count` | TARGET | call_funnel_ledger satır sayısı (yeni funnel SSOT) |
-| `projection_count` | TARGET | call_funnel_projection toplam satır |
-| `projection_ready_count` | TARGET | export_status=READY olanlar |
-| `legacy_ms_count` | TRANSITIONAL | marketing_signals toplam satır |
-| `legacy_queue_queued_retry` | TRANSITIONAL | offline_conversion_queue QUEUED + RETRY sayısı |
+| Metric | Label | Description |
+|--------|--------|-------------|
+| `ledger_count` | TARGET | call_funnel_ledger row count (new funnel SSOT) |
+| `projection_count` | TARGET | call_funnel_projection total rows |
+| `projection_ready_count` | TARGET | rows with export_status=READY |
+| `legacy_ms_count` | TRANSITIONAL | marketing_signals total rows |
+| `legacy_queue_queued_retry` | TRANSITIONAL | offline_conversion_queue QUEUED + RETRY count |
 | `open_violations` | TARGET | funnel_invariant_violations (resolved_at null) |
-| `blocked_incomplete_funnel_count` | TARGET | projection export_status=BLOCKED (eksik funnel) |
+| `blocked_incomplete_funnel_count` | TARGET | projection export_status=BLOCKED (incomplete funnel) |
 
-**Doğrulama:** Response `metrics.funnel_kernel` içinde tüm alanlar bulunur. Tablolar yoksa `{ status: 'tables_unavailable' }` döner.
+**Verification:** All fields are present in response `metrics.funnel_kernel`. If tables are unavailable, returns `{ status: 'tables_unavailable' }`.
 
 ---
 
-## 3. Export Akışı — İki Mod
+## 3. Export Flow — Two Modes
 
 ### 3.1 USE_FUNNEL_PROJECTION=true `TARGET`
 
-- Export kaynağı: **call_funnel_projection** tek tablo
-- Funnel Kernel dual-write ile ledger + projection besleniyor
+- Export source: **call_funnel_projection** single table
+- Funnel Kernel feeds ledger + projection via dual-write
 - projection.export_status: READY | BLOCKED
-- BLOCKED: funnel tamamlanmamış (V2/V3/V4 eksik vb.)
+- BLOCKED: funnel incomplete (V2/V3/V4 missing etc.)
 
-### 3.2 Legacy `TRANSITIONAL` (USE_FUNNEL_PROJECTION=false veya varsayılan)
+### 3.2 Legacy `TRANSITIONAL` (USE_FUNNEL_PROJECTION=false or default)
 
 - **offline_conversion_queue** (V5) + **marketing_signals** (V2–V4) + **Redis** (V1)
-- Kuyruk: status IN (QUEUED, RETRY)
-- Sinyaller: dispatch_status = PENDING
-- Claim sonrası: queue → PROCESSING, signals → PROCESSING
-- Ack sonrası: queue → UPLOADED, signals → SENT
+- Queue: status IN (QUEUED, RETRY)
+- Signals: dispatch_status = PENDING
+- After claim: queue → PROCESSING, signals → PROCESSING
+- After ack: queue → UPLOADED, signals → SENT
 
 ---
 
-## 4. Sinyal Durum Makineleri `CURRENT`
+## 4. Signal State Machines `CURRENT`
 
 ### marketing_signals.dispatch_status
 
-**Aktif:** `PENDING`, `PROCESSING`  
+**Active:** `PENDING`, `PROCESSING`  
 **Terminal:** `SENT`, `FAILED`, `JUNK_ABORTED`, `DEAD_LETTER_QUARANTINE`
 
-| Durum | Anlam | Sonraki |
-|-------|-------|---------|
-| PENDING | Export bekliyor | Export seçer → PROCESSING |
-| PROCESSING | Script'e gönderildi, ack bekleniyor | Ack → SENT; ack-failed → FAILED |
-| SENT | Google'a gitti | Terminal |
-| FAILED | Hata (validation/upload) | Terminal |
-| JUNK_ABORTED | Junk call, export sırasında atlandı | Terminal |
-| DEAD_LETTER_QUARANTINE | Fatal hata sonrası | Terminal |
+| Status | Meaning | Next |
+|--------|---------|------|
+| PENDING | Awaiting export | Export selects → PROCESSING |
+| PROCESSING | Sent to Script, awaiting ack | Ack → SENT; ack-failed → FAILED |
+| SENT | Sent to Google | Terminal |
+| FAILED | Error (validation/upload) | Terminal |
+| JUNK_ABORTED | Junk call, skipped during export | Terminal |
+| DEAD_LETTER_QUARANTINE | After fatal error | Terminal |
 
 ### offline_conversion_queue.status
 
-**Aktif:** `QUEUED`, `RETRY`, `PROCESSING`  
+**Active:** `QUEUED`, `RETRY`, `PROCESSING`  
 **Terminal:** `UPLOADED`, `COMPLETED`, `FAILED`
 
-| Durum | Anlam | Sonraki |
-|-------|-------|---------|
-| QUEUED | Kuyrukta | Claim → PROCESSING |
-| RETRY | Hata sonrası tekrar denenecek | Claim → PROCESSING |
-| PROCESSING | Export/upload yapıldı | Ack → UPLOADED; ack-failed → RETRY/FAILED |
-| UPLOADED | Google'a gitti (Script path) | Terminal |
-| COMPLETED | Worker path başarılı | Terminal |
-| FAILED | Kalıcı hata | Terminal |
+| Status | Meaning | Next |
+|--------|---------|------|
+| QUEUED | In queue | Claim → PROCESSING |
+| RETRY | To be retried after error | Claim → PROCESSING |
+| PROCESSING | Export/upload done | Ack → UPLOADED; ack-failed → RETRY/FAILED |
+| UPLOADED | Sent to Google (Script path) | Terminal |
+| COMPLETED | Worker path success | Terminal |
+| FAILED | Permanent error | Terminal |
 
 ---
 
-## 5. Bilinen Riskler ve Düzeltmeler `CURRENT`
+## 5. Known Risks and Fixes `CURRENT`
 
-**Severity:** `FIXED` = geçmişte kritikti, düzeltildi | `HIGH` = hâlâ aksiyon gerektirir | `MITIGATED` = azaltıldı, mekanizma eklendi | `CONTROLLED` = mekanizma var, izleniyor
+**Severity:** `FIXED` = was critical, now fixed | `HIGH` = still requires action | `MITIGATED` = reduced, mechanism in place | `CONTROLLED` = mechanism exists, monitored
 
-| Konu | Severity | Durum | Not |
-|------|----------|--------|-----|
-| Ack signal_* PENDING → SENT | FIXED | ✅ Düzeltildi | Ack artık PROCESSING arıyor (önceden PENDING aranıyordu; nabız SENT olmuyordu) |
-| 0 TL mühür Google'a gitmesin | FIXED | ✅ | Seal path: computeConversionValue null döner; enqueue yapılmaz. enqueue-from-sales: value_cents<=0 skip |
-| PENDING sinyal takılması | MITIGATED | ✅ | Stuck-Signal-Recoverer eklendi: `recover_stuck_marketing_signals` RPC + `/api/cron/oci/recover-stuck-signals` (her 15 dk, 4 saatten eski PROCESSING → PENDING). sweep-zombies (10 dk) kısa vadeli; bu uzun vadeli güvenlik ağı. |
-| Duplicate row (aynı gear) | CONTROLLED | ✅ | DB unique idx_marketing_signals_site_call_gear; 23505 idempotent |
-| Duplicate queue row (aynı call) | CONTROLLED | ✅ | unique call_id; 23505 idempotent |
-| Google duplicate conversion | CONTROLLED | ✅ | order_id deterministik; Google dedup yapar |
+| Topic | Severity | Status | Note |
+|-------|----------|--------|------|
+| Ack signal_* PENDING → SENT | FIXED | ✅ Fixed | Ack now looks for PROCESSING (previously PENDING; pulse was not becoming SENT) |
+| 0 TL seal must not go to Google | FIXED | ✅ | Seal path: computeConversionValue returns null; no enqueue. enqueue-from-sales: value_cents<=0 skip |
+| PENDING signal stuck | MITIGATED | ✅ | Stuck-Signal-Recoverer added: `recover_stuck_marketing_signals` RPC + `/api/cron/oci/recover-stuck-signals` (every 15 min, PROCESSING older than 4 hr → PENDING). sweep-zombies (10 min) short-term; this is long-term safety net. |
+| Duplicate row (same gear) | CONTROLLED | ✅ | DB unique idx_marketing_signals_site_call_gear; 23505 idempotent |
+| Duplicate queue row (same call) | CONTROLLED | ✅ | unique call_id; 23505 idempotent |
+| Google duplicate conversion | CONTROLLED | ✅ | order_id deterministic; Google dedups |
 
-### Stuck-Signal-Recoverer ✅ Uygulandı
+### Stuck-Signal-Recoverer ✅ Implemented
 
-**Uygulama:** `recover_stuck_marketing_signals(p_min_age_minutes int DEFAULT 240)` RPC; cron: `/api/cron/oci/recover-stuck-signals` (her 15 dk).
+**Implementation:** `recover_stuck_marketing_signals(p_min_age_minutes int DEFAULT 240)` RPC; cron: `/api/cron/oci/recover-stuck-signals` (every 15 min).
 
-- Tetikleyici: Vercel Cron `*/15 * * * *`
-- Kriter: `dispatch_status = 'PROCESSING' AND lower(sys_period) < NOW() - INTERVAL '4 hours'`
-- Aksiyon: `dispatch_status → 'PENDING'` (export tekrar seçebilir)
+- Trigger: Vercel Cron `*/15 * * * *`
+- Criterion: `dispatch_status = 'PROCESSING' AND lower(sys_period) < NOW() - INTERVAL '4 hours'`
+- Action: `dispatch_status → 'PENDING'` (export can select again)
 - Migration: `20261112000000_recover_stuck_marketing_signals.sql`
 
 ---
 
-## 6. İntent vs Kuyruk Ayrımı `CURRENT`
+## 6. Intent vs Queue Distinction `CURRENT`
 
-| Konsept | Açıklama |
-|---------|----------|
-| **Intent** | Call henüz mühürlenmedi (status=intent, confirmed vb.) |
-| **Kuyruk** | Sadece V5; satır sadece seal sonrası eklenir |
-| Intent → V2 | marketing_signals'a gider (nabız). Kuyrukta satır yok; doğru davranış |
-| İki giriş yolu | Sync (process-sync-event) ve Call-Event (process-call-event) → her ikisi de V2 yazar |
+| Concept | Description |
+|---------|-------------|
+| **Intent** | Call not yet sealed (status=intent, confirmed, etc.) |
+| **Queue** | V5 only; row added only after seal |
+| Intent → V2 | Goes to marketing_signals (pulse). No queue row; correct behavior |
+| Two entry paths | Sync (process-sync-event) and Call-Event (process-call-event) → both write V2 |
 
 ---
 
-## 7. Hızlı Kontrol Komutları `CURRENT`
+## 7. Quick Check Commands `CURRENT`
 
 ```bash
-# Metrikler (CRON_SECRET gerekli)
+# Metrics (CRON_SECRET required)
 curl -H "Authorization: Bearer $CRON_SECRET" "https://<APP>/api/metrics"
 
-# Kuyruk istatistikleri
+# Queue statistics
 # GET /api/oci/queue-stats?siteId=...
 ```
 
-Veritabanı sorguları (site bazlı):
+Database queries (site-scoped):
 
 ```sql
--- marketing_signals dispatch durumu
+-- marketing_signals dispatch status
 SELECT dispatch_status, COUNT(*) FROM marketing_signals WHERE site_id = '...' GROUP BY dispatch_status;
 
--- offline_conversion_queue durumu
+-- offline_conversion_queue status
 SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROUP BY status;
 ```
 
@@ -203,8 +203,8 @@ SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROU
 
 **Single source of truth:** Funnel Kernel (ledger + projection). No dual-headed export paths.
 
-| Kural | Uygulama |
-|-------|----------|
+| Rule | Implementation |
+|------|----------------|
 | No null fallbacks in critical paths | conversionTime, value_cents, currency: missing → skip row and log (EXPORT_SKIP_*). No silent `now()` or `0`. |
 | No best-effort in critical path | Seal V3/V4 emit and enqueue: fail loud (503) on error; no silent swallow. |
 | Version required for seal | `body.version` required; 400 if omitted. Optimistic locking enforced. |
@@ -221,37 +221,37 @@ SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROU
 | Item | Target |
 |------|--------|
 | call-event v1 | Sunset 2026-05-10; X-Ops-Deprecated header. Pre-sunset: client migration; v1 → 410 after sunset. |
-| OCI Script Quarantine | Remove site from Script Properties per SOP. See `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_KONTROL.md` — Sunset Maneuver. |
+| OCI Script Quarantine | Remove site from Script Properties per SOP. See `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_CONTROL.md` — Sunset Maneuver. |
 | Dual-channel cutover | No dual-channel; Script Quarantine before worker cutover. |
 | Legacy RPCs | v2 mandatory date; v1 fallback deprecated. |
 
 ---
 
-## 9. Referans Dokümanlar
+## 9. Reference Documents
 
-**Charter / kontrat (hedef mimari):**
+**Charter / contract (target architecture):**
 - `docs/architecture/FUNNEL_CONTRACT.md` — Funnel Kernel Charter
 - `docs/architecture/EXPORT_CONTRACT.md` — Export Contract
 - `docs/architecture/DETERMINISM_CONTRACT.md` — Determinism rules (null policy, fail-closed, SSOT)
-- `docs/architecture/MASTER_ARCHITECTURE_MAP.md` — Tek sayfa mimari harita
+- `docs/architecture/MASTER_ARCHITECTURE_MAP.md` — Single-page architecture map
 
-**Operasyon / audit:**
-- `docs/runbooks/OCI_SISTEM_DERIN_ANALIZ.md` — 5 set, iki başlılık, akış
-- `docs/runbooks/OCI_DONUSUM_INTENT_AKIS_SEMASI.md` — UI → dönüşüm eşlemesi
-- `docs/runbooks/OCI_FIVE_GEAR_ARCHITECTURAL_AUDIT.md` — Mimari audit
-- `docs/runbooks/OCI_CHAOS_RED_TEAM_AUDIT.md` — Chaos/retry analizi
+**Operations / audit:**
+- `docs/runbooks/OCI_SYSTEM_DEEP_ANALYSIS.md` — 5 sets, dual-head, flow
+- `docs/runbooks/OCI_CONVERSION_INTENT_FLOW_DIAGRAM.md` — UI → conversion mapping
+- `docs/runbooks/OCI_FIVE_GEAR_ARCHITECTURAL_AUDIT.md` — Architecture audit
+- `docs/runbooks/OCI_CHAOS_RED_TEAM_AUDIT.md` — Chaos/retry analysis
 
 ---
 
-## 10. Doküman Kalitesi Değerlendirmesi
+## 10. Document Quality Assessment
 
-| Kriter | Değerlendirme |
-|--------|---------------|
-| Teknik doğruluk | Çok iyi |
-| Operasyonel değer | Yüksek |
-| Okunabilirlik | İyi |
-| Mimari olgunluk | Yüksek |
+| Criterion | Assessment |
+|-----------|------------|
+| Technical accuracy | Very good |
+| Operational value | High |
+| Readability | Good |
+| Architecture maturity | High |
 
-**Sonuç:** ✅ **OpsMantik OCI Operations Snapshot — Production Ready**
+**Result:** ✅ **OpsMantik OCI Operations Snapshot — Production Ready**
 
-Bu belge onboarding, incident response, debug ve mimari geçiş için kullanılabilir.
+This document is suitable for onboarding, incident response, debug, and architecture transition.

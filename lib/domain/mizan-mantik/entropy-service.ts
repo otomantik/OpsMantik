@@ -48,6 +48,7 @@ export async function getEntropyScore(fingerprint: string | null): Promise<Entro
  * Build a fingerprint string from IP and User-Agent (e.g. for ingest APIs).
  * Returns stable key for lookup; use same format when recording outcomes.
  */
+/** @deprecated Unused; fingerprint built elsewhere. Kept for API. */
 export function buildFingerprint(ip: string | null, userAgent: string | null): string {
   const a = (ip ?? '').trim();
   const b = (userAgent ?? '').trim();

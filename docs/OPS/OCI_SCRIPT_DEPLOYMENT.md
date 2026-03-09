@@ -48,7 +48,7 @@ For local mock runs (`node scripts/google-ads-oci/GoogleAdsScript.js`):
 
 ## Sites migrated to API (Worker)
 
-When a site is switched to **Worker (API)** — `oci_sync_method = 'api'` — it must be **removed from the Apps Script** so only the worker processes its queue (no dual-channel). See **SOP: Apps Script Quarantine (Sunset Maneuver)** in `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_KONTROL.md` (Phase 3): remove the site ID from Script Properties (`OPSMANTIK_SITE_ID` or equivalent).
+When a site is switched to **Worker (API)** — `oci_sync_method = 'api'` — it must be **removed from the Apps Script** so only the worker processes its queue (no dual-channel). See **SOP: Apps Script Quarantine (Sunset Maneuver)** in `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_CONTROL.md` (Phase 3): remove the site ID from Script Properties (`OPSMANTIK_SITE_ID` or equivalent).
 
 ## Verification
 

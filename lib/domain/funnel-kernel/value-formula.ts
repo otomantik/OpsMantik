@@ -46,7 +46,7 @@ export function computeSealedValue(exactValueCents: number): number {
 
 /**
  * V2–V4 estimated value with decay.
- * estimated = baseValue × stage_weight × quality_weight × confidence_weight × decay
+ * @deprecated Unused; export uses computeSealedValue / oci-config. Kept for API.
  */
 export function computeEstimatedValue(
   stage: 'V2' | 'V3' | 'V4',

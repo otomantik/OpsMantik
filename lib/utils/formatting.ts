@@ -55,15 +55,6 @@ export function formatTimestamp(
     }
 }
 
-export function formatTimestampWithTZ(
-    ts: string | null | undefined,
-    options?: Intl.DateTimeFormatOptions
-): string {
-    if (!ts) return '—';
-    const formatted = formatTimestamp(ts, options);
-    return `${formatted} (TRT)`;
-}
-
 /**
  * Format relative time (e.g., "5m ago").
  * Passing t() is preferred for proper i18n.
@@ -96,24 +87,6 @@ export function formatRelativeTime(ts: string | null | undefined, t?: (key: Tran
     } catch {
         return '—';
     }
-}
-
-/**
- * Lead score labels and colors.
- */
-export function getConfidence(score: number): { label: 'HIGH' | 'MEDIUM' | 'LOW'; color: string } {
-    if (score >= 80) return { label: 'HIGH', color: 'text-emerald-400' };
-    if (score >= 60) return { label: 'MEDIUM', color: 'text-yellow-400' };
-    return { label: 'LOW', color: 'text-muted-foreground' };
-}
-
-/**
- * Mask fingerprint for UI.
- */
-export function maskFingerprint(fp: string | null | undefined): string {
-    if (!fp || fp.length === 0) return '—';
-    if (fp.length <= 8) return fp;
-    return `${fp.slice(0, 4)}...${fp.slice(-4)}`;
 }
 
 /** Ghost geo cities (IP edge / CDN / proxy locations, not real client). Never display. */
