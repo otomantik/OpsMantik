@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { email, site_id, role = 'analyst' } = body;
+    // Default operational invites to operator so queue/panel buttons are honest by default.
+    const { email, site_id, role = 'operator' } = body;
     const emailNorm = typeof email === 'string' ? email.trim() : '';
     const emailLc = emailNorm.toLowerCase();
 

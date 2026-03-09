@@ -24,13 +24,12 @@ Seal Call → enqueueSealConversion() → offline_conversion_queue (QUEUED)
          → Google Ads API (direkt)
 ```
 
-### Paralel (Legacy): conversions tablosu
+### Legacy yüzeyler (RETIRED)
 
 ```
-dispatch-conversions cron (*/2 dk) → conversion-worker
-  → conversions tablosu (Iron Dome)
-  → GOOGLE_ADS_CREDENTIALS (global env)
-  → Google Ads API
+/api/cron/dispatch-conversions  → 410 Gone
+/api/oci/export                 → 410 Gone
+/api/oci/export-batch           → 410 Gone
 ```
 
 ---
@@ -45,7 +44,6 @@ dispatch-conversions cron (*/2 dk) → conversion-worker
 | `POST /api/oci/ack` | Google Ads Script | Yükleme sonrası PROCESSING → COMPLETED |
 | `GET /api/cron/providers/recover-processing` | Vercel Cron */10 | PROCESSING’de takılı satırları RETRY’a alır |
 | `GET /api/cron/sweep-unsent-conversions` | Vercel Cron */15 | Seal edilmiş ama kuyrukta olmayan call’ları kuyruğa ekler |
-| `POST /api/cron/dispatch-conversions` | Vercel Cron */2 | `conversions` tablosu (Iron Dome, eski akış) |
 
 ---
 
@@ -58,11 +56,11 @@ dispatch-conversions cron (*/2 dk) → conversion-worker
 - **Sonuç:** `process-offline-conversions` zaten api siteleri için aynı işi yapıyor; google-ads-oci ayrı bir tetikleyici olarak kullanılmıyorsa büyük risk değil.
 - **Öneri:** `oci_sync_method='api'` siteler için yalnızca `process-offline-conversions` kullanılıyorsa net; QStash/manuel tetikleme gerekiyorsa dokümante edilmeli.
 
-### 3.2 Script sadece tek site (Muratcan AKÜ)
+### 3.2 Script source of truth
 
-- **Durum:** `scripts/google-ads-oci/GoogleAdsScript.js` içinde `siteId` sabit: `c644fff7-9d7a-440d-b9bf-99f3a0f86073`.
-- **Etki:** Poyraz Antika, Yapıozman Danışmalık vb. script modunda olsalar bile bu script ile çalışmaz.
-- **Öneri:** Script Properties’ten `OPSMANTIK_SITE_ID` alınmalı; site başına ayrı script instance veya loop ile multi-site desteklenmeli.
+- **Durum:** Canonical kaynak `scripts/google-ads-oci/GoogleAdsScript.js`.
+- **Not:** `scripts/google-ads/*.js` ve `scripts/google-ads-oci/deploy/*.js` site-specific deploy snapshot'larıdır.
+- **Kural:** Önce canonical script güncellenir, snapshot'lar sonra yenilenir.
 
 ### 3.3 OCI_API_KEY vs OCI_API_KEYS
 
@@ -93,9 +91,8 @@ dispatch-conversions cron (*/2 dk) → conversion-worker
 
 ### 3.7 conversions vs offline_conversion_queue
 
-- **İki farklı tablo:** `conversions` (Iron Dome) ve `offline_conversion_queue` (Seal → OCI).
-- **dispatch-conversions:** Sadece `conversions` tablosu ile çalışıyor; `offline_conversion_queue`’ya dokunmuyor.
-- **Etki:** Seal akışı `offline_conversion_queue` kullanıyorsa, `dispatch-conversions` bu akıştan bağımsız. İki sistem paralel çalışıyorsa netleştirilmesi iyi olur.
+- **Karar:** `offline_conversion_queue` tek canonical OCI substrate olarak kaldı.
+- **Durum:** `dispatch-conversions` ve eski `conversions` yüzeyi emekliye ayrıldı.
 
 ### 3.8 sweep-unsent-conversions kapsamı
 
@@ -113,7 +110,6 @@ dispatch-conversions cron (*/2 dk) → conversion-worker
 | process-offline-conversions | */10 | offline_conversion_queue (api siteler) → Google Ads |
 | providers/recover-processing | */10 | PROCESSING’de takılı satırları RETRY’a alır |
 | sweep-unsent-conversions | */15 | Seal edilmiş ama kuyrukta olmayan call’ları kuyruğa ekler |
-| dispatch-conversions | */2 | conversions tablosu (Iron Dome) |
 
 ---
 

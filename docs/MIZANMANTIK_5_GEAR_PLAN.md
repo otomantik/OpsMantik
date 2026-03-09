@@ -53,7 +53,7 @@ Aynı `call_id` veya `(site_id, gclid)` ile son 24 saat içinde zaten bir V2_PUL
 
 ```
 evaluateAndRouteSignal(gear, payload)
-├── V1_PAGEVIEW  → Redis pv:queue (value=0), bypass decay
+├── V1_PAGEVIEW  → Redis pv:queue (1 minor-unit visibility value), bypass decay
 ├── V2_PULSE     → [dedup check] → marketing_signals (Soft decay)
 ├── V3_ENGAGE    → marketing_signals (Standard decay)
 ├── V4_INTENT    → marketing_signals (Aggressive decay)
@@ -80,7 +80,7 @@ lib/domain/mizan-mantik/
 | Yer | Önce | Sonra |
 |-----|------|-------|
 | `signal-emitter.ts` | `emitSignal(params)` | `MizanMantikOrchestrator.evaluateAndRouteSignal(gear, payload)` |
-| `track/pv/route.ts` | Direkt Redis | `evaluateAndRouteSignal(V1_PAGEVIEW, ...)` veya mevcut akış korunur (V1 Redis’e gider, value=0) |
+| `track/pv/route.ts` | Direkt Redis | `evaluateAndRouteSignal(V1_PAGEVIEW, ...)` ve tracker page-view ingress’i; V1 Redis’e gider, value=1 minor unit |
 | `google-ads-export` | `calculateConversionValue` | Orchestrator’dan gelen mantıkla uyumlu hale getir |
 | `seal route` / enqueue | value_cents | V5_SEAL olarak orchestrator üzerinden ledger’a yaz |
 
@@ -98,7 +98,7 @@ lib/domain/mizan-mantik/
 
 3. **lib/domain/mizan-mantik/orchestrator.ts**  
    - evaluateAndRouteSignal(gear, payload)  
-   - V1 → Redis (value=0)  
+   - V1 → Redis (value=1 minor unit)  
    - V2–V4 → marketing_signals (dedup V2)  
    - V5 → ledger (value_cents, no decay)
 
@@ -125,7 +125,7 @@ Google’ı adım adım beslemek için doğru eşleştirme:
 | **INTENT_CAPTURED** (Ham Form/Çağrı) | **V2_PULSE** | Henüz ham nabız, operatör süzgecinden geçmemiş. Yumuşak soğur. |
 | **MEETING_BOOKED** (Randevu/Keşif) | **V3_ENGAGE** | Operatör konuştu, bot olmadığı doğrulandı, nitelikli temas. |
 | **SEAL_PENDING** (Ödeme Bekleniyor) | **V4_INTENT** | Fiyat verildi, cüzdan masada. En agresif soğumayı buraya vuruyoruz — hızlı kapatanları bulmak için. |
-| **Ops_PageView** (Redis PV) | **V1_PAGEVIEW** | Şok cihazı — volume sinyali, value=0. |
+| **Ops_PageView** (Redis PV) | **V1_PAGEVIEW** | Şok cihazı — volume sinyali, tracker → `/api/track/pv` → Redis, value=1 minor unit. |
 | **offline_conversion_queue** (Seal) | **V5_SEAL** | Demir Mühür — mutlak değer, ledgere kilitlenir. |
 
 ---

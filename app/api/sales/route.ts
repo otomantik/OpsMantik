@@ -7,8 +7,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { adminClient } from '@/lib/supabase/admin';
+import { appendAuditLog } from '@/lib/audit/audit-log';
+import { getChronologyFloorForConversation } from '@/lib/oci/chronology-guard';
+import { sanitizeErrorForClient } from '@/lib/security/sanitize-error';
 
 export const runtime = 'nodejs';
+const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
 
 function parseAmount(body: { amount?: number; amount_cents?: number }): number | null {
   if (typeof body.amount_cents === 'number' && Number.isInteger(body.amount_cents) && body.amount_cents >= 0) {
@@ -62,8 +67,11 @@ async function updateExistingDraftSale(
     amountCents: number;
     occurredAtIso: string;
     currency: string;
+    status: 'DRAFT' | 'PENDING_APPROVAL';
     customerHash: string | null;
     conversationId: string | null;
+    entryReason: string | null;
+    approvalRequestedAt: string | null;
     notes: string | null;
   }
 ): Promise<{ data: unknown; error: { message: string; code?: string } | null }> {
@@ -73,6 +81,9 @@ async function updateExistingDraftSale(
       amount_cents: payload.amountCents,
       occurred_at: payload.occurredAtIso,
       currency: payload.currency,
+      status: payload.status,
+      entry_reason: payload.entryReason ?? undefined,
+      approval_requested_at: payload.approvalRequestedAt ?? undefined,
       customer_hash: payload.customerHash ?? undefined,
       conversation_id: payload.conversationId ?? undefined,
       notes: payload.notes ?? undefined,
@@ -105,6 +116,7 @@ export async function POST(req: NextRequest) {
     external_ref?: string;
     customer_hash?: string;
     conversation_id?: string;
+    entry_reason?: string;
     notes?: string;
   };
   try {
@@ -150,12 +162,35 @@ export async function POST(req: NextRequest) {
   const customerHash = body.customer_hash != null ? String(body.customer_hash) : null;
   const conversationIdRaw = body.conversation_id != null ? String(body.conversation_id) : null;
   const conversationId = conversationIdRaw != null && conversationIdRaw.trim() !== '' ? conversationIdRaw.trim() : null;
+  const entryReasonRaw = body.entry_reason != null ? String(body.entry_reason) : null;
+  const entryReason = entryReasonRaw != null && entryReasonRaw.trim() !== '' ? entryReasonRaw.trim().slice(0, 500) : null;
   const notes = body.notes != null ? String(body.notes) : null;
 
   const conversationValidation = await validateConversationSite(supabase, siteId, conversationId);
   if (!conversationValidation.ok) {
     return conversationValidation.response;
   }
+
+  const chronologyFloor = conversationId
+    ? await getChronologyFloorForConversation(siteId, conversationId)
+    : null;
+  if (chronologyFloor && occurredAtDate.getTime() < new Date(chronologyFloor.observedAt).getTime()) {
+    return NextResponse.json(
+      {
+        error: 'occurred_at cannot be earlier than the attributed click/session time',
+        code: 'SALE_OCCURRED_AT_BEFORE_CLICK_TIME',
+        floor_at: chronologyFloor.observedAt,
+        floor_source: chronologyFloor.source,
+      },
+      { status: 409, headers: getBuildInfoHeaders() }
+    );
+  }
+
+  const backdatedMs = Date.now() - occurredAtDate.getTime();
+  const isBackdated = backdatedMs > 0;
+  const approvalRequired = isBackdated && backdatedMs > BACKDATE_APPROVAL_MS;
+  const nextStatus: 'DRAFT' | 'PENDING_APPROVAL' = approvalRequired ? 'PENDING_APPROVAL' : 'DRAFT';
+  const approvalRequestedAt = approvalRequired ? new Date().toISOString() : null;
 
   if (externalRef) {
     const { data: existing, error: fetchError } = await supabase
@@ -166,7 +201,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (fetchError) {
-      return NextResponse.json({ error: fetchError.message }, { status: 500, headers: getBuildInfoHeaders() });
+      return NextResponse.json({ error: sanitizeErrorForClient(fetchError) }, { status: 500, headers: getBuildInfoHeaders() });
     }
 
     if (existing) {
@@ -181,8 +216,11 @@ export async function POST(req: NextRequest) {
         amountCents,
         occurredAtIso: occurredAtDate.toISOString(),
         currency,
+        status: nextStatus,
         customerHash,
         conversationId: conversationId ?? existing.conversation_id ?? null,
+        entryReason,
+        approvalRequestedAt,
         notes: notes ?? existing.notes ?? null,
       });
 
@@ -193,7 +231,24 @@ export async function POST(req: NextRequest) {
             { status: 409, headers: getBuildInfoHeaders() }
           );
         }
-        return NextResponse.json({ error: updateError.message }, { status: 500, headers: getBuildInfoHeaders() });
+        return NextResponse.json({ error: sanitizeErrorForClient(updateError) }, { status: 500, headers: getBuildInfoHeaders() });
+      }
+      if (approvalRequired) {
+        await appendAuditLog(adminClient, {
+          actor_type: 'user',
+          actor_id: user.id,
+          action: 'sale_time_pending_approval',
+          resource_type: 'sale',
+          resource_id: existing.id,
+          site_id: siteId,
+          payload: {
+            occurred_at: occurredAtDate.toISOString(),
+            entry_reason: entryReason,
+            backdated_ms: backdatedMs,
+            floor_at: chronologyFloor?.observedAt ?? null,
+            floor_source: chronologyFloor?.source ?? null,
+          },
+        });
       }
       return NextResponse.json(updated, { status: 200, headers: getBuildInfoHeaders() });
     }
@@ -206,7 +261,9 @@ export async function POST(req: NextRequest) {
       occurred_at: occurredAtDate.toISOString(),
       amount_cents: amountCents,
       currency,
-      status: 'DRAFT',
+      status: nextStatus,
+      entry_reason: entryReason ?? undefined,
+      approval_requested_at: approvalRequestedAt ?? undefined,
       external_ref: externalRef ?? undefined,
       customer_hash: customerHash ?? undefined,
       conversation_id: conversationId ?? undefined,
@@ -234,8 +291,11 @@ export async function POST(req: NextRequest) {
           amountCents,
           occurredAtIso: occurredAtDate.toISOString(),
           currency,
+          status: nextStatus,
           customerHash,
           conversationId: conversationId ?? existing2.conversation_id ?? null,
+          entryReason,
+          approvalRequestedAt,
           notes: notes ?? existing2.notes ?? null,
         });
         if (!updateErr) {
@@ -247,9 +307,27 @@ export async function POST(req: NextRequest) {
             { status: 409, headers: getBuildInfoHeaders() }
           );
         }
+        return NextResponse.json({ error: sanitizeErrorForClient(updateErr) }, { status: 500, headers: getBuildInfoHeaders() });
       }
     }
-    return NextResponse.json({ error: insertError.message }, { status: 500, headers: getBuildInfoHeaders() });
+    return NextResponse.json({ error: sanitizeErrorForClient(insertError) }, { status: 500, headers: getBuildInfoHeaders() });
+  }
+  if (approvalRequired && inserted && typeof inserted === 'object' && 'id' in inserted) {
+    await appendAuditLog(adminClient, {
+      actor_type: 'user',
+      actor_id: user.id,
+      action: 'sale_time_pending_approval',
+      resource_type: 'sale',
+      resource_id: String((inserted as { id: string }).id),
+      site_id: siteId,
+      payload: {
+        occurred_at: occurredAtDate.toISOString(),
+        entry_reason: entryReason,
+        backdated_ms: backdatedMs,
+        floor_at: chronologyFloor?.observedAt ?? null,
+        floor_source: chronologyFloor?.source ?? null,
+      },
+    });
   }
   return NextResponse.json(inserted, { status: 200, headers: getBuildInfoHeaders() });
 }
@@ -289,7 +367,7 @@ export async function GET(req: NextRequest) {
     if (!Number.isNaN(toDate.getTime())) query = query.lte('occurred_at', toDate.toISOString());
   }
   const status = searchParams.get('status');
-  if (status && ['DRAFT', 'CONFIRMED', 'CANCELED'].includes(status)) {
+  if (status && ['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'CANCELED'].includes(status)) {
     query = query.eq('status', status);
   }
 

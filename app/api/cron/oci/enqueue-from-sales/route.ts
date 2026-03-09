@@ -47,7 +47,7 @@ async function runEnqueueFromSales(req: NextRequest) {
   try {
     const { data: sales, error: salesError } = await adminClient
       .from('sales')
-      .select('id, site_id, occurred_at, amount_cents, currency, conversation_id')
+      .select('id')
       .eq('status', 'CONFIRMED')
       .gte('occurred_at', since);
 
@@ -58,76 +58,37 @@ async function runEnqueueFromSales(req: NextRequest) {
       );
     }
 
-    const { data: existingQueue } = await adminClient
-      .from('offline_conversion_queue')
-      .select('sale_id');
-    const existingSaleIds = new Set((existingQueue ?? []).map((r) => r.sale_id));
-
     let enqueued = 0;
     let skipped = 0;
+    const reasons: Record<string, number> = {};
 
     for (const sale of sales ?? []) {
-      if (existingSaleIds.has(sale.id)) {
-        skipped++;
-        continue;
+      const { data: reconcileRows, error: reconcileError } = await adminClient.rpc('reconcile_confirmed_sale_queue_v1', {
+        p_sale_id: sale.id,
+      });
+
+      if (reconcileError) {
+        return NextResponse.json(
+          { ok: false, error: reconcileError.message, code: 'RECONCILE_CONFIRMED_SALE_QUEUE_FAILED' },
+          { status: 500, headers: getBuildInfoHeaders() }
+        );
       }
 
-      let gclid: string | null = null;
-      let wbraid: string | null = null;
-      let gbraid: string | null = null;
-      if (sale.conversation_id) {
-        const { data: conv } = await adminClient
-          .from('conversations')
-          .select('primary_source')
-          .eq('id', sale.conversation_id)
-          .maybeSingle();
-        const ps = conv?.primary_source as { gclid?: string; wbraid?: string; gbraid?: string } | null;
-        if (ps) {
-          gclid = ps.gclid ?? null;
-          wbraid = ps.wbraid ?? null;
-          gbraid = ps.gbraid ?? null;
-        }
-      }
+      const reconcile = Array.isArray(reconcileRows) ? reconcileRows[0] : reconcileRows;
+      const didEnqueue = Boolean((reconcile as { enqueued?: boolean } | null)?.enqueued);
+      const reason = ((reconcile as { reason?: string } | null)?.reason ?? 'unknown') as string;
+      reasons[reason] = (reasons[reason] ?? 0) + 1;
 
-      // V5_SEAL: value_cents = sale_amount. 0 TL mühür Google'a gönderilmez (policy = seal path).
-      const valueCents = sale.amount_cents ?? 0;
-      if (valueCents <= 0) {
-        skipped++;
-        continue;
-      }
-      const { error: insertError } = await adminClient
-        .from('offline_conversion_queue')
-        .insert({
-          site_id: sale.site_id,
-          sale_id: sale.id,
-          conversion_time: sale.occurred_at,
-          value_cents: valueCents,
-          currency: sale.currency,
-          gclid,
-          wbraid,
-          gbraid,
-          status: 'QUEUED',
-        });
-
-      if (insertError) {
-        if (insertError.code === '23505') {
-          skipped++;
-          existingSaleIds.add(sale.id);
-        } else {
-          return NextResponse.json(
-            { ok: false, error: insertError.message },
-            { status: 500, headers: getBuildInfoHeaders() }
-          );
-        }
-      } else {
+      if (didEnqueue) {
         enqueued++;
-        existingSaleIds.add(sale.id);
+      } else {
+        skipped++;
       }
     }
 
     const processed = sales?.length ?? 0;
     return NextResponse.json(
-      { ok: true, processed, enqueued, skipped },
+      { ok: true, processed, enqueued, skipped, reasons },
       { status: 200, headers: getBuildInfoHeaders() }
     );
   } catch (err) {

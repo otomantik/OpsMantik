@@ -336,7 +336,7 @@ export async function POST(req: NextRequest) {
     // COMPLIANCE INVARIANT:
     // Call-event must not bypass analytics consent.
     // No call insert without session analytics consent.
-    // Marketing consent required for OCI enqueue (enforce in enqueueSealConversion, PipelineService, confirm_sale_and_enqueue).
+    // Marketing consent required for OCI enqueue (enforce in enqueueSealConversion and canonical sale queue RPCs).
     //
     // Find best session by fingerprint (PR-OCI-7.4: GCLID-preferring, 14-day lookback).
     const lookbackCutoff = new Date(Date.now() - BRIDGE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -364,15 +364,20 @@ export async function POST(req: NextRequest) {
     const scoreBreakdown = matchResult.scoreBreakdown;
     const callStatus = matchResult.callStatus;
 
-    const inferredAction = inferIntentAction(phone_number ?? '');
-    const intent_action =
-      typeof body.intent_action === 'string' && body.intent_action.trim() !== ''
-        ? (body.intent_action.trim().toLowerCase() === 'whatsapp' ? 'whatsapp' : 'phone')
-        : inferredAction;
-    const intent_target =
+    const rawIntentTarget =
       typeof body.intent_target === 'string' && body.intent_target.trim() !== ''
         ? body.intent_target.trim()
-        : normalizePhoneTarget(phone_number ?? 'Unknown');
+        : (phone_number ?? 'Unknown');
+    const inferredAction = inferIntentAction(rawIntentTarget || phone_number || '');
+    const explicitIntentAction =
+      typeof body.intent_action === 'string' && body.intent_action.trim() !== ''
+        ? (body.intent_action.trim().toLowerCase() === 'whatsapp' ? 'whatsapp' : 'phone')
+        : null;
+    const intent_target = normalizePhoneTarget(rawIntentTarget);
+    const intent_action =
+      intent_target.toLowerCase().startsWith('whatsapp:')
+        ? 'whatsapp'
+        : (explicitIntentAction ?? inferredAction);
     const intent_stamp =
       typeof body.intent_stamp === 'string' && body.intent_stamp.trim() !== ''
         ? body.intent_stamp.trim()

@@ -14,8 +14,17 @@
     if (!url || typeof url !== "string") return "";
     return url.replace(/\/call-event\/?$/i, "/sync");
   }
+  function deriveTrackPvUrl(url) {
+    if (!url || typeof url !== "string") return "";
+    if (/\/api\/sync\/?$/i.test(url)) return url.replace(/\/api\/sync\/?$/i, "/api/track/pv");
+    if (/\/sync\/?$/i.test(url)) return url.replace(/\/sync\/?$/i, "/track/pv");
+    return "";
+  }
   var CONFIG = {
     apiUrl: syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : ""),
+    pvUrl: runtimeConfig.opsTrackPvUrl || deriveTrackPvUrl(
+      syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || ""
+    ) || (typeof window !== "undefined" ? window.location.origin + "/api/track/pv" : ""),
     trackerVersion: runtimeConfig.opsTrackerVersion || "core-shadow-2026-11-05",
     sessionKey: "opsmantik_session_sid",
     fingerprintKey: "opsmantik_session_fp",
@@ -75,6 +84,65 @@
       const v = c === "x" ? r : r & 3 | 8;
       return v.toString(16);
     });
+  }
+  function normalizeDialTarget(raw) {
+    const normalized = (raw || "").toString().replace(/[^\d+]/g, "");
+    return normalized.length > 0 ? normalized : null;
+  }
+  function canonicalizeWhatsAppTarget(raw) {
+    const t = (raw || "").toString().trim();
+    const lower = t.toLowerCase();
+    if (!lower.startsWith("whatsapp:") && !lower.startsWith("whatsapp://") && !lower.includes("wa.me") && !lower.includes("whatsapp.com") && !lower.includes("chat.whatsapp.com") && !lower.includes("joinchat")) {
+      return null;
+    }
+    const phoneFromQuery = (t.match(/[?&]phone=([^&#]+)/i) || [])[1] || null;
+    const phoneFromWaMe = (t.match(/wa\.me\/([^/?#]+)/i) || [])[1] || null;
+    const phoneFromScheme = (t.match(/^whatsapp:\s*(.+)$/i) || [])[1] || null;
+    const rawPhoneCandidate = phoneFromQuery || phoneFromWaMe || phoneFromScheme || "";
+    let decodedPhoneCandidate = rawPhoneCandidate;
+    try {
+      decodedPhoneCandidate = decodeURIComponent(rawPhoneCandidate);
+    } catch {
+      decodedPhoneCandidate = rawPhoneCandidate;
+    }
+    const normalizedPhone = normalizeDialTarget(decodedPhoneCandidate);
+    if (normalizedPhone) {
+      return `whatsapp:${normalizedPhone}`;
+    }
+    const hostMatch = t.match(/^https?:\/\/([^/?#]+)/i);
+    const host = ((hostMatch || [])[1] || "").toLowerCase();
+    const pathMatch = t.match(/^https?:\/\/[^/?#]+\/([^?#]+)/i);
+    const path = ((pathMatch || [])[1] || "").replace(/^\/+/, "");
+    if (host === "chat.whatsapp.com") {
+      const inviteCode = path.split("/")[0] || "unknown";
+      return `whatsapp:joinchat/${inviteCode}`;
+    }
+    if ((host === "api.whatsapp.com" || host === "web.whatsapp.com") && path.toLowerCase().startsWith("joinchat")) {
+      const inviteCode = path.replace(/^joinchat\/?/i, "") || "unknown";
+      return `whatsapp:joinchat/${inviteCode}`;
+    }
+    const canonicalUrl = t.replace(/^https?:\/\//i, "").replace(/\?.*$/, "").replace(/#.*$/, "").replace(/\/+$/, "").toLowerCase();
+    return canonicalUrl ? `whatsapp:${canonicalUrl}` : "whatsapp:unknown";
+  }
+  function normalizePhoneTarget(raw) {
+    const t = (raw || "").toString().trim();
+    const whatsappTarget = canonicalizeWhatsAppTarget(t);
+    if (whatsappTarget) return whatsappTarget;
+    if (t.toLowerCase().startsWith("tel:")) {
+      return normalizeDialTarget(t.slice(4)) || "";
+    }
+    if (/^\+?\d[\d\s().-]{6,}$/.test(t)) {
+      return normalizeDialTarget(t) || "";
+    }
+    return t;
+  }
+  function inferIntentAction(raw) {
+    const normalizedTarget = normalizePhoneTarget(raw).toLowerCase();
+    const t = (raw || "").toString().toLowerCase();
+    if (normalizedTarget.startsWith("whatsapp:")) return "whatsapp";
+    if (t.includes("wa.me") || t.includes("whatsapp.com") || t.includes("chat.whatsapp.com") || t.includes("joinchat") || t.startsWith("whatsapp://")) return "whatsapp";
+    if (t.startsWith("tel:")) return "phone";
+    return "phone";
   }
   function rand4() {
     return Math.random().toString(36).slice(2, 6).padEnd(4, "0");
@@ -632,6 +700,35 @@
   }
 
   // lib/tracker/tracker.js
+  function getTrackerScriptTag() {
+    return document.currentScript || document.querySelector("script[data-ops-site-id]") || document.querySelector("script[data-site-id]");
+  }
+  var recentTrackedIntentAt = /* @__PURE__ */ new Map();
+  var lastPointerContext = null;
+  var FORM_PENDING_STORAGE_KEY = "opsmantik_form_pending_v1";
+  var formLifecycleState = /* @__PURE__ */ new WeakMap();
+  var pendingFormAttempts = [];
+  function cleanupRecentIntentWindow(now) {
+    for (const [key, ts] of recentTrackedIntentAt.entries()) {
+      if (now - ts > 2500) recentTrackedIntentAt.delete(key);
+    }
+  }
+  function inferWidgetSource(target, element) {
+    const raw = [
+      target || "",
+      element?.id || "",
+      element?.className || "",
+      element?.getAttribute?.("data-om-whatsapp") || "",
+      element?.getAttribute?.("data-jivo") || "",
+      element?.getAttribute?.("aria-label") || ""
+    ].join(" ").toLowerCase();
+    if (raw.includes("joinchat")) return "joinchat";
+    if (raw.includes("jivo") || raw.includes("jivosite")) return "jivo";
+    return "whatsapp";
+  }
+  function shouldTrackWhatsAppTarget(target) {
+    return inferIntentAction(target || "") === "whatsapp";
+  }
   var siteId = getSiteId();
   if (!siteId) {
     console.warn("[OPSMANTIK] \u274C Site ID not found");
@@ -659,7 +756,7 @@
     }
     const hw = getHardwareMeta();
     Object.assign(meta, hw);
-    const scriptTag2 = document.currentScript || document.querySelector("script[data-ops-site-id]");
+    const scriptTag2 = getTrackerScriptTag();
     if (scriptTag2) {
       const dc = scriptTag2.getAttribute("data-geo-city");
       const dd = scriptTag2.getAttribute("data-geo-district");
@@ -692,21 +789,458 @@
     }
     addToOutbox(payload);
   }
-  function sendCallEvent(phoneNumber) {
+  function buildCallIntentMeta(target) {
+    const intentAction = inferIntentAction(target || "");
+    const intentTarget = normalizePhoneTarget(target || "");
+    const intentStamp = makeIntentStamp(intentAction === "whatsapp" ? "wa" : "tel", intentTarget);
+    return {
+      intentAction,
+      intentTarget,
+      intentStamp,
+      intentPageUrl: window.location.href
+    };
+  }
+  function buildFormIntentMeta(form) {
+    const currentPath = (() => {
+      try {
+        return new URL(window.location.href).pathname || "/";
+      } catch {
+        return "/";
+      }
+    })();
+    const rawAction = form?.getAttribute?.("action") || "";
+    let actionPath = "";
+    if (rawAction) {
+      try {
+        actionPath = new URL(rawAction, window.location.href).pathname || "";
+      } catch {
+        actionPath = rawAction;
+      }
+    }
+    const formIdentity = form?.id || form?.getAttribute?.("name") || form?.getAttribute?.("data-form-name") || actionPath || currentPath || "unknown";
+    const controls = Array.from(form?.querySelectorAll?.("input, textarea, select") || []).filter((el) => el && !el.disabled);
+    const visibleControls = controls.filter((el) => {
+      const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+      const rect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : { width: 0, height: 0 };
+      return !el.hidden && style?.display !== "none" && style?.visibility !== "hidden" && (rect.width > 0 || rect.height > 0);
+    });
+    const inferFieldRole = (el) => {
+      const raw = [
+        el?.type || "",
+        el?.name || "",
+        el?.id || "",
+        el?.autocomplete || "",
+        el?.placeholder || "",
+        el?.getAttribute?.("aria-label") || ""
+      ].join(" ").toLowerCase();
+      return {
+        hasPhoneField: raw.includes("phone") || raw.includes("tel") || raw.includes("gsm") || raw.includes("mobile"),
+        hasEmailField: raw.includes("email") || raw.includes("mail"),
+        hasNameField: raw.includes("name") || raw.includes("ad") || raw.includes("soyad"),
+        hasMessageField: raw.includes("message") || raw.includes("mesaj") || raw.includes("note") || raw.includes("comment"),
+        hasFileField: (el?.type || "").toLowerCase() === "file" || raw.includes("file") || raw.includes("upload")
+      };
+    };
+    const fieldRoles = controls.reduce((acc, el) => {
+      const next = inferFieldRole(el);
+      acc.hasPhoneField = acc.hasPhoneField || next.hasPhoneField;
+      acc.hasEmailField = acc.hasEmailField || next.hasEmailField;
+      acc.hasNameField = acc.hasNameField || next.hasNameField;
+      acc.hasMessageField = acc.hasMessageField || next.hasMessageField;
+      acc.hasFileField = acc.hasFileField || next.hasFileField;
+      return acc;
+    }, {
+      hasPhoneField: false,
+      hasEmailField: false,
+      hasNameField: false,
+      hasMessageField: false,
+      hasFileField: false
+    });
+    const summary = {
+      method: String(form?.getAttribute?.("method") || "get").trim().toLowerCase() || "get",
+      action_path: actionPath || currentPath,
+      field_count: controls.length,
+      visible_field_count: visibleControls.length,
+      required_field_count: controls.filter((el) => !!el.required).length,
+      file_input_count: controls.filter((el) => (el?.type || "").toLowerCase() === "file").length,
+      textarea_count: controls.filter((el) => el?.tagName === "TEXTAREA").length,
+      select_count: controls.filter((el) => el?.tagName === "SELECT").length,
+      checkbox_count: controls.filter((el) => (el?.type || "").toLowerCase() === "checkbox").length,
+      radio_count: controls.filter((el) => (el?.type || "").toLowerCase() === "radio").length,
+      has_phone_field: fieldRoles.hasPhoneField,
+      has_email_field: fieldRoles.hasEmailField,
+      has_name_field: fieldRoles.hasNameField,
+      has_message_field: fieldRoles.hasMessageField,
+      has_file_field: fieldRoles.hasFileField
+    };
+    return {
+      intentAction: "form",
+      intentTarget: `form:${String(formIdentity).trim() || "unknown"}`,
+      intentStamp: makeIntentStamp("form", `${currentPath}|${formIdentity}`),
+      intentPageUrl: window.location.href,
+      formSummary: summary
+    };
+  }
+  function getFormLifecycleState(form) {
+    if (!form) return null;
+    let current = formLifecycleState.get(form);
+    if (!current) {
+      current = {
+        startSent: false,
+        lastAttemptAt: 0,
+        lastValidationAt: 0
+      };
+      formLifecycleState.set(form, current);
+    }
+    return current;
+  }
+  function buildValidationSummary(form) {
+    const controls = Array.from(form?.querySelectorAll?.("input, textarea, select") || []).filter((el) => el && !el.disabled);
+    const invalid = controls.filter((el) => {
+      try {
+        return typeof el.matches === "function" ? el.matches(":invalid") : false;
+      } catch {
+        return false;
+      }
+    });
+    return {
+      invalid_field_count: invalid.length,
+      required_invalid_count: invalid.filter((el) => !!el.required).length,
+      file_invalid_count: invalid.filter((el) => (el?.type || "").toLowerCase() === "file").length
+    };
+  }
+  function cleanupPendingForms(now = Date.now()) {
+    for (let i = pendingFormAttempts.length - 1; i >= 0; i -= 1) {
+      const item = pendingFormAttempts[i];
+      if (!item || item.resolved || now - item.createdAt > 45e3) {
+        pendingFormAttempts.splice(i, 1);
+      }
+    }
+  }
+  function emitFormLifecycle(form, eventAction, extraMeta = {}) {
+    if (!form) return null;
+    const intentMeta = buildFormIntentMeta(form);
+    const stage = (eventAction || "").replace(/^form_/, "").replace(/^submit_/, "");
+    sendEvent("conversion", eventAction, intentMeta.intentTarget, null, {
+      intent_stamp: intentMeta.intentStamp,
+      intent_action: intentMeta.intentAction,
+      intent_target: intentMeta.intentTarget,
+      intent_page_url: intentMeta.intentPageUrl,
+      form_stage: stage,
+      form_summary: intentMeta.formSummary,
+      ...extraMeta
+    });
+    return intentMeta;
+  }
+  function registerPendingFormAttempt(form, intentMeta, extraMeta = {}) {
+    const actionPath = intentMeta?.formSummary?.action_path || "";
+    const item = {
+      form,
+      intentTarget: intentMeta.intentTarget,
+      intentPageUrl: intentMeta.intentPageUrl,
+      formSummary: intentMeta.formSummary,
+      actionPath,
+      createdAt: Date.now(),
+      resolved: false,
+      extraMeta
+    };
+    pendingFormAttempts.push(item);
+    cleanupPendingForms(item.createdAt);
+    return item;
+  }
+  function resolvePendingForm(item, eventAction, extraMeta = {}) {
+    if (!item || item.resolved) return false;
+    item.resolved = true;
+    sendEvent("conversion", eventAction, item.intentTarget, null, {
+      intent_action: "form",
+      intent_target: item.intentTarget,
+      intent_page_url: item.intentPageUrl,
+      form_stage: (eventAction || "").replace(/^form_/, "").replace(/^submit_/, ""),
+      form_summary: item.formSummary,
+      ...item.extraMeta,
+      ...extraMeta
+    });
+    cleanupPendingForms();
+    return true;
+  }
+  function trackFormStart(form, trigger = "interaction") {
+    const state = getFormLifecycleState(form);
+    if (!state || state.startSent) return;
+    state.startSent = true;
+    emitFormLifecycle(form, "form_start", {
+      form_trigger: trigger
+    });
+  }
+  function trackFormValidationFailure(form, trigger = "invalid") {
+    const state = getFormLifecycleState(form);
+    if (!state) return;
+    const now = Date.now();
+    if (now - state.lastValidationAt < 1200) return;
+    state.lastValidationAt = now;
+    const validation = buildValidationSummary(form);
+    emitFormLifecycle(form, "form_submit_validation_failed", {
+      form_trigger: trigger,
+      form_validation: validation
+    });
+    for (let i = pendingFormAttempts.length - 1; i >= 0; i -= 1) {
+      const item = pendingFormAttempts[i];
+      if (item?.form === form && !item.resolved) {
+        item.resolved = true;
+      }
+    }
+    cleanupPendingForms(now);
+  }
+  function trackFormAttempt(form, trigger = "submit") {
+    const state = getFormLifecycleState(form);
+    if (!state) return null;
+    const now = Date.now();
+    if (now - state.lastAttemptAt < 900) return null;
+    state.lastAttemptAt = now;
+    trackFormStart(form, "attempt");
+    const intentMeta = emitFormLifecycle(form, "form_submit_attempt", {
+      form_trigger: trigger
+    });
+    if (!intentMeta) return null;
+    const pending = registerPendingFormAttempt(form, intentMeta, {
+      form_trigger: trigger
+    });
+    const validation = buildValidationSummary(form);
+    if (validation.invalid_field_count > 0) {
+      trackFormValidationFailure(form, trigger);
+      pending.resolved = true;
+    }
+    cleanupPendingForms(now);
+    return pending;
+  }
+  function looksLikeSuccessLocation() {
+    const text = [
+      window.location.href,
+      document.title || "",
+      document.body?.innerText?.slice(0, 4e3) || ""
+    ].join(" ").toLowerCase();
+    return [
+      "thank you",
+      "thanks",
+      "tesekkur",
+      "te\u015Fekk\xFCr",
+      "basarili",
+      "ba\u015Far\u0131l\u0131",
+      "gonderildi",
+      "g\xF6nderildi",
+      "success",
+      "completed"
+    ].some((token) => text.includes(token));
+  }
+  function flushPendingNavigationOutcome() {
+    let raw = null;
+    try {
+      raw = sessionStorage.getItem(FORM_PENDING_STORAGE_KEY);
+      sessionStorage.removeItem(FORM_PENDING_STORAGE_KEY);
+    } catch {
+      raw = null;
+    }
+    if (!raw) return;
+    let pending = null;
+    try {
+      pending = JSON.parse(raw);
+    } catch {
+      pending = null;
+    }
+    if (!pending || !pending.intentTarget || !pending.intentPageUrl || !pending.formSummary) return;
+    if (Date.now() - Number(pending.createdAt || 0) > 45e3) return;
+    const sourcePath = (() => {
+      try {
+        return new URL(pending.intentPageUrl).pathname || "/";
+      } catch {
+        return "";
+      }
+    })();
+    const currentPath = (() => {
+      try {
+        return new URL(window.location.href).pathname || "/";
+      } catch {
+        return "";
+      }
+    })();
+    if (currentPath && sourcePath && currentPath !== sourcePath || looksLikeSuccessLocation()) {
+      sendEvent("conversion", "form_submit_success", pending.intentTarget, null, {
+        intent_action: "form",
+        intent_target: pending.intentTarget,
+        intent_page_url: pending.intentPageUrl,
+        form_stage: "submit_success",
+        form_summary: pending.formSummary,
+        form_transport: "navigation"
+      });
+    }
+  }
+  function stashPendingNavigationAttempt() {
+    cleanupPendingForms();
+    const pending = pendingFormAttempts.find((item) => item && !item.resolved);
+    if (!pending) return;
+    try {
+      sessionStorage.setItem(FORM_PENDING_STORAGE_KEY, JSON.stringify({
+        intentTarget: pending.intentTarget,
+        intentPageUrl: pending.intentPageUrl,
+        formSummary: pending.formSummary,
+        createdAt: pending.createdAt
+      }));
+    } catch {
+    }
+  }
+  function pickPendingTransport(url, method) {
+    cleanupPendingForms();
+    const requestMethod = String(method || "GET").trim().toUpperCase();
+    if (requestMethod === "GET") return null;
+    const requestPath = (() => {
+      try {
+        return new URL(url, window.location.href).pathname || "/";
+      } catch {
+        return "";
+      }
+    })();
+    const now = Date.now();
+    const candidates = pendingFormAttempts.filter((item) => item && !item.resolved && now - item.createdAt < 15e3);
+    for (const item of candidates.reverse()) {
+      if (item.actionPath && requestPath && item.actionPath === requestPath) return item;
+    }
+    return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+  }
+  function installFormTransportHooks() {
+    if (window.__opsmantikFormTransportHooksInstalled) return;
+    window.__opsmantikFormTransportHooksInstalled = true;
+    const originalFetch = window.fetch;
+    if (typeof originalFetch === "function") {
+      window.fetch = function(...args) {
+        const input = args[0];
+        const init = args[1] || {};
+        const url = typeof input === "string" ? input : input?.url || window.location.href;
+        const method = init?.method || input?.method || "GET";
+        const pending = pickPendingTransport(url, method);
+        return originalFetch.apply(this, args).then((response) => {
+          if (pending) {
+            resolvePendingForm(
+              pending,
+              response.ok ? "form_submit_success" : "form_submit_network_failed",
+              {
+                form_transport: "fetch",
+                form_http_status: response.status
+              }
+            );
+          }
+          return response;
+        }).catch((error) => {
+          if (pending) {
+            resolvePendingForm(pending, "form_submit_network_failed", {
+              form_transport: "fetch",
+              form_error: String(error?.message || error || "fetch_failed").slice(0, 120)
+            });
+          }
+          throw error;
+        });
+      };
+    }
+    const proto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
+    if (proto && !proto.__opsmantikWrapped) {
+      const originalOpen = proto.open;
+      const originalSend = proto.send;
+      proto.open = function(method, url, ...rest) {
+        this.__opsmantikMethod = method;
+        this.__opsmantikUrl = url;
+        return originalOpen.call(this, method, url, ...rest);
+      };
+      proto.send = function(...args) {
+        const pending = pickPendingTransport(this.__opsmantikUrl || window.location.href, this.__opsmantikMethod || "GET");
+        if (pending) {
+          this.addEventListener("load", () => {
+            resolvePendingForm(
+              pending,
+              this.status >= 200 && this.status < 400 ? "form_submit_success" : "form_submit_network_failed",
+              {
+                form_transport: "xhr",
+                form_http_status: this.status
+              }
+            );
+          }, { once: true });
+          this.addEventListener("error", () => {
+            resolvePendingForm(pending, "form_submit_network_failed", {
+              form_transport: "xhr",
+              form_error: "xhr_error"
+            });
+          }, { once: true });
+          this.addEventListener("abort", () => {
+            resolvePendingForm(pending, "form_submit_network_failed", {
+              form_transport: "xhr",
+              form_error: "xhr_abort"
+            });
+          }, { once: true });
+        }
+        return originalSend.apply(this, args);
+      };
+      proto.__opsmantikWrapped = true;
+    }
+  }
+  function emitTrackedIntent(target, eventAction, label, source, element = null) {
+    const intentMeta = buildCallIntentMeta(target);
+    const dedupeKey = `${intentMeta.intentAction}|${intentMeta.intentTarget}`;
+    const now = Date.now();
+    cleanupRecentIntentWindow(now);
+    const lastTrackedAt = recentTrackedIntentAt.get(dedupeKey) || 0;
+    if (now - lastTrackedAt < 1800) return false;
+    recentTrackedIntentAt.set(dedupeKey, now);
+    sendEvent("conversion", eventAction, label, null, {
+      intent_stamp: intentMeta.intentStamp,
+      intent_action: intentMeta.intentAction,
+      intent_target: intentMeta.intentTarget,
+      intent_page_url: intentMeta.intentPageUrl,
+      intent_source: source,
+      ...element?.id ? { intent_element_id: element.id } : {}
+    });
+    sendCallEvent(target, intentMeta);
+    return true;
+  }
+  function installOutboundIntentHooks() {
+    if (window.__opsmantikIntentHooksInstalled) return;
+    window.__opsmantikIntentHooksInstalled = true;
+    document.addEventListener("pointerdown", (e) => {
+      const el = e.target && e.target.closest ? e.target.closest('[data-om-whatsapp], a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], [class*="joinchat"], [class*="jivo"], [id*="jivo"]') : null;
+      if (!el) return;
+      lastPointerContext = {
+        ts: Date.now(),
+        element: el
+      };
+    }, true);
+    const originalOpen = window.open;
+    if (typeof originalOpen === "function") {
+      window.open = function(...args) {
+        const target = typeof args[0] === "string" ? args[0] : "";
+        if (target && shouldTrackWhatsAppTarget(target)) {
+          const recentElement = lastPointerContext && Date.now() - lastPointerContext.ts < 2e3 ? lastPointerContext.element : null;
+          emitTrackedIntent(target, "whatsapp", target, inferWidgetSource(target, recentElement), recentElement);
+        }
+        return originalOpen.apply(this, args);
+      };
+    }
+  }
+  function sendCallEvent(phoneNumber, intentMeta = null) {
     if (!siteId) return;
     const session = getOrCreateSession();
     const base = CONFIG.apiUrl ? CONFIG.apiUrl.replace(/\/api\/sync\/?$/, "") : window.location.origin;
     const callEventUrl = base + "/api/call-event/v2";
-    const scriptTag2 = document.currentScript || document.querySelector("script[data-ops-site-id]");
+    const scriptTag2 = getTrackerScriptTag();
     const proxyUrl2 = scriptTag2?.getAttribute("data-ops-proxy-url") || (window.opsmantikConfig || window.opmantikConfig || {})?.opsProxyUrl || "";
     const eventId = generateUUID();
     const adsCtx = getAdsContext();
+    const resolvedIntent = intentMeta || buildCallIntentMeta(phoneNumber);
     const payloadObj = {
       event_id: eventId,
       site_id: siteId,
-      phone_number: phoneNumber,
+      phone_number: resolvedIntent.intentTarget,
       fingerprint: session.fingerprint,
-      action: typeof phoneNumber === "string" && (phoneNumber.indexOf("wa.me") !== -1 || phoneNumber.indexOf("whatsapp") !== -1) ? "whatsapp" : "phone",
+      action: resolvedIntent.intentAction,
+      intent_action: resolvedIntent.intentAction,
+      intent_target: resolvedIntent.intentTarget,
+      intent_stamp: resolvedIntent.intentStamp,
+      intent_page_url: resolvedIntent.intentPageUrl,
       url: window.location.href,
       ua: navigator.userAgent,
       gclid: session.context,
@@ -746,37 +1280,88 @@
       console.warn("[OpsMantik] call-event not sent: missing proxyUrl or signing secret");
     }
   }
+  function sendPageViewPulse() {
+    if (!siteId || !CONFIG.pvUrl) return;
+    const session = getOrCreateSession();
+    const gclid = session.context || "";
+    const wbraid = session.wbraid || "";
+    const gbraid = session.gbraid || "";
+    if (!gclid && !wbraid && !gbraid) return;
+    fetch(CONFIG.pvUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId,
+        gclid,
+        wbraid,
+        gbraid
+      }),
+      keepalive: true
+    }).catch(() => {
+    });
+  }
   function initAutoTracking() {
     console.log("[OPSMANTIK] Auto-tracking initialized");
     sendEvent("interaction", "view", document.title);
+    sendPageViewPulse();
+    installOutboundIntentHooks();
+    installFormTransportHooks();
+    flushPendingNavigationOutcome();
     document.addEventListener("click", (e) => {
       const tel = e.target.closest('a[href^="tel:"]');
       if (tel) {
-        const stamp = makeIntentStamp("tel", tel.href);
-        sendEvent("conversion", "phone_call", tel.href, null, { intent_stamp: stamp, intent_action: "phone_call" });
-        sendCallEvent(tel.href);
+        emitTrackedIntent(tel.href, "phone_call", tel.href, "phone", tel);
         return;
       }
       const dataWa = e.target.closest && e.target.closest("[data-om-whatsapp]");
       if (dataWa && dataWa.getAttribute("data-om-whatsapp")) {
         const href = dataWa.getAttribute("data-om-whatsapp");
-        const stamp = makeIntentStamp("wa", href);
-        sendEvent("conversion", "whatsapp", href, null, { intent_stamp: stamp, intent_action: "whatsapp" });
-        sendCallEvent(href);
+        emitTrackedIntent(href, "whatsapp", href, inferWidgetSource(href, dataWa), dataWa);
       } else {
         const wa = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"]');
         if (wa) {
-          const stamp = makeIntentStamp("wa", wa.href);
-          sendEvent("conversion", "whatsapp", wa.href, null, { intent_stamp: stamp, intent_action: "whatsapp" });
-          sendCallEvent(wa.href);
+          emitTrackedIntent(wa.href, "whatsapp", wa.href, inferWidgetSource(wa.href, wa), wa);
         }
       }
     });
     document.addEventListener("submit", (e) => {
       if (e.target.tagName === "FORM") {
-        sendEvent("conversion", "form_submit", e.target.id || e.target.name || "form");
+        trackFormAttempt(e.target, "submit");
       }
-    });
+    }, true);
+    document.addEventListener("focusin", (e) => {
+      const form = e.target?.closest?.("form");
+      if (form) trackFormStart(form, "focus");
+    }, true);
+    document.addEventListener("input", (e) => {
+      const form = e.target?.closest?.("form");
+      if (form) trackFormStart(form, "input");
+    }, true);
+    document.addEventListener("invalid", (e) => {
+      const form = e.target?.closest?.("form");
+      if (form) {
+        trackFormStart(form, "invalid");
+        trackFormValidationFailure(form, "invalid");
+      }
+    }, true);
+    const formProto = window.HTMLFormElement && window.HTMLFormElement.prototype;
+    if (formProto && !formProto.__opsmantikWrapped) {
+      const originalRequestSubmit = formProto.requestSubmit;
+      const originalNativeSubmit = formProto.submit;
+      if (typeof originalRequestSubmit === "function") {
+        formProto.requestSubmit = function(...args) {
+          trackFormAttempt(this, "request_submit");
+          return originalRequestSubmit.apply(this, args);
+        };
+      }
+      if (typeof originalNativeSubmit === "function") {
+        formProto.submit = function(...args) {
+          trackFormAttempt(this, "native_submit");
+          return originalNativeSubmit.apply(this, args);
+        };
+      }
+      formProto.__opsmantikWrapped = true;
+    }
     window.addEventListener("scroll", () => {
       const doc = document.documentElement;
       const scrollPercent = Math.round((window.scrollY + window.innerHeight) / doc.scrollHeight * 100);
@@ -828,6 +1413,7 @@
     }, CONFIG.heartbeatInterval);
     window.addEventListener("beforeunload", () => {
       pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1e3);
+      stashPendingNavigationAttempt();
       sendEvent("system", "session_end", "page_unload", null, { exit_page: window.location.href });
       lastGaspFlush();
     });

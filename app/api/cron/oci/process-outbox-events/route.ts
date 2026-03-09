@@ -16,13 +16,21 @@ import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { OpsGear } from '@/lib/domain/mizan-mantik/types';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
-import { logInfo, logError } from '@/lib/logging/logger';
+import { logInfo, logError, logWarn } from '@/lib/logging/logger';
+import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
 
 export const runtime = 'nodejs';
 
 const BATCH_LIMIT = 50;
 const MAX_ATTEMPTS = 5;
+const EXISTING_FUNNEL_SIGNAL_TYPES = ['MEETING_BOOKED', 'SEAL_PENDING', 'V3_ENGAGE', 'V4_INTENT'] as const;
+
+function normalizeExistingFunnelSignalType(signalType: string | null | undefined): 'V3_ENGAGE' | 'V4_INTENT' | null {
+  if (signalType === 'MEETING_BOOKED' || signalType === 'V3_ENGAGE') return 'V3_ENGAGE';
+  if (signalType === 'SEAL_PENDING' || signalType === 'V4_INTENT') return 'V4_INTENT';
+  return null;
+}
 
 interface OutboxPayload {
   call_id: string;
@@ -30,6 +38,11 @@ interface OutboxPayload {
   lead_score: number | null;
   confirmed_at: string;
   created_at?: string | null;
+  sale_occurred_at?: string | null;
+  sale_source_timestamp?: string | null;
+  sale_time_confidence?: string | null;
+  sale_occurred_at_source?: string | null;
+  sale_entry_reason?: string | null;
   sale_amount: number | null;
   currency: string;
 }
@@ -67,6 +80,7 @@ async function runProcessOutbox() {
       const siteId = payload?.site_id ?? (row as { site_id: string }).site_id;
       const leadScore = payload?.lead_score ?? null;
       const confirmedAt = payload?.confirmed_at ?? '';
+      const saleOccurredAt = payload?.sale_occurred_at ?? null;
       const saleAmount = payload?.sale_amount ?? null;
       const currency = (payload?.currency ?? 'TRY').trim() || 'TRY';
 
@@ -100,9 +114,13 @@ async function runProcessOutbox() {
             .from('marketing_signals')
             .select('signal_type')
             .eq('call_id', callId)
-            .in('signal_type', ['V3_ENGAGE', 'V4_INTENT']);
+            .in('signal_type', [...EXISTING_FUNNEL_SIGNAL_TYPES]);
 
-          const existingTypes = new Set(existingSignals?.map(s => s.signal_type) ?? []);
+          const existingTypes = new Set(
+            (existingSignals ?? [])
+              .map((s) => normalizeExistingFunnelSignalType((s as { signal_type?: string | null }).signal_type))
+              .filter((value): value is 'V3_ENGAGE' | 'V4_INTENT' => Boolean(value))
+          );
           const primary = await getPrimarySource(siteId, { callId });
           // Use real call timestamps — never inject artificial offsets.
           // V3_ENGAGE = when the call came in (created_at); V4_INTENT = when it was sealed (confirmedAt).
@@ -121,6 +139,20 @@ async function runProcessOutbox() {
               clickDate: callCreatedAt,
               signalDate: callCreatedAt,
             });
+            try {
+              await appendFunnelEvent({
+                callId,
+                siteId,
+                eventType: 'V3_QUALIFIED',
+                eventSource: 'OUTBOX_CRON',
+                idempotencyKey: `v3:call:${callId}:source:outbox_cron`,
+                occurredAt: callCreatedAt,
+                payload: {},
+                causationId: id,
+              });
+            } catch (ledgerErr) {
+              logWarn('FUNNEL_LEDGER_V3_APPEND_FAILED', { call_id: callId, error: (ledgerErr as Error)?.message });
+            }
             logInfo('outbox_funnel_backfill_v3', { call_id: callId });
           }
 
@@ -135,6 +167,20 @@ async function runProcessOutbox() {
               clickDate: callCreatedAt,
               signalDate: callConfirmedAt,
             });
+            try {
+              await appendFunnelEvent({
+                callId,
+                siteId,
+                eventType: 'V4_INTENT',
+                eventSource: 'OUTBOX_CRON',
+                idempotencyKey: `v4:call:${callId}:source:outbox_cron`,
+                occurredAt: callConfirmedAt,
+                payload: {},
+                causationId: id,
+              });
+            } catch (ledgerErr) {
+              logWarn('FUNNEL_LEDGER_V4_APPEND_FAILED', { call_id: callId, error: (ledgerErr as Error)?.message });
+            }
             logInfo('outbox_funnel_backfill_v4', { call_id: callId });
           }
 
@@ -142,9 +188,11 @@ async function runProcessOutbox() {
             callId,
             siteId,
             confirmedAt,
+            saleOccurredAt,
             saleAmount,
             currency,
             leadScore,
+            entryReason: payload?.sale_entry_reason ?? null,
           });
           if (result.enqueued) {
             logInfo('outbox_v5_enqueued', { outbox_id: id, call_id: callId, queue_id: result.queueId });
@@ -171,6 +219,22 @@ async function runProcessOutbox() {
             signalDate,
           });
           if (result.routed) {
+            const eventType = gear === 'V2_PULSE' ? 'V2_CONTACT' : gear === 'V3_ENGAGE' ? 'V3_QUALIFIED' : 'V4_INTENT';
+            const keyPrefix = gear === 'V2_PULSE' ? 'v2' : gear === 'V3_ENGAGE' ? 'v3' : 'v4';
+            try {
+              await appendFunnelEvent({
+                callId,
+                siteId,
+                eventType,
+                eventSource: 'OUTBOX_CRON',
+                idempotencyKey: `${keyPrefix}:call:${callId}:source:outbox_cron`,
+                occurredAt: signalDate,
+                payload: {},
+                causationId: id,
+              });
+            } catch (ledgerErr) {
+              logWarn('FUNNEL_LEDGER_APPEND_FAILED', { call_id: callId, gear, error: (ledgerErr as Error)?.message });
+            }
             logInfo('outbox_signal_emitted', { outbox_id: id, call_id: callId, gear, score });
           }
         } else {

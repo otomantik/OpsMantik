@@ -11,6 +11,7 @@ import { join } from 'node:path';
 
 const salesRoutePath = join(process.cwd(), 'app', 'api', 'sales', 'route.ts');
 const confirmRoutePath = join(process.cwd(), 'app', 'api', 'sales', 'confirm', 'route.ts');
+const saleReviewRoutePath = join(process.cwd(), 'app', 'api', 'sales', '[id]', 'review', 'route.ts');
 
 test('GET /api/sales: route requires auth and site_id', () => {
   const src = readFileSync(salesRoutePath, 'utf8');
@@ -52,6 +53,35 @@ test('POST /api/sales/confirm maps RPC errors to 409 and 404', () => {
   const src = readFileSync(confirmRoutePath, 'utf8');
   assert.ok(src.includes('sale_already_confirmed_or_canceled') || src.includes('409'), 'confirm maps already-confirmed to 409');
   assert.ok(src.includes('sale_not_found') || src.includes('404'), 'confirm maps not-found to 404');
+});
+
+test('POST /api/sales/confirm blocks pending-approval sales before RPC enqueue', () => {
+  const src = readFileSync(confirmRoutePath, 'utf8');
+  assert.ok(src.includes("sale.status === 'PENDING_APPROVAL'"), 'confirm must branch on pending approval');
+  assert.ok(src.includes("code: 'SALE_PENDING_APPROVAL'"), 'confirm must return deterministic pending-approval code');
+});
+
+test('POST /api/sales: chronology guard and delayed backdate approval are enforced', () => {
+  const src = readFileSync(salesRoutePath, 'utf8');
+  assert.ok(src.includes('getChronologyFloorForConversation'), 'sales route must compute chronology floor from conversation/session');
+  assert.ok(src.includes("code: 'SALE_OCCURRED_AT_BEFORE_CLICK_TIME'"), 'sales route must reject occurred_at before click/session floor');
+  assert.ok(src.includes('BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000'), 'sales route must enforce 48h approval threshold');
+  assert.ok(src.includes("'PENDING_APPROVAL'"), 'sales route must park delayed rows in PENDING_APPROVAL');
+  assert.ok(src.includes("action: 'sale_time_pending_approval'"), 'sales route must write audit log for delayed backdates');
+});
+
+test('POST /api/sales/[id]/review requires approve|reject and site write capability', () => {
+  const src = readFileSync(saleReviewRoutePath, 'utf8');
+  assert.ok(src.includes("action must be approve or reject"), 'review route must validate action enum');
+  assert.ok(src.includes("hasCapability(access.role, 'site:write')"), 'review route must require site write capability');
+  assert.ok(src.includes("action === 'approve' ? 'DRAFT' : 'CANCELED'"), 'review route must map approve/reject deterministically');
+  assert.ok(src.includes("action: action === 'approve' ? 'sale_time_approved' : 'sale_time_rejected'"), 'review route must audit both outcomes');
+});
+
+test('POST /api/calls/[id]/sale-review delegates review transition to DB-owned RPC', () => {
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'calls', '[id]', 'sale-review', 'route.ts'), 'utf8');
+  assert.ok(src.includes("rpc('review_call_sale_time_v1'"), 'call sale review must use DB-owned review RPC');
+  assert.ok(!src.includes(".from('outbox_events').insert"), 'call sale review must not append outbox rows directly');
 });
 
 test('Idempotency: RPC confirm_sale_and_enqueue rejects non-DRAFT (second call => 409)', () => {

@@ -21,6 +21,7 @@ import { IntentService } from '@/lib/services/intent-service';
 import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
+import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 
 export type WorkerJob = Record<string, unknown> & {
   s: string;
@@ -445,6 +446,21 @@ async function doProcessSyncEvent(
           clientIp: ip,
           traceId: null,
         });
+        if (v2Result.routed) {
+          try {
+            await appendFunnelEvent({
+              callId,
+              siteId: siteIdUuid,
+              eventType: 'V2_CONTACT',
+              eventSource: 'SYNC',
+              idempotencyKey: `v2:call:${callId}:source:sync`,
+              occurredAt: now,
+              payload: { gclid: primary?.gclid ?? null },
+            });
+          } catch (ledgerErr) {
+            logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: callId, error: (ledgerErr as Error)?.message });
+          }
+        }
         if (!v2Result.routed) {
           logWarn('V2_PULSE_NOT_ROUTED', {
             site_id: siteIdUuid,

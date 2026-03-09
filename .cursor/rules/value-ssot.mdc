@@ -1,12 +1,14 @@
 ---
 description: Value SSOT Contract — Mühendislik Anayasası (Golden Rules)
-globs: ["lib/domain/mizan-mantik/**", "**/orchestrator.ts", "**/runner.ts", "lib/oci/**", "lib/utils/mizan-mantik.ts"]
+globs: ["lib/domain/mizan-mantik/**", "lib/domain/funnel-kernel/**", "**/orchestrator.ts", "**/runner.ts", "lib/oci/**"]
 alwaysApply: false
 ---
 
 # Value SSOT Enforcement Rule
 
-**Applies to:** `lib/domain/mizan-mantik/**`, orchestrator.ts, runner.ts, lib/oci/**, lib/utils/mizan-mantik.ts
+**Applies to:** `lib/domain/mizan-mantik/**`, `lib/domain/funnel-kernel/**`, orchestrator.ts, runner.ts, lib/oci/**
+
+**Import ban:** `lib/utils/mizan-mantik.ts`, `lib/valuation/predictive-engine.ts` — deprecated. Use `lib/domain/funnel-kernel/funnel-policy.ts` or `lib/domain/mizan-mantik/value-calculator.ts`.
 
 ## Golden Rules (Anayasa)
 

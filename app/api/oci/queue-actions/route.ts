@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const auth = await requireOciControlAuth(parsed.data.siteId);
+  const auth = await requireOciControlAuth(parsed.data.siteId, 'queue:operate');
   if (auth instanceof NextResponse) return auth;
   const siteUuid = auth.siteUuid;
 

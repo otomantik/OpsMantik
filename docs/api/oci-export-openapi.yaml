@@ -1,10 +1,11 @@
 openapi: 3.0.3
 info:
-  title: Opsmantik OCI BI Export API
+  title: Opsmantik Legacy OCI Export API
   description: |
-    Sealed Ledger verisini BI araçlarına (Metabase, Tableau, Looker Studio vb.) servis eder.
-    Query Taslağı: `docs/architecture/BI_EXPORT_QUERY_TASLAK.md`
-  version: 1.0.0-draft
+    RETIRED. `/api/oci/export` artik canonical OCI yuzeyi degildir.
+    Aktif script kontrati: `/api/oci/google-ads-export` + `/api/oci/ack` + `/api/oci/ack-failed`.
+    Bu dosya sadece legacy endpoint emeklilik kaydi icin tutulur.
+  version: 1.0.0-retired
 
 servers:
   - url: https://console.opsmantik.com
@@ -13,78 +14,24 @@ servers:
 paths:
   /api/oci/export:
     get:
-      summary: BI Export
+      summary: Retired legacy export endpoint
       description: |
-        granularity'ye göre mühürlenmiş ledger verisini döner.
-        - conversion: ROAS analizi (COMPLETED queue rows)
-        - call: Operasyonel çağrı trafiği
-        - session: Attribution / touchpoint analizi
-      operationId: getOciExport
-      security:
-        - bearerAuth: []
-        - apiKeyAuth: []
-      parameters:
-        - name: siteId
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: Target site (UUID veya public_id)
-        - name: granularity
-          in: query
-          required: true
-          schema:
-            type: string
-            enum: [conversion, call, session]
-          description: Veri granülaritesi
-        - name: from
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: Başlangıç (ISO8601)
-        - name: to
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: Bitiş (ISO8601)
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [json, csv]
-            default: json
-        - name: include_signals
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: marketing_signals enrichment (sadece granularity=conversion iken geçerli)
+        Bu endpoint HTTP 410 Gone doner.
+        Script veya OCI operator akislari icin kullanilmaz.
       responses:
-        '200':
-          description: Başarılı
+        '410':
+          description: Endpoint retired. Use `/api/oci/google-ads-export`.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExportResponse'
-            text/csv:
-              schema:
-                type: string
-                description: CSV formatında düz satırlar
-        '400':
-          description: Geçersiz parametre veya eksik siteId
-        '401':
-          description: Yetkisiz
-        '403':
-          description: Site yetkisi veya capability eksik
-        '404':
-          description: Site bulunamadı
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                  canonical_route:
+                    type: string
 
 components:
   securitySchemes:

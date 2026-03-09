@@ -3,6 +3,8 @@
 **Tarih:** 2026-02-25  
 **Kapsam:** Veri sızıntısı, log sızıntısı, hata mesajı sızıntısı, cross-tenant erişim riskleri
 
+> Not: Bu raporda gecen `/api/oci/export` ve `/api/oci/export-batch` endpoint'leri legacy yuzeylerdi; tek-bas cleanup sonrasinda ikisi de emekliye ayrildi ve `410 Gone` donuyor.
+
 ---
 
 ## Özet

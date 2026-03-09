@@ -42,6 +42,8 @@ test('enqueue-from-sales route uses hours query param (default 24, max 168)', ()
   assert.ok(src.includes('hours'), 'route must support hours');
   assert.ok(src.includes('24') || src.includes('DEFAULT_HOURS'), 'default hours');
   assert.ok(src.includes('168') || src.includes('MAX_HOURS'), 'max 168');
+  assert.ok(src.includes("rpc('reconcile_confirmed_sale_queue_v1'"), 'route must delegate queue repair to canonical reconcile RPC');
+  assert.ok(!src.includes(".from('offline_conversion_queue')\n        .insert"), 'route must not insert queue rows directly');
 });
 
 test('hours boundary: hours=-1 returns 400', async () => {

@@ -35,6 +35,8 @@
     "db:oci-2240-dokum": "node scripts/db/oci-eslamed-2240-ne-gonderecegiz-ve-eventler.mjs",
     "db:oci-2240-rontgen": "node scripts/db/oci-2240-rontgen-saldiri-ayikla.mjs Eslamed",
     "db:oci-2240-rontgen-muratcan": "node scripts/db/oci-2240-rontgen-saldiri-ayikla.mjs Muratcan",
+    "db:reset:trt-cutoff:dry-run": "node scripts/db/trt-cutoff-reset.mjs --dry-run",
+    "db:reset:trt-cutoff": "node scripts/db/trt-cutoff-reset.mjs --execute --force",
     "worker:google-ads-oci": "node scripts/trigger-google-ads-oci-worker.mjs",
     "tracker:build": "node scripts/build-tracker.mjs",
     "tracker:embed": "node scripts/get-tracker-embed.mjs",

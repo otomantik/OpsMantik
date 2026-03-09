@@ -42,5 +42,6 @@ test('PR-OCI-4: export route uses shared fail-closed value guards and terminaliz
   assert.ok(src.includes('validateOciSignalConversionValue'), 'signal export must use shared value guard');
   assert.ok(src.includes('blockedSignalValueIds'), 'signal zero-value rows must be tracked for terminalization');
   assert.ok(src.includes("dispatch_status: 'FAILED'") || src.includes('dispatch_status: "FAILED"'), 'blocked signals must be terminalized');
-  assert.ok(src.includes("last_error: 'VALUE_ZERO'") || src.includes('last_error: "VALUE_ZERO"'), 'blocked queue rows must keep VALUE_ZERO provenance');
+  assert.ok(src.includes("code: 'VALUE_ZERO'") || src.includes('code: "VALUE_ZERO"'), 'blocked queue rows must keep VALUE_ZERO provenance');
+  assert.ok(src.includes("code: 'INVALID_CONVERSION_TIME'") || src.includes('code: "INVALID_CONVERSION_TIME"'), 'blocked queue time rows must keep INVALID_CONVERSION_TIME provenance');
 });

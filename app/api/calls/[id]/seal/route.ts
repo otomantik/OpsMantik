@@ -13,8 +13,13 @@ import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
 import { normalizeToE164 } from '@/lib/dic/e164';
 import { hashPhoneForEC } from '@/lib/dic/identity-hash';
+import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
+import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
+import { getChronologyFloorForCall } from '@/lib/oci/chronology-guard';
+import { appendAuditLog } from '@/lib/audit/audit-log';
 
 export const dynamic = 'force-dynamic';
+const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
 
 export async function POST(
   req: NextRequest,
@@ -31,6 +36,8 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const saleAmount = body.sale_amount != null ? Number(body.sale_amount) : null;
     const currency = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
+    const saleOccurredAtRaw = typeof body.sale_occurred_at === 'string' ? body.sale_occurred_at.trim() : '';
+    const entryReason = typeof body.entry_reason === 'string' ? body.entry_reason.trim().slice(0, 500) : '';
     // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
     const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
     const version = body.version != null ? Number(body.version) : null;
@@ -49,6 +56,12 @@ export async function POST(
     if (saleAmount != null && (Number.isNaN(saleAmount) || saleAmount < 0)) {
       return NextResponse.json(
         { error: 'sale_amount must be a non-negative number' },
+        { status: 400 }
+      );
+    }
+    if (saleOccurredAtRaw && !parseWithinTemporalSanityWindow(saleOccurredAtRaw)) {
+      return NextResponse.json(
+        { error: 'sale_occurred_at outside temporal sanity window [now - 90 days, now + 1 hour]' },
         { status: 400 }
       );
     }
@@ -111,16 +124,45 @@ export async function POST(
     // lead_score < 10 or null = ignored by OCI worker
     const ociStatus = leadScore === 100 ? 'sealed' : leadScore != null && leadScore >= 10 ? 'intent' : 'skipped';
 
+    const confirmedAtIso = new Date().toISOString();
+    const occurredAtMeta = resolveSealOccurredAt({
+      saleOccurredAt: saleOccurredAtRaw || null,
+      fallbackConfirmedAt: confirmedAtIso,
+    });
+    const chronologyFloor = saleOccurredAtRaw ? await getChronologyFloorForCall(siteId, callId) : null;
+    if (chronologyFloor && new Date(occurredAtMeta.occurredAt).getTime() < new Date(chronologyFloor.observedAt).getTime()) {
+      return NextResponse.json(
+        {
+          error: 'sale_occurred_at cannot be earlier than the attributed click/session time',
+          code: 'SALE_OCCURRED_AT_BEFORE_CLICK_TIME',
+          floor_at: chronologyFloor.observedAt,
+          floor_source: chronologyFloor.source,
+        },
+        { status: 409 }
+      );
+    }
+    const backdatedMs = Math.max(0, new Date(confirmedAtIso).getTime() - new Date(occurredAtMeta.occurredAt).getTime());
+    const approvalRequired = saleOccurredAtRaw.length > 0 && backdatedMs > BACKDATE_APPROVAL_MS;
+    const effectiveOciStatus = approvalRequired ? 'pending_approval' : ociStatus;
     const updatePayload: Record<string, unknown> = {
       sale_amount: saleAmount,
       currency,
       status: 'confirmed',
-      confirmed_at: new Date().toISOString(),
+      confirmed_at: confirmedAtIso,
       confirmed_by: user.id,
-      oci_status: ociStatus,
-      oci_status_updated_at: new Date().toISOString(),
+      oci_status: effectiveOciStatus,
+      oci_status_updated_at: confirmedAtIso,
       lead_score: leadScore,
+      sale_occurred_at: occurredAtMeta.occurredAt,
+      sale_source_timestamp: occurredAtMeta.sourceTimestamp,
+      sale_time_confidence: occurredAtMeta.timeConfidence,
+      sale_occurred_at_source: occurredAtMeta.occurredAtSource,
+      sale_is_backdated: backdatedMs > 0,
+      sale_backdated_seconds: Math.floor(backdatedMs / 1000),
+      sale_review_status: approvalRequired ? 'PENDING_APPROVAL' : 'NONE',
+      sale_review_requested_at: approvalRequired ? confirmedAtIso : null,
     };
+    if (entryReason) updatePayload.sale_entry_reason = entryReason;
 
     // Operator-verified caller phone (optional): trim, max 64; empty after trim = don't send
     const callerPhoneRaw = typeof body.caller_phone === 'string' ? body.caller_phone.trim().slice(0, 64) : '';
@@ -188,8 +230,9 @@ export async function POST(
           { status: 409 }
         );
       }
+      const { sanitizeErrorForClient } = await import('@/lib/security/sanitize-error');
       return NextResponse.json(
-        { error: updateError.message || 'Update failed' },
+        { error: sanitizeErrorForClient(updateError) || 'Update failed' },
         { status: 500 }
       );
     }
@@ -205,15 +248,35 @@ export async function POST(
     // in the same transaction as the call update. The outbox worker cron processes them.
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
     const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
+    if (approvalRequired) {
+      await appendAuditLog(adminClient, {
+        actor_type: 'user',
+        actor_id: user.id,
+        action: 'call_sale_time_pending_approval',
+        resource_type: 'call',
+        resource_id: callId,
+        site_id: siteId,
+        payload: {
+          sale_occurred_at: occurredAtMeta.occurredAt,
+          entry_reason: entryReason || null,
+          backdated_ms: backdatedMs,
+          floor_at: chronologyFloor?.observedAt ?? null,
+          floor_source: chronologyFloor?.source ?? null,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
+      approval_required: approvalRequired,
       call: {
         id: (callObj as { id?: string }).id,
         sale_amount: (callObj as { sale_amount?: number | null }).sale_amount,
         currency: (callObj as { currency?: string }).currency,
         status: (callObj as { status?: string }).status,
         confirmed_at: confirmedAt,
+        sale_occurred_at: (callObj as { sale_occurred_at?: string | null }).sale_occurred_at ?? occurredAtMeta.occurredAt,
+        oci_status: (callObj as { oci_status?: string | null }).oci_status ?? effectiveOciStatus,
       },
     });
   } catch (err: unknown) {

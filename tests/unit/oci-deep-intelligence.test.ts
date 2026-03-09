@@ -23,7 +23,7 @@ test('MODULE 4: applyHalfLifeDecay guards invalid input', () => {
   assert.strictEqual(applyHalfLifeDecay(100, -1), 100, 'negative days → no decay');
 });
 
-test('MODULE 3: getValueFloorCents — floor = max(min_cents, baseAov * 0.005)', () => {
+test('MODULE 3: getValueFloorCents — signal floor ignores site-wide seal fallback', () => {
   const cfg = {
     siteId: 'test',
     defaultAov: 1000,
@@ -31,10 +31,9 @@ test('MODULE 3: getValueFloorCents — floor = max(min_cents, baseAov * 0.005)',
     minConversionValueCents: 50,
   };
   const floor = getValueFloorCents(cfg);
-  // const ratioCents = Math.round(1000 * 0.005 * 100); // 500 cents (unused)
-  assert.strictEqual(floor, 500, 'max(50, 500) = 500');
-  const cfg2 = { ...cfg, minConversionValueCents: 600 };
-  assert.strictEqual(getValueFloorCents(cfg2), 600, 'max(600, 500) = 600');
+  assert.strictEqual(floor, 500, 'signal floor follows ratio floor');
+  const cfg2 = { ...cfg, minConversionValueCents: 100000 };
+  assert.strictEqual(getValueFloorCents(cfg2), 500, 'site-wide 1000 TRY seal fallback must not flatten signals');
 });
 
 test('MODULE 2: pulse-recovery backoff 2h → 6h → 24h', () => {

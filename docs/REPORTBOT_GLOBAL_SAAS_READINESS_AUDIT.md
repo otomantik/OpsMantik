@@ -197,8 +197,8 @@
 - **Multi-tenant RLS:** sites, sessions, events, calls, site_members, and later tables have RLS with auth.uid() or can_access_site pattern; service_role bypass documented.  
 - **Sync ingestion:** Rate limit (Redis) → consent → idempotency key → QStash publish; worker runs idempotency, quota, entitlements in correct order; 429 headers (x-opsmantik-ratelimit vs x-opsmantik-quota-exceeded) distinct.  
 - **DLQ and replay:** sync_dlq, sync_dlq_record_replay, sync_dlq_replay_audit; replay route requires auth and audits.  
-- **Cron auth:** All vercel.json cron routes use requireCronAuth (watchtower, recover, reconcile-usage, idempotency-cleanup, invoice-freeze, process-offline-conversions, recover-processing, dispatch-conversions, sweep-unsent-conversions).  
-- **Seal/stage:** validateSiteAccess + hasCapability(role, 'queue:operate'); version column used for optimistic locking; pipeline-service version_mismatch.  
+- **Cron auth:** All active vercel.json cron routes use requireCronAuth (watchtower, recover, reconcile-usage, idempotency-cleanup, invoice-freeze, process-offline-conversions, recover-processing, sweep-unsent-conversions, oci process/reconcile jobs).  
+- **Call mutation surface:** `seal` and intent-status routes remain active; legacy `stage` route is retired to avoid split-brain writes.  
 - **Call-event:** Signature verification, replay cache, consent gate; 204 + x-opsmantik-consent-missing when analytics consent missing.  
 - **GCLID Phase 2 (Sprint 3):** localStorage clear on organic re-entry; session-service strips gclid/wbraid/gbraid when session is Organic.  
 - **AdsContext:** Single Zod schema in call-event-worker-payload; routes use shared AdsContextOptionalSchema.  

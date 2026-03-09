@@ -65,16 +65,17 @@ function hasTrackerVersionStamp(body: import('@/lib/types/ingest').ValidIngestPa
 
 export async function GET(req: NextRequest) {
   // NOTE: /api/sync is designed for POST ingestion. A browser-open GET should return 405.
-  // For production debugging of Cloudflare vs Vercel geo headers, we expose an explicit
-  // diagnostic mode that does NOT reveal client IP.
-  //
-  // Usage after deploy: https://console.opsmantik.com/api/sync?diag=1
+  // Diagnostic mode (?diag=1) for Cloudflare/Vercel geo headers — disabled in production to avoid infra fingerprinting.
   const url = new URL(req.url);
   if (url.searchParams.get('diag') !== '1') {
     return NextResponse.json(
       { error: 'Method not allowed. Use POST.', diag: 'Add ?diag=1 for header diagnostics.' },
       { status: 405, headers: { ...getBuildInfoHeaders(), 'Allow': 'POST, OPTIONS' } }
     );
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Method not allowed. Use POST.' }, { status: 405, headers: getBuildInfoHeaders() });
   }
 
   const ua = req.headers.get('user-agent') || 'Unknown';

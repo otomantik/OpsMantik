@@ -64,8 +64,34 @@ test('google-ads-export route: signal and pageview orderIds use collision-resist
   assert.ok(!src.includes('`${clickId}_${OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW}_${conversionTime}`.slice(0, 128)'), 'pageview path must not build raw second-level orderId');
 });
 
+test('google-ads-export route: V1 sampling is script-owned and Redis keys are canonicalized', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('getPvQueueKeysForExport(siteUuid'), 'export must read V1 rows from canonical queue key set');
+  assert.ok(src.includes('getPvProcessingKey(siteUuid)'), 'export must move V1 rows into canonical processing key');
+  assert.ok(src.includes('Sampling is script-owned'), 'route must document script-owned V1 sampling');
+  assert.ok(!src.includes('simpleHash(pvId)'), 'backend must not silently self-sample V1 rows');
+});
+
+test('google-ads-export route: seals prefer canonical occurred_at over legacy conversion_time', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('pickCanonicalOccurredAt(['), 'route must use canonical timestamp picker');
+  assert.ok(src.includes('row.occurred_at,'), 'queue export must inspect queue occurred_at first');
+  assert.ok(src.includes('row.conversion_time,'), 'route must keep legacy conversion_time only as fallback');
+});
+
 test('claim RPC migration: increments attempt_count', () => {
   const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260330000000_oci_claim_and_attempt_cap.sql');
   const src = readFileSync(migrationPath, 'utf8');
   assert.ok(src.includes('attempt_count + 1'), 'RPC increments attempt_count');
+});
+
+test('legacy OCI export routes are explicitly retired', () => {
+  const exportPath = join(process.cwd(), 'app', 'api', 'oci', 'export', 'route.ts');
+  const exportBatchPath = join(process.cwd(), 'app', 'api', 'oci', 'export-batch', 'route.ts');
+  const exportSrc = readFileSync(exportPath, 'utf8');
+  const exportBatchSrc = readFileSync(exportBatchPath, 'utf8');
+  assert.ok(exportSrc.includes('LEGACY_OCI_EXPORT_RETIRED') && exportSrc.includes('status: 410'), 'legacy /api/oci/export must be explicitly retired');
+  assert.ok(exportBatchSrc.includes('LEGACY_OCI_EXPORT_BATCH_RETIRED') && exportBatchSrc.includes('status: 410'), 'legacy /api/oci/export-batch must be explicitly retired');
 });

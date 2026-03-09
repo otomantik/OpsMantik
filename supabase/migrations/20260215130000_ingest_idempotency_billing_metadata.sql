@@ -22,9 +22,7 @@ COMMENT ON COLUMN public.ingest_idempotency.event_label IS
 COMMENT ON COLUMN public.ingest_idempotency.billing_reason IS
   'Billing reason for billable flag and decisions (e.g. conversion, interaction_view, scroll_depth, system, rejected_quota).';
 
--- Helpful index for audits / unblock scripts
-CREATE INDEX IF NOT EXISTS idx_ingest_idempotency_site_year_month_reason
-  ON public.ingest_idempotency(site_id, year_month, billing_reason);
+-- idx_ingest_idempotency_site_year_month_reason moved to 20260216000001 (year_month added in 20260216000000)
 
 COMMIT;
 

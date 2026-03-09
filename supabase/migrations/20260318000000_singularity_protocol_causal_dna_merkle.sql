@@ -22,13 +22,18 @@ COMMENT ON COLUMN public.offline_conversion_queue.entropy_score IS
 COMMENT ON COLUMN public.offline_conversion_queue.uncertainty_bit IS
   'Singularity: True when entropy_score above threshold; flag for internal analytics, does not block upload.';
 
-ALTER TABLE public.marketing_signals
-  ADD COLUMN IF NOT EXISTS causal_dna jsonb DEFAULT '{}',
-  ADD COLUMN IF NOT EXISTS entropy_score numeric(5,4) DEFAULT 0 CHECK (entropy_score >= 0 AND entropy_score <= 1),
-  ADD COLUMN IF NOT EXISTS uncertainty_bit boolean DEFAULT false;
-
-COMMENT ON COLUMN public.marketing_signals.causal_dna IS
-  'Singularity: Decision path for this signal. gear, gates_passed, logic_branch, math_version.';
+-- marketing_signals created in 20260329; skip if not exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'marketing_signals') THEN
+    ALTER TABLE public.marketing_signals
+      ADD COLUMN IF NOT EXISTS causal_dna jsonb DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS entropy_score numeric(5,4) DEFAULT 0 CHECK (entropy_score >= 0 AND entropy_score <= 1),
+      ADD COLUMN IF NOT EXISTS uncertainty_bit boolean DEFAULT false;
+    COMMENT ON COLUMN public.marketing_signals.causal_dna IS
+      'Singularity: Decision path for this signal. gear, gates_passed, logic_branch, math_version.';
+  END IF;
+END $$;
 
 -- Allow updating causal_dna / entropy / uncertainty (append-only content remains immutable)
 -- Trigger _marketing_signals_append_only already restricts; add exception for these columns in trigger or leave as nullable update.

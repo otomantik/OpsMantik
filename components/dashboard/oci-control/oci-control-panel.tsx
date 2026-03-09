@@ -40,9 +40,11 @@ const STATUS_ORDER: QueueStatus[] = [
 export function OciControlPanel({
   siteId,
   siteName,
+  canOperate,
 }: {
   siteId: string;
   siteName?: string;
+  canOperate: boolean;
 }) {
   const { t } = useTranslation();
   const [stats, setStats] = useState<OciQueueStats | null>(null);
@@ -62,6 +64,7 @@ export function OciControlPanel({
     retrySelected: t('ociControl.retrySelected'),
     resetToQueued: t('ociControl.resetToQueued'),
     markFailed: t('ociControl.markFailed'),
+    readOnly: t('hunter.readOnlyRole'),
     select: t('ociControl.selectShort'),
     callId: t('ociControl.callId'),
     errorCode: t('ociControl.errorCode'),
@@ -130,7 +133,7 @@ export function OciControlPanel({
 
   const runAction = useCallback(
     async (action: 'RETRY_SELECTED' | 'RESET_TO_QUEUED' | 'MARK_FAILED', ids: string[], reason?: string) => {
-      if (ids.length === 0) return;
+      if (!canOperate || ids.length === 0) return;
       setActionBusy(true);
       try {
         const body: { siteId: string; action: string; ids: string[]; reason?: string; clearErrors?: boolean } = {
@@ -154,7 +157,7 @@ export function OciControlPanel({
         setActionBusy(false);
       }
     },
-    [siteId, refresh]
+    [canOperate, siteId, refresh]
   );
 
   const toggleSelect = (id: string) => {
@@ -271,8 +274,9 @@ export function OciControlPanel({
               <Button
                 variant="outline"
                 className="min-h-[44px]"
-                disabled={actionBusy}
+                disabled={!canOperate || actionBusy}
                 onClick={() => runAction('RETRY_SELECTED', Array.from(selectedIds))}
+                title={!canOperate ? labels.readOnly : undefined}
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
                 {labels.retrySelected} ({selectedIds.size})
@@ -280,16 +284,18 @@ export function OciControlPanel({
               <Button
                 variant="outline"
                 className="min-h-[44px]"
-                disabled={actionBusy}
+                disabled={!canOperate || actionBusy}
                 onClick={() => runAction('RESET_TO_QUEUED', Array.from(selectedIds))}
+                title={!canOperate ? labels.readOnly : undefined}
               >
                 {labels.resetToQueued}
               </Button>
               <Button
                 variant="outline"
                 className="min-h-[44px] border-red-200 text-red-700 hover:bg-red-50"
-                disabled={actionBusy}
+                disabled={!canOperate || actionBusy}
                 onClick={() => runAction('MARK_FAILED', Array.from(selectedIds), 'MANUALLY_MARKED_FAILED')}
+                title={!canOperate ? labels.readOnly : undefined}
               >
                 <Ban className="h-4 w-4 mr-2" />
                 {labels.markFailed}
@@ -365,8 +371,9 @@ export function OciControlPanel({
                           variant="ghost"
                           size="sm"
                           className="min-h-[44px] min-w-[44px]"
-                          disabled={actionBusy}
+                          disabled={!canOperate || actionBusy}
                           onClick={() => runAction('RETRY_SELECTED', [row.id])}
+                          title={!canOperate ? labels.readOnly : undefined}
                         >
                           <RotateCcw className="h-4 w-4" />
                         </Button>

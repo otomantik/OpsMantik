@@ -42,10 +42,17 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 500, headers: HEADERS() });
+    const { sanitizeErrorForClient } = await import('@/lib/security/sanitize-error');
+    return NextResponse.json({ error: sanitizeErrorForClient(fetchError) }, { status: 500, headers: HEADERS() });
   }
   if (!sale) {
     return NextResponse.json({ error: 'Sale not found' }, { status: 404, headers: HEADERS() });
+  }
+  if (sale.status === 'PENDING_APPROVAL') {
+    return NextResponse.json(
+      { error: 'Sale is pending approval for backdated occurred_at review', code: 'SALE_PENDING_APPROVAL' },
+      { status: 409, headers: HEADERS() }
+    );
   }
 
   const access = await validateSiteAccess(sale.site_id, user.id, supabase);
@@ -77,7 +84,8 @@ export async function POST(req: NextRequest) {
     if (msg.includes('sale_not_found')) {
       return NextResponse.json({ error: 'Sale not found' }, { status: 404, headers: HEADERS() });
     }
-    return NextResponse.json({ error: rpcError.message ?? 'Database error' }, { status: 500, headers: HEADERS() });
+    const { sanitizeErrorForClient } = await import('@/lib/security/sanitize-error');
+    return NextResponse.json({ error: sanitizeErrorForClient(rpcError) }, { status: 500, headers: HEADERS() });
   }
 
   const row = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;

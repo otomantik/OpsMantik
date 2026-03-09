@@ -39,7 +39,9 @@ For local mock runs (`node scripts/google-ads-oci/GoogleAdsScript.js`):
 
 ## Deterministic Features
 
-- **V1 Sampling:** 10% deterministic hash-based sampling (DJB2)
+- **V1 Ingress Contract:** Tracker page views post to `/api/track/pv`; backend exports every eligible V1 row and the Google Ads script is the only sampling layer
+- **V1 Sampling:** 10% deterministic hash-based sampling (DJB2) in `scripts/google-ads-oci/GoogleAdsScript.js`
+- **V1 Value Contract:** `OpsMantik_V1_Nabiz` uses a 1 minor-unit visibility value, not `0`
 - **Time Validation:** Strict `YYYY-MM-DD HH:mm:ss+ZZ:ZZ` format
 - **Upload Failure Invariant:** On `upload.apply()` exception, script returns `uploadFailed: true` and does **not** call ACK
 - **DETERMINISTIC_SKIP Audit:** Skipped V1 items are sent as `skippedIds` to ACK endpoint; backend marks them COMPLETED with `provider_error_category = 'DETERMINISTIC_SKIP'`
@@ -53,3 +55,4 @@ When a site is switched to **Worker (API)** — `oci_sync_method = 'api'` — it
 1. Run the script in Google Ads (Test or Production)
 2. Check OCI Control dashboard for COMPLETED / FAILED status
 3. DETERMINISTIC_SKIP rows should show `provider_error_category = 'DETERMINISTIC_SKIP'` in OCI Control
+4. If V1 is absent, verify tracker traffic reaches `/api/track/pv` before investigating the export route

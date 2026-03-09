@@ -1,7 +1,11 @@
 -- DIC (Deterministic Identity-to-Conversion) / Deep-Attribution schema
--- user_agent on calls, default_country_iso on sites, phone_source_type on calls
+-- user_agent on calls and sessions, default_country_iso on sites, phone_source_type on calls
 
 BEGIN;
+
+-- sessions: user_agent (for DIC attribution forensic touchpoint chain)
+ALTER TABLE public.sessions
+  ADD COLUMN IF NOT EXISTS user_agent text;
 
 -- calls: user_agent (raw UA at conversion for ECL / device entropy)
 ALTER TABLE public.calls

@@ -40,7 +40,6 @@ async function invalidatePendingOciArtifactsForCall(
       .from('marketing_signals')
       .update({
         dispatch_status: 'JUNK_ABORTED',
-        updated_at: now,
       })
       .eq('site_id', siteId)
       .eq('call_id', callId)
@@ -49,7 +48,6 @@ async function invalidatePendingOciArtifactsForCall(
       .from('marketing_signals')
       .update({
         dispatch_status: 'FAILED',
-        updated_at: now,
       })
       .eq('site_id', siteId)
       .eq('call_id', callId)
@@ -144,13 +142,19 @@ export async function POST(
 
     // Use adminClient (service_role) so the write is not blocked by RLS. We already validated
     // site access and queue:operate; without this, member role 'owner' or RLS can prevent UPDATE.
+    //
+    // IMPORTANT: apply_call_action_v1 / undo_last_action_v1 resolve p_actor_type='user' via auth.uid().
+    // A service-role RPC has no auth.uid(), so "user" would deterministically raise unauthorized and
+    // bubble up to the UI as "Failed to update status". For server-owned mutations we must call the RPC
+    // as a normalized system actor while still preserving the human actor id for audit lineage.
+    //
     // Restore must go through undo_last_action_v1; apply_call_action_v1 has no restore branch.
     const metadata = { route, request_id: requestId, user_id: user.id };
     const rpcName = actionType === 'restore' ? 'undo_last_action_v1' : 'apply_call_action_v1';
     const rpcArgs = actionType === 'restore'
       ? {
           p_call_id: callId,
-          p_actor_type: 'user',
+          p_actor_type: 'system',
           p_actor_id: user.id,
           p_metadata: metadata,
         }
@@ -158,7 +162,7 @@ export async function POST(
           p_call_id: callId,
           p_action_type: actionType,
           p_payload: payload,
-          p_actor_type: 'user',
+          p_actor_type: 'system',
           p_actor_id: user.id,
           p_metadata: metadata,
           p_version: null,
@@ -167,7 +171,14 @@ export async function POST(
     const { data: updatedCall, error: updateError } = await adminClient.rpc(rpcName, rpcArgs);
 
     if (updateError) {
-      logError('intent status update failed', { request_id: requestId, route, error: updateError.message });
+      logError('intent status update failed', {
+        request_id: requestId,
+        route,
+        call_id: callId,
+        action_type: actionType,
+        error: updateError.message,
+        code: (updateError as { code?: string }).code,
+      });
       return NextResponse.json(
         { error: 'Failed to update status' },
         { status: 500 }

@@ -19,6 +19,8 @@ import { redis } from '@/lib/upstash';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
+import { getPvDataKey, getPvProcessingKeysForCleanup } from '@/lib/oci/pv-redis';
+import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
@@ -137,8 +139,6 @@ export async function POST(req: NextRequest) {
       else pvSkippedIds.push(s);
     }
 
-    const siteRedisKey = resolvedSite?.public_id?.trim() || siteId;
-
     const now = new Date().toISOString();
     let totalUpdated = 0;
 
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
     if (sealIds.length > 0) {
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .select('id, status')
+        .select('id, status, call_id')
         .in('id', sealIds)
         .eq('site_id', siteUuid);
 
@@ -159,10 +159,36 @@ export async function POST(req: NextRequest) {
         logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
-      const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string }> : [];
+      const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string; call_id: string | null }> : [];
       const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
-      const toTransition = allRows.filter(r => r.status === 'PROCESSING');
+      const processingRows = allRows.filter(r => r.status === 'PROCESSING');
       const unexpected = allRows.filter(r => !TERMINAL_STATES.includes(r.status) && r.status !== 'PROCESSING');
+      const processingCallIds = [...new Set(processingRows.map((row) => row.call_id).filter((value): value is string => Boolean(value)))];
+      const callStatusById = new Map<string, { status: string | null; oci_status: string | null }>();
+      if (processingCallIds.length > 0) {
+        const { data: calls, error: callError } = await adminClient
+          .from('calls')
+          .select('id, status, oci_status')
+          .in('id', processingCallIds)
+          .eq('site_id', siteUuid);
+        if (callError) {
+          logError('OCI_ACK_CALL_STATE_SQL_ERROR', { code: (callError as { code?: string })?.code });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        for (const call of calls ?? []) {
+          callStatusById.set((call as { id: string }).id, {
+            status: (call as { status?: string | null }).status ?? null,
+            oci_status: (call as { oci_status?: string | null }).oci_status ?? null,
+          });
+        }
+      }
+      const blockedRows = processingRows.filter((row) => {
+        if (!row.call_id) return false;
+        const callState = callStatusById.get(row.call_id);
+        return !isCallSendableForSealExport(callState?.status, callState?.oci_status);
+      });
+      const blockedIds = new Set(blockedRows.map((row) => row.id));
+      const toTransition = processingRows.filter((row) => !blockedIds.has(row.id));
 
       if (unexpected.length > 0) {
         logError('OCI_ACK_UNEXPECTED_STATE', { ids: unexpected.map(r => r.id), states: unexpected.map(r => r.status) });
@@ -185,6 +211,29 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
         }
         totalUpdated += updatedCount;
+      }
+      if (blockedRows.length > 0) {
+        const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: blockedRows.map((row) => row.id),
+          p_new_status: 'FAILED',
+          p_created_at: now,
+          p_error_payload: {
+            last_error: 'CALL_NOT_SENDABLE_AFTER_EXPORT',
+            provider_error_code: 'CALL_NOT_SENDABLE_AFTER_EXPORT',
+            provider_error_category: 'DETERMINISTIC_SKIP',
+            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (rpcError || typeof updatedCount !== 'number' || updatedCount !== blockedRows.length) {
+          logError('OCI_ACK_BLOCKED_BATCH_RPC_FAILED', {
+            code: (rpcError as { code?: string })?.code,
+            requested: blockedRows.length,
+            updated: updatedCount,
+          });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        totalUpdated += updatedCount;
+        logInfo('OCI_ACK_BLOCKED_CALLS_TERMINALIZED', { site_id: siteUuid, count: blockedRows.length });
       }
     }
 
@@ -263,14 +312,14 @@ export async function POST(req: NextRequest) {
     const failedRedisCleanups: string[] = [];
     const allPvIds = [...pvIds, ...pvSkippedIds];
     if (allPvIds.length > 0) {
-      const processingKey = `pv:processing:${siteRedisKey}`;
+      const processingKeys = getPvProcessingKeysForCleanup(siteUuid, resolvedSite?.public_id ?? null);
       // Run all del + lrem operations in parallel instead of serial await per ID.
       // For 500 IDs this reduces ~1000 sequential round-trips to a single parallel fan-out.
       const results = await Promise.allSettled(
         allPvIds.map(async (pvId) => {
           await Promise.all([
-            redis.del(`pv:data:${pvId}`),
-            redis.lrem(processingKey, 0, pvId),
+            redis.del(getPvDataKey(pvId)),
+            ...processingKeys.map((processingKey) => redis.lrem(processingKey, 0, pvId)),
           ]);
           return pvId;
         })

@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
+import { hasCapability, type Capability } from '@/lib/auth/rbac';
 import type { QueueStatus } from '@/lib/domain/oci/queue-types';
 import { QUEUE_STATUSES } from '@/lib/domain/oci/queue-types';
 
@@ -15,7 +16,8 @@ export interface OciControlAuthResult {
 }
 
 export async function requireOciControlAuth(
-  siteId: string
+  siteId: string,
+  requiredCapability?: Capability
 ): Promise<NextResponse | OciControlAuthResult> {
   const supabase = await createClient();
   const {
@@ -45,6 +47,13 @@ export async function requireOciControlAuth(
   const access = await validateSiteAccess(siteUuid, user.id, supabase);
   if (!access.allowed) {
     return NextResponse.json({ error: 'Forbidden', code: access.reason }, { status: 403 });
+  }
+
+  if (requiredCapability && (!access.role || !hasCapability(access.role, requiredCapability))) {
+    return NextResponse.json(
+      { error: 'Forbidden', code: 'CAPABILITY_REQUIRED', capability: requiredCapability },
+      { status: 403 }
+    );
   }
 
   return { siteUuid };

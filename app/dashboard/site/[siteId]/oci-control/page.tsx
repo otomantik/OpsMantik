@@ -5,6 +5,7 @@ import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { OciControlPanel } from '@/components/dashboard/oci-control/oci-control-panel';
+import { hasCapability } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -47,6 +48,7 @@ export default async function OciControlPage({ params }: PageProps) {
       <OciControlPanel
         siteId={siteId}
         siteName={site.name || site.domain || undefined}
+        canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}
       />
     </I18nProvider>
   );

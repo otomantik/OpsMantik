@@ -15,10 +15,19 @@ CREATE TABLE IF NOT EXISTS public.marketing_signals (
   dispatch_status text NOT NULL DEFAULT 'PENDING' CHECK (dispatch_status IN ('PENDING', 'SENT', 'FAILED')),
   google_sent_at timestamptz,
 
+  trace_id text,
+  causal_dna jsonb DEFAULT '{}',
+  entropy_score numeric(5,4) DEFAULT 0 CHECK (entropy_score >= 0 AND entropy_score <= 1),
+  uncertainty_bit boolean DEFAULT false,
+
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 COMMENT ON TABLE public.marketing_signals IS 'Olay Kaynaklı Sinyal Matrisi. Google Ads Observation/Optimization sinyalleri için zaman damgalı geçmiş.';
+COMMENT ON COLUMN public.marketing_signals.trace_id IS 'Phase 20: OM-TRACE-UUID from sync/call-event request for forensic audit chain';
+COMMENT ON COLUMN public.marketing_signals.causal_dna IS 'Singularity: Decision path for this signal. gear, gates_passed, logic_branch, math_version.';
+
+CREATE INDEX IF NOT EXISTS idx_marketing_signals_trace_id ON public.marketing_signals (trace_id) WHERE trace_id IS NOT NULL;
 
 -- 2. APPEND-ONLY Koruması (Asla güncellenemez/silinemez - Sadece status değişebilir)
 CREATE OR REPLACE FUNCTION public._marketing_signals_append_only()

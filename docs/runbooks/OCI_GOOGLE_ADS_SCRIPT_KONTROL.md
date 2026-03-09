@@ -85,9 +85,9 @@
 | Ack 200 kontrolü | Var; 200 değilse `[ERROR] Ack failed. Code: ...` | Aynı |
 | ack-failed | fatalErrorIds → sendNack (queueIds: [], fatalErrorIds) | Aynı |
 
-**Sonuç:** Eslamed ve Muratcan deploy script’leri (`scripts/google-ads-oci/deploy/*.js`) mevcut API ile **uyumlu**. Ek değişiklik gerekmez.
+**Sonuç:** Eslamed ve Muratcan deploy script’leri (`scripts/google-ads-oci/deploy/*.js`) mevcut API ile uyumlu snapshot'lardır.
 
-**Not:** Ana `GoogleAdsScript.js` (QuantumClient, verifyHandshake, ScriptProperties) export’u `JSON.parse(...)` ile alıp **dizi** bekliyor; API ise `{ items, next_cursor }` dönüyor. Bu dosya deploy’da kullanılmıyorsa (sadece Eslamed/Muratcan deploy kopyaları kullanılıyorsa) sorun yok; ileride ana script kullanılırsa `fetchConversions` içinde `data.items` ve `data.next_cursor` kullanılacak şekilde güncellenmeli.
+**Not:** Canonical kaynak artık `scripts/google-ads-oci/GoogleAdsScript.js` dosyasıdır ve `{ items, next_cursor }` cevabını doğru işler. Deploy snapshot'ları kaynak dosya değil, dağıtım kopyası olarak görülmelidir.
 
 ---
 

@@ -1,8 +1,7 @@
 /**
- * OpsMantik Signal Emitter
- *
- * Delegates to MizanMantikOrchestrator. No longer does valuation math.
- * Maps legacy SignalType → OpsGear, calls evaluateAndRouteSignal.
+ * @deprecated Use evaluateAndRouteSignal from lib/domain/mizan-mantik directly.
+ * OpsMantik Signal Emitter — delegates to MizanMantikOrchestrator.
+ * Phase 4 Legacy: Do not add new imports. Funnel Kernel uses ledger-writer + projection.
  */
 
 import { evaluateAndRouteSignal, resolveGearFromLegacy } from '@/lib/domain/mizan-mantik';

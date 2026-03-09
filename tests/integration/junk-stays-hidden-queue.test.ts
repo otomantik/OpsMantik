@@ -1,8 +1,8 @@
 /**
  * Queue visibility: Çöp tıklandıktan sonra junk satır geri gelmemeli,
- * ama aynı session'daki farklı pending satır görünmez olmamalı.
+ * ve aynı session'daki farklı pending satır da fail-closed olarak gizlenmeli.
  * - apply_call_action_v1(call_id, 'junk') ile satır junk olur.
- * - Aynı session'daki diğer intent satırı lite RPC'de görünmeye devam eder.
+ * - Aynı session'daki diğer intent satırı lite RPC'de de görünmez.
  *
  * Requires: JUNK_FLOW_TEST_SITE_ID (UUID) veya STRICT_INGEST_TEST_SITE_ID, Supabase env.
  */
@@ -16,7 +16,7 @@ import { requireStrictEnv, resolveStrictTestSiteId } from '@/tests/helpers/stric
 
 config({ path: join(process.cwd(), '.env.local') });
 
-test('junk flow: apply_call_action_v1 junk hides only junked row, not same-session sibling', async (t) => {
+test('junk flow: apply_call_action_v1 junk hides the entire same-session queue footprint', async (t) => {
   const env = requireStrictEnv();
   if (env.skip) {
     t.skip(env.reason);
@@ -116,7 +116,7 @@ test('junk flow: apply_call_action_v1 junk hides only junked row, not same-sessi
   assert.ok(updatedRow, 'apply_call_action_v1 must return updated row');
   assert.equal((updatedRow as { status?: string })?.status, 'junk', 'call1 status must be junk');
 
-  // 4) After junk: lite must NOT return call1, but must keep call2 visible.
+  // 4) After junk: lite must NOT return call1 and must also hide call2.
   const { data: afterLite, error: errAfter } = await adminClient.rpc('get_recent_intents_lite_v1', {
     p_site_id: siteId,
     p_date_from: fromIso,
@@ -129,5 +129,5 @@ test('junk flow: apply_call_action_v1 junk hides only junked row, not same-sessi
   const afterList = Array.isArray(afterLite) ? afterLite : [];
   const afterIds = afterList.map((r: { id?: string }) => r?.id).filter(Boolean);
   assert.ok(!afterIds.includes(call1Id), 'after junk: junked call must not appear in lite');
-  assert.ok(afterIds.includes(call2Id), 'after junk: same-session pending call must remain visible in lite');
+  assert.ok(!afterIds.includes(call2Id), 'after junk: same-session pending call must also stay hidden in lite');
 });

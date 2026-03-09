@@ -9,7 +9,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROUTES = [
-  { path: join(process.cwd(), 'app', 'api', 'cron', 'dispatch-conversions', 'route.ts'), name: 'dispatch-conversions' },
   { path: join(process.cwd(), 'app', 'api', 'cron', 'auto-junk', 'route.ts'), name: 'auto-junk' },
   { path: join(process.cwd(), 'app', 'api', 'cron', 'idempotency-cleanup', 'route.ts'), name: 'idempotency-cleanup' },
   { path: join(process.cwd(), 'app', 'api', 'cron', 'invoice-freeze', 'route.ts'), name: 'invoice-freeze' },
@@ -42,16 +41,15 @@ for (const route of ROUTES) {
   });
 }
 
-// PR-2: dispatch-conversions uses distributed cron lock
-test('PR-2: dispatch-conversions uses tryAcquireCronLock("dispatch-conversions")', () => {
+// PR-2: retired dispatch-conversions route is explicit
+test('PR-2: dispatch-conversions route is explicitly retired with deterministic code', () => {
   const path = join(process.cwd(), 'app', 'api', 'cron', 'dispatch-conversions', 'route.ts');
   const src = readFileSync(path, 'utf-8');
   assert.ok(
-    src.includes('tryAcquireCronLock(\'dispatch-conversions\''),
-    'dispatch-conversions must use tryAcquireCronLock("dispatch-conversions") for overlap prevention'
+    src.includes('LEGACY_CONVERSIONS_CRON_RETIRED'),
+    'dispatch-conversions must fail closed with explicit retirement code'
   );
-  assert.ok(src.includes('releaseCronLock'), 'dispatch-conversions must release lock in finally');
-  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
+  assert.ok(src.includes('status: 410'), 'dispatch-conversions must return HTTP 410');
 });
 
 // PR-3: POST handlers also acquire cron locks (process-offline-conversions, providers/recover-processing)

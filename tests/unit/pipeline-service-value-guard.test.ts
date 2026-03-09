@@ -1,6 +1,7 @@
 /**
- * PR-OCI-4 (P0): pipeline-service must not enqueue non-finite / <=0 values.
- * Source-inspection test (fast, stable, DB-free).
+ * PR-OCI-4 (P0): Value guard — pipeline-service was removed (Funnel Kernel).
+ * Value guard is now in lib/oci/enqueue-seal-conversion.ts.
+ * @deprecated Phase 4 Legacy — pipeline-service deleted. Skip.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import { join } from 'node:path';
 
 const PIPELINE = join(process.cwd(), 'lib', 'services', 'pipeline-service.ts');
 
-test('PR-OCI-4: pipeline-service blocks non-finite or <=0 finalValueCents', () => {
+test.skip('PR-OCI-4: pipeline-service blocks non-finite or <=0 finalValueCents (pipeline-service deleted)', () => {
   const src = readFileSync(PIPELINE, 'utf-8');
   assert.ok(
     src.includes('finalValueCents'),

@@ -84,7 +84,7 @@ OpsMantik is a **multi-tenant AdTech and revenue intelligence backend** built on
 | Tenant isolation (RLS) | PROVEN | `tests/rls/tenant-rls-proof.test.ts`, ingest_idempotency policies in migrations |
 | RBAC | PROVEN | `lib/auth/rbac.ts`, `lib/security/validate-site-access.ts`, `lib/auth/is-admin.ts` |
 | Idempotency lifecycle | PROVEN | `app/api/cron/idempotency-cleanup/route.ts`, `supabase/migrations/20260217000000_idempotency_cleanup_batch_rpc.sql` |
-| OCI export | PROVEN | `app/api/oci/export/route.ts` |
+| OCI script export | PROVEN | `app/api/oci/google-ads-export/route.ts` |
 | OCI upload to Google | UNPROVEN | No route or worker calling Google Ads API in repo. |
 | Consent model | UNPROVEN | No backend consent API or consent table. |
 | Right-to-erasure | UNPROVEN | No endpoint or RPC to delete/anonymize by request. |

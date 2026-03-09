@@ -1,12 +1,22 @@
 /**
+ * DEPLOY SNAPSHOT ONLY
+ * Source of truth: scripts/google-ads-oci/GoogleAdsScript.js
+ * SECURITY: Prefer Script Properties (OCI_API_KEY, OPSMANTIK_SITE_ID).
+ *
  * ========================================================================
  * OPSMANTIK QUANTUM ENGINE (V13.0) - Google Ads Offline Conversion Importer
  * Client: Muratcan AKÜ (muratcanaku.com)
  * ========================================================================
- * Architecture: Bifurcated Cursors, Micro-Batching, Graceful 25m Halting.
- * Status: PRODUCTION READY
  */
-
+function getApiKey() {
+  try {
+    if (typeof PropertiesService !== 'undefined') {
+      const k = PropertiesService.getScriptProperties().getProperty('OCI_API_KEY');
+      if (k) return k;
+    }
+  } catch (e) { /* ignore */ }
+  return CONFIG.X_API_KEY || '';
+}
 const CONFIG = {
   API_URL: 'https://console.opsmantik.com',
   SITE_ID: '28cf0aefaa074f5bb29e818a9d53b488',
@@ -140,7 +150,7 @@ function sendAck(successIds) {
   const options = {
     method: 'post',
     contentType: 'application/json',
-    headers: { 'x-api-key': CONFIG.X_API_KEY },
+    headers: { 'x-api-key': getApiKey() },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
@@ -159,7 +169,7 @@ function sendNack(fatalIds, code, message, category) {
   const options = {
     method: 'post',
     contentType: 'application/json',
-    headers: { 'x-api-key': CONFIG.X_API_KEY },
+    headers: { 'x-api-key': getApiKey() },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };

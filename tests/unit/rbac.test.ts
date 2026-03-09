@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { capabilitiesForRole, hasCapability, type SiteRole } from '@/lib/auth/rbac';
 
 test('RBAC v2: owner has all capabilities', () => {
@@ -33,4 +35,13 @@ test('RBAC v2: analyst is read-only', () => {
 test('RBAC v2: billing can only view billing', () => {
   assert.equal(hasCapability('billing', 'billing:view'), true);
   assert.equal(hasCapability('billing', 'queue:operate'), false);
+});
+
+test('RBAC v2: invite defaults to operator and OCI control mutators require queue capability', () => {
+  const inviteSrc = readFileSync(join(process.cwd(), 'app', 'api', 'customers', 'invite', 'route.ts'), 'utf8');
+  const authSrc = readFileSync(join(process.cwd(), 'lib', 'oci', 'control-auth.ts'), 'utf8');
+  const actionsSrc = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'queue-actions', 'route.ts'), 'utf8');
+  assert.ok(inviteSrc.includes("role = 'operator'"), 'invite route must default operational users to operator');
+  assert.ok(authSrc.includes('requiredCapability?: Capability'), 'OCI control auth must support explicit capability checks');
+  assert.ok(actionsSrc.includes("requireOciControlAuth(parsed.data.siteId, 'queue:operate')"), 'OCI mutators must require queue:operate');
 });

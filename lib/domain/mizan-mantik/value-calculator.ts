@@ -1,9 +1,9 @@
 /**
  * One True Math — SSOT for conversion value in minor units.
  *
- * V1: 0
+ * V1: 1 minor unit visibility value
  * V2–V4: AOV_site_minor × ratio × δ(gear, days) — training signals (PR-VK-2: intentWeights from DB)
- * V5: sale_amount_minor > 0 ? sale_amount_minor : 0 (no AOV, decay, lead_score)
+ * V5: sale_amount_minor > 0 ? sale_amount_minor : minConversionValueCents fallback
  *
  * All values in integer minor units. Currency-aware via getMinorUnits.
  */
@@ -34,9 +34,9 @@ export interface ConversionValueParams {
 /**
  * Calculate conversion value in minor units.
  *
- * V1: 0
- * V2–V4: max(siteAovMinor, aovFloorMinor) × ratio × δ(gear, days) — ratio from intentWeights
- * V5: saleAmountMinor > 0 ? saleAmountMinor : 0
+ * V1: 1 minor unit
+ * V2–V4: siteAovMinor × ratio × δ(gear, days) with a small signal floor
+ * V5: saleAmountMinor > 0 ? saleAmountMinor : minConversionValueCents fallback
  *
  * @returns value in minor units (integer)
  */
@@ -55,7 +55,7 @@ export function calculateConversionValueMinor({
       ? minConversionValueCents
       : majorToMinor(AOV_FLOOR_MAJOR, currency ?? 'TRY');
 
-  // V1: Never return 0. Return 1 minor unit (0.01 TL) for DDA visibility.
+  // V1: Never return 0. Return 1 minor unit for visibility in Google Ads.
   if (gear === 'V1_PAGEVIEW') {
     return 1;
   }
@@ -67,8 +67,8 @@ export function calculateConversionValueMinor({
       : aovFloorMinor;
   }
 
-  // V2–V4: AOV-based training signal (ratio from intentWeights; floor from DB or fallback)
-  const effectiveAovMinor = Math.max(siteAovMinor ?? 0, aovFloorMinor);
+  // V2–V4: AOV-based training signal. Site-wide min_conversion_value_cents is reserved for V5 fallback.
+  const effectiveAovMinor = Math.max(siteAovMinor ?? 0, 0);
   const ratio =
     getBaseValueForGear(gear, 1, intentWeights ?? DEFAULT_WEIGHTS) || 0;
 

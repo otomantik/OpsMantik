@@ -11,6 +11,7 @@ import { publishToQStash } from '@/lib/ingest/publish';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
+import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { sanitizeClickId } from '@/lib/attribution';
 
 // Brain Score logic moved to async worker
@@ -236,7 +237,7 @@ export async function processCallEvent(
     const callCreatedAt = callRecord.created_at ?? new Date().toISOString();
     const signalDate = new Date(callCreatedAt);
     const primary = await getPrimarySource(siteId, { callId: callRecord.id });
-    await evaluateAndRouteSignal('V2_PULSE', {
+    const v2Result = await evaluateAndRouteSignal('V2_PULSE', {
       siteId,
       callId: callRecord.id,
       gclid: primary?.gclid ?? null,
@@ -248,6 +249,22 @@ export async function processCallEvent(
       clientIp: payload.clientIp,
       traceId: requestId ?? null,
     });
+    if (v2Result?.routed) {
+      try {
+        await appendFunnelEvent({
+          callId: callRecord.id,
+          siteId,
+          eventType: 'V2_CONTACT',
+          eventSource: 'CALL_EVENT',
+          idempotencyKey: `v2:call:${callRecord.id}:source:call_event`,
+          occurredAt: signalDate,
+          payload: { gclid: primary?.gclid ?? null },
+          correlationId: requestId ?? undefined,
+        });
+      } catch (ledgerErr) {
+        logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: callRecord.id, error: (ledgerErr as Error)?.message });
+      }
+    }
   } catch (v2Err) {
     logWarn('V2_PULSE_EMIT_FAILED', { error: (v2Err as Error)?.message ?? String(v2Err) });
   }

@@ -14,7 +14,7 @@
 | `replay_noop_count` | 200 + status:noop for call-event | Replay cache hit; no duplicate insert |
 | `fingerprint_rate_limit_count` | 429 on fp: rate limit key | Fingerprint brute-force guard triggered |
 | `consent_missing_204_count` | 204 + x-opsmantik-consent-missing | Sync or call-event consent gate |
-| `oci_enqueue_skipped_marketing_missing_count` | PipelineService / confirm_sale | OCI enqueue skipped due to missing marketing consent |
+| `oci_enqueue_skipped_marketing_missing_count` | `enqueueSealConversion` / sale reconcile RPC | OCI enqueue skipped due to missing marketing consent |
 | `idempotency_insert_count` | Successful idempotency row insert | Billable sync ingestion |
 | `duplicate_insert_detected_count` | x-opsmantik-dedup: 1 or duplicate key | Idempotency duplicate; no charge |
 

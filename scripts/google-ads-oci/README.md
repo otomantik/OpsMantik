@@ -1,8 +1,13 @@
 # Google Ads OCI Script (OpsMantik Exit Valve)
 
+`scripts/google-ads-oci/GoogleAdsScript.js` bu repo içindeki tek canonical script kaynağıdır.
+`scripts/google-ads/*.js` ve `scripts/google-ads-oci/deploy/*.js` dosyaları site-specific deploy snapshot'larıdır; kaynak olarak değil, dağıtım kopyası olarak görülmelidir.
+
 **Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)
 
-**OCI credentials (SITE_ID, API_KEY)** — Supabase'den çekip scripte yaz:
+**SECURITY:** Prefer Script Properties over hardcoded keys. Set `OCI_API_KEY` and `OPSMANTIK_SITE_ID` in File > Project properties > Script properties. Deploy snapshots support this; fallback to CONFIG for backward compatibility.
+
+**OCI credentials (SITE_ID, API_KEY)** — Supabase'den çekip scripte yaz veya Script Properties kullan:
 ```bash
 npm run oci:credentials Eslamed              # Eslamed değerlerini göster
 npm run oci:credentials Eslamed -- --write   # Eslamed-OCI-Quantum.js güncelle
@@ -32,3 +37,10 @@ node scripts/get-oci-credentials.mjs Muratcan   # Muratcan için değerler
 ## Diğer siteler
 
 `GoogleAdsScript.js` jenerik versiyondur; aynı Script Properties ile herhangi bir site için kullanılabilir. Sadece `OPSMANTIK_SITE_ID` değerini ilgili sitenin public_id'si ile değiştirin.
+
+## Tek Baş Kuralı
+
+- Canlı endpoint adı: `/api/oci/google-ads-export`
+- ACK yüzeyi: `/api/oci/ack`
+- NACK yüzeyi: `/api/oci/ack-failed`
+- Legacy `/api/oci/export` ve `/api/oci/export-batch` emekliye ayrılmıştır.

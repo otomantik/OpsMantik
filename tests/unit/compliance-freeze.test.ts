@@ -14,7 +14,7 @@ const ERASE_RPC = join(ROOT, 'supabase', 'migrations', '20260226000002_erase_pii
 const AUDIT_TRIGGERS = join(ROOT, 'supabase', 'migrations', '20260226000006_audit_triggers_low_volume.sql');
 const MIGRATIONS_DIR = join(ROOT, 'supabase', 'migrations');
 const ENQUEUE_SEAL = join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts');
-const PIPELINE = join(ROOT, 'lib', 'services', 'pipeline-service.ts');
+const STAGE_ROUTE = join(ROOT, 'app', 'api', 'calls', '[id]', 'stage', 'route.ts');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1) Consent Gate Order Invariants
@@ -61,9 +61,12 @@ test('COMPLIANCE: sync route contains compliance invariant comment', () => {
 
 test('COMPLIANCE: offline_conversion_queue write guarded by marketing consent', () => {
   const enqueueSrc = readFileSync(ENQUEUE_SEAL, 'utf8');
-  const pipelineSrc = readFileSync(PIPELINE, 'utf8');
   assert.ok(enqueueSrc.includes('hasMarketingConsentForCall'), 'enqueueSealConversion must check marketing consent');
-  assert.ok(pipelineSrc.includes('hasMarketingConsentForCall'), 'PipelineService must check marketing consent');
+});
+
+test('COMPLIANCE: legacy stage route is hard-retired', () => {
+  const src = readFileSync(STAGE_ROUTE, 'utf8');
+  assert.ok(src.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'retired route must fail closed with deterministic code');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

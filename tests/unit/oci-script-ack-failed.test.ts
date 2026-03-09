@@ -57,3 +57,11 @@ test('GoogleAdsScript: sendAck accepts skippedIds parameter', () => {
   assert.ok(src.includes('skippedIds'), 'sendAck accepts skippedIds');
   assert.ok(src.includes('payload.skippedIds'), 'passes skippedIds to ACK payload');
 });
+
+test('GoogleAdsScript: fetchConversions understands paged { items, next_cursor } payloads', () => {
+  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+  const src = readFileSync(scriptPath, 'utf8');
+  assert.ok(src.includes('fetchConversionsPage'), 'script must have paged fetch helper');
+  assert.ok(src.includes('payload.items') && src.includes('payload.next_cursor'), 'script must read structured API payload');
+  assert.ok(src.includes('do {') && src.includes('} while (cursor);'), 'script must continue fetching while next_cursor exists');
+});

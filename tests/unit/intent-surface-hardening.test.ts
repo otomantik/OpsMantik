@@ -13,6 +13,9 @@ const TRACKER_TRANSPORT = join(ROOT, 'lib', 'tracker', 'transport.js');
 const SYNC_ROUTE = join(ROOT, 'app', 'api', 'sync', 'route.ts');
 const USE_INTENTS = join(ROOT, 'lib', 'hooks', 'use-intents.ts');
 const INTENT_STATUS_BADGE = join(ROOT, 'components', 'dashboard', 'intent-status-badge.tsx');
+const QUEUE_DECK = join(ROOT, 'components', 'dashboard', 'qualification-queue', 'queue-deck.tsx');
+const OCI_CONTROL_PAGE = join(ROOT, 'app', 'dashboard', 'site', '[siteId]', 'oci-control', 'page.tsx');
+const OCI_CONTROL_PANEL = join(ROOT, 'components', 'dashboard', 'oci-control', 'oci-control-panel.tsx');
 
 test('click-origin ingestion stays inside canonical call ontology', () => {
   const src = readFileSync(PROCESS_CALL_EVENT, 'utf8');
@@ -87,4 +90,14 @@ test('cancelled intents stay visible in dashboard status model', () => {
   assert.ok(hookSrc.includes("'cancelled'"), 'use-intents status union must include cancelled');
   assert.ok(badgeSrc.includes("if (status === 'cancelled')"), 'status badge must render cancelled explicitly');
   assert.ok(badgeSrc.includes("t('activity.statusCancelled')"), 'cancelled badge must use dedicated label');
+});
+
+test('junk mutations wait for server confirmation and OCI panel exposes honest read-only state', () => {
+  const deckSrc = readFileSync(QUEUE_DECK, 'utf8');
+  const ociPageSrc = readFileSync(OCI_CONTROL_PAGE, 'utf8');
+  const ociPanelSrc = readFileSync(OCI_CONTROL_PANEL, 'utf8');
+  assert.ok(deckSrc.includes("void qualify({ score: 0, status: 'junk' })"), 'junk action must wait for server mutation');
+  assert.ok(!deckSrc.includes("const handleJunk = ({ id }: { id: string }) => {\n    onOptimisticRemove(id);"), 'junk action must not optimistically remove before success');
+  assert.ok(ociPageSrc.includes("canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}"), 'OCI control page must derive canOperate from RBAC');
+  assert.ok(ociPanelSrc.includes('disabled={!canOperate || actionBusy}'), 'OCI panel action buttons must respect read-only state');
 });

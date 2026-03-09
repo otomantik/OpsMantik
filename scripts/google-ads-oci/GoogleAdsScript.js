@@ -1,7 +1,7 @@
 /**
  * OCI SYNC ENGINE v3.0 (Quantum Edition)
  * V8 Engine Native | Deterministic Sampling | Auto-Healing
- * Features: ES6 Classes, Exponential Backoff with Jitter, Deterministic Hash Sampling,
+ * Features: ES6 Classes, Exponential Backoff with Jitter, Script-owned Deterministic V1 Sampling,
  * Strict ANSI Time Validation, Memory-safe Batch Processing.
  */
 
@@ -17,20 +17,23 @@ function getConfig() {
       props = PropertiesService.getScriptProperties();
     }
   } catch (e) { /* ignore */ }
-  const get = function (key, fallback) {
-    if (props) {
-      const v = props.getProperty && props.getProperty(key);
-      if (v) return v;
+  const getFirst = function (keys, fallback) {
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (props) {
+        const v = props.getProperty && props.getProperty(key);
+        if (v) return v;
+      }
+      if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
     }
-    if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
     return fallback || '';
   };
   const isLocal = typeof require !== 'undefined' && require.main && require.main === module;
   return Object.freeze({
-    SITE_ID: get('OPSMANTIK_SITE_ID', '') || (isLocal ? 'mock-site-id' : ''),
-    API_KEY: get('OPSMANTIK_API_KEY', '') || (isLocal ? 'mock-api-key' : ''),
-    BASE_URL: get('OPSMANTIK_BASE_URL', '') || 'https://console.opsmantik.com',
-    SAMPLING_RATE_V1: 0.1,
+    SITE_ID: getFirst(['OPSMANTIK_SITE_ID', 'OCI_SITE_ID'], '') || (isLocal ? 'mock-site-id' : ''),
+    API_KEY: getFirst(['OPSMANTIK_API_KEY', 'OCI_API_KEY'], '') || (isLocal ? 'mock-api-key' : ''),
+    BASE_URL: getFirst(['OPSMANTIK_BASE_URL', 'OCI_BASE_URL'], '') || 'https://console.opsmantik.com',
+    SAMPLING_RATE_V1: Number(getFirst(['OPSMANTIK_SAMPLING_RATE_V1', 'OCI_SAMPLING_RATE_V1'], '0.1')) || 0.1,
     HTTP: Object.freeze({
       MAX_RETRIES: 5,
       INITIAL_DELAY_MS: 1500,
@@ -83,13 +86,21 @@ class Validator {
   }
 
   /**
-   * Google Ads: yyyyMMdd HHmmss (compact, no offset) or legacy yyyy-mm-dd HH:mm:ss±HH:mm.
+   * Google Ads: yyyyMMdd HHmmss (compact, no offset) or yyyy-mm-dd HH:mm:ss±HHmm.
+   * Accept both ±HHmm and legacy ±HH:mm on input, then normalize to ±HHmm for CSV upload.
    */
   static isValidGoogleAdsTime(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return false;
     const s = timeStr.trim();
     if (/^\d{8} \d{6}$/.test(s)) return true;
-    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/.test(s);
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:?\d{2}$/.test(s);
+  }
+
+  static normalizeGoogleAdsTime(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return '';
+    const s = timeStr.trim();
+    if (/^\d{8} \d{6}$/.test(s)) return s;
+    return s.replace(/([+-]\d{2}):(\d{2})$/, '$1$2');
   }
 
   static analyze(row) {
@@ -99,7 +110,7 @@ class Validator {
     if (!row.conversionTime) return { valid: false, reason: 'MISSING_TIME' };
     if (!this.isValidGoogleAdsTime(row.conversionTime)) return { valid: false, reason: 'INVALID_TIME_FORMAT' };
 
-    // V1 Sinyallerini Deterministic Sampling'den geçiriyoruz.
+    // V1 sampling lives only in the script so skippedIds stay visible to ACK/audit.
     if (row.conversionName === CONVERSION_EVENTS.V1_PAGEVIEW) {
       if (!this.isSampledIn(clickId, CONFIG.SAMPLING_RATE_V1)) {
         return { valid: false, reason: 'DETERMINISTIC_SKIP' };
@@ -118,6 +129,7 @@ class QuantumClient {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.apiKey = apiKey;
     this.sessionToken = null;
+    this.siteId = null;
   }
 
   /**
@@ -159,6 +171,7 @@ class QuantumClient {
   }
 
   verifyHandshake(siteId) {
+    this.siteId = siteId;
     const url = `${this.baseUrl}/api/oci/v2/verify`;
     const response = this._fetchWithBackoff(url, {
       method: 'post',
@@ -171,17 +184,57 @@ class QuantumClient {
     this.sessionToken = data.session_token;
   }
 
-  fetchConversions(siteId) {
-    const url = `${this.baseUrl}/api/oci/google-ads-export?siteId=${encodeURIComponent(siteId)}&markAsExported=true`;
-    const response = this._fetchWithBackoff(url, {
+  _isUnauthorized(err) {
+    const msg = err && err.message ? String(err.message) : String(err || '');
+    return msg.indexOf('Kritik HTTP Hatası 401') >= 0 || msg.indexOf('Kritik HTTP Hatasi 401') >= 0;
+  }
+
+  _fetchWithSessionRetry(url, options) {
+    try {
+      return this._fetchWithBackoff(url, options);
+    } catch (err) {
+      if (!this.sessionToken || !this.siteId || !this._isUnauthorized(err)) throw err;
+      Telemetry.warn('Session token expired, renewing handshake and retrying once...', { url });
+      this.verifyHandshake(this.siteId);
+      const nextHeaders = Object.assign({}, options && options.headers ? options.headers : {});
+      if (nextHeaders.Authorization) {
+        nextHeaders.Authorization = `Bearer ${this.sessionToken}`;
+      }
+      return this._fetchWithBackoff(url, Object.assign({}, options, { headers: nextHeaders }));
+    }
+  }
+
+  fetchConversionsPage(siteId, cursor) {
+    let url = `${this.baseUrl}/api/oci/google-ads-export?siteId=${encodeURIComponent(siteId)}&markAsExported=true`;
+    if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+    const response = this._fetchWithSessionRetry(url, {
       method: 'get',
       headers: {
         'Authorization': `Bearer ${this.sessionToken}`,
         'Accept': 'application/json'
       }
     });
+    const payload = JSON.parse(response.getContentText() || '{}');
+    if (Array.isArray(payload)) {
+      return { items: payload, nextCursor: null };
+    }
+    return {
+      items: Array.isArray(payload.items) ? payload.items : [],
+      nextCursor: payload.next_cursor || null
+    };
+  }
 
-    return JSON.parse(response.getContentText() || '[]');
+  fetchConversions(siteId) {
+    let cursor = null;
+    const items = [];
+    do {
+      const page = this.fetchConversionsPage(siteId, cursor);
+      if (page.items && page.items.length > 0) {
+        Array.prototype.push.apply(items, page.items);
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    return items;
   }
 
   sendAck(siteId, queueIds, skippedIds) {
@@ -189,7 +242,7 @@ class QuantumClient {
     const url = `${this.baseUrl}/api/oci/ack`;
     const payload = { siteId, queueIds: queueIds || [] };
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
-    const response = this._fetchWithBackoff(url, {
+    const response = this._fetchWithSessionRetry(url, {
       method: 'post',
       headers: {
         'Authorization': `Bearer ${this.sessionToken}`,
@@ -207,7 +260,7 @@ class QuantumClient {
   sendAckFailed(siteId, queueIds, errorCode, errorMessage, errorCategory) {
     if (!queueIds.length) return;
     const url = `${this.baseUrl}/api/oci/ack-failed`;
-    this._fetchWithBackoff(url, {
+    this._fetchWithSessionRetry(url, {
       method: 'post',
       headers: {
         'Authorization': `Bearer ${this.sessionToken}`,
@@ -288,7 +341,7 @@ class UploadEngine {
         'Order ID': orderId,
         'Google Click ID': validation.clickId,
         'Conversion name': (row.conversionName || '').trim() || CONVERSION_EVENTS.V5_SEAL,
-        'Conversion time': row.conversionTime,
+        'Conversion time': Validator.normalizeGoogleAdsTime(row.conversionTime),
         'Conversion value': Math.max(0, conversionValue),
         'Conversion currency': (row.conversionCurrency || 'TRY').toUpperCase()
       });
@@ -419,32 +472,35 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
             return JSON.stringify({ session_token: 'mock_quantum_token_12345' });
           }
           if (url.includes('/api/oci/google-ads-export')) {
-            return JSON.stringify([
-              {
-                id: 'mock-conv-1',
-                gclid: 'TEST_GCLID_QWERT123',
-                conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
-                conversionTime: '2026-03-01 15:30:00+0300',
-                conversionValue: 5000,
-                conversionCurrency: 'TRY'
-              },
-              {
-                id: 'mock-conv-2',
-                wbraid: 'TEST_WBRAID_XYZ890',
-                conversionName: 'OpsMantik_V3_Nitelikli_Gorusme',
-                conversionTime: '2026-03-01 16:45:00+0300',
-                conversionValue: 0,
-                conversionCurrency: 'TRY'
-              },
-              {
-                id: 'mock-conv-3',
-                gclid: 'TEST_GCLID_INVALID_TIME',
-                conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
-                conversionTime: '2026-03-01', // Invalid time to test validator
-                conversionValue: 1000,
-                conversionCurrency: 'TRY'
-              }
-            ]);
+            return JSON.stringify({
+              items: [
+                {
+                  id: 'mock-conv-1',
+                  gclid: 'TEST_GCLID_QWERT123',
+                  conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
+                  conversionTime: '2026-03-01 15:30:00+0300',
+                  conversionValue: 5000,
+                  conversionCurrency: 'TRY'
+                },
+                {
+                  id: 'mock-conv-2',
+                  wbraid: 'TEST_WBRAID_XYZ890',
+                  conversionName: 'OpsMantik_V3_Nitelikli_Gorusme',
+                  conversionTime: '2026-03-01 16:45:00+0300',
+                  conversionValue: 0,
+                  conversionCurrency: 'TRY'
+                },
+                {
+                  id: 'mock-conv-3',
+                  gclid: 'TEST_GCLID_INVALID_TIME',
+                  conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
+                  conversionTime: '2026-03-01',
+                  conversionValue: 1000,
+                  conversionCurrency: 'TRY'
+                }
+              ],
+              next_cursor: null
+            });
           }
           if (url.includes('/api/oci/ack')) {
             return JSON.stringify({ updated: 2 });

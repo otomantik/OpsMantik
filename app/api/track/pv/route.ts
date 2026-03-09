@@ -1,7 +1,7 @@
 /**
  * POST /api/track/pv — V1_PAGEVIEW (MizanMantik 5-Gear)
  *
- * Şok cihazı — volume sinyali, value=0. Orchestrator routes to Redis.
+ * Şok cihazı — volume sinyali, 1 minor-unit visibility value. Orchestrator routes to Redis.
  * Strict GCLID gate: organic traffic silently dropped.
  *
  * Body: { siteId: string, gclid?: string, wbraid?: string, gbraid?: string }
@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { SiteService } from '@/lib/services/site-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { logError } from '@/lib/logging/logger';
 
@@ -44,6 +45,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true }, { status: 200, headers: corsHeaders });
     }
 
+    const { valid, site } = await SiteService.validateSite(siteId);
+    if (!valid || !site) {
+      return NextResponse.json({ ok: true }, { status: 200, headers: corsHeaders });
+    }
+    const siteUuid = (site as { id: string }).id;
+
     const clientId = RateLimitService.getClientId(req);
     await RateLimitService.checkWithMode(clientId, 2000, 60 * 1000, {
       mode: 'fail-closed',
@@ -52,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     const now = new Date();
     const result = await evaluateAndRouteSignal('V1_PAGEVIEW', {
-      siteId,
+      siteId: siteUuid,
       gclid: gclid || null,
       wbraid: wbraid || null,
       gbraid: gbraid || null,

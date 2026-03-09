@@ -85,11 +85,10 @@
 | Location | Usage |
 |----------|--------|
 | **`app/api/calls/[id]/seal/route.ts`** | Reads `version` from DB; sends `p_version` to seal RPC; handles P0002 / version mismatch as concurrency conflict. |
-| **`app/api/calls/[id]/stage/route.ts`** | Passes `version` from body to `PipelineService.stageCall()`; returns 409 on `version_mismatch`. |
+| **`app/api/calls/[id]/stage/route.ts`** | Retired with explicit `410 PIPELINE_STAGE_ROUTE_RETIRED` to prevent split-brain writes. |
 | **`app/api/workers/calc-brain-score/route.ts`** | Selects `version`, updates with `version: currentVersion + 1` and `.eq('version', currentVersion)` for optimistic locking. |
-| **`lib/services/pipeline-service.ts`** | Uses `version` in update filter when provided; returns `reason: 'version_mismatch'` when no rows updated and version was supplied. |
 
-All mutation paths that touch the `calls` table’s version use it for optimistic concurrency control; no missing version checks were identified in this audit.
+All active mutation paths that touch the `calls` table’s version use it for optimistic concurrency control; the legacy stage path was retired rather than maintained as a parallel writer.
 
 ---
 

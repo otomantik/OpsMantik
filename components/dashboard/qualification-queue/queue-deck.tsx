@@ -53,7 +53,10 @@ function ActiveDeckCard({
       pushToast('success', t('seal.dealSealed'));
     }
     void qualify(params)
-      .then(() => {
+      .then((result) => {
+        if (!result.success) {
+          pushToast('danger', result.error || t('toast.failedUpdate'));
+        }
         onQualified();
       })
       .catch(() => {
@@ -84,16 +87,27 @@ function ActiveDeckCard({
   };
 
   const handleJunk = ({ id }: { id: string }) => {
-    onOptimisticRemove(id);
-    pushHistoryRow({
-      id,
-      status: 'junk',
-      intent_action: intent.intent_action ?? null,
-      identity: intent.intent_target ?? null,
-    });
-    pushToast('danger', t('toast.trashRemoved'));
-    // Junk should be score=0 (0-100 lead_score = 0) to avoid polluting OCI value logic.
-    fireQualify({ score: 0, status: 'junk' }, false);
+    void qualify({ score: 0, status: 'junk' })
+      .then((result) => {
+        if (!result.success) {
+          pushToast('danger', result.error || t('toast.failedUpdate'));
+          onQualified();
+          return;
+        }
+        onOptimisticRemove(id);
+        pushHistoryRow({
+          id,
+          status: 'junk',
+          intent_action: intent.intent_action ?? null,
+          identity: intent.intent_target ?? null,
+        });
+        pushToast('danger', t('toast.trashRemoved'));
+        onQualified();
+      })
+      .catch(() => {
+        pushToast('danger', t('toast.failedUpdate'));
+        onQualified();
+      });
   };
 
   return (
@@ -145,21 +159,32 @@ function LiteDeckCard({
       : null;
 
   return (
-    <div className="relative group">
-      <div className="flex items-center justify-between gap-4 p-4 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+    <div className="relative group rounded-xl border border-slate-200 bg-white shadow-sm min-h-[420px] overflow-hidden">
+      <div className="flex h-full flex-col">
+        <div className="border-b border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
             <span className="text-[11px] font-bold tracking-tight text-slate-400 tabular-nums">
               {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('dashboard.commandCenter.queue.trt')}
             </span>
           </div>
-          <div className="mt-2 text-sm font-medium truncate">{summary}</div>
-          <div className="mt-2 text-xs text-muted-foreground">{actionsLine || t('dashboard.commandCenter.queue.loadingDetails')}</div>
+          <div className="text-base font-semibold text-slate-900 truncate">{summary}</div>
+          <div className="mt-2 text-sm text-muted-foreground">{actionsLine || t('dashboard.commandCenter.queue.loadingDetails')}</div>
         </div>
-      </div>
 
-      <div className="p-3 pt-0">
-        <div className="grid grid-cols-3 gap-2 w-full">
+        <div className="flex-1 p-5 space-y-4">
+          <div className="space-y-2">
+            <div className="h-4 w-32 rounded bg-slate-100" />
+            <div className="h-4 w-full max-w-[280px] rounded bg-slate-100" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="h-20 rounded-xl border border-slate-100 bg-slate-50" />
+            <div className="h-20 rounded-xl border border-slate-100 bg-slate-50" />
+          </div>
+          <div className="h-28 rounded-xl border border-dashed border-slate-200 bg-slate-50/80" />
+        </div>
+
+        <div className="mt-auto p-4 pt-0">
+          <div className="grid grid-cols-3 gap-2 w-full">
           <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
             {t('dashboard.commandCenter.queue.junk')}
           </Button>
@@ -169,6 +194,7 @@ function LiteDeckCard({
           <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
             {t('dashboard.commandCenter.queue.seal')}
           </Button>
+          </div>
         </div>
       </div>
     </div>

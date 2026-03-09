@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const siteUuid = siteRow.id;
 
     const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SEC;
-    const sessionToken = createSessionToken(siteUuid, expiresAt);
+    const sessionToken = await createSessionToken(siteUuid, expiresAt);
 
     return NextResponse.json(
       {

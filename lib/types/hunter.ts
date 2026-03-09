@@ -21,6 +21,10 @@ export interface HunterIntentLite {
   intent_action?: 'whatsapp' | 'phone' | 'form' | 'other' | string | null;
   /** A brief text summary for list UI (e.g. intent_target or action). */
   summary?: string | null;
+  intent_target?: string | null;
+  intent_page_url?: string | null;
+  page_url?: string | null;
+  click_id?: string | null;
   /** Session-based action evidence (single card per session). */
   phone_clicks?: number | null;
   whatsapp_clicks?: number | null;
@@ -28,6 +32,25 @@ export interface HunterIntentLite {
   /** Traffic source/medium (from sessions join in RPC). */
   traffic_source?: string | null;
   traffic_medium?: string | null;
+  attribution_source?: string | null;
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
+  utm_term?: string | null;
+  utm_campaign?: string | null;
+  utm_source?: string | null;
+  matchtype?: string | null;
+  city?: string | null;
+  district?: string | null;
+  location_source?: string | null;
+  device_type?: string | null;
+  device_os?: string | null;
+  total_duration_sec?: number | null;
+  event_count?: number | null;
+  estimated_value?: number | null;
+  currency?: string | null;
+  form_state?: 'started' | 'attempted' | 'validation_failed' | 'network_failed' | 'success' | string | null;
+  form_summary?: Record<string, unknown> | null;
 }
 
 /** Unified Hunter Intent (v3) - Single source of truth */
@@ -101,6 +124,8 @@ export interface HunterIntent {
   matched_session_id?: string | null;
   status?: string | null;
   event_count?: number | null;
+  form_state?: 'started' | 'attempted' | 'validation_failed' | 'network_failed' | 'success' | string | null;
+  form_summary?: Record<string, unknown> | null;
 
   /** Session action counts (evidence for "2x phone, 1x WhatsApp"). */
   phone_clicks?: number | null;

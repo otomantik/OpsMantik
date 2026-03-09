@@ -24,14 +24,18 @@ import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/gears/shared';
+import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
+import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 
 export interface EnqueueSealParams {
   callId: string;
   siteId: string;
   confirmedAt: string;
+  saleOccurredAt?: string | null;
   saleAmount: number | null;
   currency: string;
   leadScore: number | null;
+  entryReason?: string | null;
   /** Raw star rating (1-5). Used for value calculation. */
   star?: number | null;
 }
@@ -85,7 +89,7 @@ async function loadSiteOciConfig(siteId: string) {
  * Idempotent via UNIQUE(call_id).
  */
 export async function enqueueSealConversion(params: EnqueueSealParams): Promise<EnqueueSealResult> {
-  const { callId, siteId, confirmedAt, saleAmount, currency, leadScore, star: starParam } = params;
+  const { callId, siteId, confirmedAt, saleOccurredAt, saleAmount, currency, leadScore, entryReason, star: starParam } = params;
 
   // 0. Null safety: Seal requires confirmed_at — never send broken payload to Google
   if (!confirmedAt || typeof confirmedAt !== 'string') {
@@ -119,6 +123,10 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     });
     return { enqueued: false, reason: 'error', error: 'OCI_SEAL_TEMPORAL_POISONING' };
   }
+  const occurredAtMeta = resolveSealOccurredAt({
+    saleOccurredAt,
+    fallbackConfirmedAt: confirmedAtTrimmed,
+  });
 
   // 1. Click ID check (with Identity Stitcher: DIRECT → PHONE_STITCH → FINGERPRINT_STITCH)
   const directSource = await getPrimarySource(siteId, { callId });
@@ -203,7 +211,8 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     { valueCents, currency: currencySafe }
   );
 
-  // 8. Insert into queue (Seal: conversion_time = confirmed_at, UTC/ISO; DB stores timestamptz)
+  // 8. Insert into queue. Keep legacy conversion_time populated for compatibility,
+  // but canonical export should prefer occurred_at.
   try {
     const insertPayload: Record<string, unknown> = {
       site_id: siteId,
@@ -217,7 +226,11 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
         callId,
         sessionId,
       }),
-      conversion_time: confirmedAtTrimmed,
+      conversion_time: occurredAtMeta.occurredAt,
+      occurred_at: occurredAtMeta.occurredAt,
+      source_timestamp: occurredAtMeta.sourceTimestamp,
+      time_confidence: occurredAtMeta.timeConfidence,
+      occurred_at_source: occurredAtMeta.occurredAtSource,
       value_cents: valueCents,
       currency: currencySafe,
       gclid,
@@ -228,6 +241,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       entropy_score: 0,
       uncertainty_bit: false,
     };
+    if (entryReason?.trim()) insertPayload.entry_reason = entryReason.trim().slice(0, 500);
     if (discoveryMethod) insertPayload.discovery_method = discoveryMethod;
     if (discoveryConfidence != null) insertPayload.discovery_confidence = discoveryConfidence;
 
@@ -249,6 +263,19 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     const queueId = (inserted as { id: string } | null)?.id ?? null;
     if (queueId) {
       appendCausalDnaLedgerSafe(siteId, 'conversion', queueId, causalDna);
+      try {
+        await appendFunnelEvent({
+          callId,
+          siteId,
+          eventType: 'V5_SEALED',
+          eventSource: 'SEAL_ROUTE',
+          idempotencyKey: `v5:seal:${queueId}`,
+          occurredAt: new Date(occurredAtMeta.occurredAt),
+          payload: { value_cents: valueCents, currency: currencySafe },
+        });
+      } catch (ledgerErr) {
+        logWarn('FUNNEL_LEDGER_V5_APPEND_FAILED', { call_id: callId, queue_id: queueId, error: (ledgerErr as Error)?.message });
+      }
     }
 
     logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, star, value_units: valueUnits, value_cents: valueCents });

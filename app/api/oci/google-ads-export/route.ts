@@ -18,6 +18,8 @@ import type { SiteValuationRow } from '@/lib/oci/oci-config';
 import { hashPhoneForEC } from '@/lib/dic/identity-hash';
 import { isCallSendableForSealExport, isCallStatusSendableForOci, isCallStatusSendableForSignal } from '@/lib/oci/call-sendability';
 import { validateOciQueueValueCents, validateOciSignalConversionValue } from '@/lib/oci/export-value-guard';
+import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
+import { getPvDataKey, getPvProcessingKey, getPvProcessingKeysForCleanup, getPvQueueKeysForExport } from '@/lib/oci/pv-redis';
 import { createHash } from 'node:crypto';
 import * as jose from 'jose';
 
@@ -25,6 +27,7 @@ const PV_BATCH_MAX = 500;
 /** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
 const EXPORT_QUEUE_LIMIT = 1000;
 const EXPORT_SIGNALS_LIMIT = 1000;
+const V1_PAGEVIEW_VISIBILITY_MINOR = 1;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -46,7 +49,7 @@ export interface GoogleAdsConversionItem {
   gbraid: string;
   /** Conversion action name (e.g. "Sealed Lead"). */
   conversionName: string;
-  /** Format: yyyy-mm-dd HH:mm:ss±HH:mm (timezone required). Seal=confirmed_at; Intent=created_at. */
+  /** Format: yyyy-mm-dd HH:mm:ss±HH:mm (timezone required). Prefer canonical occurred_at. */
   conversionTime: string;
   /** Numeric value only (e.g. 750.00). No currency symbols. */
   conversionValue: number;
@@ -221,11 +224,112 @@ export async function GET(req: NextRequest) {
       throw err;
     }
 
+    // USE_FUNNEL_PROJECTION: Export from call_funnel_projection (single SSOT)
+    const useFunnelProjection = process.env.USE_FUNNEL_PROJECTION === 'true';
+    if (useFunnelProjection) {
+      try {
+        const { data: projRows } = await adminClient
+          .from('call_funnel_projection')
+          .select('call_id, site_id, v5_at, value_cents, currency')
+          .eq('site_id', siteUuid)
+          .eq('export_status', 'READY')
+          .eq('funnel_completeness', 'complete')
+          .not('v5_at', 'is', null)
+          .limit(EXPORT_QUEUE_LIMIT);
+
+        const projList = Array.isArray(projRows) ? projRows : [];
+        const items: GoogleAdsConversionItem[] = [];
+        const callIds = projList.map((r: { call_id: string }) => r.call_id);
+
+        if (callIds.length > 0) {
+          const { data: callsForStitch } = await adminClient
+            .from('calls')
+            .select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at')
+            .eq('site_id', siteUuid)
+            .in('id', callIds);
+          const directSource = await getPrimarySourceBatch(siteUuid, callIds);
+          const callCtxByCallId = new Map<string, { caller_phone_e164?: string; callTime: string }>();
+          for (const c of callsForStitch ?? []) {
+            const id = (c as { id: string }).id;
+            const confirmed = (c as { confirmed_at?: string }).confirmed_at;
+            const created = (c as { created_at?: string }).created_at;
+            callCtxByCallId.set(id, {
+              caller_phone_e164: (c as { caller_phone_e164?: string }).caller_phone_e164 ?? undefined,
+              callTime: confirmed ?? created ?? new Date().toISOString(),
+            });
+          }
+
+          for (const row of projList) {
+            const callId = (row as { call_id: string }).call_id;
+            const v5At = (row as { v5_at?: string | null }).v5_at;
+            const valueCents = (row as { value_cents?: number | null }).value_cents;
+            const rowCurrency = (row as { currency?: string | null }).currency;
+            const ctx = callCtxByCallId.get(callId);
+            const direct = directSource.get(callId) ?? null;
+            const discovered = await getPrimarySourceWithDiscovery(siteUuid, direct, {
+              callId,
+              callTime: ctx?.callTime ?? v5At ?? new Date().toISOString(),
+              callerPhoneE164: ctx?.caller_phone_e164 ?? null,
+              fingerprint: undefined,
+            });
+            const gclid = (discovered?.source?.gclid ?? '').trim();
+            const wbraid = (discovered?.source?.wbraid ?? '').trim();
+            const gbraid = (discovered?.source?.gbraid ?? '').trim();
+            const clickId = gclid || wbraid || gbraid;
+            if (!clickId) continue;
+
+            const conversionTime = formatGoogleAdsTimeOrNull(v5At, (site as { timezone?: string | null }).timezone);
+            if (!conversionTime) continue;
+
+            const currency = rowCurrency ?? (site as { currency?: string })?.currency ?? 'TRY';
+            const valueUnits = valueCents != null && Number.isFinite(valueCents) && valueCents > 0
+              ? minorToMajor(valueCents, currency)
+              : 0.01; // fallback
+
+            const convName = OPSMANTIK_CONVERSION_NAMES.V5_SEAL;
+            const orderId = buildOrderId(convName, clickId, conversionTime, `proj_${callId}`, callId, Math.round(valueUnits * 100));
+            items.push({
+              id: `proj_${callId}`,
+              orderId: orderId || `proj_${callId}`,
+              gclid,
+              wbraid,
+              gbraid,
+              conversionName: convName,
+              conversionTime,
+              conversionValue: valueUnits,
+              conversionCurrency: currency,
+            });
+          }
+
+          if (markAsExported && callIds.length > 0) {
+            await adminClient
+              .from('call_funnel_projection')
+              .update({ export_status: 'EXPORTED', updated_at: new Date().toISOString() })
+              .eq('site_id', siteUuid)
+              .in('call_id', callIds)
+              .eq('export_status', 'READY');
+          }
+        }
+
+        return NextResponse.json({
+          items,
+          next_cursor: null,
+          _source: 'funnel_projection',
+        });
+      } catch (projErr) {
+        logError('USE_FUNNEL_PROJECTION_EXPORT_FAILED', {
+          error: projErr instanceof Error ? projErr.message : String(projErr),
+          site_id: siteUuid,
+        });
+        return NextResponse.json({ error: 'Funnel projection export failed', code: 'PROJECTION_EXPORT_ERROR' }, { status: 500 });
+      }
+    }
+
     // Phase 6.2: Deterministic Cursor-Based Query (offline_conversion_queue)
     // Formula: (updated_at, id) > (last_t, last_i)
     let query = adminClient
       .from('offline_conversion_queue')
-      .select('id, sale_id, call_id, gclid, wbraid, gbraid, conversion_time, created_at, updated_at, value_cents, currency, action, external_id, session_id, provider_key')
+      .select('id, sale_id, call_id, gclid, wbraid, gbraid, conversion_time, occurred_at, created_at, updated_at, value_cents, currency, action, external_id, session_id, provider_key')
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter);
@@ -254,7 +358,7 @@ export async function GET(req: NextRequest) {
     // NOTE: marketing_signals has no updated_at column — use created_at for ordering and cursors.
     let sigQuery = adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, conversion_value, gclid, wbraid, gbraid, trace_id, created_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
+      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, occurred_at, conversion_value, gclid, wbraid, gbraid, trace_id, created_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING');
 
@@ -273,6 +377,7 @@ export async function GET(req: NextRequest) {
         message: (signalFetchError as { message?: string })?.message,
         site_id: siteUuid,
       });
+      return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
     const signalList = Array.isArray(signalRows) ? signalRows : [];
     if (signalList.length === EXPORT_SIGNALS_LIMIT) {
@@ -342,6 +447,7 @@ export async function GET(req: NextRequest) {
     }
 
     const blockedSignalIds: string[] = [];
+    const blockedSignalTimeIds: string[] = [];
     const blockedSignalValueIds: string[] = [];
     const signalItems: GoogleAdsConversionItem[] = [];
     for (const sig of signalList) {
@@ -364,7 +470,7 @@ export async function GET(req: NextRequest) {
         const directSource = sourceMap.get(callId) ?? null;
         const discovered = await getPrimarySourceWithDiscovery(siteUuid, directSource, {
           callId,
-          callTime: ctx?.callTime ?? (sig as { google_conversion_time?: string }).google_conversion_time ?? new Date().toISOString(),
+          callTime: ctx?.callTime ?? (sig as { occurred_at?: string | null; google_conversion_time?: string }).occurred_at ?? (sig as { google_conversion_time?: string }).google_conversion_time ?? new Date().toISOString(),
           callerPhoneE164: ctx?.caller_phone_e164 ?? null,
           fingerprint: ctx?.matched_fingerprint ?? null,
         });
@@ -382,8 +488,28 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const rawTime = (sig as { google_conversion_time: string }).google_conversion_time || '';
-      const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
+      const rawTime = pickCanonicalOccurredAt([
+        (sig as { occurred_at?: string | null }).occurred_at,
+        (sig as { google_conversion_time?: string | null }).google_conversion_time,
+        (sig as { created_at?: string | null }).created_at,
+      ]);
+      if (!rawTime) {
+        logError('OCI_EXPORT_SIGNAL_OCCURRED_AT_MISSING', {
+          signal_id: (sig as { id: string }).id,
+          call_id: callId,
+        });
+        continue;
+      }
+      const conversionTime = formatGoogleAdsTimeOrNull(rawTime, (site as { timezone?: string | null }).timezone);
+      if (!conversionTime) {
+        blockedSignalTimeIds.push((sig as { id: string }).id);
+        logError('OCI_EXPORT_SIGNAL_TIME_INVALID', {
+          signal_id: (sig as { id: string }).id,
+          call_id: callId,
+          raw_time: rawTime,
+        });
+        continue;
+      }
       const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
@@ -431,27 +557,35 @@ export async function GET(req: NextRequest) {
     // PENDING signals without click_id are left for Self-Healing Pulse to retry (no SKIPPED update here)
 
     // Pipeline C: Redis Page Views (Ops_PageView)
+    // Sampling is script-owned. Backend must return every eligible V1 row so skippedIds stay auditable.
     const pvItems: GoogleAdsConversionItem[] = [];
-    const siteRedisKey = (site as { public_id?: string | null })?.public_id || siteUuid;
-    try {
+    if (markAsExported) try {
       const pvIds: string[] = [];
+      const invalidPvIds: string[] = [];
+      const pvQueueKeys = getPvQueueKeysForExport(siteUuid, (site as { public_id?: string | null }).public_id);
+      const pvProcessingKey = getPvProcessingKey(siteUuid);
       for (let i = 0; i < PV_BATCH_MAX; i++) {
-        const id = await redis.lmove(
-          `pv:queue:${siteRedisKey}`,
-          `pv:processing:${siteRedisKey}`,
-          'right',
-          'left'
-        );
-        if (!id || typeof id !== 'string') break;
-        pvIds.push(id);
+        let moved = false;
+        for (const queueKey of pvQueueKeys) {
+          const id = await redis.lmove(queueKey, pvProcessingKey, 'right', 'left');
+          if (!id || typeof id !== 'string') continue;
+          pvIds.push(id);
+          moved = true;
+          break;
+        }
+        if (!moved) break;
       }
       for (const pvId of pvIds) {
-        // 10% deterministic sampling: hash(pvId) % 10 === 0
-        const hash = simpleHash(pvId);
-        if (hash % 10 !== 0) continue;
-        const raw = await redis.get(`pv:data:${pvId}`);
+        const raw = await redis.get(getPvDataKey(pvId));
         if (!raw || typeof raw !== 'string') continue;
-        let payload: { siteId?: string; gclid?: string; wbraid?: string; gbraid?: string; timestamp?: string };
+        let payload: {
+          siteId?: string;
+          gclid?: string;
+          wbraid?: string;
+          gbraid?: string;
+          timestamp?: string;
+          conversionValueMinor?: number;
+        };
         try {
           payload = JSON.parse(raw) as typeof payload;
         } catch {
@@ -462,8 +596,18 @@ export async function GET(req: NextRequest) {
         const gbraid = (payload.gbraid || '').trim();
         const clickId = gclid || wbraid || gbraid;
         if (!clickId) continue;
-        const rawTime = payload.timestamp || new Date().toISOString();
-        const conversionTime = formatGoogleAdsTime(rawTime, (site as { timezone?: string | null }).timezone);
+        const rawTime = payload.timestamp || null;
+        const conversionTime = formatGoogleAdsTimeOrNull(rawTime, (site as { timezone?: string | null }).timezone);
+        if (!conversionTime) {
+          invalidPvIds.push(pvId);
+          logError('OCI_EXPORT_PV_TIME_INVALID', { pv_id: pvId, raw_time: rawTime });
+          continue;
+        }
+        const currency = (site as { currency?: string })?.currency || 'TRY';
+        const conversionValueMinor =
+          typeof payload.conversionValueMinor === 'number' && Number.isFinite(payload.conversionValueMinor) && payload.conversionValueMinor > 0
+            ? Math.round(payload.conversionValueMinor)
+            : V1_PAGEVIEW_VISIBILITY_MINOR;
         const pvOrderIdDDA = buildOrderId(
           OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW,
           clickId || null,
@@ -480,9 +624,20 @@ export async function GET(req: NextRequest) {
           gbraid: gbraid || '',
           conversionName: OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW,
           conversionTime,
-          conversionValue: 0,
-          conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
+          conversionValue: minorToMajor(conversionValueMinor, currency),
+          conversionCurrency: currency,
         });
+      }
+      if (invalidPvIds.length > 0) {
+        const processingKeys = getPvProcessingKeysForCleanup(siteUuid, (site as { public_id?: string | null }).public_id);
+        await Promise.all(
+          invalidPvIds.map(async (pvId) => {
+            await Promise.all([
+              redis.del(getPvDataKey(pvId)),
+              ...processingKeys.map((processingKey) => redis.lrem(processingKey, 0, pvId)),
+            ]);
+          })
+        );
       }
     } catch (redisErr) {
       const { logError } = await import('@/lib/logging/logger');
@@ -558,7 +713,7 @@ export async function GET(req: NextRequest) {
     const idsToMarkProcessing = list.map((r: { id: string }) => r.id);
     const signalIdsToMarkProcessing = signalItems.map((s: { id: string }) => s.id.replace('signal_', ''));
 
-    if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0 || signalIdsToMarkProcessing.length > 0 || blockedQueueIds.length > 0 || blockedSignalIds.length > 0 || blockedSignalValueIds.length > 0)) {
+    if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0 || signalIdsToMarkProcessing.length > 0 || blockedQueueIds.length > 0 || blockedSignalIds.length > 0 || blockedSignalTimeIds.length > 0 || blockedSignalValueIds.length > 0)) {
       const now = new Date().toISOString();
       if (blockedQueueIds.length > 0) {
         const { data: blockedClaimedCount, error: blockedClaimError } = await adminClient.rpc(
@@ -699,6 +854,27 @@ export async function GET(req: NextRequest) {
           return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
         }
       }
+      if (blockedSignalTimeIds.length > 0) {
+        const { data, error: blockedSignalTimeError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'FAILED' })
+          .in('id', blockedSignalTimeIds)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING')
+          .select('id');
+        if (blockedSignalTimeError) {
+          logError('OCI_EXPORT_SIGNAL_TIME_ABORT_FAILED', { error: blockedSignalTimeError.message });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const updatedBlockedSignalTimes = Array.isArray(data) ? data.length : 0;
+        if (updatedBlockedSignalTimes !== blockedSignalTimeIds.length) {
+          logError('OCI_EXPORT_SIGNAL_TIME_ABORT_MISMATCH', {
+            requested: blockedSignalTimeIds.length,
+            updated: updatedBlockedSignalTimes,
+          });
+          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        }
+      }
       if (blockedSignalValueIds.length > 0) {
         const { data, error: blockedSignalValueError } = await adminClient
           .from('marketing_signals')
@@ -735,6 +911,7 @@ export async function GET(req: NextRequest) {
       wbraid?: string | null;
       gbraid?: string | null;
       conversion_time: string;
+      occurred_at?: string | null;
       created_at?: string | null;
       value_cents: number;
       currency?: string | null;
@@ -744,19 +921,26 @@ export async function GET(req: NextRequest) {
     };
 
     const conversions: GoogleAdsConversionItem[] = [];
+    const blockedQueueTimeIds: string[] = [];
     const blockedValueZeroIds: string[] = [];
     for (const row of list as QueueRow[]) {
-      // Precedence: calls.confirmed_at > queue.conversion_time > queue.created_at
-      const sealTs = row.call_id ? (callConfirmedAt[row.call_id] ?? null) : null;
-      const baseTs = sealTs || row.conversion_time || row.created_at || null;
+      const fallbackSealTs = row.call_id ? (callConfirmedAt[row.call_id] ?? null) : null;
+      const baseTs = pickCanonicalOccurredAt([
+        row.occurred_at,
+        row.conversion_time,
+        fallbackSealTs,
+        row.created_at,
+      ]);
 
       // Null-safe format — skip row if timestamp is missing or invalid (no silent fallback to now).
       const conversionTime = formatGoogleAdsTimeOrNull(baseTs, siteTimezone);
       if (!conversionTime) {
+        blockedQueueTimeIds.push(row.id);
         logError('OCI_EXPORT_CONVERSION_TIME_MISSING', {
           queue_id: row.id,
           call_id: row.call_id ?? null,
-          sealTs,
+          occurred_at: row.occurred_at ?? null,
+          fallbackSealTs,
           queueTs: row.conversion_time ?? null,
         });
         continue;
@@ -820,33 +1004,48 @@ export async function GET(req: NextRequest) {
     }
 
     // P0: Fail-closed. If script is exporting (markAsExported=true), terminalize blocked rows so they never loop.
-    if (markAsExported && blockedValueZeroIds.length > 0) {
+    if (markAsExported && (blockedValueZeroIds.length > 0 || blockedQueueTimeIds.length > 0)) {
       const now = new Date().toISOString();
-      const { data: blockedRows } = await adminClient
-        .from('offline_conversion_queue')
-        .select('id')
-        .in('id', blockedValueZeroIds)
-        .eq('site_id', siteUuid)
-        .in('status', ['QUEUED', 'RETRY', 'PROCESSING']);
-      const blockedRowsList = Array.isArray(blockedRows) ? blockedRows as Array<{ id: string }> : [];
-      if (blockedRowsList.length !== blockedValueZeroIds.length) {
-        logError('OCI_EXPORT_ZERO_VALUE_PROCESSING_MISMATCH', { requested: blockedValueZeroIds.length, eligible: blockedRowsList.length });
-        return NextResponse.json({ error: 'Blocked queue state mismatch', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
-      }
-      const { data: blockedUpdatedCount, error: blockedUpdateError } = await adminClient.rpc('append_script_transition_batch', {
-        p_queue_ids: blockedRowsList.map((row) => row.id),
-        p_new_status: 'FAILED',
-        p_created_at: now,
-        p_error_payload: {
-          last_error: 'VALUE_ZERO',
-          provider_error_code: 'VALUE_ZERO',
-          provider_error_category: 'PERMANENT',
-          clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+      const blockedTerminalBatches = [
+        {
+          ids: [...new Set(blockedQueueTimeIds)],
+          code: 'INVALID_CONVERSION_TIME',
+          logKey: 'OCI_EXPORT_BLOCKED_TIME',
         },
-      });
-      if (blockedUpdateError || typeof blockedUpdatedCount !== 'number' || blockedUpdatedCount !== blockedRowsList.length) {
-        logError('OCI_EXPORT_ZERO_VALUE_TERMINALIZE_FAILED', { code: (blockedUpdateError as { code?: string })?.code, requested: blockedRowsList.length, updated: blockedUpdatedCount });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        {
+          ids: [...new Set(blockedValueZeroIds)],
+          code: 'VALUE_ZERO',
+          logKey: 'OCI_EXPORT_BLOCKED_VALUE_ZERO',
+        },
+      ].filter((batch) => batch.ids.length > 0);
+
+      for (const batch of blockedTerminalBatches) {
+        const { data: blockedRows } = await adminClient
+          .from('offline_conversion_queue')
+          .select('id')
+          .in('id', batch.ids)
+          .eq('site_id', siteUuid)
+          .eq('status', 'PROCESSING');
+        const blockedRowsList = Array.isArray(blockedRows) ? blockedRows as Array<{ id: string }> : [];
+        if (blockedRowsList.length !== batch.ids.length) {
+          logError(`${batch.logKey}_PROCESSING_MISMATCH`, { requested: batch.ids.length, eligible: blockedRowsList.length });
+          return NextResponse.json({ error: 'Blocked queue state mismatch', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+        }
+        const { data: blockedUpdatedCount, error: blockedUpdateError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: blockedRowsList.map((row) => row.id),
+          p_new_status: 'FAILED',
+          p_created_at: now,
+          p_error_payload: {
+            last_error: batch.code,
+            provider_error_code: batch.code,
+            provider_error_category: 'PERMANENT',
+            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (blockedUpdateError || typeof blockedUpdatedCount !== 'number' || blockedUpdatedCount !== blockedRowsList.length) {
+          logError(`${batch.logKey}_TERMINALIZE_FAILED`, { code: (blockedUpdateError as { code?: string })?.code, requested: blockedRowsList.length, updated: blockedUpdatedCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
       }
     }
 
@@ -903,14 +1102,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** Deterministic hash for 10% V1 sampling. */
-function simpleHash(str: string): number {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h) + str.charCodeAt(i) | 0;
-  }
-  return Math.abs(h);
-}
 
 /** Ensure value is a number suitable for Conversion value (no currency symbols). Round to 2 decimals. */
 function ensureNumericValue(value: number): number {

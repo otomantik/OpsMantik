@@ -107,12 +107,17 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       if (!callId) return null;
       if (detailsById[callId]) return detailsById[callId];
       try {
-        const supabase = createClient();
-        const { data, error: rpcError } = await supabase.rpc('get_intent_details_v1', {
-          p_site_id: siteId,
-          p_call_id: callId,
-        });
-        if (rpcError) return null;
+        const response = await fetch(
+          `/api/intents/${encodeURIComponent(callId)}/details?siteId=${encodeURIComponent(siteId)}`,
+          {
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+          }
+        );
+        if (!response.ok) return null;
+        const payload = (await response.json()) as { data?: unknown };
+        const data = payload.data ?? null;
         // get_intent_details_v1 returns a single jsonb object
         const rows = parseHunterIntentsFull(data ? [data] : []);
         const full = rows[0] || null;
@@ -257,27 +262,25 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
           });
         }
 
-        // Fallback: if lite RPC doesn't exist in older DBs
+        // Fallback: some environments may still expose only the full v2 RPC during rollout.
         const liteMsg = String(liteErr?.message || liteErr?.details || '').toLowerCase();
         if (liteErr && (liteMsg.includes('not found') || liteMsg.includes('does not exist'))) {
-          // v1 uses since + minutes; derive minutes from range so Today/Yesterday both respect absolute range
-          const fromMs = new Date(r.fromIso).getTime();
-          const toMs = new Date(r.toIso).getTime();
-          const minutesLookback = Math.max(1, Math.round((toMs - fromMs) / (60 * 1000)));
-          const v1 = await supabase.rpc('get_recent_intents_v1', {
+          const v2 = await supabase.rpc('get_recent_intents_v2', {
             p_site_id: siteId,
-            p_since: r.fromIso,
-            p_minutes_lookback: minutesLookback,
+            p_date_from: r.fromIso,
+            p_date_to: r.toIso,
             p_limit: 100,
             p_ads_only: false,
           });
-          data = v1.data;
-          if (v1.error) throw v1.error;
+          data = v2.data;
+          if (v2.error) {
+            throw new Error('Queue visibility contract missing: get_recent_intents_lite_v1 is required');
+          }
         } else if (liteErr) {
           throw liteErr;
         }
 
-        // Parse to LITE list items (even if fallback v1 returned heavier rows)
+        // Parse to LITE list items, even when fallback returns the heavier v2 payload.
         const rows = parseHunterIntentsLite(data);
         // Range contract is half-open: [from, to) where to = next day start for "today" in TRT.
         const fromMs = new Date(r.fromIso).getTime();
@@ -306,38 +309,48 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     }
   }, [range, siteId, t]);
 
-  // Lazy-load full details for the ACTIVE (top) card only
+  // Preload full details for the active card and the next one so skip/rotate
+  // keeps the full-size card ready instead of briefly falling back to the lite shell.
   useEffect(() => {
-    if (!top?.id) return;
-    void fetchIntentDetails(top.id);
-  }, [fetchIntentDetails, top?.id]);
+    const ids = [top?.id, next?.id].filter((value): value is string => Boolean(value));
+    if (ids.length === 0) return;
+    ids.forEach((id) => {
+      void fetchIntentDetails(id);
+    });
+  }, [fetchIntentDetails, next?.id, top?.id]);
 
-  // Fetch richer session evidence for the TOP card only (keeps UI snappy, avoids heavy fan-out)
+  // Keep evidence hot for the active and next card to avoid visual downgrades
+  // when the deck advances.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      if (!top?.matched_session_id) return;
-      const sid = top.matched_session_id;
-      if (sessionEvidence[sid]) return;
+      const sessionIds = [top?.matched_session_id, next?.matched_session_id].filter((value): value is string => {
+        if (!value) return false;
+        return !sessionEvidence[value];
+      });
+      if (sessionIds.length === 0) return;
 
       try {
         const supabase = createClient();
-        const { data, error: rpcError } = await supabase.rpc('get_session_details', {
-          p_site_id: siteId,
-          p_session_id: sid,
-        });
-        if (rpcError) return;
-        const row = Array.isArray(data) ? data[0] : null;
-        if (!row) return;
-        if (cancelled) return;
-        setSessionEvidence((prev) => ({
-          ...prev,
-          [sid]: {
-            city: row.city ?? null,
-            district: row.district ?? null,
-            device_type: row.device_type ?? null,
-          },
-        }));
+        await Promise.all(
+          sessionIds.map(async (sid) => {
+            const { data, error: rpcError } = await supabase.rpc('get_session_details', {
+              p_site_id: siteId,
+              p_session_id: sid,
+            });
+            if (rpcError || cancelled) return;
+            const row = Array.isArray(data) ? data[0] : null;
+            if (!row) return;
+            setSessionEvidence((prev) => ({
+              ...prev,
+              [sid]: {
+                city: row.city ?? null,
+                district: row.district ?? null,
+                device_type: row.device_type ?? null,
+              },
+            }));
+          })
+        );
       } catch {
         // ignore
       }
@@ -346,7 +359,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     return () => {
       cancelled = true;
     };
-  }, [siteId, sessionEvidence, top?.matched_session_id]);
+  }, [next?.matched_session_id, sessionEvidence, siteId, top?.matched_session_id]);
 
   // Initial fetch (when range becomes available)
   useEffect(() => {
@@ -568,12 +581,44 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     [pushToast]
   );
 
-  const mergedTop: HunterIntent | null = top?.id && detailsById[top.id]
+  const mergedTop: HunterIntent | null = top
     ? (() => {
       const detail = detailsById[top.id];
-      const sid = detail.matched_session_id;
+      const sid = detail?.matched_session_id ?? top.matched_session_id ?? null;
       return {
         ...detail,
+        id: detail?.id ?? top.id,
+        created_at: detail?.created_at ?? top.created_at,
+        intent_action: detail?.intent_action ?? top.intent_action ?? null,
+        intent_target: detail?.intent_target ?? top.intent_target ?? top.summary ?? null,
+        intent_page_url: detail?.intent_page_url ?? top.intent_page_url ?? null,
+        page_url: detail?.page_url ?? top.page_url ?? top.intent_page_url ?? null,
+        click_id: detail?.click_id ?? top.click_id ?? null,
+        matched_session_id: sid,
+        status: detail?.status ?? top.status ?? null,
+        phone_clicks: detail?.phone_clicks ?? top.phone_clicks ?? null,
+        whatsapp_clicks: detail?.whatsapp_clicks ?? top.whatsapp_clicks ?? null,
+        traffic_source: detail?.traffic_source ?? top.traffic_source ?? null,
+        traffic_medium: detail?.traffic_medium ?? top.traffic_medium ?? null,
+        attribution_source: detail?.attribution_source ?? top.attribution_source ?? null,
+        gclid: detail?.gclid ?? top.gclid ?? null,
+        wbraid: detail?.wbraid ?? top.wbraid ?? null,
+        gbraid: detail?.gbraid ?? top.gbraid ?? null,
+        utm_term: detail?.utm_term ?? top.utm_term ?? null,
+        utm_campaign: detail?.utm_campaign ?? top.utm_campaign ?? null,
+        utm_source: detail?.utm_source ?? top.utm_source ?? null,
+        matchtype: detail?.matchtype ?? top.matchtype ?? null,
+        city: detail?.city ?? top.city ?? null,
+        district: detail?.district ?? top.district ?? null,
+        location_source: detail?.location_source ?? top.location_source ?? null,
+        device_type: detail?.device_type ?? top.device_type ?? null,
+        device_os: detail?.device_os ?? top.device_os ?? null,
+        total_duration_sec: detail?.total_duration_sec ?? top.total_duration_sec ?? null,
+        event_count: detail?.event_count ?? top.event_count ?? null,
+        estimated_value: detail?.estimated_value ?? top.estimated_value ?? null,
+        currency: detail?.currency ?? top.currency ?? null,
+        form_state: detail?.form_state ?? top.form_state ?? null,
+        form_summary: detail?.form_summary ?? top.form_summary ?? null,
         ...(sid ? sessionEvidence[sid] : {}),
       };
     })()

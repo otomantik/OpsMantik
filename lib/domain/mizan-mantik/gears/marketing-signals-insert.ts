@@ -13,7 +13,8 @@ import type { CausalDna } from '../causal-dna';
 import { appendBranch, toJsonb } from '../causal-dna';
 import { OPSMANTIK_CONVERSION_NAMES } from '../conversion-names';
 import { logShadowDecision, appendCausalDnaLedgerSafe } from './shared';
-import { logError } from '@/lib/logging/logger';
+import { logError, logInfo } from '@/lib/logging/logger';
+import { resolveSignalOccurredAt } from '@/lib/oci/occurred-at';
 
 function gearToLegacySignalType(gear: OpsGear): string {
   switch (gear) {
@@ -48,9 +49,20 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
 
   const effectiveAovMajor = config?.defaultAov ?? aov ?? 0;
   const aovCents = Math.round(Number(effectiveAovMajor) * 100);
-  let finalCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config?.intentWeights);
+  const computedCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config?.intentWeights);
   const floorCents = config ? getValueFloorCents(config) : 100;
-  if (finalCents < floorCents) finalCents = floorCents;
+  let finalCents = computedCents;
+  if (finalCents < floorCents) {
+    finalCents = floorCents;
+    logInfo('SIGNAL_VALUE_FLOOR_APPLIED', {
+      site_id: siteId,
+      gear,
+      computed_cents: computedCents,
+      floor_cents: floorCents,
+      applied_cents: finalCents,
+      site_min_conversion_value_cents: config?.minConversionValueCents ?? null,
+    });
+  }
   const conversionValue = finalCents / 100;
   const days = calculateDecayDays(clickDate, signalDate, 'ceil');
 
@@ -72,6 +84,7 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   const legacyType = gearToLegacySignalType(gear);
   const name = conversionName ?? OPSMANTIK_CONVERSION_NAMES[gear];
   const causalDnaJson = toJsonb(dnaOut);
+  const occurredAtMeta = resolveSignalOccurredAt(signalDate, gear);
 
   let sequence = 0;
   let previousHash: string | null = null;
@@ -103,6 +116,10 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
       signal_type: legacyType,
       google_conversion_name: name,
       google_conversion_time: signalDate.toISOString(),
+      occurred_at: occurredAtMeta.occurredAt,
+      source_timestamp: occurredAtMeta.sourceTimestamp,
+      time_confidence: occurredAtMeta.timeConfidence,
+      occurred_at_source: occurredAtMeta.occurredAtSource,
       expected_value_cents: finalCents,
       conversion_value: conversionValue,
       dispatch_status: 'PENDING',

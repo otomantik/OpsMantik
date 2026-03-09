@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 const SYNC_ROUTE = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
 const ENQUEUE_SEAL = join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts');
-const PIPELINE = join(process.cwd(), 'lib', 'services', 'pipeline-service.ts');
+const STAGE_ROUTE = join(process.cwd(), 'app', 'api', 'calls', '[id]', 'stage', 'route.ts');
 const GDPR_CONSENT_ROUTE = join(process.cwd(), 'app', 'api', 'gdpr', 'consent', 'route.ts');
 
 test('validateSite before consent gate, consent gate before publish', () => {
@@ -36,9 +36,12 @@ test('Site invalid returns 400, consent missing returns 204 only when site valid
 
 test('OCI enqueue checks marketing consent', () => {
   const enqueueSrc = readFileSync(ENQUEUE_SEAL, 'utf8');
-  const pipelineSrc = readFileSync(PIPELINE, 'utf8');
   assert.ok(enqueueSrc.includes('hasMarketingConsentForCall'), 'enqueueSealConversion must check marketing consent');
-  assert.ok(pipelineSrc.includes('hasMarketingConsentForCall'), 'PipelineService must check marketing consent');
+});
+
+test('legacy stage route is retired to prevent shadow OCI writes', () => {
+  const src = readFileSync(STAGE_ROUTE, 'utf8');
+  assert.ok(src.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'stage route must fail closed with a deterministic retirement code');
 });
 
 test('Erase RPC does not touch partition keys', () => {

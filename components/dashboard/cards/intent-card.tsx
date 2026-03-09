@@ -47,6 +47,8 @@ export type IntentCardData = {
   gbraid?: string | null;
   utm_campaign?: string | null;
   utm_term?: string | null;
+  form_state?: 'started' | 'attempted' | 'validation_failed' | 'network_failed' | 'success' | string | null;
+  form_summary?: Record<string, unknown> | null;
 };
 
 function getKind(action: string | null | undefined): IntentCardKind {
@@ -109,10 +111,30 @@ function secondsToHuman(sec: number | null | undefined, t: (key: TranslationKey,
 function normalizeWho(target: string | null | undefined): { label: string; raw: string } {
   const t = (target || '').trim();
   if (!t) return { label: '—', raw: '' };
-  // Common formats: tel:+90..., wa:+90..., tel:unknown
-  const noScheme = t.replace(/^(tel:|wa:)/i, '');
+  // Common formats: tel:+90..., wa:+90..., whatsapp:+90..., form:contact_form
+  const noScheme = t.replace(/^(tel:|wa:|whatsapp:|form:)/i, '');
   const digits = noScheme.replace(/[^\d+]/g, '');
   return { label: digits || noScheme || t, raw: digits || noScheme || t };
+}
+
+function formatFormState(state: string | null | undefined): string {
+  const v = (state || '').toLowerCase().trim();
+  if (v === 'started') return 'Started';
+  if (v === 'attempted') return 'Attempted';
+  if (v === 'validation_failed') return 'Validation failed';
+  if (v === 'network_failed') return 'Network failed';
+  if (v === 'success') return 'Success';
+  return 'Unknown';
+}
+
+function formatFormSummary(summary: Record<string, unknown> | null | undefined): string {
+  if (!summary) return '—';
+  const parts: string[] = [];
+  if (typeof summary.field_count === 'number') parts.push(`${summary.field_count} fields`);
+  if (typeof summary.required_field_count === 'number' && summary.required_field_count > 0) parts.push(`${summary.required_field_count} required`);
+  if (typeof summary.invalid_field_count === 'number' && summary.invalid_field_count > 0) parts.push(`${summary.invalid_field_count} invalid`);
+  if (typeof summary.file_input_count === 'number' && summary.file_input_count > 0) parts.push(`${summary.file_input_count} file`);
+  return parts.length > 0 ? parts.join(' · ') : '—';
 }
 
 export function IntentCard({
@@ -339,6 +361,18 @@ export function IntentCard({
               <div className="text-sm font-medium font-mono truncate">{toPath(intent.intent_page_url)}</div>
             </div>
           </div>
+          {kind === 'form' && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <div>
+                <div className="text-sm text-muted-foreground">Form state</div>
+                <div className="text-sm font-medium">{formatFormState(intent.form_state)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Form shape</div>
+                <div className="text-sm font-medium">{formatFormSummary(intent.form_summary)}</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Risk reasons (only when high risk; keep terse) */}

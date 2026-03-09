@@ -16,6 +16,9 @@ END $$;
 DO $$
 DECLARE t text;
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'marketing_signals') THEN
+    RETURN;
+  END IF;
   SELECT data_type INTO t
   FROM information_schema.columns
   WHERE table_schema = 'public' AND table_name = 'marketing_signals' AND column_name = 'dispatch_status';
@@ -55,39 +58,44 @@ COMMENT ON CONSTRAINT offline_conversion_queue_status_check ON public.offline_co
   'Phase 21 strict queue ontology: QUEUED, RETRY, PROCESSING, UPLOADED, COMPLETED, COMPLETED_UNVERIFIED, FAILED, DEAD_LETTER_QUARANTINE.';
 
 -- Normalize unexpected legacy signal statuses before new CHECK (avoids ADD CONSTRAINT failure in prod).
-UPDATE public.marketing_signals
-SET dispatch_status = 'FAILED'
-WHERE dispatch_status NOT IN (
-  'PENDING',
-  'PROCESSING',
-  'SENT',
-  'FAILED',
-  'JUNK_ABORTED',
-  'DEAD_LETTER_QUARANTINE',
-  'SKIPPED_NO_CLICK_ID',
-  'STALLED_FOR_HUMAN_AUDIT'
-);
-
-ALTER TABLE public.marketing_signals
-  DROP CONSTRAINT IF EXISTS marketing_signals_dispatch_status_check;
-
-ALTER TABLE public.marketing_signals
-  ADD CONSTRAINT marketing_signals_dispatch_status_check
-  CHECK (
-    dispatch_status IN (
-      'PENDING',
-      'PROCESSING',
-      'SENT',
-      'FAILED',
-      'JUNK_ABORTED',
-      'DEAD_LETTER_QUARANTINE',
-      'SKIPPED_NO_CLICK_ID',
-      'STALLED_FOR_HUMAN_AUDIT'
-    )
+-- Guard: marketing_signals created in 20260329, skip if not exists.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'marketing_signals') THEN
+    RETURN;
+  END IF;
+  UPDATE public.marketing_signals
+  SET dispatch_status = 'FAILED'
+  WHERE dispatch_status NOT IN (
+    'PENDING',
+    'PROCESSING',
+    'SENT',
+    'FAILED',
+    'JUNK_ABORTED',
+    'DEAD_LETTER_QUARANTINE',
+    'SKIPPED_NO_CLICK_ID',
+    'STALLED_FOR_HUMAN_AUDIT'
   );
-
-COMMENT ON CONSTRAINT marketing_signals_dispatch_status_check ON public.marketing_signals IS
-  'Phase 21 strict signal ontology: PENDING, PROCESSING, SENT, FAILED, JUNK_ABORTED, DEAD_LETTER_QUARANTINE, SKIPPED_NO_CLICK_ID, STALLED_FOR_HUMAN_AUDIT.';
+  ALTER TABLE public.marketing_signals
+    DROP CONSTRAINT IF EXISTS marketing_signals_dispatch_status_check;
+  ALTER TABLE public.marketing_signals
+    ADD CONSTRAINT marketing_signals_dispatch_status_check
+    CHECK (
+      dispatch_status IN (
+        'PENDING',
+        'PROCESSING',
+        'SENT',
+        'FAILED',
+        'JUNK_ABORTED',
+        'DEAD_LETTER_QUARANTINE',
+        'SKIPPED_NO_CLICK_ID',
+        'STALLED_FOR_HUMAN_AUDIT'
+      )
+    );
+  COMMENT ON CONSTRAINT marketing_signals_dispatch_status_check ON public.marketing_signals IS
+    'Phase 21 strict signal ontology: PENDING, PROCESSING, SENT, FAILED, JUNK_ABORTED, DEAD_LETTER_QUARANTINE, SKIPPED_NO_CLICK_ID, STALLED_FOR_HUMAN_AUDIT.';
+END
+$$;
 
 CREATE OR REPLACE FUNCTION public.enforce_offline_conversion_queue_state_machine()
 RETURNS trigger
@@ -175,10 +183,16 @@ $$;
 COMMENT ON FUNCTION public.enforce_marketing_signals_state_machine() IS
   'Phase 21 strict signal transition matrix. Preserves PENDING terminalization to SKIPPED_NO_CLICK_ID/STALLED_FOR_HUMAN_AUDIT for existing vacuum flows.';
 
-DROP TRIGGER IF EXISTS trg_marketing_signals_state_machine ON public.marketing_signals;
-CREATE TRIGGER trg_marketing_signals_state_machine
-  BEFORE UPDATE ON public.marketing_signals
-  FOR EACH ROW
-  EXECUTE FUNCTION public.enforce_marketing_signals_state_machine();
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'marketing_signals') THEN
+    DROP TRIGGER IF EXISTS trg_marketing_signals_state_machine ON public.marketing_signals;
+    CREATE TRIGGER trg_marketing_signals_state_machine
+      BEFORE UPDATE ON public.marketing_signals
+      FOR EACH ROW
+      EXECUTE FUNCTION public.enforce_marketing_signals_state_machine();
+  END IF;
+END
+$$;
 
 COMMIT;

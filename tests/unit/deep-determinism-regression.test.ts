@@ -16,15 +16,33 @@ const CRON_AUTH = join(ROOT, 'lib', 'cron', 'require-cron-auth.ts');
 const RUNNER = join(ROOT, 'lib', 'oci', 'runner.ts');
 const TRACKER = join(ROOT, 'lib', 'tracker', 'tracker.js');
 const ACTIVITY_LOG = join(ROOT, 'components', 'dashboard', 'qualification-queue', 'activity-log-inline.tsx');
+const STAGE_ROUTE = join(ROOT, 'app', 'api', 'calls', '[id]', 'stage', 'route.ts');
 const SCRIPT_BATCH_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261105070000_phase23c_script_terminal_batch_atomic.sql');
 const WORKER_BATCH_V2_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261105100000_phase23c_outbox_and_worker_batch_v2.sql');
 const OCI_HARDENING_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261105130000_oci_external_id_and_reversal_void.sql');
 
-test('intent status route: restore goes through undo_last_action_v1 with user actor', () => {
+test('intent status route: restore goes through undo_last_action_v1 with system actor under service role', () => {
   const src = readFileSync(INTENT_STATUS_ROUTE, 'utf8');
   assert.ok(src.includes("const rpcName = actionType === 'restore' ? 'undo_last_action_v1' : 'apply_call_action_v1'"), 'restore must use undo_last_action_v1');
-  assert.ok(src.includes("p_actor_type: 'user'"), 'manual queue actions must seal user actor provenance');
+  assert.ok(src.includes("p_actor_type: 'system'"), 'manual queue actions must use normalized system actor under adminClient RPC');
+  assert.ok(src.includes('p_actor_id: user.id'), 'manual queue actions must preserve the human actor id for audit lineage');
   assert.ok(src.includes('invalidatePendingOciArtifactsForCall'), 'restore/cancel/junk must invalidate pending OCI artifacts');
+});
+
+test('call action rpc lineage: system actors are normalized before call_actions append', () => {
+  const migrationPath = join(ROOT, 'supabase', 'migrations', '20261106190000_call_action_actor_normalization.sql');
+  const src = readFileSync(migrationPath, 'utf8');
+  assert.ok(src.includes("v_actor_type := 'system';"), 'non-user actors must normalize to system');
+  assert.ok(src.includes('INSERT INTO public.call_actions') && src.includes('v_actor_type'), 'normalized actor_type must be appended to call_actions');
+});
+
+test('single-head cleanup: call sale review is DB-owned and stage shadow route is retired', () => {
+  const migrationPath = join(ROOT, 'supabase', 'migrations', '20261106200000_single_head_rpc_unification.sql');
+  const migrationSrc = readFileSync(migrationPath, 'utf8');
+  const stageSrc = readFileSync(STAGE_ROUTE, 'utf8');
+  assert.ok(migrationSrc.includes('CREATE OR REPLACE FUNCTION public.review_call_sale_time_v1'), 'cleanup migration must define review_call_sale_time_v1');
+  assert.ok(migrationSrc.includes('INSERT INTO public.outbox_events'), 'review rpc must emit outbox rows transactionally');
+  assert.ok(stageSrc.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'stage route must be explicitly retired');
 });
 
 test('call-event ingestion sanitizes click ids before paid classification', () => {
@@ -37,6 +55,21 @@ test('tracker call-event path no longer falls back to unsigned transport', () =>
   const src = readFileSync(TRACKER, 'utf8');
   assert.ok(src.includes('missing proxyUrl or signing secret'), 'tracker must explicitly refuse weak unsigned fallback');
   assert.ok(!src.includes('// Unsigned fallback'), 'unsigned fallback path must be removed');
+});
+
+test('V1 SSOT: tracker emits pageview pulses and Redis routing uses canonical site keys', () => {
+  const trackerSrc = readFileSync(TRACKER, 'utf8');
+  const exportSrc = readFileSync(OCI_EXPORT_ROUTE, 'utf8');
+  const ackSrc = readFileSync(ACK_ROUTE, 'utf8');
+  const v1GearSrc = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'gears', 'V1PageViewGear.ts'), 'utf8');
+  const pulseRecoverySrc = readFileSync(join(ROOT, 'lib', 'oci', 'pulse-recovery-worker.ts'), 'utf8');
+  assert.ok(trackerSrc.includes('sendPageViewPulse();'), 'tracker must actively emit V1 pageview pulses');
+  assert.ok(trackerSrc.includes('fetch(CONFIG.pvUrl'), 'tracker must post V1 pageviews to track/pv');
+  assert.ok(v1GearSrc.includes('getPvQueueKey(siteId)'), 'V1 gear must write to canonical PV queue key');
+  assert.ok(exportSrc.includes('getPvQueueKeysForExport(siteUuid'), 'export must read canonical and legacy PV queue keys');
+  assert.ok(ackSrc.includes('getPvProcessingKeysForCleanup(siteUuid'), 'ack must clean canonical and legacy PV processing keys');
+  assert.ok(pulseRecoverySrc.includes('recoverStalePvProcessing'), 'pulse recovery must include V1 processing recovery');
+  assert.ok(pulseRecoverySrc.includes('redis.rpush(queueKey, pvId)'), 'stale V1 processing rows must be requeued durably');
 });
 
 test('activity log allows cancel across sealed status family', () => {
@@ -67,6 +100,8 @@ test('oci workers re-check current call sendability before exporting or draining
   assert.ok(exportSrc.includes("dispatch_status: 'JUNK_ABORTED'"), 'blocked pending signals must be aborted before leak');
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(outboxSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'outbox worker must fail reversed outbox rows explicitly');
+  assert.ok(outboxSrc.includes("['MEETING_BOOKED', 'SEAL_PENDING', 'V3_ENGAGE', 'V4_INTENT']"), 'outbox duplicate prevention must query stored legacy signal types');
+  assert.ok(outboxSrc.includes('normalizeExistingFunnelSignalType'), 'outbox duplicate prevention must normalize legacy signal types before backfill');
 });
 
 test('oci recovery routes and runner delegate to DB-owned batch kernels', () => {

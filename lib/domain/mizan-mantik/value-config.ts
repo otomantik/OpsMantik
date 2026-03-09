@@ -21,12 +21,13 @@ export interface ValueConfig {
 }
 
 /**
- * Value floor for V2/V4 when no sale (MODULE 3).
- * floor = max(min_conversion_value_cents, baseAov * 0.005) — ratio-based, not fixed.
+ * Signal floor for V2–V4 only.
+ * Site-wide min_conversion_value_cents is reserved for V5 fallback and must not flatten
+ * the entire funnel. Signals keep a small materiality floor derived from AOV instead.
  */
 export function getValueFloorCents(config: ValueConfig): number {
   const ratioCents = Math.round(config.defaultAov * 0.005 * 100);
-  return Math.max(config.minConversionValueCents, ratioCents, 1);
+  return Math.max(ratioCents, 1);
 }
 
 export const DEFAULT_WEIGHTS: IntentWeights = {

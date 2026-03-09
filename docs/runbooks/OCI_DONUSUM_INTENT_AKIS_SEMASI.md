@@ -76,7 +76,7 @@ flowchart TB
 
 1. **Kuyruk (V5):** `offline_conversion_queue` — status: QUEUED → (Script veya Worker tarafından) export edilir → PROCESSING/UPLOADED → ack sonrası COMPLETED.
 2. **Sinyaller (V2/V3/V4):** `marketing_signals` — dispatch_status: PENDING. Export API hem kuyruk satırlarını hem PENDING sinyalleri döner; Script CSV’ye yazar; ack’te queue id’ler `queueIds`, signal id’ler (varsa) `skippedIds` veya ayrı mekanizma ile SENT işaretlenir.
-3. **Export:** `GET /api/oci/google-ads-export?siteId=...&markAsExported=true` — Auth: Bearer session_token (verify handshake) veya x-api-key. Site UUID veya public_id. Dönüş: `{ id, orderId, gclid, wbraid, gbraid, conversionName, conversionTime, conversionValue, conversionCurrency, hashed_phone_number? }[]`.
+3. **Export:** `GET /api/oci/google-ads-export?siteId=...&markAsExported=true` — Auth: Bearer session_token (verify handshake) veya x-api-key. Site UUID veya public_id. Dönüş: `{ items, next_cursor }`; `items` içinde `{ id, orderId, gclid, wbraid, gbraid, conversionName, conversionTime, conversionValue, conversionCurrency, hashed_phone_number? }`.
 4. **Script (Eslamed/Muratcan-OCI-Quantum.js):** verifyHandshake → fetchConversions (export URL) → Validator.analyze (click_id, time, value) → UploadEngine (Order ID, Google Click ID, Conversion name, time, value, currency, **Phone**) → upload.apply() → sendAck(successIds, skippedIds, pendingConfirmation=true).
 5. **ACK:** `POST /api/oci/ack` — queue satırları UPLOADED/COMPLETED; `POST /api/oci/ack-failed` — FAILED, provider_error_code.
 
@@ -86,7 +86,7 @@ flowchart TB
 
 | Cron | Amaç | Dosya |
 |------|------|--------|
-| **enqueue-from-sales** | Son N saatteki confirmed sales’ları kuyruğa ekler (queue’da yoksa) | `app/api/cron/oci/enqueue-from-sales/route.ts` |
+| **enqueue-from-sales** | Son N saatteki confirmed sales’lar için canonical reconcile RPC çalıştırır | `app/api/cron/oci/enqueue-from-sales/route.ts` |
 | **sweep-unsent-conversions** | oci_status=sealed ama kuyrukta olmayan call’ları `enqueueSealConversion()` ile kuyruğa alır (son 7 gün) | `app/api/cron/sweep-unsent-conversions/route.ts` |
 | **attempt-cap** | attempt_count >= MAX_ATTEMPTS (varsayılan 5) olan kuyruk satırlarını FAILED yapar | `app/api/cron/oci/attempt-cap/route.ts` |
 | **process-offline-conversions** | Worker (API) path: claim jobs, Google’a gönder, ack (oci_sync_method=api siteleri) | `app/api/cron/process-offline-conversions/route.ts` (veya workers) |

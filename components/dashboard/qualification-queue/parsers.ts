@@ -45,6 +45,8 @@ interface RpcIntentRow {
   traffic_source?: unknown;
   traffic_medium?: unknown;
   intent_events?: unknown;
+  form_state?: unknown;
+  form_summary?: unknown;
 }
 
 function rowNum(r: RpcIntentRow, key: keyof RpcIntentRow): number | null {
@@ -54,6 +56,10 @@ function rowNum(r: RpcIntentRow, key: keyof RpcIntentRow): number | null {
 function rowArr(r: RpcIntentRow, key: keyof RpcIntentRow): string[] | null {
   const v = r[key];
   return Array.isArray(v) ? (v as string[]) : null;
+}
+function rowObj(r: RpcIntentRow, key: keyof RpcIntentRow): Record<string, unknown> | null {
+  const v = r[key];
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
 export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
@@ -127,6 +133,8 @@ export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
     whatsapp_clicks: rowNum(r, 'whatsapp_clicks'),
     traffic_source: typeof r.traffic_source === 'string' ? r.traffic_source : null,
     traffic_medium: typeof r.traffic_medium === 'string' ? r.traffic_medium : null,
+    form_state: typeof r.form_state === 'string' ? r.form_state : null,
+    form_summary: rowObj(r, 'form_summary'),
   })) as HunterIntent[];
 }
 
@@ -167,11 +175,34 @@ export function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
       matched_session_id: (r.matched_session_id as string | null | undefined) ?? null,
       intent_action: (r.intent_action as string | null | undefined) ?? null,
       summary: (r.summary as string | null | undefined) ?? null,
+      intent_target: (r.intent_target as string | null | undefined) ?? null,
+      intent_page_url: (r.intent_page_url as string | null | undefined) ?? null,
+      page_url: (r.page_url as string | null | undefined) ?? ((r.intent_page_url as string | null | undefined) ?? null),
+      click_id: (r.click_id as string | null | undefined) ?? null,
       phone_clicks: rowNum(r, 'phone_clicks'),
       whatsapp_clicks: rowNum(r, 'whatsapp_clicks'),
       intent_events: rowNum(r, 'intent_events'),
       traffic_source: typeof r.traffic_source === 'string' ? r.traffic_source : null,
       traffic_medium: typeof r.traffic_medium === 'string' ? r.traffic_medium : null,
+      attribution_source: (r.attribution_source as string | null | undefined) ?? null,
+      gclid: (r.gclid as string | null | undefined) ?? null,
+      wbraid: (r.wbraid as string | null | undefined) ?? null,
+      gbraid: (r.gbraid as string | null | undefined) ?? null,
+      utm_term: (r.utm_term as string | null | undefined) ?? null,
+      utm_campaign: (r.utm_campaign as string | null | undefined) ?? null,
+      utm_source: (r.utm_source as string | null | undefined) ?? null,
+      matchtype: (r.matchtype as string | null | undefined) ?? null,
+      city: (r.city as string | null | undefined) ?? null,
+      district: (r.district as string | null | undefined) ?? null,
+      location_source: typeof r.location_source === 'string' ? r.location_source : null,
+      device_type: (r.device_type as string | null | undefined) ?? null,
+      device_os: (r.device_os as string | null | undefined) ?? null,
+      total_duration_sec: rowNum(r, 'total_duration_sec'),
+      event_count: rowNum(r, 'event_count'),
+      estimated_value: rowNum(r, 'estimated_value'),
+      currency: (r.currency as string | null | undefined) ?? null,
+      form_state: typeof r.form_state === 'string' ? r.form_state : null,
+      form_summary: rowObj(r, 'form_summary'),
     })) as HunterIntentLite[];
 }
 

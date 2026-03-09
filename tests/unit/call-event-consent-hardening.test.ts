@@ -11,7 +11,7 @@ const ROOT = process.cwd();
 const CALL_EVENT_V2 = join(ROOT, 'app', 'api', 'call-event', 'v2', 'route.ts');
 const CALL_EVENT_V1 = join(ROOT, 'app', 'api', 'call-event', 'route.ts');
 const ENQUEUE = join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts');
-const PIPELINE = join(ROOT, 'lib', 'services', 'pipeline-service.ts');
+const STAGE_ROUTE = join(ROOT, 'app', 'api', 'calls', '[id]', 'stage', 'route.ts');
 const MATCH_SESSION = join(ROOT, 'lib', 'api', 'call-event', 'match-session-by-fingerprint.ts');
 const MIGRATIONS = join(ROOT, 'supabase', 'migrations');
 
@@ -27,9 +27,12 @@ test('A) Call-event with analytics missing returns 204, no insert path', () => {
 
 test('B) Marketing consent checked before OCI enqueue', () => {
   const enqueue = readFileSync(ENQUEUE, 'utf8');
-  const pipeline = readFileSync(PIPELINE, 'utf8');
   assert.ok(enqueue.includes('hasMarketingConsentForCall'), 'enqueueSealConversion must check marketing consent');
-  assert.ok(pipeline.includes('hasMarketingConsentForCall'), 'PipelineService must check marketing consent');
+});
+
+test('B2) Legacy stage route is retired before it can shadow OCI writes', () => {
+  const src = readFileSync(STAGE_ROUTE, 'utf8');
+  assert.ok(src.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'stage route must be retired with deterministic code');
 });
 
 test('C) Call-event without session returns 204, no insert', () => {

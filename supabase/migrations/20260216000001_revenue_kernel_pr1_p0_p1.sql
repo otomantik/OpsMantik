@@ -46,6 +46,10 @@ CREATE INDEX IF NOT EXISTS idx_ingest_idempotency_site_year_month_billing_billab
 COMMENT ON INDEX public.idx_ingest_idempotency_site_year_month_billing_billable IS
   'Revenue Kernel: reconciliation by (site_id, year_month, billing_state) for billable rows.';
 
+-- Helpful index for audits / unblock scripts (billing_reason added in 20260215130000)
+CREATE INDEX IF NOT EXISTS idx_ingest_idempotency_site_year_month_reason
+  ON public.ingest_idempotency(site_id, year_month, billing_reason);
+
 -- -----------------------------------------------------------------------------
 -- P1: site_plans.updated_at — auto-set on UPDATE
 -- -----------------------------------------------------------------------------

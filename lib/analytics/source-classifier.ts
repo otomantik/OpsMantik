@@ -20,6 +20,16 @@ export type TrafficClassification = {
   label?: string;
 };
 
+type PaidPlatform =
+  | 'Google Ads'
+  | 'Meta Ads'
+  | 'Facebook Ads'
+  | 'Instagram Ads'
+  | 'TikTok Ads'
+  | 'Microsoft Ads'
+  | 'LinkedIn Ads'
+  | 'YouTube Ads';
+
 function safeUrl(u: string): URL | null {
   try {
     return new URL(u);
@@ -87,6 +97,29 @@ function isPaidUtmMedium(mediumLc: string): boolean {
   );
 }
 
+function classifyPaidSource(utmSource: string | null | undefined): PaidPlatform | null {
+  const src = (utmSource || '').toLowerCase().trim();
+  if (!src) return null;
+  if (src === 'google' || src === 'googleads' || src === 'adwords' || src === 'youtube') return src === 'youtube' ? 'YouTube Ads' : 'Google Ads';
+  if (src === 'meta') return 'Meta Ads';
+  if (src === 'facebook' || src === 'fb') return 'Facebook Ads';
+  if (src === 'instagram' || src === 'ig') return 'Instagram Ads';
+  if (src === 'tiktok' || src === 'tt') return 'TikTok Ads';
+  if (src === 'bing' || src === 'microsoft' || src === 'microsoftads' || src === 'msn') return 'Microsoft Ads';
+  if (src === 'linkedin' || src === 'li') return 'LinkedIn Ads';
+  return null;
+}
+
+function organicEngineLabel(utmSource: string | null | undefined): string | null {
+  const src = (utmSource || '').toLowerCase().trim();
+  if (!src) return null;
+  if (src === 'google') return 'SEO';
+  if (src === 'bing') return 'SEO';
+  if (src === 'yandex') return 'SEO';
+  if (src === 'duckduckgo') return 'SEO';
+  return null;
+}
+
 function isSearchRef(host: string): { engine: string } | null {
   const h = host;
   if (h.includes('google.')) return { engine: 'Google' };
@@ -132,6 +165,7 @@ export function determineTrafficSource(url: string, referrer: string, params: Pa
 
   const utmMedium = (getParam(pageUrl, params, 'utm_medium') || '').toLowerCase();
   const utmSource = getParam(pageUrl, params, 'utm_source');
+  const explicitPaidSource = classifyPaidSource(utmSource);
 
   // STRICT RULES:
   // - Google Ads MUST take priority when ANY Google paid click-id exists.
@@ -162,9 +196,26 @@ export function determineTrafficSource(url: string, referrer: string, params: Pa
 
   // Direct paid (explicit UTMs)
   if (isPaidUtmMedium(utmMedium)) {
-    // Keep explicit tags but still user-friendly; allow caller to set utm_source like "facebook".
+    if (explicitPaidSource) {
+      return { traffic_source: explicitPaidSource, traffic_medium: 'cpc' };
+    }
     const src = (utmSource?.trim() || 'Paid').slice(0, 64);
     return { traffic_source: src, traffic_medium: 'cpc' };
+  }
+
+  // Explicit organic UTMs
+  if (utmMedium === 'organic') {
+    return { traffic_source: organicEngineLabel(utmSource) || 'SEO', traffic_medium: 'organic' };
+  }
+
+  // Explicit social UTMs
+  if (utmMedium === 'social' || utmMedium === 'organic_social') {
+    const socialSource = classifyPaidSource(utmSource);
+    if (socialSource === 'Facebook Ads') return { traffic_source: 'Facebook', traffic_medium: 'social' };
+    if (socialSource === 'Instagram Ads') return { traffic_source: 'Instagram', traffic_medium: 'social' };
+    if (socialSource === 'TikTok Ads') return { traffic_source: 'TikTok', traffic_medium: 'social' };
+    if (socialSource === 'LinkedIn Ads') return { traffic_source: 'LinkedIn', traffic_medium: 'social' };
+    return { traffic_source: utmSource?.trim() || 'Social', traffic_medium: 'social' };
   }
 
   // Organic search by referrer (only when no paid identifiers)
@@ -201,6 +252,7 @@ export function determineTrafficSource(url: string, referrer: string, params: Pa
 
   // Tagged but not identified; treat as "Direct" with medium = (utm_medium or referral-like).
   if (utmMedium) {
+    if (explicitPaidSource) return { traffic_source: explicitPaidSource, traffic_medium: utmMedium };
     return { traffic_source: utmSource || 'Tagged', traffic_medium: utmMedium };
   }
   return { traffic_source: utmSource || 'Tagged', traffic_medium: 'unknown' };

@@ -15,6 +15,8 @@ import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
 import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
 import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
+import { redis } from '@/lib/upstash';
+import { getPvDataKey, getPvProcessingKeysForCleanup, getPvQueueKey } from '@/lib/oci/pv-redis';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
@@ -95,12 +97,12 @@ export async function POST(req: NextRequest) {
     }
 
     let siteUuid = siteId;
-    const byId = await adminClient.from('sites').select('id, oci_api_key').eq('id', siteId).maybeSingle();
+    const byId = await adminClient.from('sites').select('id, public_id, oci_api_key').eq('id', siteId).maybeSingle();
     const siteRow = byId.data ?? null;
-    let resolvedSite: { id: string; oci_api_key?: string | null } | null = siteRow as { id: string; oci_api_key?: string | null } | null;
+    let resolvedSite: { id: string; public_id?: string | null; oci_api_key?: string | null } | null = siteRow as { id: string; public_id?: string | null; oci_api_key?: string | null } | null;
     if (!resolvedSite) {
-      const byPublic = await adminClient.from('sites').select('id, oci_api_key').eq('public_id', siteId).maybeSingle();
-      resolvedSite = byPublic.data as { id: string; oci_api_key?: string | null } | null;
+      const byPublic = await adminClient.from('sites').select('id, public_id, oci_api_key').eq('public_id', siteId).maybeSingle();
+      resolvedSite = byPublic.data as { id: string; public_id?: string | null; oci_api_key?: string | null } | null;
     }
     if (resolvedSite) siteUuid = resolvedSite.id;
 
@@ -127,18 +129,24 @@ export async function POST(req: NextRequest) {
 
     const sealFailedIds: string[] = [];
     const signalFailedIds: string[] = [];
+    const pvFailedIds: string[] = [];
     for (const id of queueIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealFailedIds.push(s.slice(5));
       else if (s.startsWith('signal_')) signalFailedIds.push(s.slice(7));
+      else if (s.startsWith('pv_')) pvFailedIds.push(s.slice(3));
+      else pvFailedIds.push(s);
     }
 
     const sealFatalIds: string[] = [];
     const signalFatalIds: string[] = [];
+    const pvFatalIds: string[] = [];
     for (const id of fatalIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealFatalIds.push(s.slice(5));
       else if (s.startsWith('signal_')) signalFatalIds.push(s.slice(7));
+      else if (s.startsWith('pv_')) pvFatalIds.push(s.slice(3));
+      else pvFatalIds.push(s);
     }
 
     const now = new Date().toISOString();
@@ -261,6 +269,37 @@ export async function POST(req: NextRequest) {
       updatedCount += updatedSignals;
     }
 
+    const allPvIds = [...new Set([...pvFailedIds, ...pvFatalIds])];
+    if (allPvIds.length > 0) {
+      const processingKeys = getPvProcessingKeysForCleanup(siteUuid, resolvedSite?.public_id ?? null);
+      const queueKey = getPvQueueKey(siteUuid);
+      const requeuePv = category === 'TRANSIENT' && pvFatalIds.length === 0;
+      const redisResults = await Promise.allSettled(
+        allPvIds.map(async (pvId) => {
+          await Promise.all(processingKeys.map((processingKey) => redis.lrem(processingKey, 0, pvId)));
+          if (requeuePv) {
+            await redis.rpush(queueKey, pvId);
+            return pvId;
+          }
+          await redis.del(getPvDataKey(pvId));
+          return pvId;
+        })
+      );
+      const updatedPvCount = redisResults.filter((result) => result.status === 'fulfilled').length;
+      if (updatedPvCount !== allPvIds.length) {
+        const failedPvIds = redisResults
+          .map((result, index) => (result.status === 'rejected' ? allPvIds[index] : null))
+          .filter((value): value is string => Boolean(value));
+        logError('OCI_ACK_FAILED_PV_REDIS_MISMATCH', {
+          requested: allPvIds.length,
+          updated: updatedPvCount,
+          failed_pv_ids: failedPvIds,
+        });
+        return NextResponse.json({ error: 'PV redis cleanup failed', code: 'PV_REDIS_MISMATCH' }, { status: 500 });
+      }
+      updatedCount += updatedPvCount;
+    }
+
     // Explicit poison/fatal ids always hard-transition to dead letter.
     if (sealFatalIds.length > 0) {
       const { data: fatalRows } = await adminClient
@@ -312,7 +351,6 @@ export async function POST(req: NextRequest) {
         .from('marketing_signals')
         .update({
           dispatch_status: 'DEAD_LETTER_QUARANTINE',
-          updated_at: now,
         })
         .in('id', signalFatalIds)
         .eq('site_id', siteUuid)

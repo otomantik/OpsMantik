@@ -11,8 +11,11 @@
 
 BEGIN;
 
+-- Drop first: PostgreSQL cannot change parameter names with CREATE OR REPLACE (42P13)
+DROP FUNCTION IF EXISTS public.is_ads_session_input(text, text, text, text, text, text);
+
 -- RPC-callable helper (explicit inputs)
-CREATE OR REPLACE FUNCTION public.is_ads_session_input(
+CREATE FUNCTION public.is_ads_session_input(
   p_gclid text,
   p_wbraid text,
   p_gbraid text,
