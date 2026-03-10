@@ -81,9 +81,7 @@ const TrafficSourceBreakdown = dynamic(
 
 export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, activeModules = [] }: DashboardShellProps) {
   const { t } = useTranslation();
-  // Default to yesterday so operators land on the last populated queue
-  // instead of an empty "today" view right after the TRT day rolls over.
-  const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('yesterday');
+  const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
   // Real-time signals for the Shell
   // Holistic View: always show ALL traffic (no ads-only filter).
