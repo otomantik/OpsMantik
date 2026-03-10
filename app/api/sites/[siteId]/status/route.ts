@@ -5,7 +5,7 @@ import { isAdmin } from '@/lib/auth/is-admin';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ siteId: string }> }
 ) {
   try {
     // Validate current user is logged in
@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id: siteId } = await params;
+    const { siteId } = await params;
 
     if (!siteId) {
       return NextResponse.json(
