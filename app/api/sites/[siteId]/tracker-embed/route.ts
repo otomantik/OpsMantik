@@ -56,6 +56,16 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const { data: siteRow, error: siteRowErr } = await supabase
+      .from('sites')
+      .select('public_id')
+      .eq('id', site.id)
+      .maybeSingle();
+    if (siteRowErr || !siteRow?.public_id) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+    const sitePublicId = siteRow.public_id;
+
     const privateClient = getPrivateClient();
     if (!privateClient) {
       return NextResponse.json(
@@ -83,7 +93,7 @@ export async function GET(
       const { adminClient } = await import('@/lib/supabase/admin');
       const newSecret = randomBytes(32).toString('base64url');
       const { error: rotErr } = await adminClient.rpc('rotate_site_secret_v1', {
-        p_site_public_id: site.public_id,
+        p_site_public_id: sitePublicId,
         p_current_secret: newSecret,
         p_next_secret: null,
       });
@@ -91,7 +101,7 @@ export async function GET(
         return NextResponse.json(
           {
             error: 'Secret not provisioned',
-            hint: 'Run: node scripts/get-tracker-embed.mjs ' + site.public_id,
+            hint: 'Run: node scripts/get-tracker-embed.mjs ' + sitePublicId,
           },
           { status: 503 }
         );
@@ -99,11 +109,11 @@ export async function GET(
       secret = newSecret;
     }
 
-    const scriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=4" data-ops-site-id="${site.public_id}" data-ops-secret="${secret}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"></script>`;
+    const scriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=4" data-ops-site-id="${sitePublicId}" data-ops-secret="${secret}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"></script>`;
 
     return NextResponse.json({
       scriptTag,
-      siteId: site.public_id,
+      siteId: sitePublicId,
       note: 'Include data-ops-secret so phone/WhatsApp clicks send call-event to OpsMantik.',
     });
   } catch (e) {
