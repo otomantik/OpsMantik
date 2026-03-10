@@ -41,14 +41,14 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const traceId = crypto.randomUUID();
 
-  // Phase 20: Iron Dome — /api/sync only
-  if (path === '/api/sync') {
+  // API routes validate auth/authorization inside their handlers. Avoid
+  // session refresh in middleware so public/system endpoints do not stall.
+  if (path.startsWith('/api/')) {
     if (isDusseldorfGeo(request)) {
       return NextResponse.json({ error: 'Forbidden', code: 'GEO_FENCE_DUSSELDORF' }, { status: 403 });
     }
-    // Keep /api/sync fast and public: auth refresh and edge Upstash
-    // round-trips here can stall CORS preflight and ingest. The route
-    // itself already enforces site validation and server-side rate limit.
+    // Keep API requests fast: auth refresh and extra edge round-trips here
+    // can stall health checks, ingest, and cron/webhook traffic.
     return nextWithTraceHeaders(request, traceId);
   }
 
