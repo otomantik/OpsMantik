@@ -65,9 +65,13 @@ export async function GET(
     }
 
     type SecretsRow = { current_secret: string | null; next_secret: string | null };
-    const { data: secretsData, error: secretsErr } = await (privateClient as { rpc: (name: string, args: { p_site_id: string }) => Promise<{ data: SecretsRow[] | null; error: unknown }> }).rpc('get_site_secrets', {
+    const secretsResult = await privateClient.rpc('get_site_secrets', {
       p_site_id: site.id,
     });
+    const secretsData = Array.isArray(secretsResult.data)
+      ? (secretsResult.data as SecretsRow[])
+      : null;
+    const secretsErr = secretsResult.error;
 
     let secret: string | null = null;
     if (!secretsErr && Array.isArray(secretsData) && secretsData.length > 0) {
