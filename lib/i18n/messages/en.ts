@@ -502,6 +502,8 @@ export const en = {
   'sites.receivingEventsStatus': 'Receiving events',
   'sites.status.receiving': 'Receiving events',
   'sites.status.noTraffic': 'No traffic',
+  'sites.fullEmbedForCallEvent': 'Full embed for phone/WhatsApp clicks (call-event required)',
+  'sites.loadFullEmbed': 'Load full embed',
 
   // Session
   'session.loading': 'Loading session…',

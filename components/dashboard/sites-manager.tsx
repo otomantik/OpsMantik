@@ -45,6 +45,8 @@ export function SitesManager() {
     last_event_action: string | null;
   }>>({});
   const [statusLoading, setStatusLoading] = useState<Record<string, boolean>>({});
+  const [fullEmbedBySite, setFullEmbedBySite] = useState<Record<string, string>>({});
+  const [fullEmbedLoading, setFullEmbedLoading] = useState<Record<string, boolean>>({});
 
   const fetchSites = useCallback(async () => {
     const supabase = createClient();
@@ -539,13 +541,40 @@ export function SitesManager() {
                   <div className="mt-3 pt-3 border-t border-border">
                     <p className="text-sm text-muted-foreground mb-2">{t('sites.installSnippet')}</p>
                     <code className="block px-2 py-1 bg-muted/40 border border-border rounded text-foreground text-sm break-all">
-                      {`<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js?v=4" data-ops-site-id="${site.public_id}" data-ops-consent="analytics" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
+                      {fullEmbedBySite[site.id] || `<script defer src="https://assets.${getPrimaryDomain()}/assets/core.js?v=4" data-ops-site-id="${site.public_id}" data-ops-consent="analytics" data-api="https://console.${getPrimaryDomain()}/api/sync"></script>`}
                     </code>
+                    {!fullEmbedBySite[site.id] && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        disabled={fullEmbedLoading[site.id]}
+                        onClick={async () => {
+                          setFullEmbedLoading((prev) => ({ ...prev, [site.id]: true }));
+                          try {
+                            const res = await fetch(`/api/sites/${encodeURIComponent(site.id)}/tracker-embed`, { credentials: 'include' });
+                            const data = await res.json();
+                            if (res.ok && data.scriptTag) {
+                              setFullEmbedBySite((prev) => ({ ...prev, [site.id]: data.scriptTag }));
+                            }
+                          } finally {
+                            setFullEmbedLoading((prev) => ({ ...prev, [site.id]: false }));
+                          }
+                        }}
+                      >
+                        {fullEmbedLoading[site.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        {fullEmbedLoading[site.id] ? '...' : t('sites.loadFullEmbed')}
+                      </Button>
+                    )}
                     <p className="text-sm text-muted-foreground mt-2">
                       {t('sites.installInstructions')}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {t('sites.allowedOriginsWarning')}
+                    </p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      {t('sites.fullEmbedForCallEvent')}
                     </p>
                   </div>
                 </div>

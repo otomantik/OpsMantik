@@ -23,38 +23,36 @@ function isDusseldorfGeo(req: NextRequest): boolean {
   return DUSSELDORF_CITIES.has(city.trim().toLowerCase());
 }
 
+function nextWithTraceHeaders(request: NextRequest, traceId: string): NextResponse {
+  request.headers.set('x-request-id', traceId);
+  request.headers.set(OM_TRACE_HEADER, traceId);
+
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
+  response.headers.set('x-request-id', traceId);
+  response.headers.set(OM_TRACE_HEADER, traceId);
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const traceId = crypto.randomUUID();
 
   // Phase 20: Iron Dome — /api/sync only
   if (path === '/api/sync') {
     if (isDusseldorfGeo(request)) {
       return NextResponse.json({ error: 'Forbidden', code: 'GEO_FENCE_DUSSELDORF' }, { status: 403 });
     }
-    try {
-      const { Ratelimit } = await import('@upstash/ratelimit');
-      const { Redis } = await import('@upstash/redis');
-      const redis = Redis.fromEnv();
-      const ratelimit = new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(3000, '1 m'),
-        analytics: true,
-      });
-      const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip')?.trim() || '127.0.0.1';
-      const { success } = await ratelimit.limit(`sync:${ip}`);
-      if (!success) {
-        return NextResponse.json(
-          { error: 'Too many requests', code: 'RATE_LIMIT' },
-          { status: 429, headers: { 'Retry-After': '60' } }
-        );
-      }
-    } catch {
-      // Redis/ratelimit unavailable (e.g. CI) — fall through
-    }
+    // Keep /api/sync fast and public: auth refresh and edge Upstash
+    // round-trips here can stall CORS preflight and ingest. The route
+    // itself already enforces site validation and server-side rate limit.
+    return nextWithTraceHeaders(request, traceId);
   }
 
   // 1. Generate trace UUID (atomic entry for forensic chain)
-  const traceId = crypto.randomUUID();
   request.headers.set('x-request-id', traceId);
   request.headers.set(OM_TRACE_HEADER, traceId);
 

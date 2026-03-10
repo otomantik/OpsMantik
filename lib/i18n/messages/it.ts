@@ -459,6 +459,8 @@ export const it = {
   "sites.receivingEventsStatus": "Ricezione eventi",
   "sites.status.receiving": "Ricezione eventi",
   "sites.status.noTraffic": "Nessun traffico",
+  "sites.fullEmbedForCallEvent": "Embed completo per clic telefono/WhatsApp (call-event richiesto)",
+  "sites.loadFullEmbed": "Carica embed completo",
   "session.loading": "Caricamento sessione…",
   "session.loadFailed": "Impossibile caricare la sessione",
   "session.created": "Creato",

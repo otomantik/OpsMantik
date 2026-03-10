@@ -459,6 +459,8 @@ export const tr = {
   "sites.receivingEventsStatus": "Olaylar alınıyor",
   "sites.status.receiving": "Etkinlik alınıyor",
   "sites.status.noTraffic": "Trafik yok",
+  "sites.fullEmbedForCallEvent": "Telefon/WhatsApp tıklamaları için tam embed (call-event gerekli)",
+  "sites.loadFullEmbed": "Tam embedi yükle",
   "session.loading": "Oturum yükleniyor…",
   "session.loadFailed": "Oturum yüklenemedi",
   "session.created": "Oluşturuldu",
