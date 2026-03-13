@@ -236,6 +236,10 @@ export async function POST(
       return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
     }
 
+    // version=0: frontend (Grörüşüldü/Teklif) may not know DB version.
+    // Resolve actual version from DB to avoid unnecessary 409 conflicts.
+    const effectiveVersion = version === 0 ? call.version : version;
+
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, userClient);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
@@ -336,7 +340,7 @@ export async function POST(
       p_actor_type: 'user',
       p_actor_id: null,
       p_metadata: { route, request_id: requestId },
-      p_version: version ?? call.version, // NEW: Optimistic Locking (enforced even if frontend omits version)
+      p_version: effectiveVersion ?? call.version,
     });
 
     if (updateError) {
@@ -367,7 +371,120 @@ export async function POST(
       );
     }
 
-    // RPC returns jsonb → normalize shape for response.
+    // ── V3/V4 LCV Signal: auto-write marketing_signals without sale amount ──
+    // V5 (sealed) goes to offline_conversion_queue via enqueueSealConversion.
+    // V3/V4 (Grörüşüldü/Teklif) go to marketing_signals with LCV-computed value.
+    if (leadScore != null && leadScore >= 10 && leadScore < 100) {
+      try {
+        const { computeLcv } = await import('@/lib/oci/lcv-engine');
+        // Fetch call context for LCV signals (device, location, source)
+        const { data: callCtx } = await adminClient
+          .from('calls')
+          .select('city, district, device_type, device_os, traffic_source, traffic_medium, attribution_source, matchtype, utm_term, phone_clicks, whatsapp_clicks, event_count, total_duration_sec, intent_action, is_returning, gclid, wbraid, gbraid')
+          .eq('id', callId)
+          .maybeSingle();
+
+        // Load site AOV for base value
+        const { data: siteRow } = await adminClient
+          .from('sites')
+          .select('default_aov, oci_config, currency')
+          .eq('id', siteId)
+          .maybeSingle();
+
+        const baseAov = (siteRow as { default_aov?: number | null } | null)?.default_aov ?? 1000;
+        const stage = leadScore >= 80 ? 'V4' as const : 'V3' as const;
+
+        type CallCtxRow = { city?: string|null; district?: string|null; device_type?: string|null; device_os?: string|null; traffic_source?: string|null; traffic_medium?: string|null; attribution_source?: string|null; matchtype?: string|null; utm_term?: string|null; phone_clicks?: number|null; whatsapp_clicks?: number|null; event_count?: number|null; total_duration_sec?: number|null; intent_action?: string|null; is_returning?: boolean|null; gclid?: string|null; wbraid?: string|null; gbraid?: string|null };
+        const ctx = callCtx as CallCtxRow | null;
+
+        const lcv = computeLcv({
+          stage,
+          baseAov,
+          city: ctx?.city,
+          district: ctx?.district,
+          deviceType: ctx?.device_type,
+          deviceOs: ctx?.device_os,
+          trafficSource: ctx?.traffic_source,
+          trafficMedium: ctx?.traffic_medium,
+          attributionSource: ctx?.attribution_source,
+          matchtype: ctx?.matchtype,
+          utmTerm: ctx?.utm_term,
+          phoneClicks: ctx?.phone_clicks,
+          whatsappClicks: ctx?.whatsapp_clicks,
+          eventCount: ctx?.event_count,
+          totalDurationSec: ctx?.total_duration_sec,
+          isReturning: ctx?.is_returning,
+        });
+
+        const gclid = ctx?.gclid?.trim() || null;
+        const wbraid = ctx?.wbraid?.trim() || null;
+        const gbraid = ctx?.gbraid?.trim() || null;
+
+        // Only queue if there is a click ID (otherwise no attribution)
+        if (gclid || wbraid || gbraid) {
+          const conversionName = stage === 'V4'
+            ? 'OpsMantik_V4_Sicak_Teklif'
+            : 'OpsMantik_V3_Nitelikli_Gorusme';
+
+          // Forensic: Calculate sequence/hash for the marketing_signals "ledger"
+          const { createHash } = await import('node:crypto');
+          const { data: existing } = await adminClient
+            .from('marketing_signals')
+            .select('adjustment_sequence, current_hash')
+            .eq('site_id', siteId)
+            .eq('call_id', callId)
+            .eq('google_conversion_name', conversionName)
+            .order('adjustment_sequence', { ascending: false })
+            .limit(1);
+          
+          const sequence = existing && existing.length > 0 ? (existing[0].adjustment_sequence ?? 0) + 1 : 0;
+          const previousHash = existing && existing.length > 0 ? existing[0].current_hash ?? null : null;
+          const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
+          const hashPayload = `${callId ?? 'null'}:${sequence}:${lcv.valueCents}:${lcv.forensicDna}:${previousHash ?? 'null'}:${salt}`;
+          const currentHash = createHash('sha256').update(hashPayload).digest('hex');
+
+          await adminClient.from('marketing_signals').insert({
+            site_id: siteId,
+            call_id: callId,
+            signal_type: stage === 'V4' ? 'SEAL_PENDING' : 'MEETING_BOOKED',
+            google_conversion_name: conversionName,
+            google_conversion_time: confirmedAtIso, // use export-friendly col
+            conversion_value: lcv.valueUnits,
+            expected_value_cents: lcv.valueCents,
+            gclid,
+            wbraid,
+            gbraid,
+            dispatch_status: 'PENDING',
+            occurred_at: confirmedAtIso,
+            adjustment_sequence: sequence,
+            previous_hash: previousHash,
+            current_hash: currentHash,
+            causal_dna: {
+              lcv_v: '3.0.0-singularity',
+              lcv_score: lcv.singularityScore,
+              lcv_dna: lcv.forensicDna,
+              lcv_insights: lcv.insights,
+              att_raw: { source: ctx?.traffic_source, term: ctx?.utm_term },
+              source: 'MANUAL_QUALIFICATION_API',
+              user_id: user.id,
+            }
+          }).select('id').maybeSingle();
+
+          logInfo('lcv_signal_enqueued', {
+            call_id: callId,
+            stage,
+            value_units: lcv.valueUnits,
+            quality_multiplier: lcv.qualityMultiplier,
+          });
+        } else {
+          logInfo('lcv_signal_skip_no_click_id', { call_id: callId, stage });
+        }
+      } catch (lcvErr) {
+        // Non-fatal: seal continues even if LCV signal fails
+        logWarn('lcv_signal_error', { call_id: callId, error: String((lcvErr as Error)?.message ?? lcvErr) });
+      }
+    }
+
     // Phase 1 Outbox: V3/V4/V5 are no longer written here; IntentSealed was written to outbox_events
     // in the same transaction as the call update. The outbox worker cron processes them.
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;

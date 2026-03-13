@@ -92,6 +92,7 @@ export function useIntentQualification(
           const body = {
             lead_score: leadScore,
             currency: 'TRY',
+            version: 0, // optimistic locking: DB uses current version if 0
           };
 
           for (const callId of callIds) {

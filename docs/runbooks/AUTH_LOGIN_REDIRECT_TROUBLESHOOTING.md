@@ -35,6 +35,24 @@ Vercel → Project → Settings → Environment Variables:
 
 ---
 
+## 2b. Google SetSID Ekranında Dönüp Durma (Loop)
+
+`accounts.google.com.tr/accounts/SetSID` ekranında takılıyorsa, **Google Cloud Console** ayarlarını kontrol edin:
+
+1. **Google Cloud Console** → APIs & Services → **Credentials** → OAuth 2.0 Client ID
+2. **Authorized redirect URIs** listesinde şunlardan biri **tam olarak** olmalı:
+   - `https://api.opsmantik.com/auth/v1/callback` (custom domain kullanıyorsanız)
+   - `https://<PROJECT_REF>.supabase.co/auth/v1/callback` (Supabase default domain)
+3. Supabase Dashboard → Authentication → Providers → Google bölümündeki Client ID ile eşleşmeli
+
+**Geçici çözüm (Gökhan denesin):**
+- **Gizli pencere** (Incognito) ile dene
+- Tüm **google.com / accounts.google.com** cookie'lerini sil, tekrar dene
+- **Farklı tarayıcı** (Edge, Firefox) dene
+- **Mobil veri** ile dene (farklı ağ)
+
+---
+
 ## 3. Tarayıcı / Ağ Kontrolü
 
 - Farklı tarayıcı veya **gizli pencere** deneyin

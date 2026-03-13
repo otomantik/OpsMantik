@@ -62,8 +62,9 @@ export function SealModal({
   const effectiveAmount =
     customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null;
   const priceValid = effectiveAmount == null || (effectiveAmount >= 0 && Number.isFinite(effectiveAmount));
-  // Mühür için satış tutarı zorunlu ve > 0 — OCI / Google Ads value pipeline
-  const canSave = priceValid && effectiveAmount != null && effectiveAmount > 0;
+  // Tutar opsiyonel — LCV motoru sinyallerden otomatik değer hesaplar.
+  // Gerçek tutar girilirse Google direkt onu kullanır (en doğru tahmin).
+  const canSave = priceValid; // sadece negatif veya geçersiz sayı engellenir
   const callerPhoneTrimmed = callerPhone.trim().slice(0, 64);
   const showMismatch =
     callerPhoneTrimmed.length >= 7 &&
@@ -142,17 +143,19 @@ export function SealModal({
               inputMode="decimal"
               min={0}
               step={0.01}
-              placeholder={t('seal.pricePlaceholder', { currency })}
+              placeholder={`0.00 ${currency} (isteğe bağlı)`}
               className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
               value={customAmount}
               onChange={(e) => setCustomAmount(e.target.value)}
               data-testid="seal-modal-custom-amount"
             />
-            <p className="text-sm text-slate-600 mt-2">{t('seal.instruction')}</p>
-            {effectiveAmount === 0 && (
-              <div className="flex items-center gap-2 text-amber-700 text-sm mt-2">
+            <p className="text-sm text-slate-600 mt-2">
+              Gerçek ciro girilirse algoritmayı doğrudan eğitir. Boş bırakılırsa sistem otomatik tahmin eder.
+            </p>
+            {customNum != null && Number.isNaN(customNum) && (
+              <div className="flex items-center gap-2 text-red-600 text-sm mt-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                <span>{t('seal.zeroAmountHint')}</span>
+                <span>Geçersiz tutar formatı</span>
               </div>
             )}
           </div>
@@ -168,7 +171,7 @@ export function SealModal({
 
           <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-2">
             <label htmlFor="seal-caller-phone" className="block text-sm font-medium text-slate-700">
-              {t('seal.callerPhoneLabel')}
+              Arayan Numara <span className="text-slate-400 font-normal text-xs">(isteğe bağlı — Google Customer Match)</span>
             </label>
             <input
               id="seal-caller-phone"
@@ -181,10 +184,13 @@ export function SealModal({
               onChange={(e) => setCallerPhone(e.target.value)}
               data-testid="seal-modal-caller-phone"
             />
+            <p className="text-xs text-slate-500">
+              Hash&apos;lenerek Google&apos;a gönderilir. Operatörün gerçek hayatta gördüğü arama numarasını yazın.
+            </p>
             {showMismatch && (
               <div className="flex items-center gap-2 text-amber-700 text-sm mt-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                <span>{t('seal.mismatchHint')}</span>
+                <span>Tıklanan numara ile girilenler farklı — kontrol edin</span>
               </div>
             )}
           </div>

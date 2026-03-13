@@ -8,7 +8,10 @@ import type { HunterIntent } from '@/lib/types/hunter';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 import { Icons } from '@/components/icons';
-import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, Trash2, UserCheck, TrendingUp, ShieldCheck, CircleDollarSign, Target, type LucideIcon } from 'lucide-react';
+import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, Trash2, UserCheck, TrendingUp, ShieldCheck, CircleDollarSign, Target, Activity, Eye, EyeOff, type LucideIcon } from 'lucide-react';
+import { computeLcv } from '@/lib/oci/lcv-engine';
+import { LeadDnaVisual } from './lead-dna-visual';
+import { useState } from 'react';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -328,6 +331,7 @@ export function HunterCard({
   readOnly?: boolean;
 }) {
   const { t: translate } = useTranslation();
+  const [showXray, setShowXray] = useState(false);
   const sourceType = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[sourceType] || ICON_MAP.other;
   const trafficSource = traffic_source ?? intent.traffic_source ?? null;
@@ -472,6 +476,25 @@ export function HunterCard({
     return '—';
   }, [intent.event_count, intent.phone_clicks, intent.total_duration_sec, intent.whatsapp_clicks, sourceInfo.kind, sourceType, translate]);
 
+  const singularity = useMemo(() => {
+    return computeLcv({
+      stage: 'V3', // Preview at V3 level
+      baseAov: 3000, // Default estimate
+      city: intent.city,
+      district: intent.district,
+      deviceType: intent.device_type,
+      deviceOs: intent.device_os,
+      trafficSource: intent.traffic_source,
+      utmTerm: intent.utm_term,
+      matchtype: intent.matchtype,
+      phoneClicks: intent.phone_clicks,
+      whatsappClicks: intent.whatsapp_clicks,
+      eventCount: intent.event_count,
+      totalDurationSec: intent.total_duration_sec,
+      isReturning: intent.is_returning
+    });
+  }, [intent]);
+
   return (
     <Card
       className={cn(
@@ -560,6 +583,16 @@ export function HunterCard({
             <p className="text-xs leading-snug text-slate-700">{intent.ai_summary}</p>
           </div>
         )}
+
+        {showXray && (
+          <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <LeadDnaVisual 
+              dna={singularity.forensicDna}
+              score={singularity.singularityScore}
+              insights={singularity.insights}
+            />
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="p-4 pt-0 gap-2 shrink-0 border-t border-slate-100 flex-col">
@@ -625,6 +658,20 @@ export function HunterCard({
           >
             <ShieldCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
             <span className="truncate">{translate('hunter.seal')}</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "w-full mt-2 h-10 border border-slate-200 transition-all duration-500",
+              showXray ? "bg-slate-900 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "bg-white text-slate-500 hover:bg-slate-50"
+            )}
+            onClick={() => setShowXray(!showXray)}
+          >
+            {showXray ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+            <span className="font-bold tracking-tight">MIZANMANTIK X-RAY SINGULARITY</span>
+            <Activity className={cn("ml-2 w-4 h-4", showXray && "animate-pulse")} />
           </Button>
         </div>
       </CardFooter>
