@@ -230,8 +230,8 @@ export async function GET(req: NextRequest) {
       throw err;
     }
 
-    // Phase 1: Projection is SSOT. USE_FUNNEL_PROJECTION=false allows legacy fallback during cutover.
-    const useFunnelProjection = process.env.USE_FUNNEL_PROJECTION !== 'false';
+    // Phase 1: Projection is SSOT. Default to legacy fallback (false) for stability.
+    const useFunnelProjection = process.env.USE_FUNNEL_PROJECTION === 'true';
     if (useFunnelProjection) {
       try {
         const { data: projRows } = await adminClient
