@@ -8,7 +8,7 @@ import { useTranslation } from '@/lib/i18n/useTranslation';
 interface LeadDnaVisualProps {
   dna: string;
   score: number;
-  insights: string[];
+  insights: { label: string; icon: string; value: string }[];
 }
 
 export function LeadDnaVisual({ dna, score, insights }: LeadDnaVisualProps) {
@@ -126,19 +126,39 @@ export function LeadDnaVisual({ dna, score, insights }: LeadDnaVisualProps) {
           {t('singularity.insights')}
         </p>
         <div className="flex flex-wrap gap-2">
-          {(insights || []).map((insight, idx) => (
-            <div
-              key={idx}
-              className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-white shadow-sm transition-all hover:border-emerald-200 hover:bg-emerald-50/50 cursor-pointer"
-            >
-              <div className="p-1 rounded-full bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
-                <Zap className="h-2.5 w-2.5" />
+          {insights.map((insight, idx) => {
+            // Map engine labels to i18n slugs
+            const slugMap: Record<string, string> = {
+              'Premium Geo': 'premiumGeo',
+              'iOS Power User': 'neuralScored', // Mapping for brand consistency
+              'Express Keyword': 'adsMatch',
+              'Blitz Intent': 'highUrgency',
+              'Loyal Visitor': 'returning',
+              'Deep Engagement': 'neuralScored'
+            };
+            const slug = slugMap[insight.label] || insight.label;
+            
+            return (
+              <div
+                key={idx}
+                className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-white shadow-sm transition-all hover:border-emerald-200 hover:bg-emerald-50/50 cursor-pointer"
+              >
+                <div className="p-1 rounded-full bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
+                  <Zap className="h-2.5 w-2.5" />
+                </div>
+                <div className="flex flex-col -space-y-0.5">
+                  <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900 transition-colors">
+                    {String(t(`singularity.insight.${slug}` as any) || insight.label)}
+                  </span>
+                  {insight.value && insight.value !== 'Match' && insight.value !== 'Converted' && (
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {insight.value}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900 transition-colors">
-                {t(`singularity.insight.${insight}` as any) || insight}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
