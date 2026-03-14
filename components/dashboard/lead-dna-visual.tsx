@@ -147,11 +147,11 @@ export function LeadDnaVisual({ dna, score, insights }: LeadDnaVisualProps) {
                   <Zap className="h-2.5 w-2.5" />
                 </div>
                 <div className="flex flex-col -space-y-0.5">
-                  <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900 transition-colors">
+                  <span className="text-[11px] font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
                     {String(tUnsafe(`singularity.insight.${slug}`) || insight.label)}
                   </span>
-                  {insight.value && insight.value !== 'Match' && insight.value !== 'Converted' && (
-                    <span className="text-[9px] font-mono text-slate-400">
+                  {insight.value && insight.value !== 'MATCH' && insight.value !== 'CONVERTED' && insight.value !== 'Match' && (
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/50 px-1.5 py-0.5 rounded uppercase tracking-tighter shadow-sm border border-emerald-200/50">
                       {insight.value}
                     </span>
                   )}

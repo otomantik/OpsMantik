@@ -28,7 +28,11 @@ const STAGE_WEIGHTS: Record<LcvStage, number> = {
 function qLocation(city: string | null | undefined, district: string | null | undefined): number {
   const c = (city || '').trim().toLowerCase();
   const d = (district || '').trim().toLowerCase();
-  const premiumDistricts = ['beşiktaş', 'sarıyer', 'çankaya', 'akatlar', 'levent', 'etiler', 'nişantaşı', 'bağcılar', 'kadıköy', 'üsküdar'];
+  const premiumDistricts = [
+    'beşiktaş', 'sarıyer', 'çankaya', 'akatlar', 'levent', 'etiler', 'nişantaşı', 
+    'bağcılar', 'kadıköy', 'üsküdar', 'esenyurt', 'beylikdüzü', 'başakşehir',
+    'nilüfer', 'bornova', 'karşıyaka', 'muratpaşa', 'selçuklu'
+  ];
   if (premiumDistricts.some(pd => d.includes(pd))) return 1.8;
   if (c.includes('istanbul')) return 1.5;
   if (c.includes('ankara') || c.includes('izmir')) return 1.3;
@@ -188,7 +192,7 @@ export function computeLcv(input: LcvInput): LcvResult {
 
   // Insights Extraction
   const insights = [];
-  if (ql > 1.4) insights.push({ label: 'Premium Geo', icon: 'MapPin', value: input.district || 'City' });
+  if (ql > 1.4) insights.push({ label: 'Premium Geo', icon: 'MapPin', value: (input.district || input.city || 'Konum').toUpperCase() });
   if (qd > 1.2) insights.push({ label: 'iOS Power User', icon: 'Smartphone', value: 'High Intent' });
   if (qs > 1.5) insights.push({ label: 'Express Keyword', icon: 'Zap', value: input.utmTerm?.substring(0, 10) || 'Match' });
   if (qu > 1.2) insights.push({ label: 'Blitz Intent', icon: 'Timer', value: 'Fast Action' });

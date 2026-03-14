@@ -514,12 +514,12 @@ export function HunterCard({
               <IntentIcon className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-base font-bold text-slate-900 truncate">
+              <div className="text-base font-bold text-slate-900 wrap-anywhere leading-tight">
                 {identityDisplay}
               </div>
-              <div className="flex items-center gap-1.5 mt-1.5 text-slate-600">
-                <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span className="text-xs font-medium truncate">{geoDisplay}</span>
+              <div className="flex items-center gap-1.5 mt-1.5 text-slate-800">
+                <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
+                <span className="text-[13px] font-black tracking-tight leading-none uppercase">{geoDisplay}</span>
               </div>
             </div>
           </div>
@@ -681,16 +681,14 @@ export function HunterCard({
   );
 }
 
-function Row({ label, value, icon: Icon }: { label: string; value: string | React.ReactNode; icon: LucideIcon }) {
-  const valueNode = typeof value === 'string' ? value : value;
-  const title = typeof value === 'string' ? value : undefined;
-  return (
-    <div className="flex items-center gap-3 min-w-0">
-      <Icon className="h-4 w-4 text-blue-600 shrink-0 opacity-80" />
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{label}</div>
-        <div className="text-sm font-medium text-slate-800 truncate" title={title}>{valueNode || '—'}</div>
-      </div>
+const Row = ({ label, value, icon: Icon }: { label: string; value: React.ReactNode; icon: LucideIcon }) => (
+  <div className="flex items-start justify-between gap-3 min-w-0 py-0.5">
+    <div className="flex items-center gap-2 shrink-0 pt-0.5">
+      <Icon className="h-3.5 w-3.5 text-slate-400" />
+      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">{label}</span>
     </div>
-  );
-}
+    <div className="text-xs font-bold text-slate-800 text-right flex-1 min-w-0 wrap-anywhere leading-relaxed">
+      {value}
+    </div>
+  </div>
+);
