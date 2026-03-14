@@ -608,10 +608,11 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         utm_campaign: detail?.utm_campaign ?? top.utm_campaign ?? null,
         utm_source: detail?.utm_source ?? top.utm_source ?? null,
         matchtype: detail?.matchtype ?? top.matchtype ?? null,
-        city: detail?.city ?? top.city ?? null,
-        district: detail?.district ?? top.district ?? null,
+        // Geo: prefer intent RPC (GCLID/geo_district hardened) over sessionEvidence; session.district often empty
+        city: detail?.city ?? top.city ?? (sid ? sessionEvidence[sid]?.city : null) ?? null,
+        district: detail?.district ?? top.district ?? (sid ? sessionEvidence[sid]?.district : null) ?? null,
         location_source: detail?.location_source ?? top.location_source ?? null,
-        device_type: detail?.device_type ?? top.device_type ?? null,
+        device_type: detail?.device_type ?? top.device_type ?? (sid ? sessionEvidence[sid]?.device_type : null) ?? null,
         device_os: detail?.device_os ?? top.device_os ?? null,
         total_duration_sec: detail?.total_duration_sec ?? top.total_duration_sec ?? null,
         event_count: detail?.event_count ?? top.event_count ?? null,
@@ -619,7 +620,6 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         currency: detail?.currency ?? top.currency ?? null,
         form_state: detail?.form_state ?? top.form_state ?? null,
         form_summary: detail?.form_summary ?? top.form_summary ?? null,
-        ...(sid ? sessionEvidence[sid] : {}),
       };
     })()
     : null;
