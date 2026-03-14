@@ -1,98 +1,146 @@
+'use client';
 
-import React from 'react';
-import { Shield, Zap, TrendingUp, Smartphone, MapPin, Timer, UserCheck } from 'lucide-react';
+import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { Shield, Activity, Zap } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface LeadDnaVisualProps {
   dna: string;
   score: number;
-  insights?: { label: string; icon: string; value: string }[];
-  className?: string;
+  insights: string[];
 }
 
-const iconMap: Record<string, React.ElementType> = {
-  ShieldCheck: Shield,
-  Zap: Zap,
-  TrendingUp: TrendingUp,
-  Smartphone: Smartphone,
-  MapPin: MapPin,
-  Timer: Timer,
-  UserCheck: UserCheck,
-};
+export function LeadDnaVisual({ dna, score, insights }: LeadDnaVisualProps) {
+  const { t } = useTranslation();
 
-export const LeadDnaVisual: React.FC<LeadDnaVisualProps> = ({ dna, score, insights, className }) => {
-  // Map DNA hex chars to colors
-  const getDnaColor = (char: string) => {
-    const colors = [
-      'bg-slate-400', 'bg-blue-400', 'bg-emerald-400', 'bg-violet-400',
-      'bg-amber-400', 'bg-rose-400', 'bg-indigo-400', 'bg-cyan-400',
-      'bg-orange-400', 'bg-lime-400', 'bg-teal-400', 'bg-fuchsia-400',
-      'bg-sky-400', 'bg-pink-400', 'bg-emerald-600', 'bg-violet-600'
-    ];
-    const index = parseInt(char, 16);
-    return colors[index % colors.length];
-  };
+  const dnaBlocks = useMemo(() => {
+    return (dna || '').slice(0, 16).split('').map((char, i) => {
+      const hue = (char.charCodeAt(0) * 137.5) % 360;
+      return { id: i, color: `hsl(${hue}, 70%, 50%)` };
+    });
+  }, [dna]);
+
+  const tracePath = useMemo(() => {
+    if (!dna) return '';
+    const points = dna.split('').map((c, i) => {
+      const val = (c.charCodeAt(0) % 20);
+      return `${i * 10},${25 - val}`;
+    }).slice(0, 20);
+    return `M ${points.join(' L ')}`;
+  }, [dna]);
+
+  const riskLabel = useMemo(() => {
+    if (score > 80) return t('singularity.risk.low');
+    if (score > 40) return t('singularity.risk.standard');
+    return t('singularity.risk.high');
+  }, [score, t]);
+
+  const riskColor = useMemo(() => {
+    if (score > 80) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+    if (score > 40) return 'text-blue-600 bg-blue-50 border-blue-200';
+    return 'text-amber-600 bg-amber-50 border-amber-200';
+  }, [score]);
 
   return (
-    <div className={cn("p-4 rounded-xl bg-slate-900/50 border border-slate-800 shadow-2xl backdrop-blur-md", className)}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-            <Shield className="w-4 h-4 text-emerald-400" />
+    <div className="relative overflow-hidden rounded-2xl border border-white/40 bg-white/40 backdrop-blur-xl p-5 shadow-inner transition-all duration-500 hover:shadow-lg">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+            <Shield className="h-4 w-4" />
           </div>
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Forensic DNA Trace</span>
+          <h4 className="text-[11px] font-bold tracking-widest text-slate-500 uppercase">
+            {t('singularity.title')}
+          </h4>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-mono text-slate-500">{dna}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono text-slate-400 opacity-60">
+            {(dna || '').substring(0, 12).toUpperCase()}
+          </span>
           <div className="flex gap-0.5">
-            {dna.split('').map((char, i) => (
-              <div 
-                key={i} 
-                className={cn("w-1.5 h-3 rounded-full opacity-80", getDnaColor(char))}
+            {dnaBlocks.map((block) => (
+              <div
+                key={block.id}
+                className="w-2.5 h-2.5 rounded-[2px] transition-transform hover:scale-125 cursor-help"
+                style={{ backgroundColor: block.color }}
               />
             ))}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="p-3 rounded-lg bg-black/40 border border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute inset-0 bg-linear-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <span className="text-[10px] text-slate-500 uppercase font-semibold">Singularity Score</span>
-          <span className={cn(
-            "text-2xl font-black tracking-tighter",
-            score >= 80 ? "text-emerald-400" : score >= 50 ? "text-blue-400" : "text-amber-400"
-          )}>
-            {score}%
-          </span>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="p-4 rounded-xl bg-white/60 border border-white/80 shadow-sm transition-all hover:bg-white/80">
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            {t('singularity.score')}
+          </p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-black text-slate-800 tracking-tighter">
+              {score}%
+            </span>
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-1" />
+          </div>
         </div>
-        <div className="p-3 rounded-lg bg-black/40 border border-slate-800 flex flex-col items-center justify-center">
-          <span className="text-[10px] text-slate-500 uppercase font-semibold">Risk Factor</span>
-          <span className="text-xl font-bold text-slate-200">
-            {score > 90 ? "Ultra Minimal" : score > 70 ? "Low" : "Standard"}
+
+        <div className={cn("p-4 rounded-xl border shadow-sm transition-all", riskColor)}>
+          <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-2">
+            {t('singularity.risk')}
+          </p>
+          <span className="text-xl font-extrabold uppercase tracking-tight">
+            {riskLabel}
           </span>
         </div>
       </div>
 
-      {insights && insights.length > 0 && (
-        <div className="space-y-2">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Signal Insights</span>
-          <div className="grid grid-cols-1 gap-1.5">
-            {insights.map((insight, i) => {
-              const Icon = iconMap[insight.icon] || Zap;
-              return (
-                <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-slate-800/30 border border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-3.5 h-3.5 text-blue-400" />
-                    <span className="text-xs text-slate-300 font-medium">{insight.label}</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-500">{insight.value}</span>
-                </div>
-              );
-            })}
-          </div>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+            {t('singularity.neuralTrace')}
+          </span>
+          <Activity className="h-3 w-3 text-slate-300 animate-pulse" />
         </div>
-      )}
+        <div className="h-10 w-full overflow-hidden rounded-lg bg-slate-900/5 border border-slate-900/5 relative">
+          <svg className="absolute inset-0 w-full h-full" overflow="visible">
+            <path
+              d={tracePath}
+              fill="none"
+              stroke="url(#gradient-trace)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+            />
+            <defs>
+              <linearGradient id="gradient-trace" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                <stop offset="50%" stopColor="#10b981" stopOpacity="1" />
+                <stop offset="100%" stopColor="#10b981" stopOpacity="0.2" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">
+          {t('singularity.insights')}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(insights || []).map((insight, idx) => (
+            <div
+              key={idx}
+              className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-white shadow-sm transition-all hover:border-emerald-200 hover:bg-emerald-50/50 cursor-pointer"
+            >
+              <div className="p-1 rounded-full bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
+                <Zap className="h-2.5 w-2.5" />
+              </div>
+              <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900 transition-colors">
+                {t(`singularity.insight.${insight}` as any) || insight}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
-};
+}

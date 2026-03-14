@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -9,30 +9,20 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, Trash2, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Trash2, Phone, CircleDollarSign, ChevronRight, ChevronLeft, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useSfx } from '@/lib/hooks/use-sfx';
-
-/** Extract digits for comparison. Used to detect clicked vs entered number mismatch. */
-function digitsOnly(s: string): string {
-  return (s ?? '').replace(/\D/g, '');
-}
 
 export interface SealModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currency: string;
-  chipValues?: number[];
-  /** Clicked number from intent_target (tel:+90...) for comparison. Read-only. */
+  /** Clicked number for pre-filling or reference (not displayed as a separate box anymore) */
   clickedNumber?: string | null;
-  /** Called when user saves: amount, currency, leadScore (always 100), optional callerPhone. */
   onConfirm: (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => Promise<void>;
-  /** Called when user clicks Junk: submit with score 0, status junk, then close. */
   onJunk?: () => Promise<void>;
-  /** Called after successful Save (seal). */
   onSuccess?: () => void;
-  /** Called after successful Junk. */
   onJunkSuccess?: () => void;
   onError?: (message: string) => void;
 }
@@ -49,11 +39,24 @@ export function SealModal({
   onError,
 }: SealModalProps) {
   const { t } = useTranslation();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [callerPhone, setCallerPhone] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [junking, setJunking] = useState(false);
   const [sealSuccessPulse, setSealSuccessPulse] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setStep(1);
+      // Pre-fill phone if it looks like a number, but following user request "once telefon girme ekranı gelsin"
+      if (clickedNumber && clickedNumber.includes(':')) {
+        setCallerPhone(clickedNumber.split(':')[1]);
+      } else if (clickedNumber) {
+        setCallerPhone(clickedNumber);
+      }
+    }
+  }, [open, clickedNumber]);
 
   const sfxSrc = useMemo(() => '/sounds/cha-ching.mp3', []);
   const { play: playChaChing } = useSfx(sfxSrc);
@@ -61,36 +64,20 @@ export function SealModal({
   const customNum = customAmount.trim() ? Number(customAmount.trim()) : null;
   const effectiveAmount =
     customNum != null && !Number.isNaN(customNum) && customNum >= 0 ? customNum : null;
-  const priceValid = effectiveAmount == null || (effectiveAmount >= 0 && Number.isFinite(effectiveAmount));
-  // Tutar opsiyonel — LCV motoru sinyallerden otomatik değer hesaplar.
-  // Gerçek tutar girilirse Google direkt onu kullanır (en doğru tahmin).
-  const canSave = priceValid; // sadece negatif veya geçersiz sayı engellenir
-  const callerPhoneTrimmed = callerPhone.trim().slice(0, 64);
-  const showMismatch =
-    callerPhoneTrimmed.length >= 7 &&
-    clickedNumber &&
-    digitsOnly(clickedNumber).length >= 7 &&
-    digitsOnly(callerPhoneTrimmed) !== digitsOnly(clickedNumber);
 
   const handleConfirm = useCallback(async () => {
-    if (!canSave) return;
     setSaving(true);
     try {
       const toSend = callerPhone.trim().slice(0, 64) || undefined;
       await onConfirm(effectiveAmount ?? null, currency, 100, toSend);
 
-      try {
-        void playChaChing();
-      } catch {
-        // ignore
-      }
+      try { playChaChing(); } catch { }
       try {
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-          (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(50);
+          (navigator as Navigator).vibrate?.(50);
         }
-      } catch {
-        // ignore
-      }
+      } catch { }
+
       setSealSuccessPulse(true);
       window.setTimeout(() => setSealSuccessPulse(false), 420);
 
@@ -98,13 +85,14 @@ export function SealModal({
       onOpenChange(false);
       setCustomAmount('');
       setCallerPhone('');
+      setStep(1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('seal.errorSeal');
       onError?.(msg);
     } finally {
       setSaving(false);
     }
-  }, [canSave, effectiveAmount, currency, callerPhone, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
+  }, [effectiveAmount, currency, callerPhone, onConfirm, onSuccess, onError, onOpenChange, playChaChing, t]);
 
   const handleJunk = useCallback(async () => {
     if (!onJunk) return;
@@ -127,117 +115,150 @@ export function SealModal({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="h-[min(85vh,480px)] flex flex-col bg-white dark:bg-white text-slate-950 dark:text-slate-950 border-t border-slate-200 rounded-t-2xl"
-        data-testid="seal-modal"
+        className="h-[min(85vh,480px)] flex flex-col bg-white text-slate-950 border-t border-slate-200 rounded-t-3xl shadow-2xl"
       >
         <SheetHeader className="pb-4">
-          <SheetTitle className="flex items-center gap-2 text-xl font-semibold text-center">
-            <ShieldCheck className="h-8 w-8 text-emerald-600" aria-hidden />
-            {t('seal.title')}
+          <div className="flex justify-center mb-2">
+            <div className="flex items-center gap-2">
+              {[1, 2, 3].map((s) => (
+                <div 
+                  key={s} 
+                  className={cn(
+                    "w-8 h-1.5 rounded-full transition-all duration-300",
+                    step >= s ? "bg-emerald-500" : "bg-slate-200"
+                  )} 
+                />
+              ))}
+            </div>
+          </div>
+          <SheetTitle className="flex items-center justify-center gap-2 text-xl font-black italic tracking-tighter text-slate-800 uppercase">
+            {step === 1 && <Phone className="h-5 w-5 text-emerald-600" />}
+            {step === 2 && <CircleDollarSign className="h-5 w-5 text-emerald-600" />}
+            {step === 3 && <ShieldCheck className="h-6 w-6 text-emerald-600" />}
+            {step === 1 && t('seal.step.phone')}
+            {step === 2 && t('seal.step.revenue')}
+            {step === 3 && t('seal.step.confirm')}
           </SheetTitle>
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto space-y-4 py-2">
-          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-            <input
-              type="text"
-              inputMode="decimal"
-              min={0}
-              step={0.01}
-              placeholder={`0.00 ${currency} (isteğe bağlı)`}
-              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-              value={customAmount}
-              onChange={(e) => setCustomAmount(e.target.value)}
-              data-testid="seal-modal-custom-amount"
-            />
-            <p className="text-sm text-slate-600 mt-2">
-              Gerçek ciro girilirse algoritmayı doğrudan eğitir. Boş bırakılırsa sistem otomatik tahmin eder.
-            </p>
-            {customNum != null && Number.isNaN(customNum) && (
-              <div className="flex items-center gap-2 text-red-600 text-sm mt-2">
-                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                <span>Geçersiz tutar formatı</span>
-              </div>
-            )}
-          </div>
 
-          {clickedNumber && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-              <label className="block text-sm font-medium text-slate-700">{t('seal.clickedNumberLabel')}</label>
-              <div className="rounded border border-slate-200 bg-white px-4 py-3 text-slate-600 font-mono text-sm">
-                {clickedNumber}
+        <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full space-y-6">
+          {step === 1 && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                  <Phone className="h-5 w-5" />
+                </div>
+                <input
+                  id="seal-caller-phone"
+                  type="tel"
+                  placeholder="+90 532 ..."
+                  className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-12 py-5 text-xl font-bold text-slate-900 focus:border-emerald-500 focus:bg-white outline-none transition-all shadow-sm"
+                  value={callerPhone}
+                  onChange={(e) => setCallerPhone(e.target.value)}
+                  autoFocus
+                />
               </div>
+              <p className="text-sm text-center text-slate-500 px-4">
+                Google Müşteri Eşleştirme için gerçek arayan numarayı teyit edin.
+              </p>
             </div>
           )}
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-2">
-            <label htmlFor="seal-caller-phone" className="block text-sm font-medium text-slate-700">
-              Arayan Numara <span className="text-slate-400 font-normal text-xs">(isteğe bağlı — Google Customer Match)</span>
-            </label>
-            <input
-              id="seal-caller-phone"
-              type="tel"
-              inputMode="tel"
-              maxLength={64}
-              placeholder="+90 532 123 45 67"
-              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-              value={callerPhone}
-              onChange={(e) => setCallerPhone(e.target.value)}
-              data-testid="seal-modal-caller-phone"
-            />
-            <p className="text-xs text-slate-500">
-              Hash&apos;lenerek Google&apos;a gönderilir. Operatörün gerçek hayatta gördüğü arama numarasını yazın.
-            </p>
-            {showMismatch && (
-              <div className="flex items-center gap-2 text-amber-700 text-sm mt-2">
-                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                <span>Tıklanan numara ile girilenler farklı — kontrol edin</span>
+          {step === 2 && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                  <span className="text-xl font-bold">{currency}</span>
+                </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-16 py-5 text-2xl font-black text-slate-900 focus:border-emerald-500 focus:bg-white outline-none transition-all shadow-sm"
+                  value={customAmount}
+                  onChange={(e) => setCustomAmount(e.target.value)}
+                  autoFocus
+                />
               </div>
-            )}
-          </div>
-        </div>
-        <SheetFooter className="flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200 pb-safe">
-          {onJunk && (
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="w-full sm:w-auto text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-medium min-h-[44px]"
-              onClick={handleJunk}
-              disabled={saving || junking}
-              data-testid="seal-modal-junk"
-            >
-              <Trash2 className="h-4 w-4 mr-2" aria-hidden />
-              {t('seal.junk')}
-            </Button>
+              <p className="text-sm text-center text-slate-500 px-4">
+                Gerçek ciroyu girin. Boş bırakırsanız sistem otomatik tahmin yapacaktır.
+              </p>
+            </div>
           )}
-          <div className="flex gap-3 ml-auto w-full sm:w-auto">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="flex-1 sm:flex-none font-medium min-h-[44px]"
-              onClick={() => {
-                onOpenChange(false);
-                setCustomAmount('');
-                setCallerPhone('');
-              }}
-            >
-              {t('seal.cancel')}
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className={cn(
-                'flex-1 sm:flex-none font-medium bg-emerald-600 hover:bg-emerald-700 text-white min-h-[44px] transition-transform duration-200',
-                sealSuccessPulse && 'scale-[1.04]'
+
+          {step === 3 && (
+            <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500 text-center">
+              <div className="p-6 rounded-3xl bg-emerald-50 border-2 border-emerald-100 flex flex-col items-center gap-2">
+                <ShieldCheck className="h-12 w-12 text-emerald-600 mb-2" />
+                <div className="text-slate-500 text-xs font-bold uppercase tracking-widest leading-none">MÜHÜRLENECEK DEĞER</div>
+                <div className="text-4xl font-black text-emerald-700 tracking-tighter">
+                  {effectiveAmount ? `${effectiveAmount} ${currency}` : "AI TAHMİNİ"}
+                </div>
+                {callerPhone && (
+                  <div className="mt-4 px-4 py-2 rounded-full bg-white border border-emerald-200 text-emerald-700 text-sm font-mono font-bold">
+                    {callerPhone}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <SheetFooter className="pt-6 border-t border-slate-100 pb-safe px-2">
+          <div className="flex items-center justify-between w-full gap-4">
+            {step === 1 ? (
+              <Button
+                variant="ghost"
+                className="text-red-500 hover:bg-red-50 hover:text-red-600 font-bold"
+                onClick={handleJunk}
+                disabled={junking}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                {t('seal.junk')}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="text-slate-400 hover:text-slate-600 font-bold"
+                onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}
+                disabled={saving}
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                {t('seal.back')}
+              </Button>
+            )}
+
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                className="font-bold border-slate-200 text-slate-500"
+                onClick={() => onOpenChange(false)}
+              >
+                {t('seal.cancel')}
+              </Button>
+              
+              {step < 3 ? (
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-8 py-6 rounded-2xl shadow-lg ring-offset-2 focus:ring-2 ring-emerald-500 transition-all hover:scale-105 active:scale-95"
+                  onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}
+                >
+                  {t('seal.next')}
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              ) : (
+                <Button
+                  className={cn(
+                    "bg-slate-900 hover:bg-black text-white font-black px-10 py-6 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95",
+                    sealSuccessPulse && "scale-110 bg-emerald-600"
+                  )}
+                  onClick={handleConfirm}
+                  disabled={saving}
+                >
+                  {saving ? t('seal.sealing') : t('seal.send')}
+                  <Send className="h-4 w-4 ml-2" />
+                </Button>
               )}
-              disabled={!canSave || saving || junking}
-              onClick={handleConfirm}
-              data-testid="seal-modal-confirm"
-            >
-              <ShieldCheck className="h-4 w-4 mr-2" aria-hidden />
-              {saving ? t('seal.sealing') : t('seal.button')}
-            </Button>
+            </div>
           </div>
         </SheetFooter>
       </SheetContent>

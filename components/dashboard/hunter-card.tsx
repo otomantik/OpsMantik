@@ -360,13 +360,15 @@ export function HunterCard({
   }, [intent.intent_target, intent.intent_action, translate]);
 
   const geoDisplay = useMemo(() => {
-    const out = formatDisplayLocation(intent.city, intent.district, intent.location_source);
+    // Force inclusion of district if available
+    const out = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source);
     if (!out) return translate('hunter.locationUnknown');
+    // Ensure "DISTRICT / CITY" format is preserved and uppercase for TR
     return out.toLocaleUpperCase('tr-TR');
   }, [intent.city, intent.district, intent.location_source, translate]);
 
   const locationDisplay = useMemo(() => {
-    const out = formatDisplayLocation(intent.city ?? null, intent.district ?? null, intent.location_source);
+    const out = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source);
     return out ?? translate('hunter.locationUnknown');
   }, [intent.city, intent.district, intent.location_source, translate]);
 
