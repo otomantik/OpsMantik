@@ -18,6 +18,7 @@ export interface SealModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currency: string;
+  chipValues?: number[];
   /** Clicked number for pre-filling or reference (not displayed as a separate box anymore) */
   clickedNumber?: string | null;
   onConfirm: (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => Promise<void>;
