@@ -50,14 +50,11 @@ export function SealModal({
   useEffect(() => {
     if (open) {
       setStep(1);
-      // Pre-fill phone if it looks like a number, but following user request "once telefon girme ekranı gelsin"
-      if (clickedNumber && clickedNumber.includes(':')) {
-        setCallerPhone(clickedNumber.split(':')[1]);
-      } else if (clickedNumber) {
-        setCallerPhone(clickedNumber);
-      }
+      // Do NOT pre-fill with clickedNumber: that's the business number the visitor clicked.
+      // Operator must enter the CUSTOMER's number (they spoke with on the phone).
+      setCallerPhone('');
     }
-  }, [open, clickedNumber]);
+  }, [open]);
 
   const sfxSrc = useMemo(() => '/sounds/cha-ching.mp3', []);
   const { play: playChaChing } = useSfx(sfxSrc);
@@ -160,7 +157,7 @@ export function SealModal({
                 />
               </div>
               <p className="text-sm text-center text-slate-500 px-4">
-                Google Müşteri Eşleştirme için gerçek arayan numarayı teyit edin.
+                {t('seal.phoneStepHint')}
               </p>
             </div>
           )}

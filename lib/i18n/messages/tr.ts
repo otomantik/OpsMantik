@@ -215,6 +215,7 @@ export const tr = {
   "seal.dealSealed": "Anlaşma onaylandı.",
   "seal.markedJunk": "Değersiz olarak işaretlendi.",
   "seal.step.phone": "Telefon Teyidi",
+  "seal.phoneStepHint": "Telefonda konuştuğunuz müşterinin numarasını girin. (Sitede tıklanan numara değil.)",
   "seal.step.revenue": "Ciro Girişi",
   "seal.step.confirm": "Son Onay",
   "seal.next": "İleri",

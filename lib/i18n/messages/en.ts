@@ -236,6 +236,7 @@ export const en = {
   'seal.dealSealed': 'Deal sealed.',
   'seal.markedJunk': 'Marked as junk.',
   'seal.step.phone': 'Phone Verification',
+  'seal.phoneStepHint': "Enter the customer's phone number you spoke with. (Not the number clicked on the site.)",
   'seal.step.revenue': 'Revenue Entry',
   'seal.step.confirm': 'Final Confirmation',
   'seal.next': 'Next',

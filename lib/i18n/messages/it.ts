@@ -214,6 +214,7 @@ export const it = {
   "seal.errorMarkJunk": "Impossibile segnare come spam",
   "seal.dealSealed": "Affare sigillato.",
   "seal.markedJunk": "Segnato come spam.",
+  "seal.phoneStepHint": "Inserisci il numero del cliente con cui hai parlato al telefono. (Non il numero cliccato sul sito.)",
   "seal.callerPhoneLabel": "Numero chiamante (verificato)",
   "seal.clickedNumberLabel": "Numero cliccato",
   "seal.mismatchHint": "Questo numero è diverso dal numero nell'annuncio?",
