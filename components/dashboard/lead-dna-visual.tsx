@@ -12,7 +12,7 @@ interface LeadDnaVisualProps {
 }
 
 export function LeadDnaVisual({ dna, score, insights }: LeadDnaVisualProps) {
-  const { t } = useTranslation();
+  const { t, tUnsafe } = useTranslation();
 
   const dnaBlocks = useMemo(() => {
     return (dna || '').slice(0, 16).split('').map((char, i) => {
@@ -148,7 +148,7 @@ export function LeadDnaVisual({ dna, score, insights }: LeadDnaVisualProps) {
                 </div>
                 <div className="flex flex-col -space-y-0.5">
                   <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900 transition-colors">
-                    {String(t(`singularity.insight.${slug}` as any) || insight.label)}
+                    {String(tUnsafe(`singularity.insight.${slug}`) || insight.label)}
                   </span>
                   {insight.value && insight.value !== 'Match' && insight.value !== 'Converted' && (
                     <span className="text-[9px] font-mono text-slate-400">
