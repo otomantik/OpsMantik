@@ -32,3 +32,24 @@
 - [ ] Never prefix secret keys with `NEXT_PUBLIC_`.
 - [ ] Use `timingSafeCompare` for any sensitive token/key comparison.
 - [ ] Regularly review `Watchtower` logs for unusual ingestion patterns.
+
+## Compliance & consent changes
+
+- **Change gate:** Any PR that touches consent, GDPR erase, or compliance freeze must follow [COMPLIANCE_CHANGE_GATE.md](../security/COMPLIANCE_CHANGE_GATE.md) and extend tests in `tests/unit/compliance-freeze.test.ts` / `gdpr-consent-gates.test.ts` as applicable.
+
+## Secrets & rotation
+
+| Secret / area | Suggested cadence | Verify after |
+|---------------|-------------------|--------------|
+| `CRON_SECRET` | Quarterly | `/api/cron/*` 401/403, [DEPLOY_POST_VERIFY](../runbooks/DEPLOY_POST_VERIFY.md) |
+| `QSTASH_*` signing keys | When Upstash rotates | Worker ingest 2xx |
+| `UPSTASH_REDIS_*` | On provider rotate | `/api/metrics` `routes.source` = redis |
+| OCI / `OCI_SESSION_SECRET` | Quarterly or incident | OCI export smoke |
+| Google / webhook secrets | Quarterly | Webhook test request |
+
+- Rotate **cron** (`CRON_SECRET`), **OCI** session secrets, and **webhook** secrets on a quarterly schedule or after incident.
+- Document rotation in the ticket; verify `/api/cron/*` and integrations after rotation.
+
+## Audit trail
+
+- Sensitive actions (seal, junk, undo) should continue to flow through audited paths (`call_actions` and related). New destructive actions must record actor + timestamp.

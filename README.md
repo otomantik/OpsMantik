@@ -49,6 +49,12 @@ npm run dev
 
 The app will run at `http://localhost:3000`.
 
+## 📚 Developer docs
+
+- **[docs/ONBOARDING.md](docs/ONBOARDING.md)** — local setup, tests, deploy gate
+- **[docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md)** — unit / integration / smoke
+- **[docs/architecture/MODULE_BOUNDARIES.md](docs/architecture/MODULE_BOUNDARIES.md)** — where code lives
+
 ## 📁 Project Structure
 
 ```

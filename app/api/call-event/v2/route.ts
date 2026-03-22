@@ -25,6 +25,7 @@ import { findRecentSessionByFingerprint, BRIDGE_LOOKBACK_DAYS } from '@/lib/api/
 import { AdsContextOptionalSchema } from '@/lib/ingest/call-event-worker-payload';
 import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { recordRouteHttpResponse } from '@/lib/route-metrics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,8 +75,9 @@ export async function OPTIONS(req: NextRequest) {
   return res;
 }
 
-export async function POST(req: NextRequest) {
+async function callEventV2Inner(req: NextRequest) {
   const requestId = req.headers.get('x-request-id') ?? undefined;
+  Sentry.setTag('route', ROUTE);
 
   try {
     const origin = req.headers.get('origin');
@@ -468,5 +470,11 @@ export async function POST(req: NextRequest) {
     if (origin) errHeaders['Access-Control-Allow-Origin'] = origin;
     return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: errHeaders });
   }
+}
+
+export async function POST(req: NextRequest) {
+  const res = await callEventV2Inner(req);
+  recordRouteHttpResponse('call_event_v2', res.status);
+  return res;
 }
 

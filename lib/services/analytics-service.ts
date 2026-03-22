@@ -16,7 +16,7 @@ export class AnalyticsService {
      * Fetches conversation funnel and behavior analytics for a specific site.
      */
     static async getFunnelAnalysis(siteId: string): Promise<FunnelMetrics | null> {
-        // RPC name is legacy; parameter is generic (any site UUID).
+        // RPC name is legacy; neutral alias optional — see docs/architecture/adr/002-analytics-funnel-rpc-naming.md
         const { data, error } = await adminClient.rpc('analyze_gumus_alanlar_funnel', {
             target_site_id: siteId,
         });

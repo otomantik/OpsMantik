@@ -22,7 +22,7 @@ test('Integration: LCV Signal Generation on marketing_signals', async (_t) => {
   });
 
   // 1. Get a valid site and call (or create dummy)
-  let { data: call, error: callErr } = await admin
+  const { data: call } = await admin
     .from('calls')
     .select('id, site_id, city, district, device_os, traffic_source, whatsapp_clicks, total_duration_sec')
     .not('site_id', 'is', null)

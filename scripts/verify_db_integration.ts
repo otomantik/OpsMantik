@@ -25,7 +25,12 @@ async function verifySignalGeneration() {
   const confirmedAtIso = new Date().toISOString();
   
   console.log('Fetching call data...');
-  const { data: call } = await adminClient.from('calls').select('*').eq('id', callId).single();
+  const { data: call } = await adminClient
+    .from('calls')
+    .select('*')
+    .eq('id', callId)
+    .eq('site_id', siteId)
+    .single();
   
   if (!call) {
     console.log('Test call not found. Please provide a valid call ID.');

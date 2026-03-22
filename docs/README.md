@@ -33,7 +33,15 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 | [SECURITY/SSO_ROADMAP.md](architecture/SECURITY/SSO_ROADMAP.md) | SSO roadmap |
 | [BILLING/](architecture/BILLING/) | Revenue kernel spec, master plan, idempotency |
 | [OPS/](architecture/OPS/) | Scaling ingest idempotency, call-event DB, observability, SLO/SLA |
+| [OPS/OBSERVABILITY_BASELINE.md](architecture/OPS/OBSERVABILITY_BASELINE.md) | Metric checklist (baseline), CI timing table |
+| [OPS/OBSERVABILITY_METRIC_SOURCES.md](architecture/OPS/OBSERVABILITY_METRIC_SOURCES.md) | Requirements → logs/metrics mapping |
+| [OPS/SENTRY_INVESTIGATION.md](architecture/OPS/SENTRY_INVESTIGATION.md) | Sentry saved searches & tags |
+| [MODULE_BOUNDARIES.md](architecture/MODULE_BOUNDARIES.md) | Where ingest/OCI/funnel code lives |
+| [adr/](architecture/adr/) | Architecture Decision Records |
 | [AUDIT/](architecture/AUDIT/) | Tenant scope guard, ingestion durability, tier audits |
+| [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | Flaky policy, contract tests, integration strategy |
+| [ONBOARDING.md](ONBOARDING.md) | New developer setup |
+| [security/COMPLIANCE_CHANGE_GATE.md](security/COMPLIANCE_CHANGE_GATE.md) | GDPR/consent PR checklist |
 
 ---
 
@@ -47,6 +55,9 @@ This is the canonical documentation hub for the OpsMantik platform. Use this ind
 | [QUOTA_CALL_EVENT_INCIDENT_RUNBOOK.md](runbooks/QUOTA_CALL_EVENT_INCIDENT_RUNBOOK.md) | Quota/call-event incident response |
 | [PROVIDERS_UPLOAD_RUNBOOK.md](runbooks/PROVIDERS_UPLOAD_RUNBOOK.md) | Provider credential upload |
 | [DEPLOY_SYNC_429_SITE_SCOPED_RL.md](runbooks/DEPLOY_SYNC_429_SITE_SCOPED_RL.md) | Sync 429 rate-limit deployment |
+| [OPERATIONAL_DRILLS.md](runbooks/OPERATIONAL_DRILLS.md) | Tabletop drills (sync, OCI, rollback) |
+| [INFRA_REDIS_QSTASH_CHECKLIST.md](runbooks/INFRA_REDIS_QSTASH_CHECKLIST.md) | Redis & QStash incident checklist |
+| [DEPLOY_POST_VERIFY.md](runbooks/DEPLOY_POST_VERIFY.md) | Post-deploy 2-minute verification |
 | [DEPLOY_CHECKLIST_REVENUE_KERNEL.md](runbooks/DEPLOY_CHECKLIST_REVENUE_KERNEL.md) | Revenue kernel deploy checklist |
 | [FAILURE_DRILL_PLAN.md](runbooks/FAILURE_DRILL_PLAN.md) | Failure drill procedures |
 | [GOOGLE_ADS_TRACKING_TEMPLATE.md](runbooks/GOOGLE_ADS_TRACKING_TEMPLATE.md) | Google Ads tracking template |

@@ -3,6 +3,8 @@
 **Scope:** Production metrics, thresholds, alert routing, investigation playbooks.
 **Sprint A:** Operational proof; no business logic changes.
 
+**See also:** [OBSERVABILITY_BASELINE.md](./OBSERVABILITY_BASELINE.md) (checklist + CI baseline), [OBSERVABILITY_METRIC_SOURCES.md](./OBSERVABILITY_METRIC_SOURCES.md) (1:1 mapping), [SENTRY_INVESTIGATION.md](./SENTRY_INVESTIGATION.md) (queries + tags).
+
 ---
 
 ## Core Metrics (Required)

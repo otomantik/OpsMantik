@@ -4,6 +4,11 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 import { getBillingMetrics, getBillingMetricsFromRedis } from '@/lib/billing-metrics';
 import { WatchtowerService } from '@/lib/services/watchtower';
 import { adminClient } from '@/lib/supabase/admin';
+import {
+    computeApproxErrorRate,
+    getRouteMetricsFromRedis,
+    getRouteMetricsMemory,
+} from '@/lib/route-metrics';
 
 export const runtime = 'nodejs'; // or 'edge' if billing-metrics supports it, but watchtower uses adminClient which assumes node usually
 
@@ -77,7 +82,39 @@ export async function GET(req: NextRequest) {
         funnelKernel = { status: 'tables_unavailable' };
     }
 
+    const routeRedis = await getRouteMetricsFromRedis();
+    const routeMem = getRouteMetricsMemory();
+    const routeSource = routeRedis ? 'redis' : 'memory';
+    const routeCombined = routeRedis ?? routeMem;
+    const syncRate = computeApproxErrorRate('sync', routeCombined);
+    const ceRate = computeApproxErrorRate('call_event_v2', routeCombined);
+
     const metrics = {
+        routes: {
+            source: routeSource,
+            sync: {
+                counters: {
+                    requests_total: routeCombined.route_sync_requests_total ?? 0,
+                    http_2xx: routeCombined.route_sync_http_2xx ?? 0,
+                    http_3xx: routeCombined.route_sync_http_3xx ?? 0,
+                    http_4xx: routeCombined.route_sync_http_4xx ?? 0,
+                    http_5xx: routeCombined.route_sync_http_5xx ?? 0,
+                },
+                approx_server_error_rate: syncRate.error_rate,
+                note: 'Monotonic counters since process start or Redis key TTL; use deltas or Vercel logs for 15m windows.',
+            },
+            call_event_v2: {
+                counters: {
+                    requests_total: routeCombined.route_call_event_v2_requests_total ?? 0,
+                    http_2xx: routeCombined.route_call_event_v2_http_2xx ?? 0,
+                    http_3xx: routeCombined.route_call_event_v2_http_3xx ?? 0,
+                    http_4xx: routeCombined.route_call_event_v2_http_4xx ?? 0,
+                    http_5xx: routeCombined.route_call_event_v2_http_5xx ?? 0,
+                },
+                approx_server_error_rate: ceRate.error_rate,
+                note: 'Same as sync; 204 consent-missing counts as 2xx.',
+            },
+        },
         billing: {
             ingest: ingestMetrics,
             ingest_source: redisMetrics ? 'redis' : 'memory',

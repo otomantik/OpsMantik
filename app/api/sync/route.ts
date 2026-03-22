@@ -13,6 +13,7 @@ import { getFinalUrl, normalizeIp, normalizeUserAgent } from '@/lib/types/ingest
 import { parseSignalManifest, toValidIngestPayload } from '@/lib/types/signal-manifest';
 import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '@/lib/idempotency';
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
+import { recordRouteHttpResponse } from '@/lib/route-metrics';
 import { publishToQStash } from '@/lib/ingest/publish';
 
 /**
@@ -179,6 +180,14 @@ export type SyncRateLimitResult = { allowed: boolean; resetAt?: number; redisUna
  */
 export function createSyncHandler(deps?: SyncHandlerDeps) {
   return async function POST(req: NextRequest) {
+    const res = await syncPostInner(req, deps);
+    recordRouteHttpResponse('sync', res.status);
+    return res;
+  };
+}
+
+async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<NextResponse> {
+    Sentry.setTag('route', '/api/sync');
     const origin = req.headers.get('origin');
     const baseHeaders: Record<string, string> = {
       ...getBuildInfoHeaders(),
@@ -247,6 +256,12 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
           { status: 400, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_mixed_sites' } }
         );
       }
+    }
+    if (bodies.length > MAX_EVENTS_PER_REQUEST) {
+      return NextResponse.json(
+        { ok: false, error: 'Too many events in one request', code: 'batch_too_many_events' },
+        { status: 429, headers: { ...baseHeaders, 'X-OpsMantik-Error-Code': 'batch_too_many_events' } }
+      );
     }
     const body = bodies[0];
 
@@ -417,7 +432,6 @@ export function createSyncHandler(deps?: SyncHandlerDeps) {
       createSyncResponse(true, 10, { status: 'queued', v: OPSMANTIK_VERSION, ingest_id: primaryIngestId, count: queued, degraded }),
       { status: 202, headers: baseHeaders }
     );
-  };
 }
 
 /** Default POST handler (production). */

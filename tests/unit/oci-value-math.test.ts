@@ -134,8 +134,9 @@ test('OCI runner: must not import predictive-engine', () => {
   assert.ok(!src.includes('predictive-engine'), 'runner must not import predictive-engine');
 });
 
-test('OCI export-batch: must not import calculateLeadValue', () => {
-  const batchPath = join(process.cwd(), 'app', 'api', 'oci', 'export-batch', 'route.ts');
-  const src = readFileSync(batchPath, 'utf8');
-  assert.ok(!src.includes('calculateLeadValue'), 'export-batch must not use calculateLeadValue');
+test('OCI google-ads-export: must not import calculateLeadValue', () => {
+  // Legacy /api/oci/export-batch was removed; script contract is google-ads-export → ack/verify.
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(!src.includes('calculateLeadValue'), 'google-ads-export must not use calculateLeadValue');
 });
