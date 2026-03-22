@@ -236,15 +236,31 @@ async function syncQueueValuesFromCalls(
     const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
     const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
     const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;
-    if (freshCents !== storedCents) {
+    
+    // PR-VK-6: Apply drift tolerance (e.g., 100 cents = 1 unit) to prevent fail-closed on minor rounding/exchange differences
+    const DRIFT_TOLERANCE_CENTS = 100;
+    const diff = Math.abs((freshCents ?? 0) - storedCents);
+
+    if (diff > DRIFT_TOLERANCE_CENTS) {
       logWarn('QUEUE_VALUE_MISMATCH', {
         queue_id: row.id,
         call_id: row.call_id,
         stored_cents: storedCents,
         computed_cents: freshCents,
+        diff_cents: diff,
         prefix,
       });
       mismatchIds.add(row.id);
+    } else if (diff > 0) {
+      // Log accepted drift for observability without halting the queue
+      logInfo('QUEUE_VALUE_DRIFT_ACCEPTED', {
+        queue_id: row.id,
+        call_id: row.call_id,
+        stored_cents: storedCents,
+        computed_cents: freshCents,
+        diff_cents: diff,
+        prefix,
+      });
     }
   }
 
