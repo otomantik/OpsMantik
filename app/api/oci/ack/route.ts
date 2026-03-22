@@ -121,6 +121,8 @@ export async function POST(req: NextRequest) {
     const sealIds: string[] = [];
     const signalIds: string[] = [];
     const pvIds: string[] = [];
+    const projIds: string[] = [];   // call_funnel_projection rows (proj_ prefix)
+    const adjIds: string[] = [];    // conversion_adjustments rows (adj_ prefix)
     const sealSkippedIds: string[] = [];
     const signalSkippedIds: string[] = [];
     const pvSkippedIds: string[] = [];
@@ -129,6 +131,8 @@ export async function POST(req: NextRequest) {
       if (s.startsWith('seal_')) sealIds.push(s.slice(5));
       else if (s.startsWith('signal_')) signalIds.push(s.slice(7));
       else if (s.startsWith('pv_')) pvIds.push(s.slice(3));
+      else if (s.startsWith('proj_')) projIds.push(s.slice(5));
+      else if (s.startsWith('adj_')) adjIds.push(s.slice(4));
       else pvIds.push(s);
     }
     for (const id of skippedIds) {
@@ -306,6 +310,40 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
         }
         totalUpdated += Array.isArray(updated) ? updated.length : 0;
+      }
+    }
+
+    // ── proj_ prefix: call_funnel_projection rows ────────────────────────────
+    if (projIds.length > 0) {
+      const { error: projError } = await adminClient
+        .from('call_funnel_projection')
+        .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: new Date().toISOString() })
+        .in('call_id', projIds)
+        .eq('site_id', siteUuid)
+        .eq('export_status', 'READY');
+
+      if (projError) {
+        logError('OCI_ACK_PROJ_ERROR', { code: (projError as { code?: string })?.code });
+      } else {
+        totalUpdated += projIds.length;
+        logInfo('OCI_ACK_PROJ_COMPLETED', { site_id: siteUuid, count: projIds.length });
+      }
+    }
+
+    // ── adj_ prefix: conversion_adjustments rows ─────────────────────────────
+    if (adjIds.length > 0) {
+      const { error: adjError } = await adminClient
+        .from('conversion_adjustments')
+        .update({ status: 'COMPLETED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .in('id', adjIds)
+        .eq('site_id', siteUuid)
+        .eq('status', 'PROCESSING');
+
+      if (adjError) {
+        logError('OCI_ACK_ADJ_ERROR', { code: (adjError as { code?: string })?.code });
+      } else {
+        totalUpdated += adjIds.length;
+        logInfo('OCI_ACK_ADJ_COMPLETED', { site_id: siteUuid, count: adjIds.length });
       }
     }
 

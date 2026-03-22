@@ -15,7 +15,7 @@
  * - NEXT_PUBLIC_SUPABASE_URL
  * - SUPABASE_SERVICE_ROLE_KEY
  * - SYNC_API_URL (default http://localhost:3100/api/sync)
- * - ORIGIN (default https://www.poyrazantika.com)
+ * - ORIGIN (default https://www.yapiozmendanismanlik.com)
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -36,7 +36,7 @@ if (!supabaseUrl || !serviceKey) {
 const supabase = createClient(supabaseUrl, serviceKey);
 
 const SYNC_API_URL = process.env.SYNC_API_URL || 'http://localhost:3100/api/sync';
-const ORIGIN = process.env.ORIGIN || 'https://www.poyrazantika.com';
+const ORIGIN = process.env.ORIGIN || 'https://www.yapiozmendanismanlik.com';
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 

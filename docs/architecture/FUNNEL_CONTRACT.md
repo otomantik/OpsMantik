@@ -4,7 +4,8 @@
 
 This document defines the kernel ontology and red lines. The application is developed according to this contract.
 
-> **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)
+> **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)  
+> **OCI value engines + SSOT (V2–V5, queue vs projection):** [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md)
 
 ---
 
@@ -56,7 +57,7 @@ V1 is not part of the kernel. Pageview is not forced to call_id.
 | Rule | Description |
 | ---- | ----------- |
 | Routes must not write to projection directly | Only ledger-writer + projection-updater write |
-| Export business truth reads from projection only | After USE_FUNNEL_PROJECTION=true single source is projection |
+| Google OCI export SSOT | Queue + `marketing_signals`; see [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md). Projection is for analytics / metrics, not primary OCI batch. |
 | No READY without V5 completeness | funnel_completeness = complete required |
 | Repair cannot replace normal flow | Exception mechanism; monitored with KPI |
 | Synthetic stages must not be invisible | v2_source, synthetic_flags_json in projection |

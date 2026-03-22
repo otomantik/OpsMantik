@@ -39,7 +39,6 @@ import {
 } from '@/lib/oci/queue-transition-ledger';
 import { chunkArray } from '@/lib/utils/batch';
 import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
-import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { computeConversionValue } from '@/lib/oci/oci-config';
 
 /** Options for runOfflineConversionRunner. */
@@ -232,10 +231,8 @@ async function syncQueueValuesFromCalls(
   for (const row of withCallId) {
     const call = callsById.get(row.call_id!);
     if (!call) continue;
-    const leadScore = call.lead_score ?? null;
     const saleAmount = call.sale_amount != null && Number.isFinite(Number(call.sale_amount)) ? Number(call.sale_amount) : null;
-    const star = leadScoreToStar(leadScore);
-    const valueUnits = computeConversionValue(star, saleAmount);
+    const valueUnits = computeConversionValue(saleAmount);
     const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
     const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
     const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;

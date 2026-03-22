@@ -17,7 +17,7 @@
  * - NEXT_PUBLIC_SUPABASE_URL — MUST match production (same as Vercel), else events written to different DB
  * - SUPABASE_SERVICE_ROLE_KEY
  * - SYNC_API_URL (default http://localhost:3100/api/sync; regression uses production when not set)
- * - ORIGIN (default https://www.poyrazantika.com)
+ * - ORIGIN (default https://www.yapiozmendanismanlik.com)
  * - P0_DB_RETRIES (default 12) — QStash + worker can take 5–30s
  * - P0_DB_RETRY_MS (default 2000) — delay per retry
  */
@@ -40,7 +40,7 @@ if (!supabaseUrl || !serviceKey) {
 const supabase = createClient(supabaseUrl, serviceKey);
 
 const SYNC_API_URL = process.env.SYNC_API_URL || 'http://localhost:3100/api/sync';
-const ORIGIN = process.env.ORIGIN || 'https://www.poyrazantika.com';
+const ORIGIN = process.env.ORIGIN || 'https://www.yapiozmendanismanlik.com';
 
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {

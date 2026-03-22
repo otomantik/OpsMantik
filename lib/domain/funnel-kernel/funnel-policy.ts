@@ -14,12 +14,16 @@ export interface ProjectionForValue {
   confidence?: number | null;
 }
 
-/** Stage weights: V2 2%, V3 10%, V4 30%, V5 = sealed (exact value, no multiplier) */
-const STAGE_WEIGHTS: Record<ProjectionStage, number> = {
+/**
+ * Default stage weights — SSOT for all funnel value calculations.
+ * V3 canonical value is 0.20 (was incorrectly 0.1 in this file).
+ * All paths must use SiteExportConfig.gear_weights when available.
+ */
+const DEFAULT_STAGE_WEIGHTS: Record<ProjectionStage, number> = {
   V2: 0.02,
-  V3: 0.1,
-  V4: 0.3,
-  V5: 1.0, // V5 uses exact value; weight only for fallback/estimated path
+  V3: 0.20, // Canonical: matches value-config.ts and SiteExportConfig.gear_weights.V3
+  V4: 0.30,
+  V5: 1.0,  // V5 uses exact value; weight only for fallback/estimated path
 };
 
 /** Quality score 1..5 → weight 0.2..1.0 linear */
@@ -35,25 +39,39 @@ export function getConfidenceWeight(confidence: number | null | undefined): numb
   return confidence;
 }
 
-/** Stage weight for V2..V5. V5 = 1.0 (sealed uses exact value). */
-export function getStageWeight(stage: ProjectionStage): number {
-  return STAGE_WEIGHTS[stage] ?? 0.02;
+/**
+ * Stage weight for V2..V5.
+ * Accepts optional gearWeights override from SiteExportConfig to ensure per-site consistency.
+ */
+export function getStageWeight(
+  stage: ProjectionStage,
+  gearWeights?: { V2?: number; V3?: number; V4?: number } | null
+): number {
+  if (gearWeights) {
+    if (stage === 'V2' && gearWeights.V2 != null) return gearWeights.V2;
+    if (stage === 'V3' && gearWeights.V3 != null) return gearWeights.V3;
+    if (stage === 'V4' && gearWeights.V4 != null) return gearWeights.V4;
+  }
+  return DEFAULT_STAGE_WEIGHTS[stage] ?? 0.02;
 }
 
 /**
  * Compute export value: V5 uses exact value_cents; V2–V4 use estimated formula.
  * estimated_value = base_value × stage_weight × quality_weight × confidence_weight
+ *
+ * @param gearWeights - Optional SiteExportConfig.gear_weights for per-site overrides.
  */
 export function computeExportValue(
   projection: ProjectionForValue,
   stage: ProjectionStage,
   baseAov: number,
-  _policyVersion?: string
+  _policyVersion?: string,
+  gearWeights?: { V2?: number; V3?: number; V4?: number } | null
 ): number {
   if (stage === 'V5' && projection.value_cents != null && Number.isFinite(projection.value_cents)) {
     return Math.round(projection.value_cents) / 100; // cents → units
   }
-  const sw = getStageWeight(stage);
+  const sw = getStageWeight(stage, gearWeights);
   const qw = getQualityWeight(projection.quality_score);
   const cw = getConfidenceWeight(projection.confidence);
   const estimated = baseAov * sw * qw * cw;

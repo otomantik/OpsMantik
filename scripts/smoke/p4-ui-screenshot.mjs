@@ -19,7 +19,7 @@ const OUT_DIR = path.join(process.cwd(), 'tmp', 'smoke-evidence', 'P4_2_UI');
 const AUTH_STATE_DIR = path.join(process.cwd(), 'tmp', 'smoke-evidence', 'auth');
 const PROOF_STORAGE_STATE = process.env.PROOF_STORAGE_STATE || path.join(AUTH_STATE_DIR, 'auth-state.json');
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
-const SITE_ID = process.env.SITE_ID || process.env.TEST_SITE_ID || '01d24667-ca9a-44e3-ab7a-7cd171ae653f';
+const SITE_ID = process.env.SITE_ID || process.env.TEST_SITE_ID || '00000000-0000-4000-8000-000000000001';
 const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || `/dashboard/site/${SITE_ID}`;
 
 if (!fs.existsSync(PROOF_STORAGE_STATE)) {

@@ -1,60 +1,76 @@
-/**
- * OpsMantik LCV Engine 3.0 — "Singularity" Edition
- *
- * Advanced lead lifetime value computation using:
- *   Neural Trace × Forensic DNA × Urgency × Contextual Intel
- *
- * Formula: LCV = base_aov × stage_weight × Q_total × Singularity_Factor
- *
- * Features:
- *  - Forensic DNA: Behavioral signature for fraud detection/attribution.
- *  - Neural Trace: Entropy-based engagement scoring.
- *  - Urgency Delta: Speed-to-intent multiplier.
- */
-
-
-// (No imports needed for isomorphic version)
+import { createHash } from 'node:crypto';
+import { normalizeTr, LcvIntelligenceConfig } from './oci-config';
 
 export type LcvStage = 'V3' | 'V4' | 'V5';
 
-const STAGE_WEIGHTS: Record<LcvStage, number> = {
-  V3: 0.10, // Görüşüldü
+/**
+ * Default LCV stage weights.
+ * V3 canonical value is 0.20 — matches SiteExportConfig.gear_weights.V3 default.
+ * Was incorrectly 0.10; the 3-source inconsistency is now resolved.
+ * Callers should pass config.gear_weights when available for per-site accuracy.
+ */
+const DEFAULT_LCV_STAGE_WEIGHTS: Record<LcvStage, number> = {
+  V3: 0.20, // Görüşüldü — canonical value (was 0.10, now aligned with value-config.ts)
   V4: 0.30, // Teklif
   V5: 1.00, // Mühür
 };
 
 // ── Quality multipliers ──────────────────────────────────────────────────────
 
-function qLocation(city: string | null | undefined, district: string | null | undefined): number {
-  const c = (city || '').trim().toLowerCase();
-  const d = (district || '').trim().toLowerCase();
-  const premiumDistricts = [
-    'beşiktaş', 'sarıyer', 'çankaya', 'akatlar', 'levent', 'etiler', 'nişantaşı', 
-    'bağcılar', 'kadıköy', 'üsküdar', 'esenyurt', 'beylikdüzü', 'başakşehir',
-    'nilüfer', 'bornova', 'karşıyaka', 'muratpaşa', 'selçuklu'
-  ];
-  if (premiumDistricts.some(pd => d.includes(pd))) return 1.8;
+function qLocation(
+  city: string | null | undefined, 
+  district: string | null | undefined,
+  config?: LcvIntelligenceConfig
+): number {
+  const c = normalizeTr(city);
+  const d = normalizeTr(district);
+  
+  const premiumDistricts = config?.premium_districts?.length 
+    ? config.premium_districts.map(pd => normalizeTr(pd))
+    : [
+        'beşiktaş', 'sarıyer', 'çankaya', 'akatlar', 'levent', 'etiler', 'nişantaşı', 
+        'bağcılar', 'kadıköy', 'üsküdar', 'esenyurt', 'beylikdüzü', 'başakşehir',
+        'nilüfer', 'bornova', 'karşıyaka', 'muratpaşa', 'selçuklu'
+      ];
+
+  if (premiumDistricts.some(pd => d.includes(pd) || c.includes(pd))) return 1.8;
   if (c.includes('istanbul')) return 1.5;
   if (c.includes('ankara') || c.includes('izmir')) return 1.3;
   return 1.0;
 }
 
-function qDevice(deviceType: string | null | undefined, deviceOs: string | null | undefined): number {
-  const d = (deviceType || '').toLowerCase();
-  const os = (deviceOs || '').toLowerCase();
-  if (os.includes('ios') || os.includes('iphone') || os.includes('ipad')) return 1.4;
-  if (d.includes('desktop') || d.includes('web')) return 0.9;
+function qDevice(
+  deviceType: string | null | undefined, 
+  deviceOs: string | null | undefined,
+  config?: LcvIntelligenceConfig
+): number {
+  const d = normalizeTr(deviceType);
+  const os = normalizeTr(deviceOs);
+  
+  // Dynamic Multiplier Lookup
+  if (config?.multipliers) {
+    if (os.includes('ios') && config.multipliers.ios) return config.multipliers.ios;
+    if (d.includes('desktop') && config.multipliers.desktop) return config.multipliers.desktop;
+  }
+
+  if (os.includes('ios')) return 1.4;
+  if (d.includes('desktop')) return 0.9;
   return 1.1;
 }
 
-function qSource(trafficSource: string | null | undefined, utmTerm?: string | null): number {
-  const src = (trafficSource || '').toLowerCase();
-  const term = (utmTerm || '').toLowerCase();
+function qSource(
+  trafficSource: string | null | undefined, 
+  utmTerm: string | null | undefined,
+  config?: LcvIntelligenceConfig
+): number {
+  const src = normalizeTr(trafficSource);
+  const term = normalizeTr(utmTerm);
 
-  // High Intent Keywords (Muratcan specific & general)
-  const highIntentTerms = ['akü yol yardım', 'en yakın akücü', 'acil akü', 'lastik yol yardım', '7/24', 'fiyatı', 'fiyatları'];
+  const highIntentTerms = config?.high_intent_keywords?.length
+    ? config.high_intent_keywords.map(k => normalizeTr(k))
+    : ['akü yol yardım', 'en yakın akücü', 'acil akü', 'lastik yol yardım', '7/24', 'fiyatı', 'fiyatları'];
+
   if (highIntentTerms.some(t => term.includes(t))) return 1.7;
-
   if (src.includes('branded') || src.includes('marka')) return 1.6;
   return 1.0;
 }
@@ -64,7 +80,7 @@ function qUrgency(totalDurationSec: number | null | undefined, eventCount: numbe
   const dur = totalDurationSec || 0;
   const events = eventCount || 0;
   if (dur > 0 && dur < 15 && events >= 2) return 1.5; // Decided instantly
-  if (dur > 300) return 0.8; // Browsing too long (too much comparison)
+  if (dur > 300) return 0.8; // Browsing too long
   return 1.0;
 }
 
@@ -78,31 +94,17 @@ function qBehavior(params: {
   let score = 1.0;
   if ((params.whatsappClicks ?? 0) > 0) score *= 1.4;
   if ((params.phoneClicks ?? 0) > 0) score *= 1.25;
-  if (params.isReturning) score *= 1.35; // Returning visitors are gold
+  if (params.isReturning) score *= 1.35;
   if ((params.eventCount ?? 0) >= 5) score *= 1.2;
   return Math.min(score, 2.5);
 }
 
 // ── Singularity Tools ────────────────────────────────────────────────────────
 
-/** Generates a behavioral DNA string (Isomorphic) */
 function generateForensicDna(input: LcvInput): string {
   const raw = `${input.city}:${input.deviceOs}:${input.trafficSource}:${input.matchtype}:${input.phoneClicks}:${input.whatsappClicks}`;
   
-  try {
-    // Attempt node:crypto (Server)
-    const { createHash } = require('node:crypto');
-    return createHash('sha256').update(raw).digest('hex').substring(0, 12).toUpperCase();
-  } catch {
-    // Simple Hash Fallback (Browser)
-    let hash = 0;
-    for (let i = 0; i < raw.length; i++) {
-      const char = raw.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(16).padStart(12, '0').substring(0, 12).toUpperCase();
-  }
+  return createHash('sha256').update(raw).digest('hex').substring(0, 12).toUpperCase();
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
@@ -126,6 +128,13 @@ export interface LcvInput {
   isReturning?: boolean | null;
   actualSaleAmount?: number | null;
   nowUtc?: Date;
+  config?: LcvIntelligenceConfig;
+  /**
+   * Per-site gear weights from SiteExportConfig.
+   * When provided, overrides DEFAULT_LCV_STAGE_WEIGHTS for V3/V4.
+   * Ensures dashboard value display matches export value calculation.
+   */
+  gearWeights?: { V2?: number; V3?: number; V4?: number } | null;
 }
 
 export interface LcvResult {
@@ -135,7 +144,7 @@ export interface LcvResult {
   stageWeight: number;
   qualityMultiplier: number;
   forensicDna: string;
-  singularityScore: number; // 0-100
+  singularityScore: number;
   breakdown: {
     qLocation: number;
     qDevice: number;
@@ -148,12 +157,9 @@ export interface LcvResult {
 }
 
 export function computeLcv(input: LcvInput): LcvResult {
-  const { stage, baseAov, actualSaleAmount } = input;
-
-  // Singularity DNA
+  const { stage, baseAov, actualSaleAmount, config, gearWeights } = input;
   const forensicDna = generateForensicDna(input);
 
-  // V5 with real amount
   if (stage === 'V5' && actualSaleAmount != null && actualSaleAmount > 0) {
     return {
       valueCents: Math.round(actualSaleAmount * 100),
@@ -168,10 +174,17 @@ export function computeLcv(input: LcvInput): LcvResult {
     };
   }
 
-  const sw = STAGE_WEIGHTS[stage];
-  const ql = qLocation(input.city, input.district);
-  const qd = qDevice(input.deviceType, input.deviceOs);
-  const qs = qSource(input.trafficSource, input.utmTerm);
+  // Resolve stage weight: use per-site gearWeights if provided, fall back to defaults.
+  // This ensures the dashboard/LCV value matches the export value calculation (SSOT).
+  const resolvedStageWeights: Record<LcvStage, number> = {
+    V3: gearWeights?.V3 ?? DEFAULT_LCV_STAGE_WEIGHTS.V3,
+    V4: gearWeights?.V4 ?? DEFAULT_LCV_STAGE_WEIGHTS.V4,
+    V5: DEFAULT_LCV_STAGE_WEIGHTS.V5,
+  };
+  const sw = resolvedStageWeights[stage];
+  const ql = qLocation(input.city, input.district, config);
+  const qd = qDevice(input.deviceType, input.deviceOs, config);
+  const qs = qSource(input.trafficSource, input.utmTerm, config);
   const qu = qUrgency(input.totalDurationSec, input.eventCount);
   const qb = qBehavior({
     phoneClicks: input.phoneClicks,
@@ -187,10 +200,8 @@ export function computeLcv(input: LcvInput): LcvResult {
   const valueUnits = Math.max(0.01, Math.round(rawValue * 100) / 100);
   const valueCents = Math.round(valueUnits * 100);
 
-  // Singularity Score (0-100 Normalized)
   const singularityScore = Math.min(100, Math.round((Q / 4.0) * 100));
 
-  // Insights Extraction
   const insights = [];
   if (ql > 1.4) insights.push({ label: 'Premium Geo', icon: 'MapPin', value: (input.district || input.city || 'Konum').toUpperCase() });
   if (qd > 1.2) insights.push({ label: 'iOS Power User', icon: 'Smartphone', value: 'High Intent' });

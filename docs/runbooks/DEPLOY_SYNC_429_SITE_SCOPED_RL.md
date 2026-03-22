@@ -6,13 +6,13 @@ The **site-scoped rate limit** code is on `master` to address 429 responses bloc
 
 Sync and call-event APIs accept requests only from origins listed in **ALLOWED_ORIGINS**. For production, ensure one of these is defined:
 
-- `https://www.poyrazantika.com`
-- or `https://poyrazantika.com` (subdomains accepted)
+- `https://www.yapiozmendanismanlik.com`
+- or `https://yapiozmendanismanlik.com` (subdomains accepted)
 
 **Vercel → Settings → Environment Variables:**
 
 - **Key:** `ALLOWED_ORIGINS`
-- **Value:** Append to current value: `,https://www.poyrazantika.com` (or comma-separated full list, e.g. `https://console.opsmantik.com,https://www.poyrazantika.com,...`)
+- **Value:** Append to current value: `,https://www.yapiozmendanismanlik.com` (or comma-separated full list, e.g. `https://console.opsmantik.com,https://www.yapiozmendanismanlik.com,...`)
 
 Save + Production redeploy. If origin is not in the list, 403 is returned; the browser may show this as a CORS error.
 
@@ -21,7 +21,7 @@ Save + Production redeploy. If origin is not in the list, 403 is returned; the b
 Default is now **2000/min** per site. If one site still hits 429, add:
 
 - **Name:** `OPSMANTIK_SYNC_RL_SITE_OVERRIDE`
-- **Value:** `b3e9634575df45c390d99d2623ddcde5:5000` (or higher)
+- **Value:** `<site_public_id>:5000` (or higher)
 
 Optional: **OPSMANTIK_SYNC_RL_DEFAULT** = `5000` to raise the default for all sites. See `docs/runbooks/SYNC_RATE_LIMIT_AND_QUOTA_DEFAULTS.md` for full reference.
 
@@ -44,11 +44,7 @@ Use `npx vercel login` first if needed.
 ## 3) Post-Deploy Verification
 
 1. **API response:** When a request receives 429, the response must include the **`Retry-After`** header (new code).
-2. **Diagnostic script:**
-   ```bash
-   node scripts/check-poyraz-ingest.mjs
-   ```
-   After some time, "Events today" and "ingest_idempotency rows today" should increase.
+2. **DB / metrics:** `events` ve `ingest_idempotency` tablolarında bugün için satır sayısının arttığını doğrulayın.
 
 ## Commit (merge)
 

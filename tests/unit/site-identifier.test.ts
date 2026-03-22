@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { isValidSiteIdentifier } from '@/lib/security/site-identifier';
 
 test('isValidSiteIdentifier: accepts UUID', () => {
-  assert.equal(isValidSiteIdentifier('01d24667-ca9a-44e3-ab7a-7cd171ae653f'), true);
+  assert.equal(isValidSiteIdentifier('00000000-0000-4000-8000-000000000001'), true);
 });
 
 test('isValidSiteIdentifier: accepts 32-hex public id', () => {
-  assert.equal(isValidSiteIdentifier('b3e9634575df45c390d99d2623ddcde5'), true);
+  assert.equal(isValidSiteIdentifier('aabbccddeeff00112233445566778899'), true);
 });
 
 test('isValidSiteIdentifier: rejects garbage', () => {

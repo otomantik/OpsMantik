@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * P0 Multi-Site Intent Test — Yapı Özmen Danışmanlık + Poyraz Antika event → intent akışını doğrular
+ * P0 Multi-Site Intent Test — seçilen domain’lerde sync → event → call (intent) akışını doğrular
  *
  * DEPLOY GATE (KESİN EMİR): Bu test çalıştırılmadan deploy edilmeyecek.
  * Intent bizim belkemiğimiz. Aksi belirtilene kadar bu kesin bir emirdir.
  * docs/OPS/DEPLOY_GATE_INTENT.md
  *
  * Env:
- *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com,poyrazantika.com
+ *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com,sosreklam.com
  *   SYNC_API_URL — default https://console.opsmantik.com/api/sync
  *   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
  * Usage:
- *   P0_SITES="yapiozmendanismanlik.com,poyrazantika.com" node scripts/smoke/p0_intent_multi_site.mjs
- *   node scripts/smoke/p0_intent_multi_site.mjs  # default 3 site
+ *   P0_SITES="yapiozmendanismanlik.com,sosreklam.com" node scripts/smoke/p0_intent_multi_site.mjs
+ *   node scripts/smoke/p0_intent_multi_site.mjs  # default 2 site
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -34,8 +34,8 @@ if (!supabaseUrl || !serviceKey) {
 const supabase = createClient(supabaseUrl, serviceKey);
 
 const SYNC_API_URL = process.env.SYNC_API_URL || 'https://console.opsmantik.com/api/sync';
-const ORIGIN = process.env.ORIGIN || 'https://www.poyrazantika.com';
-const DEFAULT_SITES = 'yapiozmendanismanlik.com,poyrazantika.com';
+const ORIGIN = process.env.ORIGIN || 'https://www.yapiozmendanismanlik.com';
+const DEFAULT_SITES = 'yapiozmendanismanlik.com,sosreklam.com';
 const SITES_RAW = process.env.P0_SITES || DEFAULT_SITES;
 const SITES = SITES_RAW.split(',').map((s) => s.trim()).filter(Boolean);
 

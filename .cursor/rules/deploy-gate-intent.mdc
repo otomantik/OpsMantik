@@ -11,6 +11,6 @@ alwaysApply: true
 npm run smoke:intent-multi-site
 ```
 
-No deploy without 2/2 site PASS. This test verifies the sync → events → calls flow (yapiozmendanismanlik.com, poyrazantika.com).
+No deploy without 2/2 site PASS. This test verifies the sync → events → calls flow (yapiozmendanismanlik.com, sosreklam.com).
 
 Details: `docs/OPS/DEPLOY_GATE_INTENT.md`

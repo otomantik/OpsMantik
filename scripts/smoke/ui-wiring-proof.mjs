@@ -13,7 +13,7 @@ const outDir = path.join(root, 'docs', '_archive', '2026-02-02', 'WAR_ROOM', 'EV
 
 const targetUrl =
   process.env.PROOF_URL ||
-  'https://console.opsmantik.com/dashboard/site/01d24667-ca9a-44e3-ab7a-7cd171ae653f?tab=live';
+  'https://console.opsmantik.com/dashboard/site/00000000-0000-4000-8000-000000000001?tab=live';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

@@ -12,9 +12,20 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const supabase = createClient(supabaseUrl, serviceKey);
 
+/** Site display name — set CHECK_INTENTS_SITE_NAME or pass as first CLI arg */
+const siteName = process.env.CHECK_INTENTS_SITE_NAME || process.argv[2];
+if (!siteName) {
+  console.error('Usage: CHECK_INTENTS_SITE_NAME="Site Name" node scripts/check-intents.mjs');
+  console.error('   or: node scripts/check-intents.mjs "Site Name"');
+  process.exit(1);
+}
+
 async function checkIntents() {
-    const { data: sites } = await supabase.from('sites').select('*').eq('name', 'Gümüş Alanlar');
-    if (!sites || sites.length === 0) return;
+    const { data: sites } = await supabase.from('sites').select('*').eq('name', siteName);
+    if (!sites || sites.length === 0) {
+        console.error(`No site found with name: ${siteName}`);
+        process.exit(1);
+    }
     const site = sites[0];
 
     const today = new Date().toISOString().split('T')[0];

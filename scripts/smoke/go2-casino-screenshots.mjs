@@ -15,7 +15,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const OUT_DIR = path.join(process.cwd(), 'tmp', 'smoke-evidence', 'GO2_CASINO_UI');
 const BASE_URL = process.env.PROOF_URL || 'http://localhost:3000';
-const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || '/dashboard/site/01d24667-ca9a-44e3-ab7a-7cd171ae653f';
+const DASHBOARD_PATH = process.env.PROOF_DASHBOARD_PATH || '/dashboard/site/00000000-0000-4000-8000-000000000001';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -1,9 +1,15 @@
 /**
  * Value SSOT Config — Single source for site value parameters.
  * PR-VK-1: Config getter with in-memory cache, safe read path, fallbacks.
+ *
+ * When `sites.oci_config` is present, `IntentWeights` are derived from
+ * SiteExportConfig `gear_weights` (V2→pending, V3→qualified, V4→proposal) so
+ * Mizan `insertMarketingSignal` matches seal LCV and export math.
+ * Legacy `sites.intent_weights` is used only when `oci_config` is absent.
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { parseExportConfig } from '@/lib/oci/site-export-config';
 
 export interface IntentWeights {
   pending: number;
@@ -71,7 +77,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
 
   const { data: site, error } = await adminClient
     .from('sites')
-    .select('name, default_aov, intent_weights, min_conversion_value_cents')
+    .select('name, default_aov, intent_weights, min_conversion_value_cents, oci_config')
     .eq('id', siteId)
     .single();
 
@@ -91,21 +97,36 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
     return fallback;
   }
 
-  const dbWeights = (site.intent_weights as Record<string, unknown> | null) ?? {};
-  const finalWeights: IntentWeights = {
-    pending: typeof dbWeights.pending === 'number' ? dbWeights.pending : DEFAULT_WEIGHTS.pending,
-    qualified: typeof dbWeights.qualified === 'number' ? dbWeights.qualified : DEFAULT_WEIGHTS.qualified,
-    proposal: typeof dbWeights.proposal === 'number' ? dbWeights.proposal : DEFAULT_WEIGHTS.proposal,
-    sealed: typeof dbWeights.sealed === 'number' ? dbWeights.sealed : DEFAULT_WEIGHTS.sealed,
-  };
+  const ociRaw = (site as { oci_config?: unknown }).oci_config;
+  const hasOciConfig =
+    ociRaw != null && typeof ociRaw === 'object' && !Array.isArray(ociRaw);
+  const exportCfg = hasOciConfig ? parseExportConfig(ociRaw) : null;
 
-  if (dbWeights.proposal === null || dbWeights.proposal === undefined || dbWeights.qualified === null || dbWeights.qualified === undefined) {
-    console.info(`[VALUE_CONFIG_MERGE] Site ${siteId} için eksik weight'ler fallback ile tamamlandı.`);
+  let finalWeights: IntentWeights;
+  if (exportCfg) {
+    finalWeights = {
+      pending: exportCfg.gear_weights.V2,
+      qualified: exportCfg.gear_weights.V3,
+      proposal: exportCfg.gear_weights.V4,
+      sealed: 1.0,
+    };
+  } else {
+    const dbWeights = (site.intent_weights as Record<string, unknown> | null) ?? {};
+    finalWeights = {
+      pending: typeof dbWeights.pending === 'number' ? dbWeights.pending : DEFAULT_WEIGHTS.pending,
+      qualified: typeof dbWeights.qualified === 'number' ? dbWeights.qualified : DEFAULT_WEIGHTS.qualified,
+      proposal: typeof dbWeights.proposal === 'number' ? dbWeights.proposal : DEFAULT_WEIGHTS.proposal,
+      sealed: typeof dbWeights.sealed === 'number' ? dbWeights.sealed : DEFAULT_WEIGHTS.sealed,
+    };
+    if (dbWeights.proposal === null || dbWeights.proposal === undefined || dbWeights.qualified === null || dbWeights.qualified === undefined) {
+      console.info(`[VALUE_CONFIG_MERGE] Site ${siteId} için eksik weight'ler fallback ile tamamlandı.`);
+    }
   }
 
+  const exportFallback = exportCfg?.default_aov ?? GLOBAL_FALLBACK_AOV;
   const defaultAov = site.default_aov != null && Number.isFinite(Number(site.default_aov))
     ? Number(site.default_aov)
-    : GLOBAL_FALLBACK_AOV;
+    : exportFallback;
   const minConversionValueCents =
     site.min_conversion_value_cents != null && Number.isFinite(Number(site.min_conversion_value_cents))
       ? Number(site.min_conversion_value_cents)

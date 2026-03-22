@@ -117,7 +117,7 @@ export async function runVacuum(): Promise<{
     const siteName = siteNameById.get(siteId) ?? '';
     const isTurkish = isTurkishOnlySite(siteId, siteName);
 
-    if (!hasClickId && isDusseldorf && isTurkish) {
+    if (isDusseldorf && isTurkish) {
       const { error: updErr } = await adminClient
         .from('marketing_signals')
         .update({ dispatch_status: 'SKIPPED_NO_CLICK_ID', updated_at: new Date().toISOString() })

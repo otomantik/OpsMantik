@@ -13,7 +13,7 @@ Sistem artık varsayılan olarak rate limit ve kota ile **takılmadan** çalış
 | 500/dk (sabit) | **2000/dk** varsayılan |
 
 - **OPSMANTIK_SYNC_RL_DEFAULT**: Tüm siteler için varsayılan limit (örn. `5000`). Tanımlı değilse 2000 kullanılır.
-- **OPSMANTIK_SYNC_RL_SITE_OVERRIDE**: Belirli site için limit, örn. `70dc48806cb44740bf60778a7427f418:5000,b3e9634575df45c390d99d2623ddcde5:5000`.
+- **OPSMANTIK_SYNC_RL_SITE_OVERRIDE**: Belirli site için limit, örn. `70dc48806cb44740bf60778a7427f418:5000,<site_public_id_hex>:5000`.
 
 Artık **ek env tanımlamadan** normal trafik 429’a takılmamalı. Gerekirse yalnızca tek site için override ekleyin.
 

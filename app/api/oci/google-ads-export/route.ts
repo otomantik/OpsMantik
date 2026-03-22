@@ -3,7 +3,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { formatGoogleAdsTimeOrNull } from '@/lib/utils/format-google-ads-time';
 import { buildOrderId } from '@/lib/oci/build-order-id';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
-import { logWarn, logError } from '@/lib/logging/logger';
+import { logWarn, logError, logInfo } from '@/lib/logging/logger';
 import { minorToMajor } from '@/lib/i18n/currency';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
@@ -22,6 +22,8 @@ import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
 import { getPvDataKey, getPvProcessingKey, getPvProcessingKeysForCleanup, getPvQueueKeysForExport } from '@/lib/oci/pv-redis';
 import { createHash } from 'node:crypto';
 import * as jose from 'jose';
+import { parseExportConfig, getConversionActionConfig, validateRoasInflation } from '@/lib/oci/site-export-config';
+import { validateExportRow } from '@/lib/oci/export-gate';
 
 const PV_BATCH_MAX = 500;
 /** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
@@ -59,6 +61,27 @@ export interface GoogleAdsConversionItem {
   hashed_phone_number?: string | null;
   /** Phase 20: OM-TRACE-UUID for conversion_custom_variable (forensic chain) */
   om_trace_uuid?: string | null;
+  /** Modül 2: primary/secondary role for ROAS inflation logging */
+  _role?: 'primary' | 'secondary';
+}
+
+/**
+ * Modül 1: Adjustment item (RETRACTION / RESTATEMENT)
+ * Picked up by Google Ads Script via AdsApp.offlineConversionAdjustments()
+ */
+export interface GoogleAdsAdjustmentItem {
+  /** Adjustment DB id — prefixed adj_ for ACK routing */
+  id: string;
+  /** Original conversion's orderId (stable — never changes) */
+  orderId: string;
+  /** Google Ads conversion action name */
+  conversionName: string;
+  adjustmentType: 'RETRACTION' | 'RESTATEMENT';
+  /** ISO timestamp of adjustment */
+  adjustmentTime: string;
+  /** Only set for RESTATEMENT */
+  adjustedValue?: number;
+  adjustedCurrency?: string;
 }
 
 type ExportCursorMark = {
@@ -69,6 +92,24 @@ type ExportCursorMark = {
 type ExportCursorState = {
   q?: ExportCursorMark | null;
   s?: ExportCursorMark | null;
+};
+
+type QueueRow = {
+  id: string;
+  sale_id?: string | null;
+  call_id?: string | null;
+  session_id?: string | null;
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
+  conversion_time: string;
+  occurred_at?: string | null;
+  created_at?: string | null;
+  value_cents: number;
+  currency?: string | null;
+  action?: string | null;
+  provider_key?: string | null;
+  external_id?: string | null;
 };
 
 /**
@@ -178,15 +219,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null }) | null = null;
-    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key').eq('id', siteId).maybeSingle();
+    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null; oci_config?: unknown }) | null = null;
+    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key, oci_config').eq('id', siteId).maybeSingle();
     if (byId.data) {
-      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null };
+      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null; oci_config?: unknown };
     }
     if (!site) {
-      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key').eq('public_id', siteId).maybeSingle();
+      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key, oci_config').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null };
+        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null; oci_config?: unknown };
       }
     }
     if (!site) {
@@ -230,117 +271,11 @@ export async function GET(req: NextRequest) {
       throw err;
     }
 
-    // Phase 1: Projection is SSOT. Default to legacy fallback (false) for stability.
-    const useFunnelProjection = process.env.USE_FUNNEL_PROJECTION === 'true';
-    if (useFunnelProjection) {
-      try {
-        const { data: projRows } = await adminClient
-          .from('call_funnel_projection')
-          .select('call_id, site_id, v5_at, value_cents, currency')
-          .eq('site_id', siteUuid)
-          .eq('export_status', 'READY')
-          .eq('funnel_completeness', 'complete')
-          .not('v5_at', 'is', null)
-          .limit(EXPORT_QUEUE_LIMIT);
-
-        const projList = Array.isArray(projRows) ? projRows : [];
-        const items: GoogleAdsConversionItem[] = [];
-        const callIds = projList.map((r: { call_id: string }) => r.call_id);
-
-        if (callIds.length > 0) {
-          const { data: callsForStitch } = await adminClient
-            .from('calls')
-            .select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at')
-            .eq('site_id', siteUuid)
-            .in('id', callIds);
-          const directSource = await getPrimarySourceBatch(siteUuid, callIds);
-          const callCtxByCallId = new Map<string, { caller_phone_e164?: string; callTime: string }>();
-          for (const c of callsForStitch ?? []) {
-            const id = (c as { id: string }).id;
-            const confirmed = (c as { confirmed_at?: string }).confirmed_at;
-            const created = (c as { created_at?: string }).created_at;
-            callCtxByCallId.set(id, {
-              caller_phone_e164: (c as { caller_phone_e164?: string }).caller_phone_e164 ?? undefined,
-              callTime: confirmed ?? created ?? new Date().toISOString(),
-            });
-          }
-
-          for (const row of projList) {
-            const callId = (row as { call_id: string }).call_id;
-            const v5At = (row as { v5_at?: string | null }).v5_at;
-            const valueCents = (row as { value_cents?: number | null }).value_cents;
-            const rowCurrency = (row as { currency?: string | null }).currency;
-            const ctx = callCtxByCallId.get(callId);
-            const direct = directSource.get(callId) ?? null;
-            const discovered = await getPrimarySourceWithDiscovery(siteUuid, direct, {
-              callId,
-              callTime: ctx?.callTime ?? v5At ?? new Date().toISOString(),
-              callerPhoneE164: ctx?.caller_phone_e164 ?? null,
-              fingerprint: undefined,
-            });
-            const gclid = (discovered?.source?.gclid ?? '').trim();
-            const wbraid = (discovered?.source?.wbraid ?? '').trim();
-            const gbraid = (discovered?.source?.gbraid ?? '').trim();
-            const clickId = gclid || wbraid || gbraid;
-            if (!clickId) continue;
-
-            const conversionTime = formatGoogleAdsTimeOrNull(v5At, (site as { timezone?: string | null }).timezone);
-            if (!conversionTime) {
-              logWarn('EXPORT_SKIP_MISSING_TIMESTAMP', { call_id: callId, v5_at: v5At ?? null });
-              continue;
-            }
-
-            const siteCurrency = (site as { currency?: string })?.currency;
-            const rawCurrency = rowCurrency ?? siteCurrency;
-            if (!rawCurrency || typeof rawCurrency !== 'string' || rawCurrency.trim().length < 3) {
-              logWarn('EXPORT_SKIP_MISSING_CURRENCY', { call_id: callId });
-              continue;
-            }
-            const currency = rawCurrency.trim().toUpperCase().slice(0, 3);
-
-            if (valueCents == null || !Number.isFinite(valueCents) || valueCents <= 0) {
-              logWarn('EXPORT_SKIP_MISSING_VALUE_CENTS', { call_id: callId, value_cents: valueCents ?? null });
-              continue;
-            }
-            const valueUnits = minorToMajor(valueCents, currency);
-
-            const convName = OPSMANTIK_CONVERSION_NAMES.V5_SEAL;
-            const orderId = buildOrderId(convName, clickId, conversionTime, `proj_${callId}`, callId, Math.round(valueUnits * 100));
-            items.push({
-              id: `proj_${callId}`,
-              orderId: orderId || `proj_${callId}`,
-              gclid,
-              wbraid,
-              gbraid,
-              conversionName: convName,
-              conversionTime,
-              conversionValue: valueUnits,
-              conversionCurrency: currency,
-            });
-          }
-
-          if (markAsExported && callIds.length > 0) {
-            await adminClient
-              .from('call_funnel_projection')
-              .update({ export_status: 'EXPORTED', updated_at: new Date().toISOString() })
-              .eq('site_id', siteUuid)
-              .in('call_id', callIds)
-              .eq('export_status', 'READY');
-          }
-        }
-
-        return NextResponse.json({
-          items,
-          next_cursor: null,
-          _source: 'funnel_projection',
-        });
-      } catch (projErr) {
-        logError('USE_FUNNEL_PROJECTION_EXPORT_FAILED', {
-          error: projErr instanceof Error ? projErr.message : String(projErr),
-          site_id: siteUuid,
-        });
-        return NextResponse.json({ error: 'Funnel projection export failed', code: 'PROJECTION_EXPORT_ERROR' }, { status: 500 });
-      }
+    // Parse SiteExportConfig (Modül 1-4: enterprise config)
+    const exportConfig = parseExportConfig((site as { oci_config?: unknown }).oci_config);
+    const roasWarnings = validateRoasInflation(exportConfig);
+    if (roasWarnings.length > 0) {
+      logWarn('OCI_EXPORT_ROAS_INFLATION_RISK', { site_id: siteUuid, warnings: roasWarnings });
     }
 
     // Phase 6.2: Deterministic Cursor-Based Query (offline_conversion_queue)
@@ -362,7 +297,6 @@ export async function GET(req: NextRequest) {
       .limit(EXPORT_QUEUE_LIMIT);
 
     if (fetchError) {
-      const { logError } = await import('@/lib/logging/logger');
       logError('OCI_GOOGLE_ADS_EXPORT_QUEUE_FAILED', { code: (fetchError as { code?: string })?.code });
       return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
     }
@@ -662,7 +596,6 @@ export async function GET(req: NextRequest) {
         );
       }
     } catch (redisErr) {
-      const { logError } = await import('@/lib/logging/logger');
       logError('OCI_EXPORT_PV_REDIS_ERROR', { error: redisErr instanceof Error ? redisErr.message : String(redisErr) });
     }
 
@@ -692,6 +625,28 @@ export async function GET(req: NextRequest) {
         if (phone && String(phone).trim()) callPhoneByCallId[id] = String(phone).trim();
         callStatusByCallId[id] = (c as { status?: string | null }).status ?? null;
         callOciStatusByCallId[id] = (c as { oci_status?: string | null }).oci_status ?? null;
+      }
+    }
+
+    // ── Session Click Dates (Fix: 90-day expiry + conversion-before-click guard) ──
+    // Collect session_id values directly from queue rows (already selected).
+    // session.created_at = when the visitor first landed with gclid/wbraid → true click date.
+    const sessionClickDateById = new Map<string, Date>();
+    const rawSessionIds = [...new Set(
+      rawList
+        .map(r => (r as { session_id?: string | null }).session_id)
+        .filter((s): s is string => Boolean(s))
+    )];
+    if (rawSessionIds.length > 0) {
+      const { data: sessionRows } = await adminClient
+        .from('sessions')
+        .select('id, created_at')
+        .in('id', rawSessionIds);
+      for (const s of sessionRows ?? []) {
+        const d = new Date((s as { created_at: string }).created_at);
+        if (!isNaN(d.getTime())) {
+          sessionClickDateById.set((s as { id: string }).id, d);
+        }
       }
     }
 
@@ -776,12 +731,10 @@ export async function GET(req: NextRequest) {
           { p_queue_ids: idsToMarkProcessing, p_claimed_at: now }
         );
         if (rpcError) {
-          const { logError } = await import('@/lib/logging/logger');
           logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_FAILED', { code: (rpcError as { code?: string })?.code });
           return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
         }
         if (typeof claimedCount !== 'number' || claimedCount !== idsToMarkProcessing.length) {
-          const { logError } = await import('@/lib/logging/logger');
           logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_PARTIAL', {
             requested: idsToMarkProcessing.length,
             claimed: claimedCount,
@@ -924,27 +877,12 @@ export async function GET(req: NextRequest) {
 
     const siteTimezone = (site as { timezone?: string | null }).timezone ?? 'Europe/Istanbul';
 
-    type QueueRow = {
-      id: string;
-      sale_id?: string | null;
-      call_id?: string | null;
-      session_id?: string | null;
-      gclid?: string | null;
-      wbraid?: string | null;
-      gbraid?: string | null;
-      conversion_time: string;
-      occurred_at?: string | null;
-      created_at?: string | null;
-      value_cents: number;
-      currency?: string | null;
-      action?: string | null;
-      provider_key?: string | null;
-      external_id?: string | null;
-    };
-
     const conversions: GoogleAdsConversionItem[] = [];
     const blockedQueueTimeIds: string[] = [];
     const blockedValueZeroIds: string[] = [];
+    const blockedExpiredIds: string[] = [];
+    /** Gate rejections: UNKNOWN_ACTION, NO_CLICK_ID, OCT_NO_IDENTIFIER, etc. */
+    const blockedExportGateIds: string[] = [];
     for (const row of list as QueueRow[]) {
       const fallbackSealTs = row.call_id ? (callConfirmedAt[row.call_id] ?? null) : null;
       const baseTs = pickCanonicalOccurredAt([
@@ -968,6 +906,28 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      const rowClickDate = row.session_id ? sessionClickDateById.get(row.session_id) : null;
+
+      // ── Guard 1: Conversion-Before-Click Prevention ───────────────────────
+      // Google rejects: "Conversion time precedes click time".
+      // If conversionTime < session.created_at, clamp to clickDate + 1 minute.
+      // This handles timezone mismatches and sub-minute race conditions.
+      let finalConversionTime = conversionTime;
+      if (rowClickDate && baseTs) {
+        const convDate = new Date(baseTs);
+        const minAllowed = new Date(rowClickDate.getTime() + 60_000); // +1 min safety margin
+        if (convDate < minAllowed) {
+          finalConversionTime = formatGoogleAdsTimeOrNull(minAllowed.toISOString(), siteTimezone) ?? conversionTime;
+          logWarn('OCI_EXPORT_CONVERSION_BEFORE_CLICK_CLAMPED', {
+            queue_id: row.id,
+            call_id: row.call_id ?? null,
+            click_date: rowClickDate.toISOString(),
+            original: conversionTime,
+            clamped_to: finalConversionTime,
+          });
+        }
+      }
+
       const rawValueCents = (row as { value_cents?: unknown }).value_cents;
       const valueGuard = validateOciQueueValueCents(rawValueCents);
       if (!valueGuard.ok) {
@@ -984,7 +944,6 @@ export async function GET(req: NextRequest) {
       const rowCurrency = row.currency || currency || 'TRY';
       const conversionValue = ensureNumericValue(minorToMajor(valueCents, rowCurrency));
       const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
-      const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim();
       const fallbackOrderId = 'seal_' + String(row.id);
       const externalId = row.external_id || computeOfflineConversionExternalId({
         providerKey: row.provider_key,
@@ -993,40 +952,128 @@ export async function GET(req: NextRequest) {
         callId: row.call_id,
         sessionId: row.session_id,
       });
+      // Modül 2: Resolve action name from SiteExportConfig (channel detection for V5_SEAL)
+      const rowChannel = ((row as { intent_action?: string | null }).intent_action || 'phone') as 'phone' | 'whatsapp' | 'form' | 'ecommerce';
+      const v5ActionCfg = getConversionActionConfig(exportConfig, rowChannel, 'V5_SEAL');
+      const convName = v5ActionCfg?.action_name ?? OPSMANTIK_CONVERSION_NAMES.V5_SEAL;
+      if (v5ActionCfg) {
+        logInfo('OCI_EXPORT_SEAL_ROLE', {
+          queue_id: row.id,
+          channel: rowChannel,
+          action: convName,
+          role: v5ActionCfg.role,
+        });
+      }
+
+      let hashedPhoneForGate: string | null = null;
+      if (row.call_id && callPhoneByCallId[row.call_id]) {
+        try {
+          hashedPhoneForGate = hashPhoneForEC(callPhoneByCallId[row.call_id]);
+        } catch {
+          // Gate may still pass via gclid/wbraid/gbraid
+        }
+      }
+
+      const signalDateForGate = baseTs ? new Date(baseTs) : new Date();
+      const gateResult = validateExportRow(
+        {
+          id: row.id,
+          gclid: row.gclid,
+          wbraid: row.wbraid,
+          gbraid: row.gbraid,
+          hashed_phone: hashedPhoneForGate,
+          hashed_email: null,
+          value_cents: valueCents,
+          click_date: rowClickDate ?? null,
+          signal_date: signalDateForGate,
+        },
+        exportConfig,
+        v5ActionCfg
+      );
+
+      if (!gateResult.ok) {
+        if (gateResult.reason === 'EXPIRED') {
+          blockedExpiredIds.push(row.id);
+          logWarn('OCI_EXPORT_SKIP_EXPIRED_CLICK', {
+            queue_id: row.id,
+            call_id: row.call_id ?? null,
+            gate_reason: gateResult.reason,
+          });
+        } else if (gateResult.reason === 'ZERO_VALUE') {
+          blockedValueZeroIds.push(row.id);
+        } else {
+          blockedExportGateIds.push(row.id);
+          logWarn('OCI_EXPORT_GATE_REJECT', {
+            queue_id: row.id,
+            call_id: row.call_id ?? null,
+            reason: gateResult.reason,
+          });
+        }
+        continue;
+      }
+
+      const effectiveClickId = gateResult.clickId;
       const orderIdDDA = buildOrderId(
-        OPSMANTIK_CONVERSION_NAMES.V5_SEAL,
-        clickId || null,
-        conversionTime,
+        convName,
+        effectiveClickId || null,
+        finalConversionTime,
         fallbackOrderId,
         row.id,
         valueCents
       );
 
-      let hashedPhone: string | null = null;
-      if (row.call_id && callPhoneByCallId[row.call_id]) {
-        try {
-          hashedPhone = hashPhoneForEC(callPhoneByCallId[row.call_id]);
-        } catch {
-          // Non-critical; export continues without hashed_phone
-        }
+      let gclidOut = '';
+      let wbraidOut = '';
+      let gbraidOut = '';
+      let hashedPhoneOut: string | null = null;
+      switch (gateResult.clickSource) {
+        case 'gclid':
+          gclidOut = gateResult.clickId;
+          break;
+        case 'wbraid':
+          wbraidOut = gateResult.clickId;
+          break;
+        case 'gbraid':
+          gbraidOut = gateResult.clickId;
+          break;
+        case 'oct_phone':
+          hashedPhoneOut = gateResult.clickId;
+          break;
+        case 'oct_email':
+          hashedPhoneOut = gateResult.clickId;
+          break;
+        case 'no_id':
+          break;
+        default:
+          gclidOut = (row.gclid || '').trim();
+          wbraidOut = (row.wbraid || '').trim();
+          gbraidOut = (row.gbraid || '').trim();
+          if (hashedPhoneForGate) hashedPhoneOut = hashedPhoneForGate;
       }
 
       conversions.push({
         id: fallbackOrderId,
         orderId: externalId || orderIdDDA || fallbackOrderId,
-        gclid: (row.gclid || '').trim(),
-        wbraid: (row.wbraid || '').trim(),
-        gbraid: (row.gbraid || '').trim(),
-        conversionName: OPSMANTIK_CONVERSION_NAMES.V5_SEAL,
-        conversionTime,
+        gclid: gclidOut,
+        wbraid: wbraidOut,
+        gbraid: gbraidOut,
+        conversionName: convName,
+        conversionTime: finalConversionTime,
         conversionValue,
         conversionCurrency,
-        ...(hashedPhone && { hashed_phone_number: hashedPhone }),
+        ...(hashedPhoneOut && { hashed_phone_number: hashedPhoneOut }),
+        ...(v5ActionCfg && { _role: v5ActionCfg.role }),
       });
     }
 
     // P0: Fail-closed. If script is exporting (markAsExported=true), terminalize blocked rows so they never loop.
-    if (markAsExported && (blockedValueZeroIds.length > 0 || blockedQueueTimeIds.length > 0)) {
+    if (
+      markAsExported &&
+      (blockedValueZeroIds.length > 0 ||
+        blockedQueueTimeIds.length > 0 ||
+        blockedExpiredIds.length > 0 ||
+        blockedExportGateIds.length > 0)
+    ) {
       const now = new Date().toISOString();
       const blockedTerminalBatches = [
         {
@@ -1038,6 +1085,18 @@ export async function GET(req: NextRequest) {
           ids: [...new Set(blockedValueZeroIds)],
           code: 'VALUE_ZERO',
           logKey: 'OCI_EXPORT_BLOCKED_VALUE_ZERO',
+        },
+        {
+          // Google 90-day hard limit: EXPIRED_CLICK rows are permanently rejected.
+          // Terminate as FAILED so they don't loop back into the export queue.
+          ids: [...new Set(blockedExpiredIds)],
+          code: 'EXPIRED_CLICK',
+          logKey: 'OCI_EXPORT_BLOCKED_EXPIRED',
+        },
+        {
+          ids: [...new Set(blockedExportGateIds)],
+          code: 'EXPORT_GATE_REJECTED',
+          logKey: 'OCI_EXPORT_BLOCKED_GATE',
         },
       ].filter((batch) => batch.ids.length > 0);
 
@@ -1075,6 +1134,56 @@ export async function GET(req: NextRequest) {
       (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
     );
 
+    // Modül 1: Load pending adjustments for this site
+    const adjustmentItems: GoogleAdsAdjustmentItem[] = [];
+    if (exportConfig.adjustments.enabled) {
+      const { data: pendingAdjs, error: adjError } = await adminClient
+        .from('conversion_adjustments')
+        .select('id, order_id, conversion_action_name, adjustment_type, new_value_cents, created_at')
+        .eq('site_id', siteUuid)
+        .eq('status', 'PENDING')
+        .limit(200);
+
+      if (adjError) {
+        logError('OCI_EXPORT_ADJUSTMENTS_FETCH_ERROR', { error: adjError.message, site_id: siteUuid });
+      } else {
+        const adjCurrency = (site as { currency?: string })?.currency || 'TRY';
+        const now = new Date().toISOString();
+        for (const adj of (pendingAdjs ?? []) as Array<{
+          id: string;
+          order_id: string;
+          conversion_action_name: string;
+          adjustment_type: 'RETRACTION' | 'RESTATEMENT';
+          new_value_cents?: number | null;
+          created_at: string;
+        }>) {
+          const item: GoogleAdsAdjustmentItem = {
+            id: `adj_${adj.id}`,
+            orderId: adj.order_id,
+            conversionName: adj.conversion_action_name,
+            adjustmentType: adj.adjustment_type,
+            adjustmentTime: formatGoogleAdsTimeOrNull(now, (site as { timezone?: string | null }).timezone ?? 'Europe/Istanbul') ?? now,
+          };
+          if (adj.adjustment_type === 'RESTATEMENT' && adj.new_value_cents != null) {
+            item.adjustedValue = minorToMajor(adj.new_value_cents, adjCurrency);
+            item.adjustedCurrency = adjCurrency;
+          }
+          adjustmentItems.push(item);
+        }
+
+        // Mark adjustments as PROCESSING if markAsExported
+        if (markAsExported && adjustmentItems.length > 0) {
+          const adjIds = adjustmentItems.map(a => a.id.replace('adj_', ''));
+          await adminClient
+            .from('conversion_adjustments')
+            .update({ status: 'PROCESSING', updated_at: new Date().toISOString() })
+            .in('id', adjIds)
+            .eq('site_id', siteUuid)
+            .eq('status', 'PENDING');
+        }
+      }
+    }
+
     // Phase 6.2: Compute next_cursor
     // We take the last items from the raw DB pulls (not the combined list which has Redis PVs)
     const lastRow = rawList.length > 0 ? rawList[rawList.length - 1] : null;
@@ -1090,12 +1199,13 @@ export async function GET(req: NextRequest) {
     }
 
     const responseData = markAsExported
-      ? { items: combined, next_cursor: nextCursor }
+      ? { items: combined, adjustments: adjustmentItems, next_cursor: nextCursor }
       : {
           siteId: siteUuid,
           items: combined,
+          adjustments: adjustmentItems,
           next_cursor: nextCursor,
-          counts: { queued: list.length, signals: signalItems.length, pvs: pvItems.length, skipped: skippedIds.length },
+          counts: { queued: list.length, signals: signalItems.length, pvs: pvItems.length, skipped: skippedIds.length, adjustments: adjustmentItems.length },
           warnings: isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
         };
 

@@ -80,7 +80,7 @@ if (USE_LOCAL_TRACKER_PAGE) {
   targetUrl = TRACKER_SITE_URL;
 } else {
   console.log(`${YELLOW}TRACKER_SITE_URL (veya PROOF_URL) tanımlı değil.${RESET}`);
-  console.log(`Örnek: TRACKER_SITE_URL=https://www.poyrazantika.com npm run smoke:tank-tracker-offline`);
+  console.log(`Örnek: TRACKER_SITE_URL=https://www.yapiozmendanismanlik.com npm run smoke:tank-tracker-offline`);
   console.log(`Yerel Tank Tracker kanıtı: USE_LOCAL_TRACKER_PAGE=1 SMOKE_SITE_ID=<site-uuid> npm run smoke:tank-tracker-offline\n`);
   process.exit(0);
 }

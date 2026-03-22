@@ -16,7 +16,7 @@
  *   NEXT_PUBLIC_SUPABASE_URL — must match production console (same project as Vercel)
  *   SUPABASE_SERVICE_ROLE_KEY
  *   SYNC_API_URL (default https://console.opsmantik.com/api/sync when not set)
- *   ORIGIN (default https://www.poyrazantika.com)
+ *   ORIGIN (default https://www.yapiozmendanismanlik.com)
  */
 
 import { spawn } from 'child_process';

@@ -1,16 +1,11 @@
 /**
- * Seal → OCI Queue Bridge (Sprint 1.6b: per-site OCI config)
+ * Seal → OCI Queue Bridge
  *
  * After a call is sealed in War Room, enqueue it for Google Ads OCI if the call
  * has an associated click ID (gclid, wbraid, or gbraid).
  *
- * Value logic (per-site configurable via sites.oci_config):
- *   - If operator entered sale_amount → use it directly (ground truth)
- *   - If star < site.oci_config.min_star → skip (don't pollute Google's model)
- *   - Otherwise → base_value × weights[star]
- *
- * Default config (when site has none):
- *   base_value=500 TRY, min_star=3, weights={3:0.5, 4:0.8, 5:1.0}
+ * Value logic: saleAmount is ground truth. If absent or zero → skip.
+ * Per-site tuning is handled by SiteExportConfig (lib/oci/site-export-config.ts).
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
@@ -21,7 +16,6 @@ import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
-import { leadScoreToStar } from '@/lib/domain/mizan-mantik/score';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/gears/shared';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
@@ -36,8 +30,6 @@ export interface EnqueueSealParams {
   currency: string;
   leadScore: number | null;
   entryReason?: string | null;
-  /** Raw star rating (1-5). Used for value calculation. */
-  star?: number | null;
 }
 
 export interface EnqueueSealResult {
@@ -49,7 +41,6 @@ export interface EnqueueSealResult {
   | 'duplicate'
   | 'duplicate_session'
   | 'marketing_consent_required'
-  | 'star_below_threshold'
   | 'no_sale_amount'
   | 'error';
   value?: number;
@@ -85,11 +76,11 @@ async function loadSiteOciConfig(siteId: string) {
 
 /**
  * Enqueue a sealed call into offline_conversion_queue for OCI.
- * Skips if no gclid/wbraid/gbraid, marketing consent absent, or star below threshold.
+ * Skips if no gclid/wbraid/gbraid, marketing consent absent, or saleAmount is null/zero.
  * Idempotent via UNIQUE(call_id).
  */
 export async function enqueueSealConversion(params: EnqueueSealParams): Promise<EnqueueSealResult> {
-  const { callId, siteId, confirmedAt, saleOccurredAt, saleAmount, currency, leadScore, entryReason, star: starParam } = params;
+  const { callId, siteId, confirmedAt, saleOccurredAt, saleAmount, currency, leadScore, entryReason } = params;
 
   // 0. Null safety: Seal requires confirmed_at — never send broken payload to Google
   if (!confirmedAt || typeof confirmedAt !== 'string') {
@@ -165,25 +156,15 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     return { enqueued: false, reason: 'marketing_consent_required' };
   }
 
-  // 3. Load site OCI config
+  // 3. Load site OCI config (currency fallback)
   const { config, siteCurrency } = await loadSiteOciConfig(siteId);
 
-  // 4. Resolve star rating
-  //    Prefer explicit star param; fall back to lead_score conversion
-  const star = starParam ?? leadScoreToStar(leadScore);
-
-  // 5. Compute conversion value
-  const valueUnits = computeConversionValue(star, saleAmount);
+  // 4. Compute conversion value — saleAmount is ground truth
+  const valueUnits = computeConversionValue(saleAmount);
 
   if (valueUnits === null) {
-    const noSale = saleAmount === null || saleAmount === undefined || saleAmount === 0;
-    logInfo('enqueue_seal_skip', {
-      call_id: callId,
-      reason: noSale ? 'no_sale_amount' : 'star_below_threshold',
-      star,
-      min_star: config.min_star,
-    });
-    return { enqueued: false, reason: noSale ? 'no_sale_amount' : 'star_below_threshold' };
+    logInfo('enqueue_seal_skip', { call_id: callId, reason: 'no_sale_amount', lead_score: leadScore });
+    return { enqueued: false, reason: 'no_sale_amount' };
   }
 
   const valueCents = Math.round(valueUnits * 100);
@@ -207,7 +188,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     'V5_SEAL',
     ['auth', 'consent', 'idempotency', 'usage'],
     'Seal_Conversion',
-    { star, saleAmount, valueUnits },
+    { saleAmount, valueUnits },
     { valueCents, currency: currencySafe }
   );
 
@@ -278,7 +259,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       }
     }
 
-    logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, star, value_units: valueUnits, value_cents: valueCents });
+    logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, value_units: valueUnits, value_cents: valueCents });
     return { enqueued: true, queueId, value: valueUnits };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

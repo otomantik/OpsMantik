@@ -17,11 +17,25 @@ const OUROBOROS_SAMPLE_WINDOW_HOURS = 2;
  *
  * Self-healing routine for the OCI pipeline:
  * 0. Ouroboros Watchdog: EMA + 3σ anomaly detection on outbox processing times.
- * 1. Outbox: Resets PROCESSING events older than 10 mins back to PENDING.
- * 2. OCI Queue: Resets PROCESSING queue rows older than 10 mins to QUEUED.
- * 2.5. Signals: Resets PROCESSING signals older than 10 mins to PENDING.
+ * 1. Outbox: Resets PROCESSING events older than SCRIPT_ACK_TIMEOUT_MINUTES back to PENDING.
+ * 2. OCI Queue: Resets PROCESSING queue rows older than SCRIPT_ACK_TIMEOUT_MINUTES to QUEUED.
+ * 2.5. Signals: Resets PROCESSING signals older than SCRIPT_ACK_TIMEOUT_MINUTES to PENDING.
  * 3. OCI Queue: Closes UPLOADED rows older than 48 hours as COMPLETED_UNVERIFIED.
+ *
+ * SCRIPT_ACK_TIMEOUT_MINUTES default is 30 (up from the old 10-minute hardcode).
+ * Rationale: Google Ads Script CSV upload for large batches can take 5–20 minutes.
+ * 10 minutes was too aggressive and caused the sweep-ACK race: sweep would reset
+ * PROCESSING back to PENDING before the Script had time to ACK, causing duplicate exports.
+ * Now configurable via SWEEP_ACK_TIMEOUT_MINUTES env var; sites may also set
+ * script_ack_timeout_minutes in their oci_config.
  */
+
+/** Safe default: 30 minutes. Overridable via SWEEP_ACK_TIMEOUT_MINUTES env var. */
+const SCRIPT_ACK_TIMEOUT_MINUTES = (() => {
+  const v = parseInt(process.env.SWEEP_ACK_TIMEOUT_MINUTES ?? '', 10);
+  if (Number.isFinite(v) && v >= 5 && v <= 120) return v;
+  return 30; // default — per SiteExportConfig.script_ack_timeout_minutes default
+})();
 async function runSweep() {
     const stats = {
         outboxRescued: 0,
@@ -140,12 +154,12 @@ async function runSweep() {
             .from('outbox_events')
             .update({
                 status: 'PENDING',
-                last_error: 'Rescued by zombie sweeper (stuck in PROCESSING > 10m)',
+                last_error: `Rescued by zombie sweeper (stuck in PROCESSING > ${SCRIPT_ACK_TIMEOUT_MINUTES}m)`,
                 processed_at: null,
                 updated_at: new Date().toISOString(),
             })
             .eq('status', 'PROCESSING')
-            .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+            .lt('updated_at', new Date(Date.now() - SCRIPT_ACK_TIMEOUT_MINUTES * 60 * 1000).toISOString())
             .select('id');
 
         if (outboxError) {
@@ -166,7 +180,7 @@ async function runSweep() {
     try {
         const { data: recoveredCount, error: queueRecoveryError } = await adminClient.rpc(
             'recover_stuck_offline_conversion_jobs',
-            { p_min_age_minutes: 10 }
+            { p_min_age_minutes: SCRIPT_ACK_TIMEOUT_MINUTES }
         );
 
         if (queueRecoveryError) {
@@ -189,7 +203,7 @@ async function runSweep() {
             .from('marketing_signals')
             .update({ dispatch_status: 'PENDING', updated_at: new Date().toISOString() })
             .eq('dispatch_status', 'PROCESSING')
-            .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+            .lt('updated_at', new Date(Date.now() - SCRIPT_ACK_TIMEOUT_MINUTES * 60 * 1000).toISOString())
             .select('id');
 
         if (signalsError) {

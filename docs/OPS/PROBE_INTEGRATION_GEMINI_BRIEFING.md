@@ -4,21 +4,19 @@ Bu dokümanı Android Studio'daki Gemini'ye kopyala-yapıştır yap. Entegrasyon
 
 ---
 
-## 1. Test Kimlik Bilgileri (Credentials)
+### Kimlik bilgileri (site başına)
 
-Backend'den alacakların:
-
-| Alan | Değer | Kaynak |
-|------|-------|--------|
-| **siteId** | `ea336d7749434c1c8549e3512ee963ec` | Antalya Golf Shop public_id (sabit test site) |
-| **accessToken** | JWT string | Backend: `npm run probe:token` komutu stdout'a yazar |
-| **baseUrl** | `https://console.opsmantik.com` (prod) veya `http://localhost:3000` (dev) | Ortama göre |
+| Alan | Değer |
+|------|-------|
+| **siteId** | `sites.public_id` (32 hex) — Supabase `sites` tablosundan veya dashboard’dan |
+| **accessToken** | `npm run probe:token` ile üretilir (JWT; kısa ömürlü, paylaşmayın) |
+| **baseUrl** | `https://console.opsmantik.com` |
 
 **accessToken alma (Backend tarafı):**
 ```
 npm run probe:token
 ```
-Çıktıyı güvenli kanal ile Android ekibine ilet.
+Çıktıyı yalnızca güvenli kanalla iletin; repoya veya ekran görüntüsüne yapıştırmayın.
 
 ---
 

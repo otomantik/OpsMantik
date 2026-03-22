@@ -13,7 +13,7 @@ const TRT_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 function getSiteId() {
   if (PROOF_SITE_ID) return PROOF_SITE_ID;
-  if (!PROOF_URL) return '01d24667-ca9a-44e3-ab7a-7cd171ae653f';
+  if (!PROOF_URL) return '00000000-0000-4000-8000-000000000001';
   try {
     const u = new URL(PROOF_URL);
     const parts = u.pathname.split('/').filter(Boolean);
@@ -22,7 +22,7 @@ function getSiteId() {
   } catch {
     // ignore
   }
-  return '01d24667-ca9a-44e3-ab7a-7cd171ae653f';
+  return '00000000-0000-4000-8000-000000000001';
 }
 
 function pad2(n) {

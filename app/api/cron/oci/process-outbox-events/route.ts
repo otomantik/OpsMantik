@@ -20,16 +20,62 @@ import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
 
+/**
+ * Resolve the true click date for a call.
+ * Uses session.created_at (when the visitor first landed with a click ID).
+ * Falls back to call.created_at if session is not available.
+ *
+ * Reason: call.created_at is when the phone rang, not when the user clicked the ad.
+ * Using call.created_at inflates decay days and produces incorrect conversion values.
+ */
+async function getSessionClickDate(callId: string, fallbackDate: Date): Promise<Date> {
+  try {
+    const { data: callRow } = await adminClient
+      .from('calls')
+      .select('matched_session_id')
+      .eq('id', callId)
+      .maybeSingle();
+
+    const sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id;
+    if (!sessionId) return fallbackDate;
+
+    const { data: sessionRow } = await adminClient
+      .from('sessions')
+      .select('created_at')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    const sessionCreatedAt = (sessionRow as { created_at?: string | null } | null)?.created_at;
+    if (!sessionCreatedAt) return fallbackDate;
+
+    const parsed = new Date(sessionCreatedAt);
+    return isNaN(parsed.getTime()) ? fallbackDate : parsed;
+  } catch {
+    return fallbackDate;
+  }
+}
+
 export const runtime = 'nodejs';
 
 const BATCH_LIMIT = 50;
-const MAX_ATTEMPTS = 5;
+// Separate from OCI queue MAX_RETRY_ATTEMPTS (7) — outbox events get fewer retries.
+const OUTBOX_MAX_ATTEMPTS = 5;
 const EXISTING_FUNNEL_SIGNAL_TYPES = ['MEETING_BOOKED', 'SEAL_PENDING', 'V3_ENGAGE', 'V4_INTENT'] as const;
 
 function normalizeExistingFunnelSignalType(signalType: string | null | undefined): 'V3_ENGAGE' | 'V4_INTENT' | null {
   if (signalType === 'MEETING_BOOKED' || signalType === 'V3_ENGAGE') return 'V3_ENGAGE';
   if (signalType === 'SEAL_PENDING' || signalType === 'V4_INTENT') return 'V4_INTENT';
   return null;
+}
+
+/**
+ * Maps an OpsGear to its legacy marketing_signals.signal_type value.
+ * Inverse of normalizeExistingFunnelSignalType — centralised to avoid drift.
+ */
+function gearToLegacySignalType(gear: OpsGear): 'SEAL_PENDING' | 'MEETING_BOOKED' | 'INTENT_CAPTURED' {
+  if (gear === 'V4_INTENT') return 'SEAL_PENDING';
+  if (gear === 'V3_ENGAGE') return 'MEETING_BOOKED';
+  return 'INTENT_CAPTURED';
 }
 
 interface OutboxPayload {
@@ -122,10 +168,13 @@ async function runProcessOutbox() {
               .filter((value): value is 'V3_ENGAGE' | 'V4_INTENT' => Boolean(value))
           );
           const primary = await getPrimarySource(siteId, { callId });
-          // Use real call timestamps — never inject artificial offsets.
-          // V3_ENGAGE = when the call came in (created_at); V4_INTENT = when it was sealed (confirmedAt).
+          // callCreatedAt is when the phone rang — NOT the real click date.
+          // Use getSessionClickDate to resolve the true click date (session.created_at).
+          // Fallback to callCreatedAt if session is unavailable.
           const callCreatedAt = new Date(payload?.created_at ?? confirmedAt);
           const callConfirmedAt = new Date(confirmedAt);
+          // Resolve true click date for accurate decay calculation
+          const v5BackfillClickDate = await getSessionClickDate(callId, callCreatedAt);
 
           // Sequential Injection
           if (!existingTypes.has('V3_ENGAGE')) {
@@ -136,7 +185,7 @@ async function runProcessOutbox() {
               wbraid: primary?.wbraid ?? null,
               gbraid: primary?.gbraid ?? null,
               aov: 0,
-              clickDate: callCreatedAt,
+              clickDate: v5BackfillClickDate,
               signalDate: callCreatedAt,
             });
             try {
@@ -164,7 +213,7 @@ async function runProcessOutbox() {
               wbraid: primary?.wbraid ?? null,
               gbraid: primary?.gbraid ?? null,
               aov: 0,
-              clickDate: callCreatedAt,
+              clickDate: v5BackfillClickDate,
               signalDate: callConfirmedAt,
             });
             try {
@@ -203,9 +252,38 @@ async function runProcessOutbox() {
           if (score >= 70) gear = 'V4_INTENT';
           else if (score >= 50) gear = 'V3_ENGAGE';
 
+          // Dedup guard: the seal route writes V3/V4 signals directly via the LCV engine
+          // (high-quality, real-time path). Skip if already written to avoid double-counting.
+          const legacySignalType = gearToLegacySignalType(gear);
+          const { data: existingSignalRow } = await adminClient
+            .from('marketing_signals')
+            .select('id')
+            .eq('site_id', siteId)
+            .eq('call_id', callId)
+            .eq('signal_type', legacySignalType)
+            .limit(1)
+            .maybeSingle();
+          if (existingSignalRow) {
+            logInfo('outbox_signal_skip_already_exists', {
+              outbox_id: id,
+              call_id: callId,
+              gear,
+              existing_signal_id: (existingSignalRow as { id: string }).id,
+            });
+            await adminClient
+              .from('outbox_events')
+              .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', id);
+            processed++;
+            continue;
+          }
+
           const callCreatedAt = payload?.created_at ?? confirmedAt;
           const primary = await getPrimarySource(siteId, { callId });
-          const clickDate = new Date(callCreatedAt);
+          // Use session.created_at as the true click date (when the visitor landed with gclid/wbraid).
+          // call.created_at is when the phone rang — potentially days after the original click.
+          const callCreatedAtDate = new Date(callCreatedAt);
+          const clickDate = await getSessionClickDate(callId, callCreatedAtDate);
           const signalDate = new Date(confirmedAt);
 
           const result = await evaluateAndRouteSignal(gear, {
@@ -254,7 +332,7 @@ async function runProcessOutbox() {
 
         const attemptCount = (row as { attempt_count?: number }).attempt_count ?? 0;
         const nextAttemptCount = attemptCount + 1;
-        const nextStatus = nextAttemptCount >= MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
+        const nextStatus = nextAttemptCount >= OUTBOX_MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
         await adminClient
           .from('outbox_events')
           .update({

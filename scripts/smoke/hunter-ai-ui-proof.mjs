@@ -102,7 +102,7 @@ function mockIntentRow(params = {}) {
     created_at,
     intent_action: 'whatsapp',
     intent_target: '+905551234567',
-    intent_page_url: 'https://example.com/antika',
+    intent_page_url: 'https://example.com/landing',
     matched_session_id: null,
     lead_score: null,
     status: 'intent',

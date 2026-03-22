@@ -168,7 +168,7 @@ npm run smoke:intent-multi-site
 
 **Purpose:** Multi-tenant safety check. Before deploy, intent pipeline is verified for at least two different sites (sync → events → calls). No deploy without 2/2 PASS.
 
-**Sites:** yapiozmendanismanlik.com, poyrazantika.com
+**Sites (örnek):** yapiozmendanismanlik.com, sosreklam.com
 
 ---
 

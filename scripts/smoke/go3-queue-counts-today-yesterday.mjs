@@ -10,7 +10,8 @@ dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PROOF_SITE_ID = process.env.PROOF_SITE_ID || '01d24667-ca9a-44e3-ab7a-7cd171ae653f';
+/** Placeholder internal UUID — set PROOF_SITE_ID for a real dashboard site */
+const PROOF_SITE_ID = process.env.PROOF_SITE_ID || '00000000-0000-4000-8000-000000000001';
 
 const TRT_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
 

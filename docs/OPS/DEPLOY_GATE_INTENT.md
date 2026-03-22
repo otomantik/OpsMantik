@@ -16,7 +16,7 @@ npm run smoke:intent-multi-site
 ## Test Edilen Siteler (varsayılan)
 
 - yapiozmendanismanlik.com
-- poyrazantika.com
+- sosreklam.com
 
 ## Ortam
 
@@ -26,7 +26,7 @@ npm run smoke:intent-multi-site
 ## Özel Site Listesi
 
 ```bash
-P0_SITES="yapiozmendanismanlik.com,poyrazantika.com,yoursite.com" npm run smoke:intent-multi-site
+P0_SITES="yapiozmendanismanlik.com,sosreklam.com,yoursite.com" npm run smoke:intent-multi-site
 ```
 
 ## Lokalden test (QStash olmadan)

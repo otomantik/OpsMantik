@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 test('google-ads-export route: markAsExported returns { items, next_cursor } for script', () => {
@@ -87,11 +87,9 @@ test('claim RPC migration: increments attempt_count', () => {
   assert.ok(src.includes('attempt_count + 1'), 'RPC increments attempt_count');
 });
 
-test('legacy OCI export routes are explicitly retired', () => {
+test('legacy OCI export routes have been deleted', () => {
   const exportPath = join(process.cwd(), 'app', 'api', 'oci', 'export', 'route.ts');
   const exportBatchPath = join(process.cwd(), 'app', 'api', 'oci', 'export-batch', 'route.ts');
-  const exportSrc = readFileSync(exportPath, 'utf8');
-  const exportBatchSrc = readFileSync(exportBatchPath, 'utf8');
-  assert.ok(exportSrc.includes('LEGACY_OCI_EXPORT_RETIRED') && exportSrc.includes('status: 410'), 'legacy /api/oci/export must be explicitly retired');
-  assert.ok(exportBatchSrc.includes('LEGACY_OCI_EXPORT_BATCH_RETIRED') && exportBatchSrc.includes('status: 410'), 'legacy /api/oci/export-batch must be explicitly retired');
+  assert.ok(!existsSync(exportPath), 'legacy /api/oci/export must be deleted');
+  assert.ok(!existsSync(exportBatchPath), 'legacy /api/oci/export-batch must be deleted');
 });

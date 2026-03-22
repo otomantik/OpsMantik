@@ -15,7 +15,11 @@ config({ path: '.env' });
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-let publicId = process.env.E2E_SITE_PUBLIC_ID || process.env.E2E_SITE_ID || 'b3e9634575df45c390d99d2623ddcde5';
+let publicId = process.env.E2E_SITE_PUBLIC_ID || process.env.E2E_SITE_ID;
+if (!publicId) {
+  console.error('Set E2E_SITE_PUBLIC_ID (sites.public_id, 32 hex chars) for the site to provision secrets for.');
+  process.exit(1);
+}
 if (publicId.length > 32) publicId = publicId.slice(0, 32);
 
 if (!url || !key) {

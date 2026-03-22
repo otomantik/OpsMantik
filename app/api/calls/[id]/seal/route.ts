@@ -18,6 +18,8 @@ import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { getChronologyFloorForCall } from '@/lib/oci/chronology-guard';
 import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
+import { parseExportConfig } from '@/lib/oci/site-export-config';
+import { parseOciConfig } from '@/lib/oci/oci-config';
 
 export const dynamic = 'force-dynamic';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
@@ -391,7 +393,14 @@ export async function POST(
           .eq('id', siteId)
           .maybeSingle();
 
-        const baseAov = (siteRow as { default_aov?: number | null } | null)?.default_aov ?? 1000;
+        const ociRaw = (siteRow as { oci_config?: unknown } | null)?.oci_config;
+        const exportCfg = parseExportConfig(ociRaw);
+        const ociLegacy = parseOciConfig(ociRaw, (siteRow as { default_aov?: number | null } | null)?.default_aov ?? null);
+        const baseAov =
+          (siteRow as { default_aov?: number | null } | null)?.default_aov != null &&
+          Number.isFinite(Number((siteRow as { default_aov?: number | null }).default_aov))
+            ? Number((siteRow as { default_aov?: number | null }).default_aov)
+            : exportCfg.default_aov;
         const stage = leadScore >= 80 ? 'V4' as const : 'V3' as const;
 
         type CallCtxRow = { city?: string|null; district?: string|null; device_type?: string|null; device_os?: string|null; traffic_source?: string|null; traffic_medium?: string|null; attribution_source?: string|null; matchtype?: string|null; utm_term?: string|null; phone_clicks?: number|null; whatsapp_clicks?: number|null; event_count?: number|null; total_duration_sec?: number|null; intent_action?: string|null; is_returning?: boolean|null; gclid?: string|null; wbraid?: string|null; gbraid?: string|null };
@@ -414,6 +423,8 @@ export async function POST(
           eventCount: ctx?.event_count,
           totalDurationSec: ctx?.total_duration_sec,
           isReturning: ctx?.is_returning,
+          config: ociLegacy.intelligence,
+          gearWeights: exportCfg.gear_weights,
         });
 
         const gclid = ctx?.gclid?.trim() || null;
@@ -485,8 +496,9 @@ export async function POST(
       }
     }
 
-    // Phase 1 Outbox: V3/V4/V5 are no longer written here; IntentSealed was written to outbox_events
-    // in the same transaction as the call update. The outbox worker cron processes them.
+    // Outbox events are written via DB trigger in apply_call_action_v1.
+    // For V3/V4: the outbox cron checks for existing signals (dedup guard) before writing,
+    // so it acts as a fallback if this LCV path fails. For V5: outbox cron calls enqueueSealConversion.
     const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
     const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
     if (approvalRequired) {
