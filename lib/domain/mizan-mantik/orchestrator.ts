@@ -31,10 +31,9 @@ export async function evaluateAndRouteSignal(
     if (!clientIp) {
       dna = appendBranch(dna, 'SST_HEADER_FAIL', ['audit'], {}, { reason: 'missing_xff' });
     } else {
-      const isTurkishSite =
-        (config.siteName || '').includes('Muratcan') ||
-        (config.siteName || '').includes('Yap') ||
-        siteId === 'e0f47012-7dec-11d0-a765-00a0c91e6bf6';
+      // BUG-3 FIX: Use timezone-based detection instead of fragile site-name string matching.
+      // 'Europe/Istanbul' is set per-site via oci_config.timezone (default for TR sites).
+      const isTurkishSite = config.timezone === 'Europe/Istanbul';
       if (isTurkishSite) {
         dna = appendBranch(dna, 'GEO_FENCE_TR_CHECK', ['audit'], { clientIp }, { isTurkishSite });
       }

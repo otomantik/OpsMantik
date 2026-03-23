@@ -9,7 +9,6 @@
  * saleAmount directly. Use SiteExportConfig for new per-site config.
  */
 
-import { computeSealedValue } from '@/lib/domain/funnel-kernel/value-formula';
 import { z } from 'zod';
 import { parseExportConfig } from '@/lib/oci/site-export-config';
 
@@ -98,10 +97,16 @@ export function parseOciConfig(raw: unknown, defaultAovFallback?: number | null)
 /**
  * Compute V5 sealed conversion value in major currency units.
  * Returns null if saleAmount is absent or zero — caller must NOT enqueue.
+ *
+ * BUG-4 FIX: single round-trip only (saleAmount → cents → units).
+ * Previous: computeSealedValue(Math.round(x * 100)) which then divided by 100.
+ * That caused double-rounding at precision boundaries (e.g. saleAmount=0.001 → 0 cents → rejected).
  */
 export function computeConversionValue(saleAmount: number | null): number | null {
     if (saleAmount === null || saleAmount === undefined || !Number.isFinite(saleAmount) || saleAmount <= 0) {
         return null;
     }
-    return computeSealedValue(Math.round(saleAmount * 100));
+    const cents = Math.round(saleAmount * 100);
+    if (cents <= 0) return null;
+    return cents / 100;
 }

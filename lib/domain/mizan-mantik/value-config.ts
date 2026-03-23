@@ -24,6 +24,8 @@ export interface ValueConfig {
   defaultAov: number;
   intentWeights: IntentWeights;
   minConversionValueCents: number;
+  /** IANA timezone (from oci_config.timezone, fallback 'Europe/Istanbul') */
+  timezone: string;
 }
 
 /**
@@ -92,6 +94,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
       defaultAov: GLOBAL_FALLBACK_AOV,
       intentWeights: { ...DEFAULT_WEIGHTS },
       minConversionValueCents: GLOBAL_MIN_VALUE_CENTS,
+      timezone: 'Europe/Istanbul',
     };
     setCached(siteId, fallback);
     return fallback;
@@ -138,6 +141,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
     defaultAov,
     intentWeights: finalWeights,
     minConversionValueCents,
+    timezone: exportCfg?.timezone ?? 'Europe/Istanbul',
   };
   setCached(siteId, config);
   return config;

@@ -248,9 +248,13 @@ async function runProcessOutbox() {
           }
         } else if (score >= 10) {
           // Threshold Banding for V2, V3, V4
+          // NOTE: Must mirror seal API thresholds (seal/route.ts:255)
+          // V4: score >= 80  (Sicak Teklif)
+          // V3: score >= 60  (Nitelikli Gorusme)
+          // V2: score >= 10  (Ilk Temas)
           let gear: OpsGear = 'V2_PULSE';
-          if (score >= 70) gear = 'V4_INTENT';
-          else if (score >= 50) gear = 'V3_ENGAGE';
+          if (score >= 80) gear = 'V4_INTENT';
+          else if (score >= 60) gear = 'V3_ENGAGE';
 
           // Dedup guard: the seal route writes V3/V4 signals directly via the LCV engine
           // (high-quality, real-time path). Skip if already written to avoid double-counting.

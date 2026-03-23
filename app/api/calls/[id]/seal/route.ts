@@ -250,9 +250,10 @@ export async function POST(
 
     // Determine lifecycle state for OCI pipeline
     // lead_score 100 = V5 SEAL (Aggressive)
-    // lead_score >= 10 = V4 INTENT (Standard)
+    // lead_score >= 10 = V4/V3 INTENT (Standard)
     // lead_score < 10 or null = ignored by OCI worker
-    const ociStatus = leadScore === 100 ? 'sealed' : leadScore != null && leadScore >= 10 ? 'intent' : 'skipped';
+    // NOTE: Use >= 100 (not ===) to be resilient to float precision edge cases (BUG-2 fix)
+    const ociStatus = leadScore != null && leadScore >= 100 ? 'sealed' : leadScore != null && leadScore >= 10 ? 'intent' : 'skipped';
 
     const confirmedAtIso = new Date().toISOString();
     const occurredAtMeta = resolveSealOccurredAt({
