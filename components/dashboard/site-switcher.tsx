@@ -51,8 +51,11 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
         return;
       }
 
-      // Filter out E2E smoke test sites
-      const filtered = (sitesData || []).filter((s) => s.name !== 'E2E Conversation Layer');
+      // Filter out E2E smoke test sites and sites marked as deleted
+      const filtered = (sitesData || []).filter((s) => 
+        s.name !== 'E2E Conversation Layer' && 
+        !(s.name?.startsWith('[SİLİNDİ]'))
+      );
       setSites(filtered);
       setIsLoading(false);
 
