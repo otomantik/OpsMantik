@@ -522,6 +522,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         sale_amount: saleAmount ?? null,
         currency,
         lead_score: finalScore,
+        version: 0, // Bypass optimistic locking to allow updates from UI
       };
       if (callerPhone?.trim()) {
         body.caller_phone = callerPhone.trim().slice(0, 64);
