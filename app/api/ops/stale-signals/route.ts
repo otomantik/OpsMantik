@@ -13,7 +13,7 @@ export async function GET() {
 
   const { data, error } = await adminClient
     .from('marketing_signals')
-    .select('site_id, count')
+    .select('site_id')
     .eq('dispatch_status', 'PENDING')
     .lt('created_at', twoHoursAgo);
 
@@ -21,9 +21,9 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  // Group by site manually if Supabase return is raw rows
-  const stats = (data || []).reduce((acc: Record<string, number>, curr: any) => {
-    acc[curr.site_id] = (acc[curr.site_id] || 0) + (curr.count || 1);
+  // Group by site manually
+  const stats = (data || []).reduce((acc: Record<string, number>, curr: { site_id: string }) => {
+    acc[curr.site_id] = (acc[curr.site_id] || 0) + 1;
     return acc;
   }, {});
 

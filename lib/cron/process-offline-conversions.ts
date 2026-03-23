@@ -31,6 +31,7 @@ export interface QueueRow {
   action?: string | null;
   action_key?: string | null;
   retry_count?: number;
+  status?: string;
 }
 
 export function queueRowToConversionJob(row: QueueRow): ConversionJob {

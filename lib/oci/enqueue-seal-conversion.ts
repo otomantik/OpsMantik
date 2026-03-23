@@ -20,6 +20,7 @@ import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
 import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/gears/shared';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
+import { publishToQStash } from '@/lib/ingest/publish';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -54,7 +55,7 @@ export interface EnqueueSealResult {
 async function loadSiteOciConfig(siteId: string) {
   const { data, error } = await adminClient
     .from('sites')
-    .select('oci_config, currency, default_aov')
+    .select('oci_config, currency, default_aov, oci_sync_method')
     .eq('id', siteId)
     .maybeSingle();
 
@@ -67,6 +68,7 @@ async function loadSiteOciConfig(siteId: string) {
   return {
     config: parseOciConfig((data as { oci_config?: unknown }).oci_config, defaultAov),
     siteCurrency: (data as { currency?: string }).currency?.trim() || 'TRY',
+    syncMethod: (data as { oci_sync_method?: string }).oci_sync_method || 'script',
   };
 }
 
@@ -157,7 +159,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   }
 
   // 3. Load site OCI config (currency fallback)
-  const { config, siteCurrency } = await loadSiteOciConfig(siteId);
+  const { config, siteCurrency, syncMethod } = await loadSiteOciConfig(siteId);
 
   // 4. Compute conversion value — saleAmount is ground truth
   const valueUnits = computeConversionValue(saleAmount);
@@ -260,6 +262,26 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     }
 
     logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, value_units: valueUnits, value_cents: valueCents });
+
+    // 9. Fast-Track: Trigger immediate Value-Lane synchronization
+    // Only trigger if site is in 'api' mode. 'script' sites must wait for polling.
+    if (syncMethod === 'api') {
+        try {
+            await publishToQStash({
+                lane: 'conversion',
+                body: { kind: 'oci_export', queue_id: queueId, site_id: siteId },
+                deduplicationId: `oci-v5-fasttrack-${queueId}`,
+                retries: 3,
+            });
+        } catch (publishErr) {
+            logWarn('OCI_FASTTRACK_TRIGGER_FAILED', {
+                call_id: callId,
+                queue_id: queueId,
+                error: (publishErr as Error)?.message ?? String(publishErr)
+            });
+        }
+    }
+
     return { enqueued: true, queueId, value: valueUnits };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

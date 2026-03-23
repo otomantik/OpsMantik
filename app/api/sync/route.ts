@@ -163,7 +163,7 @@ export type SyncHandlerDeps = {
   /** When set, used instead of SiteService.validateSite (for tests without real site). */
   validateSite?: (publicId: string) => Promise<{ valid: boolean; site?: { id: string } }>;
   /** When set, used instead of publishToQStash (for fallback tests: throw to trigger fallback). */
-  publish?: (args: { url: string; body: unknown; deduplicationId: string; retries: number }) => Promise<void>;
+  publish?: (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown; deduplicationId: string; retries: number }) => Promise<void>;
   /** When set, used instead of fallback buffer insert (for assertions). */
   insertFallback?: (row: unknown) => Promise<{ error: unknown }>;
   /** When set, used instead of RateLimitService.check (for tests: avoid 429). */
@@ -320,7 +320,6 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
       }
     }
 
-    const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
     const doInsertFallback = deps?.insertFallback ?? (async (row: unknown) => {
       const { error } = await adminClient.from('ingest_fallback_buffer').insert(row as Record<string, unknown>);
       return { error };
@@ -338,8 +337,9 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const useDirectWorker = process.env.OPSMANTIK_SYNC_DIRECT_WORKER === '1' || process.env.OPSMANTIK_SYNC_DIRECT_WORKER === 'true';
     const doPublish = deps?.publish ?? (useDirectWorker
-      ? (async (args: { url: string; body: unknown }) => {
-          const res = await fetch(args.url, {
+      ? (async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
+          const targetUrl = args.url || (args.lane === 'conversion' ? `${new URL(req.url).origin}/api/workers/ingest/conversion` : `${new URL(req.url).origin}/api/workers/ingest/telemetry`);
+          const res = await fetch(targetUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(args.body),
@@ -349,8 +349,8 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
             throw new Error(`direct_worker_${res.status}: ${t.slice(0, 200)}`);
           }
         })
-      : (async (args: { url: string; body: unknown; deduplicationId: string; retries: number }) => {
-          await publishToQStash({ url: args.url, body: args.body as Record<string, unknown>, deduplicationId: args.deduplicationId, retries: args.retries });
+      : (async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown; deduplicationId: string; retries: number }) => {
+          await publishToQStash({ lane: args.lane, url: args.url, body: args.body as Record<string, unknown>, deduplicationId: args.deduplicationId, retries: args.retries });
         }));
 
     let queued = 0;
@@ -394,7 +394,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
           : await computeIdempotencyKey(siteIdUuid, b);
 
       try {
-        await doPublish({ url: workerUrl, body: workerPayload, deduplicationId: idempotencyKey, retries: 3 });
+        await doPublish({ lane: 'telemetry', body: workerPayload, deduplicationId: idempotencyKey, retries: 3 });
         queued++;
       } catch (err) {
         const errorMessage = String((err as Error)?.message ?? err);

@@ -4,7 +4,7 @@ import { executeIngest } from '@/lib/ingest/worker-kernel';
 export const runtime = 'nodejs';
 
 /**
- * Legacy Ingest Endpoint (Defaulting to Telemetry)
- * @deprecated Use /api/workers/ingest/telemetry or /api/workers/ingest/conversion
+ * Fast-Lane Ingest (Telemetry)
+ * High concurrence, low priority.
  */
 export const POST = requireQstashSignature((req) => executeIngest(req, 'telemetry'));

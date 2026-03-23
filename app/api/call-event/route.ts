@@ -510,11 +510,10 @@ export async function POST(req: NextRequest) {
         };
 
         const deduplicationId = `ce-${site.id}-${signatureHash || event_id || intent_stamp}`.replace(/:/g, '-');
-        const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
 
         try {
             await publishToQStash({
-                url: workerUrl,
+                lane: 'telemetry',
                 body: workerPayload,
                 deduplicationId,
                 retries: 3,
