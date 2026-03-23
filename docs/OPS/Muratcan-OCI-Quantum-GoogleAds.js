@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * OCI SYNC ENGINE v3.0 (Quantum Edition) — Muratcan AKÜ
  * Google Ads Script Editor'a yapıştırın. Phone (Enhanced Conversions) dahil.
@@ -29,6 +30,9 @@ var CONVERSION_EVENTS = Object.freeze({
   V3_ENGAGE: 'OpsMantik_V3_Nitelikli_Gorusme',
   V4_INTENT: 'OpsMantik_V4_Sicak_Teklif',
   V5_SEAL: 'OpsMantik_V5_DEMIR_MUHUR',
+  WA_TEMAS: 'OpsMantik_WA_Temas',
+  WA_NITELIKLI: 'OpsMantik_WA_Nitelikli',
+  FORM_GONDER: 'OpsMantik_Form_Gonder',
 });
 class Telemetry {
   static info(msg, meta) { Logger.log('[INFO] ' + msg + (meta ? ' | ' + JSON.stringify(meta) : '')); }
@@ -140,6 +144,7 @@ class UploadEngine {
     return stats;
   }
 }
+
 function main() {
   Telemetry.info('Muratcan AKU Quantum OCI baslatiliyor...');
   try {

@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * SNAPSHOT ONLY
  * Source of truth: scripts/google-ads-oci/GoogleAdsScript.js
@@ -57,6 +58,9 @@ const CONVERSION_EVENTS = Object.freeze({
   V3_ENGAGE: 'OpsMantik_V3_Nitelikli_Gorusme',
   V4_INTENT: 'OpsMantik_V4_Sicak_Teklif',
   V5_SEAL: 'OpsMantik_V5_DEMIR_MUHUR',
+  WA_TEMAS: 'OpsMantik_WA_Temas',
+  WA_NITELIKLI: 'OpsMantik_WA_Nitelikli',
+  FORM_GONDER: 'OpsMantik_Form_Gonder',
 });
 
 class Telemetry {
