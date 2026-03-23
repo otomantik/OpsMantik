@@ -15,6 +15,7 @@ import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
 import { recordRouteHttpResponse } from '@/lib/route-metrics';
 import { publishToQStash } from '@/lib/ingest/publish';
+import { OPSMANTIK_VERSION } from '@/lib/version';
 
 /**
  * 202 Accepted Async Ingest: Auth → Parse → validateSite → Rate limit → Consent → Publish to QStash → 202.
@@ -24,8 +25,6 @@ export const runtime = 'nodejs';
 
 const ERROR_MESSAGE_MAX_LEN = 500;
 const TRACKER_VERSION_META_KEY = 'om_tracker_version';
-
-const OPSMANTIK_VERSION = '2.1.0-upstash';
 
 /** Default req/min per site:clientId. Env OPSMANTIK_SYNC_RL_DEFAULT overrides (e.g. 5000). High default so normal traffic does not hit 429. */
 const DEFAULT_RL_LIMIT =

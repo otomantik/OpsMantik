@@ -14,6 +14,9 @@ import { getBaseValueForGear, getDecayProfileForGear } from './time-decay';
 import type { IntentWeights } from './value-config';
 import { DEFAULT_WEIGHTS } from './value-config';
 import type { OpsGear } from './types';
+import { getStageWeight, getQualityWeight, getConfidenceWeight } from '../funnel-kernel/funnel-policy';
+
+export type { ProjectionForValue, ProjectionStage } from '../funnel-kernel/funnel-policy';
 
 /** @deprecated Use minConversionValueCents param (DB-driven). Default 100000 = 1000 TRY. */
 export const AOV_FLOOR_MAJOR = 1000;
@@ -80,3 +83,44 @@ export function calculateConversionValueMinor({
 
   return Math.round(effectiveAovMinor * ratio * decay);
 }
+
+/**
+ * COMPATIBILITY LAYER (Industrial Grade)
+ * These functions preserve backward compatibility with the legacy funnel-kernel.
+ */
+
+/**
+ * V5 exact value normalization.
+ */
+export function computeSealedValue(exactValueCents: number): number {
+  if (!Number.isFinite(exactValueCents) || exactValueCents < 0) return 0.01;
+  return Math.round(exactValueCents) / 100;
+}
+
+/**
+ * V2–V4 estimated value with decay. 
+ * @deprecated Use calculateConversionValueMinor for new implementations.
+ */
+export function computeEstimatedValue(
+  stage: 'V2' | 'V3' | 'V4',
+  baseValue: number,
+  qualityScore: number | null | undefined,
+  confidence: number | null | undefined,
+  days: number
+): number {
+  const sw = getStageWeight(stage);
+  const qw = getQualityWeight(qualityScore);
+  const cw = getConfidenceWeight(confidence);
+  
+  // Use the canonical decay profile from Mizan
+  const gear = stage === 'V2' ? 'V2_PULSE' : stage === 'V3' ? 'V3_ENGAGE' : 'V4_INTENT';
+  const decay = getDecayProfileForGear(gear, Math.min(365, Math.max(0, days)));
+  
+  const estimated = baseValue * sw * qw * cw * decay;
+  return Math.max(0.01, Math.round(estimated * 100) / 100);
+}
+
+/**
+ * Re-export export value calculator for SSOT.
+ */
+export { computeExportValue } from '../funnel-kernel/funnel-policy';

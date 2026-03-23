@@ -4,12 +4,20 @@
  */
 
 export { appendFunnelEvent, type AppendFunnelEventInput, type FunnelEventType, type FunnelEventSource } from './ledger-writer';
-export { processCallProjection, type CallFunnelProjection, type ProjectionStage } from './projection-updater';
+export { processCallProjection, type CallFunnelProjection } from './projection-updater';
 export {
   getStageWeight,
   getQualityWeight,
-  getConfidenceWeight,
-  computeExportValue,
-  type ProjectionForValue,
+  getConfidenceWeight
 } from './funnel-policy';
-export { computeSealedValue } from './value-formula';
+
+export {
+  computeSealedValue,
+  computeExportValue,
+  computeEstimatedValue // deprecated
+} from '../mizan-mantik/value-calculator';
+
+export type {
+  ProjectionForValue,
+  ProjectionStage
+} from '../mizan-mantik/value-calculator';
