@@ -250,7 +250,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
           siteId,
           eventType: 'V5_SEALED',
           eventSource: 'SEAL_ROUTE',
-          idempotencyKey: `v5:seal:${queueId}`,
+          idempotencyKey: `v5:call:${callId}`,
           occurredAt: new Date(occurredAtMeta.occurredAt),
           payload: { value_cents: valueCents, currency: currencySafe },
         });

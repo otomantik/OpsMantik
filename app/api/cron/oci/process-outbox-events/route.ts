@@ -233,6 +233,8 @@ async function runProcessOutbox() {
             logInfo('outbox_funnel_backfill_v4', { call_id: callId });
           }
 
+          // Proceed to V5 enqueue even if V3/V4 backfill encountered duplicates or minor issues.
+          // evaluateAndRouteSignal handles uniqueness via marketing_signals DB constraints.
           const result = await enqueueSealConversion({
             callId,
             siteId,

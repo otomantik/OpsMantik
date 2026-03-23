@@ -237,11 +237,12 @@ async function syncQueueValuesFromCalls(
     const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
     const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;
     
-    // PR-VK-6: Apply drift tolerance (e.g., 100 cents = 1 unit) to prevent fail-closed on minor rounding/exchange differences
-    const DRIFT_TOLERANCE_CENTS = 100;
+    // PR-VK-6: Apply drift tolerance to prevent fail-closed on minor rounding/exchange differences.
+    // 100 cents (1 TRY) is a safe buffer for most currency round-trips.
+    const QUEUE_VALUE_DRIFT_TOLERANCE_CENTS = 100;
     const diff = Math.abs((freshCents ?? 0) - storedCents);
 
-    if (diff > DRIFT_TOLERANCE_CENTS) {
+    if (diff > QUEUE_VALUE_DRIFT_TOLERANCE_CENTS) {
       logWarn('QUEUE_VALUE_MISMATCH', {
         queue_id: row.id,
         call_id: row.call_id,

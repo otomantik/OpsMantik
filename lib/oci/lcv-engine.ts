@@ -195,7 +195,9 @@ export function computeLcv(input: LcvInput): LcvResult {
   });
   const qm = (input.matchtype === 'e' ? 1.3 : input.matchtype === 'p' ? 1.1 : 0.8);
 
-  const Q = ql * qd * qs * qu * qb * qm;
+  // BUG-6 FIX: Cap combined quality multiplier at 4.0.
+  // Prevents secondary signals from having extreme values that could bias Google's conversion delay models.
+  const Q = Math.min(ql * qd * qs * qu * qb * qm, 4.0);
   const rawValue = baseAov * sw * Q;
   const valueUnits = Math.max(0.01, Math.round(rawValue * 100) / 100);
   const valueCents = Math.round(valueUnits * 100);
