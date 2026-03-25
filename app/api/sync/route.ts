@@ -37,6 +37,13 @@ const RL_WINDOW_MS = 60000;
 /** P1-2.2: Backpressure — hard cap per POST to prevent QStash queue saturation. Exceeding returns 429. */
 const MAX_EVENTS_PER_REQUEST = 100;
 
+function isIntentCriticalEvent(payload: { ec?: string; ea?: string }): boolean {
+  const category = typeof payload.ec === 'string' ? payload.ec.toLowerCase() : '';
+  const action = typeof payload.ea === 'string' ? payload.ea.toLowerCase() : '';
+  if (category === 'conversion') return true;
+  return ['phone_call', 'phone_click', 'call_click', 'tel_click', 'whatsapp', 'whatsapp_click', 'wa_click', 'joinchat', 'form_submit', 'form_start'].includes(action);
+}
+
 /** Parse OPSMANTIK_SYNC_RL_SITE_OVERRIDE e.g. "siteId1:5000,siteId2:3000" → Map(siteId -> limit). Optional per-site override. */
 function getSiteRateLimitOverrides(): Map<string, number> {
   const raw = process.env.OPSMANTIK_SYNC_RL_SITE_OVERRIDE;
@@ -406,7 +413,11 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
           : await computeIdempotencyKey(siteIdUuid, b);
 
       try {
-        await doPublish({ lane: 'telemetry', body: workerPayload, deduplicationId: idempotencyKey, retries: 3 });
+        if (isIntentCriticalEvent(b)) {
+          await runDirectWorker({ lane: 'telemetry', body: workerPayload });
+        } else {
+          await doPublish({ lane: 'telemetry', body: workerPayload, deduplicationId: idempotencyKey, retries: 3 });
+        }
         queued++;
       } catch (err) {
         if (!deps?.publish && !useDirectWorker) {
