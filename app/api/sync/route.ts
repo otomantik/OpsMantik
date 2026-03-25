@@ -14,7 +14,7 @@ import { parseSignalManifest, toValidIngestPayload } from '@/lib/types/signal-ma
 import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '@/lib/idempotency';
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
 import { recordRouteHttpResponse } from '@/lib/route-metrics';
-import { publishToQStash } from '@/lib/ingest/publish';
+import { publishToQStash, resolveAppBaseUrlForIngest } from '@/lib/ingest/publish';
 import { OPSMANTIK_VERSION } from '@/lib/version';
 
 /**
@@ -336,18 +336,30 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
 
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const useDirectWorker = process.env.OPSMANTIK_SYNC_DIRECT_WORKER === '1' || process.env.OPSMANTIK_SYNC_DIRECT_WORKER === 'true';
+    const runDirectWorker = async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
+      const baseUrl = resolveAppBaseUrlForIngest() || new URL(req.url).origin;
+      const targetUrl = args.url || (args.lane === 'conversion' ? `${baseUrl}/api/workers/ingest/conversion` : `${baseUrl}/api/workers/ingest/telemetry`);
+      const cronSecret = process.env.CRON_SECRET?.trim();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-opsmantik-internal-worker': '1',
+      };
+      if (cronSecret) {
+        headers.Authorization = `Bearer ${cronSecret}`;
+      }
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(args.body),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`direct_worker_${res.status}: ${t.slice(0, 200)}`);
+      }
+    };
     const doPublish = deps?.publish ?? (useDirectWorker
       ? (async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
-          const targetUrl = args.url || (args.lane === 'conversion' ? `${new URL(req.url).origin}/api/workers/ingest/conversion` : `${new URL(req.url).origin}/api/workers/ingest/telemetry`);
-          const res = await fetch(targetUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(args.body),
-          });
-          if (!res.ok) {
-            const t = await res.text().catch(() => '');
-            throw new Error(`direct_worker_${res.status}: ${t.slice(0, 200)}`);
-          }
+          await runDirectWorker(args);
         })
       : (async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown; deduplicationId: string; retries: number }) => {
           await publishToQStash({ lane: args.lane, url: args.url, body: args.body as Record<string, unknown>, deduplicationId: args.deduplicationId, retries: args.retries });
@@ -397,6 +409,16 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
         await doPublish({ lane: 'telemetry', body: workerPayload, deduplicationId: idempotencyKey, retries: 3 });
         queued++;
       } catch (err) {
+        if (!deps?.publish && !useDirectWorker) {
+          try {
+            await runDirectWorker({ lane: 'telemetry', body: workerPayload });
+            queued++;
+            degraded++;
+            continue;
+          } catch {
+            // Fall through to degraded + fallback path below.
+          }
+        }
         const errorMessage = String((err as Error)?.message ?? err);
         const errorShort = errorMessage.slice(0, ERROR_MESSAGE_MAX_LEN);
         logError('QSTASH_PUBLISH_FAILED', { code: 'QSTASH_PUBLISH_FAILED', route: 'sync', ingest_id: ingestId, site_id: b.s, error: errorMessage });

@@ -22,6 +22,7 @@
 import type { NextRequest } from 'next/server';
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { logWarn } from '@/lib/logging/logger';
+import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 
 type AppRouterHandler = (request: NextRequest, params?: unknown) => Response | Promise<Response>;
 
@@ -51,6 +52,22 @@ function getSigningKeys(): { current: string; next: string } | null {
   return { current, next: next || current };
 }
 
+function hasValidInternalWorkerAuth(request: NextRequest): boolean {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) return false;
+
+  const marker = request.headers.get('x-opsmantik-internal-worker');
+  if (marker !== '1') return false;
+
+  const authHeader = request.headers.get('authorization')?.trim() || '';
+  if (!authHeader.startsWith('Bearer ')) return false;
+
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) return false;
+
+  return timingSafeCompare(token, cronSecret);
+}
+
 /**
  * Wraps the handler so that in production (or when not allowing insecure dev bypass),
  * QStash signature is always verified. If signing keys are missing -> 503. Invalid signature -> 403 from SDK.
@@ -77,6 +94,9 @@ export function requireQstashSignature(handler: AppRouterHandler): AppRouterHand
   });
 
   return (async (request: NextRequest, params?: unknown): Promise<Response> => {
+    if (hasValidInternalWorkerAuth(request)) {
+      return handler(request, params);
+    }
     try {
       const res = await inner(request, params);
       if (res.status === 403) {
