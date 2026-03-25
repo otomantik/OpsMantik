@@ -58,6 +58,31 @@ type ConversationDetail = {
   }>;
   links: Array<{ id: string; entity_type: string; entity_id: string; created_at: string }>;
   sales: Array<{ id: string; amount_cents: number; currency: string; status: string; occurred_at: string }>;
+  primary_call?: {
+    id: string;
+    phone_number: string | null;
+    caller_phone_e164: string | null;
+    intent_action: string | null;
+    intent_target: string | null;
+    status: string | null;
+    source: string | null;
+    lead_score: number | null;
+    created_at: string;
+    matched_session_id: string | null;
+  } | null;
+  primary_session?: {
+    id: string;
+    created_at: string;
+    gclid: string | null;
+    wbraid: string | null;
+    gbraid: string | null;
+    utm_source: string | null;
+    utm_medium: string | null;
+    utm_campaign: string | null;
+    utm_content: string | null;
+    utm_term: string | null;
+    referrer_host: string | null;
+  } | null;
   stats?: { timeline_count?: number; sales_count?: number; link_count?: number };
 };
 
@@ -106,9 +131,13 @@ async function readJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 export function ConversationWorkbench({
   siteId,
   siteRole,
+  title = 'Conversation Workbench',
+  description = 'Conversation-first operator surface. Calls are evidence, conversations are the work object.',
 }: {
   siteId: string;
   siteRole: SiteRole;
+  title?: string;
+  description?: string;
 }) {
   const canOperate = hasCapability(siteRole, 'queue:operate');
   const [bucket, setBucket] = useState<ConversationBucket>('active');
@@ -125,6 +154,7 @@ export function ConversationWorkbench({
   const [draftFollowUp, setDraftFollowUp] = useState('');
   const [draftAssignedTo, setDraftAssignedTo] = useState('');
   const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +280,7 @@ export function ConversationWorkbench({
     setDetailOpen(true);
   }
 
-  async function runMutation(path: string, body: Record<string, unknown>) {
+  async function runMutation(path: string, body: Record<string, unknown>, successText = 'Saved') {
     setSaving(true);
     setError(null);
     try {
@@ -258,6 +288,7 @@ export function ConversationWorkbench({
         method: 'POST',
         body: JSON.stringify(body),
       });
+      setSuccessMessage(successText);
       await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Mutation failed');
@@ -272,10 +303,8 @@ export function ConversationWorkbench({
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <CardTitle className="text-xl text-slate-900">Conversation Workbench</CardTitle>
-              <CardDescription>
-                Conversation-first operator surface. Calls are evidence, conversations are the work object.
-              </CardDescription>
+              <CardTitle className="text-xl text-slate-900">{title}</CardTitle>
+              <CardDescription>{description}</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input
@@ -369,6 +398,11 @@ export function ConversationWorkbench({
 
           {error ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+          ) : null}
+          {successMessage ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {successMessage}
+            </div>
           ) : null}
 
           {loading ? (
@@ -523,7 +557,7 @@ export function ConversationWorkbench({
                         onClick={() => void runMutation('/api/conversations/assign', {
                           conversation_id: detail.conversation.id,
                           assigned_to: draftAssignedTo || null,
-                        })}
+                        }, 'Assignee updated')}
                       >
                         Apply assignee
                       </Button>
@@ -541,7 +575,7 @@ export function ConversationWorkbench({
                           conversation_id: detail.conversation.id,
                           stage,
                           next_follow_up_at: draftFollowUp ? new Date(draftFollowUp).toISOString() : null,
-                        })}
+                        }, `Stage moved to ${stage}`)}
                       >
                         {stage}
                       </Button>
@@ -564,7 +598,7 @@ export function ConversationWorkbench({
                         conversation_id: detail.conversation.id,
                         next_follow_up_at: new Date(draftFollowUp).toISOString(),
                         note: draftNote || null,
-                      })}
+                      }, 'Follow-up scheduled')}
                     >
                       Set follow-up
                     </Button>
@@ -585,7 +619,7 @@ export function ConversationWorkbench({
                         onClick={() => void runMutation('/api/conversations/note', {
                           conversation_id: detail.conversation.id,
                           note: draftNote,
-                        })}
+                        }, 'Note saved')}
                       >
                         Save note
                       </Button>
@@ -599,7 +633,7 @@ export function ConversationWorkbench({
                             stage: 'follow_up_waiting',
                             next_follow_up_at: draftFollowUp ? new Date(draftFollowUp).toISOString() : null,
                             note: draftNote || null,
-                          })}
+                          }, 'Conversation reopened')}
                         >
                           Reopen
                         </Button>
@@ -620,6 +654,28 @@ export function ConversationWorkbench({
                     <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                       {JSON.stringify(detail.conversation.source_summary ?? {}, null, 2)}
                     </pre>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Primary call</div>
+                      {detail.primary_call ? (
+                        <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                          {JSON.stringify(detail.primary_call, null, 2)}
+                        </pre>
+                      ) : (
+                        <div className="text-sm text-slate-500">No primary call attached.</div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Primary session</div>
+                      {detail.primary_session ? (
+                        <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                          {JSON.stringify(detail.primary_session, null, 2)}
+                        </pre>
+                      ) : (
+                        <div className="text-sm text-slate-500">No primary session attached.</div>
+                      )}
+                    </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
