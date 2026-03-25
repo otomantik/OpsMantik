@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './qualification-queue';
+import { ConversationWorkbench } from './conversation-workbench';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -290,6 +291,14 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
             </div>
             <CROInsights metrics={metrics} loading={analyticsLoading} />
+          </div>
+
+          <div className="mb-8">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">Conversation CRM</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Inbox, detail, timeline, and operator actions on top of the new conversation kernel.</p>
+            </div>
+            <ConversationWorkbench siteId={siteId} siteRole={siteRole} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
