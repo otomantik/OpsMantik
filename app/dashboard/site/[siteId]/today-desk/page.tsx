@@ -14,7 +14,7 @@ interface PageProps {
   params: Promise<{ siteId: string }>;
 }
 
-export default async function ConversationDeskPage({ params }: PageProps) {
+export default async function TodayDeskPage({ params }: PageProps) {
   const { siteId } = await params;
 
   const supabase = await createClient();
@@ -69,6 +69,9 @@ export default async function ConversationDeskPage({ params }: PageProps) {
         siteName={site.name || site.domain || undefined}
         siteRole={siteRole}
         currentUserId={user.id}
+        title="Today Desk"
+        subtitle="Fastest lane for today's follow-ups, overdue rescues, and operator-owned execution."
+        initialBucket="today"
       />
     </I18nProvider>
   );

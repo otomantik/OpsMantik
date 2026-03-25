@@ -103,6 +103,35 @@ const BUCKET_LABELS: Record<ConversationBucket, string> = {
 
 const STAGE_OPTIONS = ['new', 'contacted', 'qualified', 'proposal_sent', 'follow_up_waiting'] as const;
 
+function toInputDateTimeValue(date: Date) {
+  const next = new Date(date.getTime() - (date.getTimezoneOffset() * 60 * 1000));
+  return next.toISOString().slice(0, 16);
+}
+
+function predictedValueLabel(value: number | null | undefined) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value ?? 0);
+}
+
+function conversationUrgency(item: ConversationInboxItem) {
+  if (!item.assigned_to) {
+    return { label: 'Needs owner', tone: 'border-amber-300 text-amber-700 bg-amber-50' };
+  }
+  if (item.next_follow_up_at) {
+    const followUpTs = new Date(item.next_follow_up_at).getTime();
+    const now = Date.now();
+    if (followUpTs < now) {
+      return { label: 'Overdue', tone: 'border-rose-300 text-rose-700 bg-rose-50' };
+    }
+    if (new Date(item.next_follow_up_at).toDateString() === new Date().toDateString()) {
+      return { label: 'Due today', tone: 'border-sky-300 text-sky-700 bg-sky-50' };
+    }
+  }
+  if (item.stage === 'qualified' || item.stage === 'proposal_sent') {
+    return { label: 'High intent', tone: 'border-emerald-300 text-emerald-700 bg-emerald-50' };
+  }
+  return { label: 'In motion', tone: 'border-slate-300 text-slate-700 bg-slate-50' };
+}
+
 function stageTone(stage: string) {
   if (stage === 'qualified' || stage === 'proposal_sent') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   if (stage === 'follow_up_waiting') return 'bg-amber-100 text-amber-800 border-amber-200';
@@ -131,16 +160,20 @@ async function readJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 export function ConversationWorkbench({
   siteId,
   siteRole,
+  currentUserId,
   title = 'Conversation Workbench',
   description = 'Conversation-first operator surface. Calls are evidence, conversations are the work object.',
+  initialBucket = 'active',
 }: {
   siteId: string;
   siteRole: SiteRole;
+  currentUserId?: string;
   title?: string;
   description?: string;
+  initialBucket?: ConversationBucket;
 }) {
   const canOperate = hasCapability(siteRole, 'queue:operate');
-  const [bucket, setBucket] = useState<ConversationBucket>('active');
+  const [bucket, setBucket] = useState<ConversationBucket>(initialBucket);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +188,16 @@ export function ConversationWorkbench({
   const [draftAssignedTo, setDraftAssignedTo] = useState('');
   const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBucket(initialBucket);
+  }, [initialBucket]);
+
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = window.setTimeout(() => setSuccessMessage(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [successMessage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,6 +307,28 @@ export function ConversationWorkbench({
     };
   }, [inbox.items]);
 
+  const operatorPulse = useMemo(() => {
+    if (!currentUserId) return [];
+    const now = Date.now();
+    const todayKey = new Date().toDateString();
+    const mine = inbox.items.filter((item) => item.assigned_to === currentUserId);
+    return [
+      { label: 'My active', value: mine.length },
+      {
+        label: 'My overdue',
+        value: mine.filter((item) => item.next_follow_up_at && new Date(item.next_follow_up_at).getTime() < now).length,
+      },
+      {
+        label: 'My today',
+        value: mine.filter((item) => item.next_follow_up_at && new Date(item.next_follow_up_at).toDateString() === todayKey).length,
+      },
+      {
+        label: 'Unassigned',
+        value: inbox.items.filter((item) => !item.assigned_to).length,
+      },
+    ];
+  }, [currentUserId, inbox.items]);
+
   function assigneeLabel(id: string | null | undefined) {
     if (!id) return 'Unassigned';
     const row = assignees.find((item) => item.id === id);
@@ -326,9 +391,22 @@ export function ConversationWorkbench({
               </div>
             ))}
           </div>
+          {operatorPulse.length > 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Operator Pulse</div>
+              <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                {operatorPulse.map((card) => (
+                  <div key={card.label} className="rounded-lg border border-white bg-white px-3 py-3 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{card.label}</div>
+                    <div className="mt-1 text-xl font-bold tabular-nums text-slate-900">{card.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className={`grid gap-4 ${currentUserId ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Desk Focus</div>
               <div className="mt-2 text-sm font-medium text-slate-900">Hottest conversations</div>
@@ -380,6 +458,27 @@ export function ConversationWorkbench({
                 ))}
               </div>
             </div>
+            {currentUserId ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">My Desk</div>
+                <div className="mt-2 text-sm font-medium text-emerald-900">Conversations already owned by you</div>
+                <div className="mt-3 space-y-2">
+                  {inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3).length === 0 ? (
+                    <div className="text-sm text-emerald-700">No owned conversations in this slice.</div>
+                  ) : inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3).map((item) => (
+                    <button
+                      key={`mine-${item.id}`}
+                      type="button"
+                      onClick={() => void openConversation(item.id)}
+                      className="block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-left text-sm hover:border-emerald-300"
+                    >
+                      <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
+                      <div className="text-xs text-slate-500">{item.last_note_preview || item.stage}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <Tabs value={bucket} onValueChange={(value) => setBucket(value as ConversationBucket)}>
@@ -426,6 +525,9 @@ export function ConversationWorkbench({
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className={stageTone(item.stage)}>{item.stage}</Badge>
+                        <Badge variant="outline" className={conversationUrgency(item).tone}>
+                          {conversationUrgency(item).label}
+                        </Badge>
                         <span className="font-mono text-xs text-slate-500">{item.id.slice(0, 8)}</span>
                         {item.assigned_to ? (
                           <Badge variant="outline" className="border-slate-300 text-slate-700">
@@ -461,7 +563,7 @@ export function ConversationWorkbench({
                       <div>
                         <div className="text-[11px] uppercase tracking-wider text-slate-400">Predicted value</div>
                         <div className="font-semibold text-slate-900">
-                          {typeof item.mizan_predicted_value === 'number' ? item.mizan_predicted_value : 0}
+                          {predictedValueLabel(item.mizan_predicted_value)}
                         </div>
                       </div>
                       <div>
@@ -510,7 +612,7 @@ export function ConversationWorkbench({
                   </div>
                   <div>
                     <div className="text-slate-400">Predicted value</div>
-                    <div>{detail.conversation.mizan_predicted_value ?? 0}</div>
+                    <div>{predictedValueLabel(detail.conversation.mizan_predicted_value)}</div>
                   </div>
                   <div>
                     <div className="text-slate-400">Stats</div>
@@ -525,6 +627,17 @@ export function ConversationWorkbench({
                   <div>
                     <div className="text-slate-400">Primary evidence</div>
                     <div>{detail.conversation.primary_call_id ? 'call' : '—'} / {detail.conversation.primary_session_id ? 'session' : '—'}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-slate-400">Operator brief</div>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Badge variant="outline" className={conversationUrgency(detail.conversation).tone}>
+                        {conversationUrgency(detail.conversation).label}
+                      </Badge>
+                      {detail.conversation.source_summary?.source ? <Badge variant="outline">{String(detail.conversation.source_summary.source)}</Badge> : null}
+                      {detail.conversation.source_summary?.intent_action ? <Badge variant="outline">{String(detail.conversation.source_summary.intent_action)}</Badge> : null}
+                      {detail.conversation.source_summary?.utm_source ? <Badge variant="outline">{String(detail.conversation.source_summary.utm_source)}</Badge> : null}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -561,6 +674,22 @@ export function ConversationWorkbench({
                       >
                         Apply assignee
                       </Button>
+                      {currentUserId ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canOperate || saving}
+                          onClick={() => {
+                            setDraftAssignedTo(currentUserId);
+                            void runMutation('/api/conversations/assign', {
+                              conversation_id: detail.conversation.id,
+                              assigned_to: currentUserId,
+                            }, 'Assigned to you');
+                          }}
+                        >
+                          Assign me
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
 
@@ -590,6 +719,41 @@ export function ConversationWorkbench({
                       onChange={(e) => setDraftFollowUp(e.target.value)}
                       className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                     />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canOperate || saving}
+                        onClick={() => setDraftFollowUp(toInputDateTimeValue(new Date(Date.now() + 2 * 60 * 60 * 1000)))}
+                      >
+                        In 2 hours
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canOperate || saving}
+                        onClick={() => {
+                          const next = new Date();
+                          next.setHours(15, 0, 0, 0);
+                          setDraftFollowUp(toInputDateTimeValue(next));
+                        }}
+                      >
+                        Today 15:00
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canOperate || saving}
+                        onClick={() => {
+                          const next = new Date();
+                          next.setDate(next.getDate() + 1);
+                          next.setHours(9, 30, 0, 0);
+                          setDraftFollowUp(toInputDateTimeValue(next));
+                        }}
+                      >
+                        Tomorrow 09:30
+                      </Button>
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"

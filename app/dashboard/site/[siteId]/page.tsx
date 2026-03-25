@@ -153,6 +153,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
         siteDomain={site.domain || undefined}
         initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
         siteRole={siteRole}
+        currentUserId={user.id}
         activeModules={(site.active_modules ?? []).filter((m: string): m is import('@/lib/types/modules').OpsMantikModule => typeof m === 'string' && isOpsMantikModule(m))}
       />
     </I18nProvider>

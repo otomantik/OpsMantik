@@ -36,6 +36,7 @@ interface DashboardShellProps {
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
   siteRole: SiteRole;
+  currentUserId?: string;
   /** Tenant entitlements; used by FeatureGuard. Default [] so missing prop does not break. */
   activeModules?: OpsMantikModule[];
 }
@@ -80,7 +81,7 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, activeModules = [] }: DashboardShellProps) {
+export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, currentUserId, activeModules = [] }: DashboardShellProps) {
   const { t } = useTranslation();
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
@@ -186,6 +187,15 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   )}
                 >
                   Conversation Desk
+                </Link>
+                <Link
+                  href={`/dashboard/site/${siteId}/today-desk`}
+                  className={cn(
+                    buttonVariants({ variant: 'outline' }),
+                    'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
+                  )}
+                >
+                  Today Desk
                 </Link>
                 <Link
                   href={`/dashboard/site/${siteId}/oci-control`}
@@ -307,7 +317,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               <h2 className="text-base font-semibold text-slate-800">Conversation CRM</h2>
               <p className="text-xs text-slate-500 mt-0.5">Inbox, detail, timeline, and operator actions on top of the new conversation kernel.</p>
             </div>
-            <ConversationWorkbench siteId={siteId} siteRole={siteRole} />
+            <ConversationWorkbench siteId={siteId} siteRole={siteRole} currentUserId={currentUserId} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
