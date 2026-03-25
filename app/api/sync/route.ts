@@ -15,6 +15,7 @@ import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
 import { recordRouteHttpResponse } from '@/lib/route-metrics';
 import { publishToQStash, resolveAppBaseUrlForIngest } from '@/lib/ingest/publish';
+import { executeIngest } from '@/lib/ingest/worker-kernel';
 import { OPSMANTIK_VERSION } from '@/lib/version';
 
 /**
@@ -346,19 +347,16 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
     const runDirectWorker = async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
       const baseUrl = resolveAppBaseUrlForIngest() || new URL(req.url).origin;
       const targetUrl = args.url || (args.lane === 'conversion' ? `${baseUrl}/api/workers/ingest/conversion` : `${baseUrl}/api/workers/ingest/telemetry`);
-      const cronSecret = process.env.CRON_SECRET?.trim();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-opsmantik-internal-worker': '1',
-      };
-      if (cronSecret) {
-        headers.Authorization = `Bearer ${cronSecret}`;
-      }
-      const res = await fetch(targetUrl, {
+      const workerReq = new NextRequest(targetUrl, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-request-id': req.headers.get('x-request-id') || '',
+          'om-trace-uuid': req.headers.get('om-trace-uuid') || '',
+        },
         body: JSON.stringify(args.body),
       });
+      const res = await executeIngest(workerReq, args.lane === 'conversion' ? 'conversion' : 'telemetry');
       if (!res.ok) {
         const t = await res.text().catch(() => '');
         throw new Error(`direct_worker_${res.status}: ${t.slice(0, 200)}`);
