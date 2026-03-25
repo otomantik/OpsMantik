@@ -15,6 +15,7 @@ import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
 import { logWarn, logError } from '@/lib/logging/logger';
 import { normalizeToE164 } from '@/lib/dic/e164';
+import { resolveIntentConversation } from '@/lib/services/conversation-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,6 +158,17 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
+
+    await resolveIntentConversation({
+      siteId: siteUuid,
+      source: 'probe',
+      intentAction: 'phone',
+      intentTarget: e164,
+      explicitPhoneE164: e164,
+      primaryCallId: callId,
+      mizanValue: calibratedIntentValue ?? qualityScore,
+      idempotencyKey,
+    });
 
     await adminClient
       .from('probe_devices')

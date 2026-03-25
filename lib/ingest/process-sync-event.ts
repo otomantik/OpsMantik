@@ -18,6 +18,7 @@ import { AttributionService } from '@/lib/services/attribution-service';
 import { SessionService } from '@/lib/services/session-service';
 import { EventService } from '@/lib/services/event-service';
 import { IntentService } from '@/lib/services/intent-service';
+import { resolveIntentConversation } from '@/lib/services/conversation-service';
 import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
@@ -424,19 +425,33 @@ async function doProcessSyncEvent(
   });
 
   if (event_action !== 'heartbeat') {
-    const callId = await IntentService.handleIntent(
+    const intentResult = await IntentService.handleIntent(
       siteIdUuid,
       { id: session.id },
       { fingerprint, event_action, event_label, meta, url: safeUrl, currentGclid, params },
       leadScore
     );
-    if (callId) {
+    if (intentResult) {
       try {
-        const primary = await getPrimarySource(siteIdUuid, { callId });
+        const primary = await getPrimarySource(siteIdUuid, { callId: intentResult.callId });
         const now = new Date();
+        await resolveIntentConversation({
+          siteId: siteIdUuid,
+          source: 'sync',
+          intentAction: intentResult.canonicalAction,
+          intentTarget: intentResult.canonicalTarget,
+          primaryCallId: intentResult.callId,
+          primarySessionId: session.id,
+          mizanValue: leadScore,
+          pageUrl: intentResult.intentPageUrl,
+          clickId: intentResult.clickId,
+          formState: intentResult.formState,
+          primarySource: primary,
+          idempotencyKey: `sync:${dedupEventId}`,
+        });
         const v2Result = await evaluateAndRouteSignal('V2_PULSE', {
           siteId: siteIdUuid,
-          callId,
+          callId: intentResult.callId,
           gclid: primary?.gclid ?? null,
           wbraid: primary?.wbraid ?? null,
           gbraid: primary?.gbraid ?? null,
@@ -449,22 +464,22 @@ async function doProcessSyncEvent(
         if (v2Result.routed) {
           try {
             await appendFunnelEvent({
-              callId,
+              callId: intentResult.callId,
               siteId: siteIdUuid,
               eventType: 'V2_CONTACT',
               eventSource: 'SYNC',
-              idempotencyKey: `v2:call:${callId}:source:sync`,
+              idempotencyKey: `v2:call:${intentResult.callId}:source:sync`,
               occurredAt: now,
               payload: { gclid: primary?.gclid ?? null },
             });
           } catch (ledgerErr) {
-            logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: callId, error: (ledgerErr as Error)?.message });
+            logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: intentResult.callId, error: (ledgerErr as Error)?.message });
           }
         }
         if (!v2Result.routed) {
           logWarn('V2_PULSE_NOT_ROUTED', {
             site_id: siteIdUuid,
-            call_id: callId,
+            call_id: intentResult.callId,
             dropped: v2Result.dropped ?? false,
             has_gclid: Boolean(primary?.gclid),
             has_wbraid: Boolean(primary?.wbraid),
@@ -472,7 +487,7 @@ async function doProcessSyncEvent(
           });
         }
       } catch (v2Err) {
-        debugLog('[PROCESS_SYNC_EVENT] V2_PULSE emit failed (non-fatal)', { call_id: callId, error: (v2Err as Error)?.message });
+        debugLog('[PROCESS_SYNC_EVENT] V2_PULSE emit failed (non-fatal)', { call_id: intentResult.callId, error: (v2Err as Error)?.message });
       }
     }
   }

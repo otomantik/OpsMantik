@@ -3,6 +3,15 @@ import { debugLog } from '@/lib/utils';
 import { logError } from '@/lib/logging/logger';
 import { normalizePhoneTarget } from '@/lib/api/call-event/shared';
 
+export type EnsuredIntentResult = {
+    callId: string;
+    canonicalAction: 'phone' | 'whatsapp' | 'form';
+    canonicalTarget: string;
+    clickId: string | null;
+    intentPageUrl: string | null;
+    formState: string | null;
+};
+
 export class IntentService {
     static async handleIntent(
         siteId: string,
@@ -17,7 +26,7 @@ export class IntentService {
             params: URLSearchParams,
         },
         leadScore: number
-    ) {
+    ): Promise<EnsuredIntentResult | null> {
         const { fingerprint, event_action, event_label, meta, url, currentGclid, params } = data;
 
         // Goal: tel/wa clicks MUST create call intents regardless of acquisition/conversion rewrites.
@@ -118,7 +127,17 @@ export class IntentService {
             call_id: ensuredId ?? null,
             action: canonicalAction,
         });
-        return typeof ensuredId === 'string' ? ensuredId : Array.isArray(ensuredId) ? (ensuredId[0] as string) ?? null : null;
+        const callId = typeof ensuredId === 'string' ? ensuredId : Array.isArray(ensuredId) ? (ensuredId[0] as string) ?? null : null;
+        if (!callId) return null;
+
+        return {
+            callId,
+            canonicalAction,
+            canonicalTarget,
+            clickId,
+            intentPageUrl,
+            formState,
+        };
     }
 
     private static normalizeTelTarget(v: string): string {

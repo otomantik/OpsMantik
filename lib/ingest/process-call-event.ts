@@ -12,6 +12,7 @@ import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
+import { resolveIntentConversation } from '@/lib/services/conversation-service';
 import { sanitizeClickId } from '@/lib/attribution';
 
 // Brain Score logic moved to async worker
@@ -232,11 +233,25 @@ export async function processCallEvent(
     throw new Error('Call insert returned no record');
   }
 
+  const primary = await getPrimarySource(siteId, { callId: callRecord.id });
+  await resolveIntentConversation({
+    siteId,
+    source: 'call_event',
+    intentAction: payload.intent_action,
+    intentTarget: payload.intent_target,
+    primaryCallId: callRecord.id,
+    primarySessionId: payload.matched_session_id,
+    mizanValue: payload.lead_score,
+    pageUrl: payload.intent_page_url,
+    clickId: sanitizedClickId,
+    primarySource: primary,
+    idempotencyKey: `call_event:${payload.event_id ?? payload.signature_hash ?? callRecord.id}`,
+  });
+
   // ── PR-OCI-2: V2 "İlk Temas" signal (best-effort, does not block ingestion)
   try {
     const callCreatedAt = callRecord.created_at ?? new Date().toISOString();
     const signalDate = new Date(callCreatedAt);
-    const primary = await getPrimarySource(siteId, { callId: callRecord.id });
     const v2Result = await evaluateAndRouteSignal('V2_PULSE', {
       siteId,
       callId: callRecord.id,
