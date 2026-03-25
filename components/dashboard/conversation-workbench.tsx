@@ -61,6 +61,13 @@ type ConversationDetail = {
   stats?: { timeline_count?: number; sales_count?: number; link_count?: number };
 };
 
+type AssigneeOption = {
+  id: string;
+  email: string | null;
+  role: string;
+  source: 'owner' | 'member';
+};
+
 const BUCKET_LABELS: Record<ConversationBucket, string> = {
   active: 'Active',
   overdue: 'Overdue',
@@ -116,6 +123,8 @@ export function ConversationWorkbench({
   const [detailOpen, setDetailOpen] = useState(false);
   const [draftNote, setDraftNote] = useState('');
   const [draftFollowUp, setDraftFollowUp] = useState('');
+  const [draftAssignedTo, setDraftAssignedTo] = useState('');
+  const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +169,7 @@ export function ConversationWorkbench({
         if (!cancelled) {
           setDetail(data);
           setDraftNote(data.conversation.note ?? '');
+          setDraftAssignedTo(data.conversation.assigned_to ?? '');
           setDraftFollowUp(
             data.conversation.next_follow_up_at
               ? new Date(data.conversation.next_follow_up_at).toISOString().slice(0, 16)
@@ -178,6 +188,28 @@ export function ConversationWorkbench({
     };
   }, [selectedId, refreshTick]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadAssignees() {
+      try {
+        const data = await readJson<{ items: AssigneeOption[] }>(`/api/sites/${siteId}/assignees`, {
+          signal: controller.signal,
+        });
+        if (!cancelled) setAssignees(data.items ?? []);
+      } catch {
+        if (!cancelled) setAssignees([]);
+      }
+    }
+
+    void loadAssignees();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [siteId]);
+
   const summaryCards = useMemo(
     () => [
       { label: 'Active', value: inbox.summary?.total_active ?? 0 },
@@ -187,6 +219,27 @@ export function ConversationWorkbench({
     ],
     [inbox.summary]
   );
+
+  const deskFocus = useMemo(() => {
+    const now = Date.now();
+    const todayKey = new Date().toDateString();
+    return {
+      hottest: inbox.items.slice(0, 3),
+      overdue: inbox.items
+        .filter((item) => item.next_follow_up_at && new Date(item.next_follow_up_at).getTime() < now)
+        .slice(0, 3),
+      today: inbox.items
+        .filter((item) => item.next_follow_up_at && new Date(item.next_follow_up_at).toDateString() === todayKey)
+        .slice(0, 3),
+    };
+  }, [inbox.items]);
+
+  function assigneeLabel(id: string | null | undefined) {
+    if (!id) return 'Unassigned';
+    const row = assignees.find((item) => item.id === id);
+    if (!row) return `${id.slice(0, 8)}...`;
+    return row.email || `${row.role}:${row.id.slice(0, 8)}`;
+  }
 
   async function refreshAll() {
     setRefreshTick((x) => x + 1);
@@ -246,6 +299,60 @@ export function ConversationWorkbench({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Desk Focus</div>
+              <div className="mt-2 text-sm font-medium text-slate-900">Hottest conversations</div>
+              <div className="mt-3 space-y-2">
+                {deskFocus.hottest.map((item) => (
+                  <button
+                    key={`hot-${item.id}`}
+                    type="button"
+                    onClick={() => void openConversation(item.id)}
+                    className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:border-slate-300"
+                  >
+                    <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
+                    <div className="text-xs text-slate-500">{item.stage} | value {item.mizan_predicted_value ?? 0}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Overdue Now</div>
+              <div className="mt-2 text-sm font-medium text-amber-900">Needs immediate operator touch</div>
+              <div className="mt-3 space-y-2">
+                {deskFocus.overdue.length === 0 ? <div className="text-sm text-amber-700">No overdue conversations.</div> : deskFocus.overdue.map((item) => (
+                  <button
+                    key={`over-${item.id}`}
+                    type="button"
+                    onClick={() => void openConversation(item.id)}
+                    className="block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm hover:border-amber-300"
+                  >
+                    <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
+                    <div className="text-xs text-slate-500">{item.next_follow_up_at ? formatTimestamp(item.next_follow_up_at) : 'No follow-up'}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-700">Today Desk</div>
+              <div className="mt-2 text-sm font-medium text-sky-900">Due today and ready to move</div>
+              <div className="mt-3 space-y-2">
+                {deskFocus.today.length === 0 ? <div className="text-sm text-sky-700">No today items.</div> : deskFocus.today.map((item) => (
+                  <button
+                    key={`today-${item.id}`}
+                    type="button"
+                    onClick={() => void openConversation(item.id)}
+                    className="block w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-left text-sm hover:border-sky-300"
+                  >
+                    <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
+                    <div className="text-xs text-slate-500">{item.last_note_preview || item.stage}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <Tabs value={bucket} onValueChange={(value) => setBucket(value as ConversationBucket)}>
             <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 md:grid-cols-5">
               {(Object.keys(BUCKET_LABELS) as ConversationBucket[]).map((key) => (
@@ -288,7 +395,7 @@ export function ConversationWorkbench({
                         <span className="font-mono text-xs text-slate-500">{item.id.slice(0, 8)}</span>
                         {item.assigned_to ? (
                           <Badge variant="outline" className="border-slate-300 text-slate-700">
-                            assigned
+                            {assigneeLabel(item.assigned_to)}
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="border-amber-300 text-amber-700">
@@ -301,6 +408,11 @@ export function ConversationWorkbench({
                       </div>
                       <div className="text-sm text-slate-500">
                         {item.last_note_preview || 'No note yet'}
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                        {item.source_summary?.source ? <Badge variant="outline">{String(item.source_summary.source)}</Badge> : null}
+                        {item.source_summary?.intent_action ? <Badge variant="outline">{String(item.source_summary.intent_action)}</Badge> : null}
+                        {item.source_summary?.utm_source ? <Badge variant="outline">{String(item.source_summary.utm_source)}</Badge> : null}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm text-slate-600 lg:min-w-[280px]">
@@ -372,6 +484,14 @@ export function ConversationWorkbench({
                       {detail.stats?.timeline_count ?? 0} events, {detail.stats?.sales_count ?? 0} sales
                     </div>
                   </div>
+                  <div>
+                    <div className="text-slate-400">Assignee</div>
+                    <div>{assigneeLabel(detail.conversation.assigned_to)}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Primary evidence</div>
+                    <div>{detail.conversation.primary_call_id ? 'call' : '—'} / {detail.conversation.primary_session_id ? 'session' : '—'}</div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -381,6 +501,35 @@ export function ConversationWorkbench({
                   <CardDescription>Use the new conversation kernel directly from the UI.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Assignee</label>
+                    <div className="flex flex-wrap gap-2">
+                      <select
+                        value={draftAssignedTo}
+                        onChange={(e) => setDraftAssignedTo(e.target.value)}
+                        className="h-10 min-w-[220px] rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        <option value="">Unassigned</option>
+                        {assignees.map((assignee) => (
+                          <option key={assignee.id} value={assignee.id}>
+                            {(assignee.email || `${assignee.role}:${assignee.id.slice(0, 8)}`)} ({assignee.role})
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canOperate || saving}
+                        onClick={() => void runMutation('/api/conversations/assign', {
+                          conversation_id: detail.conversation.id,
+                          assigned_to: draftAssignedTo || null,
+                        })}
+                      >
+                        Apply assignee
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     {STAGE_OPTIONS.map((stage) => (
                       <Button
@@ -455,6 +604,50 @@ export function ConversationWorkbench({
                           Reopen
                         </Button>
                       ) : null}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Evidence Stack</CardTitle>
+                  <CardDescription>Source, links, and sale context in one operator view.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Source summary</div>
+                    <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                      {JSON.stringify(detail.conversation.source_summary ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Links</div>
+                      <div className="space-y-2">
+                        {detail.links.length === 0 ? (
+                          <div className="text-sm text-slate-500">No linked entities.</div>
+                        ) : detail.links.map((link) => (
+                          <div key={link.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                            <div className="font-medium text-slate-900">{link.entity_type}</div>
+                            <div className="font-mono text-xs text-slate-500">{link.entity_id}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Sales</div>
+                      <div className="space-y-2">
+                        {detail.sales.length === 0 ? (
+                          <div className="text-sm text-slate-500">No linked sales.</div>
+                        ) : detail.sales.map((sale) => (
+                          <div key={sale.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                            <div className="font-medium text-slate-900">{sale.status}</div>
+                            <div>{sale.amount_cents} {sale.currency}</div>
+                            <div className="text-xs text-slate-500">{formatTimestamp(sale.occurred_at)}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
