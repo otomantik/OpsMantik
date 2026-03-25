@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { formatTimestamp } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { SiteRole } from '@/lib/auth/rbac';
 import { hasCapability } from '@/lib/auth/rbac';
 
@@ -93,12 +93,12 @@ type AssigneeOption = {
   source: 'owner' | 'member';
 };
 
-const BUCKET_LABELS: Record<ConversationBucket, string> = {
-  active: 'Active',
-  overdue: 'Overdue',
-  today: 'Today',
-  unassigned: 'Unassigned',
-  all: 'All',
+const BUCKET_LABEL_KEYS: Record<ConversationBucket, string> = {
+  active: 'crm.bucket.active',
+  overdue: 'crm.bucket.overdue',
+  today: 'crm.bucket.today',
+  unassigned: 'crm.bucket.unassigned',
+  all: 'crm.bucket.all',
 };
 
 const STAGE_OPTIONS = ['new', 'contacted', 'qualified', 'proposal_sent', 'follow_up_waiting'] as const;
@@ -108,28 +108,62 @@ function toInputDateTimeValue(date: Date) {
   return next.toISOString().slice(0, 16);
 }
 
-function predictedValueLabel(value: number | null | undefined) {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value ?? 0);
-}
-
 function conversationUrgency(item: ConversationInboxItem) {
   if (!item.assigned_to) {
-    return { label: 'Needs owner', tone: 'border-amber-300 text-amber-700 bg-amber-50' };
+    return { labelKey: 'crm.urgency.needsOwner', tone: 'border-amber-300 text-amber-700 bg-amber-50' };
   }
   if (item.next_follow_up_at) {
     const followUpTs = new Date(item.next_follow_up_at).getTime();
     const now = Date.now();
     if (followUpTs < now) {
-      return { label: 'Overdue', tone: 'border-rose-300 text-rose-700 bg-rose-50' };
+      return { labelKey: 'crm.urgency.overdue', tone: 'border-rose-300 text-rose-700 bg-rose-50' };
     }
     if (new Date(item.next_follow_up_at).toDateString() === new Date().toDateString()) {
-      return { label: 'Due today', tone: 'border-sky-300 text-sky-700 bg-sky-50' };
+      return { labelKey: 'crm.urgency.dueToday', tone: 'border-sky-300 text-sky-700 bg-sky-50' };
     }
   }
   if (item.stage === 'qualified' || item.stage === 'proposal_sent') {
-    return { label: 'High intent', tone: 'border-emerald-300 text-emerald-700 bg-emerald-50' };
+    return { labelKey: 'crm.urgency.highIntent', tone: 'border-emerald-300 text-emerald-700 bg-emerald-50' };
   }
-  return { label: 'In motion', tone: 'border-slate-300 text-slate-700 bg-slate-50' };
+  return { labelKey: 'crm.urgency.inMotion', tone: 'border-slate-300 text-slate-700 bg-slate-50' };
+}
+
+function stageLabelKey(stage: string) {
+  switch (stage) {
+    case 'new':
+      return 'crm.stage.new';
+    case 'contacted':
+      return 'crm.stage.contacted';
+    case 'qualified':
+      return 'crm.stage.qualified';
+    case 'proposal_sent':
+      return 'crm.stage.proposalSent';
+    case 'follow_up_waiting':
+      return 'crm.stage.followUpWaiting';
+    case 'won':
+      return 'crm.stage.won';
+    case 'lost':
+      return 'crm.stage.lost';
+    case 'junk':
+      return 'crm.stage.junk';
+    default:
+      return stage;
+  }
+}
+
+function statusLabelKey(status: string) {
+  switch (status.toLowerCase()) {
+    case 'open':
+      return 'crm.status.open';
+    case 'won':
+      return 'crm.status.won';
+    case 'lost':
+      return 'crm.status.lost';
+    case 'junk':
+      return 'crm.status.junk';
+    default:
+      return status;
+  }
 }
 
 function stageTone(stage: string) {
@@ -140,7 +174,7 @@ function stageTone(stage: string) {
   return 'bg-slate-100 text-slate-800 border-slate-200';
 }
 
-async function readJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+async function readJson<T>(input: RequestInfo, init?: RequestInit, fallbackError = 'İstek başarısız oldu'): Promise<T> {
   const res = await fetch(input, {
     ...init,
     credentials: 'include',
@@ -152,7 +186,7 @@ async function readJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(typeof body?.error === 'string' ? body.error : 'Request failed');
+    throw new Error(typeof body?.error === 'string' ? body.error : fallbackError);
   }
   return body as T;
 }
@@ -161,8 +195,8 @@ export function ConversationWorkbench({
   siteId,
   siteRole,
   currentUserId,
-  title = 'Conversation Workbench',
-  description = 'Conversation-first operator surface. Calls are evidence, conversations are the work object.',
+  title,
+  description,
   initialBucket = 'active',
 }: {
   siteId: string;
@@ -172,7 +206,10 @@ export function ConversationWorkbench({
   description?: string;
   initialBucket?: ConversationBucket;
 }) {
+  const { t, tUnsafe, formatTimestamp, formatNumber } = useTranslation();
   const canOperate = hasCapability(siteRole, 'queue:operate');
+  const resolvedTitle = title ?? t('crm.workbench.title');
+  const resolvedDescription = description ?? t('crm.workbench.description');
   const [bucket, setBucket] = useState<ConversationBucket>(initialBucket);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -215,10 +252,10 @@ export function ConversationWorkbench({
         if (search.trim()) params.set('search', search.trim());
         const data = await readJson<ConversationInboxResponse>(`/api/conversations?${params.toString()}`, {
           signal: controller.signal,
-        });
+        }, t('crm.error.requestFailed'));
         if (!cancelled) setInbox(data);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load conversations');
+        if (!cancelled) setError(err instanceof Error ? err.message : t('crm.error.loadConversations'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -229,7 +266,7 @@ export function ConversationWorkbench({
       cancelled = true;
       controller.abort();
     };
-  }, [siteId, bucket, search, refreshTick]);
+  }, [siteId, bucket, search, refreshTick, t]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -238,7 +275,7 @@ export function ConversationWorkbench({
 
     async function loadDetail() {
       try {
-        const data = await readJson<ConversationDetail>(`/api/conversations/${selectedId}`, { signal: controller.signal });
+        const data = await readJson<ConversationDetail>(`/api/conversations/${selectedId}`, { signal: controller.signal }, t('crm.error.requestFailed'));
         if (!cancelled) {
           setDetail(data);
           setDraftNote(data.conversation.note ?? '');
@@ -250,7 +287,7 @@ export function ConversationWorkbench({
           );
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load detail');
+        if (!cancelled) setError(err instanceof Error ? err.message : t('crm.error.loadDetail'));
       }
     }
 
@@ -259,7 +296,7 @@ export function ConversationWorkbench({
       cancelled = true;
       controller.abort();
     };
-  }, [selectedId, refreshTick]);
+  }, [selectedId, refreshTick, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,7 +306,7 @@ export function ConversationWorkbench({
       try {
         const data = await readJson<{ items: AssigneeOption[] }>(`/api/sites/${siteId}/assignees`, {
           signal: controller.signal,
-        });
+        }, t('crm.error.requestFailed'));
         if (!cancelled) setAssignees(data.items ?? []);
       } catch {
         if (!cancelled) setAssignees([]);
@@ -281,16 +318,16 @@ export function ConversationWorkbench({
       cancelled = true;
       controller.abort();
     };
-  }, [siteId]);
+  }, [siteId, t]);
 
   const summaryCards = useMemo(
     () => [
-      { label: 'Active', value: inbox.summary?.total_active ?? 0 },
-      { label: 'Overdue', value: inbox.summary?.overdue ?? 0 },
-      { label: 'Today', value: inbox.summary?.today ?? 0 },
-      { label: 'Unassigned', value: inbox.summary?.unassigned ?? 0 },
+      { label: t('crm.summary.active'), value: inbox.summary?.total_active ?? 0 },
+      { label: t('crm.summary.overdue'), value: inbox.summary?.overdue ?? 0 },
+      { label: t('crm.summary.today'), value: inbox.summary?.today ?? 0 },
+      { label: t('crm.summary.unassigned'), value: inbox.summary?.unassigned ?? 0 },
     ],
-    [inbox.summary]
+    [inbox.summary, t]
   );
 
   const deskFocus = useMemo(() => {
@@ -313,24 +350,24 @@ export function ConversationWorkbench({
     const todayKey = new Date().toDateString();
     const mine = inbox.items.filter((item) => item.assigned_to === currentUserId);
     return [
-      { label: 'My active', value: mine.length },
+      { label: t('crm.operatorPulse.myActive'), value: mine.length },
       {
-        label: 'My overdue',
+        label: t('crm.operatorPulse.myOverdue'),
         value: mine.filter((item) => item.next_follow_up_at && new Date(item.next_follow_up_at).getTime() < now).length,
       },
       {
-        label: 'My today',
+        label: t('crm.operatorPulse.myToday'),
         value: mine.filter((item) => item.next_follow_up_at && new Date(item.next_follow_up_at).toDateString() === todayKey).length,
       },
       {
-        label: 'Unassigned',
+        label: t('crm.operatorPulse.unassigned'),
         value: inbox.items.filter((item) => !item.assigned_to).length,
       },
     ];
-  }, [currentUserId, inbox.items]);
+  }, [currentUserId, inbox.items, t]);
 
   function assigneeLabel(id: string | null | undefined) {
-    if (!id) return 'Unassigned';
+    if (!id) return t('crm.bucket.unassigned');
     const row = assignees.find((item) => item.id === id);
     if (!row) return `${id.slice(0, 8)}...`;
     return row.email || `${row.role}:${row.id.slice(0, 8)}`;
@@ -345,18 +382,18 @@ export function ConversationWorkbench({
     setDetailOpen(true);
   }
 
-  async function runMutation(path: string, body: Record<string, unknown>, successText = 'Saved') {
+  async function runMutation(path: string, body: Record<string, unknown>, successText?: string) {
     setSaving(true);
     setError(null);
     try {
       await readJson(path, {
         method: 'POST',
         body: JSON.stringify(body),
-      });
-      setSuccessMessage(successText);
+      }, t('crm.error.requestFailed'));
+      setSuccessMessage(successText || t('crm.success.saved'));
       await refreshAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Mutation failed');
+      setError(err instanceof Error ? err.message : t('crm.error.mutationFailed'));
     } finally {
       setSaving(false);
     }
@@ -368,18 +405,18 @@ export function ConversationWorkbench({
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <CardTitle className="text-xl text-slate-900">{title}</CardTitle>
-              <CardDescription>{description}</CardDescription>
+              <CardTitle className="text-xl text-slate-900">{resolvedTitle}</CardTitle>
+              <CardDescription>{resolvedDescription}</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search phone, customer hash, note"
+                placeholder={t('crm.searchPlaceholder')}
                 className="h-10 w-72 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
               />
               <Button variant="outline" onClick={() => void refreshAll()} disabled={loading || saving}>
-                Refresh
+                {t('button.refresh')}
               </Button>
             </div>
           </div>
@@ -393,7 +430,7 @@ export function ConversationWorkbench({
           </div>
           {operatorPulse.length > 0 ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Operator Pulse</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{t('crm.operatorPulse.title')}</div>
               <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
                 {operatorPulse.map((card) => (
                   <div key={card.label} className="rounded-lg border border-white bg-white px-3 py-3 shadow-sm">
@@ -408,8 +445,8 @@ export function ConversationWorkbench({
         <CardContent className="space-y-4">
           <div className={`grid gap-4 ${currentUserId ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Desk Focus</div>
-              <div className="mt-2 text-sm font-medium text-slate-900">Hottest conversations</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{t('crm.rail.deskFocus')}</div>
+              <div className="mt-2 text-sm font-medium text-slate-900">{t('crm.rail.hottestTitle')}</div>
               <div className="mt-3 space-y-2">
                 {deskFocus.hottest.map((item) => (
                   <button
@@ -419,16 +456,16 @@ export function ConversationWorkbench({
                     className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:border-slate-300"
                   >
                     <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
-                    <div className="text-xs text-slate-500">{item.stage} | value {item.mizan_predicted_value ?? 0}</div>
+                    <div className="text-xs text-slate-500">{tUnsafe(stageLabelKey(item.stage))} | {t('crm.field.predictedValue')} {formatNumber(item.mizan_predicted_value ?? 0)}</div>
                   </button>
                 ))}
               </div>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Overdue Now</div>
-              <div className="mt-2 text-sm font-medium text-amber-900">Needs immediate operator touch</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">{t('crm.rail.overdueNow')}</div>
+              <div className="mt-2 text-sm font-medium text-amber-900">{t('crm.rail.overdueSubtitle')}</div>
               <div className="mt-3 space-y-2">
-                {deskFocus.overdue.length === 0 ? <div className="text-sm text-amber-700">No overdue conversations.</div> : deskFocus.overdue.map((item) => (
+                {deskFocus.overdue.length === 0 ? <div className="text-sm text-amber-700">{t('crm.rail.noOverdue')}</div> : deskFocus.overdue.map((item) => (
                   <button
                     key={`over-${item.id}`}
                     type="button"
@@ -436,16 +473,16 @@ export function ConversationWorkbench({
                     className="block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm hover:border-amber-300"
                   >
                     <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
-                    <div className="text-xs text-slate-500">{item.next_follow_up_at ? formatTimestamp(item.next_follow_up_at) : 'No follow-up'}</div>
+                    <div className="text-xs text-slate-500">{item.next_follow_up_at ? formatTimestamp(item.next_follow_up_at) : '—'}</div>
                   </button>
                 ))}
               </div>
             </div>
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-700">Today Desk</div>
-              <div className="mt-2 text-sm font-medium text-sky-900">Due today and ready to move</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-700">{t('crm.rail.todayDesk')}</div>
+              <div className="mt-2 text-sm font-medium text-sky-900">{t('crm.rail.todaySubtitle')}</div>
               <div className="mt-3 space-y-2">
-                {deskFocus.today.length === 0 ? <div className="text-sm text-sky-700">No today items.</div> : deskFocus.today.map((item) => (
+                {deskFocus.today.length === 0 ? <div className="text-sm text-sky-700">{t('crm.rail.noToday')}</div> : deskFocus.today.map((item) => (
                   <button
                     key={`today-${item.id}`}
                     type="button"
@@ -453,18 +490,18 @@ export function ConversationWorkbench({
                     className="block w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-left text-sm hover:border-sky-300"
                   >
                     <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
-                    <div className="text-xs text-slate-500">{item.last_note_preview || item.stage}</div>
+                    <div className="text-xs text-slate-500">{item.last_note_preview || tUnsafe(stageLabelKey(item.stage))}</div>
                   </button>
                 ))}
               </div>
             </div>
             {currentUserId ? (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">My Desk</div>
-                <div className="mt-2 text-sm font-medium text-emerald-900">Conversations already owned by you</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">{t('crm.rail.myDesk')}</div>
+                <div className="mt-2 text-sm font-medium text-emerald-900">{t('crm.rail.myDeskSubtitle')}</div>
                 <div className="mt-3 space-y-2">
                   {inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3).length === 0 ? (
-                    <div className="text-sm text-emerald-700">No owned conversations in this slice.</div>
+                    <div className="text-sm text-emerald-700">{t('crm.rail.noMine')}</div>
                   ) : inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3).map((item) => (
                     <button
                       key={`mine-${item.id}`}
@@ -473,7 +510,7 @@ export function ConversationWorkbench({
                       className="block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-left text-sm hover:border-emerald-300"
                     >
                       <div className="font-medium text-slate-900">{item.phone_e164 || item.customer_hash || item.id.slice(0, 8)}</div>
-                      <div className="text-xs text-slate-500">{item.last_note_preview || item.stage}</div>
+                      <div className="text-xs text-slate-500">{item.last_note_preview || tUnsafe(stageLabelKey(item.stage))}</div>
                     </button>
                   ))}
                 </div>
@@ -483,13 +520,13 @@ export function ConversationWorkbench({
 
           <Tabs value={bucket} onValueChange={(value) => setBucket(value as ConversationBucket)}>
             <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 md:grid-cols-5">
-              {(Object.keys(BUCKET_LABELS) as ConversationBucket[]).map((key) => (
+              {(Object.keys(BUCKET_LABEL_KEYS) as ConversationBucket[]).map((key) => (
                 <TabsTrigger
                   key={key}
                   value={key}
                   className="rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white"
                 >
-                  {BUCKET_LABELS[key]}
+                  {tUnsafe(BUCKET_LABEL_KEYS[key])}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -506,11 +543,11 @@ export function ConversationWorkbench({
 
           {loading ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-              Loading conversations...
+              {t('crm.state.loadingConversations')}
             </div>
           ) : inbox.items.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-              No conversations in this bucket yet.
+              {t('crm.state.emptyBucket')}
             </div>
           ) : (
             <div className="space-y-3">
@@ -524,9 +561,9 @@ export function ConversationWorkbench({
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={stageTone(item.stage)}>{item.stage}</Badge>
+                        <Badge className={stageTone(item.stage)}>{tUnsafe(stageLabelKey(item.stage))}</Badge>
                         <Badge variant="outline" className={conversationUrgency(item).tone}>
-                          {conversationUrgency(item).label}
+                          {tUnsafe(conversationUrgency(item).labelKey)}
                         </Badge>
                         <span className="font-mono text-xs text-slate-500">{item.id.slice(0, 8)}</span>
                         {item.assigned_to ? (
@@ -535,15 +572,15 @@ export function ConversationWorkbench({
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="border-amber-300 text-amber-700">
-                            unassigned
+                            {t('crm.state.unassigned')}
                           </Badge>
                         )}
                       </div>
                       <div className="text-base font-semibold text-slate-900">
-                        {item.phone_e164 || item.customer_hash || 'identity pending'}
+                        {item.phone_e164 || item.customer_hash || t('crm.state.identityPending')}
                       </div>
                       <div className="text-sm text-slate-500">
-                        {item.last_note_preview || 'No note yet'}
+                        {item.last_note_preview || t('crm.state.noNote')}
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                         {item.source_summary?.source ? <Badge variant="outline">{String(item.source_summary.source)}</Badge> : null}
@@ -553,22 +590,22 @@ export function ConversationWorkbench({
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm text-slate-600 lg:min-w-[280px]">
                       <div>
-                        <div className="text-[11px] uppercase tracking-wider text-slate-400">Follow-up</div>
+                        <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.followUp')}</div>
                         <div>{item.next_follow_up_at ? formatTimestamp(item.next_follow_up_at) : '—'}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wider text-slate-400">Last activity</div>
+                        <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.lastActivity')}</div>
                         <div>{formatTimestamp(item.last_activity_at)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wider text-slate-400">Predicted value</div>
+                        <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.predictedValue')}</div>
                         <div className="font-semibold text-slate-900">
-                          {predictedValueLabel(item.mizan_predicted_value)}
+                          {formatNumber(item.mizan_predicted_value ?? 0)}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wider text-slate-400">Links</div>
-                        <div>{item.primary_call_id ? 'call' : ''}{item.primary_call_id && item.primary_session_id ? ' + ' : ''}{item.primary_session_id ? 'session' : '—'}</div>
+                        <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.links')}</div>
+                        <div>{item.primary_call_id ? t('crm.entity.call') : ''}{item.primary_call_id && item.primary_session_id ? ' + ' : ''}{item.primary_session_id ? t('crm.entity.session') : '—'}</div>
                       </div>
                     </div>
                   </div>
@@ -582,14 +619,14 @@ export function ConversationWorkbench({
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
-            <SheetTitle>Conversation Detail</SheetTitle>
+            <SheetTitle>{t('crm.detail.title')}</SheetTitle>
             <SheetDescription>
-              Inspect the timeline and work the conversation without dropping into raw call rows.
+              {t('crm.detail.description')}
             </SheetDescription>
           </SheetHeader>
 
           {!detail ? (
-            <div className="mt-6 text-sm text-slate-500">Loading detail...</div>
+            <div className="mt-6 text-sm text-slate-500">{t('crm.detail.loading')}</div>
           ) : (
             <div className="mt-6 space-y-6">
               <Card>
@@ -598,41 +635,44 @@ export function ConversationWorkbench({
                     {detail.conversation.phone_e164 || detail.conversation.customer_hash || detail.conversation.id}
                   </CardTitle>
                   <CardDescription>
-                    Stage `{detail.conversation.stage}` | status `{detail.conversation.status}`
+                    {tUnsafe(stageLabelKey(detail.conversation.stage))} | {tUnsafe(statusLabelKey(detail.conversation.status))}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-slate-400">Next follow-up</div>
+                    <div className="text-slate-400">{t('crm.field.nextFollowUp')}</div>
                     <div>{detail.conversation.next_follow_up_at ? formatTimestamp(detail.conversation.next_follow_up_at) : '—'}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Last activity</div>
+                    <div className="text-slate-400">{t('crm.field.lastActivity')}</div>
                     <div>{formatTimestamp(detail.conversation.last_activity_at)}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Predicted value</div>
-                    <div>{predictedValueLabel(detail.conversation.mizan_predicted_value)}</div>
+                    <div className="text-slate-400">{t('crm.field.predictedValue')}</div>
+                    <div>{formatNumber(detail.conversation.mizan_predicted_value ?? 0)}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Stats</div>
+                    <div className="text-slate-400">{t('crm.field.stats')}</div>
                     <div>
-                      {detail.stats?.timeline_count ?? 0} events, {detail.stats?.sales_count ?? 0} sales
+                      {t('crm.field.statsSummary', {
+                        events: detail.stats?.timeline_count ?? 0,
+                        sales: detail.stats?.sales_count ?? 0,
+                      })}
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Assignee</div>
+                    <div className="text-slate-400">{t('crm.field.assignee')}</div>
                     <div>{assigneeLabel(detail.conversation.assigned_to)}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Primary evidence</div>
-                    <div>{detail.conversation.primary_call_id ? 'call' : '—'} / {detail.conversation.primary_session_id ? 'session' : '—'}</div>
+                    <div className="text-slate-400">{t('crm.field.primaryEvidence')}</div>
+                    <div>{detail.conversation.primary_call_id ? t('crm.entity.call') : '—'} / {detail.conversation.primary_session_id ? t('crm.entity.session') : '—'}</div>
                   </div>
                   <div className="col-span-2">
-                    <div className="text-slate-400">Operator brief</div>
+                    <div className="text-slate-400">{t('crm.field.operatorBrief')}</div>
                     <div className="mt-1 flex flex-wrap gap-2">
                       <Badge variant="outline" className={conversationUrgency(detail.conversation).tone}>
-                        {conversationUrgency(detail.conversation).label}
+                        {tUnsafe(conversationUrgency(detail.conversation).labelKey)}
                       </Badge>
                       {detail.conversation.source_summary?.source ? <Badge variant="outline">{String(detail.conversation.source_summary.source)}</Badge> : null}
                       {detail.conversation.source_summary?.intent_action ? <Badge variant="outline">{String(detail.conversation.source_summary.intent_action)}</Badge> : null}
@@ -644,19 +684,19 @@ export function ConversationWorkbench({
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Operator Actions</CardTitle>
-                  <CardDescription>Use the new conversation kernel directly from the UI.</CardDescription>
+                  <CardTitle className="text-lg">{t('crm.actions.title')}</CardTitle>
+                  <CardDescription>{t('crm.actions.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Assignee</label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.field.assignee')}</label>
                     <div className="flex flex-wrap gap-2">
                       <select
                         value={draftAssignedTo}
                         onChange={(e) => setDraftAssignedTo(e.target.value)}
                         className="h-10 min-w-[220px] rounded-md border border-slate-200 bg-white px-3 text-sm"
                       >
-                        <option value="">Unassigned</option>
+                        <option value="">{t('crm.bucket.unassigned')}</option>
                         {assignees.map((assignee) => (
                           <option key={assignee.id} value={assignee.id}>
                             {(assignee.email || `${assignee.role}:${assignee.id.slice(0, 8)}`)} ({assignee.role})
@@ -670,9 +710,9 @@ export function ConversationWorkbench({
                         onClick={() => void runMutation('/api/conversations/assign', {
                           conversation_id: detail.conversation.id,
                           assigned_to: draftAssignedTo || null,
-                        }, 'Assignee updated')}
+                        }, t('crm.success.assigneeUpdated'))}
                       >
-                        Apply assignee
+                        {t('crm.actions.applyAssignee')}
                       </Button>
                       {currentUserId ? (
                         <Button
@@ -684,10 +724,10 @@ export function ConversationWorkbench({
                             void runMutation('/api/conversations/assign', {
                               conversation_id: detail.conversation.id,
                               assigned_to: currentUserId,
-                            }, 'Assigned to you');
+                            }, t('crm.success.assignedToYou'));
                           }}
                         >
-                          Assign me
+                          {t('crm.actions.assignMe')}
                         </Button>
                       ) : null}
                     </div>
@@ -704,15 +744,15 @@ export function ConversationWorkbench({
                           conversation_id: detail.conversation.id,
                           stage,
                           next_follow_up_at: draftFollowUp ? new Date(draftFollowUp).toISOString() : null,
-                        }, `Stage moved to ${stage}`)}
+                        }, t('crm.success.stageChanged'))}
                       >
-                        {stage}
+                        {tUnsafe(stageLabelKey(stage))}
                       </Button>
                     ))}
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Follow-up at</label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.actions.followUpAt')}</label>
                     <input
                       type="datetime-local"
                       value={draftFollowUp}
@@ -726,7 +766,7 @@ export function ConversationWorkbench({
                         disabled={!canOperate || saving}
                         onClick={() => setDraftFollowUp(toInputDateTimeValue(new Date(Date.now() + 2 * 60 * 60 * 1000)))}
                       >
-                        In 2 hours
+                        {t('crm.actions.quick.in2Hours')}
                       </Button>
                       <Button
                         size="sm"
@@ -738,7 +778,7 @@ export function ConversationWorkbench({
                           setDraftFollowUp(toInputDateTimeValue(next));
                         }}
                       >
-                        Today 15:00
+                        {t('crm.actions.quick.today1500')}
                       </Button>
                       <Button
                         size="sm"
@@ -751,7 +791,7 @@ export function ConversationWorkbench({
                           setDraftFollowUp(toInputDateTimeValue(next));
                         }}
                       >
-                        Tomorrow 09:30
+                        {t('crm.actions.quick.tomorrow0930')}
                       </Button>
                     </div>
                     <Button
@@ -762,18 +802,18 @@ export function ConversationWorkbench({
                         conversation_id: detail.conversation.id,
                         next_follow_up_at: new Date(draftFollowUp).toISOString(),
                         note: draftNote || null,
-                      }, 'Follow-up scheduled')}
+                      }, t('crm.success.followUpScheduled'))}
                     >
-                      Set follow-up
+                      {t('crm.actions.setFollowUp')}
                     </Button>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Operator note</label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.actions.note')}</label>
                     <Textarea
                       value={draftNote}
                       onChange={(e) => setDraftNote(e.target.value)}
-                      placeholder="Write the current deal reality, objection, next step..."
+                      placeholder={t('crm.actions.notePlaceholder')}
                       rows={5}
                     />
                     <div className="flex flex-wrap gap-2">
@@ -783,9 +823,9 @@ export function ConversationWorkbench({
                         onClick={() => void runMutation('/api/conversations/note', {
                           conversation_id: detail.conversation.id,
                           note: draftNote,
-                        }, 'Note saved')}
+                        }, t('crm.success.noteSaved'))}
                       >
-                        Save note
+                        {t('crm.actions.saveNote')}
                       </Button>
                       {detail.conversation.stage === 'won' || detail.conversation.stage === 'lost' || detail.conversation.stage === 'junk' ? (
                         <Button
@@ -797,9 +837,9 @@ export function ConversationWorkbench({
                             stage: 'follow_up_waiting',
                             next_follow_up_at: draftFollowUp ? new Date(draftFollowUp).toISOString() : null,
                             note: draftNote || null,
-                          }, 'Conversation reopened')}
+                          }, t('crm.success.reopened'))}
                         >
-                          Reopen
+                          {t('crm.actions.reopen')}
                         </Button>
                       ) : null}
                     </div>
@@ -809,44 +849,44 @@ export function ConversationWorkbench({
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Evidence Stack</CardTitle>
-                  <CardDescription>Source, links, and sale context in one operator view.</CardDescription>
+                  <CardTitle className="text-lg">{t('crm.evidence.title')}</CardTitle>
+                  <CardDescription>{t('crm.evidence.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Source summary</div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.sourceSummary')}</div>
                     <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                       {JSON.stringify(detail.conversation.source_summary ?? {}, null, 2)}
                     </pre>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Primary call</div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.primaryCall')}</div>
                       {detail.primary_call ? (
                         <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                           {JSON.stringify(detail.primary_call, null, 2)}
                         </pre>
                       ) : (
-                        <div className="text-sm text-slate-500">No primary call attached.</div>
+                        <div className="text-sm text-slate-500">{t('crm.evidence.noPrimaryCall')}</div>
                       )}
                     </div>
                     <div>
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Primary session</div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.primarySession')}</div>
                       {detail.primary_session ? (
                         <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                           {JSON.stringify(detail.primary_session, null, 2)}
                         </pre>
                       ) : (
-                        <div className="text-sm text-slate-500">No primary session attached.</div>
+                        <div className="text-sm text-slate-500">{t('crm.evidence.noPrimarySession')}</div>
                       )}
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Links</div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.field.links')}</div>
                       <div className="space-y-2">
                         {detail.links.length === 0 ? (
-                          <div className="text-sm text-slate-500">No linked entities.</div>
+                          <div className="text-sm text-slate-500">{t('crm.evidence.noLinks')}</div>
                         ) : detail.links.map((link) => (
                           <div key={link.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
                             <div className="font-medium text-slate-900">{link.entity_type}</div>
@@ -856,10 +896,10 @@ export function ConversationWorkbench({
                       </div>
                     </div>
                     <div>
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Sales</div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.sales')}</div>
                       <div className="space-y-2">
                         {detail.sales.length === 0 ? (
-                          <div className="text-sm text-slate-500">No linked sales.</div>
+                          <div className="text-sm text-slate-500">{t('crm.evidence.noSales')}</div>
                         ) : detail.sales.map((sale) => (
                           <div key={sale.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
                             <div className="font-medium text-slate-900">{sale.status}</div>
@@ -875,12 +915,12 @@ export function ConversationWorkbench({
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Timeline</CardTitle>
-                  <CardDescription>Immutable conversation event stream.</CardDescription>
+                  <CardTitle className="text-lg">{t('crm.timeline.title')}</CardTitle>
+                  <CardDescription>{t('crm.timeline.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {detail.timeline.length === 0 ? (
-                    <div className="text-sm text-slate-500">No timeline entries yet.</div>
+                    <div className="text-sm text-slate-500">{t('crm.timeline.empty')}</div>
                   ) : (
                     detail.timeline.map((event) => (
                       <div key={event.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">

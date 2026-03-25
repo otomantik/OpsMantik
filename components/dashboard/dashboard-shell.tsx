@@ -186,7 +186,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                   )}
                 >
-                  Conversation Desk
+                  {t('dashboard.conversationDesk')}
                 </Link>
                 <Link
                   href={`/dashboard/site/${siteId}/today-desk`}
@@ -195,7 +195,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                   )}
                 >
-                  Today Desk
+                  {t('dashboard.todayDesk')}
                 </Link>
                 <Link
                   href={`/dashboard/site/${siteId}/oci-control`}
@@ -314,8 +314,8 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
 
           <div className="mb-8">
             <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">Conversation CRM</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Inbox, detail, timeline, and operator actions on top of the new conversation kernel.</p>
+              <h2 className="text-base font-semibold text-slate-800">{t('dashboard.conversationCrm')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.conversationCrmSubtitle')}</p>
             </div>
             <ConversationWorkbench siteId={siteId} siteRole={siteRole} currentUserId={currentUserId} />
           </div>

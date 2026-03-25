@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
+import { translate } from '@/lib/i18n/t';
 import { isAdmin } from '@/lib/auth/is-admin';
 import type { SiteRole } from '@/lib/auth/rbac';
 import { ConversationDeskShell } from '@/components/dashboard/conversation-desk-shell';
@@ -69,8 +70,8 @@ export default async function TodayDeskPage({ params }: PageProps) {
         siteName={site.name || site.domain || undefined}
         siteRole={siteRole}
         currentUserId={user.id}
-        title="Today Desk"
-        subtitle="Fastest lane for today's follow-ups, overdue rescues, and operator-owned execution."
+        title={translate(resolvedLocale, 'crm.todayDesk.title')}
+        subtitle={translate(resolvedLocale, 'crm.todayDesk.subtitle')}
         initialBucket="today"
       />
     </I18nProvider>
