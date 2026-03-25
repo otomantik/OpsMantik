@@ -8,13 +8,51 @@ import { createClient } from '@/lib/supabase/server';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function isValidUuid(v: unknown): v is string {
-  return typeof v === 'string' && UUID_RE.test(v);
-}
+import { isValidUuid, mapConversationRpcError } from '@/lib/api/conversations/http';
 
 export const runtime = 'nodejs';
+
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: getBuildInfoHeaders() });
+  }
+
+  const siteId = req.nextUrl.searchParams.get('site_id');
+  if (!isValidUuid(siteId)) {
+    return NextResponse.json({ error: 'site_id is required and must be a valid UUID' }, { status: 400, headers: getBuildInfoHeaders() });
+  }
+
+  const access = await validateSiteAccess(siteId, user.id, supabase);
+  if (!access.allowed) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: getBuildInfoHeaders() });
+  }
+
+  const bucket = req.nextUrl.searchParams.get('bucket') ?? 'active';
+  const stage = req.nextUrl.searchParams.get('stage');
+  const assignedToRaw = req.nextUrl.searchParams.get('assigned_to');
+  const assignedTo = assignedToRaw && isValidUuid(assignedToRaw) ? assignedToRaw : null;
+  const limitRaw = Number(req.nextUrl.searchParams.get('limit') ?? '50');
+  const offsetRaw = Number(req.nextUrl.searchParams.get('offset') ?? '0');
+  const search = req.nextUrl.searchParams.get('search');
+
+  const { data, error } = await supabase.rpc('get_conversation_inbox_v1', {
+    p_site_id: siteId,
+    p_bucket: bucket,
+    p_stage: stage,
+    p_assigned_to: assignedTo,
+    p_limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+    p_offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
+    p_search: search,
+  });
+
+  if (error) {
+    return mapConversationRpcError(error, 'Failed to load conversation inbox');
+  }
+
+  return NextResponse.json(data, { status: 200, headers: getBuildInfoHeaders() });
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();

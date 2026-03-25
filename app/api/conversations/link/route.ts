@@ -4,8 +4,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { isValidUuid, mapConversationRpcError } from '@/lib/api/conversations/http';
 
 export const runtime = 'nodejs';
 
@@ -26,23 +26,8 @@ export async function POST(req: NextRequest) {
   }
 
   const conversationId = body.conversation_id;
-  if (!conversationId || typeof conversationId !== 'string') {
-    return NextResponse.json({ error: 'conversation_id is required' }, { status: 400, headers: getBuildInfoHeaders() });
-  }
-
-  const { data: conversation, error: fetchError } = await supabase
-    .from('conversations')
-    .select('id, site_id')
-    .eq('id', conversationId)
-    .maybeSingle();
-
-  if (fetchError || !conversation) {
-    return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers: getBuildInfoHeaders() });
-  }
-
-  const access = await validateSiteAccess(conversation.site_id, user.id, supabase);
-  if (!access.allowed) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: getBuildInfoHeaders() });
+  if (!isValidUuid(conversationId)) {
+    return NextResponse.json({ error: 'conversation_id is required and must be a valid UUID' }, { status: 400, headers: getBuildInfoHeaders() });
   }
 
   const entityType = body.entity_type;
@@ -54,56 +39,20 @@ export async function POST(req: NextRequest) {
   }
 
   const entityId = body.entity_id;
-  if (!entityId || typeof entityId !== 'string') {
-    return NextResponse.json({ error: 'entity_id is required' }, { status: 400, headers: getBuildInfoHeaders() });
+  if (!isValidUuid(entityId)) {
+    return NextResponse.json({ error: 'entity_id is required and must be a valid UUID' }, { status: 400, headers: getBuildInfoHeaders() });
   }
 
-  const siteId = conversation.site_id;
-  let entityExists = false;
-  if (entityType === 'call') {
-    const { data: row } = await supabase
-      .from('calls')
-      .select('id')
-      .eq('id', entityId)
-      .eq('site_id', siteId)
-      .maybeSingle();
-    entityExists = !!row;
-  } else if (entityType === 'session') {
-    const { data: row } = await supabase
-      .from('sessions')
-      .select('id')
-      .eq('id', entityId)
-      .eq('site_id', siteId)
-      .maybeSingle();
-    entityExists = !!row;
-  } else if (entityType === 'event') {
-    const { data: row } = await supabase
-      .from('events')
-      .select('id')
-      .eq('id', entityId)
-      .eq('site_id', siteId)
-      .maybeSingle();
-    entityExists = !!row;
-  }
-  if (!entityExists) {
-    return NextResponse.json(
-      { error: 'Entity not found or does not belong to this conversation\'s site', code: 'ENTITY_SITE_MISMATCH' },
-      { status: 400, headers: getBuildInfoHeaders() }
-    );
-  }
-
-  const { error: insertError } = await supabase
-    .from('conversation_links')
-    .insert({ conversation_id: conversationId, entity_type: entityType, entity_id: entityId })
-    .select('id')
-    .single();
+  const { data, error: insertError } = await supabase.rpc('conversation_link_entity_v1', {
+    p_conversation_id: conversationId,
+    p_entity_type: entityType,
+    p_entity_id: entityId,
+  });
 
   if (insertError) {
-    if (insertError.code === '23505') {
-      return NextResponse.json({ success: true, message: 'Link already exists' }, { status: 200, headers: getBuildInfoHeaders() });
-    }
-    return NextResponse.json({ error: insertError.message }, { status: 500, headers: getBuildInfoHeaders() });
+    return mapConversationRpcError(insertError, 'Failed to link conversation entity');
   }
 
-  return NextResponse.json({ success: true }, { status: 201, headers: getBuildInfoHeaders() });
+  const linked = Boolean((data as { linked?: boolean } | null)?.linked);
+  return NextResponse.json(data, { status: linked ? 201 : 200, headers: getBuildInfoHeaders() });
 }
