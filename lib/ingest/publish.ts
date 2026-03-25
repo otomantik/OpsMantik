@@ -13,12 +13,28 @@ export type PublishToQStashOptions = {
 };
 
 /**
+ * Public origin for worker callbacks (QStash must receive an absolute https URL).
+ * Prefer NEXT_PUBLIC_APP_URL in Vercel (e.g. https://console.opsmantik.com).
+ * If unset, Vercel injects VERCEL_URL — use it so deploys do not enqueue to a relative path (QStash rejects / breaks).
+ */
+export function resolveAppBaseUrlForIngest(): string {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) {
+    const host = vercel.replace(/^https?:\/\//, '');
+    return `https://${host}`;
+  }
+  return '';
+}
+
+/**
  * Resolve target worker URL based on lane.
  * Fast-Lane: /api/workers/ingest/telemetry
  * Value-Lane: /api/workers/ingest/conversion
  */
 function resolveLaneUrl(lane: IngestLane): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL || '';
+  const base = resolveAppBaseUrlForIngest();
   if (lane === 'conversion') return `${base}/api/workers/ingest/conversion`;
   return `${base}/api/workers/ingest/telemetry`;
 }
@@ -31,6 +47,12 @@ export async function publishToQStash(options: PublishToQStashOptions): Promise<
   const { url, lane = 'telemetry', body, deduplicationId, retries = 3 } = options;
   
   const targetUrl = url || resolveLaneUrl(lane);
+
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    throw new Error(
+      `Ingest worker URL must be absolute (https://...). Set NEXT_PUBLIC_APP_URL on the server, or use Vercel (VERCEL_URL). Got: ${targetUrl.slice(0, 120)}`
+    );
+  }
 
   await qstash.publishJSON({
     url: targetUrl,
