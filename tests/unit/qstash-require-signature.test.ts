@@ -177,3 +177,35 @@ test('requireQstashSignature: production internal worker auth bypasses QStash si
     restoreEnv(saved);
   }
 });
+
+test('requireQstashSignature: production internal worker auth still works when QStash keys are missing', async () => {
+  const envKeys = ['NODE_ENV', 'VERCEL_ENV', 'QSTASH_CURRENT_SIGNING_KEY', 'QSTASH_NEXT_SIGNING_KEY', 'ALLOW_INSECURE_DEV_WORKER', 'CRON_SECRET'];
+  const saved = stashEnv(envKeys);
+  try {
+    (process.env as NodeJS.ProcessEnv & { NODE_ENV?: string }).NODE_ENV = 'production';
+    process.env.VERCEL_ENV = 'production';
+    delete process.env.QSTASH_CURRENT_SIGNING_KEY;
+    delete process.env.QSTASH_NEXT_SIGNING_KEY;
+    process.env.CRON_SECRET = 'internal-worker-secret';
+    delete process.env.ALLOW_INSECURE_DEV_WORKER;
+
+    const handler = async () => NextResponse.json({ ok: true, internal: true });
+    const wrapped = requireQstashSignature(handler);
+    const req = new NextRequest('http://localhost:3000/api/workers/ingest/telemetry', {
+      method: 'POST',
+      body: '{}',
+      headers: {
+        authorization: 'Bearer internal-worker-secret',
+        'x-opsmantik-internal-worker': '1',
+      },
+    });
+    const res = await wrapped(req);
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body?.ok, true);
+    assert.equal(body?.internal, true);
+  } finally {
+    restoreEnv(saved);
+  }
+});

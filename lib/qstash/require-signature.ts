@@ -79,8 +79,10 @@ export function requireQstashSignature(handler: AppRouterHandler): AppRouterHand
 
   const keys = getSigningKeys();
   if (!keys) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- handler signature requires request param
-    return async (_req: NextRequest) => {
+    return async (request: NextRequest, params?: unknown) => {
+      if (hasValidInternalWorkerAuth(request)) {
+        return handler(request, params);
+      }
       return new Response(
         JSON.stringify({ error: 'QStash signing keys misconfigured', code: 'QSTASH_KEYS_MISSING' }),
         { status: 503, headers: { 'Content-Type': 'application/json' } }
