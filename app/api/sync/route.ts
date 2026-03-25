@@ -172,10 +172,14 @@ export type SyncHandlerDeps = {
   validateSite?: (publicId: string) => Promise<{ valid: boolean; site?: { id: string } }>;
   /** When set, used instead of publishToQStash (for fallback tests: throw to trigger fallback). */
   publish?: (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown; deduplicationId: string; retries: number }) => Promise<void>;
+  /** When set, used instead of executeIngest for direct-worker path tests. */
+  executeWorker?: (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => Promise<void>;
   /** When set, used instead of fallback buffer insert (for assertions). */
   insertFallback?: (row: unknown) => Promise<{ error: unknown }>;
   /** When set, used instead of RateLimitService.check (for tests: avoid 429). */
   checkRateLimit?: () => Promise<SyncRateLimitResult>;
+  /** When set, used instead of getSiteIngestConfig (for tests without DB). */
+  getSiteIngestConfig?: (siteIdUuid: string) => Promise<import('@/lib/ingest/site-ingest-config').StrictSiteIngestConfig>;
 }
 
 /** Result shape from rate limit check; sync route uses redisUnavailable to return 503 when Redis is down. */
@@ -339,12 +343,14 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
     const ua = normalizeUserAgent(req.headers.get('user-agent'));
     const { extractGeoInfo } = await import('@/lib/geo');
     const { getSiteIngestConfig } = await import('@/lib/ingest/site-ingest-config');
-    const siteIngestConfig = await getSiteIngestConfig(siteIdUuid);
+    const siteIngestConfig = deps?.getSiteIngestConfig
+      ? await deps.getSiteIngestConfig(siteIdUuid)
+      : await getSiteIngestConfig(siteIdUuid);
     const strictGhostGeo = siteIngestConfig.ghost_geo_strict || siteIngestConfig.ingest_strict_mode;
 
     const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
     const useDirectWorker = process.env.OPSMANTIK_SYNC_DIRECT_WORKER === '1' || process.env.OPSMANTIK_SYNC_DIRECT_WORKER === 'true';
-    const runDirectWorker = async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
+    const runDirectWorker = deps?.executeWorker ?? (async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
       const baseUrl = resolveAppBaseUrlForIngest() || new URL(req.url).origin;
       const targetUrl = args.url || (args.lane === 'conversion' ? `${baseUrl}/api/workers/ingest/conversion` : `${baseUrl}/api/workers/ingest/telemetry`);
       const workerReq = new NextRequest(targetUrl, {
@@ -361,7 +367,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
         const t = await res.text().catch(() => '');
         throw new Error(`direct_worker_${res.status}: ${t.slice(0, 200)}`);
       }
-    };
+    });
     const doPublish = deps?.publish ?? (useDirectWorker
       ? (async (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => {
           await runDirectWorker(args);
@@ -372,6 +378,8 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
 
     let queued = 0;
     let degraded = 0;
+    let directCritical = 0;
+    let directFallbackRecovered = 0;
     const ingestIds: string[] = [];
 
     for (const b of bodies) {
@@ -413,6 +421,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
       try {
         if (isIntentCriticalEvent(b)) {
           await runDirectWorker({ lane: 'telemetry', body: workerPayload });
+          directCritical++;
         } else {
           await doPublish({ lane: 'telemetry', body: workerPayload, deduplicationId: idempotencyKey, retries: 3 });
         }
@@ -423,6 +432,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
             await runDirectWorker({ lane: 'telemetry', body: workerPayload });
             queued++;
             degraded++;
+            directFallbackRecovered++;
             continue;
           } catch {
             // Fall through to degraded + fallback path below.
@@ -458,9 +468,13 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
       );
     }
 
+    const successHeaders = { ...baseHeaders } as Record<string, string>;
+    if (directCritical > 0) successHeaders['x-opsmantik-direct-worker-critical'] = String(directCritical);
+    if (directFallbackRecovered > 0) successHeaders['x-opsmantik-direct-worker-fallback'] = String(directFallbackRecovered);
+
     return NextResponse.json(
       createSyncResponse(true, 10, { status: 'queued', v: OPSMANTIK_VERSION, ingest_id: primaryIngestId, count: queued, degraded }),
-      { status: 202, headers: baseHeaders }
+      { status: 202, headers: successHeaders }
     );
 }
 
