@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel } from '@/lib/i18n/mapping';
 import type { SiteRole } from '@/lib/auth/rbac';
 import { hasCapability } from '@/lib/auth/rbac';
 
@@ -106,6 +107,29 @@ const STAGE_OPTIONS = ['new', 'contacted', 'qualified', 'proposal_sent', 'follow
 function toInputDateTimeValue(date: Date) {
   const next = new Date(date.getTime() - (date.getTimezoneOffset() * 60 * 1000));
   return next.toISOString().slice(0, 16);
+}
+
+function humanizeKey(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function summarizePayload(payload?: Record<string, unknown> | null) {
+  if (!payload) return [];
+  return Object.entries(payload)
+    .filter(([, value]) => value != null && value !== '')
+    .slice(0, 6)
+    .map(([key, value]) => ({
+      key,
+      label: humanizeKey(key),
+      value:
+        typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+          ? String(value)
+          : JSON.stringify(value),
+    }));
 }
 
 function conversationUrgency(item: ConversationInboxItem) {
@@ -225,10 +249,20 @@ export function ConversationWorkbench({
   const [draftAssignedTo, setDraftAssignedTo] = useState('');
   const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     setBucket(initialBucket);
   }, [initialBucket]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     if (!successMessage) return;
@@ -322,10 +356,10 @@ export function ConversationWorkbench({
 
   const summaryCards = useMemo(
     () => [
-      { label: t('crm.summary.active'), value: inbox.summary?.total_active ?? 0 },
-      { label: t('crm.summary.overdue'), value: inbox.summary?.overdue ?? 0 },
-      { label: t('crm.summary.today'), value: inbox.summary?.today ?? 0 },
-      { label: t('crm.summary.unassigned'), value: inbox.summary?.unassigned ?? 0 },
+      { label: t('crm.summary.active'), value: inbox.summary?.total_active ?? 0, bucket: 'active' as const },
+      { label: t('crm.summary.overdue'), value: inbox.summary?.overdue ?? 0, bucket: 'overdue' as const },
+      { label: t('crm.summary.today'), value: inbox.summary?.today ?? 0, bucket: 'today' as const },
+      { label: t('crm.summary.unassigned'), value: inbox.summary?.unassigned ?? 0, bucket: 'unassigned' as const },
     ],
     [inbox.summary, t]
   );
@@ -366,11 +400,36 @@ export function ConversationWorkbench({
     ];
   }, [currentUserId, inbox.items, t]);
 
+  const myItems = useMemo(
+    () => (currentUserId ? inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3) : []),
+    [currentUserId, inbox.items]
+  );
+
   function assigneeLabel(id: string | null | undefined) {
     if (!id) return t('crm.bucket.unassigned');
     const row = assignees.find((item) => item.id === id);
     if (!row) return `${id.slice(0, 8)}...`;
     return row.email || `${row.role}:${row.id.slice(0, 8)}`;
+  }
+
+  function sourceSummaryBadges(summary?: Record<string, unknown> | null) {
+    return [
+      typeof summary?.source === 'string' ? summary.source : null,
+      typeof summary?.intent_action === 'string' ? summary.intent_action : null,
+      typeof summary?.utm_source === 'string' ? summary.utm_source : null,
+      typeof summary?.utm_campaign === 'string' ? summary.utm_campaign : null,
+      typeof summary?.utm_term === 'string' ? summary.utm_term : null,
+      typeof summary?.referrer_host === 'string' ? summary.referrer_host : null,
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .map((value) => ({ value, label: getLocalizedLabel(value, t) }));
+  }
+
+  function applySearchPreset(value: string) {
+    const next = value.trim();
+    if (!next) return;
+    setBucket('all');
+    setSearch(next);
   }
 
   async function refreshAll() {
@@ -380,6 +439,15 @@ export function ConversationWorkbench({
   async function openConversation(id: string) {
     setSelectedId(id);
     setDetailOpen(true);
+  }
+
+  async function copyText(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setSuccessMessage(t('crm.success.copied'));
+    } catch {
+      setError(t('common.unknownError'));
+    }
   }
 
   async function runMutation(path: string, body: Record<string, unknown>, successText?: string) {
@@ -408,24 +476,36 @@ export function ConversationWorkbench({
               <CardTitle className="text-xl text-slate-900">{resolvedTitle}</CardTitle>
               <CardDescription>{resolvedDescription}</CardDescription>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('crm.searchPlaceholder')}
-                className="h-10 w-72 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400 sm:w-80"
               />
-              <Button variant="outline" onClick={() => void refreshAll()} disabled={loading || saving}>
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => void refreshAll()} disabled={loading || saving}>
                 {t('button.refresh')}
               </Button>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-4">
             {summaryCards.map((card) => (
-              <div key={card.label} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <button
+                key={card.label}
+                type="button"
+                onClick={() => {
+                  setBucket(card.bucket);
+                  setSearch('');
+                }}
+                className={`rounded-lg border px-4 py-3 text-left transition ${
+                  bucket === card.bucket
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
+                }`}
+              >
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{card.label}</div>
-                <div className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{card.value}</div>
-              </div>
+                <div className={`mt-1 text-2xl font-bold tabular-nums ${bucket === card.bucket ? 'text-white' : 'text-slate-900'}`}>{card.value}</div>
+              </button>
             ))}
           </div>
           {operatorPulse.length > 0 ? (
@@ -443,7 +523,7 @@ export function ConversationWorkbench({
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className={`grid gap-4 ${currentUserId ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+          <div className={`grid gap-4 ${currentUserId ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{t('crm.rail.deskFocus')}</div>
               <div className="mt-2 text-sm font-medium text-slate-900">{t('crm.rail.hottestTitle')}</div>
@@ -500,9 +580,9 @@ export function ConversationWorkbench({
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">{t('crm.rail.myDesk')}</div>
                 <div className="mt-2 text-sm font-medium text-emerald-900">{t('crm.rail.myDeskSubtitle')}</div>
                 <div className="mt-3 space-y-2">
-                  {inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3).length === 0 ? (
+                  {myItems.length === 0 ? (
                     <div className="text-sm text-emerald-700">{t('crm.rail.noMine')}</div>
-                  ) : inbox.items.filter((item) => item.assigned_to === currentUserId).slice(0, 3).map((item) => (
+                  ) : myItems.map((item) => (
                     <button
                       key={`mine-${item.id}`}
                       type="button"
@@ -519,12 +599,12 @@ export function ConversationWorkbench({
           </div>
 
           <Tabs value={bucket} onValueChange={(value) => setBucket(value as ConversationBucket)}>
-            <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 md:grid-cols-5">
+            <TabsList className="flex h-auto w-full flex-nowrap gap-2 overflow-x-auto bg-transparent p-0 pb-1">
               {(Object.keys(BUCKET_LABEL_KEYS) as ConversationBucket[]).map((key) => (
                 <TabsTrigger
                   key={key}
                   value={key}
-                  className="rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white"
+                  className="shrink-0 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white"
                 >
                   {tUnsafe(BUCKET_LABEL_KEYS[key])}
                 </TabsTrigger>
@@ -558,8 +638,8 @@ export function ConversationWorkbench({
                   onClick={() => void openConversation(item.id)}
                   className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
                 >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-2">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className={stageTone(item.stage)}>{tUnsafe(stageLabelKey(item.stage))}</Badge>
                         <Badge variant="outline" className={conversationUrgency(item).tone}>
@@ -576,26 +656,36 @@ export function ConversationWorkbench({
                           </Badge>
                         )}
                       </div>
-                      <div className="text-base font-semibold text-slate-900">
+                      <div className="truncate text-base font-semibold text-slate-900">
                         {item.phone_e164 || item.customer_hash || t('crm.state.identityPending')}
                       </div>
-                      <div className="text-sm text-slate-500">
+                      <div className="line-clamp-2 text-sm text-slate-500">
                         {item.last_note_preview || t('crm.state.noNote')}
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                        {item.source_summary?.source ? <Badge variant="outline">{String(item.source_summary.source)}</Badge> : null}
-                        {item.source_summary?.intent_action ? <Badge variant="outline">{String(item.source_summary.intent_action)}</Badge> : null}
-                        {item.source_summary?.utm_source ? <Badge variant="outline">{String(item.source_summary.utm_source)}</Badge> : null}
+                        {sourceSummaryBadges(item.source_summary).map((entry) => (
+                          <button
+                            key={`${item.id}-${entry.value}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              applySearchPreset(entry.value);
+                            }}
+                            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            {entry.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm text-slate-600 lg:min-w-[280px]">
+                    <div className="grid grid-cols-2 gap-3 text-sm text-slate-600 sm:grid-cols-4 lg:min-w-[320px]">
                       <div>
                         <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.followUp')}</div>
-                        <div>{item.next_follow_up_at ? formatTimestamp(item.next_follow_up_at) : '—'}</div>
+                        <div className="truncate">{item.next_follow_up_at ? formatTimestamp(item.next_follow_up_at) : '—'}</div>
                       </div>
                       <div>
                         <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.lastActivity')}</div>
-                        <div>{formatTimestamp(item.last_activity_at)}</div>
+                        <div className="truncate">{formatTimestamp(item.last_activity_at)}</div>
                       </div>
                       <div>
                         <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.predictedValue')}</div>
@@ -605,7 +695,7 @@ export function ConversationWorkbench({
                       </div>
                       <div>
                         <div className="text-[11px] uppercase tracking-wider text-slate-400">{t('crm.field.links')}</div>
-                        <div>{item.primary_call_id ? t('crm.entity.call') : ''}{item.primary_call_id && item.primary_session_id ? ' + ' : ''}{item.primary_session_id ? t('crm.entity.session') : '—'}</div>
+                        <div className="truncate">{item.primary_call_id ? t('crm.entity.call') : ''}{item.primary_call_id && item.primary_session_id ? ' + ' : ''}{item.primary_session_id ? t('crm.entity.session') : '—'}</div>
                       </div>
                     </div>
                   </div>
@@ -617,7 +707,7 @@ export function ConversationWorkbench({
       </Card>
 
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+        <SheetContent side={isMobile ? 'bottom' : 'right'} className="h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t p-4 sm:h-full sm:max-w-2xl sm:rounded-none sm:border-l sm:p-6">
           <SheetHeader>
             <SheetTitle>{t('crm.detail.title')}</SheetTitle>
             <SheetDescription>
@@ -638,7 +728,7 @@ export function ConversationWorkbench({
                     {tUnsafe(stageLabelKey(detail.conversation.stage))} | {tUnsafe(statusLabelKey(detail.conversation.status))}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-4 text-sm">
+                <CardContent className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                   <div>
                     <div className="text-slate-400">{t('crm.field.nextFollowUp')}</div>
                     <div>{detail.conversation.next_follow_up_at ? formatTimestamp(detail.conversation.next_follow_up_at) : '—'}</div>
@@ -668,15 +758,22 @@ export function ConversationWorkbench({
                     <div className="text-slate-400">{t('crm.field.primaryEvidence')}</div>
                     <div>{detail.conversation.primary_call_id ? t('crm.entity.call') : '—'} / {detail.conversation.primary_session_id ? t('crm.entity.session') : '—'}</div>
                   </div>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <div className="text-slate-400">{t('crm.field.operatorBrief')}</div>
                     <div className="mt-1 flex flex-wrap gap-2">
                       <Badge variant="outline" className={conversationUrgency(detail.conversation).tone}>
                         {tUnsafe(conversationUrgency(detail.conversation).labelKey)}
                       </Badge>
-                      {detail.conversation.source_summary?.source ? <Badge variant="outline">{String(detail.conversation.source_summary.source)}</Badge> : null}
-                      {detail.conversation.source_summary?.intent_action ? <Badge variant="outline">{String(detail.conversation.source_summary.intent_action)}</Badge> : null}
-                      {detail.conversation.source_summary?.utm_source ? <Badge variant="outline">{String(detail.conversation.source_summary.utm_source)}</Badge> : null}
+                      {sourceSummaryBadges(detail.conversation.source_summary).map((entry) => (
+                        <button
+                          key={`detail-${entry.value}`}
+                          type="button"
+                          onClick={() => applySearchPreset(entry.value)}
+                          className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          {entry.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </CardContent>
@@ -690,11 +787,11 @@ export function ConversationWorkbench({
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.field.assignee')}</label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <select
                         value={draftAssignedTo}
                         onChange={(e) => setDraftAssignedTo(e.target.value)}
-                        className="h-10 min-w-[220px] rounded-md border border-slate-200 bg-white px-3 text-sm"
+                        className="h-10 w-full min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm sm:min-w-[220px]"
                       >
                         <option value="">{t('crm.bucket.unassigned')}</option>
                         {assignees.map((assignee) => (
@@ -706,6 +803,7 @@ export function ConversationWorkbench({
                       <Button
                         size="sm"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         disabled={!canOperate || saving}
                         onClick={() => void runMutation('/api/conversations/assign', {
                           conversation_id: detail.conversation.id,
@@ -718,6 +816,7 @@ export function ConversationWorkbench({
                         <Button
                           size="sm"
                           variant="outline"
+                          className="w-full sm:w-auto"
                           disabled={!canOperate || saving}
                           onClick={() => {
                             setDraftAssignedTo(currentUserId);
@@ -738,6 +837,7 @@ export function ConversationWorkbench({
                       <Button
                         key={stage}
                         size="sm"
+                        className="flex-1 sm:flex-none"
                         variant={detail.conversation.stage === stage ? 'default' : 'outline'}
                         disabled={!canOperate || saving}
                         onClick={() => void runMutation('/api/conversations/stage', {
@@ -759,10 +859,11 @@ export function ConversationWorkbench({
                       onChange={(e) => setDraftFollowUp(e.target.value)}
                       className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                     />
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <Button
                         size="sm"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         disabled={!canOperate || saving}
                         onClick={() => setDraftFollowUp(toInputDateTimeValue(new Date(Date.now() + 2 * 60 * 60 * 1000)))}
                       >
@@ -771,6 +872,7 @@ export function ConversationWorkbench({
                       <Button
                         size="sm"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         disabled={!canOperate || saving}
                         onClick={() => {
                           const next = new Date();
@@ -783,6 +885,7 @@ export function ConversationWorkbench({
                       <Button
                         size="sm"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         disabled={!canOperate || saving}
                         onClick={() => {
                           const next = new Date();
@@ -797,6 +900,7 @@ export function ConversationWorkbench({
                     <Button
                       size="sm"
                       variant="outline"
+                      className="w-full sm:w-auto"
                       disabled={!canOperate || saving || !draftFollowUp}
                       onClick={() => void runMutation('/api/conversations/follow-up', {
                         conversation_id: detail.conversation.id,
@@ -816,9 +920,10 @@ export function ConversationWorkbench({
                       placeholder={t('crm.actions.notePlaceholder')}
                       rows={5}
                     />
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <Button
                         size="sm"
+                        className="w-full sm:w-auto"
                         disabled={!canOperate || saving || !draftNote.trim()}
                         onClick={() => void runMutation('/api/conversations/note', {
                           conversation_id: detail.conversation.id,
@@ -831,6 +936,7 @@ export function ConversationWorkbench({
                         <Button
                           size="sm"
                           variant="outline"
+                          className="w-full sm:w-auto"
                           disabled={!canOperate || saving}
                           onClick={() => void runMutation('/api/conversations/reopen', {
                             conversation_id: detail.conversation.id,
@@ -855,17 +961,61 @@ export function ConversationWorkbench({
                 <CardContent className="space-y-4">
                   <div>
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.sourceSummary')}</div>
-                    <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                      {JSON.stringify(detail.conversation.source_summary ?? {}, null, 2)}
-                    </pre>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex flex-wrap gap-2">
+                        {sourceSummaryBadges(detail.conversation.source_summary).map((entry) => (
+                          <button
+                            key={`evidence-${entry.value}`}
+                            type="button"
+                            onClick={() => applySearchPreset(entry.value)}
+                            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            {entry.label}
+                          </button>
+                        ))}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          onClick={() => void copyText(JSON.stringify(detail.conversation.source_summary ?? {}, null, 2))}
+                        >
+                          {t('button.copy')}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.primaryCall')}</div>
                       {detail.primary_call ? (
-                        <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                          {JSON.stringify(detail.primary_call, null, 2)}
-                        </pre>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-medium text-slate-900">
+                                {detail.primary_call.caller_phone_e164 || detail.primary_call.phone_number || detail.primary_call.id.slice(0, 8)}
+                              </div>
+                              <div className="text-xs text-slate-500">{formatTimestamp(detail.primary_call.created_at)}</div>
+                            </div>
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => void copyText(detail.primary_call!.id)}>
+                              {t('button.copy')}
+                            </Button>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {sourceSummaryBadges({
+                              source: detail.primary_call.source,
+                              intent_action: detail.primary_call.intent_action,
+                            }).map((entry) => (
+                              <button
+                                key={`call-${entry.value}`}
+                                type="button"
+                                onClick={() => applySearchPreset(entry.value)}
+                                className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                              >
+                                {entry.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       ) : (
                         <div className="text-sm text-slate-500">{t('crm.evidence.noPrimaryCall')}</div>
                       )}
@@ -873,9 +1023,34 @@ export function ConversationWorkbench({
                     <div>
                       <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('crm.evidence.primarySession')}</div>
                       {detail.primary_session ? (
-                        <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                          {JSON.stringify(detail.primary_session, null, 2)}
-                        </pre>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-medium text-slate-900">{detail.primary_session.id.slice(0, 8)}</div>
+                              <div className="text-xs text-slate-500">{formatTimestamp(detail.primary_session.created_at)}</div>
+                            </div>
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => void copyText(detail.primary_session!.id)}>
+                              {t('button.copy')}
+                            </Button>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {sourceSummaryBadges({
+                              utm_source: detail.primary_session.utm_source,
+                              utm_campaign: detail.primary_session.utm_campaign,
+                              utm_term: detail.primary_session.utm_term,
+                              referrer_host: detail.primary_session.referrer_host,
+                            }).map((entry) => (
+                              <button
+                                key={`session-${entry.value}`}
+                                type="button"
+                                onClick={() => applySearchPreset(entry.value)}
+                                className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                              >
+                                {entry.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       ) : (
                         <div className="text-sm text-slate-500">{t('crm.evidence.noPrimarySession')}</div>
                       )}
@@ -889,8 +1064,15 @@ export function ConversationWorkbench({
                           <div className="text-sm text-slate-500">{t('crm.evidence.noLinks')}</div>
                         ) : detail.links.map((link) => (
                           <div key={link.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                            <div className="font-medium text-slate-900">{link.entity_type}</div>
-                            <div className="font-mono text-xs text-slate-500">{link.entity_id}</div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium text-slate-900">{link.entity_type}</div>
+                                <div className="font-mono text-xs text-slate-500">{link.entity_id}</div>
+                              </div>
+                              <Button size="sm" variant="outline" className="h-8" onClick={() => void copyText(link.entity_id)}>
+                                {t('button.copy')}
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -902,9 +1084,16 @@ export function ConversationWorkbench({
                           <div className="text-sm text-slate-500">{t('crm.evidence.noSales')}</div>
                         ) : detail.sales.map((sale) => (
                           <div key={sale.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                            <div className="font-medium text-slate-900">{sale.status}</div>
-                            <div>{sale.amount_cents} {sale.currency}</div>
-                            <div className="text-xs text-slate-500">{formatTimestamp(sale.occurred_at)}</div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium text-slate-900">{sale.status}</div>
+                                <div>{formatNumber(sale.amount_cents / 100)} {sale.currency}</div>
+                                <div className="text-xs text-slate-500">{formatTimestamp(sale.occurred_at)}</div>
+                              </div>
+                              <Button size="sm" variant="outline" className="h-8" onClick={() => void copyText(sale.id)}>
+                                {t('button.copy')}
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -925,14 +1114,26 @@ export function ConversationWorkbench({
                     detail.timeline.map((event) => (
                       <div key={event.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-semibold text-slate-900">{event.event_type}</div>
+                          <div className="font-semibold text-slate-900">{getLocalizedLabel(event.event_type, t)}</div>
                           <div className="text-xs text-slate-500">{formatTimestamp(event.created_at)}</div>
                         </div>
                         <div className="mt-1 text-xs uppercase tracking-wider text-slate-400">{event.actor_type}</div>
                         {event.payload ? (
-                          <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-slate-700">
-                            {JSON.stringify(event.payload, null, 2)}
-                          </pre>
+                          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {summarizePayload(event.payload).map((entry) => (
+                                <div key={`${event.id}-${entry.key}`} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{entry.label}</div>
+                                  <div className="mt-1 truncate text-sm text-slate-700" title={entry.value}>{entry.value}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3">
+                              <Button size="sm" variant="outline" className="h-8" onClick={() => void copyText(JSON.stringify(event.payload, null, 2))}>
+                                {t('button.copy')}
+                              </Button>
+                            </div>
+                          </div>
                         ) : null}
                       </div>
                     ))

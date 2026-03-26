@@ -233,17 +233,23 @@ function fallbackActionLabel(
   return null;
 }
 
-function formatFormStateLabel(state: string | null | undefined): string {
+function formatFormStateLabel(
+  state: string | null | undefined,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
   const v = (state || '').toLowerCase().trim();
-  if (v === 'started') return 'Started';
-  if (v === 'attempted') return 'Attempted';
-  if (v === 'validation_failed') return 'Validation failed';
-  if (v === 'network_failed') return 'Network failed';
-  if (v === 'success') return 'Success';
-  return 'Unknown';
+  if (v === 'started') return t('hunter.formState.started');
+  if (v === 'attempted') return t('hunter.formState.attempted');
+  if (v === 'validation_failed') return t('hunter.formState.validationFailed');
+  if (v === 'network_failed') return t('hunter.formState.networkFailed');
+  if (v === 'success') return t('hunter.formState.success');
+  return t('common.unknown');
 }
 
-function formatFormSummary(summary: Record<string, unknown> | null | undefined): string {
+function formatFormSummary(
+  summary: Record<string, unknown> | null | undefined,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
   if (!summary) return '—';
   const parts: string[] = [];
   const fields = typeof summary.field_count === 'number' ? summary.field_count : null;
@@ -251,10 +257,10 @@ function formatFormSummary(summary: Record<string, unknown> | null | undefined):
   const invalid = typeof summary.invalid_field_count === 'number' ? summary.invalid_field_count : null;
   const files = typeof summary.file_input_count === 'number' ? summary.file_input_count : null;
   const transport = typeof summary.form_transport === 'string' ? summary.form_transport : null;
-  if (typeof fields === 'number') parts.push(`${fields} fields`);
-  if (typeof required === 'number' && required > 0) parts.push(`${required} required`);
-  if (typeof invalid === 'number' && invalid > 0) parts.push(`${invalid} invalid`);
-  if (typeof files === 'number' && files > 0) parts.push(`${files} file`);
+  if (typeof fields === 'number') parts.push(t('hunter.summary.fields', { count: fields }));
+  if (typeof required === 'number' && required > 0) parts.push(t('hunter.summary.required', { count: required }));
+  if (typeof invalid === 'number' && invalid > 0) parts.push(t('hunter.summary.invalid', { count: invalid }));
+  if (typeof files === 'number' && files > 0) parts.push(t('hunter.summary.file', { count: files }));
   if (transport) parts.push(transport);
   return parts.length > 0 ? parts.join(' · ') : '—';
 }
@@ -419,10 +425,10 @@ export function HunterCard({
 
   const keywordDisplay = useMemo(() => safeDecode((intent.utm_term || '').trim()) || '—', [intent.utm_term]);
 
-  const formStateDisplay = useMemo(() => formatFormStateLabel(intent.form_state), [intent.form_state]);
+  const formStateDisplay = useMemo(() => formatFormStateLabel(intent.form_state, translate), [intent.form_state, translate]);
   const formSummaryDisplay = useMemo(
-    () => formatFormSummary(intent.form_summary ?? null),
-    [intent.form_summary]
+    () => formatFormSummary(intent.form_summary ?? null, translate),
+    [intent.form_summary, translate]
   );
   const hasAnyClickId = Boolean(
     (intent.click_id && intent.click_id.trim()) ||
@@ -465,7 +471,7 @@ export function HunterCard({
     const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
     const parts = [
       phoneClicks > 0 ? `${phoneClicks}× ${translate('session.phone')}` : null,
-      waClicks > 0 ? `${waClicks}× WhatsApp` : null,
+      waClicks > 0 ? `${waClicks}× ${translate('event.whatsapp')}` : null,
       typeof intent.event_count === 'number' && intent.event_count > 0
         ? translate('session.eventCount', { count: intent.event_count })
         : null,
@@ -500,7 +506,7 @@ export function HunterCard({
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-white border-2 flex flex-col shadow-sm min-h-0',
+        'relative overflow-hidden bg-white border-2 flex flex-col shadow-sm min-h-0 rounded-2xl',
         scoreTheme.border
       )}
     >
@@ -523,7 +529,7 @@ export function HunterCard({
               </div>
             </div>
           </div>
-          <div className={cn('shrink-0 flex flex-col items-end gap-1', scoreTheme.text)}>
+          <div className={cn('shrink-0 flex flex-col items-end gap-1.5', scoreTheme.text)}>
             <SourceBadge
               traffic_source={trafficSource}
               traffic_medium={trafficMedium}
@@ -532,8 +538,8 @@ export function HunterCard({
               has_any_click_id={hasAnyClickId}
               t_fn={translate}
             />
-            <span className="text-[10px] font-semibold uppercase tracking-wide">{translate('hunter.aiConfidence')}</span>
-            <span className={cn('text-sm font-bold tabular-nums px-2 py-0.5 rounded-md border', scoreTheme.bg, scoreTheme.border)}>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translate('hunter.aiConfidence')}</span>
+            <span className={cn('text-sm font-bold tabular-nums px-2.5 py-1 rounded-lg border bg-white', scoreTheme.bg, scoreTheme.border)}>
               {displayScore}%
             </span>
           </div>
@@ -541,39 +547,39 @@ export function HunterCard({
       </CardHeader>
 
       <CardContent className="p-4 flex-1">
-        <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/50 p-3 mb-3 min-h-[44px]">
-          <div className="flex items-center gap-1.5 shrink-0">
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 mb-3 sm:grid-cols-3">
+          <div className="flex min-w-0 items-center gap-1.5">
             <Target className="h-3.5 w-3.5 text-slate-600" aria-hidden />
             <span className="text-xs font-medium text-slate-700 truncate max-w-[120px]" title={leadSourceLabel}>
               {sourceInfo.label || leadSourceLabel || '—'}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex min-w-0 items-center gap-1.5">
             <CircleDollarSign className="h-4 w-4 text-emerald-600" aria-hidden />
-            <span className="text-xs font-semibold text-emerald-700 truncate max-w-[100px]">
+            <span className="text-xs font-semibold text-emerald-700 truncate">
               {liveEvDisplay}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end">
+          <div className="flex min-w-0 items-center gap-1.5 sm:justify-end">
             <Clock className="h-3.5 w-3.5 text-slate-600 shrink-0" aria-hidden />
             <span className="text-xs font-medium text-slate-700 truncate" suppressHydrationWarning>
               {relativeTime(intent.created_at, translate)}
             </span>
           </div>
         </div>
-        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
           <Row label={translate('hunter.sessionActions')} value={actionsDisplay} icon={Clock} />
           {sourceType === 'form' && (
-            <Row label="Form state" value={formStateDisplay} icon={FileText} />
+            <Row label={translate('hunter.formState')} value={formStateDisplay} icon={FileText} />
           )}
           {sourceType === 'form' && (
-            <Row label="Form shape" value={formSummaryDisplay} icon={FileText} />
+            <Row label={translate('hunter.formShape')} value={formSummaryDisplay} icon={FileText} />
           )}
           <Row label={translate('hunter.keyword')} value={keywordDisplay} icon={FileText} />
           <Row label={translate('hunter.leadSource')} value={sourceInfo.label || '—'} icon={Compass} />
-          <Row label="Campaign" value={campaignDisplay} icon={Target} />
+          <Row label={translate('hunter.campaign')} value={campaignDisplay} icon={Target} />
           {hasAnyClickId && (
-            <Row label="Click ID" value={clickIdDisplay} icon={Compass} />
+            <Row label={translate('common.technical.clickId')} value={clickIdDisplay} icon={Compass} />
           )}
           <Row label={translate('hunter.location')} value={locationWithSource} icon={MapPin} />
           <Row label={translate('hunter.page')} value={pageDisplay} icon={FileText} />
@@ -581,8 +587,8 @@ export function HunterCard({
           <Row label={translate('hunter.device')} value={device.label} icon={device.icon} />
         </div>
         {intent.ai_summary && (
-          <div className="mt-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
-            <p className="text-xs leading-snug text-slate-700">{intent.ai_summary}</p>
+          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+            <p className="text-sm leading-6 text-slate-700">{intent.ai_summary}</p>
           </div>
         )}
 
@@ -597,13 +603,12 @@ export function HunterCard({
         )}
       </CardContent>
 
-      <CardFooter className="p-4 pt-0 gap-2 shrink-0 border-t border-slate-100 flex-col">
-        {/* Action Group wrapped in flex-wrap for mobile ergonomics */}
-        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+      <CardFooter className="p-4 pt-0 gap-3 shrink-0 border-t border-slate-100 flex-col">
+        <div className="grid grid-cols-2 gap-2 w-full sm:grid-cols-4">
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 min-h-[44px] min-w-[70px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs transition-colors"
+            className="min-h-[44px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs transition-colors"
             onClick={() => onJunk({ id: intent.id, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
@@ -615,7 +620,7 @@ export function HunterCard({
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 min-h-[44px] min-w-[70px] border-slate-200 font-semibold text-xs text-slate-600 hover:bg-slate-100 transition-colors"
+            className="min-h-[44px] border-slate-200 font-semibold text-xs text-slate-600 hover:bg-slate-100 transition-colors"
             onClick={() => onSkip({ id: intent.id })}
             title={translate('hunter.skip')}
           >
@@ -627,7 +632,7 @@ export function HunterCard({
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-[1.5] min-h-[44px] min-w-[80px] border-slate-200 font-semibold text-xs transition-colors hover:bg-blue-50 hover:text-blue-700"
+                className="min-h-[44px] border-slate-200 font-semibold text-xs transition-colors hover:bg-blue-50 hover:text-blue-700"
                 onClick={() => onQualify({ score: 60, status: 'confirmed' })}
                 disabled={Boolean(readOnly)}
                 title={translate('hunter.gorusuldu')}
@@ -639,7 +644,7 @@ export function HunterCard({
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-[1.5] min-h-[44px] min-w-[80px] border-slate-200 font-semibold text-xs transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                className="min-h-[44px] border-slate-200 font-semibold text-xs transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                 onClick={() => onQualify({ score: 80, status: 'confirmed' })}
                 disabled={Boolean(readOnly)}
                 title={translate('hunter.teklif')}
@@ -652,7 +657,7 @@ export function HunterCard({
 
           <Button
             size="sm"
-            className="flex-2 min-h-[44px] min-w-[100px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-colors"
+          className="w-full min-h-[46px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm transition-colors"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
@@ -666,13 +671,14 @@ export function HunterCard({
             variant="ghost"
             size="sm"
             className={cn(
-              "w-full mt-2 h-10 border border-slate-200 transition-all duration-500",
+              "w-full h-10 border border-slate-200 transition-all duration-500",
               showXray ? "bg-slate-900 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "bg-white text-slate-500 hover:bg-slate-50"
             )}
             onClick={() => setShowXray(!showXray)}
+            title={showXray ? translate('hunter.deepViewActive') : translate('hunter.deepViewInactive')}
           >
             {showXray ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-            <span className="font-bold tracking-tight">MIZANMANTIK X-RAY SINGULARITY</span>
+            <span className="font-bold tracking-tight">{translate('hunter.deepView')}</span>
             <Activity className={cn("ml-2 w-4 h-4", showXray && "animate-pulse")} />
           </Button>
         </div>

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './qualification-queue';
-import { ConversationWorkbench } from './conversation-workbench';
+import { FollowUpPreview } from './follow-up-preview';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,7 +36,6 @@ interface DashboardShellProps {
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
   siteRole: SiteRole;
-  currentUserId?: string;
   /** Tenant entitlements; used by FeatureGuard. Default [] so missing prop does not break. */
   activeModules?: OpsMantikModule[];
 }
@@ -81,7 +80,7 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, currentUserId, activeModules = [] }: DashboardShellProps) {
+export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, activeModules = [] }: DashboardShellProps) {
   const { t } = useTranslation();
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
@@ -139,7 +138,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
               {t('sidebar.operationsCenter').toUpperCase()} • {t('statusBar.ociActive')}
             </div>
             <div className="hidden sm:block opacity-70 text-slate-500">
-              {t('statusBar.latency')}: {loading ? '...' : '12ms'}
+              {t('statusBar.latency')}: {selectedDay === 'today' ? t('dashboard.queue.todayWindow') : t('dashboard.queue.yesterdayWindow')}
             </div>
           </div>
           <LiveClock />
@@ -171,13 +170,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   <LocaleSwitcher />
                 </div>
                 <Link
-                  href={`/dashboard/site/${siteId}/activity`}
+                  href={`#niyetler`}
                   className={cn(
                     buttonVariants({ variant: 'outline' }),
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                   )}
                 >
-                  {t('dashboard.activityLog')}
+                  {t('dashboard.intents')}
                 </Link>
                 <Link
                   href={`/dashboard/site/${siteId}/conversations`}
@@ -189,22 +188,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   {t('dashboard.conversationDesk')}
                 </Link>
                 <Link
-                  href={`/dashboard/site/${siteId}/today-desk`}
+                  href={`#raporlar`}
                   className={cn(
                     buttonVariants({ variant: 'outline' }),
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                   )}
                 >
-                  {t('dashboard.todayDesk')}
-                </Link>
-                <Link
-                  href={`/dashboard/site/${siteId}/oci-control`}
-                  className={cn(
-                    buttonVariants({ variant: 'outline' }),
-                    'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
-                  )}
-                >
-                  OCI Control
+                  {t('dashboard.reportsHub')}
                 </Link>
                 <div className="shrink-0 flex flex-col items-end">
                   {(() => {
@@ -253,6 +243,23 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                       {selectedDay === 'today' ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <span className="mr-2 w-4" />}
                       {t('dashboard.realtimeToday')}
                     </DropdownMenuItem>
+                    <div className="mt-2 pt-2 border-t border-slate-700">
+                      <Link href={`/dashboard/site/${siteId}/today-desk`} className="block">
+                        <DropdownMenuItem className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
+                          {t('dashboard.todayDesk')}
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href={`/dashboard/site/${siteId}/activity`} className="block">
+                        <DropdownMenuItem className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
+                          {t('dashboard.activityLog')}
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href={`/dashboard/site/${siteId}/oci-control`} className="block">
+                        <DropdownMenuItem className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
+                          {t('ociControl.title')}
+                        </DropdownMenuItem>
+                      </Link>
+                    </div>
                     {/* Mobile: LocaleSwitcher moved here to free header space */}
                     <div className="sm:hidden mt-2 pt-2 border-t border-slate-700">
                       <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('common.language')}</DropdownMenuLabel>
@@ -301,38 +308,29 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
           </div>
         </header>
 
-        {/* Desktop: Live Queue first (left), then Reports; full-width Breakdown below */}
         <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
-          {/* TOP: CRO Insights */}
           <div className="mb-8">
             <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('cro.title')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('cro.subtitle')}</p>
+              <h2 className="text-base font-semibold text-slate-800">{t('dashboard.followUpPreview')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.followUpPreviewSubtitle')}</p>
             </div>
-            <CROInsights metrics={metrics} loading={analyticsLoading} />
+            <FollowUpPreview siteId={siteId} />
           </div>
 
-          <div className="mb-8">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('dashboard.conversationCrm')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.conversationCrmSubtitle')}</p>
-            </div>
-            <ConversationWorkbench siteId={siteId} siteRole={siteRole} currentUserId={currentUserId} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-7">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+            <div id="niyetler" className="xl:col-span-7">
               <div className="mb-3">
-                <h2 className="text-base font-semibold text-slate-800">{t('sidebar.liveQueue')}</h2>
-                <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.liveQueueSubtitle')}</p>
+                <h2 className="text-base font-semibold text-slate-800">{t('dashboard.intents')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.intentsSubtitle')}</p>
               </div>
               <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
             </div>
-            <div className="lg:col-span-5 space-y-6">
+            <div id="raporlar" className="xl:col-span-5 space-y-6">
               <div className="mb-1">
-                <h2 className="text-base font-semibold text-slate-800">{t('sidebar.reports')}</h2>
-                <p className="text-xs text-slate-500 mt-0.5">{t('sidebar.reportsSubtitle')}</p>
+                <h2 className="text-base font-semibold text-slate-800">{t('dashboard.reportsHub')}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.reportsHubSubtitle')}</p>
               </div>
+              <CROInsights metrics={metrics} loading={analyticsLoading} />
               <TrafficSourceBreakdown
                 siteId={siteId}
                 dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
@@ -345,7 +343,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
             </div>
           </div>
 
-          {/* Breakdown: full-width row */}
           <div className="mt-8 pt-6 border-t border-slate-200">
             <BreakdownWidgets
               siteId={siteId}

@@ -12,6 +12,7 @@ import { useBreakdownData, BreakdownDimension } from '@/lib/hooks/use-breakdown-
 import { DateRange } from '@/lib/hooks/use-dashboard-date-range';
 import { TrendingUp, Smartphone, MapPin, Loader2, AlertCircle } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { getLocalizedLabel } from '@/lib/i18n/mapping';
 
 interface BreakdownWidgetProps {
   siteId: string;
@@ -99,7 +100,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
             {Array.isArray(data) && data.slice(0, 10).map((item, index) => {
               // FIX 2: Ensure all values are properly typed
               const safeItem = {
-                dimension_value: typeof item.dimension_value === 'string' ? item.dimension_value : 'Unknown',
+                dimension_value: typeof item.dimension_value === 'string' ? item.dimension_value : t('common.unknown'),
                 count: typeof item.count === 'number' ? item.count : 0,
                 percentage: typeof item.percentage === 'number' ? item.percentage : 0,
               };
@@ -116,7 +117,7 @@ export function BreakdownWidget({ siteId, dateRange }: BreakdownWidgetProps) {
                       })()}
                     </div>
                     <span className="text-sm text-foreground truncate">
-                      {safeItem.dimension_value}
+                      {getLocalizedLabel(safeItem.dimension_value, t)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

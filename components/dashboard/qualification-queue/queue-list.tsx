@@ -22,7 +22,7 @@ export function QueueList({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <QueueDeck
         siteId={siteId}
         mergedTop={state.mergedTop}
@@ -45,17 +45,27 @@ export function QueueList({
         pushHistoryRow={actions.pushHistoryRow}
       />
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <div className="tabular-nums">{t('dashboard.commandCenter.queue.inQueue', { n: state.intents.length })}</div>
-        {state.mergedTop && (
-          <div className="tabular-nums" suppressHydrationWarning>
-            {formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('dashboard.commandCenter.queue.trt')}
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2 sm:gap-6">
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{t('dashboard.intents')}</div>
+              <div className="tabular-nums font-semibold text-slate-900">{t('dashboard.commandCenter.queue.inQueue', { n: state.intents.length })}</div>
+            </div>
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{t('crm.preview.nextStep')}</div>
+              <div className="tabular-nums font-semibold text-slate-900" suppressHydrationWarning>
+                {state.mergedTop
+                  ? `${formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} ${t('dashboard.commandCenter.queue.trt')}`
+                  : '—'}
+              </div>
+            </div>
           </div>
-        )}
-        <Button variant="ghost" size="sm" className="h-9" onClick={() => actions.fetchUnscoredIntents()}>
-          <Icons.refresh className="h-4 w-4 mr-2" />
-          {t('button.refresh')}
-        </Button>
+          <Button variant="outline" size="sm" className="h-10 w-full sm:w-auto" onClick={() => actions.fetchUnscoredIntents()}>
+            <Icons.refresh className="h-4 w-4 mr-2" />
+            {t('button.refresh')}
+          </Button>
+        </div>
       </div>
 
       <ActivityLogInline

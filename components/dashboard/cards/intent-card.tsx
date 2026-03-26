@@ -117,24 +117,42 @@ function normalizeWho(target: string | null | undefined): { label: string; raw: 
   return { label: digits || noScheme || t, raw: digits || noScheme || t };
 }
 
-function formatFormState(state: string | null | undefined): string {
+function formatFormState(
+  state: string | null | undefined,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
   const v = (state || '').toLowerCase().trim();
-  if (v === 'started') return 'Started';
-  if (v === 'attempted') return 'Attempted';
-  if (v === 'validation_failed') return 'Validation failed';
-  if (v === 'network_failed') return 'Network failed';
-  if (v === 'success') return 'Success';
-  return 'Unknown';
+  if (v === 'started') return t('hunter.formState.started');
+  if (v === 'attempted') return t('hunter.formState.attempted');
+  if (v === 'validation_failed') return t('hunter.formState.validationFailed');
+  if (v === 'network_failed') return t('hunter.formState.networkFailed');
+  if (v === 'success') return t('hunter.formState.success');
+  return t('hunter.formState.unknown');
 }
 
-function formatFormSummary(summary: Record<string, unknown> | null | undefined): string {
+function formatFormSummary(
+  summary: Record<string, unknown> | null | undefined,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
   if (!summary) return '—';
   const parts: string[] = [];
-  if (typeof summary.field_count === 'number') parts.push(`${summary.field_count} fields`);
-  if (typeof summary.required_field_count === 'number' && summary.required_field_count > 0) parts.push(`${summary.required_field_count} required`);
-  if (typeof summary.invalid_field_count === 'number' && summary.invalid_field_count > 0) parts.push(`${summary.invalid_field_count} invalid`);
-  if (typeof summary.file_input_count === 'number' && summary.file_input_count > 0) parts.push(`${summary.file_input_count} file`);
+  if (typeof summary.field_count === 'number') parts.push(t('hunter.summary.fields', { count: summary.field_count }));
+  if (typeof summary.required_field_count === 'number' && summary.required_field_count > 0) parts.push(t('hunter.summary.required', { count: summary.required_field_count }));
+  if (typeof summary.invalid_field_count === 'number' && summary.invalid_field_count > 0) parts.push(t('hunter.summary.invalid', { count: summary.invalid_field_count }));
+  if (typeof summary.file_input_count === 'number' && summary.file_input_count > 0) parts.push(t('hunter.summary.file', { count: summary.file_input_count }));
   return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
+function localizeRiskReason(
+  reason: string,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
+  const normalized = reason.toLowerCase().trim();
+  if (normalized.includes('click id yok') || normalized.includes('click id missing')) return t('hunter.risk.clickIdMissing');
+  if (normalized.includes('3sn altı') || normalized.includes('under 3 sec') || normalized.includes('shorter than 3')) return t('hunter.risk.shortStay');
+  if (normalized.includes('düşük etkileşim') || normalized.includes('low engagement')) return t('hunter.risk.lowEngagement');
+  if (normalized.includes('organic trafik') || normalized.includes('organic traffic')) return t('hunter.risk.organicTraffic');
+  return t('hunter.risk.generic');
 }
 
 export function IntentCard({
@@ -364,12 +382,12 @@ export function IntentCard({
           {kind === 'form' && (
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <div>
-                <div className="text-sm text-muted-foreground">Form state</div>
-                <div className="text-sm font-medium">{formatFormState(intent.form_state)}</div>
+                <div className="text-sm text-muted-foreground">{t('hunter.formState')}</div>
+                <div className="text-sm font-medium">{formatFormState(intent.form_state, t)}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Form shape</div>
-                <div className="text-sm font-medium">{formatFormSummary(intent.form_summary)}</div>
+                <div className="text-sm text-muted-foreground">{t('hunter.formShape')}</div>
+                <div className="text-sm font-medium">{formatFormSummary(intent.form_summary, t)}</div>
               </div>
             </div>
           )}
@@ -383,7 +401,7 @@ export function IntentCard({
               {intent.risk_reasons.slice(0, 3).map((r, idx) => (
                 <li key={idx} className="flex gap-2">
                   <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-red-500/70" />
-                  <span className="min-w-0">{r}</span>
+                  <span className="min-w-0">{localizeRiskReason(r, t)}</span>
                 </li>
               ))}
             </ul>

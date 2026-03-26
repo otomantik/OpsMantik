@@ -58,7 +58,7 @@ export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, 
 
   return (
     <>
-      <QueueHeader queueMeta={queueMeta} toast={<QueueToast toast={state.toast} />} />
+      <QueueHeader queueMeta={queueMeta} toast={<QueueToast toast={state.toast} />} day={range.day} />
       <QueueList siteId={siteId} state={state} actions={actions} readOnly={readOnly} />
       <ActionModals siteId={siteId} state={state} actions={actions} />
     </>

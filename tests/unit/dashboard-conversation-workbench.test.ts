@@ -6,17 +6,50 @@ import { join } from 'node:path';
 const shellPath = join(process.cwd(), 'components', 'dashboard', 'dashboard-shell.tsx');
 const workbenchPath = join(process.cwd(), 'components', 'dashboard', 'conversation-workbench.tsx');
 const deskShellPath = join(process.cwd(), 'components', 'dashboard', 'conversation-desk-shell.tsx');
+const previewPath = join(process.cwd(), 'components', 'dashboard', 'follow-up-preview.tsx');
+const queuePath = join(process.cwd(), 'components', 'dashboard', 'qualification-queue.tsx');
+const queueHeaderPath = join(process.cwd(), 'components', 'dashboard', 'qualification-queue', 'queue-header.tsx');
+const queueStatesPath = join(process.cwd(), 'components', 'dashboard', 'qualification-queue', 'queue-states.tsx');
+const activityInlinePath = join(process.cwd(), 'components', 'dashboard', 'qualification-queue', 'activity-log-inline.tsx');
+const ociControlPath = join(process.cwd(), 'components', 'dashboard', 'oci-control', 'oci-control-panel.tsx');
 const deskPagePath = join(process.cwd(), 'app', 'dashboard', 'site', '[siteId]', 'conversations', 'page.tsx');
 const todayDeskPagePath = join(process.cwd(), 'app', 'dashboard', 'site', '[siteId]', 'today-desk', 'page.tsx');
 const assigneesRoutePath = join(process.cwd(), 'app', 'api', 'sites', '[siteId]', 'assignees', 'route.ts');
 
-test('dashboard shell mounts conversation workbench above live queue', () => {
+test('dashboard shell exposes summary navigation and follow-up preview', () => {
   const src = readFileSync(shellPath, 'utf8');
-  assert.ok(src.includes('ConversationWorkbench'), 'dashboard shell imports conversation workbench');
-  assert.ok(src.includes('currentUserId={currentUserId}'), 'dashboard shell forwards current operator identity');
-  assert.ok(src.includes("dashboard.conversationCrm"), 'dashboard shell exposes localized conversation CRM section');
+  assert.ok(src.includes('FollowUpPreview'), 'dashboard shell imports follow-up preview');
+  assert.ok(src.includes("dashboard.followUpPreview"), 'dashboard shell exposes localized follow-up preview section');
+  assert.ok(src.includes("dashboard.intents"), 'dashboard shell exposes localized intent navigation');
+  assert.ok(src.includes("dashboard.reportsHub"), 'dashboard shell exposes localized reports navigation');
+  assert.ok(src.includes('id="niyetler"'), 'dashboard shell anchors the intents section');
+  assert.ok(src.includes('id="raporlar"'), 'dashboard shell anchors the reports section');
   assert.ok(src.includes('/dashboard/site/${siteId}/conversations'), 'dashboard shell links to dedicated conversation desk');
   assert.ok(src.includes('/dashboard/site/${siteId}/today-desk'), 'dashboard shell links to dedicated today desk');
+});
+
+test('follow-up preview loads compact follow-up data and links out', () => {
+  const src = readFileSync(previewPath, 'utf8');
+  assert.ok(src.includes('bucket=overdue'), 'preview loads overdue follow-ups');
+  assert.ok(src.includes('bucket=today'), 'preview loads today follow-ups');
+  assert.ok(src.includes("dashboard.openFollowUps"), 'preview exposes follow-up CTA');
+  assert.ok(src.includes("dashboard.openTodayWork"), 'preview exposes today work CTA');
+  assert.ok(src.includes('/dashboard/site/${siteId}/conversations'), 'preview links to follow-up page');
+  assert.ok(src.includes('/dashboard/site/${siteId}/today-desk'), 'preview links to today work page');
+});
+
+test('qualification queue shell keeps premium header and state copy localized', () => {
+  const queueSrc = readFileSync(queuePath, 'utf8');
+  const headerSrc = readFileSync(queueHeaderPath, 'utf8');
+  const statesSrc = readFileSync(queueStatesPath, 'utf8');
+  const activitySrc = readFileSync(activityInlinePath, 'utf8');
+  assert.ok(queueSrc.includes('day={range.day}'), 'queue forwards active day into header chrome');
+  assert.ok(headerSrc.includes("dashboard.queue.title"), 'queue header uses localized product title');
+  assert.ok(headerSrc.includes("dashboard.queue.subtitle"), 'queue header uses localized product subtitle');
+  assert.ok(statesSrc.includes("queue.loadingTitle"), 'queue loading state uses localized copy');
+  assert.ok(statesSrc.includes("queue.errorTitle"), 'queue error state uses localized copy');
+  assert.ok(statesSrc.includes("queue.emptyTodayTitle"), 'queue empty state uses localized today copy');
+  assert.ok(activitySrc.includes("activity.subtitle"), 'activity stream includes localized explanatory subtitle');
 });
 
 test('conversation workbench uses conversation inbox and mutation APIs', () => {
@@ -37,10 +70,21 @@ test('conversation workbench uses conversation inbox and mutation APIs', () => {
   assert.ok(src.includes("crm.actions.quick.tomorrow0930"), 'workbench exposes follow-up presets');
   assert.ok(src.includes("crm.field.operatorBrief"), 'workbench exposes operator summary strip');
   assert.ok(src.includes("crm.success.saved"), 'workbench keeps localized success feedback copy');
+  assert.ok(src.includes('setBucket(card.bucket)'), 'workbench summary cards now drive inbox bucket filtering');
+  assert.ok(src.includes('applySearchPreset(entry.value)'), 'workbench source badges can drive useful search filters');
+  assert.ok(src.includes('navigator.clipboard.writeText'), 'workbench evidence area supports copying important IDs');
+  assert.ok(src.includes("button.copy"), 'workbench exposes localized copy actions');
   assert.ok(src.includes("crm.evidence.title"), 'workbench exposes richer evidence section');
   assert.ok(src.includes("crm.evidence.primaryCall"), 'workbench exposes primary call evidence');
   assert.ok(src.includes("crm.evidence.primarySession"), 'workbench exposes primary session evidence');
   assert.ok(src.includes("crm.timeline.description"), 'workbench exposes timeline view');
+});
+
+test('oci control panel turns summary boxes into useful filters', () => {
+  const src = readFileSync(ociControlPath, 'utf8');
+  assert.ok(src.includes('setStatusFilter((current) => current === status ? \'\' : status)'), 'oci summary cards toggle status filtering');
+  assert.ok(src.includes("ociControl.status."), 'oci panel localizes operator-facing queue statuses');
+  assert.ok(src.includes("ociControl.loadMore"), 'oci panel keeps localized pagination action');
 });
 
 test('conversation desk standalone shell and page are wired', () => {

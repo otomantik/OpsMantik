@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { OciQueueStats, OciQueueRow, QueueStatus } from '@/lib/domain/oci/queue-types';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import type { TranslationKey } from '@/lib/i18n/t';
 
 const STATUS_ORDER: QueueStatus[] = [
   'QUEUED',
@@ -36,6 +37,13 @@ const STATUS_ORDER: QueueStatus[] = [
   'FAILED',
   'DEAD_LETTER_QUARANTINE',
 ];
+
+function statusLabel(
+  status: QueueStatus | string,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+) {
+  return t(`ociControl.status.${status}` as TranslationKey);
+}
 
 export function OciControlPanel({
   siteId,
@@ -58,6 +66,7 @@ export function OciControlPanel({
   const [actionBusy, setActionBusy] = useState(false);
   const labels = {
     title: t('ociControl.title'),
+    subtitle: t('ociControl.subtitle'),
     allStatuses: t('ociControl.allStatuses'),
     refresh: t('ociControl.refresh'),
     autoRefresh10s: t('ociControl.autoRefresh10s'),
@@ -77,6 +86,10 @@ export function OciControlPanel({
     updated: t('ociControl.updated'),
     actions: t('ociControl.actions'),
     loading: t('ociControl.loading'),
+    loadMore: t('ociControl.loadMore'),
+    loadStatsError: t('ociControl.error.loadStats'),
+    loadRowsError: t('ociControl.error.loadRows'),
+    actionFailed: t('ociControl.error.actionFailed'),
   };
 
   const fetchStats = useCallback(async () => {
@@ -86,9 +99,9 @@ export function OciControlPanel({
       const data = await res.json();
       setStats(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load stats');
+      setError(e instanceof Error ? e.message : labels.loadStatsError);
     }
-  }, [siteId]);
+  }, [labels.loadStatsError, siteId]);
 
   const fetchRows = useCallback(async (cursor?: string) => {
     setLoading(true);
@@ -103,11 +116,11 @@ export function OciControlPanel({
       setRows(data.rows ?? []);
       setNextCursor(data.nextCursor);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load rows');
+      setError(e instanceof Error ? e.message : labels.loadRowsError);
     } finally {
       setLoading(false);
     }
-  }, [siteId, statusFilter]);
+  }, [labels.loadRowsError, siteId, statusFilter]);
 
   const refresh = useCallback(() => {
     fetchStats();
@@ -152,12 +165,12 @@ export function OciControlPanel({
         setSelectedIds(new Set());
         refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Action failed');
+        setError(e instanceof Error ? e.message : labels.actionFailed);
       } finally {
         setActionBusy(false);
       }
     },
-    [canOperate, siteId, refresh]
+    [canOperate, labels.actionFailed, siteId, refresh]
   );
 
   const toggleSelect = (id: string) => {
@@ -190,6 +203,9 @@ export function OciControlPanel({
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 {labels.title}
               </span>
+              <span className="hidden md:block text-xs text-slate-400">
+                {labels.subtitle}
+              </span>
             </div>
           </div>
         </div>
@@ -205,14 +221,23 @@ export function OciControlPanel({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {STATUS_ORDER.map((status) => (
-            <Card key={status} className="border-slate-200 bg-white">
+            <button
+              key={status}
+              type="button"
+              onClick={() => setStatusFilter((current) => current === status ? '' : status)}
+              className="text-left"
+            >
+            <Card className={cn(
+              'border-slate-200 bg-white transition hover:border-slate-300',
+              statusFilter === status && 'border-slate-900 ring-2 ring-slate-900/10'
+            )}>
               <CardHeader className="p-3 pb-0">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                   {status === 'COMPLETED' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
                   {status === 'FAILED' && <XCircle className="h-3.5 w-3.5 text-red-600" />}
                   {status === 'PROCESSING' && <Clock className="h-3.5 w-3.5 text-slate-500" />}
                   {status === 'RETRY' && <RotateCcw className="h-3.5 w-3.5 text-amber-600" />}
-                  {status}
+                  {statusLabel(status, t)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 pt-1">
@@ -221,6 +246,7 @@ export function OciControlPanel({
                 </span>
               </CardContent>
             </Card>
+            </button>
           ))}
           {typeof stats?.stuckProcessing === 'number' && stats.stuckProcessing > 0 && (
             <Card className="border-amber-200 bg-amber-50/50">
@@ -247,7 +273,7 @@ export function OciControlPanel({
           >
             <option value="">{labels.allStatuses}</option>
             {STATUS_ORDER.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{statusLabel(s, t)}</option>
             ))}
           </select>
           <Button
@@ -353,7 +379,7 @@ export function OciControlPanel({
                           row.status === 'QUEUED' && 'bg-slate-100 text-slate-600'
                         )}
                       >
-                        {row.status}
+                        {statusLabel(row.status, t)}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs py-2">{row.provider_error_code ?? '—'}</TableCell>
@@ -389,7 +415,7 @@ export function OciControlPanel({
         {nextCursor && (
           <div className="mt-4">
             <Button variant="outline" className="min-h-[44px]" onClick={() => fetchRows(nextCursor)}>
-              Load more
+              {labels.loadMore}
             </Button>
           </div>
         )}

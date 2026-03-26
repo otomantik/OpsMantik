@@ -93,17 +93,17 @@ test('resolveLocale: cookie > site > user > Accept-Language > default', () => {
 // --- Translation fallback ---
 
 test('translate: exact locale match', () => {
-  assert.equal(translate('en', 'sidebar.operationsCenter'), 'Operations Center');
-  assert.equal(translate('tr', 'sidebar.operationsCenter'), 'Operasyon Merkezi');
+  assert.equal(translate('en', 'sidebar.operationsCenter'), 'Live Operations');
+  assert.equal(translate('tr', 'sidebar.operationsCenter'), 'Canlı Takip');
 });
 
 test('translate: locale prefix fallback (tr-TR -> tr)', () => {
-  assert.equal(translate('tr-TR', 'sidebar.operationsCenter'), 'Operasyon Merkezi');
+  assert.equal(translate('tr-TR', 'sidebar.operationsCenter'), 'Canlı Takip');
 });
 
 test('translate: fallback to en when key missing in locale', () => {
   const key = 'sidebar.operationsCenter';
-  assert.equal(translate('de', key), 'Operations Center');
+  assert.equal(translate('de', key), 'Live Operations');
 });
 
 test('translate: fallback to key when missing everywhere', () => {
@@ -134,12 +134,12 @@ const ENGLISH_KPI_LABELS = [
   'Capture',
   'Shield',
   'Efficiency',
-  'OCI ACTIVE',
-  'LATENCY',
+  'Conversion Flow On',
+  'Data Window',
   'Traffic Sources',
   'Revenue Projection',
   'Conversion Pulse',
-  'Activity Log',
+  'Activity History',
 ];
 const KPI_KEYS = [
   'kpi.capture',

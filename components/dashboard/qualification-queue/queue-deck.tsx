@@ -153,25 +153,28 @@ function LiteDeckCard({
   const waClicks = typeof intent.whatsapp_clicks === 'number' ? intent.whatsapp_clicks : 0;
   const actionsLine =
     phoneClicks > 0 || waClicks > 0
-      ? [phoneClicks > 0 ? `${phoneClicks}× phone` : null, waClicks > 0 ? `${waClicks}× WhatsApp` : null]
+      ? [
+          phoneClicks > 0 ? `${phoneClicks}× ${t('session.phone')}` : null,
+          waClicks > 0 ? `${waClicks}× ${t('event.whatsapp')}` : null,
+        ]
         .filter(Boolean)
         .join(' · ')
       : null;
 
   return (
-    <div className="relative group rounded-xl border border-slate-200 bg-white shadow-sm min-h-[420px] overflow-hidden">
+    <div className="relative group rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[360px] overflow-hidden">
       <div className="flex h-full flex-col">
-        <div className="border-b border-slate-100 p-5">
+        <div className="border-b border-slate-100 p-4 sm:p-5">
           <div className="flex items-center gap-2 mb-3">
             <span className="text-[11px] font-bold tracking-tight text-slate-400 tabular-nums">
               {formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} {t('dashboard.commandCenter.queue.trt')}
             </span>
           </div>
-          <div className="text-base font-semibold text-slate-900 truncate">{summary}</div>
-          <div className="mt-2 text-sm text-muted-foreground">{actionsLine || t('dashboard.commandCenter.queue.loadingDetails')}</div>
+          <div className="line-clamp-2 text-base font-semibold text-slate-900">{summary}</div>
+          <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{actionsLine || t('dashboard.commandCenter.queue.loadingDetails')}</div>
         </div>
 
-        <div className="flex-1 p-5 space-y-4">
+        <div className="flex-1 p-4 sm:p-5 space-y-4">
           <div className="space-y-2">
             <div className="h-4 w-32 rounded bg-slate-100" />
             <div className="h-4 w-full max-w-[280px] rounded bg-slate-100" />
@@ -185,13 +188,13 @@ function LiteDeckCard({
 
         <div className="mt-auto p-4 pt-0">
           <div className="grid grid-cols-3 gap-2 w-full">
-          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
+          <Button variant="outline" size="sm" className="h-10 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
             {t('dashboard.commandCenter.queue.junk')}
           </Button>
-          <Button variant="outline" size="sm" className="h-9 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
+          <Button variant="outline" size="sm" className="h-10 border-slate-200 font-bold text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
             {t('dashboard.commandCenter.queue.skip')}
           </Button>
-          <Button size="sm" className="h-9 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
+          <Button size="sm" className="h-10 bg-emerald-600 text-white font-black text-[11px]" disabled title={t('dashboard.commandCenter.queue.loadingDetails')}>
             {t('dashboard.commandCenter.queue.seal')}
           </Button>
           </div>
@@ -229,7 +232,7 @@ export function QueueDeck({
   pushHistoryRow: (row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => void;
 }) {
   return (
-    <div className="relative min-h-[420px]">
+    <div className="relative min-h-[360px]">
       {/* Next card (peek): render a lightweight placeholder only (no text bleed). */}
       {mergedNext && (
         <div

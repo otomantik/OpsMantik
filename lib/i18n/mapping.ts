@@ -23,7 +23,7 @@ export function formatEventType(
                 ? t("intent.interaction")
                 : c === "system"
                   ? t("event.system")
-                  : category || "";
+                  : "";
 
     const actLabel =
         a === "view"
@@ -38,10 +38,10 @@ export function formatEventType(
                     ? t("event.whatsapp")
                     : a.includes("phone") || a.includes("call")
                       ? t("intent.call")
-                      : action || "";
+                      : "";
 
     if (catLabel && actLabel) return `${catLabel} / ${actLabel}`;
-    return actLabel || catLabel || "—";
+    return actLabel || catLabel || t("common.unknown");
 }
 
 /**
@@ -55,7 +55,7 @@ export function formatActionType(actionType: string | null | undefined, t: Trans
     if (a === "cancel" || a === "cancelled") return t("activity.filterCancel");
     if (a === "restore" || a === "undo_restore" || a === "intent") return t("activity.filterRestore");
     if (a === "undo") return t("activity.filterUndo");
-    return actionType || "—";
+    return t("common.unknown");
 }
 
 /**

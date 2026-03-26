@@ -37,12 +37,22 @@ export function ActivityLogInline({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="relative rounded-lg border border-border bg-background p-3">
-      <div className="text-sm font-medium">{t('dashboard.activityLog')}</div>
-      <div className="mt-2 relative max-h-44 overflow-hidden">
+    <div className="relative rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">{t('dashboard.activityLog')}</div>
+          <p className="text-xs text-slate-500">{t('activity.subtitle')}</p>
+        </div>
+        <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+          {history.length} {t('activity.rows')}
+        </div>
+      </div>
+      <div className="mt-3 relative max-h-52 overflow-hidden">
         <div className="space-y-2">
           {history.length === 0 ? (
-            <div className="text-sm text-muted-foreground">{t('activity.noActionsYet')}</div>
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+              {t('activity.noActionsYet')}
+            </div>
           ) : (
             history.map((h, idx) => {
               const Icon = iconForAction(h.intent_action);
@@ -55,7 +65,7 @@ export function ActivityLogInline({
                 <div
                   key={`${h.id}-${h.at}`}
                   className={cn(
-                    'flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-2',
+                    'rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3',
                     faded && 'opacity-60',
                     isRestoring && 'opacity-50'
                   )}
@@ -67,9 +77,13 @@ export function ActivityLogInline({
                     >
                       {formatRelativeTime(h.at)}
                     </div>
-                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="text-sm font-medium tabular-nums truncate">{h.identity || '—'}</div>
-                    <div className="text-xs text-muted-foreground shrink-0">{formatActionType(h.action_type, t)}</div>
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border border-slate-200">
+                      <Icon className="h-4 w-4 text-slate-500 shrink-0" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium tabular-nums truncate text-slate-900">{h.identity || '—'}</div>
+                      <div className="text-xs text-slate-500">{formatActionType(h.action_type, t)}</div>
+                    </div>
                     <div className="sm:hidden text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
                       {formatRelativeTime(h.at)}
                     </div>
