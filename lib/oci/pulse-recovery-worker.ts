@@ -13,6 +13,7 @@ import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { redis } from '@/lib/upstash';
 import { getPvDataKey, getPvProcessingKeysForRecovery, getPvQueueKey } from '@/lib/oci/pv-redis';
+import { getConversionActionConfig, type SiteExportConfig } from '@/lib/oci/site-export-config';
 
 
 const BACKOFF_HOURS = [2, 6, 24] as const; // 1st retry after 2h, 2nd after 6h, 3rd after 24h
@@ -22,6 +23,17 @@ const MISSING_V2_LOOKBACK_HOURS = 48;
 const MISSING_V2_BATCH_LIMIT = 100;
 const PV_RECOVERY_STALE_MS = 15 * 60 * 1000;
 const PV_RECOVERY_BATCH_LIMIT = 200;
+
+type RecoverMissingV2SignalsParams = {
+  now?: Date;
+  siteId?: string;
+  lookbackHours?: number;
+  limit?: number;
+  statuses?: string[];
+  source?: string;
+  intentActions?: Array<'phone' | 'whatsapp' | 'form'>;
+  exportConfig?: SiteExportConfig | null;
+};
 
 function getBackoffMs(attemptIndex: number): number {
   const hours = BACKOFF_HOURS[Math.min(attemptIndex, BACKOFF_HOURS.length - 1)];
@@ -320,15 +332,43 @@ async function recoverStalePvProcessing(
 async function recoverMissingV2Signals(
   now: Date
 ): Promise<{ checked: number; recovered: number; dropped: number }> {
-  const sinceIso = new Date(now.getTime() - MISSING_V2_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
+  return recoverMissingV2SignalsForSite({
+    now,
+    lookbackHours: MISSING_V2_LOOKBACK_HOURS,
+    limit: MISSING_V2_BATCH_LIMIT,
+    statuses: ['intent'],
+  });
+}
 
-  const { data: calls, error } = await adminClient
+export async function recoverMissingV2SignalsForSite(
+  params: RecoverMissingV2SignalsParams
+): Promise<{ checked: number; recovered: number; dropped: number }> {
+  const now = params.now ?? new Date();
+  const lookbackHours = params.lookbackHours ?? MISSING_V2_LOOKBACK_HOURS;
+  const limit = params.limit ?? MISSING_V2_BATCH_LIMIT;
+  const sinceIso = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000).toISOString();
+
+  let query = adminClient
     .from('calls')
-    .select('id, site_id, created_at, matched_fingerprint')
-    .eq('status', 'intent')
+    .select('id, site_id, created_at, confirmed_at, matched_fingerprint, status, source, intent_action')
     .gte('created_at', sinceIso)
     .order('created_at', { ascending: true })
-    .limit(MISSING_V2_BATCH_LIMIT);
+    .limit(limit);
+
+  if (params.siteId) {
+    query = query.eq('site_id', params.siteId);
+  }
+  if (params.statuses && params.statuses.length > 0) {
+    query = query.in('status', params.statuses);
+  }
+  if (params.source) {
+    query = query.eq('source', params.source);
+  }
+  if (params.intentActions && params.intentActions.length > 0) {
+    query = query.in('intent_action', params.intentActions);
+  }
+
+  const { data: calls, error } = await query;
 
   if (error) {
     logWarn('pulse_recovery_missing_v2_fetch_failed', { error: error.message });
@@ -364,7 +404,16 @@ async function recoverMissingV2Signals(
   for (const row of missing) {
     checked++;
     const primary = await getPrimarySource(row.site_id, { callId: row.id });
-    const signalDate = row.created_at ? new Date(row.created_at) : now;
+    const signalTimestamp = row.confirmed_at ?? row.created_at ?? now.toISOString();
+    const signalDate = new Date(signalTimestamp);
+    const channel =
+      row.intent_action === 'phone' || row.intent_action === 'whatsapp' || row.intent_action === 'form'
+        ? row.intent_action
+        : null;
+    const conversionName =
+      params.exportConfig && channel
+        ? getConversionActionConfig(params.exportConfig, channel, 'V2_PULSE')?.action_name ?? undefined
+        : undefined;
     const result = await evaluateAndRouteSignal('V2_PULSE', {
       siteId: row.site_id,
       callId: row.id,
@@ -376,6 +425,7 @@ async function recoverMissingV2Signals(
       signalDate,
       fingerprint: row.matched_fingerprint ?? null,
       traceId: null,
+      conversionName,
     });
 
     if (result.routed) {

@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import * as jose from 'jose';
 import { parseExportConfig, getConversionActionConfig, validateRoasInflation } from '@/lib/oci/site-export-config';
 import { validateExportRow } from '@/lib/oci/export-gate';
+import { recoverMissingV2SignalsForSite } from '@/lib/oci/pulse-recovery-worker';
 
 const PV_BATCH_MAX = 500;
 /** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
@@ -111,6 +112,30 @@ type QueueRow = {
   provider_key?: string | null;
   external_id?: string | null;
 };
+
+function resolveSignalGear(signalType: string): 'V2_PULSE' | 'V3_ENGAGE' | 'V4_INTENT' | null {
+  switch ((signalType || '').trim()) {
+    case 'INTENT_CAPTURED':
+      return 'V2_PULSE';
+    case 'MEETING_BOOKED':
+      return 'V3_ENGAGE';
+    case 'SEAL_PENDING':
+      return 'V4_INTENT';
+    default:
+      return null;
+  }
+}
+
+function normalizeSignalChannel(intentAction: string | null | undefined): 'phone' | 'whatsapp' | 'form' | null {
+  switch ((intentAction || '').trim().toLowerCase()) {
+    case 'phone':
+    case 'whatsapp':
+    case 'form':
+      return (intentAction || '').trim().toLowerCase() as 'phone' | 'whatsapp' | 'form';
+    default:
+      return null;
+  }
+}
 
 /**
  * GET /api/oci/google-ads-export?siteId=<uuid>&markAsExported=true
@@ -278,6 +303,25 @@ export async function GET(req: NextRequest) {
       logWarn('OCI_EXPORT_ROAS_INFLATION_RISK', { site_id: siteUuid, warnings: roasWarnings });
     }
 
+    const missingV2Recovery = await recoverMissingV2SignalsForSite({
+      now: new Date(),
+      siteId: siteUuid,
+      lookbackHours: Math.min(exportConfig.max_click_age_days, 14) * 24,
+      limit: 250,
+      statuses: ['intent', 'confirmed', 'qualified', 'real'],
+      source: 'click',
+      intentActions: ['phone', 'whatsapp'],
+      exportConfig,
+    });
+    if (missingV2Recovery.recovered > 0) {
+      logInfo('OCI_EXPORT_CLICK_SIGNAL_BACKFILL', {
+        site_id: siteUuid,
+        checked: missingV2Recovery.checked,
+        recovered: missingV2Recovery.recovered,
+        dropped: missingV2Recovery.dropped,
+      });
+    }
+
     // Phase 6.2: Deterministic Cursor-Based Query (offline_conversion_queue)
     // Formula: (updated_at, id) > (last_t, last_i)
     let query = adminClient
@@ -387,9 +431,9 @@ export async function GET(req: NextRequest) {
 
     // Fetch call context for Identity Stitcher (caller_phone, fingerprint)
     const { data: callsForStitch } = signalCallIds.length > 0
-      ? await adminClient.from('calls').select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at, status').eq('site_id', siteUuid).in('id', signalCallIds)
+      ? await adminClient.from('calls').select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at, status, intent_action').eq('site_id', siteUuid).in('id', signalCallIds)
       : { data: [] };
-    const callCtxByCallId = new Map<string, { caller_phone_e164?: string; matched_fingerprint?: string; callTime: string; status?: string | null }>();
+    const callCtxByCallId = new Map<string, { caller_phone_e164?: string; matched_fingerprint?: string; callTime: string; status?: string | null; intentAction?: string | null }>();
     for (const c of callsForStitch ?? []) {
       const id = (c as { id: string }).id;
       const confirmed = (c as { confirmed_at?: string }).confirmed_at;
@@ -399,6 +443,7 @@ export async function GET(req: NextRequest) {
         matched_fingerprint: (c as { matched_fingerprint?: string }).matched_fingerprint ?? undefined,
         callTime: confirmed ?? created ?? new Date().toISOString(),
         status: (c as { status?: string | null }).status ?? null,
+        intentAction: (c as { intent_action?: string | null }).intent_action ?? null,
       });
     }
 
@@ -466,7 +511,13 @@ export async function GET(req: NextRequest) {
         });
         continue;
       }
-      const conversionName = (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
+      const signalGear = resolveSignalGear(sigType);
+      const signalChannel = normalizeSignalChannel(ctx?.intentAction);
+      const signalActionCfg =
+        signalGear && signalChannel
+          ? getConversionActionConfig(exportConfig, signalChannel, signalGear)
+          : null;
+      const conversionName = signalActionCfg?.action_name || (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
 
       const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
       const valueGuard = validateOciSignalConversionValue(rowValue);

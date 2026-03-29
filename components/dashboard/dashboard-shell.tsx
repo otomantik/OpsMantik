@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './qualification-queue';
-import { FollowUpPreview } from './follow-up-preview';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -179,15 +178,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                   {t('dashboard.intents')}
                 </Link>
                 <Link
-                  href={`/dashboard/site/${siteId}/conversations`}
-                  className={cn(
-                    buttonVariants({ variant: 'outline' }),
-                    'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
-                  )}
-                >
-                  {t('dashboard.conversationDesk')}
-                </Link>
-                <Link
                   href={`#raporlar`}
                   className={cn(
                     buttonVariants({ variant: 'outline' }),
@@ -244,11 +234,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
                       {t('dashboard.realtimeToday')}
                     </DropdownMenuItem>
                     <div className="mt-2 pt-2 border-t border-slate-700">
-                      <Link href={`/dashboard/site/${siteId}/today-desk`} className="block">
-                        <DropdownMenuItem className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
-                          {t('dashboard.todayDesk')}
-                        </DropdownMenuItem>
-                      </Link>
                       <Link href={`/dashboard/site/${siteId}/activity`} className="block">
                         <DropdownMenuItem className="focus:bg-slate-800 focus:text-emerald-400 cursor-pointer text-xs font-bold">
                           {t('dashboard.activityLog')}
@@ -309,14 +294,6 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
         </header>
 
         <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
-          <div className="mb-8">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-slate-800">{t('dashboard.followUpPreview')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.followUpPreviewSubtitle')}</p>
-            </div>
-            <FollowUpPreview siteId={siteId} />
-          </div>
-
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             <div id="niyetler" className="xl:col-span-7">
               <div className="mb-3">

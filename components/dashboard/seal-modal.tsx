@@ -179,7 +179,7 @@ export function SealModal({
                 />
               </div>
               <p className="text-sm text-center text-slate-500 px-4">
-                Gerçek ciroyu girin. Boş bırakırsanız sistem otomatik tahmin yapacaktır.
+                {t('seal.revenueStepHint')}
               </p>
             </div>
           )}
@@ -188,9 +188,11 @@ export function SealModal({
             <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500 text-center">
               <div className="p-6 rounded-3xl bg-emerald-50 border-2 border-emerald-100 flex flex-col items-center gap-2">
                 <ShieldCheck className="h-12 w-12 text-emerald-600 mb-2" />
-                <div className="text-slate-500 text-xs font-bold uppercase tracking-widest leading-none">MÜHÜRLENECEK DEĞER</div>
+                <div className="text-slate-500 text-xs font-bold uppercase tracking-widest leading-none">
+                  {t('seal.valueToSealLabel')}
+                </div>
                 <div className="text-4xl font-black text-emerald-700 tracking-tighter">
-                  {effectiveAmount ? `${effectiveAmount} ${currency}` : "AI TAHMİNİ"}
+                  {effectiveAmount ? `${effectiveAmount} ${currency}` : t('seal.aiEstimateLabel')}
                 </div>
                 {callerPhone && (
                   <div className="mt-4 px-4 py-2 rounded-full bg-white border border-emerald-200 text-emerald-700 text-sm font-mono font-bold">

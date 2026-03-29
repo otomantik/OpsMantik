@@ -53,7 +53,7 @@ export function QueueList({
               <div className="tabular-nums font-semibold text-slate-900">{t('dashboard.commandCenter.queue.inQueue', { n: state.intents.length })}</div>
             </div>
             <div>
-              <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{t('crm.preview.nextStep')}</div>
+              <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{t('queue.focusTimeLabel')}</div>
               <div className="tabular-nums font-semibold text-slate-900" suppressHydrationWarning>
                 {state.mergedTop
                   ? `${formatTimestamp(state.mergedTop.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} ${t('dashboard.commandCenter.queue.trt')}`

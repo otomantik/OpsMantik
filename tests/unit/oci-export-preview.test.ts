@@ -81,6 +81,22 @@ test('google-ads-export route: seals prefer canonical occurred_at over legacy co
   assert.ok(src.includes('row.conversion_time,'), 'route must keep legacy conversion_time only as fallback');
 });
 
+test('google-ads-export route: recovers missing phone and WhatsApp V2 signals before export', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('recoverMissingV2SignalsForSite'), 'route should invoke site-scoped V2 recovery');
+  assert.ok(src.includes("source: 'click'"), 'recovery should target click-origin intents');
+  assert.ok(src.includes("intentActions: ['phone', 'whatsapp']"), 'recovery should cover phone and WhatsApp intents');
+});
+
+test('google-ads-export route: signal conversion names honor per-channel V2/V3/V4 config', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('resolveSignalGear('), 'route should map legacy signal types back to gears');
+  assert.ok(src.includes('normalizeSignalChannel(ctx?.intentAction)'), 'route should derive channel from call intent action');
+  assert.ok(src.includes('getConversionActionConfig(exportConfig, signalChannel, signalGear)'), 'route should resolve configured signal conversion action');
+});
+
 test('claim RPC migration: increments attempt_count', () => {
   const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260330000000_oci_claim_and_attempt_cap.sql');
   const src = readFileSync(migrationPath, 'utf8');
