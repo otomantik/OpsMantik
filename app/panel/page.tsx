@@ -44,8 +44,8 @@ export default async function PanelRoute() {
 
   if (!targetSiteId) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-slate-400">
-        <h1 className="text-xl font-black text-white mb-2">Yetkisiz Giriş</h1>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white text-slate-500">
+        <h1 className="text-xl font-black text-slate-900 mb-2">Yetkisiz Giriş</h1>
         <p className="text-sm">Hesabınıza kayıtlı bir site bulunamadı.</p>
       </div>
     );
@@ -71,18 +71,18 @@ export default async function PanelRoute() {
   if (!baseValue || !isUniversalConfigured) {
     if (!canWriteSiteConfig) {
       return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <h1 className="text-xl font-black mb-2">Kurulum Bekleniyor</h1>
-            <p className="text-sm text-slate-400">
-              Bu panel henüz ilk kurulumunu tamamlamamış.
+        <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center space-y-4">
+            <h1 className="text-2xl font-black mb-2">Kurulum Bekleniyor</h1>
+            <p className="text-sm text-slate-500 font-medium">
+              Bu panel henüz ilk kurulumunu tamamlamamış. Lütfen yönetici ile iletişime geçin.
             </p>
           </div>
         </div>
       );
     }
     return (
-      <div className="min-h-screen bg-slate-950">
+      <div className="min-h-screen bg-slate-50">
         <PanelOnboarding siteId={targetSiteId} />
       </div>
     );
@@ -109,28 +109,28 @@ export default async function PanelRoute() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      {/* Top Bar */}
-      <div className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-xl mx-auto px-4 h-14 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-50 font-sans">
+      {/* Top Bar (Light) */}
+      <div className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-40 transition-all border-b border-slate-100">
+        <div className="max-w-xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center">
-              <span className="text-xs font-black text-slate-200">OM</span>
+            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center shadow-lg shadow-slate-900/10">
+              <span className="text-[10px] font-black text-white tracking-widest">OM</span>
             </div>
             <div>
-              <div className="text-sm font-black text-white leading-tight">{site?.name || 'OpsMantik'}</div>
-              <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500">Revenue Command</div>
+              <div className="text-sm font-black text-slate-900 leading-none">{site?.name || 'OpsMantik'}</div>
+              <div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mt-1">Focus Deck</div>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-100">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Live</span>
+            <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest leading-none">Canlı</span>
           </div>
         </div>
       </div>
 
-      {/* Feed */}
-      <div className="max-w-xl mx-auto px-4 py-6">
+      {/* Surface */}
+      <div className="max-w-xl mx-auto px-4 py-8">
         <PanelFeed initialCalls={processedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]} />
       </div>
     </div>
