@@ -102,7 +102,7 @@ export default async function PanelRoute() {
     logError('Panel RPC fetch failed', { error: callsError.message });
   }
 
-  const processedCalls = (calls || []).filter((c: any) => {
+  const processedCalls = (calls || []).filter((c: import('@/lib/types/hunter').HunterIntent) => {
     const s = (c.status || '').toLowerCase();
     if (s === 'confirmed' || s === 'junk' || s === 'g_trash') return false;
     return true;
@@ -111,7 +111,7 @@ export default async function PanelRoute() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       {/* Top Bar (Light) */}
-      <div className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-40 transition-all border-b border-slate-100">
+      <div className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-40 transition-all">
         <div className="max-w-xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center shadow-lg shadow-slate-900/10">

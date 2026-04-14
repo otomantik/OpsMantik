@@ -7,7 +7,7 @@ import { LeadActionOverlay, type LeadActionType } from './lead-action-overlay';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { createClient } from '@/lib/supabase/client';
-import { ChevronLeft, ChevronRight, Hash, Layers } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 
 export function PanelFeed({
@@ -51,7 +51,7 @@ export function PanelFeed({
 
   const handleActionComplete = async (phone?: string, score?: number) => {
     if (!pendingAction) return;
-    const { intent, type } = pendingAction;
+    const { intent } = pendingAction;
     
     // Optimistic UI: remove from local state
     setCalls(prev => prev.filter(c => c.id !== intent.id));
@@ -223,7 +223,7 @@ function SwipeableCard({
     <motion.div
       drag="x"
       dragConstraints={{ left: 0, right: 0 }}
-      style={{ x, rotate, opacity }}
+      style={{ x, rotate, opacity, backgroundColor: bg }}
       onDragEnd={(_, info) => {
         if (info.offset.x < -100) onSwipeLeft();
         if (info.offset.x > 100) onSwipeRight();

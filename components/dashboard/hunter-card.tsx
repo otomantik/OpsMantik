@@ -7,9 +7,7 @@ import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 import { Icons } from '@/components/icons';
 import {
-  Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, Trash2,
-  UserCheck, ShieldCheck, CircleDollarSign, Target, Activity, X, SkipForward,
-  Plus, type LucideIcon
+  MapPin, Trash2, UserCheck, ShieldCheck, Activity, X, Plus, type LucideIcon
 } from 'lucide-react';
 import { computeLcv } from '@/lib/oci/lcv-engine';
 import type { LeadActionType } from './lead-action-overlay';
@@ -57,11 +55,9 @@ function EntryRow({ label, value, urgent }: { label: string; value: React.ReactN
 export const HunterCard = React.memo(({
   intent,
   onAction,
-  readOnly,
 }: {
   intent: HunterIntent;
   onAction: (type: LeadActionType) => void;
-  readOnly?: boolean;
 }) => {
   const { t: translate } = useTranslation();
   const [showIntel, setShowIntel] = React.useState(false);
