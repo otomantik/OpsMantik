@@ -1099,7 +1099,8 @@ export async function GET(req: NextRequest) {
       if (suppressedSignalIds.length > 0) {
         const { data, error: suppressedSignalsError } = await adminClient
           .from('marketing_signals')
-          .update({ dispatch_status: 'FAILED' })
+          // Strict signal state-machine does not allow PENDING -> FAILED directly.
+          .update({ dispatch_status: 'JUNK_ABORTED' })
           .in('id', suppressedSignalIds)
           .eq('site_id', siteUuid)
           .eq('dispatch_status', 'PENDING')
@@ -1135,7 +1136,8 @@ export async function GET(req: NextRequest) {
       if (blockedSignalTimeIds.length > 0) {
         const { data, error: blockedSignalTimeError } = await adminClient
           .from('marketing_signals')
-          .update({ dispatch_status: 'FAILED' })
+          // Keep abort deterministic while staying within allowed transition matrix.
+          .update({ dispatch_status: 'JUNK_ABORTED' })
           .in('id', blockedSignalTimeIds)
           .eq('site_id', siteUuid)
           .eq('dispatch_status', 'PENDING')
@@ -1156,7 +1158,8 @@ export async function GET(req: NextRequest) {
       if (blockedSignalValueIds.length > 0) {
         const { data, error: blockedSignalValueError } = await adminClient
           .from('marketing_signals')
-          .update({ dispatch_status: 'FAILED' })
+          // Keep abort deterministic while staying within allowed transition matrix.
+          .update({ dispatch_status: 'JUNK_ABORTED' })
           .in('id', blockedSignalValueIds)
           .eq('site_id', siteUuid)
           .eq('dispatch_status', 'PENDING')
@@ -1211,6 +1214,19 @@ export async function GET(req: NextRequest) {
       ].filter((batch) => batch.ids.length > 0);
 
       for (const batch of blockedTerminalBatches) {
+        const { data: blockedClaimedCount, error: blockedClaimError } = await adminClient.rpc(
+          'append_script_claim_transition_batch',
+          { p_queue_ids: batch.ids, p_claimed_at: now }
+        );
+        if (blockedClaimError || typeof blockedClaimedCount !== 'number' || blockedClaimedCount !== batch.ids.length) {
+          logError(`${batch.logKey}_CLAIM_FAILED`, {
+            code: (blockedClaimError as { code?: string })?.code,
+            requested: batch.ids.length,
+            claimed: blockedClaimedCount,
+          });
+          return NextResponse.json({ error: 'Blocked queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
+        }
+
         const { data: blockedRows } = await adminClient
           .from('offline_conversion_queue')
           .select('id')
