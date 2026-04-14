@@ -117,18 +117,22 @@ export default async function PanelRoute() {
   });
 
   return (
-     <div className="min-h-screen bg-slate-100/50 pb-20">
-        <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-4 flex items-center justify-between h-16 shadow-sm">
-           <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black">
-                 OM
+     <div className="min-h-screen bg-slate-50 pb-20 selection:bg-blue-100">
+        {/* Minimalist Top Indicator */}
+        <div className="max-w-xl mx-auto px-6 pt-10 pb-4">
+           <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                 <div className="w-12 h-12 rounded-[1.25rem] bg-slate-900 text-white flex items-center justify-center font-black text-xl shadow-xl shadow-slate-900/20">
+                    OM
+                 </div>
+                 <div>
+                    <h1 className="text-2xl font-black tracking-tight text-slate-900 leading-none">{site?.name || 'Aksiyon Paneli'}</h1>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1.5">Gelir Komuta Merkezi</p>
+                 </div>
               </div>
-              <h1 className="text-lg font-black tracking-tight text-slate-800">{site?.name || 'Aksiyon Paneli'}</h1>
            </div>
-        </div>
-        
-        <div className="max-w-xl mx-auto p-4 mt-2">
-           <PanelFeed initialCalls={processedCalls as import('@/lib/types/hunter').HunterIntent[]} pipelineStages={pipelineStages} />
+           
+           <PanelFeed initialCalls={processedCalls as import('@/lib/types/hunter').HunterIntent[]} />
         </div>
      </div>
   );

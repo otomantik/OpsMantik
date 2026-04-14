@@ -4,10 +4,11 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { cn, formatTimestamp } from '@/lib/utils';
-import { HunterCard } from '../hunter-card';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { peekBorderClass } from './utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+
+import { IntentCardV2, type IntentCardV2Action } from '../intent-card-v2';
 
 function ActiveDeckCard({
   siteId,
@@ -41,74 +42,57 @@ function ActiveDeckCard({
     onQualified // Pass refetch callback for undo success
   );
 
-  const fireQualify = (params: { score: number; status: 'confirmed' | 'junk' }, optimistic = false) => {
+  const fireQualify = async (params: { score: number; status: 'confirmed' | 'junk' }, optimistic = false) => {
     if (optimistic) {
       onOptimisticRemove(intent.id);
       pushHistoryRow({
         id: intent.id,
-        status: 'confirmed',
+        status: params.status,
         intent_action: intent.intent_action ?? null,
         identity: intent.intent_target ?? null,
       });
-      pushToast('success', t('seal.dealSealed'));
-    }
-    void qualify(params)
-      .then((result) => {
-        if (!result.success) {
-          pushToast('danger', result.error || t('toast.failedUpdate'));
-        }
-        onQualified();
-      })
-      .catch(() => {
-        pushToast('danger', t('toast.failedUpdate'));
-        onQualified();
-      });
-  };
-
-  const handleQualify = (params: { score: 60 | 80; status: 'confirmed' }) => {
-    fireQualify(params, true);
-  };
-
-  const handleSeal = ({ id }: { id: string }) => {
-    // Legacy maps 1-5 to a fixed sealed rate, or handle freely. In UI it's usually 100 max.
-    const s = 100; // Seal forces the max limit we defined under the hood.
-    // Step 1: remove immediately
-    onOptimisticRemove(id);
-    // Step 2: toast + history immediately
-    pushHistoryRow({
-      id,
-      status: 'confirmed',
-      intent_action: intent.intent_action ?? null,
-      identity: intent.intent_target ?? null,
-    });
-    pushToast('success', t('toast.captured'));
-    // Step 3: async update in background
-    fireQualify({ score: s, status: 'confirmed' });
-  };
-
-  const handleJunk = ({ id }: { id: string }) => {
-    void qualify({ score: 0, status: 'junk' })
-      .then((result) => {
-        if (!result.success) {
-          pushToast('danger', result.error || t('toast.failedUpdate'));
-          onQualified();
-          return;
-        }
-        onOptimisticRemove(id);
-        pushHistoryRow({
-          id,
-          status: 'junk',
-          intent_action: intent.intent_action ?? null,
-          identity: intent.intent_target ?? null,
-        });
+      if (params.status === 'confirmed') {
+        pushToast('success', t('seal.dealSealed'));
+      } else {
         pushToast('danger', t('toast.trashRemoved'));
-        onQualified();
-      })
-      .catch(() => {
-        pushToast('danger', t('toast.failedUpdate'));
-        onQualified();
-      });
+      }
+    }
+    try {
+      const result = await qualify(params);
+      if (!result.success) {
+        pushToast('danger', result.error || t('toast.failedUpdate'));
+      }
+      onQualified();
+      return result.success;
+    } catch (err) {
+      pushToast('danger', t('toast.failedUpdate'));
+      onQualified();
+      return false;
+    }
   };
+
+  const handleAction = async (intentId: string, actionId: string, score: number) => {
+    if (readOnly) return false;
+    
+    // special case: seal/seal-deal might require the modal if it's a "Seal" action
+    if (actionId === 'seal' && onSealDeal) {
+      onSealDeal();
+      return true; // we assume modal will handle it and remove it
+    }
+
+    return await fireQualify({ score, status: 'confirmed' }, true);
+  };
+
+  const handleJunk = async (intentId: string) => {
+    if (readOnly) return false;
+    return await fireQualify({ score: 0, status: 'junk' }, true);
+  };
+
+  const actions: IntentCardV2Action[] = [
+    { id: 'gorusuldu', label: t('hunter.gorusuldu'), score: 60, color: 'blue' },
+    { id: 'teklif', label: t('hunter.teklif'), score: 80, color: 'indigo' },
+    { id: 'seal', label: t('hunter.seal'), score: 100, color: 'emerald', isPrimary: true },
+  ];
 
   return (
     <div className={cn(saving && 'opacity-60 pointer-events-none')}>
@@ -120,16 +104,11 @@ function ActiveDeckCard({
           onOpenDetails(intent.id);
         }}
       >
-        <HunterCard
+        <IntentCardV2
           intent={intent}
-          traffic_source={intent.traffic_source ?? null}
-          traffic_medium={intent.traffic_medium ?? null}
-          onSeal={({ id }) => handleSeal({ id })}
-          onSealDeal={onSealDeal}
-          onJunk={({ id }) => handleJunk({ id })}
-          onSkip={() => onSkip()}
-          onQualify={handleQualify}
-          readOnly={readOnly}
+          actions={actions}
+          onAction={handleAction}
+          onJunk={handleJunk}
         />
       </div>
     </div>

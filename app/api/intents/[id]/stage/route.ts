@@ -33,11 +33,12 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { gear_id, phone } = body;
+    const { gear_id, phone, score } = body;
     const { id: callId } = await params;
 
-    if (!gear_id) {
-      return NextResponse.json({ error: 'gear_id is required' }, { status: 400 });
+    // We allow either gear_id OR a direct numeric score for the new panel
+    if (!gear_id && score === undefined) {
+      return NextResponse.json({ error: 'gear_id or score is required' }, { status: 400 });
     }
 
     const { data: call, error: callError } = await adminClient
@@ -65,13 +66,14 @@ export async function POST(
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     const pipelineStages = (site.pipeline_stages || []) as PipelineStage[];
-    const stage = pipelineStages.find(s => s.id === gear_id);
+    const stage = gear_id ? pipelineStages.find(s => s.id === gear_id) : null;
 
-    if (!stage) {
+    // If using gear-based flow, stage is required. If using pure score, we proceed.
+    if (gear_id && !stage) {
       return NextResponse.json({ error: 'Invalid gear_id for this site' }, { status: 400 });
     }
 
-    if (stage.action === 'discard' || stage.id === 'g_trash' || stage.id === 'junk') {
+    if (stage && (stage.action === 'discard' || stage.id === 'g_trash' || stage.id === 'junk')) {
       await adminClient.rpc('apply_call_action_v1', {
         p_call_id: callId,
         p_action_type: 'junk',
@@ -93,31 +95,42 @@ export async function POST(
     }
 
     const baseValueTry = (site.oci_config as Record<string, unknown>)?.base_deal_value_try as number || site.default_aov || 1000;
-    const multiplier = typeof stage.multiplier === 'number' ? stage.multiplier : (stage.value_cents ? stage.value_cents / 100 / baseValueTry : 0.05);
+    
+    // NEW MATH: If score is provided (1-100), it overrides stage multiplier
+    let multiplier = 0;
+    if (typeof score === 'number') {
+      multiplier = Math.max(0, Math.min(100, score)) / 100;
+      // Also update the lead_score field in DB for auditing
+      await adminClient.from('calls').update({ lead_score: Math.round(score) }).eq('id', callId);
+    } else if (stage) {
+      multiplier = typeof stage.multiplier === 'number' ? stage.multiplier : (stage.value_cents ? stage.value_cents / 100 / baseValueTry : 0.05);
+    }
+
     const valueCents = Math.round(baseValueTry * multiplier * 100);
     const currencySafe = site.currency || 'TRY';
 
-    // The Unique OCI Deduplication ID incorporating gear_id
+    // The Unique OCI Deduplication ID incorporating gear_id or score
+    const dedupeKey = gear_id || `score_${score}`;
     const sessionId = call.matched_session_id;
-    const externalId = `google_ads:${gear_id}:${callId}:${sessionId || 'no-session'}`;
+    const externalId = `google_ads:${dedupeKey}:${callId}:${sessionId || 'no-session'}`;
 
     // Mark call as confirmed locally
     await adminClient.rpc('apply_call_action_v1', {
       p_call_id: callId,
       p_action_type: 'confirm',
-      p_payload: { status: gear_id },
+      p_payload: { status: gear_id || 'confirmed_with_score', score },
       p_actor_type: 'system',
       p_actor_id: user.id,
-      p_metadata: { route, gear_id },
+      p_metadata: { route, gear_id, score },
     });
 
     const nowIso = new Date().toISOString();
 
     const causalDna = buildMinimalCausalDna(
-      'UNIVERSAL_GEAR_SHIFT',
+      score !== undefined ? 'SCORE_BASED_CONVERSION' : 'UNIVERSAL_GEAR_SHIFT',
       ['usage'],
-      stage.label,
-      { baseValueTry, multiplier },
+      stage?.label || `Puan: ${score}`,
+      { baseValueTry, multiplier, score },
       { valueCents, currency: currencySafe }
     );
 
