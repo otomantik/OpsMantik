@@ -17,9 +17,13 @@ export async function PATCH(
     const { siteId } = await params;
     const access = await validateSiteAccess(siteId, user.id, supabase);
     
-    // Site configuration is a write operation; enforce RBAC capability.
-    if (!access.allowed || !access.role || !hasCapability(access.role, 'site:write')) {
-      return NextResponse.json({ error: 'Requires site write capability' }, { status: 403 });
+    // Onboarding-config route: owner/admin/billing-writers + operator are allowed.
+    // Operators need this to complete first-time panel setup without owner handoff.
+    const canWriteConfig =
+      Boolean(access.allowed && access.role && hasCapability(access.role, 'site:write')) ||
+      access.role === 'operator';
+    if (!canWriteConfig) {
+      return NextResponse.json({ error: 'Requires site config permission' }, { status: 403 });
     }
 
     const body = await req.json();

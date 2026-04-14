@@ -116,6 +116,8 @@ test('panel onboarding respects site write capability and avoids operator deadlo
   const configSrc = readFileSync(SITE_CONFIG_ROUTE, 'utf8');
   const panelSrc = readFileSync(PANEL_PAGE, 'utf8');
   assert.ok(configSrc.includes("hasCapability(access.role, 'site:write')"), 'site config route must enforce site:write capability');
+  assert.ok(configSrc.includes("access.role === 'operator'"), 'site config route must allow operator for first-time setup');
   assert.ok(panelSrc.includes("hasCapability(access.role, 'site:write')"), 'panel onboarding gate must compute site:write permission');
+  assert.ok(panelSrc.includes("access.role === 'operator'"), 'panel onboarding gate must allow operator setup path');
   assert.ok(panelSrc.includes('Kurulum Bekleniyor'), 'panel must show a non-editable setup-waiting state for non-writers');
 });

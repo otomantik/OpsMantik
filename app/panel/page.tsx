@@ -63,7 +63,9 @@ export default async function PanelRoute() {
   const baseValue = ociConfig.base_deal_value_try || site?.default_aov;
   const pipelineStages = site?.pipeline_stages as import('@/lib/types/database').PipelineStage[] | null;
   const access = await validateSiteAccess(targetSiteId, user.id, supabase);
-  const canWriteSiteConfig = Boolean(access.allowed && access.role && hasCapability(access.role, 'site:write'));
+  const canWriteSiteConfig =
+    Boolean(access.allowed && access.role && hasCapability(access.role, 'site:write')) ||
+    access.role === 'operator';
 
   // Enforce Onboarding Gate
   const isUniversalConfigured = pipelineStages && pipelineStages.some(s => s.id === 'g_4' || s.id === 'g_3');
