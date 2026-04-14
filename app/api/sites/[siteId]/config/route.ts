@@ -17,9 +17,9 @@ export async function PATCH(
     const { siteId } = await params;
     const access = await validateSiteAccess(siteId, user.id, supabase);
     
-    // Allow owner or admin
-    if (!access.allowed || (access.role !== 'owner' && access.role !== 'admin')) {
-      return NextResponse.json({ error: 'Requires owner or admin role' }, { status: 403 });
+    // Site configuration is a write operation; enforce RBAC capability.
+    if (!access.allowed || !access.role || !hasCapability(access.role, 'site:write')) {
+      return NextResponse.json({ error: 'Requires site write capability' }, { status: 403 });
     }
 
     const body = await req.json();

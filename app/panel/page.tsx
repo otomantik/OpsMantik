@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { PanelOnboarding } from '@/components/dashboard/panel-onboarding';
 import { PanelFeed } from '../../components/dashboard/panel-feed';
 import { logError } from '@/lib/logging/logger';
+import { validateSiteAccess } from '@/lib/security/validate-site-access';
+import { hasCapability } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -60,11 +62,25 @@ export default async function PanelRoute() {
   const ociConfig = (site?.oci_config as Record<string, unknown>) || {};
   const baseValue = ociConfig.base_deal_value_try || site?.default_aov;
   const pipelineStages = site?.pipeline_stages as import('@/lib/types/database').PipelineStage[] | null;
+  const access = await validateSiteAccess(targetSiteId, user.id, supabase);
+  const canWriteSiteConfig = Boolean(access.allowed && access.role && hasCapability(access.role, 'site:write'));
 
   // Enforce Onboarding Gate
   const isUniversalConfigured = pipelineStages && pipelineStages.some(s => s.id === 'g_4' || s.id === 'g_3');
 
   if (!baseValue || !isUniversalConfigured) {
+    if (!canWriteSiteConfig) {
+      return (
+        <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-800/70 p-6">
+            <h1 className="text-xl font-black mb-2">Kurulum Bekleniyor</h1>
+            <p className="text-sm text-slate-300">
+              Bu panel henüz ilk kurulumunu tamamlamamış. Devam etmek için site sahibi veya admin kullanıcının panel ayarlarını kaydetmesi gerekiyor.
+            </p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-slate-900">
          <PanelOnboarding siteId={targetSiteId} />

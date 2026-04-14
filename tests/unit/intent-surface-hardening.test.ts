@@ -16,6 +16,8 @@ const INTENT_STATUS_BADGE = join(ROOT, 'components', 'dashboard', 'intent-status
 const QUEUE_DECK = join(ROOT, 'components', 'dashboard', 'qualification-queue', 'queue-deck.tsx');
 const OCI_CONTROL_PAGE = join(ROOT, 'app', 'dashboard', 'site', '[siteId]', 'oci-control', 'page.tsx');
 const OCI_CONTROL_PANEL = join(ROOT, 'components', 'dashboard', 'oci-control', 'oci-control-panel.tsx');
+const SITE_CONFIG_ROUTE = join(ROOT, 'app', 'api', 'sites', '[siteId]', 'config', 'route.ts');
+const PANEL_PAGE = join(ROOT, 'app', 'panel', 'page.tsx');
 
 test('click-origin ingestion stays inside canonical call ontology', () => {
   const src = readFileSync(PROCESS_CALL_EVENT, 'utf8');
@@ -108,4 +110,12 @@ test('junk mutations wait for server confirmation and OCI panel exposes honest r
   assert.ok(!deckSrc.includes("const handleJunk = ({ id }: { id: string }) => {\n    onOptimisticRemove(id);"), 'junk action must not optimistically remove before success');
   assert.ok(ociPageSrc.includes("canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}"), 'OCI control page must derive canOperate from RBAC');
   assert.ok(ociPanelSrc.includes('disabled={!canOperate || actionBusy}'), 'OCI panel action buttons must respect read-only state');
+});
+
+test('panel onboarding respects site write capability and avoids operator deadlock', () => {
+  const configSrc = readFileSync(SITE_CONFIG_ROUTE, 'utf8');
+  const panelSrc = readFileSync(PANEL_PAGE, 'utf8');
+  assert.ok(configSrc.includes("hasCapability(access.role, 'site:write')"), 'site config route must enforce site:write capability');
+  assert.ok(panelSrc.includes("hasCapability(access.role, 'site:write')"), 'panel onboarding gate must compute site:write permission');
+  assert.ok(panelSrc.includes('Kurulum Bekleniyor'), 'panel must show a non-editable setup-waiting state for non-writers');
 });
