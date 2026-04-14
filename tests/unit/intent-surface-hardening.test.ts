@@ -121,3 +121,9 @@ test('panel onboarding respects site write capability and avoids operator deadlo
   assert.ok(panelSrc.includes("access.role === 'operator'"), 'panel onboarding gate must allow operator setup path');
   assert.ok(panelSrc.includes('Kurulum Bekleniyor'), 'panel must show a non-editable setup-waiting state for non-writers');
 });
+
+test('panel feed query uses existing calls columns (no stale schema fields)', () => {
+  const panelSrc = readFileSync(PANEL_PAGE, 'utf8');
+  assert.ok(panelSrc.includes('id, created_at, status, intent_action, matched_session_id'), 'panel calls query must use stable calls columns');
+  assert.ok(!panelSrc.includes('utm_term, city, district, location_source'), 'panel calls query must not select removed calls columns');
+});

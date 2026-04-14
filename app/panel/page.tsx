@@ -95,8 +95,7 @@ export default async function PanelRoute() {
   const { data: calls, error: callsError } = await adminClient
     .from('calls')
     .select(`
-      id, created_at, status, intent_action, utm_term, city, district, location_source,
-      traffic_source, traffic_medium, matched_session_id
+      id, created_at, status, intent_action, matched_session_id
     `)
     .eq('site_id', targetSiteId)
     .order('created_at', { ascending: false })
