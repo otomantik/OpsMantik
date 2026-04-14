@@ -12,7 +12,7 @@ test('detects Google Ads from click ids and Ads Assisted fallbacks remain repres
   assert.equal(out.traffic_medium, 'cpc');
 
   const cardSrc = readFileSync(join(ROOT, 'components', 'dashboard', 'hunter-card.tsx'), 'utf8');
-  assert.ok(cardSrc.includes("attribution.includes('ads assisted')"), 'hunter card must treat Ads Assisted as Google Ads-compatible source evidence');
+  assert.ok(cardSrc.includes('/ads[\\s-]*assisted/'), 'hunter card must treat Ads Assisted variants as Google Ads-compatible source evidence');
 });
 
 test('maps paid social UTMs to user-friendly paid platforms', () => {

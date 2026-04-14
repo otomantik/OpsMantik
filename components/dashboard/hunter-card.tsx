@@ -101,7 +101,8 @@ export const HunterCard = React.memo(({
 
   const sourceDisplay = useMemo(() => {
     const attribution = (intent.attribution_source || '').toLowerCase();
-    if (attribution.includes('ads assisted')) {
+    const adsAssistedPattern = /ads[\s-]*assisted/;
+    if (adsAssistedPattern.test(attribution)) {
       return 'Google Ads';
     }
     return intent.attribution_source || intent.traffic_source || translate('common.dimension.organic');
