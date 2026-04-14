@@ -26,6 +26,7 @@ import { AdsContextOptionalSchema } from '@/lib/ingest/call-event-worker-payload
 import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { getClientIp } from '@/lib/request-client-ip';
+import { getRefactorFlags } from '@/lib/refactor/flags';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -94,6 +95,17 @@ export async function POST(req: NextRequest) {
                 Sunset: DEPRECATION_SUNSET,
             }),
         };
+
+        if (!getRefactorFlags().legacy_endpoints_enabled) {
+            return NextResponse.json(
+                {
+                    error: 'gone',
+                    canonical: CALL_EVENT_V2_ROUTE,
+                    message: 'Use POST /api/call-event/v2',
+                },
+                { status: 410, headers: { ...baseHeaders } }
+            );
+        }
 
         // Rate limiting: 50 requests per minute per IP (calls are less frequent)
         const clientId = RateLimitService.getClientId(req);

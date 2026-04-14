@@ -28,6 +28,9 @@ export interface MatchSessionResult {
   callStatus: string | null;
   confidenceScore: number | null;
   consentScopes: string[] | null;
+  /** PR2: for consent provenance shadow (optional). */
+  consentAt: string | null;
+  consentProvenance: unknown;
 }
 
 type SessionRow = {
@@ -35,6 +38,8 @@ type SessionRow = {
   created_at: string;
   created_month: string;
   consent_scopes: unknown;
+  consent_at?: string | null;
+  consent_provenance?: unknown;
   gclid?: string | null;
   wbraid?: string | null;
   gbraid?: string | null;
@@ -65,6 +70,8 @@ export async function findRecentSessionByFingerprint(
     callStatus: null,
     confidenceScore: null,
     consentScopes: null,
+    consentAt: null,
+    consentProvenance: null,
   };
 
   const { data: recentEvents, error: eventsError } = await client
@@ -93,7 +100,7 @@ export async function findRecentSessionByFingerprint(
     const sessionId = key.split('::')[0];
     const { data: sess, error } = await client
       .from('sessions')
-      .select('id, created_at, created_month, consent_scopes, gclid, wbraid, gbraid')
+      .select('id, created_at, created_month, consent_scopes, consent_at, consent_provenance, gclid, wbraid, gbraid')
       .eq('id', sessionId)
       .eq('site_id', siteId)
       .eq('created_month', sessionMonth)
@@ -127,6 +134,8 @@ export async function findRecentSessionByFingerprint(
 
   const scopes = (session.consent_scopes ?? []) as string[];
   result.consentScopes = scopes;
+  result.consentAt = session.consent_at ?? null;
+  result.consentProvenance = session.consent_provenance ?? null;
   result.matchedSessionId = matchedSessionId;
   result.sessionMonth = sessionMonth;
 

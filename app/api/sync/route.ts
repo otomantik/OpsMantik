@@ -17,6 +17,7 @@ import { recordRouteHttpResponse } from '@/lib/route-metrics';
 import { publishToQStash, resolveAppBaseUrlForIngest } from '@/lib/ingest/publish';
 import { executeIngest } from '@/lib/ingest/worker-kernel';
 import { OPSMANTIK_VERSION } from '@/lib/version';
+import { applyRefactorObservability } from '@/lib/refactor/phase-context';
 
 /**
  * 202 Accepted Async Ingest: Auth → Parse → validateSite → Rate limit → Consent → Publish to QStash → 202.
@@ -286,6 +287,8 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
       );
     }
     const siteIdUuid = site.id;
+
+    applyRefactorObservability({ route_name: '/api/sync', site_id: siteIdUuid });
 
     if (isTrackerShadowModeEnabled()) {
       const missingTrackerStampCount = bodies.filter((item) => !hasTrackerVersionStamp(item)).length;

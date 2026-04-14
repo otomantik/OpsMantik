@@ -9,6 +9,9 @@
 export const OPSMANTIK_VERSION = '2.2.0-elite';
 export const IDEMPOTENCY_VERSION = '2';
 
+/** Program tag for Attribution Truth Engine refactor observability (Sentry/logs/metrics). Not a delivery-phase label. */
+export const REFACTOR_PHASE_TAG = 'attribution_truth_program_v1';
+
 export const TRACKER_VERSION = '2.1.0';
 
 export const COMPAT_MAP = {

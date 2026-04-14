@@ -1,0 +1,23 @@
+[dotenv@17.2.3] injecting env (36) from .env.local -- tip: ??? audit secrets and track compliance: https://dotenvx.com/ops
+--- SITE ---
+UUID: c644fff7-9d7a-440d-b9bf-99f3a0f86073
+public_id: 28cf0aefaa074f5bb29e818a9d53b488
+name: Muratcan AK??
+oci_sync_method: script
+
+--- EXPORT API GORE ALINACAK SATIRLAR (QUEUED/RETRY, google_ads) ---
+Adet: 0
+(Bos - "Islenecek kayit bulunamadi" sebebi)
+
+--- COMPLETED SATIRLAR (uploaded_at=null -> oci-enqueue reset eder) ---
+  id: acbef43d... | uploaded_at: 2026-03-08T15:01:58.758+00:00 | 2026-03-08T15:01:59
+  id: 932f636d... | uploaded_at: 2026-03-07T20:58:24.452+00:00 | 2026-03-07T20:58:24
+  id: d7da3535... | uploaded_at: 2026-03-07T20:58:24.452+00:00 | 2026-03-07T20:58:24
+
+--- TUM KUYRUK (status:provider_key) ---
+  COMPLETED:google_ads : 3
+  COMPLETED_UNVERIFIED:google_ads : 2
+
+--- ONERI ---
+- COMPLETED (uploaded_at null olanlar) -> oci-enqueue reset yap
+- npm run db:enqueue:today veya npm run db:enqueue Eslamed

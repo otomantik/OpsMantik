@@ -62,7 +62,17 @@ function makeMockClient(siteIdToSession: Record<string, string>) {
               const sessionId = lastSeenSiteId ? siteIdToSession[lastSeenSiteId] : null;
               if (sessionId) {
                 return {
-                  data: { id: sessionId, created_at: new Date().toISOString(), created_month: MONTH, consent_scopes: [], gclid: null, wbraid: null, gbraid: null },
+                  data: {
+                    id: sessionId,
+                    created_at: new Date().toISOString(),
+                    created_month: MONTH,
+                    consent_scopes: [],
+                    consent_at: null,
+                    consent_provenance: null,
+                    gclid: null,
+                    wbraid: null,
+                    gbraid: null,
+                  },
                   error: null,
                 };
               }

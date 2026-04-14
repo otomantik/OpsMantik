@@ -1,0 +1,10 @@
+[
+  {
+    "id": "0a41d14e-f3d3-4213-a87b-b62eb8a7abda",
+    "name": "Koç Oto Kurtarma",
+    "currency": "USD",
+    "locale": "en-US",
+    "config": {},
+    "oci_config": null
+  }
+]

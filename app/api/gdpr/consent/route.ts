@@ -11,6 +11,8 @@ import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { SITE_PUBLIC_ID_RE, SITE_UUID_RE } from '@/lib/security/site-identifier';
 import { verifyGdprConsentSignatureV1 } from '@/lib/security/verify-gdpr-consent-signature-v1';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
+import { parseOptionalConsentProvenance } from '@/lib/compliance/consent-provenance-shadow';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 const IDENTIFIER_TYPES = ['fingerprint', 'session_id'] as const;
 const VALID_SCOPES = ['analytics', 'marketing'];
@@ -187,6 +189,11 @@ export async function POST(req: NextRequest) {
       .filter((s) => VALID_SCOPES.includes(s));
   }
 
+  const { object: provenanceForDb, malformed: provenanceMalformed } = parseOptionalConsentProvenance(body);
+  if (provenanceMalformed) {
+    incrementRefactorMetric('consent_provenance_gdpr_malformed_body_total');
+  }
+
   if (!identifier_type || !identifier_value) {
     return NextResponse.json(
       { error: 'identifier_type and identifier_value are required' },
@@ -234,7 +241,7 @@ export async function POST(req: NextRequest) {
   if (identifier_type === 'session_id') {
     const { error: updErr } = await adminClient
       .from('sessions')
-      .update({ consent_at: consentAtIso, consent_scopes: consent_scopes })
+      .update({ consent_at: consentAtIso, consent_scopes: consent_scopes, consent_provenance: provenanceForDb })
       .eq('site_id', siteUuidFinal)
       .eq('id', identifier_value);
     if (updErr) {
@@ -243,7 +250,7 @@ export async function POST(req: NextRequest) {
   } else {
     const { error: updErr } = await adminClient
       .from('sessions')
-      .update({ consent_at: consentAtIso, consent_scopes: consent_scopes })
+      .update({ consent_at: consentAtIso, consent_scopes: consent_scopes, consent_provenance: provenanceForDb })
       .eq('site_id', siteUuidFinal)
       .eq('fingerprint', identifier_value);
     if (updErr) {

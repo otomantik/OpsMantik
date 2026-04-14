@@ -48,7 +48,9 @@ test('single-head cleanup: call sale review is DB-owned and stage shadow route i
 test('call-event ingestion sanitizes click ids before paid classification', () => {
   const src = readFileSync(PROCESS_CALL_EVENT, 'utf8');
   assert.ok(src.includes('const sanitizedGclid = sanitizeClickId(payload.gclid) ?? sanitizedClickId;'), 'call-event path must sanitize gclid');
-  assert.ok(src.includes("source_type: (sanitizedGclid || sanitizedWbraid || sanitizedGbraid || sanitizedClickId) ? 'paid' : 'organic'"), 'paid classification must use sanitized identifiers only');
+  assert.ok(src.includes('deriveCallEventAuthoritativePaidOrganic({'), 'paid classification must route through authoritative helper');
+  assert.ok(src.includes('sanitizedGclid') && src.includes('sanitizedWbraid') && src.includes('sanitizedGbraid') && src.includes('sanitizedClickId'), 'authoritative helper must only use sanitized identifiers');
+  assert.ok(src.includes('source_type: authoritativeCallEventSourceType'), 'calls.source_type must be populated from authoritative helper output');
 });
 
 test('tracker call-event path no longer falls back to unsigned transport', () => {

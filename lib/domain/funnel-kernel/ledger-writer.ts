@@ -4,6 +4,7 @@
  * See: docs/architecture/FUNNEL_CONTRACT.md, PROJECTION_REDUCER_SPEC.md
  */
 
+import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonical-truth-ledger-writer';
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 
@@ -85,6 +86,21 @@ export async function appendFunnelEvent(input: AppendFunnelEventInput): Promise<
     logWarn('appendFunnelEvent failed', { callId, siteId, idempotencyKey, error: error.message });
     throw error;
   }
+
+  await appendCanonicalTruthLedgerBestEffort({
+    siteId,
+    streamKind: 'FUNNEL_LEDGER',
+    idempotencyKey: `canonical:funnel:${idempotencyKey}`,
+    occurredAt,
+    sessionId: null,
+    callId,
+    correlationId: correlationId ?? null,
+    payload: {
+      v: 1,
+      refs: { call_id: callId },
+      class: { event_type: eventType, event_source: eventSource },
+    },
+  });
 
   return { appended: true };
 }

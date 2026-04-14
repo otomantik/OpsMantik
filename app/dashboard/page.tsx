@@ -51,9 +51,12 @@ export default async function DashboardPage() {
   const resolvedLocale = resolveLocale(firstSite, user?.user_metadata, acceptLanguage, cookieLocale);
 
   // Router logic:
-  // 0 sites => show CTA + create site UI
-  // 1 site => redirect to /dashboard/site/<id>
-  // many => show Site Switcher + recent sites list
+  // Non-admins are ALWAYS force-redirected to the simplified /panel CRM view.
+  // Admins can see the traditional OpsMantik dashboard structure.
+
+  if (!userIsAdmin && siteCount > 0) {
+    redirect('/panel');
+  }
 
   if (siteCount === 1 && sites && sites[0]) {
     redirect(`/dashboard/site/${sites[0].id}`);

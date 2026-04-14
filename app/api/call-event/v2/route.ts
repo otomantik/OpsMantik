@@ -26,6 +26,14 @@ import { AdsContextOptionalSchema } from '@/lib/ingest/call-event-worker-payload
 import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { recordRouteHttpResponse } from '@/lib/route-metrics';
+import { applyRefactorObservability } from '@/lib/refactor/phase-context';
+import { getRefactorFlags } from '@/lib/refactor/flags';
+import {
+  applyConsentProvenanceShadowMetrics,
+  evaluateConsentProvenanceShadow,
+} from '@/lib/compliance/consent-provenance-shadow';
+import { digestCallEventMatchInputs, recordInferenceRunBestEffort } from '@/lib/domain/truth/inference-run-writer';
+import { appendIdentityGraphEdgeBestEffort } from '@/lib/domain/truth/identity-graph-writer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -260,6 +268,8 @@ async function callEventV2Inner(req: NextRequest) {
 
     if (!siteUuid) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
 
+    applyRefactorObservability({ route_name: ROUTE, site_id: siteUuid });
+
     try {
       await requireModule({ siteId: siteUuid, requiredModule: 'core_oci', site: siteRow ?? undefined });
     } catch (err) {
@@ -366,6 +376,19 @@ async function callEventV2Inner(req: NextRequest) {
     if (!matchedSessionId || !hasAnalyticsConsent) {
       return new NextResponse(null, { status: 204, headers: CONSENT_MISSING_HEADERS });
     }
+
+    if (getRefactorFlags().consent_provenance_shadow_enabled) {
+      const outcome = evaluateConsentProvenanceShadow({
+        payloadClaimsAnalytics: true,
+        session: {
+          consent_scopes: consentScopes,
+          consent_at: matchResult.consentAt,
+          consent_provenance: matchResult.consentProvenance,
+        },
+      });
+      applyConsentProvenanceShadowMetrics(outcome);
+    }
+
     const scoreBreakdown = matchResult.scoreBreakdown;
     const callStatus = matchResult.callStatus;
 
@@ -395,6 +418,48 @@ async function callEventV2Inner(req: NextRequest) {
     const signatureHash = headerSig
       ? createHash('sha256').update(headerSig, 'utf8').digest('hex')
       : null;
+
+    const ceInferenceSuffix =
+      event_id ?? signatureHash ?? `h:${createHash('sha256').update(fingerprint, 'utf8').digest('hex').slice(0, 16)}`;
+    await recordInferenceRunBestEffort({
+      siteId: siteUuidFinal,
+      inferenceKind: 'CALL_EVENT_SESSION_MATCH_V1',
+      policyVersion: 'match_session:v1_score_v1_1',
+      inputDigest: digestCallEventMatchInputs({
+        siteId: siteUuidFinal,
+        fingerprintLength: fingerprint.length,
+        hasPayloadClickIds: Boolean(
+          (body.gclid && String(body.gclid).trim()) ||
+          (body.wbraid && String(body.wbraid).trim()) ||
+          (body.gbraid && String(body.gbraid).trim())
+        ),
+      }),
+      outputSummary: {
+        matched_session_id: matchedSessionId,
+        lead_score: leadScore,
+        call_status: callStatus,
+        confidence_score: matchResult.confidenceScore,
+      },
+      idempotencyKey: `inf:ce_match:${siteUuidFinal}:${ceInferenceSuffix}`,
+      occurredAt: new Date(matchedAt),
+      correlationId: requestId ?? null,
+      sessionId: matchedSessionId,
+      callId: null,
+    });
+
+    void appendIdentityGraphEdgeBestEffort({
+      siteId: siteUuidFinal,
+      edgeKind: 'FINGERPRINT_SESSION_BRIDGE',
+      ingestSource: 'CALL_EVENT_V2',
+      fingerprint,
+      sessionId: matchedSessionId,
+      correlationId: requestId ?? null,
+      idempotencyKey: `ig:ce:${siteUuidFinal}:${ceInferenceSuffix}`,
+      payload: {
+        lead_score: leadScore,
+        call_status: callStatus,
+      },
+    });
 
     const workerPayload = {
       _ingest_type: 'call-event' as const,

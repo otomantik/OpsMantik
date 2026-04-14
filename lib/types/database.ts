@@ -36,15 +36,17 @@ export interface CallRow {
   [key: string]: unknown;
 }
 
-/** Dynamic sector playbook stage (pipeline_stages JSONB) for Tier 1/2/3 funnel */
+/** Dynamic sector playbook stage (pipeline_stages JSONB) for Universal CRM / God Mode */
 export interface PipelineStage {
-  id: string; // e.g., 'intent', 'sealed', 'photo_received'
-  label: string; // UI display name (e.g., 'Satış Kapanışı')
-  value_cents: number; // Synthetic value to send to Google Ads API
-  is_macro: boolean; // True if this is the ultimate goal (e.g., Sale)
-  color: string; // Badge/Button color for the War Room UI
-  order: number; // Funnel rendering order (left to right)
-  is_system: boolean; // If true, the user cannot delete this stage from the UI
+  id: string; // e.g., 'g_trash', 'g_1', 'g_2', 'g_3', 'g_4'
+  label: string; // UI display name (e.g., 'Kitle Ölücü', 'İş Oldu')
+  multiplier?: number; // e.g., 0.05, 0.10, 0.30, 1.0. Applied against site's base deal value. Optional for backward calc
+  action?: 'discard' | 'oci_ping'; // discard for junk, oci_ping for gears
+  color: string; // Tailwind color token (e.g., 'rose', 'orange', 'blue', 'emerald')
+  order: number; // Funnel rendering order (0 for trash, 1-4 for gears)
+  value_cents?: number; // Legacy/Fallback hardcoded value
+  is_macro?: boolean; // True if this is the ultimate goal (e.g., Sale)
+  is_system?: boolean; // If true, the user cannot delete this stage from the UI
 }
 
 /** Per-site config (sites.config jsonb): bounty chip values, UI knobs */

@@ -6,6 +6,11 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logError } from '@/lib/logging/logger';
 import type { ScoreBreakdown } from '@/lib/types/call-event';
+import {
+  recordScoringLineageParityTelemetry,
+  type ShadowSessionQualityV1_1,
+} from '@/lib/domain/deterministic-engine/scoring-lineage-parity';
+import { getRefactorFlags } from '@/lib/refactor/flags';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { site_id, call_id, payload, ads_context } = body;
+        const { site_id, call_id, payload, ads_context, shadow_session_quality_v1_1 } = body;
 
         if (!site_id || !call_id) {
             return NextResponse.json({ error: 'Missing site_id or call_id' }, { status: 400 });
@@ -34,6 +39,22 @@ export async function POST(req: NextRequest) {
             payload,
             ads_context
         );
+
+        const shadow = shadow_session_quality_v1_1 as ShadowSessionQualityV1_1 | undefined;
+        const shadowFinal =
+            shadow != null &&
+            typeof shadow.final_score === 'number' &&
+            Number.isFinite(shadow.final_score)
+                ? shadow.final_score
+                : null;
+
+        recordScoringLineageParityTelemetry({
+            consolidatedEnabled: getRefactorFlags().truth_engine_consolidated_enabled,
+            brainScore,
+            sessionV11FinalScore: shadowFinal,
+            siteId: site_id,
+            callId: call_id,
+        });
 
         // 2. Logic: Fast-Track Routing
         const isFastTrack = brainScore >= 80;

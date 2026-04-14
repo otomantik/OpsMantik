@@ -21,6 +21,7 @@ import { processCallEvent } from '@/lib/ingest/process-call-event';
 import { incrementBillingIngestAllowed } from '@/lib/billing-metrics';
 import { incrementUsageRedis } from '@/lib/quota';
 import { getCurrentYearMonthUTC } from '@/lib/quota';
+import { applyRefactorObservability } from '@/lib/refactor/phase-context';
 
 type ErrorLike = { code?: unknown; message?: unknown; status?: unknown };
 
@@ -75,6 +76,11 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
     Sentry.setTag('ingest_lane', lane);
 
     if (isCallEventWorkerPayload(rawBody)) {
+      applyRefactorObservability({
+        route_name: 'workers_ingest_call_event',
+        site_id: typeof rawBody.site_id === 'string' ? rawBody.site_id : null,
+        ingest_lane: lane,
+      });
       const result = await processCallEvent(rawBody, requestId);
       siteDbId = rawBody.site_id;
       return NextResponse.json({ success: true, call_id: result.call_id, lane });
@@ -99,6 +105,12 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
     const { valid: siteValid, site } = await SiteService.validateSite(site_id);
     if (!siteValid || !site) return NextResponse.json({ ok: true, skipped: 'site_invalid' });
     siteDbId = site.id;
+
+    applyRefactorObservability({
+      route_name: 'workers_ingest_sync',
+      site_id: site.id,
+      ingest_lane: lane,
+    });
 
     const fingerprint = (job.meta && typeof (job.meta as Record<string, unknown>).fp === 'string')
       ? String((job.meta as Record<string, unknown>).fp).trim()

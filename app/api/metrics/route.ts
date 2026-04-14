@@ -9,6 +9,9 @@ import {
     getRouteMetricsFromRedis,
     getRouteMetricsMemory,
 } from '@/lib/route-metrics';
+import { getRefactorFlags } from '@/lib/refactor/flags';
+import { getRefactorMetricsFromRedis, getRefactorMetricsMemory } from '@/lib/refactor/metrics';
+import { REFACTOR_PHASE_TAG } from '@/lib/version';
 
 export const runtime = 'nodejs'; // or 'edge' if billing-metrics supports it, but watchtower uses adminClient which assumes node usually
 
@@ -86,6 +89,50 @@ export async function GET(req: NextRequest) {
     const routeMem = getRouteMetricsMemory();
     const routeSource = routeRedis ? 'redis' : 'memory';
     const routeCombined = routeRedis ?? routeMem;
+
+    const refactorRedis = await getRefactorMetricsFromRedis();
+    const refactorMetrics = refactorRedis ?? getRefactorMetricsMemory();
+    const refactorMetricsSource = refactorRedis ? 'redis' : 'memory';
+
+    let truthEvidenceLedger: Record<string, unknown> | null = null;
+    try {
+        const { count } = await adminClient
+            .from('truth_evidence_ledger')
+            .select('*', { count: 'exact', head: true });
+        truthEvidenceLedger = { row_count: count ?? 0 };
+    } catch {
+        truthEvidenceLedger = { status: 'tables_unavailable' };
+    }
+
+    let truthCanonicalLedger: Record<string, unknown> | null = null;
+    try {
+        const { count } = await adminClient
+            .from('truth_canonical_ledger')
+            .select('*', { count: 'exact', head: true });
+        truthCanonicalLedger = { row_count: count ?? 0 };
+    } catch {
+        truthCanonicalLedger = { status: 'tables_unavailable' };
+    }
+
+    let truthInferenceRuns: Record<string, unknown> | null = null;
+    try {
+        const { count } = await adminClient
+            .from('truth_inference_runs')
+            .select('*', { count: 'exact', head: true });
+        truthInferenceRuns = { row_count: count ?? 0 };
+    } catch {
+        truthInferenceRuns = { status: 'tables_unavailable' };
+    }
+
+    let truthIdentityGraphEdges: Record<string, unknown> | null = null;
+    try {
+        const { count } = await adminClient
+            .from('truth_identity_graph_edges')
+            .select('*', { count: 'exact', head: true });
+        truthIdentityGraphEdges = { row_count: count ?? 0 };
+    } catch {
+        truthIdentityGraphEdges = { status: 'tables_unavailable' };
+    }
     const syncRate = computeApproxErrorRate('sync', routeCombined);
     const ceRate = computeApproxErrorRate('call_event_v2', routeCombined);
 
@@ -130,6 +177,16 @@ export async function GET(req: NextRequest) {
             checks: watchtower.checks
         },
         funnel_kernel: funnelKernel,
+        truth_refactor: {
+            phase_tag: REFACTOR_PHASE_TAG,
+            flags: getRefactorFlags(),
+            metrics_source: refactorMetricsSource,
+            metrics: refactorMetrics,
+            truth_evidence_ledger: truthEvidenceLedger,
+            truth_canonical_ledger: truthCanonicalLedger,
+            truth_inference_runs: truthInferenceRuns,
+            truth_identity_graph_edges: truthIdentityGraphEdges,
+        },
         meta: {
             timestamp: new Date().toISOString(),
             env: process.env.NODE_ENV

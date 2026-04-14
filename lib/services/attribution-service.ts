@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { runDeterministicEngineProbe, runAttributionPaidSurfaceParity } from '@/lib/domain/deterministic-engine';
 import { adminClient } from '@/lib/supabase/admin';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { computeAttribution, extractUTM, sanitizeClickId } from '@/lib/attribution';
@@ -53,6 +54,17 @@ export class AttributionService {
             referrer: referrer || null,
             fingerprint,
             hasPastGclid,
+        });
+
+        runDeterministicEngineProbe({ kind: 'attribution_resolve', siteId });
+
+        runAttributionPaidSurfaceParity({
+          siteId,
+          url,
+          referrer,
+          sanitizedGclid: sanitizedCurrentGclid,
+          utm,
+          attribution,
         });
 
         return { attribution, utm, hasPastGclid };

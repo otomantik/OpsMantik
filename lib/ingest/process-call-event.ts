@@ -12,6 +12,11 @@ import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
+import { deriveCallEventAuthoritativePaidOrganic } from '@/lib/domain/deterministic-engine/call-event-authoritative-source';
+import { runCallEventPaidSurfaceParity } from '@/lib/domain/deterministic-engine/parity-call-event';
+import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonical-truth-ledger-writer';
+import { appendTruthEvidenceLedgerBestEffort } from '@/lib/domain/truth/truth-evidence-ledger-writer';
+import { probeFunnelProjectionDualRead } from '@/lib/domain/truth/projection-dual-read';
 import { resolveIntentConversation } from '@/lib/services/conversation-service';
 import { sanitizeClickId } from '@/lib/attribution';
 
@@ -144,6 +149,13 @@ export async function processCallEvent(
   // status family that the DB state machine, queue UI, or cleanup jobs do not own.
   const initialStatus = 'intent';
 
+  const authoritativeCallEventSourceType = deriveCallEventAuthoritativePaidOrganic({
+    sanitizedGclid,
+    sanitizedWbraid,
+    sanitizedGbraid,
+    sanitizedClickId,
+  });
+
   const baseInsert: Record<string, unknown> = {
     site_id: siteId,
     phone_number: payload.phone_number,
@@ -185,7 +197,7 @@ export async function processCallEvent(
     gclid: sanitizedGclid,
     wbraid: sanitizedWbraid,
     gbraid: sanitizedGbraid,
-    source_type: (sanitizedGclid || sanitizedWbraid || sanitizedGbraid || sanitizedClickId) ? 'paid' : 'organic',
+    source_type: authoritativeCallEventSourceType,
     // DIC: user_agent for ECL / device entropy; phone_source_type for Trust Score
     ...(payload.ua != null && String(payload.ua).trim() !== '' ? { user_agent: String(payload.ua).trim() } : {}),
     ...(derivePhoneSourceType(payload) ? { phone_source_type: derivePhoneSourceType(payload) } : {}),
@@ -233,6 +245,57 @@ export async function processCallEvent(
     throw new Error('Call insert returned no record');
   }
 
+  runCallEventPaidSurfaceParity({
+    siteId,
+    intentPageUrl: payload.intent_page_url,
+    sanitizedGclid,
+    sanitizedWbraid,
+    sanitizedGbraid,
+    sanitizedClickId,
+  });
+
+  await appendTruthEvidenceLedgerBestEffort({
+    siteId,
+    evidenceKind: 'CALL_EVENT_CALL_INSERTED',
+    ingestSource: 'CALL_EVENT',
+    idempotencyKey: `truth:call_event:${callRecord.id}`,
+    occurredAt: new Date(callRecord.created_at ?? Date.now()),
+    sessionId: payload.matched_session_id ?? null,
+    callId: callRecord.id,
+    correlationId: requestId ?? null,
+    payload: {
+      schema: 'phase1.call_event.v1',
+      call_id: callRecord.id,
+      event_id: payload.event_id ?? null,
+      has_phone: Boolean(payload.phone_number && String(payload.phone_number).trim()),
+      source_type: authoritativeCallEventSourceType,
+      intent_action: payload.intent_action ?? null,
+    },
+  });
+
+  await appendCanonicalTruthLedgerBestEffort({
+    siteId,
+    streamKind: 'INGEST_CALL_EVENT',
+    idempotencyKey: `canonical:ingest_call_event:insert:${callRecord.id}`,
+    occurredAt: new Date(callRecord.created_at ?? Date.now()),
+    sessionId: payload.matched_session_id ?? null,
+    callId: callRecord.id,
+    correlationId: requestId ?? null,
+    payload: {
+      v: 1,
+      refs: {
+        call_id: callRecord.id,
+        session_id: payload.matched_session_id ?? null,
+        event_id: payload.event_id ?? null,
+      },
+      class: {
+        intent_action: payload.intent_action ?? null,
+        source_type: authoritativeCallEventSourceType,
+      },
+      has_phone: Boolean(payload.phone_number && String(payload.phone_number).trim()),
+    },
+  });
+
   const primary = await getPrimarySource(siteId, { callId: callRecord.id });
   await resolveIntentConversation({
     siteId,
@@ -276,6 +339,7 @@ export async function processCallEvent(
           payload: { gclid: primary?.gclid ?? null },
           correlationId: requestId ?? undefined,
         });
+        void probeFunnelProjectionDualRead(siteId, callRecord.id, 'call_event');
       } catch (ledgerErr) {
         logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: callRecord.id, error: (ledgerErr as Error)?.message });
       }
@@ -285,6 +349,18 @@ export async function processCallEvent(
   }
 
   // ── STEP 2: Trigger Async Scoring via QStash ──────────────────────────────
+  const shadowSessionQualityV1_1 = {
+    final_score:
+      typeof payload.lead_score === 'number' && Number.isFinite(payload.lead_score)
+        ? payload.lead_score
+        : null,
+    confidence_score:
+      payload.confidence_score != null &&
+      typeof payload.confidence_score === 'number' &&
+      Number.isFinite(payload.confidence_score)
+        ? payload.confidence_score
+        : null,
+  };
   try {
     const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/workers/calc-brain-score`;
     await publishToQStash({
@@ -298,6 +374,7 @@ export async function processCallEvent(
           intent_action: payload.intent_action,
         },
         ads_context: payload.ads_context,
+        shadow_session_quality_v1_1: shadowSessionQualityV1_1,
       },
       deduplicationId: `score-${callRecord.id}`,
     });

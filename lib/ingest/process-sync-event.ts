@@ -23,6 +23,15 @@ import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
+import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonical-truth-ledger-writer';
+import { appendTruthEvidenceLedgerBestEffort } from '@/lib/domain/truth/truth-evidence-ledger-writer';
+import {
+  digestSyncAttributionInputs,
+  recordInferenceRunBestEffort,
+} from '@/lib/domain/truth/inference-run-writer';
+import { probeFunnelProjectionDualRead } from '@/lib/domain/truth/projection-dual-read';
+import { appendIdentityGraphEdgeBestEffort } from '@/lib/domain/truth/identity-graph-writer';
+import { runConsentProvenanceShadowForResolvedSession } from '@/lib/compliance/consent-provenance-shadow';
 
 export type WorkerJob = Record<string, unknown> & {
   s: string;
@@ -298,8 +307,15 @@ async function doProcessSyncEvent(
       return `${year}-${month}-01`;
     })();
 
-  const { attribution, utm } = await AttributionService.resolveAttribution(siteIdUuid, currentGclid, fingerprint, safeUrl, referrer);
-  let attributionSource = attribution.source;
+  const { attribution, utm, hasPastGclid } = await AttributionService.resolveAttribution(
+    siteIdUuid,
+    currentGclid,
+    fingerprint,
+    safeUrl,
+    referrer
+  );
+  const attributionSourceBeforeDebloat = attribution.source;
+  let attributionSource = attributionSourceBeforeDebloat;
   // When traffic_debloat: only attribute as Google Ads when valid click-id present (length >= 10)
   const trafficDebloat = siteIngestConfig.traffic_debloat || siteIngestConfig.ingest_strict_mode;
   if (trafficDebloat && attributionSource.includes('Ads')) {
@@ -308,6 +324,32 @@ async function doProcessSyncEvent(
     const gbraid = params.get('gbraid') || meta?.gbraid || null;
     if (!hasValidClickId({ gclid, wbraid, gbraid })) attributionSource = 'Direct';
   }
+
+  const ingestTrace = typeof job.ingest_id === 'string' ? job.ingest_id.trim() : '';
+  const omTrace = typeof job.om_trace_uuid === 'string' ? job.om_trace_uuid.trim() : '';
+  await recordInferenceRunBestEffort({
+    siteId: siteIdUuid,
+    inferenceKind: 'SYNC_ATTRIBUTION_V1',
+    policyVersion: 'attribution:v1',
+    inputDigest: digestSyncAttributionInputs({
+      siteId: siteIdUuid,
+      dedupEventId,
+      hasCurrentGclid: Boolean(currentGclid),
+      fingerprintPresent: Boolean(fingerprint),
+    }),
+    outputSummary: {
+      attribution_source: attributionSource.slice(0, 160),
+      has_past_gclid: hasPastGclid,
+      traffic_debloat_applied: attributionSourceBeforeDebloat !== attributionSource,
+      source_before_debloat: attributionSourceBeforeDebloat.slice(0, 80),
+    },
+    idempotencyKey: `inf:sync:${dedupEventId}`,
+    occurredAt: new Date(),
+    correlationId: ingestTrace || omTrace || null,
+    dedupEventId,
+    sessionId: null,
+    callId: null,
+  });
   const deviceType =
     utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device) ? utm.device.toLowerCase() : deviceInfo.device_type;
 
@@ -367,6 +409,26 @@ async function doProcessSyncEvent(
   if (!session) {
     throw new Error('session_resolution_failed');
   }
+
+  await runConsentProvenanceShadowForResolvedSession(
+    siteIdUuid,
+    session,
+    consentScopes.includes('analytics')
+  );
+
+  void appendIdentityGraphEdgeBestEffort({
+    siteId: siteIdUuid,
+    edgeKind: 'SYNC_SESSION_RESOLVED',
+    ingestSource: 'SYNC_WORKER',
+    fingerprint: typeof fingerprint === 'string' ? fingerprint : '',
+    sessionId: session.id,
+    correlationId: ingestTrace || omTrace || null,
+    idempotencyKey: `ig:sync:${dedupEventId}`,
+    payload: {
+      ec: event_category.slice(0, 64),
+      ea: event_action.slice(0, 64),
+    },
+  });
 
   // Deterministik geo: GCLID + loc_physical_ms/loc_interest_ms → ADS geo
   const geoCriteriaId = utm?.loc_physical_ms || utm?.loc_interest_ms;
@@ -472,6 +534,7 @@ async function doProcessSyncEvent(
               occurredAt: now,
               payload: { gclid: primary?.gclid ?? null },
             });
+            void probeFunnelProjectionDualRead(siteIdUuid, intentResult.callId, 'sync');
           } catch (ledgerErr) {
             logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: intentResult.callId, error: (ledgerErr as Error)?.message });
           }
@@ -496,6 +559,46 @@ async function doProcessSyncEvent(
     .from('processed_signals')
     .update({ status: 'processed' })
     .eq('event_id', dedupEventId);
+
+  const correlationId = ingestTrace || omTrace || dedupEventId;
+
+  await appendTruthEvidenceLedgerBestEffort({
+    siteId: siteIdUuid,
+    evidenceKind: 'SYNC_EVENT_PROCESSED',
+    ingestSource: 'SYNC',
+    idempotencyKey: `truth:sync:${dedupEventId}`,
+    occurredAt: new Date(),
+    sessionId: session.id,
+    callId: null,
+    correlationId,
+    payload: {
+      schema: 'phase1.sync.v1',
+      dedup_event_id: dedupEventId,
+      session_id: session.id,
+      event_category: event_category,
+      event_action: event_action,
+      lead_score: leadScore,
+      attribution_source: attributionSource.slice(0, 120),
+      has_gclid: Boolean(currentGclid),
+    },
+  });
+
+  await appendCanonicalTruthLedgerBestEffort({
+    siteId: siteIdUuid,
+    streamKind: 'INGEST_SYNC',
+    idempotencyKey: `canonical:ingest_sync:${dedupEventId}`,
+    occurredAt: new Date(),
+    sessionId: session.id,
+    callId: null,
+    correlationId,
+    payload: {
+      v: 1,
+      refs: { dedup_event_id: dedupEventId, session_id: session.id },
+      class: { category: event_category, action: event_action },
+      lead_score: leadScore,
+      has_gclid: Boolean(currentGclid),
+    },
+  });
 
   debugLog('[PROCESS_SYNC_EVENT] success', {
     dedup_event_id: dedupEventId,

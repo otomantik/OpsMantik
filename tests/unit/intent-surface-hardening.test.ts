@@ -21,12 +21,20 @@ test('click-origin ingestion stays inside canonical call ontology', () => {
   const src = readFileSync(PROCESS_CALL_EVENT, 'utf8');
   assert.ok(src.includes("const initialStatus = 'intent'"), 'process-call-event must insert canonical intent status');
   assert.ok(!src.includes("const initialStatus = 'pending_score'"), 'process-call-event must not invent pending_score state');
+  assert.ok(
+    src.includes('shadow_session_quality_v1_1') && src.includes('shadowSessionQualityV1_1'),
+    'process-call-event must pass shadow V1.1 scoring context to calc-brain-score for parity telemetry'
+  );
 });
 
 test('calc-brain-score keeps non-fast-track calls in intent state', () => {
   const src = readFileSync(CALC_BRAIN_SCORE, 'utf8');
   assert.ok(src.includes("const finalStatus = isFastTrack ? 'qualified' : 'intent'"), 'worker must downgrade to intent, not pending');
   assert.ok(!src.includes(": 'pending'"), 'worker must not write pending status');
+  assert.ok(
+    src.includes('shadow_session_quality_v1_1') && src.includes('recordScoringLineageParityTelemetry'),
+    'calc-brain-score must consume shadow V1.1 context and run scoring-lineage parity telemetry'
+  );
 });
 
 test('auto-junk targets stale intent rows', () => {
