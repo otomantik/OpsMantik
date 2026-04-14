@@ -153,8 +153,6 @@ export function PanelFeed({
               <SwipeableCard 
                 key={activeIntent.id}
                 intent={activeIntent}
-                onSwipeLeft={() => setPendingAction({ intent: activeIntent, type: 'junk' })}
-                onSwipeRight={() => setPendingAction({ intent: activeIntent, type: 'satis' })}
                 onAction={(type) => setPendingAction({ intent: activeIntent, type })}
               />
 
@@ -205,51 +203,22 @@ export function PanelFeed({
 // ─── SWIPEABLE CARD WRAPPER ────────────────────────────────────────
 function SwipeableCard({ 
   intent, 
-  onSwipeLeft, 
-  onSwipeRight, 
   onAction 
 }: { 
   intent: HunterIntent; 
-  onSwipeLeft: () => void; 
-  onSwipeRight: () => void;
   onAction: (type: LeadActionType) => void;
 }) {
-  const x = useMotionValue(0);
-  const rotate = useTransform(x, [-200, 200], [-25, 25]);
-  const opacity = useTransform(x, [-200, -150, 0, 150, 200], [0, 1, 1, 1, 0]);
-  const bg = useTransform(x, [-100, 0, 100], ['#fee2e2', '#ffffff', '#ecfdf5']); // red-50 to white to emerald-50
-
   return (
     <motion.div
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      style={{ x, rotate, opacity, backgroundColor: bg }}
-      onDragEnd={(_, info) => {
-        if (info.offset.x < -100) onSwipeLeft();
-        if (info.offset.x > 100) onSwipeRight();
-      }}
-      whileTap={{ scale: 0.98 }}
-      className="cursor-grab active:cursor-grabbing"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: -100 }}
+      transition={{ duration: 0.3 }}
     >
       <HunterCard 
         intent={intent} 
         onAction={onAction}
       />
-      
-      {/* Swipe Indicators */}
-      <motion.div 
-        style={{ opacity: useTransform(x, [50, 100], [0, 1]) }}
-        className="absolute top-10 right-10 z-10 pointer-events-none"
-      >
-         <div className="bg-emerald-500 text-white px-4 py-2 rounded-xl border-4 border-white shadow-xl font-black text-xl rotate-12">SATIŞ</div>
-      </motion.div>
-
-      <motion.div 
-        style={{ opacity: useTransform(x, [-100, -50], [1, 0]) }}
-        className="absolute top-10 left-10 z-10 pointer-events-none"
-      >
-         <div className="bg-red-500 text-white px-4 py-2 rounded-xl border-4 border-white shadow-xl font-black text-xl -rotate-12">ÇÖP</div>
-      </motion.div>
     </motion.div>
   );
 }

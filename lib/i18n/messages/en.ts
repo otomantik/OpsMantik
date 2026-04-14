@@ -287,6 +287,7 @@ export const en = {
   // Dimensions
   'common.dimension.source': 'Source',
   'common.dimension.device': 'Device',
+  'common.dimension.page': 'Page',
   'common.dimension.city': 'City',
   'common.dimension.googleAds': 'Google Ads',
   'common.dimension.seo': 'SEO (Organic)',
@@ -378,6 +379,7 @@ export const en = {
   'hunter.locationSourceGclid': 'Source: GCLID',
   'hunter.locationSourceGclidTitle': 'Location from Google Ads (GCLID), not IP',
   'hunter.aiConfidence': 'AI Confidence',
+  'hunter.aiIntent': 'AI Intent Summary',
   'hunter.sessionActions': 'Session Actions',
   'hunter.intentWhatsApp': 'WhatsApp Direct',
   'hunter.intentPhone': 'Phone Inquiry',
@@ -429,6 +431,11 @@ export const en = {
   'hunter.deepView': 'Deep analysis',
   'hunter.deepViewActive': 'Deep analysis open',
   'hunter.deepViewInactive': 'Deep analysis closed',
+  'hunter.singularityIntel': 'SINGULARITY INTELLIGENCE',
+  'hunter.convProbability': 'Conversion Probability Score',
+  'hunter.neuralSignalDesc': 'Neural signal processing from duration, geo, and intent patterns.',
+  'hunter.scoreConfirmation': 'SCORE CONFIRMATION',
+  'hunter.pts': 'PTS',
 
   'toast.saved': 'Saved successfully!',
   'toast.error.generic': 'An error occurred',

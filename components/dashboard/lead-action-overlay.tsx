@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Phone, Star, CheckCircle2, ChevronRight, Hash, Trash2, UserCheck, FileText, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn, safeDecode, formatDisplayLocation } from '@/lib/utils';
+import { cn, safeDecode } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { HunterIntent } from '@/lib/types/hunter';
 
@@ -39,7 +39,7 @@ export function LeadActionOverlay({
       setIsSubmitting(false);
       
       switch (actionType) {
-        case 'junk': setScore(0); setStep('rating'); break; // Skip phone for junk if we want, or confirm
+        case 'junk': setScore(0); setStep('rating'); break;
         case 'gorusuldu': setScore(60); break;
         case 'teklif': setScore(80); break;
         case 'satis': setScore(100); break;
@@ -136,7 +136,7 @@ export function LeadActionOverlay({
                    <Star size={32} />
                 </div>
                 <h3 className="text-2xl font-black text-slate-900">{config.label}</h3>
-                <p className="text-slate-500 font-bold text-xs uppercase tracking-wider">SKOR TEYİDİ: {score} PTS</p>
+                <p className="text-slate-500 font-bold text-xs uppercase tracking-wider">{t('hunter.scoreConfirmation')}: {score} {t('hunter.pts')}</p>
               </div>
 
               <div className="relative max-w-xs mx-auto">
@@ -146,7 +146,7 @@ export function LeadActionOverlay({
                   onChange={(e) => setScore(parseInt(e.target.value) || 0)}
                   className="w-full h-24 text-center text-5xl font-black bg-slate-50 border-2 border-slate-100 rounded-3xl focus:border-emerald-500 focus:bg-white outline-none transition-all"
                 />
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 font-black">PTS</div>
+                <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 font-black">{t('hunter.pts')}</div>
               </div>
 
               <Button 

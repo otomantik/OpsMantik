@@ -21,19 +21,47 @@ const ICON_MAP: Record<string, LucideIcon> = {
   other: Icons.sparkles,
 };
 
-function relativeTime(ts: string, t: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
+function formatTimeDisplay(ts: string, t: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
   const d = new Date(ts);
+  
+  // TRT Time
+  const fullTime = d.toLocaleTimeString('tr-TR', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    timeZone: 'Europe/Istanbul' 
+  });
+
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
-  if (!Number.isFinite(diffMs)) return '—';
+  if (!Number.isFinite(diffMs)) return fullTime;
+  
   const diffSec = Math.max(0, Math.round(diffMs / 1000));
-  if (diffSec < 60) return t('common.justNow');
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}${t('common.min')} ${t('common.ago')}`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}${t('common.hr')} ${t('common.ago')}`;
-  const diffDay = Math.round(diffHr / 24);
-  return `${diffDay}${t('common.day')} ${t('common.ago')}`;
+  let relative = '';
+  
+  if (diffSec < 60) relative = t('common.justNow');
+  else if (diffSec < 3600) {
+    const min = Math.round(diffSec / 60);
+    relative = `${min}${t('common.min')} ${t('common.ago')}`;
+  } else if (diffSec < 86400) {
+    const hr = Math.round(diffSec / 3600);
+    relative = `${hr}${t('common.hr')} ${t('common.ago')}`;
+  } else {
+    const day = Math.round(diffSec / 86400);
+    relative = `${day}${t('common.day')} ${t('common.ago')}`;
+  }
+
+  return `${fullTime} (${relative})`;
+}
+
+function normalizeUrl(url?: string | null): string {
+  if (!url) return 'Ana Sayfa';
+  try {
+    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return u.pathname === '/' ? 'Ana Sayfa' : u.pathname;
+  } catch {
+    // Fallback: remove query params manually
+    return url.split('?')[0].split('#')[0] || 'Ana Sayfa';
+  }
 }
 
 function getPtsGrade(score: number): { color: string; label: string; bg: string } {
@@ -90,6 +118,14 @@ export const HunterCard = React.memo(({
     return (out || translate('hunter.locationUnknown')).toLocaleUpperCase('tr-TR');
   }, [intent.city, intent.district, intent.location_source, translate]);
 
+  const deviceDisplay = useMemo(() => {
+    const type = intent.device_type === 'mobile' ? translate('device.mobile') : translate('device.desktop');
+    let os = intent.device_os || '';
+    if (os.toLowerCase() === 'adroid') os = 'Android'; 
+    
+    return [type, os, intent.browser].filter(Boolean).join(' / ');
+  }, [intent.device_type, intent.device_os, intent.browser, translate]);
+
   return (
     <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl shadow-slate-200/50 flex flex-col relative">
       
@@ -97,17 +133,17 @@ export const HunterCard = React.memo(({
       {showIntel && (
         <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-md p-8 animate-in fade-in duration-300 rounded-3xl flex flex-col">
           <div className="flex items-center justify-between mb-8">
-            <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">Singularity Intelligence</h4>
+            <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">{translate('hunter.singularityIntel')}</h4>
             <button onClick={() => setShowIntel(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200">
               <X size={16} className="text-slate-500" />
             </button>
           </div>
           <div className="flex-1 flex flex-col justify-center items-center text-center">
             <div className={cn('text-7xl font-black tabular-nums', grade.color)}>{displayScore}</div>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">Conversion Probability Score</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">{translate('hunter.convProbability')}</div>
           </div>
-          <p className="text-[10px] text-slate-400 italic text-center leading-relaxed">
-            Neural signal processing from duration, geo, and intent patterns.
+          <p className="text-[10px] text-slate-400 italic text-center leading-relaxed mt-4">
+            {translate('hunter.neuralSignalDesc')}
           </p>
         </div>
       )}
@@ -117,14 +153,14 @@ export const HunterCard = React.memo(({
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {relativeTime(intent.created_at, translate)}
+            {formatTimeDisplay(intent.created_at, translate)}
           </span>
         </div>
         <div 
           onClick={() => setShowIntel(true)}
           className={cn('px-2.5 py-1 rounded-lg border font-black text-[10px] cursor-pointer transition-transform hover:scale-105', grade.bg, grade.color, 'border-current/10')}
         >
-          {displayScore} PTS
+          {displayScore} {translate('hunter.pts')}
         </div>
       </div>
 
@@ -148,14 +184,14 @@ export const HunterCard = React.memo(({
 
       {/* ── DATA ───────────────────────────────────────── */}
       <div className="px-6 py-4 flex-1">
-        <EntryRow label="Kaynak" value={intent.attribution_source || intent.traffic_source || 'Organik'} />
-        <EntryRow label="Cihaz" value={intent.device_type === 'mobile' ? 'Mobil' : 'Masaüstü'} />
-        <EntryRow label="Sayfa" value={intent.page_url?.split('/').pop() || 'Ana Sayfa'} />
+        <EntryRow label={translate('common.dimension.source')} value={intent.attribution_source || intent.traffic_source || translate('common.dimension.organic')} />
+        <EntryRow label={translate('common.dimension.device')} value={deviceDisplay} />
+        <EntryRow label={translate('common.dimension.page')} value={normalizeUrl(intent.page_url)} />
         {intent.ai_summary && (
           <div className="mt-4 p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl">
             <div className="flex items-center gap-2 mb-1.5">
               <Activity size={12} className="text-blue-500" />
-              <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">AI Intent</span>
+              <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{translate('hunter.aiIntent')}</span>
             </div>
             <p className="text-[11px] font-bold italic text-slate-600 leading-relaxed">{intent.ai_summary}</p>
           </div>
