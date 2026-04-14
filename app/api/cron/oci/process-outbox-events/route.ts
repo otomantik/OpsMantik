@@ -183,7 +183,22 @@ async function runProcessOutbox() {
             logInfo('outbox_v5_enqueued', { outbox_id: id, call_id: callId, queue_id: result.queueId });
           }
         } else if (score >= 10) {
-          const gear = resolveOutboxGear(score) as OpsGear;
+          const gear = resolveOutboxGear(score);
+          // #region agent log
+          fetch('http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'142619'},body:JSON.stringify({sessionId:'142619',runId:'build-fail-investigation',hypothesisId:'H1',location:'process-outbox-events/route.ts:score-gear-resolution',message:'Resolved outbox gear from score',data:{outboxId:id,callId,score,resolvedGear:gear},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          if (!gear) {
+            // #region agent log
+            fetch('http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'142619'},body:JSON.stringify({sessionId:'142619',runId:'build-fail-investigation',hypothesisId:'H4',location:'process-outbox-events/route.ts:score-gear-null-guard',message:'Score entered signal branch but resolveOutboxGear returned null',data:{outboxId:id,callId,score},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+            logWarn('outbox_score_branch_without_gear', { outbox_id: id, call_id: callId, score });
+            await adminClient
+              .from('outbox_events')
+              .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', id);
+            processed++;
+            continue;
+          }
           const { data: existingSignals } = await adminClient
             .from('marketing_signals')
             .select('signal_type')
@@ -214,6 +229,9 @@ async function runProcessOutbox() {
           }
 
           const highestExistingGear = pickHighestPriorityGear(existingGears);
+          // #region agent log
+          fetch('http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'142619'},body:JSON.stringify({sessionId:'142619',runId:'build-fail-investigation',hypothesisId:'H2',location:'process-outbox-events/route.ts:gear-rank-compare',message:'Comparing existing highest gear rank against requested gear rank',data:{outboxId:id,callId,score,requestedGear:gear,requestedRank:getSingleConversionGearRank(gear),highestExistingGear,highestExistingRank:highestExistingGear?getSingleConversionGearRank(highestExistingGear):null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (
             highestExistingGear &&
             getSingleConversionGearRank(highestExistingGear) > getSingleConversionGearRank(gear)

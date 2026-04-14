@@ -140,8 +140,9 @@ export async function POST(
     let phoneHash: string | null = null;
     let callerPhoneRaw: string | null = null;
     if (phone && phone.trim()) {
-      callerPhoneRaw = phone.trim().slice(0, 64);
-      const normalizedPhone = callerPhoneRaw.replace(/[^\d+]/g, '');
+      const sanitizedPhone = phone.trim().slice(0, 64);
+      callerPhoneRaw = sanitizedPhone;
+      const normalizedPhone = sanitizedPhone.replace(/[^\d+]/g, '');
       phoneHash = crypto.createHash('sha256').update(normalizedPhone).digest('hex');
     }
 
