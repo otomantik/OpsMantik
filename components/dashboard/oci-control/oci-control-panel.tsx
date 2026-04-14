@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Ban,
   Home,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OciQueueStats, OciQueueRow, QueueStatus } from '@/lib/domain/oci/queue-types';
@@ -90,6 +91,7 @@ export function OciControlPanel({
     loadStatsError: t('ociControl.error.loadStats'),
     loadRowsError: t('ociControl.error.loadRows'),
     actionFailed: t('ociControl.error.actionFailed'),
+    signOut: t('dashboard.signOut'),
   };
 
   const fetchStats = useCallback(async () => {
@@ -207,6 +209,17 @@ export function OciControlPanel({
                 {labels.subtitle}
               </span>
             </div>
+            <form action="/auth/signout" method="post">
+              <Button
+                type="submit"
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] border-slate-200 text-slate-600 hover:text-red-600"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                {labels.signOut}
+              </Button>
+            </form>
           </div>
         </div>
       </header>

@@ -11,6 +11,7 @@ import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
+import { LogOut } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -151,11 +152,23 @@ export default async function PanelRoute() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-100">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest leading-none">
-                {translate(resolvedLocale, 'panel.live')}
-              </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest leading-none">
+                  {translate(resolvedLocale, 'panel.live')}
+                </span>
+              </div>
+              <form action="/auth/signout" method="post">
+                <button
+                  type="submit"
+                  className="h-8 inline-flex items-center gap-1.5 px-2.5 rounded-md border border-slate-200 bg-white text-[10px] font-black uppercase tracking-wide text-slate-600 hover:bg-slate-50 hover:text-red-600"
+                  title={translate(resolvedLocale, 'dashboard.signOut')}
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  {translate(resolvedLocale, 'dashboard.signOut')}
+                </button>
+              </form>
             </div>
           </div>
         </div>
