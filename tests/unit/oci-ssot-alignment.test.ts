@@ -5,6 +5,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { parseExportConfig } from '@/lib/oci/site-export-config';
 import { parseOciConfig } from '@/lib/oci/oci-config';
 import { computeLcv } from '@/lib/oci/lcv-engine';
@@ -46,4 +48,10 @@ test('computeLcv respects gearWeights override matching SiteExportConfig', () =>
   });
   assert.equal(lcv.stageWeight, 0.2);
   assert.ok(lcv.valueCents > 0);
+});
+
+test('seal route uses canonical value for marketing_signals, not lcv money', () => {
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'calls', '[id]', 'seal', 'route.ts'), 'utf8');
+  assert.ok(src.includes('expected_value_cents: canonicalValue.valueMinor'));
+  assert.ok(!src.includes('expected_value_cents: lcv.valueCents'));
 });

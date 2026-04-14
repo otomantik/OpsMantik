@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { normalizeTr, LcvIntelligenceConfig } from './oci-config';
+import { normalizeWeight } from '@/lib/domain/mizan-mantik/value-config';
 
 export type LcvStage = 'V3' | 'V4' | 'V5';
 
@@ -174,7 +175,7 @@ export function computeLcv(input: LcvInput): LcvResult {
     };
   }
 
-  // Resolve stage weight: use per-site gearWeights (1-100) if provided, fall back to defaults.
+  // LCV is insight math only. We still normalize stage weight so 0..1 and 0..100 inputs behave identically.
   const resolvedStageWeights: Record<LcvStage, number> = {
     V3: gearWeights?.V3 ?? DEFAULT_LCV_STAGE_WEIGHTS.V3,
     V4: gearWeights?.V4 ?? DEFAULT_LCV_STAGE_WEIGHTS.V4,
@@ -182,7 +183,7 @@ export function computeLcv(input: LcvInput): LcvResult {
   };
   
   const score = resolvedStageWeights[stage];
-  const sw = score / 100;
+  const sw = normalizeWeight(score, DEFAULT_LCV_STAGE_WEIGHTS[stage]);
 
   const ql = qLocation(input.city, input.district, config);
   const qd = qDevice(input.deviceType, input.deviceOs, config);

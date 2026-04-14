@@ -11,7 +11,7 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const CALL_EVENT_V2 = join(ROOT, 'app', 'api', 'call-event', 'v2', 'route.ts');
 const CALL_EVENT_V1 = join(ROOT, 'app', 'api', 'call-event', 'route.ts');
-const WORKER_INGEST = join(ROOT, 'app', 'api', 'workers', 'ingest', 'route.ts');
+const WORKER_INGEST = join(ROOT, 'lib', 'ingest', 'worker-kernel.ts');
 const PROCESS_CALL_EVENT = join(ROOT, 'lib', 'ingest', 'process-call-event.ts');
 const MIGRATION = join(ROOT, 'supabase', 'migrations', '20260228000000_call_event_signature_hash.sql');
 

@@ -10,6 +10,8 @@
  */
 
 import { z } from 'zod';
+import { minorToMajor } from '@/lib/i18n/currency';
+import { resolveConversionValueMinor } from '@/lib/domain/mizan-mantik';
 import { parseExportConfig } from '@/lib/oci/site-export-config';
 
 /** 
@@ -40,6 +42,7 @@ export interface OciSiteConfig {
     currency: string;
     /** Site-specific intelligence layer (Singularity). */
     intelligence: LcvIntelligenceConfig;
+    fallback_value_major?: number;
 }
 
 /** Default config applied when site has no oci_config in DB. Aligns with SiteExportConfig defaults. */
@@ -47,6 +50,7 @@ export const OCI_DEFAULT_CONFIG: OciSiteConfig = {
     base_value: 1000,
     currency: 'TRY',
     intelligence: LcvIntelligenceSchema.parse({}),
+    fallback_value_major: 500,
 };
 
 /**
@@ -91,22 +95,39 @@ export function parseOciConfig(raw: unknown, defaultAovFallback?: number | null)
         base_value: baseValue,
         currency: exp.currency,
         intelligence,
+        fallback_value_major: exp.v5_fallback_value,
     };
 }
 
 /**
  * Compute V5 sealed conversion value in major currency units.
- * Returns null if saleAmount is absent or zero — caller must NOT enqueue.
+ * Returns saleAmount when present, otherwise canonical fallback.
  *
  * BUG-4 FIX: single round-trip only (saleAmount → cents → units).
  * Previous: computeSealedValue(Math.round(x * 100)) which then divided by 100.
  * That caused double-rounding at precision boundaries (e.g. saleAmount=0.001 → 0 cents → rejected).
  */
-export function computeConversionValue(saleAmount: number | null): number | null {
-    if (saleAmount === null || saleAmount === undefined || !Number.isFinite(saleAmount) || saleAmount <= 0) {
-        return null;
+export function computeConversionValue(
+    saleAmount: number | null,
+    options?: {
+        currency?: string | null;
+        fallbackMinor?: number | null;
+        fallbackMajor?: number | null;
     }
-    const cents = Math.round(saleAmount * 100);
-    if (cents <= 0) return null;
-    return cents / 100;
+): number | null {
+    const currency = options?.currency?.trim() || 'TRY';
+    const saleAmountMinor =
+        saleAmount != null && Number.isFinite(saleAmount)
+            ? Math.round(saleAmount * 100)
+            : null;
+
+    const resolved = resolveConversionValueMinor({
+        gear: 'V5_SEAL',
+        currency,
+        saleAmountMinor,
+        minConversionValueCents: options?.fallbackMinor ?? null,
+        fallbackValueMajor: options?.fallbackMajor ?? null,
+    });
+
+    return minorToMajor(resolved.valueMinor, currency);
 }

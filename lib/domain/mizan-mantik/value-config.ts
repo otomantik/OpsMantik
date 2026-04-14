@@ -8,6 +8,7 @@
  * Legacy `sites.intent_weights` is used only when `oci_config` is absent.
  */
 
+import { majorToMinor } from '@/lib/i18n/currency';
 import { adminClient } from '@/lib/supabase/admin';
 import { parseExportConfig } from '@/lib/oci/site-export-config';
 
@@ -26,6 +27,13 @@ export interface ValueConfig {
   minConversionValueCents: number;
   /** IANA timezone (from oci_config.timezone, fallback 'Europe/Istanbul') */
   timezone: string;
+}
+
+export interface NormalizedIntentWeights {
+  pending: number;
+  qualified: number;
+  proposal: number;
+  sealed: number;
 }
 
 /**
@@ -48,6 +56,55 @@ export const DEFAULT_WEIGHTS: IntentWeights = {
 const GLOBAL_FALLBACK_AOV = 1000;
 const GLOBAL_MIN_VALUE_CENTS = 100000; // 1000 TRY
 const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+export function normalizeWeight(
+  weight: number | null | undefined,
+  fallbackWeight: number | null | undefined = 0
+): number {
+  const candidate =
+    typeof weight === 'number' && Number.isFinite(weight) ? weight : fallbackWeight ?? 0;
+  if (!Number.isFinite(candidate)) {
+    return 0;
+  }
+  return clampRatio(candidate <= 1 ? candidate : candidate / 100);
+}
+
+export function normalizeIntentWeights(weights?: Partial<IntentWeights> | null): NormalizedIntentWeights {
+  return {
+    pending: normalizeWeight(weights?.pending, DEFAULT_WEIGHTS.pending),
+    qualified: normalizeWeight(weights?.qualified, DEFAULT_WEIGHTS.qualified),
+    proposal: normalizeWeight(weights?.proposal, DEFAULT_WEIGHTS.proposal),
+    sealed: normalizeWeight(weights?.sealed, DEFAULT_WEIGHTS.sealed),
+  };
+}
+
+export function resolveFallbackMinor(params: {
+  currency?: string | null;
+  minConversionValueCents?: number | null;
+  v5FallbackValueMajor?: number | null;
+}): number {
+  const currency = params.currency?.trim() || 'TRY';
+  if (
+    params.minConversionValueCents != null &&
+    Number.isFinite(params.minConversionValueCents) &&
+    params.minConversionValueCents > 0
+  ) {
+    return Math.round(params.minConversionValueCents);
+  }
+  if (
+    params.v5FallbackValueMajor != null &&
+    Number.isFinite(params.v5FallbackValueMajor) &&
+    params.v5FallbackValueMajor > 0
+  ) {
+    return Math.max(majorToMinor(params.v5FallbackValueMajor, currency), 1);
+  }
+  return GLOBAL_MIN_VALUE_CENTS;
+}
 
 type CacheEntry = { config: ValueConfig; expiresAt: number };
 const cache = new Map<string, CacheEntry>();
@@ -130,10 +187,14 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
   const defaultAov = site.default_aov != null && Number.isFinite(Number(site.default_aov))
     ? Number(site.default_aov)
     : exportFallback;
-  const minConversionValueCents =
-    site.min_conversion_value_cents != null && Number.isFinite(Number(site.min_conversion_value_cents))
-      ? Number(site.min_conversion_value_cents)
-      : GLOBAL_MIN_VALUE_CENTS;
+  const minConversionValueCents = resolveFallbackMinor({
+    currency: exportCfg?.currency ?? 'TRY',
+    minConversionValueCents:
+      site.min_conversion_value_cents != null && Number.isFinite(Number(site.min_conversion_value_cents))
+        ? Number(site.min_conversion_value_cents)
+        : null,
+    v5FallbackValueMajor: exportCfg?.v5_fallback_value ?? null,
+  });
 
   const config: ValueConfig = {
     siteId,

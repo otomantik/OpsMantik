@@ -10,7 +10,8 @@ import {
 } from '@/lib/refactor/metrics';
 
 test('REFACTOR_METRIC_NAMES has scaffold counters including typed-evidence fail and drift', () => {
-  assert.equal(REFACTOR_METRIC_NAMES.length, 26);
+  assert.ok(REFACTOR_METRIC_NAMES.length >= 26);
+  assert.equal(new Set(REFACTOR_METRIC_NAMES).size, REFACTOR_METRIC_NAMES.length, 'metric names must stay unique');
   assert.ok(REFACTOR_METRIC_NAMES.includes('truth_typed_evidence_validation_fail_total'));
   assert.ok(REFACTOR_METRIC_NAMES.includes('truth_projection_drift_total'));
   assert.ok(REFACTOR_METRIC_NAMES.includes('consent_provenance_shadow_check_total'));

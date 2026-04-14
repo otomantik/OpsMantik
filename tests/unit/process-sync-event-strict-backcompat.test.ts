@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROUTE_PATH = join(process.cwd(), 'app', 'api', 'workers', 'ingest', 'route.ts');
+const ROUTE_PATH = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
 const PROCESS_SYNC_EVENT_PATH = join(process.cwd(), 'lib', 'ingest', 'process-sync-event.ts');
 
 test('worker: skip path only when trafficDebloat true (strict config)', () => {

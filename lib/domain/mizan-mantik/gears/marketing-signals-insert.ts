@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { calculateDecayDays } from '@/lib/shared/time-utils';
-import { calculateSignalEV, applyHalfLifeDecay, GEAR_TO_STAGE } from '../time-decay';
+import { applyHalfLifeDecay, GEAR_TO_STAGE } from '../time-decay';
 import { getValueFloorCents } from '../value-config';
 import type { ValueConfig } from '../value-config';
 import type { OpsGear, SignalPayload } from '../types';
@@ -15,6 +15,7 @@ import { OPSMANTIK_CONVERSION_NAMES } from '../conversion-names';
 import { logShadowDecision, appendCausalDnaLedgerSafe } from './shared';
 import { logError, logInfo } from '@/lib/logging/logger';
 import { resolveSignalOccurredAt } from '@/lib/oci/occurred-at';
+import { resolveConversionValueMinor } from '../value-calculator';
 
 function gearToLegacySignalType(gear: OpsGear): string {
   switch (gear) {
@@ -49,8 +50,16 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
 
   const effectiveAovMajor = config?.defaultAov ?? aov ?? 0;
   const aovCents = Math.round(Number(effectiveAovMajor) * 100);
-  const computedCents = calculateSignalEV(gear, aovCents, clickDate, signalDate, config?.intentWeights);
   const floorCents = config ? getValueFloorCents(config) : 100;
+  const resolvedValue = resolveConversionValueMinor({
+    gear,
+    siteAovMinor: aovCents,
+    clickDate,
+    signalDate,
+    intentWeights: config?.intentWeights,
+    applySignalFloor: true,
+  });
+  const computedCents = resolvedValue.valueMinor;
   let finalCents = computedCents;
   if (finalCents < floorCents) {
     finalCents = floorCents;
@@ -67,8 +76,8 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   const days = calculateDecayDays(clickDate, signalDate, 'ceil');
 
   const stage = GEAR_TO_STAGE[gear];
-  const ratio = stage && config ? (config.intentWeights[stage] ?? 0.02) : 0;
-  const baseValueCents = Math.round(aovCents * ratio);
+  const ratio = resolvedValue.ratio;
+  const baseValueCents = resolvedValue.baseValueMinor;
   const halfLifeCents = applyHalfLifeDecay(baseValueCents, days);
   logShadowDecision(siteId, 'signal', null, 'HALFLIFE_SHADOW', 'Shadow: half-life value for 30d comparison', {
     discrete_cents: finalCents,

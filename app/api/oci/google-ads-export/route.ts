@@ -20,6 +20,12 @@ import { isCallSendableForSealExport, isCallStatusSendableForSignal } from '@/li
 import { validateOciQueueValueCents, validateOciSignalConversionValue } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
 import { getPvDataKey, getPvProcessingKey, getPvProcessingKeysForCleanup, getPvQueueKeysForExport } from '@/lib/oci/pv-redis';
+import {
+  buildSingleConversionGroupKey,
+  selectHighestPriorityCandidates,
+  type SingleConversionCandidate,
+  type SingleConversionGear,
+} from '@/lib/oci/single-conversion-highest-only';
 import { createHash } from 'node:crypto';
 import * as jose from 'jose';
 import { parseExportConfig, getConversionActionConfig, validateRoasInflation } from '@/lib/oci/site-export-config';
@@ -112,6 +118,8 @@ type QueueRow = {
   provider_key?: string | null;
   external_id?: string | null;
 };
+
+type RankedExportCandidate = SingleConversionCandidate<GoogleAdsConversionItem>;
 
 function resolveSignalGear(signalType: string): 'V2_PULSE' | 'V3_ENGAGE' | 'V4_INTENT' | null {
   switch ((signalType || '').trim()) {
@@ -431,9 +439,9 @@ export async function GET(req: NextRequest) {
 
     // Fetch call context for Identity Stitcher (caller_phone, fingerprint)
     const { data: callsForStitch } = signalCallIds.length > 0
-      ? await adminClient.from('calls').select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at, status, intent_action').eq('site_id', siteUuid).in('id', signalCallIds)
+      ? await adminClient.from('calls').select('id, caller_phone_e164, matched_fingerprint, confirmed_at, created_at, status, intent_action, matched_session_id').eq('site_id', siteUuid).in('id', signalCallIds)
       : { data: [] };
-    const callCtxByCallId = new Map<string, { caller_phone_e164?: string; matched_fingerprint?: string; callTime: string; status?: string | null; intentAction?: string | null }>();
+    const callCtxByCallId = new Map<string, { caller_phone_e164?: string; matched_fingerprint?: string; callTime: string; status?: string | null; intentAction?: string | null; matchedSessionId?: string | null }>();
     for (const c of callsForStitch ?? []) {
       const id = (c as { id: string }).id;
       const confirmed = (c as { confirmed_at?: string }).confirmed_at;
@@ -444,6 +452,7 @@ export async function GET(req: NextRequest) {
         callTime: confirmed ?? created ?? new Date().toISOString(),
         status: (c as { status?: string | null }).status ?? null,
         intentAction: (c as { intent_action?: string | null }).intent_action ?? null,
+        matchedSessionId: (c as { matched_session_id?: string | null }).matched_session_id ?? null,
       });
     }
 
@@ -451,6 +460,7 @@ export async function GET(req: NextRequest) {
     const blockedSignalTimeIds: string[] = [];
     const blockedSignalValueIds: string[] = [];
     const signalItems: GoogleAdsConversionItem[] = [];
+    const signalCandidates: RankedExportCandidate[] = [];
     for (const sig of signalList) {
       const callId = (sig as { call_id?: string | null }).call_id;
       if (!callId) continue;
@@ -547,7 +557,7 @@ export async function GET(req: NextRequest) {
         signalValueMicros
       );
       const traceId = (sig as { trace_id?: string | null }).trace_id ?? null;
-      signalItems.push({
+      const item: GoogleAdsConversionItem = {
         id: `signal_${signalRowId}`,
         orderId: orderIdDDA || `signal_${signalRowId}`,
         gclid: gclid || '',
@@ -558,7 +568,17 @@ export async function GET(req: NextRequest) {
         conversionValue: numVal,
         conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
         ...(traceId && { om_trace_uuid: traceId }),
-      });
+      };
+      signalItems.push(item);
+      if (signalGear) {
+        signalCandidates.push({
+          id: item.id,
+          groupKey: buildSingleConversionGroupKey(ctx?.matchedSessionId ?? null, callId, signalRowId),
+          gear: signalGear,
+          sortKey: item.conversionTime,
+          value: item,
+        });
+      }
     }
 
     // PENDING signals without click_id are left for Self-Healing Pulse to retry (no SKIPPED update here)
@@ -721,214 +741,14 @@ export async function GET(req: NextRequest) {
       if (tb == null) return -1;
       return ta - tb;
     });
-    const seenSessions = new Set<string>();
-    const list: typeof rawList = [];
-    const skippedIds: string[] = [];
-    for (const row of byConversionTime) {
-      const sessionId = row.call_id ? sessionByCall[row.call_id] : null;
-      if (!sessionId) {
-        list.push(row);
-        continue;
-      }
-      if (seenSessions.has(sessionId)) {
-        skippedIds.push(row.id);
-        continue;
-      }
-      seenSessions.add(sessionId);
-      list.push(row);
-    }
-
-    const idsToMarkProcessing = list.map((r: { id: string }) => r.id);
-    const signalIdsToMarkProcessing = signalItems.map((s: { id: string }) => s.id.replace('signal_', ''));
-
-    if (markAsExported && (idsToMarkProcessing.length > 0 || skippedIds.length > 0 || signalIdsToMarkProcessing.length > 0 || blockedQueueIds.length > 0 || blockedSignalIds.length > 0 || blockedSignalTimeIds.length > 0 || blockedSignalValueIds.length > 0)) {
-      const now = new Date().toISOString();
-      if (blockedQueueIds.length > 0) {
-        const { data: blockedClaimedCount, error: blockedClaimError } = await adminClient.rpc(
-          'append_script_claim_transition_batch',
-          { p_queue_ids: blockedQueueIds, p_claimed_at: now }
-        );
-        if (blockedClaimError || typeof blockedClaimedCount !== 'number' || blockedClaimedCount !== blockedQueueIds.length) {
-          logError('OCI_GOOGLE_ADS_EXPORT_BLOCKED_CLAIM_FAILED', {
-            code: (blockedClaimError as { code?: string })?.code,
-            requested: blockedQueueIds.length,
-            claimed: blockedClaimedCount,
-          });
-          return NextResponse.json({ error: 'Blocked queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
-        }
-        const { data: blockedUpdatedCount, error: blockedUpdateError } = await adminClient.rpc('append_script_transition_batch', {
-          p_queue_ids: blockedQueueIds,
-          p_new_status: 'FAILED',
-          p_created_at: now,
-          p_error_payload: {
-            last_error: 'CALL_NOT_SENDABLE_FOR_OCI',
-            provider_error_code: 'CALL_NOT_SENDABLE',
-            provider_error_category: 'PERMANENT',
-            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
-          },
-        });
-        if (blockedUpdateError || typeof blockedUpdatedCount !== 'number' || blockedUpdatedCount !== blockedQueueIds.length) {
-          logError('OCI_GOOGLE_ADS_EXPORT_BLOCKED_TERMINALIZE_FAILED', {
-            code: (blockedUpdateError as { code?: string })?.code,
-            requested: blockedQueueIds.length,
-            updated: blockedUpdatedCount,
-          });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-      }
-      if (idsToMarkProcessing.length > 0) {
-        const { data: claimedCount, error: rpcError } = await adminClient.rpc(
-          'append_script_claim_transition_batch',
-          { p_queue_ids: idsToMarkProcessing, p_claimed_at: now }
-        );
-        if (rpcError) {
-          logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_FAILED', { code: (rpcError as { code?: string })?.code });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        if (typeof claimedCount !== 'number' || claimedCount !== idsToMarkProcessing.length) {
-          logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_PARTIAL', {
-            requested: idsToMarkProcessing.length,
-            claimed: claimedCount,
-          });
-          return NextResponse.json({ error: 'Queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
-        }
-      }
-      if (skippedIds.length > 0) {
-        const { data: skippedClaimedCount, error: skippedRpcError } = await adminClient.rpc(
-          'append_script_claim_transition_batch',
-          { p_queue_ids: skippedIds, p_claimed_at: now }
-        );
-        if (skippedRpcError) {
-          logError('OCI_GOOGLE_ADS_EXPORT_SKIP_CLAIM_FAILED', { code: (skippedRpcError as { code?: string })?.code });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        if (typeof skippedClaimedCount !== 'number' || skippedClaimedCount !== skippedIds.length) {
-          logError('OCI_GOOGLE_ADS_EXPORT_SKIP_CLAIM_PARTIAL', {
-            requested: skippedIds.length,
-            claimed: skippedClaimedCount,
-          });
-          return NextResponse.json({ error: 'Skipped queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
-        }
-
-        const { data: skippedRows } = await adminClient
-          .from('offline_conversion_queue')
-          .select('id')
-          .in('id', skippedIds)
-          .eq('site_id', siteUuid)
-          .eq('status', 'PROCESSING');
-        const skippedRowsList = Array.isArray(skippedRows) ? skippedRows as Array<{ id: string }> : [];
-        if (skippedRowsList.length !== skippedIds.length) {
-          logError('OCI_GOOGLE_ADS_EXPORT_SKIP_PROCESSING_MISMATCH', { requested: skippedIds.length, processing: skippedRowsList.length });
-          return NextResponse.json({ error: 'Skipped queue state mismatch', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
-        }
-        const { data: skippedUpdatedCount, error: skippedUpdateError } = await adminClient.rpc('append_script_transition_batch', {
-          p_queue_ids: skippedRowsList.map((row) => row.id),
-          p_new_status: 'COMPLETED',
-          p_created_at: now,
-          p_error_payload: {
-            uploaded_at: now,
-            last_error: 'SESSION_DEDUPLICATED_AT_EXPORT',
-            provider_error_code: 'DETERMINISTIC_SKIP',
-            provider_error_category: 'DETERMINISTIC_SKIP',
-            clear_fields: ['next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
-          },
-        });
-        if (skippedUpdateError || typeof skippedUpdatedCount !== 'number' || skippedUpdatedCount !== skippedRowsList.length) {
-          logError('OCI_GOOGLE_ADS_EXPORT_SKIP_TERMINALIZE_FAILED', { code: (skippedUpdateError as { code?: string })?.code, requested: skippedRowsList.length, updated: skippedUpdatedCount });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-      }
-
-      // Phase 6.1: Mark signals as PROCESSING
-      if (signalIdsToMarkProcessing.length > 0) {
-        const { data, error: sigStatusError } = await adminClient
-          .from('marketing_signals')
-          .update({ dispatch_status: 'PROCESSING' })
-          .in('id', signalIdsToMarkProcessing)
-          .eq('site_id', siteUuid)
-          .eq('dispatch_status', 'PENDING')
-          .select('id');
-
-        if (sigStatusError) {
-          logError('OCI_EXPORT_MARK_SIGNALS_PROCESSING_FAILED', { error: sigStatusError.message });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        const updatedSignals = Array.isArray(data) ? data.length : 0;
-        if (updatedSignals !== signalIdsToMarkProcessing.length) {
-          logError('OCI_EXPORT_MARK_SIGNALS_PROCESSING_MISMATCH', {
-            requested: signalIdsToMarkProcessing.length,
-            updated: updatedSignals,
-          });
-          return NextResponse.json({ error: 'Signal claim mismatch', code: 'SIGNAL_CLAIM_MISMATCH' }, { status: 409 });
-        }
-      }
-      if (blockedSignalIds.length > 0) {
-        const { data, error: blockedSignalsError } = await adminClient
-          .from('marketing_signals')
-          .update({ dispatch_status: 'JUNK_ABORTED' })
-          .in('id', blockedSignalIds)
-          .eq('site_id', siteUuid)
-          .eq('dispatch_status', 'PENDING')
-          .select('id');
-        if (blockedSignalsError) {
-          logError('OCI_EXPORT_BLOCKED_SIGNALS_ABORT_FAILED', { error: blockedSignalsError.message });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        const updatedBlockedSignals = Array.isArray(data) ? data.length : 0;
-        if (updatedBlockedSignals !== blockedSignalIds.length) {
-          logError('OCI_EXPORT_BLOCKED_SIGNALS_ABORT_MISMATCH', { requested: blockedSignalIds.length, updated: updatedBlockedSignals });
-          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
-        }
-      }
-      if (blockedSignalTimeIds.length > 0) {
-        const { data, error: blockedSignalTimeError } = await adminClient
-          .from('marketing_signals')
-          .update({ dispatch_status: 'FAILED' })
-          .in('id', blockedSignalTimeIds)
-          .eq('site_id', siteUuid)
-          .eq('dispatch_status', 'PENDING')
-          .select('id');
-        if (blockedSignalTimeError) {
-          logError('OCI_EXPORT_SIGNAL_TIME_ABORT_FAILED', { error: blockedSignalTimeError.message });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        const updatedBlockedSignalTimes = Array.isArray(data) ? data.length : 0;
-        if (updatedBlockedSignalTimes !== blockedSignalTimeIds.length) {
-          logError('OCI_EXPORT_SIGNAL_TIME_ABORT_MISMATCH', {
-            requested: blockedSignalTimeIds.length,
-            updated: updatedBlockedSignalTimes,
-          });
-          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
-        }
-      }
-      if (blockedSignalValueIds.length > 0) {
-        const { data, error: blockedSignalValueError } = await adminClient
-          .from('marketing_signals')
-          .update({ dispatch_status: 'FAILED' })
-          .in('id', blockedSignalValueIds)
-          .eq('site_id', siteUuid)
-          .eq('dispatch_status', 'PENDING')
-          .select('id');
-        if (blockedSignalValueError) {
-          logError('OCI_EXPORT_SIGNAL_VALUE_ZERO_ABORT_FAILED', { error: blockedSignalValueError.message });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        const updatedBlockedSignalValues = Array.isArray(data) ? data.length : 0;
-        if (updatedBlockedSignalValues !== blockedSignalValueIds.length) {
-          logError('OCI_EXPORT_SIGNAL_VALUE_ZERO_ABORT_MISMATCH', {
-            requested: blockedSignalValueIds.length,
-            updated: updatedBlockedSignalValues,
-          });
-          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
-        }
-      }
-    }
+    const list = byConversionTime;
 
     const currency = (site as { currency?: string })?.currency || 'TRY';
 
     const siteTimezone = (site as { timezone?: string | null }).timezone ?? 'Europe/Istanbul';
 
     const conversions: GoogleAdsConversionItem[] = [];
+    const queueCandidates: RankedExportCandidate[] = [];
     const blockedQueueTimeIds: string[] = [];
     const blockedValueZeroIds: string[] = [];
     const blockedExpiredIds: string[] = [];
@@ -1102,7 +922,7 @@ export async function GET(req: NextRequest) {
           if (hashedPhoneForGate) hashedPhoneOut = hashedPhoneForGate;
       }
 
-      conversions.push({
+      const item: GoogleAdsConversionItem = {
         id: fallbackOrderId,
         orderId: externalId || orderIdDDA || fallbackOrderId,
         gclid: gclidOut,
@@ -1114,7 +934,246 @@ export async function GET(req: NextRequest) {
         conversionCurrency,
         ...(hashedPhoneOut && { hashed_phone_number: hashedPhoneOut }),
         ...(v5ActionCfg && { _role: v5ActionCfg.role }),
+      };
+      conversions.push(item);
+      queueCandidates.push({
+        id: item.id,
+        groupKey: buildSingleConversionGroupKey(row.session_id ?? (row.call_id ? sessionByCall[row.call_id] ?? null : null), row.call_id ?? null, row.id),
+        gear: 'V5_SEAL',
+        sortKey: item.conversionTime,
+        value: item,
       });
+    }
+
+    const rankedCandidates = [...queueCandidates, ...signalCandidates];
+    const { kept: keptCandidates, suppressed: suppressedCandidates } = selectHighestPriorityCandidates(rankedCandidates);
+    const rankedCandidateIds = new Set(rankedCandidates.map((candidate) => candidate.id));
+    const keptCandidateIds = new Set(keptCandidates.map((candidate) => candidate.id));
+    const keptConversions = conversions.filter((item) => !rankedCandidateIds.has(item.id) || keptCandidateIds.has(item.id));
+    const keptSignalItems = signalItems.filter((item) => !rankedCandidateIds.has(item.id) || keptCandidateIds.has(item.id));
+    const suppressedQueueIds = suppressedCandidates
+      .filter((candidate) => candidate.id.startsWith('seal_'))
+      .map((candidate) => candidate.id.replace('seal_', ''));
+    const suppressedSignalIds = suppressedCandidates
+      .filter((candidate) => candidate.id.startsWith('signal_'))
+      .map((candidate) => candidate.id.replace('signal_', ''));
+    const idsToMarkProcessing = keptConversions.map((item) => item.id.replace('seal_', ''));
+    const signalIdsToMarkProcessing = keptSignalItems.map((item) => item.id.replace('signal_', ''));
+
+    if (suppressedCandidates.length > 0) {
+      logInfo('OCI_EXPORT_SUPPRESSED_LOWER_GEARS', {
+        site_id: siteUuid,
+        suppressed_queue: suppressedQueueIds.length,
+        suppressed_signals: suppressedSignalIds.length,
+      });
+    }
+
+    if (
+      markAsExported &&
+      (
+        idsToMarkProcessing.length > 0 ||
+        suppressedQueueIds.length > 0 ||
+        signalIdsToMarkProcessing.length > 0 ||
+        suppressedSignalIds.length > 0 ||
+        blockedQueueIds.length > 0 ||
+        blockedSignalIds.length > 0 ||
+        blockedSignalTimeIds.length > 0 ||
+        blockedSignalValueIds.length > 0
+      )
+    ) {
+      const now = new Date().toISOString();
+      if (blockedQueueIds.length > 0) {
+        const { data: blockedClaimedCount, error: blockedClaimError } = await adminClient.rpc(
+          'append_script_claim_transition_batch',
+          { p_queue_ids: blockedQueueIds, p_claimed_at: now }
+        );
+        if (blockedClaimError || typeof blockedClaimedCount !== 'number' || blockedClaimedCount !== blockedQueueIds.length) {
+          logError('OCI_GOOGLE_ADS_EXPORT_BLOCKED_CLAIM_FAILED', {
+            code: (blockedClaimError as { code?: string })?.code,
+            requested: blockedQueueIds.length,
+            claimed: blockedClaimedCount,
+          });
+          return NextResponse.json({ error: 'Blocked queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
+        }
+        const { data: blockedUpdatedCount, error: blockedUpdateError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: blockedQueueIds,
+          p_new_status: 'FAILED',
+          p_created_at: now,
+          p_error_payload: {
+            last_error: 'CALL_NOT_SENDABLE_FOR_OCI',
+            provider_error_code: 'CALL_NOT_SENDABLE',
+            provider_error_category: 'PERMANENT',
+            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (blockedUpdateError || typeof blockedUpdatedCount !== 'number' || blockedUpdatedCount !== blockedQueueIds.length) {
+          logError('OCI_GOOGLE_ADS_EXPORT_BLOCKED_TERMINALIZE_FAILED', {
+            code: (blockedUpdateError as { code?: string })?.code,
+            requested: blockedQueueIds.length,
+            updated: blockedUpdatedCount,
+          });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+      }
+      if (idsToMarkProcessing.length > 0) {
+        const { data: claimedCount, error: rpcError } = await adminClient.rpc(
+          'append_script_claim_transition_batch',
+          { p_queue_ids: idsToMarkProcessing, p_claimed_at: now }
+        );
+        if (rpcError) {
+          logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_FAILED', { code: (rpcError as { code?: string })?.code });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        if (typeof claimedCount !== 'number' || claimedCount !== idsToMarkProcessing.length) {
+          logError('OCI_GOOGLE_ADS_EXPORT_CLAIM_PARTIAL', {
+            requested: idsToMarkProcessing.length,
+            claimed: claimedCount,
+          });
+          return NextResponse.json({ error: 'Queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
+        }
+      }
+      if (suppressedQueueIds.length > 0) {
+        const { data: suppressedClaimedCount, error: suppressedClaimError } = await adminClient.rpc(
+          'append_script_claim_transition_batch',
+          { p_queue_ids: suppressedQueueIds, p_claimed_at: now }
+        );
+        if (suppressedClaimError || typeof suppressedClaimedCount !== 'number' || suppressedClaimedCount !== suppressedQueueIds.length) {
+          logError('OCI_GOOGLE_ADS_EXPORT_SUPPRESS_CLAIM_FAILED', {
+            code: (suppressedClaimError as { code?: string })?.code,
+            requested: suppressedQueueIds.length,
+            claimed: suppressedClaimedCount,
+          });
+          return NextResponse.json({ error: 'Suppressed queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
+        }
+
+        const { data: suppressedRows } = await adminClient
+          .from('offline_conversion_queue')
+          .select('id')
+          .in('id', suppressedQueueIds)
+          .eq('site_id', siteUuid)
+          .eq('status', 'PROCESSING');
+        const suppressedRowsList = Array.isArray(suppressedRows) ? suppressedRows as Array<{ id: string }> : [];
+        if (suppressedRowsList.length !== suppressedQueueIds.length) {
+          logError('OCI_GOOGLE_ADS_EXPORT_SUPPRESS_PROCESSING_MISMATCH', { requested: suppressedQueueIds.length, processing: suppressedRowsList.length });
+          return NextResponse.json({ error: 'Suppressed queue state mismatch', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+        }
+        const { data: suppressedUpdatedCount, error: suppressedUpdateError } = await adminClient.rpc('append_script_transition_batch', {
+          p_queue_ids: suppressedRowsList.map((row) => row.id),
+          p_new_status: 'COMPLETED',
+          p_created_at: now,
+          p_error_payload: {
+            uploaded_at: now,
+            last_error: 'SUPPRESSED_BY_HIGHER_GEAR',
+            provider_error_code: 'SUPPRESSED_BY_HIGHER_GEAR',
+            provider_error_category: 'DETERMINISTIC_SKIP',
+            clear_fields: ['next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          },
+        });
+        if (suppressedUpdateError || typeof suppressedUpdatedCount !== 'number' || suppressedUpdatedCount !== suppressedRowsList.length) {
+          logError('OCI_GOOGLE_ADS_EXPORT_SUPPRESS_TERMINALIZE_FAILED', { code: (suppressedUpdateError as { code?: string })?.code, requested: suppressedRowsList.length, updated: suppressedUpdatedCount });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+      }
+      if (signalIdsToMarkProcessing.length > 0) {
+        const { data, error: sigStatusError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'PROCESSING' })
+          .in('id', signalIdsToMarkProcessing)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING')
+          .select('id');
+
+        if (sigStatusError) {
+          logError('OCI_EXPORT_MARK_SIGNALS_PROCESSING_FAILED', { error: sigStatusError.message });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const updatedSignals = Array.isArray(data) ? data.length : 0;
+        if (updatedSignals !== signalIdsToMarkProcessing.length) {
+          logError('OCI_EXPORT_MARK_SIGNALS_PROCESSING_MISMATCH', {
+            requested: signalIdsToMarkProcessing.length,
+            updated: updatedSignals,
+          });
+          return NextResponse.json({ error: 'Signal claim mismatch', code: 'SIGNAL_CLAIM_MISMATCH' }, { status: 409 });
+        }
+      }
+      if (suppressedSignalIds.length > 0) {
+        const { data, error: suppressedSignalsError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'FAILED' })
+          .in('id', suppressedSignalIds)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING')
+          .select('id');
+        if (suppressedSignalsError) {
+          logError('OCI_EXPORT_SUPPRESSED_SIGNALS_ABORT_FAILED', { error: suppressedSignalsError.message });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const updatedSuppressedSignals = Array.isArray(data) ? data.length : 0;
+        if (updatedSuppressedSignals !== suppressedSignalIds.length) {
+          logError('OCI_EXPORT_SUPPRESSED_SIGNALS_ABORT_MISMATCH', { requested: suppressedSignalIds.length, updated: updatedSuppressedSignals });
+          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        }
+      }
+      if (blockedSignalIds.length > 0) {
+        const { data, error: blockedSignalsError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'JUNK_ABORTED' })
+          .in('id', blockedSignalIds)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING')
+          .select('id');
+        if (blockedSignalsError) {
+          logError('OCI_EXPORT_BLOCKED_SIGNALS_ABORT_FAILED', { error: blockedSignalsError.message });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const updatedBlockedSignals = Array.isArray(data) ? data.length : 0;
+        if (updatedBlockedSignals !== blockedSignalIds.length) {
+          logError('OCI_EXPORT_BLOCKED_SIGNALS_ABORT_MISMATCH', { requested: blockedSignalIds.length, updated: updatedBlockedSignals });
+          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        }
+      }
+      if (blockedSignalTimeIds.length > 0) {
+        const { data, error: blockedSignalTimeError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'FAILED' })
+          .in('id', blockedSignalTimeIds)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING')
+          .select('id');
+        if (blockedSignalTimeError) {
+          logError('OCI_EXPORT_SIGNAL_TIME_ABORT_FAILED', { error: blockedSignalTimeError.message });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const updatedBlockedSignalTimes = Array.isArray(data) ? data.length : 0;
+        if (updatedBlockedSignalTimes !== blockedSignalTimeIds.length) {
+          logError('OCI_EXPORT_SIGNAL_TIME_ABORT_MISMATCH', {
+            requested: blockedSignalTimeIds.length,
+            updated: updatedBlockedSignalTimes,
+          });
+          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        }
+      }
+      if (blockedSignalValueIds.length > 0) {
+        const { data, error: blockedSignalValueError } = await adminClient
+          .from('marketing_signals')
+          .update({ dispatch_status: 'FAILED' })
+          .in('id', blockedSignalValueIds)
+          .eq('site_id', siteUuid)
+          .eq('dispatch_status', 'PENDING')
+          .select('id');
+        if (blockedSignalValueError) {
+          logError('OCI_EXPORT_SIGNAL_VALUE_ZERO_ABORT_FAILED', { error: blockedSignalValueError.message });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const updatedBlockedSignalValues = Array.isArray(data) ? data.length : 0;
+        if (updatedBlockedSignalValues !== blockedSignalValueIds.length) {
+          logError('OCI_EXPORT_SIGNAL_VALUE_ZERO_ABORT_MISMATCH', {
+            requested: blockedSignalValueIds.length,
+            updated: updatedBlockedSignalValues,
+          });
+          return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        }
+      }
     }
 
     // P0: Fail-closed. If script is exporting (markAsExported=true), terminalize blocked rows so they never loop.
@@ -1181,7 +1240,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const combined = [...conversions, ...signalItems, ...pvItems].sort(
+    const combined = [...keptConversions, ...keptSignalItems, ...pvItems].sort(
       (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
     );
 
@@ -1256,7 +1315,13 @@ export async function GET(req: NextRequest) {
           items: combined,
           adjustments: adjustmentItems,
           next_cursor: nextCursor,
-          counts: { queued: list.length, signals: signalItems.length, pvs: pvItems.length, skipped: skippedIds.length, adjustments: adjustmentItems.length },
+          counts: {
+            queued: keptConversions.length,
+            signals: keptSignalItems.length,
+            pvs: pvItems.length,
+            suppressed: suppressedCandidates.length,
+            adjustments: adjustmentItems.length,
+          },
           warnings: isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
         };
 

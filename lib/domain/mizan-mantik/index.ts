@@ -6,8 +6,11 @@ export { evaluateAndRouteSignal } from './orchestrator';
 export { getBaseValueForGear, getDecayProfileForGear, calculateSignalEV } from './time-decay';
 export {
   calculateConversionValueMinor,
+  resolveConversionValueMinor,
+  resolveSignalFloorMinor,
   AOV_FLOOR_MAJOR,
   type ConversionValueParams,
+  type ResolvedConversionValue,
 } from './value-calculator';
 export type { OpsGear, SignalPayload, EvaluateResult, LegacySignalType } from './types';
 export { LEGACY_TO_OPS_GEAR } from './types';

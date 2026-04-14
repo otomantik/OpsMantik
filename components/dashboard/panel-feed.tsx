@@ -49,28 +49,35 @@ export function PanelFeed({
   const activeIntent = filteredCalls[activeIndex];
   const queueCount = filteredCalls.length;
 
-  const handleActionComplete = async (phone?: string, score?: number) => {
-    if (!pendingAction) return;
-    const { intent } = pendingAction;
-    
-    // Optimistic UI: remove from local state
-    setCalls(prev => prev.filter(c => c.id !== intent.id));
-    setPendingAction(null);
-    if (activeIndex >= filteredCalls.length - 1) {
-       setActiveIndex(Math.max(0, activeIndex - 1));
+  const handleActionComplete = async (actionType: LeadActionType, phone?: string, score?: number) => {
+    if (!pendingAction) {
+      return { success: false, error: t('toast.failedUpdate') };
     }
+    const { intent } = pendingAction;
 
     try {
       const res = await fetch(`/api/intents/${intent.id}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, score })
+        body: JSON.stringify({ phone, score, action_type: actionType })
       });
-      if (!res.ok) throw new Error('API Error');
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result?.success) {
+        return {
+          success: false,
+          error: typeof result?.error === 'string' ? result.error : t('toast.failedUpdate'),
+        };
+      }
+
+      setCalls(prev => prev.filter(c => c.id !== intent.id));
+      if (activeIndex >= filteredCalls.length - 1) {
+        setActiveIndex(Math.max(0, activeIndex - 1));
+      }
+
+      return { success: true };
     } catch (err) {
       console.error('Action failed:', err);
-      // Rollback on failure? Maybe just alert for now
-      alert(t('toast.failedUpdate'));
+      return { success: false, error: t('toast.failedUpdate') };
     }
   };
 

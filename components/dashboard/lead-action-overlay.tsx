@@ -15,7 +15,7 @@ interface LeadActionOverlayProps {
   actionType: LeadActionType | null;
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (phone?: string, score?: number) => Promise<void>;
+  onComplete: (actionType: LeadActionType, phone?: string, score?: number) => Promise<{ success: boolean; error?: string }>;
 }
 
 export function LeadActionOverlay({
@@ -30,6 +30,7 @@ export function LeadActionOverlay({
   const [phone, setPhone] = useState('');
   const [score, setScore] = useState<number>(100);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Set initial score based on actionType
   useEffect(() => {
@@ -37,6 +38,7 @@ export function LeadActionOverlay({
       setStep('phone');
       setPhone('');
       setIsSubmitting(false);
+      setSubmitError(null);
       
       switch (actionType) {
         case 'junk': setScore(0); setStep('rating'); break;
@@ -66,9 +68,15 @@ export function LeadActionOverlay({
   };
 
   const handleComplete = async (finalScore: number) => {
+    if (!actionType) return;
     setIsSubmitting(true);
-    await onComplete(phone, finalScore);
+    setSubmitError(null);
+    const result = await onComplete(actionType, phone, finalScore);
     setIsSubmitting(false);
+    if (!result.success) {
+      setSubmitError(result.error ?? t('toast.failedUpdate'));
+      return;
+    }
     setStep('success');
     setTimeout(() => onClose(), 1500);
   };
@@ -125,6 +133,9 @@ export function LeadActionOverlay({
                 <button onClick={() => setStep('rating')} className="w-full py-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">
                   {t('hunter.skip')}
                 </button>
+                {submitError && (
+                  <p className="text-center text-xs font-bold text-red-600">{submitError}</p>
+                )}
               </div>
             </div>
           )}
@@ -158,6 +169,9 @@ export function LeadActionOverlay({
               >
                 {isSubmitting ? t('seal.sealing') : t('button.confirm').toUpperCase()}
               </Button>
+              {submitError && (
+                <p className="text-center text-xs font-bold text-red-600">{submitError}</p>
+              )}
             </div>
           )}
 

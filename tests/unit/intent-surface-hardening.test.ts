@@ -106,8 +106,9 @@ test('junk mutations wait for server confirmation and OCI panel exposes honest r
   const deckSrc = readFileSync(QUEUE_DECK, 'utf8');
   const ociPageSrc = readFileSync(OCI_CONTROL_PAGE, 'utf8');
   const ociPanelSrc = readFileSync(OCI_CONTROL_PANEL, 'utf8');
-  assert.ok(deckSrc.includes("void qualify({ score: 0, status: 'junk' })"), 'junk action must wait for server mutation');
-  assert.ok(!deckSrc.includes("const handleJunk = ({ id }: { id: string }) => {\n    onOptimisticRemove(id);"), 'junk action must not optimistically remove before success');
+  assert.ok(deckSrc.includes("const result = await qualify(params);"), 'junk action must wait for server mutation');
+  assert.ok(deckSrc.includes('if (!result.success)'), 'junk action must branch on server result');
+  assert.ok(deckSrc.includes('onOptimisticRemove(intent.id);'), 'card removal should happen only after success');
   assert.ok(ociPageSrc.includes("canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}"), 'OCI control page must derive canOperate from RBAC');
   assert.ok(ociPanelSrc.includes('disabled={!canOperate || actionBusy}'), 'OCI panel action buttons must respect read-only state');
 });
@@ -119,11 +120,11 @@ test('panel onboarding respects site write capability and avoids operator deadlo
   assert.ok(configSrc.includes("access.role === 'operator'"), 'site config route must allow operator for first-time setup');
   assert.ok(panelSrc.includes("hasCapability(access.role, 'site:write')"), 'panel onboarding gate must compute site:write permission');
   assert.ok(panelSrc.includes("access.role === 'operator'"), 'panel onboarding gate must allow operator setup path');
-  assert.ok(panelSrc.includes('Kurulum Bekleniyor'), 'panel must show a non-editable setup-waiting state for non-writers');
+  assert.ok(panelSrc.includes("translate(resolvedLocale, 'panel.setupPendingTitle')"), 'panel must show a translated setup-waiting state for non-writers');
 });
 
 test('panel feed query uses existing calls columns (no stale schema fields)', () => {
   const panelSrc = readFileSync(PANEL_PAGE, 'utf8');
-  assert.ok(panelSrc.includes('id, created_at, status, intent_action, matched_session_id'), 'panel calls query must use stable calls columns');
-  assert.ok(!panelSrc.includes('utm_term, city, district, location_source'), 'panel calls query must not select removed calls columns');
+  assert.ok(panelSrc.includes("rpc('get_recent_intents_lite_v1'"), 'panel calls query must use stable RPC surface');
+  assert.ok(panelSrc.includes('p_site_id: targetSiteId'), 'panel feed RPC must be scoped by site');
 });

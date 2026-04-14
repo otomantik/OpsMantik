@@ -19,6 +19,7 @@ async function verifySignalGeneration() {
   
   const { adminClient } = await import('../lib/supabase/admin');
   const { computeLcv } = await import('../lib/oci/lcv-engine');
+  const { resolveConversionValueMinor } = await import('../lib/domain/mizan-mantik');
   
   const callId = '36713837-143f-4e19-9524-811c05d7b5bf'; // Example existing call
   const siteId = '28cf0aefaa074f5bb29e818a9d53b488';
@@ -48,6 +49,14 @@ async function verifySignalGeneration() {
     whatsappClicks: call.whatsapp_clicks,
     totalDurationSec: call.total_duration_sec
   });
+  const canonicalValue = resolveConversionValueMinor({
+    gear: 'V3_ENGAGE',
+    currency: 'TRY',
+    siteAovMinor: 300000,
+    decayOverride: 1,
+    applySignalFloor: true,
+    minimumValueMinor: 1,
+  });
 
   const conversionName = 'OpsMantik_V3_Nitelikli_Gorusme';
 
@@ -58,8 +67,8 @@ async function verifySignalGeneration() {
     signal_type: 'MEETING_BOOKED',
     google_conversion_name: conversionName,
     google_conversion_time: confirmedAtIso,
-    conversion_value: lcv.valueUnits,
-    expected_value_cents: lcv.valueCents,
+    conversion_value: canonicalValue.valueMinor / 100,
+    expected_value_cents: canonicalValue.valueMinor,
     gclid: call.gclid || 'test_gclid',
     dispatch_status: 'PENDING',
     occurred_at: confirmedAtIso,

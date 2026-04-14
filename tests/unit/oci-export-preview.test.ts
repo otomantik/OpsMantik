@@ -41,9 +41,9 @@ test('google-ads-export route: next_cursor keeps queue and signal streams separa
 test('google-ads-export route: deterministic skips keep provenance on terminal rows', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes("last_error: 'SESSION_DEDUPLICATED_AT_EXPORT'"), 'dedup terminalization keeps human-readable reason');
-  assert.ok(src.includes("provider_error_code: 'DETERMINISTIC_SKIP'"), 'dedup terminalization seals provider_error_code');
-  assert.ok(src.includes("provider_error_category: 'DETERMINISTIC_SKIP'"), 'dedup terminalization seals provider_error_category');
+  assert.ok(src.includes("last_error: 'SUPPRESSED_BY_HIGHER_GEAR'"), 'highest-only suppression must keep human-readable reason');
+  assert.ok(src.includes("provider_error_code: 'SUPPRESSED_BY_HIGHER_GEAR'"), 'highest-only suppression must keep explicit provider_error_code');
+  assert.ok(src.includes("provider_error_category: 'DETERMINISTIC_SKIP'"), 'suppressed lower gears must stay deterministic skips');
 });
 
 test('google-ads-export route: partial claims fail closed before cursor advances', () => {

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const WORKERS_INGEST = join(process.cwd(), 'app', 'api', 'workers', 'ingest', 'route.ts');
+const WORKERS_INGEST = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
 const MIGRATION = join(process.cwd(), 'supabase', 'migrations', '20261112000000_decrement_and_delete_idempotency_atomic.sql');
 
 test('Phase 12: workers ingest uses atomic compensation RPC', () => {

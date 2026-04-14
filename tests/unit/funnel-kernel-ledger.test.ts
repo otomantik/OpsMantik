@@ -34,30 +34,30 @@ test('ledger-writer handles 23505 as idempotent skip', async () => {
 
 test('projection-updater uses deterministic reducer order', async () => {
   const src = readFileSync(
-    join(process.cwd(), 'lib', 'domain', 'funnel-kernel', 'projection-updater.ts'),
+    join(process.cwd(), 'supabase', 'migrations', '20260324000001_rebuild_projection_rpc.sql'),
     'utf8'
   );
-  assert.ok(src.includes("order('occurred_at'"), 'must order by occurred_at first');
-  assert.ok(src.includes("order('ingested_at'"), 'must order by ingested_at');
-  assert.ok(src.includes("order('created_at'"), 'must order by created_at');
-  assert.ok(src.includes("order('id'"), 'must order by id');
+  assert.ok(src.includes('ORDER BY occurred_at ASC, ingested_at ASC, created_at ASC, id ASC'), 'must order by deterministic reducer tuple');
 });
 
 test('projection-updater reduces V2_CONTACT and V2_SYNTHETIC to v2_source', async () => {
   const src = readFileSync(
-    join(process.cwd(), 'lib', 'domain', 'funnel-kernel', 'projection-updater.ts'),
+    join(process.cwd(), 'supabase', 'migrations', '20260324000001_rebuild_projection_rpc.sql'),
     'utf8'
   );
   assert.ok(src.includes('V2_SYNTHETIC') && src.includes("'SYNTHETIC'"), 'must set v2_source for synthetic');
   assert.ok(src.includes('V2_CONTACT') && src.includes("'REAL'"), 'must set v2_source for real');
 });
 
-test('projection-updater inserts funnel invariant violations on V5 without V2', async () => {
+test('projection-updater delegates rebuild to atomic RPC', async () => {
   const src = readFileSync(
     join(process.cwd(), 'lib', 'domain', 'funnel-kernel', 'projection-updater.ts'),
     'utf8'
   );
-  assert.ok(src.includes('V5_WITHOUT_V2'), 'must detect V5 without V2');
-  assert.ok(src.includes('funnel_invariant_violations'), 'must insert into violations table');
-  assert.ok(src.includes('23505'), 'must treat duplicate violation as idempotent');
+  assert.ok(src.includes("rpc('rebuild_call_projection'"), 'projection-updater must use rebuild_call_projection RPC');
+  const migration = readFileSync(
+    join(process.cwd(), 'supabase', 'migrations', '20260324000001_rebuild_projection_rpc.sql'),
+    'utf8'
+  );
+  assert.ok(migration.includes('CREATE OR REPLACE FUNCTION public.rebuild_call_projection'), 'rebuild RPC migration must exist');
 });

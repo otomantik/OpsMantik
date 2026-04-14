@@ -4,8 +4,8 @@
  * After a call is sealed in War Room, enqueue it for Google Ads OCI if the call
  * has an associated click ID (gclid, wbraid, or gbraid).
  *
- * Value logic: saleAmount is ground truth. If absent or zero → skip.
- * Per-site tuning is handled by SiteExportConfig (lib/oci/site-export-config.ts).
+ * Value logic: V5 is saleAmount when known, otherwise canonical fallbackMinor.
+ * Per-site tuning is handled by SiteExportConfig + ValueConfig fallback policy.
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
@@ -42,9 +42,9 @@ export interface EnqueueSealResult {
   | 'duplicate'
   | 'duplicate_session'
   | 'marketing_consent_required'
-  | 'no_sale_amount'
   | 'error';
   value?: number;
+  usedFallback?: boolean;
   error?: string;
 }
 
@@ -55,19 +55,23 @@ export interface EnqueueSealResult {
 async function loadSiteOciConfig(siteId: string) {
   const { data, error } = await adminClient
     .from('sites')
-    .select('oci_config, currency, default_aov, oci_sync_method')
+    .select('oci_config, currency, default_aov, min_conversion_value_cents, oci_sync_method')
     .eq('id', siteId)
     .maybeSingle();
 
   if (error || !data) {
     logWarn('enqueue_seal_config_missing', { site_id: siteId });
-    return { config: parseOciConfig(null), siteCurrency: 'TRY' };
+    return { config: parseOciConfig(null), siteCurrency: 'TRY', siteFallbackMinor: null, syncMethod: 'script' };
   }
 
   const defaultAov = (data as { default_aov?: number | null }).default_aov;
   return {
     config: parseOciConfig((data as { oci_config?: unknown }).oci_config, defaultAov),
     siteCurrency: (data as { currency?: string }).currency?.trim() || 'TRY',
+    siteFallbackMinor:
+      (data as { min_conversion_value_cents?: number | null }).min_conversion_value_cents != null
+        ? Number((data as { min_conversion_value_cents?: number | null }).min_conversion_value_cents)
+        : null,
     syncMethod: (data as { oci_sync_method?: string }).oci_sync_method || 'script',
   };
 }
@@ -78,7 +82,7 @@ async function loadSiteOciConfig(siteId: string) {
 
 /**
  * Enqueue a sealed call into offline_conversion_queue for OCI.
- * Skips if no gclid/wbraid/gbraid, marketing consent absent, or saleAmount is null/zero.
+ * Skips only for attribution/consent failures. Value is sale or canonical fallback.
  * Idempotent via UNIQUE(call_id).
  */
 export async function enqueueSealConversion(params: EnqueueSealParams): Promise<EnqueueSealResult> {
@@ -159,18 +163,24 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   }
 
   // 3. Load site OCI config (currency fallback)
-  const { config, siteCurrency, syncMethod } = await loadSiteOciConfig(siteId);
+  const { config, siteCurrency, siteFallbackMinor, syncMethod } = await loadSiteOciConfig(siteId);
 
-  // 4. Compute conversion value — saleAmount is ground truth
-  const valueUnits = computeConversionValue(saleAmount);
-
-  if (valueUnits === null) {
-    logInfo('enqueue_seal_skip', { call_id: callId, reason: 'no_sale_amount', lead_score: leadScore });
-    return { enqueued: false, reason: 'no_sale_amount' };
-  }
-
-  const valueCents = Math.round(valueUnits * 100);
   const currencySafe = currency?.trim() || config.currency || siteCurrency;
+  const valueUnits = computeConversionValue(saleAmount, {
+    currency: currencySafe,
+    fallbackMinor: siteFallbackMinor,
+    fallbackMajor: config.fallback_value_major ?? null,
+  });
+  const valueCents = Math.round((valueUnits ?? 0) * 100);
+  const usedFallback = !(saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0);
+
+  if (usedFallback) {
+    logInfo('enqueue_seal_fallback_value', {
+      call_id: callId,
+      lead_score: leadScore,
+      fallback_value_cents: valueCents,
+    });
+  }
 
   // 6. Resolve session_id for attribution — deduplication is enforced by the DB unique index
   // on (site_id, provider_key, external_id), NOT by an application-layer pre-check.
@@ -190,8 +200,8 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     'V5_SEAL',
     ['auth', 'consent', 'idempotency', 'usage'],
     'Seal_Conversion',
-    { saleAmount, valueUnits },
-    { valueCents, currency: currencySafe }
+    { saleAmount, valueUnits, usedFallback },
+    { valueCents, currency: currencySafe, fallbackApplied: usedFallback }
   );
 
   // 8. Insert into queue. Keep legacy conversion_time populated for compatibility,
@@ -237,10 +247,10 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     if (error) {
       if (error.code === '23505') {
         logInfo('enqueue_seal_skip', { call_id: callId, reason: 'duplicate' });
-        return { enqueued: false, reason: 'duplicate' };
+        return { enqueued: false, reason: 'duplicate', usedFallback };
       }
       logWarn('enqueue_seal_failed', { call_id: callId, error: error.message });
-      return { enqueued: false, reason: 'error', error: error.message };
+      return { enqueued: false, reason: 'error', error: error.message, usedFallback };
     }
 
     const queueId = (inserted as { id: string } | null)?.id ?? null;
@@ -261,7 +271,13 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       }
     }
 
-    logInfo('enqueue_seal_ok', { call_id: callId, queue_id: queueId, value_units: valueUnits, value_cents: valueCents });
+    logInfo('enqueue_seal_ok', {
+      call_id: callId,
+      queue_id: queueId,
+      value_units: valueUnits,
+      value_cents: valueCents,
+      used_fallback: usedFallback,
+    });
 
     // 9. Fast-Track: Trigger immediate Value-Lane synchronization
     // Only trigger if site is in 'api' mode. 'script' sites must wait for polling.
@@ -282,7 +298,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
         }
     }
 
-    return { enqueued: true, queueId, value: valueUnits };
+    return { enqueued: true, queueId, value: valueUnits ?? 0, usedFallback };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logWarn('enqueue_seal_failed', { call_id: callId, error: message });

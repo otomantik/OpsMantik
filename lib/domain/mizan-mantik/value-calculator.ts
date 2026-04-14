@@ -12,9 +12,8 @@ import { majorToMinor } from '@/lib/i18n/currency';
 import { calculateDecayDays } from '@/lib/shared/time-utils';
 import { getBaseValueForGear, getDecayProfileForGear } from './time-decay';
 import type { IntentWeights } from './value-config';
-import { DEFAULT_WEIGHTS } from './value-config';
+import { DEFAULT_WEIGHTS, normalizeWeight, resolveFallbackMinor } from './value-config';
 import type { OpsGear } from './types';
-import { getStageWeight, getQualityWeight, getConfidenceWeight } from '../funnel-kernel/funnel-policy';
 
 export type { ProjectionForValue, ProjectionStage } from '../funnel-kernel/funnel-policy';
 
@@ -30,8 +29,108 @@ export interface ConversionValueParams {
   saleAmountMinor?: number | null;
   /** Min conversion value in cents (DB: sites.min_conversion_value_cents). Default 100000. */
   minConversionValueCents?: number | null;
+  /** Export-config fallback value in major units. Used when DB fallback is absent. */
+  fallbackValueMajor?: number | null;
   /** Intent stage weights (DB: sites.intent_weights). Default: pending 2%, qualified 20%, proposal 30%, sealed 100%. */
   intentWeights?: IntentWeights | null;
+  /** Optional explicit ratio for score-based/manual flows. Accepts 0..1 or 0..100. */
+  ratioOverride?: number | null;
+  /** Optional explicit decay override for manual flows. */
+  decayOverride?: number | null;
+  /** Apply small signal floor for V2–V4 so Google never sees near-zero training values. */
+  applySignalFloor?: boolean;
+  /** Override minimum non-zero minor value after all math. */
+  minimumValueMinor?: number | null;
+}
+
+export interface ResolvedConversionValue {
+  valueMinor: number;
+  baseValueMinor: number;
+  ratio: number;
+  decay: number;
+  fallbackMinor: number;
+}
+
+export function resolveSignalFloorMinor(siteAovMinor?: number | null): number {
+  const safeAovMinor = Number.isFinite(siteAovMinor) ? Math.max(0, Math.round(siteAovMinor ?? 0)) : 0;
+  return Math.max(Math.round(safeAovMinor * 0.005), 1);
+}
+
+export function resolveConversionValueMinor({
+  gear,
+  siteAovMinor,
+  currency = 'TRY',
+  clickDate,
+  signalDate,
+  saleAmountMinor,
+  minConversionValueCents,
+  fallbackValueMajor,
+  intentWeights,
+  ratioOverride,
+  decayOverride,
+  applySignalFloor = false,
+  minimumValueMinor,
+}: ConversionValueParams): ResolvedConversionValue {
+  const fallbackMinor = resolveFallbackMinor({
+    currency,
+    minConversionValueCents,
+    v5FallbackValueMajor: fallbackValueMajor,
+  });
+  const minimumMinor =
+    minimumValueMinor != null && Number.isFinite(minimumValueMinor)
+      ? Math.max(0, Math.round(minimumValueMinor))
+      : 0;
+
+  if (gear === 'V1_PAGEVIEW') {
+    return {
+      valueMinor: 1,
+      baseValueMinor: 1,
+      ratio: 0,
+      decay: 1,
+      fallbackMinor,
+    };
+  }
+
+  if (gear === 'V5_SEAL') {
+    const sealedValueMinor =
+      saleAmountMinor != null && Number.isFinite(saleAmountMinor) && saleAmountMinor > 0
+        ? Math.round(saleAmountMinor)
+        : fallbackMinor;
+    return {
+      valueMinor: Math.max(sealedValueMinor, Math.max(minimumMinor, 1)),
+      baseValueMinor: sealedValueMinor,
+      ratio: 1,
+      decay: 1,
+      fallbackMinor,
+    };
+  }
+
+  const effectiveAovMinor = Math.max(siteAovMinor ?? 0, 0);
+  const ratio =
+    ratioOverride != null
+      ? normalizeWeight(ratioOverride)
+      : getBaseValueForGear(gear, 1, intentWeights ?? DEFAULT_WEIGHTS) || 0;
+  const baseValueMinor = Math.round(effectiveAovMinor * ratio);
+  const days =
+    clickDate && signalDate
+      ? calculateDecayDays(clickDate, signalDate, 'ceil')
+      : 0;
+  const decay =
+    decayOverride != null && Number.isFinite(decayOverride)
+      ? Math.max(0, decayOverride)
+      : getDecayProfileForGear(gear, days);
+  const decayedValueMinor = Math.round(baseValueMinor * decay);
+  const flooredValueMinor = applySignalFloor
+    ? Math.max(decayedValueMinor, resolveSignalFloorMinor(effectiveAovMinor))
+    : decayedValueMinor;
+
+  return {
+    valueMinor: Math.max(flooredValueMinor, minimumMinor),
+    baseValueMinor,
+    ratio,
+    decay,
+    fallbackMinor,
+  };
 }
 
 /**
@@ -51,37 +150,31 @@ export function calculateConversionValueMinor({
   signalDate,
   saleAmountMinor,
   minConversionValueCents,
+  fallbackValueMajor,
   intentWeights,
+  ratioOverride,
+  decayOverride,
+  applySignalFloor,
+  minimumValueMinor,
 }: ConversionValueParams): number {
-  const aovFloorMinor =
-    minConversionValueCents != null && Number.isFinite(minConversionValueCents)
-      ? minConversionValueCents
-      : majorToMinor(AOV_FLOOR_MAJOR, currency ?? 'TRY');
-
-  // V1: Never return 0. Return 1 minor unit for visibility in Google Ads.
-  if (gear === 'V1_PAGEVIEW') {
-    return 1;
-  }
-
-  // V5: Sale amount or aovFloorMinor fallback (The 1000 TL Axiom)
-  if (gear === 'V5_SEAL') {
-    return saleAmountMinor != null && Number.isFinite(saleAmountMinor) && saleAmountMinor > 0
-      ? saleAmountMinor
-      : aovFloorMinor;
-  }
-
-  // V2–V4: AOV-based training signal. Site-wide min_conversion_value_cents is reserved for V5 fallback.
-  const effectiveAovMinor = Math.max(siteAovMinor ?? 0, 0);
-  const ratio =
-    getBaseValueForGear(gear, 1, intentWeights ?? DEFAULT_WEIGHTS) || 0;
-
-  const days =
-    clickDate && signalDate
-      ? calculateDecayDays(clickDate, signalDate, 'ceil')
-      : 0;
-  const decay = getDecayProfileForGear(gear, days);
-
-  return Math.round(effectiveAovMinor * ratio * decay);
+  return resolveConversionValueMinor({
+    gear,
+    siteAovMinor,
+    currency,
+    clickDate,
+    signalDate,
+    saleAmountMinor,
+    minConversionValueCents:
+      minConversionValueCents != null && Number.isFinite(minConversionValueCents)
+        ? minConversionValueCents
+        : majorToMinor(AOV_FLOOR_MAJOR, currency ?? 'TRY'),
+    fallbackValueMajor,
+    intentWeights,
+    ratioOverride,
+    decayOverride,
+    applySignalFloor,
+    minimumValueMinor,
+  }).valueMinor;
 }
 
 /**
@@ -96,31 +189,3 @@ export function computeSealedValue(exactValueCents: number): number {
   if (!Number.isFinite(exactValueCents) || exactValueCents < 0) return 0.01;
   return Math.round(exactValueCents) / 100;
 }
-
-/**
- * V2–V4 estimated value with decay. 
- * @deprecated Use calculateConversionValueMinor for new implementations.
- */
-export function computeEstimatedValue(
-  stage: 'V2' | 'V3' | 'V4',
-  baseValue: number,
-  qualityScore: number | null | undefined,
-  confidence: number | null | undefined,
-  days: number
-): number {
-  const sw = getStageWeight(stage);
-  const qw = getQualityWeight(qualityScore);
-  const cw = getConfidenceWeight(confidence);
-  
-  // Use the canonical decay profile from Mizan
-  const gear = stage === 'V2' ? 'V2_PULSE' : stage === 'V3' ? 'V3_ENGAGE' : 'V4_INTENT';
-  const decay = getDecayProfileForGear(gear, Math.min(365, Math.max(0, days)));
-  
-  const estimated = baseValue * sw * qw * cw * decay;
-  return Math.max(0.01, Math.round(estimated * 100) / 100);
-}
-
-/**
- * Re-export export value calculator for SSOT.
- */
-export { computeExportValue } from '../funnel-kernel/funnel-policy';

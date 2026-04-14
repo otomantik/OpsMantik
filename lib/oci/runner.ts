@@ -40,6 +40,7 @@ import {
 import { chunkArray } from '@/lib/utils/batch';
 import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
 import { computeConversionValue } from '@/lib/oci/oci-config';
+import { getSiteValueConfig } from '@/lib/domain/mizan-mantik/value-config';
 
 /** Options for runOfflineConversionRunner. */
 export interface RunnerOptions {
@@ -227,14 +228,18 @@ async function syncQueueValuesFromCalls(
   const callsById = new Map(
     (callsData ?? []).map((c: { id: string; lead_score?: number | null; sale_amount?: number | null; currency?: string | null }) => [c.id, c])
   );
+  const siteValueConfig = await getSiteValueConfig(siteIdUuid).catch(() => null);
 
   for (const row of withCallId) {
     const call = callsById.get(row.call_id!);
     if (!call) continue;
     const saleAmount = call.sale_amount != null && Number.isFinite(Number(call.sale_amount)) ? Number(call.sale_amount) : null;
-    const valueUnits = computeConversionValue(saleAmount);
     const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
-    const freshCents = valueUnits != null ? majorToMinor(valueUnits, callCurrency) : row.value_cents;
+    const canonicalValueUnits = computeConversionValue(saleAmount, {
+      currency: callCurrency,
+      fallbackMinor: siteValueConfig?.minConversionValueCents ?? null,
+    });
+    const freshCents = canonicalValueUnits != null ? majorToMinor(canonicalValueUnits, callCurrency) : row.value_cents;
     const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;
     
     // PR-VK-6: Apply drift tolerance to prevent fail-closed on minor rounding/exchange differences.

@@ -14,56 +14,11 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
+import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
 
 export const dynamic = 'force-dynamic';
 
 const route = '/api/intents/[id]/status';
-
-async function invalidatePendingOciArtifactsForCall(
-  callId: string,
-  siteId: string,
-  reason: string,
-  now: string
-): Promise<void> {
-  const [outboxResult, signalPendingResult, signalProcessingResult] = await Promise.all([
-    adminClient
-      .from('outbox_events')
-      .update({
-        status: 'FAILED',
-        last_error: reason,
-        processed_at: now,
-      })
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .in('status', ['PENDING', 'PROCESSING']),
-    adminClient
-      .from('marketing_signals')
-      .update({
-        dispatch_status: 'JUNK_ABORTED',
-      })
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .eq('dispatch_status', 'PENDING'),
-    adminClient
-      .from('marketing_signals')
-      .update({
-        dispatch_status: 'FAILED',
-      })
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .eq('dispatch_status', 'PROCESSING'),
-  ]);
-
-  if (outboxResult.error) {
-    logError('INVALIDATE_OCI_OUTBOX_FAILED', { call_id: callId, site_id: siteId, reason, error: outboxResult.error.message });
-  }
-  if (signalPendingResult.error) {
-    logError('INVALIDATE_OCI_SIGNALS_PENDING_FAILED', { call_id: callId, site_id: siteId, reason, error: signalPendingResult.error.message });
-  }
-  if (signalProcessingResult.error) {
-    logError('INVALIDATE_OCI_SIGNALS_PROCESSING_FAILED', { call_id: callId, site_id: siteId, reason, error: signalProcessingResult.error.message });
-  }
-}
 
 export async function POST(
   req: NextRequest,

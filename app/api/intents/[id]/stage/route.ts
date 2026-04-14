@@ -12,12 +12,25 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logError, logWarn } from '@/lib/logging/logger';
 import { hasCapability } from '@/lib/auth/rbac';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
+import { resolveConversionValueMinor } from '@/lib/domain/mizan-mantik';
+import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
+import { majorToMinor } from '@/lib/i18n/currency';
 import type { PipelineStage } from '@/lib/types/database';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
 const route = '/api/intents/[id]/stage';
+
+type RpcCallRecord = { id: string; status?: string | null };
+
+function resolvePersistedCall(rpcResult: unknown): RpcCallRecord | null {
+  const callObj = Array.isArray(rpcResult) && rpcResult.length === 1 ? rpcResult[0] : rpcResult;
+  if (!callObj || typeof callObj !== 'object' || !('id' in callObj)) {
+    return null;
+  }
+  return callObj as RpcCallRecord;
+}
 
 export async function POST(
   req: NextRequest,
@@ -33,11 +46,13 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { gear_id, phone, score } = body;
+    const { gear_id, phone, score, action_type } = body;
     const { id: callId } = await params;
+    const actionType = typeof action_type === 'string' ? action_type.trim().toLowerCase() : null;
+    const roundedScore = typeof score === 'number' ? Math.max(0, Math.min(100, Math.round(score))) : null;
 
     // We allow either gear_id OR a direct numeric score for the new panel
-    if (!gear_id && score === undefined) {
+    if (!gear_id && roundedScore === null) {
       return NextResponse.json({ error: 'gear_id or score is required' }, { status: 400 });
     }
 
@@ -73,64 +88,140 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid gear_id for this site' }, { status: 400 });
     }
 
-    if (stage && (stage.action === 'discard' || stage.id === 'g_trash' || stage.id === 'junk')) {
-      await adminClient.rpc('apply_call_action_v1', {
+    const isJunkAction =
+      actionType === 'junk'
+      || (stage ? stage.action === 'discard' || stage.id === 'g_trash' || stage.id === 'junk' : false)
+      || (!gear_id && roundedScore === 0);
+
+    if (isJunkAction) {
+      const junkPayload: Record<string, unknown> = {};
+      if (roundedScore !== null) {
+        junkPayload.lead_score = roundedScore;
+      }
+
+      const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
         p_call_id: callId,
         p_action_type: 'junk',
+        p_payload: junkPayload,
         p_actor_type: 'system',
         p_actor_id: user.id,
         p_metadata: { route, request_id: requestId, user_id: user.id },
+        p_version: null,
       });
-      return NextResponse.json({ success: true, discarded: true });
+
+      if (updateError) {
+        logWarn('gear_shift_junk_failed', {
+          callId,
+          actionType,
+          error: updateError.message,
+          code: (updateError as { code?: string }).code,
+        });
+        return NextResponse.json({ error: 'Failed to persist junk action' }, { status: 409 });
+      }
+
+      const persistedCall = resolvePersistedCall(updatedCall);
+      if (!persistedCall) {
+        logWarn('gear_shift_junk_missing_row', { callId, actionType });
+        return NextResponse.json({ error: 'Junk action did not persist; please retry.' }, { status: 500 });
+      }
+
+      await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', new Date().toISOString());
+
+      return NextResponse.json({
+        success: true,
+        discarded: true,
+        call: persistedCall,
+        persisted_status: persistedCall.status ?? 'junk',
+        queued: false,
+      });
     }
 
     // Hash phone if provided
     let phoneHash: string | null = null;
+    let callerPhoneRaw: string | null = null;
     if (phone && phone.trim()) {
-      const normalizedPhone = phone.replace(/[^\d+]/g, '');
+      callerPhoneRaw = phone.trim().slice(0, 64);
+      const normalizedPhone = callerPhoneRaw.replace(/[^\d+]/g, '');
       phoneHash = crypto.createHash('sha256').update(normalizedPhone).digest('hex');
-      
-      // Update the call with the phone hash
-      await adminClient.from('calls').update({ caller_phone_hash_sha256: phoneHash }).eq('id', callId);
     }
 
-    const baseValueTry = (site.oci_config as Record<string, unknown>)?.base_deal_value_try as number || site.default_aov || 1000;
-    
-    // NEW MATH: If score is provided (1-100), it overrides stage multiplier
-    let multiplier = 0;
-    if (typeof score === 'number') {
-      multiplier = Math.max(0, Math.min(100, score)) / 100;
-      // Also update the lead_score field in DB for auditing
-      await adminClient.from('calls').update({ lead_score: Math.round(score) }).eq('id', callId);
-    } else if (stage) {
-      multiplier = typeof stage.multiplier === 'number' ? stage.multiplier : (stage.value_cents ? stage.value_cents / 100 / baseValueTry : 0.05);
-    }
-
-    const valueCents = Math.round(baseValueTry * multiplier * 100);
     const currencySafe = site.currency || 'TRY';
+    const baseValueTry = (site.oci_config as Record<string, unknown>)?.base_deal_value_try as number || site.default_aov || 1000;
+    const ratioOverride =
+      roundedScore !== null
+        ? roundedScore
+        : stage
+          ? typeof stage.multiplier === 'number'
+            ? stage.multiplier
+            : stage.value_cents
+              ? stage.value_cents / 100 / baseValueTry
+              : 0.05
+          : 0;
+    const valueMath = resolveConversionValueMinor({
+      gear: 'V4_INTENT',
+      currency: currencySafe,
+      siteAovMinor: majorToMinor(baseValueTry, currencySafe),
+      ratioOverride,
+      decayOverride: 1,
+      minimumValueMinor: 1,
+    });
+    const valueCents = valueMath.valueMinor;
 
     // The Unique OCI Deduplication ID incorporating gear_id or score
-    const dedupeKey = gear_id || `score_${score}`;
+    const dedupeKey = gear_id || `score_${roundedScore}`;
     const sessionId = call.matched_session_id;
     const externalId = `google_ads:${dedupeKey}:${callId}:${sessionId || 'no-session'}`;
 
-    // Mark call as confirmed locally
-    await adminClient.rpc('apply_call_action_v1', {
+    const confirmPayload: Record<string, unknown> = {
+      status: gear_id || 'confirmed_with_score',
+      oci_status: 'sealed',
+    };
+    if (roundedScore !== null) {
+      confirmPayload.lead_score = roundedScore;
+    }
+    if (callerPhoneRaw) {
+      confirmPayload.caller_phone_raw = callerPhoneRaw;
+    }
+    if (phoneHash) {
+      confirmPayload.caller_phone_hash_sha256 = phoneHash;
+    }
+
+    // Mark call as confirmed locally before enqueueing OCI
+    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
       p_call_id: callId,
       p_action_type: 'confirm',
-      p_payload: { status: gear_id || 'confirmed_with_score', score },
+      p_payload: confirmPayload,
       p_actor_type: 'system',
       p_actor_id: user.id,
-      p_metadata: { route, gear_id, score },
+      p_metadata: { route, gear_id, score: roundedScore, action_type: actionType, request_id: requestId },
+      p_version: null,
     });
+
+    if (updateError) {
+      logWarn('gear_shift_confirm_failed', {
+        callId,
+        gear_id,
+        score: roundedScore,
+        actionType,
+        error: updateError.message,
+        code: (updateError as { code?: string }).code,
+      });
+      return NextResponse.json({ error: 'Failed to persist confirmation' }, { status: 409 });
+    }
+
+    const persistedCall = resolvePersistedCall(updatedCall);
+    if (!persistedCall) {
+      logWarn('gear_shift_confirm_missing_row', { callId, gear_id, score: roundedScore, actionType });
+      return NextResponse.json({ error: 'Confirmation did not persist; please retry.' }, { status: 500 });
+    }
 
     const nowIso = new Date().toISOString();
 
     const causalDna = buildMinimalCausalDna(
-      score !== undefined ? 'SCORE_BASED_CONVERSION' : 'UNIVERSAL_GEAR_SHIFT',
+      roundedScore !== null ? 'SCORE_BASED_CONVERSION' : 'UNIVERSAL_GEAR_SHIFT',
       ['usage'],
-      stage?.label || `Puan: ${score}`,
-      { baseValueTry, multiplier, score },
+      stage?.label || `Puan: ${roundedScore}`,
+      { baseValueTry, ratio: valueMath.ratio, score: roundedScore },
       { valueCents, currency: currencySafe }
     );
 
@@ -157,7 +248,13 @@ export async function POST(
     if (insertError) {
       if (insertError.code === '23505') {
          // It's a duplicate for EXACTLY this gear on this call. Just return 200.
-         return NextResponse.json({ success: true, duplicate: true });
+         return NextResponse.json({
+           success: true,
+           duplicate: true,
+           call: persistedCall,
+           persisted_status: persistedCall.status ?? 'confirmed',
+           queued: true,
+         });
       }
       logWarn('gear_shift_oci_failed', { callId, gear_id, error: insertError.message });
       return NextResponse.json({ error: 'Failed to enqueue OCI' }, { status: 500 });
@@ -173,7 +270,12 @@ export async function POST(
        }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      call: persistedCall,
+      persisted_status: persistedCall.status ?? 'confirmed',
+      queued: true,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error';
     logError(message, { request_id: requestId, route });

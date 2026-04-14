@@ -42,25 +42,24 @@ function ActiveDeckCard({
     onQualified // Pass refetch callback for undo success
   );
 
-  const fireQualify = async (params: { score: number; status: 'confirmed' | 'junk' }, optimistic = false) => {
-    if (optimistic) {
-      onOptimisticRemove(intent.id);
-      pushHistoryRow({
-        id: intent.id,
-        status: params.status,
-        intent_action: intent.intent_action ?? null,
-        identity: intent.intent_target ?? null,
-      });
-      if (params.status === 'confirmed') {
-        pushToast('success', t('seal.dealSealed'));
-      } else {
-        pushToast('danger', t('toast.trashRemoved'));
-      }
-    }
+  const fireQualify = async (params: { score: number; status: 'confirmed' | 'junk' }) => {
     try {
       const result = await qualify(params);
       if (!result.success) {
         pushToast('danger', result.error || t('toast.failedUpdate'));
+      } else {
+        onOptimisticRemove(intent.id);
+        pushHistoryRow({
+          id: intent.id,
+          status: params.status,
+          intent_action: intent.intent_action ?? null,
+          identity: intent.intent_target ?? null,
+        });
+        if (params.status === 'confirmed') {
+          pushToast('success', t('seal.dealSealed'));
+        } else {
+          pushToast('danger', t('toast.trashRemoved'));
+        }
       }
       onQualified();
       return result.success;
@@ -80,12 +79,12 @@ function ActiveDeckCard({
       return true; // we assume modal will handle it and remove it
     }
 
-    return await fireQualify({ score, status: 'confirmed' }, true);
+    return await fireQualify({ score, status: 'confirmed' });
   };
 
   const handleJunk = async (intentId: string) => {
     if (readOnly) return false;
-    return await fireQualify({ score: 0, status: 'junk' }, true);
+    return await fireQualify({ score: 0, status: 'junk' });
   };
 
   const actions: IntentCardV2Action[] = [

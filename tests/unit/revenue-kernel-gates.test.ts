@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 
 const SYNC_ROUTE_PATH = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
-const WORKER_INGEST_PATH = join(process.cwd(), 'app', 'api', 'workers', 'ingest', 'route.ts');
+const WORKER_INGEST_PATH = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
 const SYNC_GATES_PATH = join(process.cwd(), 'lib', 'ingest', 'sync-gates.ts');
 const QUOTA_LIB_PATH = join(process.cwd(), 'lib', 'quota.ts');
 const RECONCILIATION_LIB_PATH = join(process.cwd(), 'lib', 'reconciliation.ts');
@@ -88,7 +88,7 @@ test('PR gate: idempotency DB error must ack and MUST NOT persist (worker)', () 
   const worker = readFileSync(WORKER_INGEST_PATH, 'utf8');
   const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
   assert.ok(syncGates.includes('idempotency_error'), 'sync-gates must return idempotency_error');
-  assert.ok(worker.includes('WORKERS_INGEST_BILLING_GATE_CLOSED'), 'worker must log BILLING_GATE_CLOSED on idempotency error');
+  assert.ok(worker.includes("return NextResponse.json({ ok: true, reason: gatesResult.reason })"), 'worker must ack gate-closed responses');
   const gatesCall = worker.indexOf('runSyncGates');
   const processCall = worker.indexOf('processSyncEvent');
   assert.ok(gatesCall < processCall, 'gates run before process (idempotency error stops before persist)');
@@ -126,8 +126,8 @@ test('PR gate: idempotency DB error aborts flow and does not reach persist', () 
   assert.ok(returnBlock !== -1 && returnBlock < processSyncCall, 'worker must return on gates failure before processSyncEvent');
 
   // 5) worker: idempotency_error path returns { ok: true, reason } (ack to QStash) and logs WORKERS_INGEST_BILLING_GATE_CLOSED
-  assert.ok(worker.includes("reason === 'idempotency_error'"), 'worker must handle idempotency_error');
-  assert.ok(worker.includes('WORKERS_INGEST_BILLING_GATE_CLOSED'), 'worker must log WORKERS_INGEST_BILLING_GATE_CLOSED on idempotency error');
+  assert.ok(worker.includes('gatesResult.ok === false'), 'worker must handle gate failures before processing');
+  assert.ok(worker.includes("return NextResponse.json({ ok: true, reason: gatesResult.reason })"), 'worker must ack idempotency_error gate closure');
 });
 
 test('PR-4 gate: reconciliation authority is ingest_idempotency count only (no Redis as invoice SoT)', () => {

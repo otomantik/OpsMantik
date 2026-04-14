@@ -6,15 +6,13 @@
 export { appendFunnelEvent, type AppendFunnelEventInput, type FunnelEventType, type FunnelEventSource } from './ledger-writer';
 export { processCallProjection, type CallFunnelProjection } from './projection-updater';
 export {
-  getStageWeight,
-  getQualityWeight,
-  getConfidenceWeight
+  getStageWeight
 } from './funnel-policy';
 
 export {
   computeSealedValue,
-  computeExportValue,
-  computeEstimatedValue // deprecated
+  resolveConversionValueMinor,
+  calculateConversionValueMinor
 } from '../mizan-mantik/value-calculator';
 
 export type {

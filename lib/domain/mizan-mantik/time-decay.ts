@@ -8,6 +8,7 @@
 import { calculateDecayDays } from '@/lib/shared/time-utils';
 import type { OpsGear } from './types';
 import type { IntentWeights } from './value-config';
+import { normalizeIntentWeights } from './value-config';
 
 /** Gear → Stage mapping (Value SSOT Contract Rule D) */
 export const GEAR_TO_STAGE: Record<OpsGear, keyof IntentWeights | null> = {
@@ -38,7 +39,7 @@ export function getBaseValueForGear(
   const stage = GEAR_TO_STAGE[gear];
   if (!stage || gear === 'V1_PAGEVIEW') return 0;
   if (gear === 'V5_SEAL') return 0; // Handled outside — exact valueCents, ratio=100%, decay=0
-  const ratio = (intentWeights[stage] ?? DEFAULT_WEIGHTS[stage]) / 100;
+  const ratio = normalizeIntentWeights(intentWeights)[stage];
   return safeAov * ratio;
 }
 

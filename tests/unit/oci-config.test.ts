@@ -2,7 +2,7 @@
  * Unit tests for OCI Config logic.
  *
  * Star-based gating (min_star, weights) has been removed.
- * Value is driven by saleAmount directly via computeConversionValue(saleAmount).
+ * V5 value is driven by saleAmount when known, otherwise canonical fallback.
  */
 
 import test from 'node:test';
@@ -38,14 +38,18 @@ test('computeConversionValue: returns major-unit value when saleAmount provided'
     assert.ok(value !== null && value > 0, 'positive saleAmount must produce positive value');
 });
 
-test('computeConversionValue: null sale → null — 0 TL mühür olmaz (PR-OCI-1)', () => {
-    assert.equal(computeConversionValue(null), null, 'V5: no sale → null, caller must NOT enqueue');
+test('computeConversionValue: null sale → canonical fallback', () => {
+    assert.equal(computeConversionValue(null), 1000, 'V5: no sale now resolves to fallback');
 });
 
-test('computeConversionValue: zero sale → null', () => {
-    assert.equal(computeConversionValue(0), null);
+test('computeConversionValue: zero sale → canonical fallback', () => {
+    assert.equal(computeConversionValue(0), 1000);
 });
 
-test('computeConversionValue: negative sale → null', () => {
-    assert.equal(computeConversionValue(-100), null);
+test('computeConversionValue: custom fallbackMajor is honored', () => {
+    assert.equal(computeConversionValue(null, { fallbackMajor: 750 }), 750);
+});
+
+test('computeConversionValue: negative sale → canonical fallback', () => {
+    assert.equal(computeConversionValue(-100), 1000);
 });

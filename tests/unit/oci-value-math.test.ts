@@ -17,10 +17,11 @@ import {
 } from '@/lib/i18n/currency';
 import {
   calculateConversionValueMinor,
+  resolveConversionValueMinor,
   AOV_FLOOR_MAJOR,
 } from '@/lib/domain/mizan-mantik';
 import { calculateSignalEV } from '@/lib/domain/mizan-mantik/time-decay';
-import { getValueFloorCents } from '@/lib/domain/mizan-mantik/value-config';
+import { getValueFloorCents, normalizeWeight } from '@/lib/domain/mizan-mantik/value-config';
 
 // --- Currency utilities ---
 test('getMinorUnits: TRY/EUR/USD = 2', () => {
@@ -73,6 +74,12 @@ test('calculateConversionValueMinor V5: sale_amount null/0 falls back to site mi
   );
 });
 
+test('normalizeWeight accepts both percent and ratio inputs', () => {
+  assert.equal(normalizeWeight(20), 0.2);
+  assert.equal(normalizeWeight(0.2), 0.2);
+  assert.equal(normalizeWeight(100), 1);
+});
+
 test('calculateConversionValueMinor V1: returns 1 minor visibility unit', () => {
   assert.equal(
     calculateConversionValueMinor({ gear: 'V1_PAGEVIEW', siteAovMinor: 100_000 }),
@@ -90,6 +97,19 @@ test('calculateConversionValueMinor V2–V4: uses AOV and decay', () => {
   });
   assert.ok(Number.isInteger(result), 'result must be integer');
   assert.ok(result >= 0, 'result must be non-negative');
+});
+
+test('resolveConversionValueMinor supports score-style ratioOverride without decay', () => {
+  const result = resolveConversionValueMinor({
+    gear: 'V4_INTENT',
+    currency: 'TRY',
+    siteAovMinor: 100_000,
+    ratioOverride: 80,
+    decayOverride: 1,
+    minimumValueMinor: 1,
+  });
+  assert.equal(result.ratio, 0.8);
+  assert.equal(result.valueMinor, 80_000);
 });
 
 test('calculateConversionValueMinor V2–V4: AOV floor applies for JPY', () => {

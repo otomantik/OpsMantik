@@ -19,6 +19,11 @@ import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
+import {
+  getSingleConversionGearRank,
+  pickHighestPriorityGear,
+  type SingleConversionGear,
+} from '@/lib/oci/single-conversion-highest-only';
 
 /**
  * Resolve the true click date for a call.
@@ -76,6 +81,14 @@ function gearToLegacySignalType(gear: OpsGear): 'SEAL_PENDING' | 'MEETING_BOOKED
   if (gear === 'V4_INTENT') return 'SEAL_PENDING';
   if (gear === 'V3_ENGAGE') return 'MEETING_BOOKED';
   return 'INTENT_CAPTURED';
+}
+
+function resolveOutboxGear(score: number): SingleConversionGear | null {
+  if (score >= 90) return 'V5_SEAL';
+  if (score >= 80) return 'V4_INTENT';
+  if (score >= 60) return 'V3_ENGAGE';
+  if (score >= 10) return 'V2_PULSE';
+  return null;
 }
 
 interface OutboxPayload {
@@ -155,86 +168,7 @@ async function runProcessOutbox() {
 
         const score = leadScore ?? 0;
         if (score >= 90) {
-          // Phase 2.2: Temporal Funnel Backfill (V5 case)
-          const { data: existingSignals } = await adminClient
-            .from('marketing_signals')
-            .select('signal_type')
-            .eq('call_id', callId)
-            .in('signal_type', [...EXISTING_FUNNEL_SIGNAL_TYPES]);
-
-          const existingTypes = new Set(
-            (existingSignals ?? [])
-              .map((s) => normalizeExistingFunnelSignalType((s as { signal_type?: string | null }).signal_type))
-              .filter((value): value is 'V3_ENGAGE' | 'V4_INTENT' => Boolean(value))
-          );
-          const primary = await getPrimarySource(siteId, { callId });
-          // callCreatedAt is when the phone rang — NOT the real click date.
-          // Use getSessionClickDate to resolve the true click date (session.created_at).
-          // Fallback to callCreatedAt if session is unavailable.
-          const callCreatedAt = new Date(payload?.created_at ?? confirmedAt);
-          const callConfirmedAt = new Date(confirmedAt);
-          // Resolve true click date for accurate decay calculation
-          const v5BackfillClickDate = await getSessionClickDate(callId, callCreatedAt);
-
-          // Sequential Injection
-          if (!existingTypes.has('V3_ENGAGE')) {
-            await evaluateAndRouteSignal('V3_ENGAGE', {
-              siteId,
-              callId,
-              gclid: primary?.gclid ?? null,
-              wbraid: primary?.wbraid ?? null,
-              gbraid: primary?.gbraid ?? null,
-              aov: 0,
-              clickDate: v5BackfillClickDate,
-              signalDate: callCreatedAt,
-            });
-            try {
-              await appendFunnelEvent({
-                callId,
-                siteId,
-                eventType: 'V3_QUALIFIED',
-                eventSource: 'OUTBOX_CRON',
-                idempotencyKey: `v3:call:${callId}:source:outbox_cron`,
-                occurredAt: callCreatedAt,
-                payload: {},
-                causationId: id,
-              });
-            } catch (ledgerErr) {
-              logWarn('FUNNEL_LEDGER_V3_APPEND_FAILED', { call_id: callId, error: (ledgerErr as Error)?.message });
-            }
-            logInfo('outbox_funnel_backfill_v3', { call_id: callId });
-          }
-
-          if (!existingTypes.has('V4_INTENT')) {
-            await evaluateAndRouteSignal('V4_INTENT', {
-              siteId,
-              callId,
-              gclid: primary?.gclid ?? null,
-              wbraid: primary?.wbraid ?? null,
-              gbraid: primary?.gbraid ?? null,
-              aov: 0,
-              clickDate: v5BackfillClickDate,
-              signalDate: callConfirmedAt,
-            });
-            try {
-              await appendFunnelEvent({
-                callId,
-                siteId,
-                eventType: 'V4_INTENT',
-                eventSource: 'OUTBOX_CRON',
-                idempotencyKey: `v4:call:${callId}:source:outbox_cron`,
-                occurredAt: callConfirmedAt,
-                payload: {},
-                causationId: id,
-              });
-            } catch (ledgerErr) {
-              logWarn('FUNNEL_LEDGER_V4_APPEND_FAILED', { call_id: callId, error: (ledgerErr as Error)?.message });
-            }
-            logInfo('outbox_funnel_backfill_v4', { call_id: callId });
-          }
-
-          // Proceed to V5 enqueue even if V3/V4 backfill encountered duplicates or minor issues.
-          // evaluateAndRouteSignal handles uniqueness via marketing_signals DB constraints.
+          // Single-conversion mode: V5 suppresses lower gears for this lead.
           const result = await enqueueSealConversion({
             callId,
             siteId,
@@ -249,14 +183,54 @@ async function runProcessOutbox() {
             logInfo('outbox_v5_enqueued', { outbox_id: id, call_id: callId, queue_id: result.queueId });
           }
         } else if (score >= 10) {
-          // Threshold Banding for V2, V3, V4
-          // NOTE: Must mirror seal API thresholds (seal/route.ts:255)
-          // V4: score >= 80  (Sicak Teklif)
-          // V3: score >= 60  (Nitelikli Gorusme)
-          // V2: score >= 10  (Ilk Temas)
-          let gear: OpsGear = 'V2_PULSE';
-          if (score >= 80) gear = 'V4_INTENT';
-          else if (score >= 60) gear = 'V3_ENGAGE';
+          const gear = resolveOutboxGear(score) as OpsGear;
+          const { data: existingSignals } = await adminClient
+            .from('marketing_signals')
+            .select('signal_type')
+            .eq('call_id', callId)
+            .in('signal_type', [...EXISTING_FUNNEL_SIGNAL_TYPES, 'INTENT_CAPTURED']);
+
+          const { data: existingSealQueue } = await adminClient
+            .from('offline_conversion_queue')
+            .select('id')
+            .eq('site_id', siteId)
+            .eq('call_id', callId)
+            .eq('provider_key', 'google_ads')
+            .in('status', ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED', 'COMPLETED', 'COMPLETED_UNVERIFIED'])
+            .limit(1);
+
+          const existingGears: SingleConversionGear[] = [];
+          for (const signal of existingSignals ?? []) {
+            const signalType = (signal as { signal_type?: string | null }).signal_type ?? null;
+            if (signalType === 'INTENT_CAPTURED') {
+              existingGears.push('V2_PULSE');
+              continue;
+            }
+            const normalized = normalizeExistingFunnelSignalType(signalType);
+            if (normalized) existingGears.push(normalized);
+          }
+          if ((existingSealQueue ?? []).length > 0) {
+            existingGears.push('V5_SEAL');
+          }
+
+          const highestExistingGear = pickHighestPriorityGear(existingGears);
+          if (
+            highestExistingGear &&
+            getSingleConversionGearRank(highestExistingGear) > getSingleConversionGearRank(gear)
+          ) {
+            logInfo('outbox_signal_skip_higher_gear_exists', {
+              outbox_id: id,
+              call_id: callId,
+              requested_gear: gear,
+              existing_gear: highestExistingGear,
+            });
+            await adminClient
+              .from('outbox_events')
+              .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', id);
+            processed++;
+            continue;
+          }
 
           // Dedup guard: the seal route writes V3/V4 signals directly via the LCV engine
           // (high-quality, real-time path). Skip if already written to avoid double-counting.

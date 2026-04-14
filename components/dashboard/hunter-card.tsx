@@ -99,6 +99,14 @@ export const HunterCard = React.memo(({
     return [type, os, intent.browser].filter(Boolean).join(' / ');
   }, [intent.device_type, intent.device_os, intent.browser, translate]);
 
+  const sourceDisplay = useMemo(() => {
+    const attribution = (intent.attribution_source || '').toLowerCase();
+    if (attribution.includes('ads assisted')) {
+      return 'Google Ads';
+    }
+    return intent.attribution_source || intent.traffic_source || translate('common.dimension.organic');
+  }, [intent.attribution_source, intent.traffic_source, translate]);
+
   return (
     <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl shadow-slate-200/50 flex flex-col relative">
 
@@ -132,7 +140,7 @@ export const HunterCard = React.memo(({
 
       {/* ── DATA ───────────────────────────────────────── */}
       <div className="px-6 py-4 flex-1">
-        <EntryRow label={translate('common.dimension.source')} value={intent.attribution_source || intent.traffic_source || translate('common.dimension.organic')} />
+        <EntryRow label={translate('common.dimension.source')} value={sourceDisplay} />
         <EntryRow label={translate('common.dimension.device')} value={deviceDisplay} />
         <EntryRow label={translate('common.dimension.page')} value={normalizeUrl(intent.page_url, translate('hunter.homepage'))} />
         {intent.ai_summary && (

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { computeLcv } from '../lib/oci/lcv-engine';
+import { resolveConversionValueMinor } from '../lib/domain/mizan-mantik';
 
 config({ path: '.env.local' });
 
@@ -83,6 +84,14 @@ test('Integration: LCV Signal Generation on marketing_signals', async (_t) => {
     whatsappClicks: call.whatsapp_clicks,
     totalDurationSec: call.total_duration_sec
   });
+  const canonicalValue = resolveConversionValueMinor({
+    gear: 'V3_ENGAGE',
+    currency: 'TRY',
+    siteAovMinor: 300000,
+    decayOverride: 1,
+    applySignalFloor: true,
+    minimumValueMinor: 1,
+  });
 
   const conversionName = 'OpsMantik_V3_Nitelikli_Gorusme';
   const now = new Date().toISOString();
@@ -96,8 +105,8 @@ test('Integration: LCV Signal Generation on marketing_signals', async (_t) => {
       signal_type: 'MEETING_BOOKED',
       google_conversion_name: conversionName,
       google_conversion_time: now,
-      conversion_value: lcv.valueUnits,
-      expected_value_cents: lcv.valueCents,
+      conversion_value: canonicalValue.valueMinor / 100,
+      expected_value_cents: canonicalValue.valueMinor,
       dispatch_status: 'PENDING',
       occurred_at: now,
       adjustment_sequence: 0,
@@ -117,7 +126,7 @@ test('Integration: LCV Signal Generation on marketing_signals', async (_t) => {
   }
 
   console.log('✅ Signal inserted correctly:', signal.id);
-  assert.equal(signal.conversion_value, lcv.valueUnits);
+  assert.equal(signal.conversion_value, canonicalValue.valueMinor / 100);
   assert.equal(signal.google_conversion_name, conversionName);
 
   // 4. Cleanup

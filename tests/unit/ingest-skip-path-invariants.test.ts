@@ -9,13 +9,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROUTE_PATH = join(process.cwd(), 'app', 'api', 'workers', 'ingest', 'route.ts');
+const ROUTE_PATH = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
 
 test('skip path: tryInsertIdempotencyKey called with billable: false', () => {
   const src = readFileSync(ROUTE_PATH, 'utf8');
   assert.ok(src.includes('tryInsertIdempotencyKey'), 'route uses tryInsertIdempotencyKey');
   assert.ok(
-    /tryInsertIdempotencyKey\s*\([^)]+{\s*billable:\s*false/.test(src.replace(/\s+/g, ' ')),
+    src.includes('billable: false') && src.includes('billingReason: skipReasonApi'),
     'skip path calls tryInsertIdempotencyKey with billable: false'
   );
 });
@@ -24,7 +24,7 @@ test('skip path: runSyncGates not in skip branch (return before gates)', () => {
   const src = readFileSync(ROUTE_PATH, 'utf8');
   const botReferrerSkip = src.indexOf('if (botSkip || referrerSkip)');
   assert.ok(botReferrerSkip >= 0, 'bot/referrer skip branch exists');
-  const skipBlockEnd = src.indexOf('skipped: true, reason: skipReason', botReferrerSkip);
+  const skipBlockEnd = src.indexOf('skipped: true, reason: skipReasonApi', botReferrerSkip);
   assert.ok(skipBlockEnd >= 0, 'skip path returns with skipped: true');
   const between = src.slice(botReferrerSkip, skipBlockEnd + 120);
   assert.ok(!between.includes('runSyncGates('), 'skip branch does not call runSyncGates (usage path not executed)');
@@ -46,7 +46,7 @@ test('skip path: processed_signals receives terminal status (skipped)', () => {
 test('skip path: usage not incremented (no runSyncGates on skip path)', () => {
   const src = readFileSync(ROUTE_PATH, 'utf8');
   const ifTrafficDebloat = src.indexOf('if (trafficDebloat)');
-  const skipReturn = src.indexOf('skipped: true, reason: skipReason', ifTrafficDebloat);
+  const skipReturn = src.indexOf('skipped: true, reason: skipReasonApi', ifTrafficDebloat);
   const blockContainingSkip = src.slice(ifTrafficDebloat, skipReturn + 200);
   assert.ok(!blockContainingSkip.includes('incrementUsageRedis') && !blockContainingSkip.includes('runSyncGates'), 'skip branch does not call incrementUsageRedis or runSyncGates');
 });

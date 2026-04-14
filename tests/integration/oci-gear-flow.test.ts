@@ -1,6 +1,6 @@
 /**
- * PR-OCI-TEST: OCI gear flow behavior (0 TL seal, V3/V5 value).
- * - 0 TL: seal with sale_amount null/0 must NOT enqueue (no_sale_amount).
+ * PR-OCI-TEST: OCI gear flow behavior (fallback seal, V3/V5 value).
+ * - No sale / 0 TL: seal should use canonical fallback value instead of skipping.
  * - V5 with value: seal with sale_amount > 0 enqueues with correct value_cents.
  * Requires: OCI_GEAR_TEST_SITE_ID and OCI_GEAR_TEST_CALL_ID (call with gclid + marketing consent) when running DB-backed tests.
  */
@@ -25,7 +25,7 @@ function requireTestEnv() {
   return { skip: false };
 }
 
-test('PR-OCI-TEST: enqueueSealConversion with sale_amount null returns no_sale_amount and does not enqueue', async (t) => {
+test('PR-OCI-TEST: enqueueSealConversion with sale_amount null uses fallback value', async (t) => {
   const env = requireTestEnv();
   if (env.skip) {
     t.skip(env.reason);
@@ -40,11 +40,16 @@ test('PR-OCI-TEST: enqueueSealConversion with sale_amount null returns no_sale_a
     currency: 'TRY',
     leadScore: 100,
   });
-  assert.equal(result.enqueued, false, 'must not enqueue when sale_amount is null');
-  assert.equal(result.reason, 'no_sale_amount', 'reason must be no_sale_amount (0 TL mühür olmaz)');
+  if (!result.enqueued && result.reason === 'duplicate') {
+    assert.equal(result.usedFallback, true);
+    return;
+  }
+  assert.equal(result.enqueued, true, 'must enqueue when sale_amount is null via fallback');
+  assert.equal(result.usedFallback, true);
+  assert.ok((result.value ?? 0) > 0, 'fallback value must be positive');
 });
 
-test('PR-OCI-TEST: enqueueSealConversion with sale_amount 0 returns no_sale_amount', async (t) => {
+test('PR-OCI-TEST: enqueueSealConversion with sale_amount 0 uses fallback value', async (t) => {
   const env = requireTestEnv();
   if (env.skip) {
     t.skip(env.reason);
@@ -59,8 +64,13 @@ test('PR-OCI-TEST: enqueueSealConversion with sale_amount 0 returns no_sale_amou
     currency: 'TRY',
     leadScore: 100,
   });
-  assert.equal(result.enqueued, false);
-  assert.equal(result.reason, 'no_sale_amount');
+  if (!result.enqueued && result.reason === 'duplicate') {
+    assert.equal(result.usedFallback, true);
+    return;
+  }
+  assert.equal(result.enqueued, true);
+  assert.equal(result.usedFallback, true);
+  assert.ok((result.value ?? 0) > 0);
 });
 
 test('PR-OCI-TEST: 500 TL seal enqueues with value_cents 50000 when call has click_id and consent', async (t) => {

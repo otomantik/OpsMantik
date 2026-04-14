@@ -20,6 +20,8 @@ import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
 import { parseExportConfig } from '@/lib/oci/site-export-config';
 import { parseOciConfig } from '@/lib/oci/oci-config';
+import { resolveConversionValueMinor } from '@/lib/domain/mizan-mantik';
+import { majorToMinor, minorToMajor } from '@/lib/i18n/currency';
 
 export const dynamic = 'force-dynamic';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
@@ -374,9 +376,9 @@ export async function POST(
       );
     }
 
-    // ── V3/V4 LCV Signal: auto-write marketing_signals without sale amount ──
+    // ── V3/V4 Signal: canonical value + LCV insights ──
     // V5 (sealed) goes to offline_conversion_queue via enqueueSealConversion.
-    // V3/V4 (Grörüşüldü/Teklif) go to marketing_signals with LCV-computed value.
+    // V3/V4 (Görüşüldü/Teklif) go to marketing_signals with canonical value math.
     if (leadScore != null && leadScore >= 10 && leadScore < 100) {
       try {
         const { computeLcv } = await import('@/lib/oci/lcv-engine');
@@ -403,6 +405,8 @@ export async function POST(
             ? Number((siteRow as { default_aov?: number | null }).default_aov)
             : exportCfg.default_aov;
         const stage = leadScore >= 80 ? 'V4' as const : 'V3' as const;
+        const canonicalGear = stage === 'V4' ? 'V4_INTENT' : 'V3_ENGAGE';
+        const currencySafe = (siteRow as { currency?: string | null } | null)?.currency?.trim() || currency || 'TRY';
 
         type CallCtxRow = { city?: string|null; district?: string|null; device_type?: string|null; device_os?: string|null; traffic_source?: string|null; traffic_medium?: string|null; attribution_source?: string|null; matchtype?: string|null; utm_term?: string|null; phone_clicks?: number|null; whatsapp_clicks?: number|null; event_count?: number|null; total_duration_sec?: number|null; intent_action?: string|null; is_returning?: boolean|null; gclid?: string|null; wbraid?: string|null; gbraid?: string|null };
         const ctx = callCtx as CallCtxRow | null;
@@ -426,6 +430,20 @@ export async function POST(
           isReturning: ctx?.is_returning,
           config: ociLegacy.intelligence,
           gearWeights: exportCfg.gear_weights,
+        });
+        const canonicalValue = resolveConversionValueMinor({
+          gear: canonicalGear,
+          currency: currencySafe,
+          siteAovMinor: majorToMinor(baseAov, currencySafe),
+          intentWeights: {
+            pending: exportCfg.gear_weights.V2,
+            qualified: exportCfg.gear_weights.V3,
+            proposal: exportCfg.gear_weights.V4,
+            sealed: 1,
+          },
+          decayOverride: 1,
+          applySignalFloor: true,
+          minimumValueMinor: 1,
         });
 
         const gclid = ctx?.gclid?.trim() || null;
@@ -452,7 +470,7 @@ export async function POST(
           const sequence = existing && existing.length > 0 ? (existing[0].adjustment_sequence ?? 0) + 1 : 0;
           const previousHash = existing && existing.length > 0 ? existing[0].current_hash ?? null : null;
           const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
-          const hashPayload = `${callId ?? 'null'}:${sequence}:${lcv.valueCents}:${lcv.forensicDna}:${previousHash ?? 'null'}:${salt}`;
+          const hashPayload = `${callId ?? 'null'}:${sequence}:${canonicalValue.valueMinor}:${lcv.forensicDna}:${previousHash ?? 'null'}:${salt}`;
           const currentHash = createHash('sha256').update(hashPayload).digest('hex');
 
           await adminClient.from('marketing_signals').insert({
@@ -461,8 +479,8 @@ export async function POST(
             signal_type: stage === 'V4' ? 'SEAL_PENDING' : 'MEETING_BOOKED',
             google_conversion_name: conversionName,
             google_conversion_time: confirmedAtIso, // use export-friendly col
-            conversion_value: lcv.valueUnits,
-            expected_value_cents: lcv.valueCents,
+            conversion_value: minorToMajor(canonicalValue.valueMinor, currencySafe),
+            expected_value_cents: canonicalValue.valueMinor,
             gclid,
             wbraid,
             gbraid,
@@ -476,6 +494,8 @@ export async function POST(
               lcv_score: lcv.singularityScore,
               lcv_dna: lcv.forensicDna,
               lcv_insights: lcv.insights,
+              canonical_value_cents: canonicalValue.valueMinor,
+              canonical_ratio: canonicalValue.ratio,
               att_raw: { source: ctx?.traffic_source, term: ctx?.utm_term },
               source: 'MANUAL_QUALIFICATION_API',
               user_id: user.id,
@@ -485,8 +505,8 @@ export async function POST(
           logInfo('lcv_signal_enqueued', {
             call_id: callId,
             stage,
-            value_units: lcv.valueUnits,
-            quality_multiplier: lcv.qualityMultiplier,
+            value_units: minorToMajor(canonicalValue.valueMinor, currencySafe),
+            insight_score: lcv.singularityScore,
           });
         } else {
           logInfo('lcv_signal_skip_no_click_id', { call_id: callId, stage });

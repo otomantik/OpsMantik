@@ -16,11 +16,11 @@
  * Recommendation: sites using value_mode=explicit + V5 primary should set decay.mode=none.
  */
 
-import { getBaseValueForGear, getDecayProfileForGear } from '@/lib/domain/mizan-mantik/time-decay';
-import { calculateDecayDays } from '@/lib/shared/time-utils';
-import { getMinorUnits } from '@/lib/i18n/currency';
-import type { OpsGear } from '@/lib/domain/mizan-mantik/types';
-import type { IntentWeights } from '@/lib/domain/mizan-mantik/value-config';
+import { majorToMinor } from '@/lib/i18n/currency';
+import {
+  resolveConversionValueMinor,
+  type OpsGear,
+} from '@/lib/domain/mizan-mantik';
 import type { SiteExportConfig, ChannelKey } from './site-export-config';
 
 export interface ValueEngineInput {
@@ -49,13 +49,12 @@ export function computeExportValueCents(
   input: ValueEngineInput
 ): number {
   const effectiveMode = config.channel_value_mode?.[channel] ?? config.value_mode;
-  const minor = getMinorUnits(config.currency);
 
   // ── signal_only: flat signal value ─────────────────────────────────────
   // No decay, no AOV calculation. Google counts volume and learns tCPA.
   // All conversions equal weight → Maximize Conversions / tCPA works.
   if (effectiveMode === 'signal_only') {
-    return Math.max(Math.round(config.signal_value * minor), 1);
+    return Math.max(majorToMinor(config.signal_value, config.currency), 1);
   }
 
   // ── V1_PAGEVIEW: 1 minor unit ──────────────────────────────────────────
@@ -74,51 +73,32 @@ export function computeExportValueCents(
       return input.saleAmountCents;
     }
     // V5 without sale amount: use fallback (no decay)
-    return Math.max(Math.round(config.v5_fallback_value * minor), 1);
+    return resolveConversionValueMinor({
+      gear,
+      currency: config.currency,
+      saleAmountMinor: null,
+      fallbackValueMajor: config.v5_fallback_value,
+      minimumValueMinor: 1,
+    }).valueMinor;
   }
 
-  // ── V2/V3/V4: AOV formula + configurable decay ────────────────────────
+  // ── V2/V3/V4: canonical AOV formula + canonical decay ─────────────────
   const channelAov = config.channel_aov?.[channel] ?? config.default_aov;
-  const aovCents = Math.round(channelAov * minor);
-
-  const weights: IntentWeights = {
+  const aovCents = majorToMinor(channelAov, config.currency);
+  const weights = {
     pending: config.gear_weights.V2,
-    qualified: config.gear_weights.V3,  // SSOT — all paths read from here
+    qualified: config.gear_weights.V3,
     proposal: config.gear_weights.V4,
-    sealed: 100,
+    sealed: 1,
   };
-
-  // Base value before decay
-  const baseValueCents = Math.round(aovCents * getBaseValueForGear(gear, 1, weights));
-
-  // Decay config
-  const decayCfg = config.decay;
-  if (decayCfg.disable_for_all || decayCfg.mode === 'none') {
-    return Math.max(baseValueCents, 1);
-  }
-
-  const days = calculateDecayDays(input.clickDate, input.signalDate, 'ceil');
-
-  let decayMultiplier: number;
-  switch (decayCfg.mode) {
-    case 'tiered':
-      decayMultiplier = getDecayProfileForGear(gear, days);
-      break;
-    case 'half_life':
-      decayMultiplier = Math.pow(0.5, days / decayCfg.half_life_days);
-      break;
-    case 'linear': {
-      const rate = decayCfg.linear_decay_rate;
-      // Clamp to [0, 1]: if days exceeds max_click_age_days, value is near-zero
-      decayMultiplier = Math.max(0, 1 - (days / config.max_click_age_days) * rate);
-      break;
-    }
-    default:
-      decayMultiplier = getDecayProfileForGear(gear, days);
-  }
-
-  // Phase 2.3 floor rule: minimum 10% of base value retained
-  // Prevents Google from seeing near-zero signals that confuse Smart Bidding
-  const finalDecay = Math.max(decayMultiplier, 0.1);
-  return Math.max(Math.round(baseValueCents * finalDecay), 1);
+  return resolveConversionValueMinor({
+    gear,
+    currency: config.currency,
+    siteAovMinor: aovCents,
+    clickDate: input.clickDate,
+    signalDate: input.signalDate,
+    intentWeights: weights,
+    applySignalFloor: true,
+    minimumValueMinor: 1,
+  }).valueMinor;
 }
