@@ -127,13 +127,13 @@ export const SiteExportConfigSchema = z.object({
   /** Per-channel AOV override (e.g. phone AOV differs from form AOV) */
   channel_aov: z.record(ChannelKeyEnum, z.number().positive()).optional(),
   gear_weights: z.object({
-    /** V2_PULSE: first contact weight */
-    V2: z.number().min(0).max(1).default(0.02),
-    /** V3_ENGAGE: qualified engagement weight — ALL paths read from here */
-    V3: z.number().min(0).max(1).default(0.20),
-    /** V4_INTENT: hot intent weight */
-    V4: z.number().min(0).max(1).default(0.30),
-  }).default({ V2: 0.02, V3: 0.20, V4: 0.30 }),
+    /** V2_PULSE: first contact weight (0-100 scale) */
+    V2: z.number().min(0).max(100).default(2),
+    /** V3_ENGAGE: qualified engagement weight (0-100 scale) */
+    V3: z.number().min(0).max(100).default(20),
+    /** V4_INTENT: hot intent weight (0-100 scale) */
+    V4: z.number().min(0).max(100).default(30),
+  }).default({ V2: 2, V3: 20, V4: 30 }),
   /**
    * V5 fallback value in major currency units.
    * Used when: gear=V5_SEAL AND sale_amount is null/zero.

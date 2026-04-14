@@ -681,5 +681,7 @@ export const tr = {
   "queue.emptyTodayTitle": "Şimdilik temiz",
   "queue.emptyTodaySubtitle": "Bekleyen yeni niyet yok. Yeni gelenler burada belirecek.",
   "queue.emptyYesterdayTitle": "Dün için kayıt yok",
-  "queue.emptyYesterdaySubtitle": "Seçilen zaman aralığında işlenecek niyet bulunamadı."
+  "queue.emptyYesterdaySubtitle": "Seçilen zaman aralığında işlenecek niyet bulunamadı.",
+  "common.dimension.conversionProbability": "Dönüşüm Olasılığı",
+  "activity.returning": "Geri Gelen"
 } as const;

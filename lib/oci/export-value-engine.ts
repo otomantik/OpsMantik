@@ -85,7 +85,7 @@ export function computeExportValueCents(
     pending: config.gear_weights.V2,
     qualified: config.gear_weights.V3,  // SSOT — all paths read from here
     proposal: config.gear_weights.V4,
-    sealed: 1.0,
+    sealed: 100,
   };
 
   // Base value before decay

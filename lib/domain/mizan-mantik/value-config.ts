@@ -39,10 +39,10 @@ export function getValueFloorCents(config: ValueConfig): number {
 }
 
 export const DEFAULT_WEIGHTS: IntentWeights = {
-  pending: 0.02,
-  qualified: 0.2,
-  proposal: 0.3,
-  sealed: 1.0,
+  pending: 2,
+  qualified: 20,
+  proposal: 30,
+  sealed: 100,
 };
 
 const GLOBAL_FALLBACK_AOV = 1000;
@@ -111,7 +111,7 @@ export async function getSiteValueConfig(siteId: string): Promise<ValueConfig> {
       pending: exportCfg.gear_weights.V2,
       qualified: exportCfg.gear_weights.V3,
       proposal: exportCfg.gear_weights.V4,
-      sealed: 1.0,
+      sealed: 100,
     };
   } else {
     const dbWeights = (site.intent_weights as Record<string, unknown> | null) ?? {};

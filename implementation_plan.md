@@ -29,15 +29,24 @@ This document serves as the implementation plan and deep system audit to transfo
 1. **Value Input Dependency (The Fatal Flaw)**:
    In `lib/oci/enqueue-seal-conversion.ts`, if `saleAmount` is null, the OCI export skips (`reason: 'no_sale_amount'`). Users do not always know the exact revenue immediately. Google Ads *needs* volume to train. Skipping exports because of a missing perfect value tanks campaign optimization.
 2. **Scoring Reliability & Granularity**:
-   Lead scoring is currently bound tightly to the ingestion phase. It should be re-evaluated continuously as new data (e.g. repeated interactions) flows in.
-3. **Export Correctness**:
-   We are not sending lower-confidence (but still valid) pipeline stages to Google Ads. We should be sending `QUALIFIED` or `LOW` bucket interactions as micro-conversions to feed the algorithm, rather than exclusively bottlenecking at a "purchase" stage.
-4. **Deduplication Risks**:
-   The unique index logic is spread across Redis replay caches, idempotency keys, and DB unique indices based on provider keys. This needs to be consolidated around the *Outcome*, not just the raw event.
+   Lead scoring is currently bound tightly to the ingestion phase. It should be re-evaluated continuously as new data (e.g.## Proposed Changes
 
-## 3. Universal Outcome Model Design
+### Dashboard Modernization & Focus Deck Fusion
 
-To support ALL industries, we must implement a standard Enum for Outcomes and separate the monetary value into categorical buckets.
+Bu aşamada `PanelFeed` içerisinde kullanılan basit `PanelIntentCard` yapısı terk edilerek, yeni modernize edilmiş `HunterCard` doğrudan ana ekranın odak noktası haline getirilecektir.
+
+#### [MODIFY] [panel-feed.tsx](file:///c:/Users/serka/OneDrive/Desktop/project/opsmantik-v1/components/dashboard/panel-feed.tsx)
+- `PanelIntentCard` importu yerine `HunterCard` eklenecek.
+- `activeIntent` artık doğrudan `HunterCard` olarak render edilecek.
+- Aksiyon butonları (Junk, Skip, Qualify) doğrudan ana ekran üzerinden çalışacak.
+- `LeadActionOverlay` sadece "Seal" (Mühürleme) işlemi için (telefon girişi gerektiğinde) açılacak.
+
+#### [DELETE] [panel-intent-card.tsx](file:///c:/Users/serka/OneDrive/Desktop/project/opsmantik-v1/components/dashboard/panel-intent-card.tsx)
+- Redundant (gereksiz) hale gelen basit kart bileşeni silinecektir.
+
+#### [MODIFY] [lead-action-overlay.tsx](file:///c:/Users/serka/OneDrive/Desktop/project/opsmantik-v1/components/dashboard/lead-action-overlay.tsx)
+- Skor giriş alanı default olarak `100` gelecek şekilde sabitlenecek (Migrate to 100-based PTS).
+ into categorical buckets.
 
 ### Outcome Enum
 Mapped to the `interactions` (or `calls` for now) table via an `outcome_status` column.

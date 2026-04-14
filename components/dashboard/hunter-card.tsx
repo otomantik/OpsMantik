@@ -8,10 +8,8 @@ import type { HunterIntent } from '@/lib/types/hunter';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 import { Icons } from '@/components/icons';
-import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, Trash2, UserCheck, TrendingUp, ShieldCheck, CircleDollarSign, Target, Activity, Eye, EyeOff, type LucideIcon } from 'lucide-react';
+import { Monitor, Smartphone, MapPin, Clock, FileText, Compass, Share2, Leaf, Trash2, UserCheck, ShieldCheck, CircleDollarSign, Target, Activity, Info, X, type LucideIcon } from 'lucide-react';
 import { computeLcv } from '@/lib/oci/lcv-engine';
-import { LeadDnaVisual } from './lead-dna-visual';
-import { useState } from 'react';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -315,7 +313,7 @@ function SourceBadge({
   );
 }
 
-export function HunterCard({
+export const HunterCard = React.memo(({
   intent,
   traffic_source,
   traffic_medium,
@@ -335,24 +333,39 @@ export function HunterCard({
   onSkip: (params: { id: string }) => void;
   onQualify?: (params: { score: 60 | 80; status: 'confirmed' }) => void;
   readOnly?: boolean;
-}) {
+}) => {
   const { t: translate } = useTranslation();
-  const [showXray, setShowXray] = useState(false);
+  
+  // 1. QUANTUM INTELLIGENCE: Real-time adjusted singularity score
+  const intel = useMemo(() => {
+    return computeLcv({
+      stage: 'V3', // Default reference stage for intel box
+      baseAov: 1000, 
+      city: intent.city,
+      district: intent.district,
+      deviceType: intent.device_type,
+      deviceOs: intent.device_os,
+      trafficSource: traffic_source || intent.traffic_source,
+      trafficMedium: traffic_medium || intent.traffic_medium,
+      utmTerm: intent.utm_term,
+      matchtype: intent.matchtype,
+      phoneClicks: intent.phone_clicks,
+      whatsappClicks: intent.whatsapp_clicks,
+      eventCount: intent.event_count,
+      totalDurationSec: intent.total_duration_sec,
+      isReturning: intent.is_returning
+    });
+  }, [intent, traffic_source, traffic_medium]);
+
+  const displayScore = intel.singularityScore;
+  const scoreTheme = getScoreColor(displayScore);
+
+  const [showIntel, setShowIntel] = React.useState(false);
+
   const sourceType = sourceTypeOf(intent.intent_action);
   const IntentIcon = ICON_MAP[sourceType] || ICON_MAP.other;
   const trafficSource = traffic_source ?? intent.traffic_source ?? null;
   const trafficMedium = traffic_medium ?? intent.traffic_medium ?? null;
-  const displayScore = useMemo(() => {
-    const raw = intent.ai_score;
-    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
-    const mt = (intent.matchtype || '').toString().toLowerCase().trim();
-    if (mt === 'e') return 85;
-    const src = (intent.utm_source || '').toString().toLowerCase().trim();
-    if (src === 'google') return 50;
-    return 20;
-  }, [intent.ai_score, intent.matchtype, intent.utm_source]);
-
-  const scoreTheme = getScoreColor(displayScore);
 
   const device = useMemo(
     () => deviceLabel(intent.device_type ?? null, intent.device_os ?? null, intent.browser ?? null, translate),
@@ -366,10 +379,8 @@ export function HunterCard({
   }, [intent.intent_target, intent.intent_action, translate]);
 
   const geoDisplay = useMemo(() => {
-    // Force inclusion of district if available
     const out = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source);
     if (!out) return translate('hunter.locationUnknown');
-    // Ensure "DISTRICT / CITY" format is preserved and uppercase for TR
     return out.toLocaleUpperCase('tr-TR');
   }, [intent.city, intent.district, intent.location_source, translate]);
 
@@ -409,7 +420,7 @@ export function HunterCard({
       return (
         <span className="inline-flex items-center gap-2 flex-wrap">
           <span>{locationDisplay}</span>
-          <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800" title={translate('hunter.locationSourceGclidTitle')}>
+          <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" title={translate('hunter.locationSourceGclidTitle')}>
             {translate('hunter.locationSourceGclid')}
           </span>
         </span>
@@ -484,52 +495,68 @@ export function HunterCard({
     return '—';
   }, [intent.event_count, intent.phone_clicks, intent.total_duration_sec, intent.whatsapp_clicks, sourceInfo.kind, sourceType, translate]);
 
-  const singularity = useMemo(() => {
-    return computeLcv({
-      stage: 'V3', // Preview at V3 level
-      baseAov: 3000, // Default estimate
-      city: intent.city,
-      district: intent.district,
-      deviceType: intent.device_type,
-      deviceOs: intent.device_os,
-      trafficSource: intent.traffic_source,
-      utmTerm: intent.utm_term,
-      matchtype: intent.matchtype,
-      phoneClicks: intent.phone_clicks,
-      whatsappClicks: intent.whatsapp_clicks,
-      eventCount: intent.event_count,
-      totalDurationSec: intent.total_duration_sec,
-      isReturning: intent.is_returning
-    });
-  }, [intent]);
-
   return (
     <Card
       className={cn(
-        'relative overflow-hidden bg-white border-2 flex flex-col shadow-sm min-h-0 rounded-2xl',
+        'relative overflow-hidden bg-white border border-slate-200 flex flex-col shadow-[0_40px_80px_rgba(0,0,0,0.06)] min-h-0 rounded-[3rem] transition-all duration-500 animate-in fade-in slide-in-from-right-10',
         scoreTheme.border
       )}
     >
-      <CardHeader className="p-4 pb-2 shrink-0 border-b border-slate-100">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+      {/* Real-time Intelligence HUD Overlay */}
+      {showIntel && (
+        <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-md p-10 text-white animate-in fade-in duration-300 rounded-[3rem] flex flex-col">
+           <div className="flex items-center justify-between mb-8">
+              <h4 className="text-xl font-black uppercase tracking-widest">{translate('common.dimension.conversionProbability')}</h4>
+              <button onClick={() => setShowIntel(false)} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-4 flex-1">
+              <div className="space-y-4">
+                 <IntelRow label="Location" val={intel.breakdown.qLocation} />
+                 <IntelRow label="Device" val={intel.breakdown.qDevice} />
+                 <IntelRow label="Keyword" val={intel.breakdown.qSource} />
+                 <IntelRow label="Behavior" val={intel.breakdown.qBehavior} />
+              </div>
+              <div className="flex flex-col items-center justify-center border-l border-white/10">
+                 <div className="text-7xl font-black">{displayScore}</div>
+                 <div className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mt-2">Final Probability Score</div>
+              </div>
+           </div>
+
+           <div className="mt-8 pt-8 border-t border-white/10">
+              <p className="text-xs text-white/60 font-medium italic">"Intelligence values are calculated based on session duration, device OS, district premium status, and search intent match."</p>
+           </div>
+        </div>
+      )}
+      <CardHeader className="p-6 sm:p-10 pb-4 sm:pb-6 shrink-0 border-b border-slate-50 bg-slate-50/50">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex items-center gap-5 min-w-0 flex-1">
             <div className={cn(
-              'p-2.5 rounded-xl border shrink-0',
-              'bg-blue-500/10 border-blue-500/20 text-blue-600'
+              'w-16 h-16 rounded-[1.75rem] border shrink-0 shadow-xl flex items-center justify-center transition-all duration-500',
+              'bg-white border-slate-100 text-blue-600 shadow-blue-500/5'
             )}>
-              <IntentIcon className="h-5 w-5" />
+              <IntentIcon className="h-7 w-7" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-base font-bold text-slate-900 wrap-anywhere leading-tight">
-                {identityDisplay}
+              <div className="flex items-center gap-3 mb-1">
+                <div className="text-2xl sm:text-3xl font-black text-slate-900 wrap-anywhere leading-none tracking-tight">
+                  {identityDisplay}
+                </div>
+                {intent.is_returning && (
+                  <span className="shrink-0 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest ring-1 ring-emerald-100">
+                    {translate('activity.returning')}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 mt-1.5 text-slate-800">
-                <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-                <span className="text-[13px] font-black tracking-tight leading-none uppercase">{geoDisplay}</span>
+              <div className="flex items-center gap-2 mt-3 text-blue-600/70">
+                <MapPin className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="text-xs font-black tracking-widest leading-none uppercase">{geoDisplay}</span>
               </div>
             </div>
           </div>
-          <div className={cn('shrink-0 flex flex-col items-end gap-1.5', scoreTheme.text)}>
+          <div className={cn('shrink-0 flex flex-col items-end gap-3')}>
             <SourceBadge
               traffic_source={trafficSource}
               traffic_medium={trafficMedium}
@@ -538,36 +565,40 @@ export function HunterCard({
               has_any_click_id={hasAnyClickId}
               t_fn={translate}
             />
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translate('hunter.aiConfidence')}</span>
-            <span className={cn('text-sm font-bold tabular-nums px-2.5 py-1 rounded-lg border bg-white', scoreTheme.bg, scoreTheme.border)}>
-              {displayScore}%
-            </span>
+            <div 
+              onClick={() => setShowIntel(true)}
+              className={cn('group/pts cursor-pointer px-4 py-2 rounded-2xl border bg-white font-black text-xs tabular-nums shadow-lg transition-all hover:scale-105 active:scale-95 flex items-center gap-2', scoreTheme.text, scoreTheme.border)}
+            >
+              <Info className="h-3.5 w-3.5 opacity-0 group-hover/pts:opacity-100 transition-opacity" />
+              {displayScore} PTS
+            </div>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 flex-1">
-        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 mb-3 sm:grid-cols-3">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Target className="h-3.5 w-3.5 text-slate-600" aria-hidden />
-            <span className="text-xs font-medium text-slate-700 truncate max-w-[120px]" title={leadSourceLabel}>
+      <CardContent className="p-6 flex-1 space-y-4">
+        <div className="grid gap-3 rounded-3xl border border-slate-100 bg-slate-50/50 p-4 sm:grid-cols-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Target className="h-4 w-4 text-slate-400" aria-hidden />
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-600 truncate" title={leadSourceLabel}>
               {sourceInfo.label || leadSourceLabel || '—'}
             </span>
           </div>
-          <div className="flex min-w-0 items-center gap-1.5">
-            <CircleDollarSign className="h-4 w-4 text-emerald-600" aria-hidden />
-            <span className="text-xs font-semibold text-emerald-700 truncate">
+          <div className="flex min-w-0 items-center gap-2">
+            <CircleDollarSign className="h-4 w-4 text-emerald-500" aria-hidden />
+            <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700 truncate">
               {liveEvDisplay}
             </span>
           </div>
-          <div className="flex min-w-0 items-center gap-1.5 sm:justify-end">
-            <Clock className="h-3.5 w-3.5 text-slate-600 shrink-0" aria-hidden />
-            <span className="text-xs font-medium text-slate-700 truncate" suppressHydrationWarning>
+          <div className="flex min-w-0 items-center gap-2 sm:justify-end">
+            <Clock className="h-4 w-4 text-slate-400 shrink-0" aria-hidden />
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-600 truncate" suppressHydrationWarning>
               {relativeTime(intent.created_at, translate)}
             </span>
           </div>
         </div>
-        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+        
+        <div className="rounded-[2.5rem] border border-slate-100 bg-white p-6 sm:p-8 space-y-4 shadow-inner shadow-slate-500/5">
           <Row label={translate('hunter.sessionActions')} value={actionsDisplay} icon={Clock} />
           {sourceType === 'form' && (
             <Row label={translate('hunter.formState')} value={formStateDisplay} icon={FileText} />
@@ -583,115 +614,99 @@ export function HunterCard({
           )}
           <Row label={translate('hunter.location')} value={locationWithSource} icon={MapPin} />
           <Row label={translate('hunter.page')} value={pageDisplay} icon={FileText} />
-          <Row label={translate('hunter.time')} value={relativeTime(intent.created_at, translate)} icon={Clock} />
           <Row label={translate('hunter.device')} value={device.label} icon={device.icon} />
         </div>
-        {intent.ai_summary && (
-          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
-            <p className="text-sm leading-6 text-slate-700">{intent.ai_summary}</p>
-          </div>
-        )}
 
-        {showXray && (
-          <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            <LeadDnaVisual 
-              dna={singularity.forensicDna}
-              score={singularity.singularityScore}
-              insights={singularity.insights}
-            />
+        {intent.ai_summary && (
+          <div className="rounded-3xl border border-blue-50 bg-blue-50/30 p-4">
+             <div className="flex items-center gap-2 mb-2">
+                <Activity className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">{translate('common.intent')}</span>
+             </div>
+            <p className="text-sm font-bold leading-relaxed text-slate-700">{intent.ai_summary}</p>
           </div>
         )}
       </CardContent>
 
-      <CardFooter className="p-4 pt-0 gap-3 shrink-0 border-t border-slate-100 flex-col">
-        <div className="grid grid-cols-2 gap-2 w-full sm:grid-cols-4">
+      <CardFooter className="p-6 pt-0 gap-3 shrink-0 border-t border-slate-50 flex-col bg-slate-50/10">
+        <div className="grid grid-cols-2 gap-3 w-full sm:grid-cols-4">
           <Button
             variant="outline"
             size="sm"
-            className="min-h-[44px] border-slate-200 hover:bg-rose-50 hover:text-rose-700 font-semibold text-xs transition-colors"
+            className="h-14 border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-100 font-black text-xs transition-all duration-300 uppercase tracking-widest rounded-2xl hover:-translate-y-1 hover:shadow-lg"
             onClick={() => onJunk({ id: intent.id, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.markJunk')}
           >
-            <Trash2 className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
-            <span className="hidden sm:inline truncate">{translate('hunter.junk')}</span>
+            <Trash2 className="h-4 w-4 shrink-0 sm:mr-2" aria-hidden />
+            <span className="hidden sm:inline">{translate('hunter.junk')}</span>
           </Button>
 
           <Button
             variant="outline"
             size="sm"
-            className="min-h-[44px] border-slate-200 font-semibold text-xs text-slate-600 hover:bg-slate-100 transition-colors"
+            className="h-14 border-slate-200 font-black text-xs text-slate-400 hover:bg-slate-100 transition-all duration-300 uppercase tracking-widest rounded-2xl hover:-translate-y-1 hover:shadow-lg"
             onClick={() => onSkip({ id: intent.id })}
             title={translate('hunter.skip')}
           >
-            <span className="truncate">{translate('hunter.skip')}</span>
+            <span className="">{translate('hunter.skip')}</span>
           </Button>
 
-          {onQualify && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-[44px] border-slate-200 font-semibold text-xs transition-colors hover:bg-blue-50 hover:text-blue-700"
-                onClick={() => onQualify({ score: 60, status: 'confirmed' })}
-                disabled={Boolean(readOnly)}
-                title={translate('hunter.gorusuldu')}
-              >
-                <UserCheck className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
-                <span className="truncate">{translate('hunter.gorusuldu')}</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-[44px] border-slate-200 font-semibold text-xs transition-colors hover:bg-indigo-50 hover:text-indigo-700"
-                onClick={() => onQualify({ score: 80, status: 'confirmed' })}
-                disabled={Boolean(readOnly)}
-                title={translate('hunter.teklif')}
-              >
-                <TrendingUp className="h-4 w-4 shrink-0 sm:mr-1" aria-hidden />
-                <span className="truncate">{translate('hunter.teklif')}</span>
-              </Button>
-            </>
+          {onQualify ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-14 border-slate-200 font-black text-xs transition-all duration-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 uppercase tracking-widest rounded-2xl col-span-2 sm:col-span-1 hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-500/10"
+              onClick={() => onQualify({ score: 60, status: 'confirmed' })}
+              disabled={Boolean(readOnly)}
+              title={translate('hunter.gorusuldu')}
+            >
+              <UserCheck className="h-4 w-4 shrink-0 sm:mr-2" aria-hidden />
+              <span>{translate('hunter.gorusuldu')}</span>
+            </Button>
+          ) : (
+            <div className="hidden sm:block" />
           )}
 
           <Button
             size="sm"
-          className="w-full min-h-[46px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm transition-colors"
+            className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black text-sm shadow-xl shadow-blue-500/20 transition-all duration-300 uppercase tracking-widest rounded-2xl col-span-2 sm:col-span-1 hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-500/30"
             onClick={() => onSealDeal ? onSealDeal() : onSeal({ id: intent.id, score: displayScore })}
             disabled={Boolean(readOnly)}
             title={readOnly ? translate('hunter.readOnlyRole') : translate('hunter.sealLead')}
             data-testid="hunter-card-seal-deal"
           >
-            <ShieldCheck className="h-4 w-4 shrink-0 mr-1" aria-hidden />
-            <span className="truncate">{translate('hunter.seal')}</span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "w-full h-10 border border-slate-200 transition-all duration-500",
-              showXray ? "bg-slate-900 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "bg-white text-slate-500 hover:bg-slate-50"
-            )}
-            onClick={() => setShowXray(!showXray)}
-            title={showXray ? translate('hunter.deepViewActive') : translate('hunter.deepViewInactive')}
-          >
-            {showXray ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-            <span className="font-bold tracking-tight">{translate('hunter.deepView')}</span>
-            <Activity className={cn("ml-2 w-4 h-4", showXray && "animate-pulse")} />
+            <ShieldCheck className="h-5 w-5 shrink-0 mr-2" aria-hidden />
+            <span>{translate('hunter.seal')}</span>
           </Button>
         </div>
       </CardFooter>
     </Card>
   );
-}
+});
+
+HunterCard.displayName = 'HunterCard';
+
+const IntelRow = ({ label, val }: { label: string; val: number }) => (
+  <div className="flex flex-col gap-1">
+     <div className="flex items-center justify-between text-[10px] uppercase font-black tracking-widest text-white/40">
+        <span>{label}</span>
+        <span>x{val.toFixed(2)}</span>
+     </div>
+     <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-blue-500 transition-all duration-1000" 
+          style={{ width: `${Math.min(100, (val / 4.0) * 100)}%` }} 
+        />
+     </div>
+  </div>
+);
 
 const Row = ({ label, value, icon: Icon }: { label: string; value: React.ReactNode; icon: LucideIcon }) => (
-  <div className="flex items-start justify-between gap-3 min-w-0 py-0.5">
+  <div className="flex items-start justify-between gap-4 min-w-0 py-1.5 border-b border-slate-50 last:border-0">
     <div className="flex items-center gap-2 shrink-0 pt-0.5">
       <Icon className="h-3.5 w-3.5 text-slate-400" />
-      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">{label}</span>
+      <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest leading-none">{label}</span>
     </div>
     <div className="text-xs font-bold text-slate-800 text-right flex-1 min-w-0 wrap-anywhere leading-relaxed">
       {value}

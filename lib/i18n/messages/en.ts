@@ -740,4 +740,8 @@ export const en = {
   'queue.emptyTodaySubtitle': 'No pending new intents. New arrivals will appear here.',
   'queue.emptyYesterdayTitle': 'No records for yesterday',
   'queue.emptyYesterdaySubtitle': 'No intents were found in the selected time window.',
+  'common.dimension.conversionProbability': 'Conversion Probability',
+  'activity.returning': 'Returning Lead',
+  'intel.forensicDetails': 'Forensic Intel Details',
+  'intel.confidence': 'Intel Confidence'
 } as const;

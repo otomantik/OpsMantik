@@ -19,10 +19,10 @@ export const GEAR_TO_STAGE: Record<OpsGear, keyof IntentWeights | null> = {
 };
 
 const DEFAULT_WEIGHTS: IntentWeights = {
-  pending: 0.02,
-  qualified: 0.2,
-  proposal: 0.3,
-  sealed: 1.0,
+  pending: 2,
+  qualified: 20,
+  proposal: 30,
+  sealed: 100,
 };
 
 /**
@@ -37,8 +37,8 @@ export function getBaseValueForGear(
   const safeAov = Number.isFinite(aov) && aov >= 0 ? aov : 0;
   const stage = GEAR_TO_STAGE[gear];
   if (!stage || gear === 'V1_PAGEVIEW') return 0;
-  if (gear === 'V5_SEAL') return 0; // Handled outside — exact valueCents, ratio=1.0, decay=0
-  const ratio = intentWeights[stage] ?? DEFAULT_WEIGHTS[stage];
+  if (gear === 'V5_SEAL') return 0; // Handled outside — exact valueCents, ratio=100%, decay=0
+  const ratio = (intentWeights[stage] ?? DEFAULT_WEIGHTS[stage]) / 100;
   return safeAov * ratio;
 }
 

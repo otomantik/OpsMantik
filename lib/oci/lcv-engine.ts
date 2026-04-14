@@ -10,9 +10,9 @@ export type LcvStage = 'V3' | 'V4' | 'V5';
  * Callers should pass config.gear_weights when available for per-site accuracy.
  */
 const DEFAULT_LCV_STAGE_WEIGHTS: Record<LcvStage, number> = {
-  V3: 0.20, // Görüşüldü — canonical value (was 0.10, now aligned with value-config.ts)
-  V4: 0.30, // Teklif
-  V5: 1.00, // Mühür
+  V3: 20, // Görüşüldü (Score: 20/100)
+  V4: 30, // Teklif (Score: 30/100)
+  V5: 100, // Mühür (Score: 100/100)
 };
 
 // ── Quality multipliers ──────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ export function computeLcv(input: LcvInput): LcvResult {
       valueCents: Math.round(actualSaleAmount * 100),
       valueUnits: actualSaleAmount,
       stage,
-      stageWeight: 1.0,
+      stageWeight: 100,
       qualityMultiplier: 1.0,
       forensicDna,
       singularityScore: 100,
@@ -174,14 +174,16 @@ export function computeLcv(input: LcvInput): LcvResult {
     };
   }
 
-  // Resolve stage weight: use per-site gearWeights if provided, fall back to defaults.
-  // This ensures the dashboard/LCV value matches the export value calculation (SSOT).
+  // Resolve stage weight: use per-site gearWeights (1-100) if provided, fall back to defaults.
   const resolvedStageWeights: Record<LcvStage, number> = {
     V3: gearWeights?.V3 ?? DEFAULT_LCV_STAGE_WEIGHTS.V3,
     V4: gearWeights?.V4 ?? DEFAULT_LCV_STAGE_WEIGHTS.V4,
     V5: DEFAULT_LCV_STAGE_WEIGHTS.V5,
   };
-  const sw = resolvedStageWeights[stage];
+  
+  const score = resolvedStageWeights[stage];
+  const sw = score / 100;
+
   const ql = qLocation(input.city, input.district, config);
   const qd = qDevice(input.deviceType, input.deviceOs, config);
   const qs = qSource(input.trafficSource, input.utmTerm, config);
@@ -195,14 +197,12 @@ export function computeLcv(input: LcvInput): LcvResult {
   });
   const qm = (input.matchtype === 'e' ? 1.3 : input.matchtype === 'p' ? 1.1 : 0.8);
 
-  // BUG-6 FIX: Cap combined quality multiplier at 4.0.
-  // Prevents secondary signals from having extreme values that could bias Google's conversion delay models.
   const Q = Math.min(ql * qd * qs * qu * qb * qm, 4.0);
   const rawValue = baseAov * sw * Q;
   const valueUnits = Math.max(0.01, Math.round(rawValue * 100) / 100);
   const valueCents = Math.round(valueUnits * 100);
 
-  const singularityScore = Math.min(100, Math.round((Q / 4.0) * 100));
+  const singularityScore = Math.min(100, Math.round((Q / 4.0) * score));
 
   const insights = [];
   if (ql > 1.4) insights.push({ label: 'Premium Geo', icon: 'MapPin', value: (input.district || input.city || 'Konum').toUpperCase() });
