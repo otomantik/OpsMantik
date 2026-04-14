@@ -5,16 +5,18 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Settings2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export function PanelOnboarding({ siteId }: { siteId: string }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [labels, setLabels] = useState({
-    v1: 'Sadece Bilgi',
-    v2: 'İlgili (Sıcak)',
-    v3: 'Teklif Verildi',
-    v4: 'Kazanıldı',
-  });
+  const [labels, setLabels] = useState(() => ({
+    v1: t('panel.onboarding.level1'),
+    v2: t('panel.onboarding.level2'),
+    v3: t('panel.onboarding.level3'),
+    v4: t('panel.onboarding.level4'),
+  }));
 
   const handleSave = async () => {
     setIsSubmitting(true);
@@ -37,7 +39,7 @@ export function PanelOnboarding({ siteId }: { siteId: string }) {
       router.refresh(); // Refresh page to remove onboarding blockade
     } catch (err) {
       console.error(err);
-      alert('Kaydedilirken hata oluştu.');
+      alert(t('panel.onboarding.saveError'));
       setIsSubmitting(false);
     }
   };
@@ -52,34 +54,34 @@ export function PanelOnboarding({ siteId }: { siteId: string }) {
                <Settings2 size={24} />
             </div>
             <div>
-               <h2 className="text-xl font-black text-slate-800">Panele Hoşgeldin!</h2>
-               <p className="text-sm font-semibold text-slate-500">Sistemin senin dilinden konuşması için kısa bir ayar yapalım.</p>
+               <h2 className="text-xl font-black text-slate-800">{t('panel.onboarding.title')}</h2>
+               <p className="text-sm font-semibold text-slate-500">{t('panel.onboarding.subtitle')}</p>
             </div>
          </div>
 
          <div className="space-y-6">
             <div>
                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  Satış yaparken hangi jargonu kullanırsın? (İstediğini değiştirebilirsin)
+                  {t('panel.onboarding.question')}
                </label>
                <p className="text-xs font-semibold text-blue-600 mb-4 italic">
-                  Not: OpsMantik artık 100 birimlik hassas sinyal sistemiyle çalışmaktadır.
+                  {t('panel.onboarding.note')}
                </p>
                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                     <span className="text-[10px] font-black text-slate-400 uppercase">Seviye 1 (İlgili)</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase">{t('panel.onboarding.level1')}</span>
                      <input type="text" className="w-full h-12 px-3 text-sm font-bold text-slate-700 bg-white border border-slate-200 rounded-lg" value={labels.v1} onChange={e => setLabels({...labels, v1: e.target.value})} />
                   </div>
                   <div className="space-y-1">
-                     <span className="text-[10px] font-black text-slate-400 uppercase">Seviye 2 (Sıcak)</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase">{t('panel.onboarding.level2')}</span>
                      <input type="text" className="w-full h-12 px-3 text-sm font-bold text-orange-600 bg-white border border-orange-200 rounded-lg" value={labels.v2} onChange={e => setLabels({...labels, v2: e.target.value})} />
                   </div>
                   <div className="space-y-1">
-                     <span className="text-[10px] font-black text-slate-400 uppercase">Seviye 3 (Teklif)</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase">{t('panel.onboarding.level3')}</span>
                      <input type="text" className="w-full h-12 px-3 text-sm font-bold text-blue-600 bg-white border border-blue-200 rounded-lg" value={labels.v3} onChange={e => setLabels({...labels, v3: e.target.value})} />
                   </div>
                   <div className="space-y-1">
-                     <span className="text-[10px] font-black text-slate-400 uppercase">Seviye 4 (Mühür)</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase">{t('panel.onboarding.level4')}</span>
                      <input type="text" className="w-full h-12 px-3 text-sm font-bold text-emerald-600 bg-white border border-emerald-200 rounded-lg" value={labels.v4} onChange={e => setLabels({...labels, v4: e.target.value})} />
                   </div>
                </div>
@@ -90,7 +92,7 @@ export function PanelOnboarding({ siteId }: { siteId: string }) {
                onClick={handleSave}
                className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black text-lg rounded-xl shadow-lg shadow-blue-500/30 font-display"
             >
-               {isSubmitting ? 'Kaydediliyor...' : 'AYARLARI KAYDET VE BAŞLA'}
+               {isSubmitting ? t('panel.onboarding.saving') : t('panel.onboarding.saveAndStart')}
             </Button>
          </div>
       </Card>

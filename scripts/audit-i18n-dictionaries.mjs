@@ -6,10 +6,22 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { en } from "../lib/i18n/messages/en.ts";
-import { tr } from "../lib/i18n/messages/tr.ts";
-import { it } from "../lib/i18n/messages/it.ts";
+import * as enModule from "../lib/i18n/messages/en.ts";
+import * as trModule from "../lib/i18n/messages/tr.ts";
+import * as itModule from "../lib/i18n/messages/it.ts";
 
+function unwrapMessages(moduleValue, localeKey) {
+    const direct = moduleValue?.[localeKey];
+    if (direct && typeof direct === "object" && !Array.isArray(direct)) return direct;
+    const fallback = moduleValue?.default;
+    if (fallback?.[localeKey] && typeof fallback[localeKey] === "object") return fallback[localeKey];
+    if (fallback && typeof fallback === "object" && !Array.isArray(fallback)) return fallback;
+    return moduleValue;
+}
+
+const en = unwrapMessages(enModule, "en");
+const tr = unwrapMessages(trModule, "tr");
+const it = unwrapMessages(itModule, "it");
 const locales = { en, tr, it };
 const baseLocale = "en";
 const baseKeys = Object.keys(locales[baseLocale]);

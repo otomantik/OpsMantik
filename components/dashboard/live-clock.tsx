@@ -1,24 +1,26 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export function LiveClock() {
+  const { locale } = useTranslation();
   const [mounted, setMounted] = useState(false);
   const [time, setTime] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
     // 1. Set time on first client render
-    setTime(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    setTime(new Date().toLocaleTimeString(locale, { hour12: false }));
 
     // 2. Update every second
     const timer = setInterval(() => {
-      setTime(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+      setTime(new Date().toLocaleTimeString(locale, { hour12: false }));
     }, 1000);
 
     // 3. Cleanup: clear interval when component unmounts
     return () => clearInterval(timer);
-  }, []);
+  }, [locale]);
 
   // During SSR or initial load: show skeleton to prevent layout shift and hydration errors
   if (!mounted || !time) {

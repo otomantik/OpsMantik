@@ -111,7 +111,7 @@ export function LeadActionOverlay({
 
               <input 
                 type="tel"
-                placeholder="05..."
+                placeholder={t('panel.phonePlaceholder')}
                 autoFocus
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}

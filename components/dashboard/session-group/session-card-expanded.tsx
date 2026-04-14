@@ -159,7 +159,7 @@ export function SessionCardExpanded({
                                                 })}
                                             </td>
                                             <td className="py-2 px-3 text-muted-foreground tabular-nums">
-                                                {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
+                                                {item.timeDiff > 0 ? `+${item.timeDiff}${t('common.sec')}` : '—'}
                                             </td>
                                             <td className="py-2 px-3">
                                                 <span className={`px-2 py-1 rounded text-sm border ${event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -223,7 +223,7 @@ export function SessionCardExpanded({
                                                     )}
                                                 </td>
                                                 <td className="py-2 px-3 text-muted-foreground tabular-nums">
-                                                    {item.timeDiff > 0 ? `+${item.timeDiff}s` : '—'}
+                                                    {item.timeDiff > 0 ? `+${item.timeDiff}${t('common.sec')}` : '—'}
                                                 </td>
                                                 <td className="py-2 px-3">
                                                     <span className={`px-2 py-1 rounded text-sm border ${firstEvent.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -273,7 +273,7 @@ export function SessionCardExpanded({
                                                         })}
                                                     </td>
                                                     <td className="py-1.5 px-3 text-muted-foreground text-sm tabular-nums">
-                                                        {event.timeDiff > 0 ? `+${event.timeDiff}s` : '—'}
+                                                        {event.timeDiff > 0 ? `+${event.timeDiff}${t('common.sec')}` : '—'}
                                                     </td>
                                                     <td className="py-1.5 px-3">
                                                         <span className={`px-2 py-1 rounded text-sm border ${event.event_category === 'conversion' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :

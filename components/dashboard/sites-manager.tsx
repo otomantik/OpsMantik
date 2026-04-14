@@ -79,17 +79,7 @@ export function SitesManager() {
       if (isSchemaMismatch) {
         setError(t('sites.schemaMismatchFullDesc'));
       } else {
-        let errorMessage = t('sites.errorLoading');
-        if (sitesError.message) {
-          errorMessage = sitesError.message;
-        }
-        if (sitesError.code) {
-          errorMessage += ` (Code: ${sitesError.code})`;
-        }
-        if (sitesError.details) {
-          errorMessage += ` - ${sitesError.details}`;
-        }
-        setError(errorMessage);
+        setError(t('sites.errorLoading'));
       }
     } else {
       // Filter out E2E smoke test sites and sites marked as deleted
@@ -140,7 +130,7 @@ export function SitesManager() {
       setShowAddForm(false);
     } catch (err: unknown) {
       console.error('[SITES_MANAGER] Error:', err);
-      setError(err instanceof Error ? err.message : t('common.unknownError'));
+      setError(t('sites.createFailed'));
     } finally {
       setIsCreating(false);
     }
@@ -201,7 +191,7 @@ export function SitesManager() {
       void fetchSites();
     } catch (err: unknown) {
       console.error('[SITES_MANAGER] Invite error:', err);
-      setInviteError((prev) => ({ ...prev, [siteId]: err instanceof Error ? err.message : t('common.unknownError') }));
+      setInviteError((prev) => ({ ...prev, [siteId]: t('sites.inviteFailed') }));
     } finally {
       setInviteLoading((prev) => ({ ...prev, [siteId]: false }));
     }

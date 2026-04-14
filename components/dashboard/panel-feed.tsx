@@ -100,7 +100,7 @@ export function PanelFeed({
   const filters = [
     { key: 'today' as const, label: t('date.today') },
     { key: 'yesterday' as const, label: t('date.yesterday') },
-    { key: 'all' as const, label: t('ociControl.allStatuses') },
+    { key: 'all' as const, label: t('panel.filterAllTime') },
   ];
 
   return (

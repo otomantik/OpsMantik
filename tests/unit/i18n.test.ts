@@ -93,17 +93,17 @@ test('resolveLocale: cookie > site > user > Accept-Language > default', () => {
 // --- Translation fallback ---
 
 test('translate: exact locale match', () => {
-  assert.equal(translate('en', 'sidebar.operationsCenter'), 'Live Operations');
-  assert.equal(translate('tr', 'sidebar.operationsCenter'), 'Canlı Takip');
+  assert.equal(translate('en', 'sidebar.operationsCenter'), 'Intent & conversions');
+  assert.equal(translate('tr', 'sidebar.operationsCenter'), 'Niyet ve dönüşüm');
 });
 
 test('translate: locale prefix fallback (tr-TR -> tr)', () => {
-  assert.equal(translate('tr-TR', 'sidebar.operationsCenter'), 'Canlı Takip');
+  assert.equal(translate('tr-TR', 'sidebar.operationsCenter'), 'Niyet ve dönüşüm');
 });
 
 test('translate: fallback to en when key missing in locale', () => {
   const key = 'sidebar.operationsCenter';
-  assert.equal(translate('de', key), 'Live Operations');
+  assert.equal(translate('de', key), 'Intent & conversions');
 });
 
 test('translate: fallback to key when missing everywhere', () => {
@@ -156,7 +156,7 @@ const TURKISH_CHARS = /[şğıİöüçÇ]/;
 
 test('tr-TR: no known English KPI labels appear', () => {
   for (const key of KPI_KEYS) {
-    const value = translate(key, 'tr-TR');
+    const value = translate('tr-TR', key);
     for (const eng of ENGLISH_KPI_LABELS) {
       assert.ok(!value.includes(eng), `tr-TR should not render "${eng}" for ${key}, got: ${value}`);
     }
@@ -165,7 +165,7 @@ test('tr-TR: no known English KPI labels appear', () => {
 
 test('en-US: no Turkish KPI labels (no Turkish chars in KPI/status keys)', () => {
   for (const key of KPI_KEYS) {
-    const value = translate(key, 'en-US');
+    const value = translate('en-US', key);
     assert.ok(!TURKISH_CHARS.test(value), `en-US should not render Turkish chars for ${key}, got: ${value}`);
   }
 });

@@ -7,6 +7,7 @@ import { MapPin, Phone, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, safeDecode, formatDisplayLocation } from '@/lib/utils';
 import type { HunterIntent } from '@/lib/types/hunter';
 import type { PipelineStage } from '@/lib/types/database';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export function SimpleIntentCard({
   intent,
@@ -17,14 +18,15 @@ export function SimpleIntentCard({
   pipelineStages: PipelineStage[];
   onGearShift: (callId: string, gearId: string, phoneHashString?: string) => Promise<boolean>;
 }) {
+  const { t } = useTranslation();
   const [activeGear, setActiveGear] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
   // Deriving UI values
-  const keyword = safeDecode((intent.utm_term || '').trim()) || 'Bilinmeyen Arama';
-  const locationDisplay = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source) || 'Konum Bilinmiyor';
+  const keyword = safeDecode((intent.utm_term || '').trim()) || t('panel.searchTermUnknown');
+  const locationDisplay = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source) || t('hunter.locationUnknown');
   
   const handleActionClick = (stage: PipelineStage) => {
     setActiveGear(stage.id);
@@ -75,7 +77,7 @@ export function SimpleIntentCard({
           disabled={isSubmitting}
           className="absolute top-4 right-4 text-slate-300 hover:text-rose-500 transition-colors flex items-center gap-1 text-[10px] uppercase font-bold tracking-widest"
         >
-          <Trash2 size={12} /> Çöp
+          <Trash2 size={12} /> {t('hunter.junk')}
         </button>
       )}
 
@@ -92,14 +94,14 @@ export function SimpleIntentCard({
       {activeGear ? (
         <div className="mt-5 p-4 rounded-xl border border-slate-100 bg-slate-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
-            Google'ı Eğit (Opsiyonel)
+            {t('panel.trainGoogleOptional')}
           </label>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
             <input
               type="tel"
               disabled={isSubmitting}
-              placeholder="05..."
+              placeholder={t('panel.phonePlaceholder')}
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               className="w-full h-12 pl-9 pr-4 rounded-lg border border-slate-200 bg-white text-base font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow"
@@ -113,14 +115,14 @@ export function SimpleIntentCard({
                 onClick={() => setActiveGear(null)}
                 disabled={isSubmitting}
               >
-                İptal
+                {t('button.cancel')}
              </Button>
              <Button 
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold"
                 onClick={handleConfirm}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? '...' : (phoneNumber ? 'Eşleştir & Fırlat' : 'Telefonsuz Onayla')}
+                {isSubmitting ? '...' : (phoneNumber ? t('panel.matchAndLaunch') : t('panel.confirmWithoutPhone'))}
              </Button>
           </div>
         </div>

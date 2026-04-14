@@ -15,6 +15,8 @@ import { MapPin, Monitor, Smartphone, Clock, Trash2, CheckCircle2 } from 'lucide
 import { Icons } from '@/components/icons';
 import { Leaf, Share2 } from 'lucide-react';
 import type { HunterIntent } from '@/lib/types/hunter';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import type { TranslationKey } from '@/lib/i18n/t';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +44,10 @@ export interface IntentCardV2Props {
 
 type TrafficKind = 'google_ads' | 'seo' | 'social' | 'direct' | 'other';
 
-function resolveTrafficKind(intent: HunterIntent): { kind: TrafficKind; label: string } {
+function resolveTrafficKind(
+  intent: HunterIntent,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): { kind: TrafficKind; label: string } {
   const src = (intent.traffic_source || '').toLowerCase();
   const med = (intent.traffic_medium || '').toLowerCase();
   const hasClickId = Boolean(
@@ -50,24 +55,27 @@ function resolveTrafficKind(intent: HunterIntent): { kind: TrafficKind; label: s
   );
 
   if (hasClickId || src.includes('google ads') || (src.includes('google') && (med === 'cpc' || med === 'ppc' || med === 'paid')))
-    return { kind: 'google_ads', label: 'Google Ads' };
-  if (med === 'organic') return { kind: 'seo', label: 'Organik' };
+    return { kind: 'google_ads', label: t('common.dimension.googleAds') };
+  if (med === 'organic') return { kind: 'seo', label: t('common.dimension.organic') };
   if (['instagram', 'facebook', 'meta', 'tiktok'].some((k) => src.includes(k)))
-    return { kind: 'social', label: src.includes('instagram') ? 'Instagram' : src.includes('facebook') ? 'Facebook' : 'Sosyal' };
-  if (med === 'direct' || src === 'direct') return { kind: 'direct', label: 'Direkt' };
+    return { kind: 'social', label: src.includes('instagram') ? 'Instagram' : src.includes('facebook') ? 'Facebook' : t('common.dimension.social') };
+  if (med === 'direct' || src === 'direct') return { kind: 'direct', label: t('common.dimension.direct') };
 
   return { kind: 'other', label: src || '—' };
 }
 
-function resolveDevice(intent: HunterIntent): { label: string; icon: typeof Smartphone } {
+function resolveDevice(
+  intent: HunterIntent,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): { label: string; icon: typeof Smartphone } {
   const d = (intent.device_type || '').toLowerCase();
   const os = (intent.device_os || '').toLowerCase();
 
   let icon: typeof Smartphone = Smartphone;
-  let type = 'Mobil';
+  let type = t('device.mobile');
 
-  if (d.includes('desktop') || d.includes('web')) { type = 'Masaüstü'; icon = Monitor; }
-  else if (d.includes('tablet')) { type = 'Tablet'; }
+  if (d.includes('desktop') || d.includes('web')) { type = t('device.desktop'); icon = Monitor; }
+  else if (d.includes('tablet')) { type = t('device.tablet'); }
 
   let osLabel = '';
   if (os.includes('ios') || os.includes('iphone')) osLabel = 'iOS';
@@ -78,18 +86,11 @@ function resolveDevice(intent: HunterIntent): { label: string; icon: typeof Smar
   return { label: osLabel ? `${osLabel} · ${type}` : type, icon };
 }
 
-function formatTime(ts: string): string {
-  try {
-    return new Date(ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
-
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function SourceBadge({ intent }: { intent: HunterIntent }) {
-  const { kind, label } = resolveTrafficKind(intent);
+  const { t } = useTranslation();
+  const { kind, label } = resolveTrafficKind(intent, t);
   if (kind === 'other' && (!label || label === '—')) return null;
 
   const styles: Record<TrafficKind, { cls: string; Icon: React.ComponentType<{ className?: string }> }> = {
@@ -111,7 +112,8 @@ function SourceBadge({ intent }: { intent: HunterIntent }) {
 }
 
 function DevicePill({ intent }: { intent: HunterIntent }) {
-  const { label, icon: DevIcon } = resolveDevice(intent);
+  const { t } = useTranslation();
+  const { label, icon: DevIcon } = resolveDevice(intent, t);
   if (!label) return null;
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600 leading-none">
@@ -145,22 +147,26 @@ const ACCENT: Record<TrafficKind, string> = {
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function IntentCardV2({ intent, actions, onAction, onJunk }: IntentCardV2Props) {
+  const { t, formatTimestamp, toLocaleUpperCase } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
   const keyword = useMemo(
-    () => safeDecode((intent.utm_term || '').trim()) || 'Arama terimi yok',
-    [intent.utm_term]
+    () => safeDecode((intent.utm_term || '').trim()) || t('panel.searchTermUnknown'),
+    [intent.utm_term, t]
   );
 
   const location = useMemo(
-    () => formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source)?.toLocaleUpperCase('tr-TR') || 'Konum bilinmiyor',
-    [intent.city, intent.district, intent.location_source]
+    () => toLocaleUpperCase(formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source) || t('hunter.locationUnknown')),
+    [intent.city, intent.district, intent.location_source, t, toLocaleUpperCase]
   );
 
-  const time = useMemo(() => formatTime(intent.created_at), [intent.created_at]);
+  const time = useMemo(
+    () => formatTimestamp(intent.created_at, { hour: '2-digit', minute: '2-digit' }),
+    [formatTimestamp, intent.created_at]
+  );
 
-  const { kind: trafficKind } = useMemo(() => resolveTrafficKind(intent), [intent]);
+  const { kind: trafficKind } = useMemo(() => resolveTrafficKind(intent, t), [intent, t]);
   const accentCls = ACCENT[trafficKind];
 
   const handleAction = async (action: IntentCardV2Action) => {
@@ -239,7 +245,7 @@ export function IntentCardV2({ intent, actions, onAction, onJunk }: IntentCardV2
         <button
           onClick={handleJunk}
           disabled={submitting}
-          title="Çöp Olarak İşaretle"
+          title={t('hunter.markJunk')}
           className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
         >
           <Trash2 className="h-3.5 w-3.5" />

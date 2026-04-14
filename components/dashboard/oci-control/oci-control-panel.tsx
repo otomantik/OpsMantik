@@ -40,9 +40,9 @@ const STATUS_ORDER: QueueStatus[] = [
 
 function statusLabel(
   status: QueueStatus | string,
-  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+  tUnsafe: (key: string, params?: Record<string, string | number>) => string
 ) {
-  return t(`ociControl.status.${status}` as TranslationKey);
+  return tUnsafe(`ociControl.status.${status}`);
 }
 
 export function OciControlPanel({
@@ -54,7 +54,7 @@ export function OciControlPanel({
   siteName?: string;
   canOperate: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, tUnsafe } = useTranslation();
   const [stats, setStats] = useState<OciQueueStats | null>(null);
   const [rows, setRows] = useState<OciQueueRow[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
@@ -95,7 +95,7 @@ export function OciControlPanel({
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch(`/api/oci/queue-stats?siteId=${encodeURIComponent(siteId)}`);
-      if (!res.ok) throw new Error(res.statusText);
+      if (!res.ok) throw new Error(labels.loadStatsError);
       const data = await res.json();
       setStats(data);
     } catch (e) {
@@ -111,7 +111,7 @@ export function OciControlPanel({
       if (statusFilter) params.set('status', statusFilter);
       if (cursor) params.set('cursor', cursor);
       const res = await fetch(`/api/oci/queue-rows?${params.toString()}`);
-      if (!res.ok) throw new Error(res.statusText);
+      if (!res.ok) throw new Error(labels.loadRowsError);
       const data = await res.json();
       setRows(data.rows ?? []);
       setNextCursor(data.nextCursor);
@@ -161,7 +161,7 @@ export function OciControlPanel({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw new Error(labels.actionFailed);
         setSelectedIds(new Set());
         refresh();
       } catch (e) {
@@ -237,7 +237,7 @@ export function OciControlPanel({
                   {status === 'FAILED' && <XCircle className="h-3.5 w-3.5 text-red-600" />}
                   {status === 'PROCESSING' && <Clock className="h-3.5 w-3.5 text-slate-500" />}
                   {status === 'RETRY' && <RotateCcw className="h-3.5 w-3.5 text-amber-600" />}
-                  {statusLabel(status, t)}
+                  {statusLabel(status, tUnsafe)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 pt-1">
@@ -273,7 +273,7 @@ export function OciControlPanel({
           >
             <option value="">{labels.allStatuses}</option>
             {STATUS_ORDER.map((s) => (
-              <option key={s} value={s}>{statusLabel(s, t)}</option>
+              <option key={s} value={s}>{statusLabel(s, tUnsafe)}</option>
             ))}
           </select>
           <Button
@@ -379,7 +379,7 @@ export function OciControlPanel({
                           row.status === 'QUEUED' && 'bg-slate-100 text-slate-600'
                         )}
                       >
-                        {statusLabel(row.status, t)}
+                        {statusLabel(row.status, tUnsafe)}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs py-2">{row.provider_error_code ?? '—'}</TableCell>

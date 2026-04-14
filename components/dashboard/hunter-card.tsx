@@ -7,9 +7,8 @@ import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 import { Icons } from '@/components/icons';
 import {
-  MapPin, Trash2, UserCheck, ShieldCheck, Activity, X, Plus, type LucideIcon
+  MapPin, Trash2, UserCheck, ShieldCheck, Activity, Plus, type LucideIcon
 } from 'lucide-react';
-import { computeLcv } from '@/lib/oci/lcv-engine';
 import type { LeadActionType } from './lead-action-overlay';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
@@ -21,11 +20,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
   other: Icons.sparkles,
 };
 
-function formatTimeDisplay(ts: string, t: (key: TranslationKey, params?: Record<string, string | number>) => string): string {
+function formatTimeDisplay(
+  ts: string,
+  locale: string,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string {
   const d = new Date(ts);
   
   // TRT Time
-  const fullTime = d.toLocaleTimeString('tr-TR', { 
+  const fullTime = d.toLocaleTimeString(locale, {
     hour: '2-digit', 
     minute: '2-digit',
     timeZone: 'Europe/Istanbul' 
@@ -53,22 +56,15 @@ function formatTimeDisplay(ts: string, t: (key: TranslationKey, params?: Record<
   return `${fullTime} (${relative})`;
 }
 
-function normalizeUrl(url?: string | null): string {
-  if (!url) return 'Ana Sayfa';
+function normalizeUrl(url: string | null | undefined, homepageLabel: string): string {
+  if (!url) return homepageLabel;
   try {
     const u = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return u.pathname === '/' ? 'Ana Sayfa' : u.pathname;
+    return u.pathname === '/' ? homepageLabel : u.pathname;
   } catch {
     // Fallback: remove query params manually
-    return url.split('?')[0].split('#')[0] || 'Ana Sayfa';
+    return url.split('?')[0].split('#')[0] || homepageLabel;
   }
-}
-
-function getPtsGrade(score: number): { color: string; label: string; bg: string } {
-  if (score >= 85) return { color: 'text-emerald-600', label: 'HOT', bg: 'bg-emerald-50' };
-  if (score >= 65) return { color: 'text-amber-600', label: 'WARM', bg: 'bg-amber-50' };
-  if (score >= 40) return { color: 'text-sky-600', label: 'COLD', bg: 'bg-sky-50' };
-  return { color: 'text-slate-500', label: 'LOW', bg: 'bg-slate-50' };
 }
 
 function EntryRow({ label, value, urgent }: { label: string; value: React.ReactNode; urgent?: boolean }) {
@@ -87,36 +83,13 @@ export const HunterCard = React.memo(({
   intent: HunterIntent;
   onAction: (type: LeadActionType) => void;
 }) => {
-  const { t: translate } = useTranslation();
-  const [showIntel, setShowIntel] = React.useState(false);
-
-  const intel = useMemo(() => {
-    return computeLcv({
-      stage: 'V3',
-      baseAov: 1000,
-      city: intent.city,
-      district: intent.district,
-      deviceType: intent.device_type,
-      deviceOs: intent.device_os,
-      trafficSource: intent.traffic_source,
-      trafficMedium: intent.traffic_medium,
-      utmTerm: intent.utm_term,
-      phoneClicks: intent.phone_clicks,
-      whatsappClicks: intent.whatsapp_clicks,
-      eventCount: intent.event_count,
-      totalDurationSec: intent.total_duration_sec,
-      isReturning: intent.is_returning,
-    });
-  }, [intent]);
-
-  const displayScore = intel.singularityScore;
-  const grade = getPtsGrade(displayScore);
+  const { t: translate, locale, toLocaleUpperCase } = useTranslation();
   const IntentIcon = ICON_MAP[(intent.intent_action || '').toLowerCase()] || ICON_MAP.other;
 
   const geoDisplay = useMemo(() => {
     const out = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source);
-    return (out || translate('hunter.locationUnknown')).toLocaleUpperCase('tr-TR');
-  }, [intent.city, intent.district, intent.location_source, translate]);
+    return toLocaleUpperCase(out || translate('hunter.locationUnknown'));
+  }, [intent.city, intent.district, intent.location_source, toLocaleUpperCase, translate]);
 
   const deviceDisplay = useMemo(() => {
     const type = intent.device_type === 'mobile' ? translate('device.mobile') : translate('device.desktop');
@@ -128,39 +101,14 @@ export const HunterCard = React.memo(({
 
   return (
     <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl shadow-slate-200/50 flex flex-col relative">
-      
-      {/* ── INTEL OVERLAY (Light) ──────────────────────── */}
-      {showIntel && (
-        <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-md p-8 animate-in fade-in duration-300 rounded-3xl flex flex-col">
-          <div className="flex items-center justify-between mb-8">
-            <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">{translate('hunter.singularityIntel')}</h4>
-            <button onClick={() => setShowIntel(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200">
-              <X size={16} className="text-slate-500" />
-            </button>
-          </div>
-          <div className="flex-1 flex flex-col justify-center items-center text-center">
-            <div className={cn('text-7xl font-black tabular-nums', grade.color)}>{displayScore}</div>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">{translate('hunter.convProbability')}</div>
-          </div>
-          <p className="text-[10px] text-slate-400 italic text-center leading-relaxed mt-4">
-            {translate('hunter.neuralSignalDesc')}
-          </p>
-        </div>
-      )}
 
       {/* ── TOP NAV ────────────────────────────────────── */}
-      <div className="px-6 py-4 flex items-center justify-between border-b border-slate-50 bg-slate-50/30">
+      <div className="px-6 py-4 flex items-center border-b border-slate-50 bg-slate-50/30">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {formatTimeDisplay(intent.created_at, translate)}
+            {formatTimeDisplay(intent.created_at, locale, translate)}
           </span>
-        </div>
-        <div 
-          onClick={() => setShowIntel(true)}
-          className={cn('px-2.5 py-1 rounded-lg border font-black text-[10px] cursor-pointer transition-transform hover:scale-105', grade.bg, grade.color, 'border-current/10')}
-        >
-          {displayScore} {translate('hunter.pts')}
         </div>
       </div>
 
@@ -186,7 +134,7 @@ export const HunterCard = React.memo(({
       <div className="px-6 py-4 flex-1">
         <EntryRow label={translate('common.dimension.source')} value={intent.attribution_source || intent.traffic_source || translate('common.dimension.organic')} />
         <EntryRow label={translate('common.dimension.device')} value={deviceDisplay} />
-        <EntryRow label={translate('common.dimension.page')} value={normalizeUrl(intent.page_url)} />
+        <EntryRow label={translate('common.dimension.page')} value={normalizeUrl(intent.page_url, translate('hunter.homepage'))} />
         {intent.ai_summary && (
           <div className="mt-4 p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl">
             <div className="flex items-center gap-2 mb-1.5">
