@@ -10,6 +10,7 @@ import {
   MapPin, Trash2, UserCheck, ShieldCheck, Activity, Plus, type LucideIcon
 } from 'lucide-react';
 import type { LeadActionType } from './lead-action-overlay';
+import { useSiteTimezone } from '@/components/context/site-locale-context';
 
 export type HunterSourceType = 'whatsapp' | 'phone' | 'form' | 'other';
 
@@ -23,15 +24,17 @@ const ICON_MAP: Record<string, LucideIcon> = {
 function formatTimeDisplay(
   ts: string,
   locale: string,
+  timeZone: string,
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
 ): string {
   const d = new Date(ts);
-  
-  // TRT Time
+
+  // Render in the active site's timezone so HunterCard's time matches the rest
+  // of the dashboard clock instead of a hardcoded TRT value.
   const fullTime = d.toLocaleTimeString(locale, {
-    hour: '2-digit', 
+    hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'Europe/Istanbul' 
+    timeZone,
   });
 
   const now = new Date();
@@ -84,6 +87,7 @@ export const HunterCard = React.memo(({
   onAction: (type: LeadActionType) => void;
 }) => {
   const { t: translate, locale, toLocaleUpperCase } = useTranslation();
+  const siteTimezone = useSiteTimezone();
   const IntentIcon = ICON_MAP[(intent.intent_action || '').toLowerCase()] || ICON_MAP.other;
 
   const geoDisplay = useMemo(() => {
@@ -116,7 +120,7 @@ export const HunterCard = React.memo(({
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {formatTimeDisplay(intent.created_at, locale, translate)}
+            {formatTimeDisplay(intent.created_at, locale, siteTimezone, translate)}
           </span>
         </div>
       </div>
@@ -165,20 +169,20 @@ export const HunterCard = React.memo(({
         />
         <ActionButton 
           icon={UserCheck} 
-          label={translate('hunter.gorusuldu')} 
-          onClick={() => onAction('gorusuldu')} 
+          label={translate('hunter.contacted')} 
+          onClick={() => onAction('contacted')} 
           className="bg-slate-50 text-slate-400 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-100" 
         />
         <ActionButton 
           icon={Plus} 
-          label={translate('hunter.teklif')} 
-          onClick={() => onAction('teklif')} 
+          label={translate('hunter.offered')} 
+          onClick={() => onAction('offered')} 
           className="bg-slate-50 text-slate-400 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100" 
         />
         <ActionButton 
           icon={ShieldCheck} 
           label={translate('hunter.seal')} 
-          onClick={() => onAction('satis')} 
+          onClick={() => onAction('won')} 
           className="bg-slate-900 text-white hover:bg-emerald-600" 
         />
       </div>

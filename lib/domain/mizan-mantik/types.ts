@@ -1,21 +1,14 @@
 /**
- * MizanMantik 5-Gear - Domain Types
+ * MizanMantik - Domain Types (Canonical Configuration)
  */
 
-export type OpsGear =
-  | 'V1_PAGEVIEW'
-  | 'V2_PULSE'
-  | 'V3_ENGAGE'
-  | 'V4_INTENT'
-  | 'V5_SEAL';
-
-export type LegacySignalType = 'INTENT_CAPTURED' | 'MEETING_BOOKED' | 'SEAL_PENDING';
-
-export const LEGACY_TO_OPS_GEAR: Record<LegacySignalType, OpsGear> = {
-  INTENT_CAPTURED: 'V2_PULSE',
-  MEETING_BOOKED: 'V3_ENGAGE',
-  SEAL_PENDING: 'V4_INTENT',
-};
+/**
+ * PipelineStage — Alias of `OptimizationStage`.
+ *
+ * Canonical English-only spellings post global-launch cutover:
+ *   'junk' | 'contacted' | 'offered' | 'won'
+ */
+export type PipelineStage = 'junk' | 'contacted' | 'offered' | 'won';
 
 export interface SignalPayload {
   siteId: string;
@@ -30,11 +23,11 @@ export interface SignalPayload {
   conversionName?: string;
   /** Singularity: optional fingerprint (e.g. hash(IP+UA)) for entropy_score / uncertainty_bit */
   fingerprint?: string | null;
-  /** Phase 19: Real client IP from SST headers (XFF) for geo-fencing and forensic trace */
+  /** Real client IP from SST headers (XFF) for geo-fencing and forensic trace */
   clientIp?: string | null;
-  /** Axiom 3: synthetic discriminator (sequence/timestamp) — if present, V2_PULSE allows multiple intents per session */
+  /** Historical field retained for compatibility with older payloads. */
   discriminator?: string | null;
-  /** Phase 20: OM-TRACE-UUID for forensic chain and conversion_custom_variable */
+  /** OM-TRACE-UUID for forensic chain and conversion_custom_variable */
   traceId?: string | null;
 }
 

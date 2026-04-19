@@ -36,17 +36,22 @@ export interface CallRow {
   [key: string]: unknown;
 }
 
-/** Dynamic sector playbook stage (pipeline_stages JSONB) for Universal CRM / God Mode */
-export interface PipelineStage {
-  id: string; // e.g., 'g_trash', 'g_1', 'g_2', 'g_3', 'g_4'
-  label: string; // UI display name (e.g., 'Kitle Ölücü', 'İş Oldu')
-  multiplier?: number; // e.g., 0.05, 0.10, 0.30, 1.0. Applied against site's base deal value. Optional for backward calc
-  action?: 'discard' | 'oci_ping'; // discard for junk, oci_ping for gears
-  color: string; // Tailwind color token (e.g., 'rose', 'orange', 'blue', 'emerald')
-  order: number; // Funnel rendering order (0 for trash, 1-4 for gears)
-  value_cents?: number; // Legacy/Fallback hardcoded value
-  is_macro?: boolean; // True if this is the ultimate goal (e.g., Sale)
-  is_system?: boolean; // If true, the user cannot delete this stage from the UI
+/**
+ * Dynamic sector playbook stage config (pipeline_stages JSONB) for Universal CRM / God Mode.
+ *
+ * NOTE: distinct from the stage literal union `PipelineStage` in
+ * `lib/domain/mizan-mantik/types.ts` — this is the per-site tenant playbook config row.
+ */
+export interface SitePipelineStageConfig {
+  id: string;
+  label: string;
+  multiplier?: number;
+  action?: 'discard' | 'oci_ping';
+  color: string;
+  order: number;
+  value_cents?: number;
+  is_macro?: boolean;
+  is_system?: boolean;
 }
 
 /** Per-site config (sites.config jsonb): bounty chip values, UI knobs */
@@ -68,7 +73,7 @@ export interface SiteRow {
   /** Average deal revenue; used for proxy value when sale_amount is not entered (Lazy Antiques Dealer). */
   default_deal_value?: number | null;
   /** Dynamic sector playbook: macro/micro conversion stages for OCI */
-  pipeline_stages?: PipelineStage[] | null;
+  pipeline_stages?: SitePipelineStageConfig[] | null;
   /** Enabled feature modules for this tenant (e.g. core_oci, scoring_v1, google_ads_spend) */
   active_modules?: SiteActiveModules | null;
   [key: string]: unknown;

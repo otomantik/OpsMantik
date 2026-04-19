@@ -49,12 +49,11 @@ async function main() {
 
   const r1 = await test('process-offline-conversions (OCI)', 'POST', '/api/cron/process-offline-conversions?limit=5');
   const r2 = await test('invoice-freeze', 'POST', '/api/cron/invoice-freeze');
-  const r3 = await test('recover (fallback buffer)', 'GET', '/api/cron/recover');
 
-  const pass = [r1, r2, r3].filter(Boolean).length;
+  const pass = [r1, r2].filter(Boolean).length;
   console.log('---');
-  console.log(`Result: ${pass}/3 passed`);
-  process.exit(pass === 3 ? 0 : 1);
+  console.log(`Result: ${pass}/2 passed`);
+  process.exit(pass === 2 ? 0 : 1);
 }
 
 main();

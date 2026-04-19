@@ -73,7 +73,7 @@ test('PR-OCI-TEST: enqueueSealConversion with sale_amount 0 uses fallback value'
   assert.ok((result.value ?? 0) > 0);
 });
 
-test('PR-OCI-TEST: 500 TL seal enqueues with value_cents 50000 when call has click_id and consent', async (t) => {
+test('PR-OCI-TEST: satis enqueue uses universal optimization value when call has click_id and consent', async (t) => {
   const env = requireTestEnv();
   if (env.skip) {
     t.skip(env.reason);
@@ -96,8 +96,8 @@ test('PR-OCI-TEST: 500 TL seal enqueues with value_cents 50000 when call has cli
     t.skip('Test call session has no marketing consent');
     return;
   }
-  assert.equal(result.enqueued, true, 'must enqueue when sale_amount is 500');
-  assert.equal(result.value, 500, 'value in currency units must be 500');
+  assert.equal(result.enqueued, true, 'must enqueue when satis action has attribution and consent');
+  assert.equal(result.value, 120, 'satis export value must follow universal stage-base x quality-factor math');
   const { data: row } = await adminClient
     .from('offline_conversion_queue')
     .select('value_cents')
@@ -107,5 +107,5 @@ test('PR-OCI-TEST: 500 TL seal enqueues with value_cents 50000 when call has cli
     .limit(1)
     .maybeSingle();
   assert.ok(row, 'queue row must exist');
-  assert.equal((row as { value_cents: number }).value_cents, 50000, '500 TRY = 50000 cents');
+  assert.equal((row as { value_cents: number }).value_cents, 12000, 'satis queue cents must mirror universal optimization value');
 });

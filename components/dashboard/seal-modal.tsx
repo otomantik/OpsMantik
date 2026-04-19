@@ -13,6 +13,7 @@ import { ShieldCheck, Trash2, Phone, CircleDollarSign, ChevronRight, ChevronLeft
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useSfx } from '@/lib/hooks/use-sfx';
+import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export interface SealModalProps {
   open: boolean;
@@ -21,7 +22,13 @@ export interface SealModalProps {
   chipValues?: number[];
   /** Clicked number for pre-filling or reference (not displayed as a separate box anymore) */
   clickedNumber?: string | null;
-  onConfirm: (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => Promise<void>;
+  onConfirm: (
+    saleAmount: number | null,
+    currency: string,
+    leadScore: number,
+    callerPhone?: string,
+    helperFormPayload?: HelperFormPayload | null
+  ) => Promise<void>;
   onJunk?: () => Promise<void>;
   onSuccess?: () => void;
   onJunkSuccess?: () => void;
@@ -39,10 +46,18 @@ export function SealModal({
   onJunkSuccess,
   onError,
 }: SealModalProps) {
+  void clickedNumber;
   const { t } = useTranslation();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [callerPhone, setCallerPhone] = useState<string>('');
+  const [helperFormPayload, setHelperFormPayload] = useState<HelperFormPayload>({
+    jobSize: 'orta',
+    urgency: 'orta',
+    priceDiscussed: 'evet',
+    followupExpectation: 'evet',
+    competitorComparison: 'hayir',
+  });
   const [saving, setSaving] = useState(false);
   const [junking, setJunking] = useState(false);
   const [sealSuccessPulse, setSealSuccessPulse] = useState(false);
@@ -53,6 +68,13 @@ export function SealModal({
       // Do NOT pre-fill with clickedNumber: that's the business number the visitor clicked.
       // Operator must enter the CUSTOMER's number (they spoke with on the phone).
       setCallerPhone('');
+      setHelperFormPayload({
+        jobSize: 'orta',
+        urgency: 'orta',
+        priceDiscussed: 'evet',
+        followupExpectation: 'evet',
+        competitorComparison: 'hayir',
+      });
     }
   }, [open]);
 
@@ -67,7 +89,7 @@ export function SealModal({
     setSaving(true);
     try {
       const toSend = callerPhone.trim().slice(0, 64) || undefined;
-      await onConfirm(effectiveAmount ?? null, currency, 100, toSend);
+      await onConfirm(effectiveAmount ?? null, currency, 100, toSend, helperFormPayload);
 
       try { playChaChing(); } catch { }
       try {
@@ -181,6 +203,51 @@ export function SealModal({
               <p className="text-sm text-center text-slate-500 px-4">
                 {t('seal.revenueStepHint')}
               </p>
+              <div className="grid grid-cols-1 gap-3">
+                <select
+                  value={helperFormPayload.jobSize ?? 'orta'}
+                  onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, jobSize: e.target.value as HelperFormPayload['jobSize'] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  <option value="kucuk">Is buyuklugu: kucuk</option>
+                  <option value="orta">Is buyuklugu: orta</option>
+                  <option value="buyuk">Is buyuklugu: buyuk</option>
+                </select>
+                <select
+                  value={helperFormPayload.urgency ?? 'orta'}
+                  onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, urgency: e.target.value as HelperFormPayload['urgency'] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  <option value="dusuk">Aciliyet: dusuk</option>
+                  <option value="orta">Aciliyet: orta</option>
+                  <option value="yuksek">Aciliyet: yuksek</option>
+                </select>
+                <select
+                  value={helperFormPayload.priceDiscussed ?? 'evet'}
+                  onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, priceDiscussed: e.target.value as HelperFormPayload['priceDiscussed'] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  <option value="evet">Fiyat konusuldu: evet</option>
+                  <option value="hayir">Fiyat konusuldu: hayir</option>
+                </select>
+                <select
+                  value={helperFormPayload.followupExpectation ?? 'evet'}
+                  onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, followupExpectation: e.target.value as HelperFormPayload['followupExpectation'] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  <option value="hayir">Geri donus beklentisi: hayir</option>
+                  <option value="belirsiz">Geri donus beklentisi: belirsiz</option>
+                  <option value="evet">Geri donus beklentisi: evet</option>
+                </select>
+                <select
+                  value={helperFormPayload.competitorComparison ?? 'hayir'}
+                  onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, competitorComparison: e.target.value as HelperFormPayload['competitorComparison'] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  <option value="evet">Rakip kiyasi: evet</option>
+                  <option value="hayir">Rakip kiyasi: hayir</option>
+                </select>
+              </div>
             </div>
           )}
 

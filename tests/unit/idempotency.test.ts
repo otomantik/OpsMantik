@@ -1,7 +1,7 @@
 /**
  * Unit tests for API-edge idempotency: key determinism and duplicate detection.
  * - v1: computeIdempotencyKey unchanged (same inputs => same 64-hex key); stable expected value.
- * - v2: computeIdempotencyKeyV2 event-specific buckets (heartbeat 10s, page_view 2s, click/call_intent 0s); prefix "v2:".
+ * - canonical: computeCanonicalIdempotencyKey event-specific buckets (heartbeat 10s, page_view 2s, click/call_intent 0s); prefix "canonical:".
  * - tryInsertIdempotencyKey returns inserted: false on unique violation (23505).
  */
 
@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeIdempotencyKey,
-  computeIdempotencyKeyV2,
+  computeCanonicalIdempotencyKey,
   computeIdempotencyExpiresAt,
   getServerNowMs,
   tryInsertIdempotencyKey,
@@ -80,8 +80,8 @@ test('getIdempotencyVersion: default 1, env 2 => 2', () => {
   else delete process.env.OPSMANTIK_IDEMPOTENCY_VERSION;
 });
 
-test('idempotencyVersionFromKey: v2 prefix => 2, else 1', () => {
-  assert.equal(idempotencyVersionFromKey('v2:abc123'), 2);
+test('idempotencyVersionFromKey: canonical prefix => 2, else 1', () => {
+  assert.equal(idempotencyVersionFromKey('canonical:abc123'), 2);
   assert.equal(idempotencyVersionFromKey('abc123'), 1);
   assert.equal(idempotencyVersionFromKey('a'.repeat(64)), 1);
 });
@@ -135,99 +135,99 @@ test('PR gate: concurrent same key => exactly one inserted', { skip: !process.en
   assert.equal(insertedCount, 1, 'exactly one concurrent insert must succeed');
 });
 
-// --- PR-2 v2 tests (computeIdempotencyKeyV2, event-specific buckets) ---
+// --- Canonical idempotency tests (event-specific buckets) ---
 
-test('computeIdempotencyKeyV2: key has prefix v2: and 64 hex', async () => {
-  const key = await computeIdempotencyKeyV2(SITE_UUID, payload({ ea: 'heartbeat' }));
-  assert.match(key, /^v2:[0-9a-f]{64}$/, 'v2 key must be v2:<64 hex>');
+test('computeCanonicalIdempotencyKey: key has canonical prefix and 64 hex', async () => {
+  const key = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ea: 'heartbeat' }));
+  assert.match(key, /^canonical:[0-9a-f]{64}$/, 'canonical key must be canonical:<64 hex>');
 });
 
-test('computeIdempotencyKeyV2: heartbeat 10s bucket — same ts => same key', async () => {
+test('computeCanonicalIdempotencyKey: heartbeat 10s bucket — same ts => same key', async () => {
   const p = payload({ ec: 'system', ea: 'heartbeat', el: 'session_active' });
   const ts = 1700000000000;
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, p, ts);
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, p, ts + 5000);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, p, ts);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, p, ts + 5000);
   assert.equal(key1, key2, 'same 10s bucket => same key');
 });
 
-test('computeIdempotencyKeyV2: heartbeat 10s bucket — across boundary => different key', async () => {
+test('computeCanonicalIdempotencyKey: heartbeat 10s bucket — across boundary => different key', async () => {
   const p = payload({ ec: 'system', ea: 'heartbeat', el: 'session_active' });
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, p, 1700000000000);
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, p, 1700000000000 + 15000);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, p, 1700000000000);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, p, 1700000000000 + 15000);
   assert.notEqual(key1, key2, 'across 10s boundary => different key');
 });
 
-test('computeIdempotencyKeyV2: page_view 2s bucket — same ts => same key', async () => {
+test('computeCanonicalIdempotencyKey: page_view 2s bucket — same ts => same key', async () => {
   const p = payload({ ec: 'page', ea: 'view', url: 'https://example.com/p' });
   const ts = 1700000000000;
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, p, ts);
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, p, ts + 1000);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, p, ts);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, p, ts + 1000);
   assert.equal(key1, key2, 'same 2s bucket => same key');
 });
 
-test('computeIdempotencyKeyV2: page_view 2s bucket — across boundary => different key', async () => {
+test('computeCanonicalIdempotencyKey: page_view 2s bucket — across boundary => different key', async () => {
   const p = payload({ ec: 'page', ea: 'view', url: 'https://example.com/p' });
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, p, 1700000000000);
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, p, 1700000000000 + 3000);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, p, 1700000000000);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, p, 1700000000000 + 3000);
   assert.notEqual(key1, key2, 'across 2s boundary => different key');
 });
 
-test('computeIdempotencyKeyV2: click/call_intent no bucket — different server ts => different key', async () => {
+test('computeCanonicalIdempotencyKey: click/call_intent no bucket — different server ts => different key', async () => {
   const pClick = payload({ ea: 'click', ec: 'cta' });
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, pClick, 1700000000000);
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, pClick, 1700000000001);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, pClick, 1700000000000);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, pClick, 1700000000001);
   assert.notEqual(key1, key2, 'click: no bucketing, different server ts => different key');
   const pIntent = payload({ ea: 'call_intent', ec: 'conversion' });
-  const k3 = await computeIdempotencyKeyV2(SITE_UUID, pIntent, 1700000000000);
-  const k4 = await computeIdempotencyKeyV2(SITE_UUID, pIntent, 1700000000002);
+  const k3 = await computeCanonicalIdempotencyKey(SITE_UUID, pIntent, 1700000000000);
+  const k4 = await computeCanonicalIdempotencyKey(SITE_UUID, pIntent, 1700000000002);
   assert.notEqual(k3, k4, 'call_intent: no bucketing, different server ts => different key');
 });
 
-test('computeIdempotencyKeyV2: click ignores client timestamp (server-only time)', async () => {
+test('computeCanonicalIdempotencyKey: click ignores client timestamp (server-only time)', async () => {
   const serverNow = 1700000000000;
   const pSame = { ...payload({ ea: 'click', ec: 'cta' }), ts: 1 };
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, pSame as ValidIngestPayload, serverNow);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, pSame as ValidIngestPayload, serverNow);
   const pWithDifferentClientTs = { ...payload({ ea: 'click', ec: 'cta' }), ts: 999999999 };
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, pWithDifferentClientTs as ValidIngestPayload, serverNow);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, pWithDifferentClientTs as ValidIngestPayload, serverNow);
   assert.equal(key1, key2, 'click must use server time only; client ts must be ignored');
 });
 
-test('computeIdempotencyKeyV2: call_intent ignores client timestamp (server-only time)', async () => {
+test('computeCanonicalIdempotencyKey: call_intent ignores client timestamp (server-only time)', async () => {
   const serverNow = 1700000000000;
   const p1 = { ...payload({ ea: 'call_intent', ec: 'conversion' }), timestamp: 100 };
   const p2 = { ...payload({ ea: 'call_intent', ec: 'conversion' }), meta: { ...payload().meta, ts: 200 } };
-  const key1 = await computeIdempotencyKeyV2(SITE_UUID, p1 as ValidIngestPayload, serverNow);
-  const key2 = await computeIdempotencyKeyV2(SITE_UUID, p2 as ValidIngestPayload, serverNow);
+  const key1 = await computeCanonicalIdempotencyKey(SITE_UUID, p1 as ValidIngestPayload, serverNow);
+  const key2 = await computeCanonicalIdempotencyKey(SITE_UUID, p2 as ValidIngestPayload, serverNow);
   assert.equal(key1, key2, 'call_intent must use server time only; client timestamp/meta.ts ignored');
 });
 
-test('computeIdempotencyKeyV2: different event types => different keys', async () => {
+test('computeCanonicalIdempotencyKey: different event types => different keys', async () => {
   const ts = 1700000000000;
-  const heartbeat = await computeIdempotencyKeyV2(SITE_UUID, payload({ ea: 'heartbeat' }), ts);
-  const pageView = await computeIdempotencyKeyV2(SITE_UUID, payload({ ec: 'page', ea: 'view' }), ts);
-  const click = await computeIdempotencyKeyV2(SITE_UUID, payload({ ea: 'click' }), ts);
+  const heartbeat = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ea: 'heartbeat' }), ts);
+  const pageView = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ec: 'page', ea: 'view' }), ts);
+  const click = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ea: 'click' }), ts);
   assert.notEqual(heartbeat, pageView);
   assert.notEqual(pageView, click);
   assert.notEqual(heartbeat, click);
 });
 
-test('computeIdempotencyKeyV2: heartbeat with payload ts >5min from server uses server time (clamped)', async () => {
+test('computeCanonicalIdempotencyKey: heartbeat with payload ts >5min from server uses server time (clamped)', async () => {
   const serverNow = 1700000000000;
   const pWithFarFuture = { ...payload({ ea: 'heartbeat', ec: 'system' }), ts: (serverNow + 10 * 60 * 1000) / 1000 };
   const pWithFarPast = { ...payload({ ea: 'heartbeat', ec: 'system' }), ts: (serverNow - 10 * 60 * 1000) / 1000 };
-  const keyFuture = await computeIdempotencyKeyV2(SITE_UUID, pWithFarFuture as ValidIngestPayload, serverNow);
-  const keyPast = await computeIdempotencyKeyV2(SITE_UUID, pWithFarPast as ValidIngestPayload, serverNow);
-  const keyNoTs = await computeIdempotencyKeyV2(SITE_UUID, payload({ ea: 'heartbeat', ec: 'system' }), serverNow);
+  const keyFuture = await computeCanonicalIdempotencyKey(SITE_UUID, pWithFarFuture as ValidIngestPayload, serverNow);
+  const keyPast = await computeCanonicalIdempotencyKey(SITE_UUID, pWithFarPast as ValidIngestPayload, serverNow);
+  const keyNoTs = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ea: 'heartbeat', ec: 'system' }), serverNow);
   assert.equal(keyFuture, keyNoTs, 'far-future payload ts clamped to server => same bucket as no ts');
   assert.equal(keyPast, keyNoTs, 'far-past payload ts clamped to server => same bucket as no ts');
 });
 
-test('computeIdempotencyKeyV2: page_view with payload ts within 5min uses payload ts bucket', async () => {
+test('computeCanonicalIdempotencyKey: page_view with payload ts within 5min uses payload ts bucket', async () => {
   const serverNow = 1700000000000;
   const withinFiveMin = serverNow + 60 * 1000;
   const pWithTs = { ...payload({ ec: 'page', ea: 'view', url: 'https://example.com/x' }), ts: withinFiveMin / 1000 };
-  const keyWithTs = await computeIdempotencyKeyV2(SITE_UUID, pWithTs as ValidIngestPayload, serverNow);
-  const keyWithServer = await computeIdempotencyKeyV2(SITE_UUID, payload({ ec: 'page', ea: 'view', url: 'https://example.com/x' }), withinFiveMin);
+  const keyWithTs = await computeCanonicalIdempotencyKey(SITE_UUID, pWithTs as ValidIngestPayload, serverNow);
+  const keyWithServer = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ec: 'page', ea: 'view', url: 'https://example.com/x' }), withinFiveMin);
   assert.equal(keyWithTs, keyWithServer, 'payload ts within 5min used; same 2s bucket as server at that time');
 });
 
@@ -237,13 +237,13 @@ test('getServerNowMs returns number', () => {
   assert.ok(t >= 1700000000000, 'reasonable ms');
 });
 
-test('PR gate v2: concurrent same key (heartbeat) => exactly one inserted', { skip: !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY }, async () => {
+test('PR gate canonical: concurrent same key (heartbeat) => exactly one inserted', { skip: !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY }, async () => {
   const ts = Date.now();
-  const key = await computeIdempotencyKeyV2(SITE_UUID, payload({ ea: 'heartbeat', url: 'https://concurrent-v2.example/' }), ts);
+  const key = await computeCanonicalIdempotencyKey(SITE_UUID, payload({ ea: 'heartbeat', url: 'https://concurrent-canonical.example/' }), ts);
   const [r1, r2] = await Promise.all([
     tryInsertIdempotencyKey(SITE_UUID, key),
     tryInsertIdempotencyKey(SITE_UUID, key),
   ]);
   const insertedCount = [r1.inserted, r2.inserted].filter(Boolean).length;
-  assert.equal(insertedCount, 1, 'v2: exactly one concurrent insert must succeed for same key');
+  assert.equal(insertedCount, 1, 'canonical: exactly one concurrent insert must succeed for same key');
 });

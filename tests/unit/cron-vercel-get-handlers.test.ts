@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROUTES = [
@@ -41,15 +41,11 @@ for (const route of ROUTES) {
   });
 }
 
-// PR-2: retired dispatch-conversions route is explicit
-test('PR-2: dispatch-conversions route is explicitly retired with deterministic code', () => {
-  const path = join(process.cwd(), 'app', 'api', 'cron', 'dispatch-conversions', 'route.ts');
-  const src = readFileSync(path, 'utf-8');
-  assert.ok(
-    src.includes('LEGACY_CONVERSIONS_CRON_RETIRED'),
-    'dispatch-conversions must fail closed with explicit retirement code'
-  );
-  assert.ok(src.includes('status: 410'), 'dispatch-conversions must return HTTP 410');
+// PR-2: legacy dispatch-conversions route is fully deleted (not just retired).
+// The canonical path is now the outbox/offline-conversions cron pair.
+test('PR-2: legacy dispatch-conversions route stays fully deleted', () => {
+  const path = join(process.cwd(), 'app', 'api', 'cron', 'dispatch-conversions');
+  assert.ok(!existsSync(path), 'dispatch-conversions route must not exist anymore');
 });
 
 // PR-3: POST handlers also acquire cron locks (process-offline-conversions, providers/recover-processing)

@@ -7,15 +7,21 @@ import { Card } from '@/components/ui/card';
 import { cn, safeDecode } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { HunterIntent } from '@/lib/types/hunter';
+import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
-export type LeadActionType = 'junk' | 'gorusuldu' | 'teklif' | 'satis';
+export type LeadActionType = 'junk' | 'contacted' | 'offered' | 'won';
 
 interface LeadActionOverlayProps {
   intent: HunterIntent;
   actionType: LeadActionType | null;
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (actionType: LeadActionType, phone?: string, score?: number) => Promise<{ success: boolean; error?: string }>;
+  onComplete: (
+    actionType: LeadActionType,
+    phone?: string,
+    score?: number,
+    helperFormPayload?: HelperFormPayload | null
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export function LeadActionOverlay({
@@ -29,6 +35,13 @@ export function LeadActionOverlay({
   const [step, setStep] = useState<'phone' | 'rating' | 'success'>('phone');
   const [phone, setPhone] = useState('');
   const [score, setScore] = useState<number>(100);
+  const [helperFormPayload, setHelperFormPayload] = useState<HelperFormPayload>({
+    jobSize: 'orta',
+    urgency: 'orta',
+    priceDiscussed: 'hayir',
+    followupExpectation: 'belirsiz',
+    competitorComparison: 'hayir',
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -37,14 +50,21 @@ export function LeadActionOverlay({
     if (isOpen && actionType) {
       setStep('phone');
       setPhone('');
+      setHelperFormPayload({
+        jobSize: 'orta',
+        urgency: 'orta',
+        priceDiscussed: 'hayir',
+        followupExpectation: 'belirsiz',
+        competitorComparison: 'hayir',
+      });
       setIsSubmitting(false);
       setSubmitError(null);
       
       switch (actionType) {
         case 'junk': setScore(0); setStep('rating'); break;
-        case 'gorusuldu': setScore(60); break;
-        case 'teklif': setScore(80); break;
-        case 'satis': setScore(100); break;
+        case 'contacted': setScore(60); break;
+        case 'offered': setScore(80); break;
+        case 'won': setScore(100); break;
       }
     }
   }, [isOpen, actionType]);
@@ -52,9 +72,9 @@ export function LeadActionOverlay({
   const config = useMemo(() => {
     switch (actionType) {
       case 'junk': return { label: t('hunter.junk'), icon: Trash2, color: 'text-red-600', bg: 'bg-red-50' };
-      case 'gorusuldu': return { label: t('hunter.gorusuldu'), icon: UserCheck, color: 'text-sky-600', bg: 'bg-sky-50' };
-      case 'teklif': return { label: t('hunter.teklif'), icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50' };
-      case 'satis': return { label: t('hunter.seal'), icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' };
+      case 'contacted': return { label: t('hunter.contacted'), icon: UserCheck, color: 'text-sky-600', bg: 'bg-sky-50' };
+      case 'offered': return { label: t('hunter.offered'), icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50' };
+      case 'won': return { label: t('hunter.seal'), icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' };
       default: return { label: '', icon: Hash, color: 'text-slate-600', bg: 'bg-slate-50' };
     }
   }, [actionType, t]);
@@ -71,7 +91,7 @@ export function LeadActionOverlay({
     if (!actionType) return;
     setIsSubmitting(true);
     setSubmitError(null);
-    const result = await onComplete(actionType, phone, finalScore);
+    const result = await onComplete(actionType, phone, finalScore, helperFormPayload);
     setIsSubmitting(false);
     if (!result.success) {
       setSubmitError(result.error ?? t('toast.failedUpdate'));
@@ -159,6 +179,54 @@ export function LeadActionOverlay({
                 />
                 <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 font-black">{t('hunter.pts')}</div>
               </div>
+
+              {actionType !== 'junk' && (
+                <div className="grid grid-cols-1 gap-3 text-left">
+                  <select
+                    value={helperFormPayload.jobSize ?? 'orta'}
+                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, jobSize: e.target.value as HelperFormPayload['jobSize'] }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                  >
+                    <option value="kucuk">Is buyuklugu: kucuk</option>
+                    <option value="orta">Is buyuklugu: orta</option>
+                    <option value="buyuk">Is buyuklugu: buyuk</option>
+                  </select>
+                  <select
+                    value={helperFormPayload.urgency ?? 'orta'}
+                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, urgency: e.target.value as HelperFormPayload['urgency'] }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                  >
+                    <option value="dusuk">Aciliyet: dusuk</option>
+                    <option value="orta">Aciliyet: orta</option>
+                    <option value="yuksek">Aciliyet: yuksek</option>
+                  </select>
+                  <select
+                    value={helperFormPayload.priceDiscussed ?? 'hayir'}
+                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, priceDiscussed: e.target.value as HelperFormPayload['priceDiscussed'] }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                  >
+                    <option value="evet">Fiyat konusuldu: evet</option>
+                    <option value="hayir">Fiyat konusuldu: hayir</option>
+                  </select>
+                  <select
+                    value={helperFormPayload.followupExpectation ?? 'belirsiz'}
+                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, followupExpectation: e.target.value as HelperFormPayload['followupExpectation'] }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                  >
+                    <option value="hayir">Geri donus beklentisi: hayir</option>
+                    <option value="belirsiz">Geri donus beklentisi: belirsiz</option>
+                    <option value="evet">Geri donus beklentisi: evet</option>
+                  </select>
+                  <select
+                    value={helperFormPayload.competitorComparison ?? 'hayir'}
+                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, competitorComparison: e.target.value as HelperFormPayload['competitorComparison'] }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                  >
+                    <option value="evet">Rakip kiyasi: evet</option>
+                    <option value="hayir">Rakip kiyasi: hayir</option>
+                  </select>
+                </div>
+              )}
 
               <Button 
                 onClick={() => handleComplete(score)}

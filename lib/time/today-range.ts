@@ -1,13 +1,22 @@
 /**
- * Phase B1: Default TODAY range (TRT) via server redirect.
+ * Default TODAY range computation via server redirect.
  *
  * Requirements:
  * - Compute day start/end in a given IANA timezone and convert to UTC ISO strings
  * - Half-open range: [from, to) where to = next day start
  *
  * Notes:
- * - Default timezone is Europe/Istanbul (TRT).
+ * - Legacy default timezone is Europe/Istanbul — existing Turkish customers
+ *   depend on "today" meaning "today in TRT". Non-TRT dashboard callers must
+ *   pass the site's timezone via the second arg of `getTodayTrtUtcRange` or
+ *   the `timezone` parameter on the lower-level helpers.
+ * - Back-compat `getTodayTrt*` function names are preserved but accept a
+ *   caller-supplied timezone; "Trt" in the name is historical.
  * - We intentionally keep this dependency-free (no moment/luxon).
+ *
+ * Phase 5 migration path: thread the site's timezone from
+ * `useSiteTimezone()` / server-side site.timezone into every caller so this
+ * default becomes unreachable in production, then flip it to 'UTC'.
  */
 export const DEFAULT_TIMEZONE = 'Europe/Istanbul';
 // Kept for backward compatibility (TRT is UTC+03 year-round)

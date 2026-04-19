@@ -5,7 +5,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs, tryInsertIdempotencyKey, updateIdempotencyBillableFalse, setOverageOnIdempotencyRow } from '@/lib/idempotency';
+import { computeIdempotencyKey, computeCanonicalIdempotencyKey, getServerNowMs, tryInsertIdempotencyKey, updateIdempotencyBillableFalse, setOverageOnIdempotencyRow } from '@/lib/idempotency';
 import { getCurrentYearMonthUTC, getSitePlan, getUsage, evaluateQuota } from '@/lib/quota';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { classifyIngestBillable } from '@/lib/billing/ingest-billable';
@@ -36,7 +36,7 @@ export async function runSyncGates(
   const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
   const idempotencyKey =
     idempotencyVersion === '2'
-      ? await computeIdempotencyKeyV2(siteIdUuid, payload, getServerNowMs())
+      ? await computeCanonicalIdempotencyKey(siteIdUuid, payload, getServerNowMs())
       : await computeIdempotencyKey(siteIdUuid, payload);
 
   const idempotencyResult = await tryInsertIdempotencyKey(siteIdUuid, idempotencyKey, {

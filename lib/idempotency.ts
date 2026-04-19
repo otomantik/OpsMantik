@@ -1,7 +1,8 @@
 /**
  * API-edge idempotency for the ingestion pipeline.
  * v1: SHA256(site_id + event_name + normalized_url + session_fingerprint + time_bucket_5s). Unchanged; no prefix.
- * v2: computeIdempotencyKeyV2() returns "v2:" + SHA256(..., bucket_component) with event-specific buckets.
+ * canonical: computeCanonicalIdempotencyKey() returns "canonical:" + SHA256(..., bucket_component)
+ * with event-specific buckets.
  * No client-supplied IDs; no IP/UA (high cardinality).
  *
  * --- REVENUE KERNEL: Invoice authority ---
@@ -34,8 +35,8 @@ function timeBucket5s(): number {
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
-/** Event kind for v2 idempotency (determines time source and bucketing). */
-function getV2EventKind(payload: ValidIngestPayload): 'heartbeat' | 'page_view' | 'click' | 'call_intent' | 'other' {
+/** Event kind for canonical idempotency (determines time source and bucketing). */
+function getCanonicalEventKind(payload: ValidIngestPayload): 'heartbeat' | 'page_view' | 'click' | 'call_intent' | 'other' {
   const p = payload as Record<string, unknown>;
   const ec = typeof p.ec === 'string' ? p.ec : '';
   const ea = typeof p.ea === 'string' ? p.ea : '';
@@ -69,11 +70,11 @@ function extractPayloadTsMs(payload: ValidIngestPayload): number | null {
 }
 
 /**
- * v2 time component for dedup key. Security: click/call_intent use server time only (ignore client ts).
+ * Canonical time component for dedup key. Security: click/call_intent use server time only (ignore client ts).
  * heartbeat/page_view may use payload ts if within 5 min of server; else clamped to server. Then bucket applied.
  */
-function getV2TimeComponentSafe(payload: ValidIngestPayload, serverNowMs: number): number {
-  const kind = getV2EventKind(payload);
+function getCanonicalTimeComponentSafe(payload: ValidIngestPayload, serverNowMs: number): number {
+  const kind = getCanonicalEventKind(payload);
 
   if (kind === 'click' || kind === 'call_intent') {
     return serverNowMs;
@@ -133,23 +134,23 @@ export async function computeIdempotencyKey(
 }
 
 /**
- * v2 idempotency key: "v2:" + SHA-256(site_id + event_name + normalized_url + session_fingerprint + time_component).
+ * Canonical idempotency key: "canonical:" + SHA-256(site_id + event_name + normalized_url + session_fingerprint + time_component).
  * click/call_intent: server time only (no client ts) to prevent dedup bypass. heartbeat/page_view: payload ts clamped to ±5min, then bucket.
  */
-export async function computeIdempotencyKeyV2(
+export async function computeCanonicalIdempotencyKey(
   siteIdUuid: string,
   payload: ValidIngestPayload,
   serverNowMs: number = getServerNowMs()
 ): Promise<string> {
   const url = getFinalUrl(payload);
-  const timeComponent = getV2TimeComponentSafe(payload, serverNowMs);
+  const timeComponent = getCanonicalTimeComponentSafe(payload, serverNowMs);
   const input = `${siteIdUuid}:${eventName(payload)}:${url}:${sessionFingerprint(payload)}:${timeComponent}`;
   const data = new TextEncoder().encode(input);
   const hash = await globalThis.crypto.subtle.digest('SHA-256', data);
   const hex = Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-  return `v2:${hex}`;
+  return `canonical:${hex}`;
 }
 
 /**
@@ -163,10 +164,10 @@ export function computeIdempotencyExpiresAt(now: Date = new Date()): Date {
 }
 
 /**
- * Derive idempotency_version from stored key (v2:<hash> => 2, else 1). PR-2.
+ * Derive idempotency_version from stored key (canonical:<hash> => 2, else 1).
  */
 export function idempotencyVersionFromKey(idempotencyKey: string): 1 | 2 {
-  return idempotencyKey.startsWith('v2:') ? 2 : 1;
+  return idempotencyKey.startsWith('canonical:') || idempotencyKey.startsWith('v2:') ? 2 : 1;
 }
 
 export type TryInsertIdempotencyResult = {

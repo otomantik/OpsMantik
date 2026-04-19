@@ -7,19 +7,16 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
-
-export type ProjectionStage = 'V2' | 'V3' | 'V4' | 'V5';
+import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
 
 export interface CallFunnelProjection {
   call_id: string;
   site_id: string;
-  highest_stage: ProjectionStage;
+  highest_stage: PipelineStage | null;
   current_stage: string;
-  v2_at: string | null;
-  v3_at: string | null;
-  v4_at: string | null;
-  v5_at: string | null;
-  v2_source: 'REAL' | 'SYNTHETIC' | null;
+  contacted_at: string | null;
+  offered_at: string | null;
+  won_at: string | null;
   funnel_completeness: 'incomplete' | 'partial' | 'complete';
   export_status: string;
 }

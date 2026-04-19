@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
@@ -59,19 +59,15 @@ test('tracker call-event path no longer falls back to unsigned transport', () =>
   assert.ok(!src.includes('// Unsigned fallback'), 'unsigned fallback path must be removed');
 });
 
-test('V1 SSOT: tracker emits pageview pulses and Redis routing uses canonical site keys', () => {
+test('V1 SSOT: /api/track/pv endpoint and V1 tracker pipeline stay fully retired post-cutover', () => {
   const trackerSrc = readFileSync(TRACKER, 'utf8');
   const exportSrc = readFileSync(OCI_EXPORT_ROUTE, 'utf8');
-  const ackSrc = readFileSync(ACK_ROUTE, 'utf8');
-  const v1GearSrc = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'gears', 'V1PageViewGear.ts'), 'utf8');
-  const pulseRecoverySrc = readFileSync(join(ROOT, 'lib', 'oci', 'pulse-recovery-worker.ts'), 'utf8');
-  assert.ok(trackerSrc.includes('sendPageViewPulse();'), 'tracker must actively emit V1 pageview pulses');
-  assert.ok(trackerSrc.includes('fetch(CONFIG.pvUrl'), 'tracker must post V1 pageviews to track/pv');
-  assert.ok(v1GearSrc.includes('getPvQueueKey(siteId)'), 'V1 gear must write to canonical PV queue key');
-  assert.ok(exportSrc.includes('getPvQueueKeysForExport(siteUuid'), 'export must read canonical and legacy PV queue keys');
-  assert.ok(ackSrc.includes('getPvProcessingKeysForCleanup(siteUuid'), 'ack must clean canonical and legacy PV processing keys');
-  assert.ok(pulseRecoverySrc.includes('recoverStalePvProcessing'), 'pulse recovery must include V1 processing recovery');
-  assert.ok(pulseRecoverySrc.includes('redis.rpush(queueKey, pvId)'), 'stale V1 processing rows must be requeued durably');
+  const pvRoute = readFileSync(join(ROOT, 'app', 'api', 'track', 'pv', 'route.ts'), 'utf8');
+  assert.ok(!trackerSrc.includes('fetch(CONFIG.pvUrl'), 'tracker must not POST to the deprecated /api/track/pv endpoint');
+  assert.ok(!trackerSrc.includes('CONFIG.pvUrl'), 'tracker must not reference the removed pvUrl config');
+  assert.ok(pvRoute.includes('endpoint_removed') && pvRoute.includes('410'), '/api/track/pv must return 410 Gone with endpoint_removed marker');
+  assert.ok(!existsSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'gears', 'V1PageViewGear.ts')), 'legacy V1 gear implementation must stay deleted');
+  assert.ok(!exportSrc.includes('getPvQueueKeysForExport(siteUuid'), 'export must not reintroduce PV queue export after the cutover');
 });
 
 test('activity log allows cancel across sealed status family', () => {
@@ -102,8 +98,8 @@ test('oci workers re-check current call sendability before exporting or draining
   assert.ok(exportSrc.includes("dispatch_status: 'JUNK_ABORTED'"), 'blocked pending signals must be aborted before leak');
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(outboxSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'outbox worker must fail reversed outbox rows explicitly');
-  assert.ok(outboxSrc.includes("['MEETING_BOOKED', 'SEAL_PENDING', 'V3_ENGAGE', 'V4_INTENT']"), 'outbox duplicate prevention must query stored legacy signal types');
-  assert.ok(outboxSrc.includes('normalizeExistingFunnelSignalType'), 'outbox duplicate prevention must normalize legacy signal types before backfill');
+  assert.ok(outboxSrc.includes(".select('id, signal_type, optimization_stage')"), 'outbox duplicate prevention must inspect both legacy and canonical signal columns');
+  assert.ok(outboxSrc.includes('resolveSignalStageFromExisting({'), 'outbox duplicate prevention must normalize canonical optimization stages and legacy aliases together');
 });
 
 test('oci recovery routes and runner delegate to DB-owned batch kernels', () => {

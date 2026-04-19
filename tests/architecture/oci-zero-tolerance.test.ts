@@ -1,4 +1,4 @@
-import { calculateConversionValueMinor } from '../../lib/domain/mizan-mantik/value-calculator';
+import { resolveOptimizationValue } from '../../lib/oci/optimization-contract';
 
 
 /**
@@ -8,48 +8,47 @@ import { calculateConversionValueMinor } from '../../lib/domain/mizan-mantik/val
 async function runTests() {
     console.log('🚀 Starting OCI Zero Tolerance Safety Net Tests...');
 
-    // TEST 1: V1 Nabiz (PageView) must never be 0
-    const v1Value = calculateConversionValueMinor({ gear: 'V1_PAGEVIEW' });
-    if (v1Value === 1) {
-        console.log('✅ TEST 1 PASSED: V1_PAGEVIEW returns 1 minor unit (0.01 TL).');
+    // TEST 1: junk must stay tiny but non-zero
+    const junkValue = resolveOptimizationValue({ stage: 'junk', systemScore: 0 }).optimizationValue;
+    if (junkValue === 0.06) {
+        console.log('✅ TEST 1 PASSED: junk score 0 resolves to canonical 0.06.');
     } else {
-        console.error(`❌ TEST 1 FAILED: V1_PAGEVIEW returned ${v1Value}, expected 1.`);
+        console.error(`❌ TEST 1 FAILED: junk returned ${junkValue}, expected 0.06.`);
         process.exit(1);
     }
 
-    // TEST 2: V5 Seal Fallback (The 1000 TL Axiom)
-    const v5Fallback = calculateConversionValueMinor({ gear: 'V5_SEAL', saleAmountMinor: 0, minConversionValueCents: 100000 });
-    if (v5Fallback === 100000) {
-        console.log('✅ TEST 2 PASSED: V5_SEAL falls back to 100000 (1000 TL) when value is 0.');
+    // TEST 2: won max score = 120
+    const satisMax = resolveOptimizationValue({ stage: 'won', systemScore: 100 }).optimizationValue;
+    if (satisMax === 120) {
+        console.log('✅ TEST 2 PASSED: satis reaches canonical max value 120.');
     } else {
-        console.error(`❌ TEST 2 FAILED: V5_SEAL returned ${v5Fallback}, expected 100000.`);
+        console.error(`❌ TEST 2 FAILED: satis returned ${satisMax}, expected 120.`);
         process.exit(1);
     }
 
-    const v5Actual = calculateConversionValueMinor({ gear: 'V5_SEAL', saleAmountMinor: 500000, minConversionValueCents: 100000 });
-    if (v5Actual === 500000) {
-        console.log('✅ TEST 3 PASSED: V5_SEAL respects actual sale amount (5000 TL).');
+    const teklifMid = resolveOptimizationValue({ stage: 'offered', systemScore: 50 }).optimizationValue;
+    if (teklifMid === 45) {
+        console.log('✅ TEST 3 PASSED: teklif score 50 maps to 45.');
     } else {
-        console.error(`❌ TEST 3 FAILED: V5_SEAL returned ${v5Actual}, expected 500000.`);
+        console.error(`❌ TEST 3 FAILED: teklif returned ${teklifMid}, expected 45.`);
         process.exit(1);
     }
 
-    // TEST 4: Threshold Banding Simulation
+    // TEST 4: Stage resolution threshold simulation
     function simulateRouting(score: number): string {
-        if (score >= 90) return 'V5_SEAL';
-        if (score >= 70) return 'V4_INTENT';
-        if (score >= 50) return 'V3_ENGAGE';
-        if (score >= 10) return 'V2_PULSE';
-        return 'DROP';
+        if (score >= 100) return 'won';
+        if (score >= 80) return 'offered';
+        if (score > 0) return 'contacted';
+        return 'junk';
     }
 
     const scores = [
-        { s: 20, expected: 'V2_PULSE' },
-        { s: 40, expected: 'V2_PULSE' },
-        { s: 60, expected: 'V3_ENGAGE' },
-        { s: 80, expected: 'V4_INTENT' },
-        { s: 100, expected: 'V5_SEAL' },
-        { s: 5, expected: 'DROP' }
+        { s: 0, expected: 'junk' },
+        { s: 20, expected: 'contacted' },
+        { s: 40, expected: 'contacted' },
+        { s: 60, expected: 'contacted' },
+        { s: 80, expected: 'offered' },
+        { s: 100, expected: 'won' }
     ];
 
     for (const { s, expected } of scores) {

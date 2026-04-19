@@ -11,6 +11,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { appendAuditLog } from '@/lib/audit/audit-log';
 import { getChronologyFloorForConversation } from '@/lib/oci/chronology-guard';
 import { sanitizeErrorForClient } from '@/lib/security/sanitize-error';
+import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 
 export const runtime = 'nodejs';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'amount (number) or amount_cents (integer) is required and must be >= 0' }, { status: 400, headers: getBuildInfoHeaders() });
   }
 
-  const currency = (body.currency && typeof body.currency === 'string') ? body.currency : 'TRY';
+  const currency = normalizeCurrencyOrNeutral(typeof body.currency === 'string' ? body.currency : null);
   const externalRefRaw = body.external_ref != null ? String(body.external_ref) : null;
   const externalRef = externalRefRaw != null && externalRefRaw.trim() !== '' ? externalRefRaw.trim() : null;
   const customerHash = body.customer_hash != null ? String(body.customer_hash) : null;

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { MapPin, Phone, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, safeDecode, formatDisplayLocation } from '@/lib/utils';
 import type { HunterIntent } from '@/lib/types/hunter';
-import type { PipelineStage } from '@/lib/types/database';
+import type { SitePipelineStageConfig } from '@/lib/types/database';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 
 export function SimpleIntentCard({
@@ -15,7 +15,7 @@ export function SimpleIntentCard({
   onGearShift
 }: {
   intent: HunterIntent;
-  pipelineStages: PipelineStage[];
+  pipelineStages: SitePipelineStageConfig[];
   onGearShift: (callId: string, gearId: string, phoneHashString?: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
@@ -28,7 +28,7 @@ export function SimpleIntentCard({
   const keyword = safeDecode((intent.utm_term || '').trim()) || t('panel.searchTermUnknown');
   const locationDisplay = formatDisplayLocation(intent.city || null, intent.district || null, intent.location_source) || t('hunter.locationUnknown');
   
-  const handleActionClick = (stage: PipelineStage) => {
+  const handleActionClick = (stage: SitePipelineStageConfig) => {
     setActiveGear(stage.id);
   };
 

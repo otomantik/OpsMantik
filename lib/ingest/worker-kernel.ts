@@ -11,7 +11,7 @@ import { isCommonBotUA, isAllowedReferrer, hasValidClickId } from '@/lib/ingest/
 import { getFinalUrl } from '@/lib/types/ingest';
 import {
   computeIdempotencyKey,
-  computeIdempotencyKeyV2,
+  computeCanonicalIdempotencyKey,
   getServerNowMs,
   tryInsertIdempotencyKey,
 } from '@/lib/idempotency';
@@ -169,7 +169,7 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
         const idempotencyVersion = process.env.OPSMANTIK_IDEMPOTENCY_VERSION === '2' ? '2' : '1';
         const idempotencyKey =
           idempotencyVersion === '2'
-            ? await computeIdempotencyKeyV2(site.id, job, getServerNowMs())
+            ? await computeCanonicalIdempotencyKey(site.id, job, getServerNowMs())
             : await computeIdempotencyKey(site.id, job);
         
         const idemResult = await tryInsertIdempotencyKey(site.id, idempotencyKey, {

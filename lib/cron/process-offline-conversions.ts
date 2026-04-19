@@ -43,7 +43,7 @@ export function queueRowToConversionJob(row: QueueRow): ConversionJob {
         : new Date(row.conversion_time).toISOString();
 
   const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim() || null;
-  const orderId = buildOrderId('V5_SEAL', clickId, occurredAt, row.id, row.id, Number(row.value_cents) || 0);
+  const orderId = buildOrderId('won', clickId, occurredAt, row.id, row.id, Number(row.value_cents) || 0);
 
   const payload: Record<string, unknown> = { ...(row.payload ?? {}), order_id: orderId };
 

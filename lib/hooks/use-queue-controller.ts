@@ -11,6 +11,7 @@ import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/qualification-queue/parsers';
 import type { ActivityRow } from '@/components/dashboard/qualification-queue/activity-log-inline';
 import { logger } from '@/lib/logging/logger';
+import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 
@@ -67,7 +68,13 @@ export type QueueControllerActions = {
   setSealModalOpen: (open: boolean) => void;
   clearSealIntent: () => void;
 
-  onSealConfirm: (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => Promise<void>;
+  onSealConfirm: (
+    saleAmount: number | null,
+    currency: string,
+    leadScore: number,
+    callerPhone?: string,
+    helperFormPayload?: HelperFormPayload | null
+  ) => Promise<void>;
   onSealJunk: () => Promise<void>;
   onSealSuccess: () => void;
   onSealJunkSuccess: () => void;
@@ -515,13 +522,21 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
   }, []);
 
   const onSealConfirm = useCallback(
-    async (saleAmount: number | null, currency: string, leadScore: number, callerPhone?: string) => {
+    async (
+      saleAmount: number | null,
+      currency: string,
+      leadScore: number,
+      callerPhone?: string,
+      helperFormPayload?: HelperFormPayload | null
+    ) => {
       if (!intentForSeal) return;
       const finalScore = leadScore >= 100 || leadScore > 5 ? 100 : leadScore * 20; // Ensure max is 100
       const body: Record<string, unknown> = {
         sale_amount: saleAmount ?? null,
         currency,
         lead_score: finalScore,
+        action_type: finalScore >= 100 ? 'won' : finalScore >= 80 ? 'offered' : 'contacted',
+        helper_form_payload: helperFormPayload ?? null,
         version: 0, // Bypass optimistic locking to allow updates from UI
       };
       if (callerPhone?.trim()) {

@@ -2,11 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
-import { PanelOnboarding } from '@/components/dashboard/panel-onboarding';
 import { PanelFeed } from '../../components/dashboard/panel-feed';
 import { logError } from '@/lib/logging/logger';
-import { validateSiteAccess } from '@/lib/security/validate-site-access';
-import { hasCapability } from '@/lib/auth/rbac';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
@@ -61,54 +58,13 @@ export default async function PanelRoute() {
     );
   }
 
-  // Get site config
   const { data: site } = await adminClient
     .from('sites')
-    .select('pipeline_stages, oci_config, default_aov, name, locale, currency, timezone')
+    .select('name, locale, currency, timezone')
     .eq('id', targetSiteId)
     .single();
 
   const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
-
-  const ociConfig = (site?.oci_config as Record<string, unknown>) || {};
-  const baseValue = ociConfig.base_deal_value_try || site?.default_aov;
-  const pipelineStages = site?.pipeline_stages as import('@/lib/types/database').PipelineStage[] | null;
-  const access = await validateSiteAccess(targetSiteId, user.id, supabase);
-  const canWriteSiteConfig =
-    Boolean(access.allowed && access.role && hasCapability(access.role, 'site:write')) ||
-    access.role === 'operator';
-
-  const isUniversalConfigured = pipelineStages && pipelineStages.some(s => s.id === 'g_4' || s.id === 'g_3');
-
-  if (!baseValue || !isUniversalConfigured) {
-    if (!canWriteSiteConfig) {
-      return (
-        <I18nProvider
-          locale={resolvedLocale}
-          siteConfig={{ currency: site?.currency ?? undefined, timezone: site?.timezone ?? undefined }}
-        >
-          <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-4">
-            <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center space-y-4">
-              <h1 className="text-2xl font-black mb-2">{translate(resolvedLocale, 'panel.setupPendingTitle')}</h1>
-              <p className="text-sm text-slate-500 font-medium">
-                {translate(resolvedLocale, 'panel.setupPendingDescription')}
-              </p>
-            </div>
-          </div>
-        </I18nProvider>
-      );
-    }
-    return (
-      <I18nProvider
-        locale={resolvedLocale}
-        siteConfig={{ currency: site?.currency ?? undefined, timezone: site?.timezone ?? undefined }}
-      >
-        <div className="min-h-screen bg-slate-50">
-          <PanelOnboarding siteId={targetSiteId} />
-        </div>
-      </I18nProvider>
-    );
-  }
 
   // Fetch via RPC
   const { fromIso, toIso } = getTodayTrtUtcRange();

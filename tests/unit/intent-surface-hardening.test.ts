@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSignalManifest } from '@/lib/types/signal-manifest';
 
@@ -31,7 +31,9 @@ test('click-origin ingestion stays inside canonical call ontology', () => {
 
 test('calc-brain-score keeps non-fast-track calls in intent state', () => {
   const src = readFileSync(CALC_BRAIN_SCORE, 'utf8');
-  assert.ok(src.includes("const finalStatus = isFastTrack ? 'qualified' : 'intent'"), 'worker must downgrade to intent, not pending');
+  assert.ok(src.includes("const finalStatus ="), 'worker must derive final status explicitly');
+  assert.ok(src.includes(": 'intent';"), 'worker must still fall back to intent for non-terminal rows');
+  assert.ok(!src.includes("'qualified' : 'intent'"), 'worker must not use qualified as a parallel stage ladder');
   assert.ok(!src.includes(": 'pending'"), 'worker must not write pending status');
   assert.ok(
     src.includes('shadow_session_quality_v1_1') && src.includes('recordScoringLineageParityTelemetry'),
@@ -114,13 +116,11 @@ test('junk mutations wait for server confirmation and OCI panel exposes honest r
 });
 
 test('panel onboarding respects site write capability and avoids operator deadlock', () => {
-  const configSrc = readFileSync(SITE_CONFIG_ROUTE, 'utf8');
   const panelSrc = readFileSync(PANEL_PAGE, 'utf8');
-  assert.ok(configSrc.includes("hasCapability(access.role, 'site:write')"), 'site config route must enforce site:write capability');
-  assert.ok(configSrc.includes("access.role === 'operator'"), 'site config route must allow operator for first-time setup');
-  assert.ok(panelSrc.includes("hasCapability(access.role, 'site:write')"), 'panel onboarding gate must compute site:write permission');
-  assert.ok(panelSrc.includes("access.role === 'operator'"), 'panel onboarding gate must allow operator setup path');
-  assert.ok(panelSrc.includes("translate(resolvedLocale, 'panel.setupPendingTitle')"), 'panel must show a translated setup-waiting state for non-writers');
+  assert.ok(!existsSync(SITE_CONFIG_ROUTE), 'site config route must be deleted after universal config cutover');
+  assert.ok(panelSrc.includes("rpc('get_recent_intents_lite_v1'"), 'panel must render the live feed directly');
+  assert.ok(!panelSrc.includes('panel.setupPendingTitle'), 'panel must not block operators behind setup-pending copy');
+  assert.ok(!panelSrc.includes('hasCapability('), 'panel must not depend on site-write gating for first render');
 });
 
 test('panel feed query uses existing calls columns (no stale schema fields)', () => {

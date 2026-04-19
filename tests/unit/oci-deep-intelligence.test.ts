@@ -1,42 +1,28 @@
 /**
- * OCI Deep Intelligence — Unit tests for MODULE 3 (Value Floor) and MODULE 4 (Half-Life)
- * Plan: Identity Stitcher, Self-Healing, Fast-Track, Value Floor, Half-Life Shadow
+ * OCI Deep Intelligence — Unit tests for canonical signal recovery and universal value helpers.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyHalfLifeDecay } from '@/lib/domain/mizan-mantik/time-decay';
-import { getValueFloorCents } from '@/lib/domain/mizan-mantik/value-config';
+import { resolveOptimizationValue } from '@/lib/oci/optimization-contract';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-test('MODULE 4: applyHalfLifeDecay formula — Value = Base * 0.5^(days/7)', () => {
-  const base = 1000;
-  assert.strictEqual(applyHalfLifeDecay(base, 0), 1000, 'days=0 → no decay');
-  assert.strictEqual(applyHalfLifeDecay(base, 7), 500, 'days=7 (1 half-life) → 50%');
-  assert.strictEqual(applyHalfLifeDecay(base, 14), 250, 'days=14 (2 half-lives) → 25%');
-  assert.ok(applyHalfLifeDecay(100, 3) > 70 && applyHalfLifeDecay(100, 3) < 100, 'days=3 → partial decay');
+test('MODULE 4: universal optimization values replace half-life shadow math', () => {
+  assert.deepEqual(resolveOptimizationValue({ stage: 'contacted', systemScore: 60 }), {
+    stageBase: 10,
+    systemScore: 60,
+    qualityFactor: 0.96,
+    optimizationValue: 9.6,
+  });
+  assert.deepEqual(resolveOptimizationValue({ stage: 'won', systemScore: 100 }), {
+    stageBase: 100,
+    systemScore: 100,
+    qualityFactor: 1.2,
+    optimizationValue: 120,
+  });
 });
 
-test('MODULE 4: applyHalfLifeDecay guards invalid input', () => {
-  assert.strictEqual(applyHalfLifeDecay(0, 5), 0, 'base 0 → 0');
-  assert.strictEqual(applyHalfLifeDecay(-10, 5), 0, 'negative base → 0');
-  assert.strictEqual(applyHalfLifeDecay(100, -1), 100, 'negative days → no decay');
-});
-
-test('MODULE 3: getValueFloorCents — signal floor ignores site-wide seal fallback', () => {
-  const cfg = {
-    siteId: 'test',
-    defaultAov: 1000,
-    intentWeights: { pending: 0.02, qualified: 0.2, proposal: 0.3, sealed: 1.0 },
-    minConversionValueCents: 50,
-  };
-  const floor = getValueFloorCents(cfg);
-  assert.strictEqual(floor, 500, 'signal floor follows ratio floor');
-  const cfg2 = { ...cfg, minConversionValueCents: 100000 };
-  assert.strictEqual(getValueFloorCents(cfg2), 500, 'site-wide 1000 TRY seal fallback must not flatten signals');
-});
-
-test('MODULE 2: pulse-recovery backoff 2h → 6h → 24h', () => {
+test('MODULE 2: pulse-recovery backoff 2h → 6h → 24h without V2 backfill', () => {
   const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'pulse-recovery-worker.ts'), 'utf-8');
   assert.ok(src.includes('2'), 'has 2h');
   assert.ok(src.includes('6'), 'has 6h');
@@ -44,9 +30,9 @@ test('MODULE 2: pulse-recovery backoff 2h → 6h → 24h', () => {
   assert.ok(src.includes('BACKOFF_HOURS'), 'exponential backoff');
   assert.ok(src.includes('recovery_attempt_count'), 'recovery attempt count');
   assert.ok(src.includes('last_recovery_attempt_at'), 'last recovery timestamp');
-  assert.ok(src.includes('recoverMissingV2Signals'), 'backfills missing V2 signals');
-  assert.ok(src.includes("signal_type', 'INTENT_CAPTURED'"), 'targets missing INTENT_CAPTURED rows');
-  assert.ok(src.includes("evaluateAndRouteSignal('V2_PULSE'"), 're-emits V2 pulse for orphan intents');
+  assert.ok(!src.includes('recoverMissingV2Signals'), 'must not keep legacy V2 backfill logic');
+  assert.ok(!src.includes("signal_type', 'INTENT_CAPTURED'"), 'must not scan for legacy INTENT_CAPTURED rows');
+  assert.ok(!src.includes("evaluateAndRouteSignal('V2_PULSE'"), 'must not re-emit removed V2 pulses');
 });
 
 test('MODULE 1: identity-stitcher discovery_confidence and PHONE_STITCH safeguards', () => {
@@ -60,7 +46,7 @@ test('MODULE 1: identity-stitcher discovery_confidence and PHONE_STITCH safeguar
 
 test('marketing-signals insert persists recovered click ids', () => {
   const src = readFileSync(
-    join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'gears', 'marketing-signals-insert.ts'),
+    join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'insert-marketing-signal.ts'),
     'utf-8'
   );
   assert.ok(src.includes('gclid: gclid ?? null'), 'persists gclid');

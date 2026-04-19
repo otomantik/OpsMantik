@@ -79,7 +79,7 @@ export async function GET(
     adminClient
       .from('call_funnel_projection')
       .select(
-        'call_id, highest_stage, current_stage, export_status, funnel_completeness, v2_at, v5_at, updated_at'
+        'call_id, highest_stage, current_stage, export_status, funnel_completeness, contacted_at, offered_at, won_at, updated_at'
       )
       .eq('site_id', siteId)
       .eq('call_id', callId)

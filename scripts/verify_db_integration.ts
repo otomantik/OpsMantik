@@ -19,7 +19,8 @@ async function verifySignalGeneration() {
   
   const { adminClient } = await import('../lib/supabase/admin');
   const { computeLcv } = await import('../lib/oci/lcv-engine');
-  const { resolveConversionValueMinor } = await import('../lib/domain/mizan-mantik');
+  const { buildOptimizationSnapshot } = await import('../lib/oci/optimization-contract');
+  const { OPSMANTIK_CONVERSION_NAMES } = await import('../lib/domain/mizan-mantik/conversion-names');
   
   const callId = '36713837-143f-4e19-9524-811c05d7b5bf'; // Example existing call
   const siteId = '28cf0aefaa074f5bb29e818a9d53b488';
@@ -38,9 +39,9 @@ async function verifySignalGeneration() {
     return;
   }
 
-  console.log('Computing LCV (Stage V3)...');
+  console.log('Computing LCV (Stage contacted)...');
   const lcv = computeLcv({
-    stage: 'V3',
+    stage: 'contacted',
     baseAov: 3000,
     city: call.city,
     district: call.district,
@@ -49,33 +50,34 @@ async function verifySignalGeneration() {
     whatsappClicks: call.whatsapp_clicks,
     totalDurationSec: call.total_duration_sec
   });
-  const canonicalValue = resolveConversionValueMinor({
-    gear: 'V3_ENGAGE',
-    currency: 'TRY',
-    siteAovMinor: 300000,
-    decayOverride: 1,
-    applySignalFloor: true,
-    minimumValueMinor: 1,
+  const canonicalValue = buildOptimizationSnapshot({
+    stage: 'contacted',
+    systemScore: lcv.breakdown.systemScore,
   });
 
-  const conversionName = 'OpsMantik_V3_Nitelikli_Gorusme';
+  const conversionName = OPSMANTIK_CONVERSION_NAMES.contacted;
 
   console.log('Writing to marketing_signals...');
   const { data: signal, error } = await adminClient.from('marketing_signals').insert({
     site_id: siteId,
     call_id: callId,
-    signal_type: 'MEETING_BOOKED',
+    signal_type: 'contacted',
     google_conversion_name: conversionName,
     google_conversion_time: confirmedAtIso,
-    conversion_value: canonicalValue.valueMinor / 100,
-    expected_value_cents: canonicalValue.valueMinor,
+    conversion_value: canonicalValue.optimizationValue,
+    expected_value_cents: Math.round(canonicalValue.optimizationValue * 100),
+    optimization_stage: canonicalValue.optimizationStage,
+    optimization_stage_base: canonicalValue.stageBase,
+    system_score: canonicalValue.systemScore,
+    quality_factor: canonicalValue.qualityFactor,
+    optimization_value: canonicalValue.optimizationValue,
     gclid: call.gclid || 'test_gclid',
     dispatch_status: 'PENDING',
     occurred_at: confirmedAtIso,
     adjustment_sequence: 0,
     current_hash: 'test_hash_verified',
     causal_dna: {
-      lcv_stage: 'V3',
+      lcv_stage: 'contacted',
       lcv_quality_multiplier: lcv.qualityMultiplier,
       source: 'VERIFICATION_SCRIPT'
     }

@@ -2,7 +2,7 @@
  * GET/POST /api/cron/cleanup — The Cleansing Protocol: Daily storage hygiene
  *
  * Order of operations (production-grade):
- * 1) Zombie recovery (2h): recover_stuck_offline_conversion_jobs, recover_stuck_ingest_fallback
+ * 1) Zombie recovery (2h): recover_stuck_offline_conversion_jobs (fallback buffer retired 20260419180000)
  * 2) Archive FAILED conversions to tombstones (30d)
  * 3) Delete terminal OCI queue rows (90d)
  * 4) Cleanup SENT marketing_signals (60d)
@@ -117,7 +117,7 @@ async function runCleanup(req: NextRequest) {
       {
         ok: true,
         dry_run: true,
-        zombie_recovery: { note: 'Would run recover_stuck (offline_queue + ingest_fallback)' },
+        zombie_recovery: { note: 'Would run recover_stuck_offline_conversion_jobs' },
         archive_failed: { would_archive: Math.min(archiveRes.count ?? 0, limit), days: daysArchiveFailed },
         oci_queue: { would_delete: Math.min(queueRes.count ?? 0, limit), days_to_keep: daysToKeep },
         marketing_signals: { would_delete: Math.min(signalsRes.count ?? 0, limit), days: daysSignals },
@@ -132,7 +132,6 @@ async function runCleanup(req: NextRequest) {
   }
 
   let zombiesQueue = 0;
-  let zombiesFallback = 0;
   let archivedFailed = 0;
   let ociDeleted = 0;
   let signalsDeleted = 0;
@@ -141,15 +140,15 @@ async function runCleanup(req: NextRequest) {
   let merkleHeartbeat: Record<string, unknown> | undefined;
 
   try {
-    // Phase 1: Zombie recovery (2h stuck PROCESSING)
-    const [zombieQueueRes, zombieFallbackRes] = await Promise.all([
-      adminClient.rpc('recover_stuck_offline_conversion_jobs', { p_min_age_minutes: zombieMinutes }),
-      adminClient.rpc('recover_stuck_ingest_fallback', { p_min_age_minutes: zombieMinutes }),
-    ]);
+    // Phase 1: Zombie recovery (2h stuck PROCESSING).
+    // Fallback buffer retired 20260419180000; only the offline conversion queue
+    // has a zombie-recovery path now.
+    const zombieQueueRes = await adminClient.rpc('recover_stuck_offline_conversion_jobs', {
+      p_min_age_minutes: zombieMinutes,
+    });
     zombiesQueue = typeof zombieQueueRes.data === 'number' ? zombieQueueRes.data : 0;
-    zombiesFallback = typeof zombieFallbackRes.data === 'number' ? zombieFallbackRes.data : 0;
-    if (zombiesQueue > 0 || zombiesFallback > 0) {
-      logInfo('CLEANUP_ZOMBIES_PURGED', { offline_queue: zombiesQueue, ingest_fallback: zombiesFallback });
+    if (zombiesQueue > 0) {
+      logInfo('CLEANUP_ZOMBIES_PURGED', { offline_queue: zombiesQueue });
     }
 
     // Phase 2: Archive FAILED conversions to tombstones (30d)
@@ -248,7 +247,6 @@ async function runCleanup(req: NextRequest) {
 
   logInfo('CLEANUP_CRON_COMPLETE', {
     zombiesQueue,
-    zombiesFallback,
     archivedFailed,
     ociDeleted,
     signalsDeleted,
@@ -267,7 +265,7 @@ async function runCleanup(req: NextRequest) {
     {
       ok: true,
       dry_run: false,
-      zombie_recovery: { offline_queue: zombiesQueue, ingest_fallback: zombiesFallback },
+      zombie_recovery: { offline_queue: zombiesQueue },
       archive_failed: { archived: archivedFailed, days: daysArchiveFailed },
       oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit },
       marketing_signals: { deleted: signalsDeleted, days: daysSignals, limit },

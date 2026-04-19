@@ -1,5 +1,5 @@
 import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
-import type { OpsGear } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
 
 export type OciTimeConfidence =
   | 'observed'
@@ -15,28 +15,27 @@ export type OciOccurredAtSource =
   | 'fallback_confirmed'
   | 'legacy_migrated';
 
-export function getOccurredAtSourceForGear(gear: OpsGear): OciOccurredAtSource {
-  switch (gear) {
-    case 'V2_PULSE':
-      return 'intent';
-    case 'V3_ENGAGE':
+export function getOccurredAtSourceForStage(stage: PipelineStage): OciOccurredAtSource {
+  switch (stage) {
+    case 'contacted':
       return 'qualified';
-    case 'V4_INTENT':
+    case 'offered':
       return 'proposal';
-    case 'V5_SEAL':
+    case 'won':
       return 'sale';
+    case 'junk':
     default:
       return 'legacy_migrated';
   }
 }
 
-export function resolveSignalOccurredAt(signalDate: Date, gear: OpsGear) {
+export function resolveSignalOccurredAt(signalDate: Date, stage: PipelineStage) {
   const occurredAt = signalDate.toISOString();
   return {
     occurredAt,
     sourceTimestamp: occurredAt,
     timeConfidence: 'observed' as const satisfies OciTimeConfidence,
-    occurredAtSource: getOccurredAtSourceForGear(gear),
+    occurredAtSource: getOccurredAtSourceForStage(stage),
   };
 }
 

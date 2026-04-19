@@ -16,6 +16,7 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 import { adminClient } from '@/lib/supabase/admin';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
+import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 
 export const runtime = 'nodejs';
 
@@ -62,7 +63,7 @@ async function runSweep() {
         siteId: call.site_id,
         confirmedAt: call.confirmed_at!,
         saleAmount: call.sale_amount ?? null,
-        currency: (call.currency?.trim() || 'TRY') as string,
+        currency: normalizeCurrencyOrNeutral(call.currency),
         leadScore: call.lead_score ?? null,
       });
 

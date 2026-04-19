@@ -91,7 +91,6 @@ export function useIntentQualification(
 
           const body = {
             lead_score: leadScore,
-            currency: 'TRY',
             version: 0, // optimistic locking: DB uses current version if 0
           };
 
@@ -113,8 +112,8 @@ export function useIntentQualification(
           const actionType = leadScore === 100
             ? 'sealed'
             : leadScore === 80
-              ? t('hunter.teklif').toLowerCase()
-              : t('hunter.gorusuldu').toLowerCase();
+              ? t('hunter.offered').toLowerCase()
+              : t('hunter.contacted').toLowerCase();
           const undoToastId = toast.success(
             leadScore === 100 ? t('toast.success.done') : actionType.toUpperCase(),
             {

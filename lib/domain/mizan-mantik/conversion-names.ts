@@ -1,16 +1,27 @@
+import type { OptimizationStage } from '@/lib/oci/optimization-contract';
+
 /**
- * OpsMantik Canonical Conversion Names
+ * Google Ads conversion action names, keyed by OptimizationStage.
  *
- * Exact names sent to Google Ads. Single source of truth.
- * V1_Nabiz = PageView observation; V2_Ilk_Temas = Pulse (call/form); etc.
+ * IMPORTANT — The VALUES below are the literal Google Ads conversion action
+ * names registered in each customer's Google Ads account. The canonical
+ * naming scheme is English-only:
+ *
+ *   junk       → OpsMantik_Junk_Exclusion
+ *   contacted  → OpsMantik_Contacted
+ *   offered    → OpsMantik_Offered
+ *   won        → OpsMantik_Won
+ *
+ * Operational prerequisite: every active Google Ads account MUST have these
+ * four conversion actions created (with the same names, matching currency,
+ * "Enter a value for each conversion" setting, attribution model, and
+ * click-through / engaged-view window) BEFORE this build is deployed.
+ * Mismatches surface as `400 CONVERSION_ACTION_NOT_FOUND` in the OCI
+ * upload response and are idempotent-safely retried by the outbox worker.
  */
-
-import type { OpsGear } from './types';
-
-export const OPSMANTIK_CONVERSION_NAMES: Record<OpsGear, string> = {
-  V1_PAGEVIEW: 'OpsMantik_V1_Nabiz',
-  V2_PULSE: 'OpsMantik_V2_Ilk_Temas',
-  V3_ENGAGE: 'OpsMantik_V3_Nitelikli_Gorusme',
-  V4_INTENT: 'OpsMantik_V4_Sicak_Teklif',
-  V5_SEAL: 'OpsMantik_V5_DEMIR_MUHUR',
+export const OPSMANTIK_CONVERSION_NAMES: Record<OptimizationStage, string> = {
+  junk: 'OpsMantik_Junk_Exclusion',
+  contacted: 'OpsMantik_Contacted',
+  offered: 'OpsMantik_Offered',
+  won: 'OpsMantik_Won',
 };

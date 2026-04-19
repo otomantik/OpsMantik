@@ -11,17 +11,21 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
-import { normalizeToE164 } from '@/lib/dic/e164';
-import { hashPhoneForEC } from '@/lib/dic/identity-hash';
+import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
 import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { getChronologyFloorForCall } from '@/lib/oci/chronology-guard';
 import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
-import { parseExportConfig } from '@/lib/oci/site-export-config';
-import { parseOciConfig } from '@/lib/oci/oci-config';
-import { resolveConversionValueMinor } from '@/lib/domain/mizan-mantik';
-import { majorToMinor, minorToMajor } from '@/lib/i18n/currency';
+import {
+  buildOptimizationSnapshot,
+  resolveOptimizationStage,
+  sanitizeHelperFormPayload,
+} from '@/lib/oci/optimization-contract';
+import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
+import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
+import { NEUTRAL_CURRENCY, normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
+import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
 
 export const dynamic = 'force-dynamic';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
@@ -70,7 +74,7 @@ export async function POST(
       const probePayload = {
         callId,
         saleAmount: body.saleAmount,
-        currency: body.currency ?? 'TRY',
+        currency: body.currency ?? NEUTRAL_CURRENCY,
         merchantNotes: body.merchantNotes,
         timestamp: body.timestamp,
       };
@@ -84,7 +88,7 @@ export async function POST(
         return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
       }
       const saleAmountProbe = body.saleAmount != null ? Number(body.saleAmount) : null;
-      const currencyProbe = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
+      const currencyProbe = normalizeCurrencyOrNeutral(typeof body.currency === 'string' ? body.currency : null);
       const merchantNotes = typeof body.merchantNotes === 'string' ? body.merchantNotes.trim().slice(0, 500) : '';
       if (saleAmountProbe != null && (Number.isNaN(saleAmountProbe) || saleAmountProbe < 0)) {
         return NextResponse.json({ error: 'saleAmount must be non-negative' }, { status: 400 });
@@ -134,10 +138,54 @@ export async function POST(
       if (!updated) {
         return NextResponse.json({ error: 'Call not updated' }, { status: 409 });
       }
+      // Phase 4 f4-notify-outbox: fan out the outbox trigger immediately so
+      // the QStash worker picks up the new IntentSealed row within seconds
+      // instead of waiting for the cron poll. Best-effort (cron is safety net).
+      void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe' });
+      const optimizationSnapshot = buildOptimizationSnapshot({
+        stage: 'won',
+        systemScore: 100,
+        actualRevenue: saleAmountProbe,
+      });
+      await adminClient
+        .from('calls')
+        .update({
+          optimization_stage: optimizationSnapshot.optimizationStage,
+          system_score: optimizationSnapshot.systemScore,
+          quality_factor: optimizationSnapshot.qualityFactor,
+          optimization_value: optimizationSnapshot.optimizationValue,
+          actual_revenue: optimizationSnapshot.actualRevenue,
+          helper_form_payload: optimizationSnapshot.helperFormPayload,
+          feature_snapshot: {
+            source: 'probe_seal_route',
+          },
+          outcome_timestamp: confirmedAtIso,
+          model_version: optimizationSnapshot.modelVersion,
+        })
+        .eq('id', callId)
+        .eq('site_id', call.site_id);
+      const enqueueResult = await enqueueSealConversion({
+        callId,
+        siteId: call.site_id,
+        confirmedAt: confirmedAtIso,
+        saleOccurredAt: occurredAtMeta.occurredAt,
+        saleAmount: saleAmountProbe,
+        currency: currencyProbe,
+        leadScore: optimizationSnapshot.systemScore,
+        entryReason: merchantNotes || null,
+      });
+      if (!enqueueResult.enqueued && enqueueResult.reason !== 'duplicate') {
+        logWarn('probe_seal_enqueue_skipped', {
+          call_id: callId,
+          reason: enqueueResult.reason ?? null,
+          error: enqueueResult.error ?? null,
+        });
+      }
       const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
       return NextResponse.json({
         success: true,
         approval_required: false,
+        queued: enqueueResult.enqueued,
         call: {
           id: (callObj as { id?: string }).id,
           sale_amount: (callObj as { sale_amount?: number | null }).sale_amount ?? saleAmountProbe,
@@ -152,9 +200,19 @@ export async function POST(
 
     // ——— Bearer (dashboard) path ———
     const saleAmount = body.sale_amount != null ? Number(body.sale_amount) : null;
-    const currency = typeof body.currency === 'string' ? body.currency.trim() || 'TRY' : 'TRY';
+    const bodyCurrencyRaw = typeof body.currency === 'string' && body.currency.trim() ? body.currency : null;
     const saleOccurredAtRaw = typeof body.sale_occurred_at === 'string' ? body.sale_occurred_at.trim() : '';
     const entryReason = typeof body.entry_reason === 'string' ? body.entry_reason.trim().slice(0, 500) : '';
+    const helperFormPayload = sanitizeHelperFormPayload(
+      body.helper_form_payload && typeof body.helper_form_payload === 'object'
+        ? body.helper_form_payload
+        : null
+    );
+    const explicitSystemScore =
+      body.system_score != null && Number.isFinite(Number(body.system_score))
+        ? Number(body.system_score)
+        : null;
+    const actionType = typeof body.action_type === 'string' ? body.action_type.trim().toLowerCase() : null;
     // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
     const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
     const versionRaw = body.version != null ? Number(body.version) : null;
@@ -250,12 +308,18 @@ export async function POST(
       return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
     }
 
-    // Determine lifecycle state for OCI pipeline
-    // lead_score 100 = V5 SEAL (Aggressive)
-    // lead_score >= 10 = V4/V3 INTENT (Standard)
-    // lead_score < 10 or null = ignored by OCI worker
-    // NOTE: Use >= 100 (not ===) to be resilient to float precision edge cases (BUG-2 fix)
-    const ociStatus = leadScore != null && leadScore >= 100 ? 'sealed' : leadScore != null && leadScore >= 10 ? 'intent' : 'skipped';
+    // Resolve currency: request body wins; otherwise read site.currency; otherwise neutral USD.
+    let currency: string;
+    if (bodyCurrencyRaw) {
+      currency = normalizeCurrencyOrNeutral(bodyCurrencyRaw);
+    } else {
+      const { data: siteRow } = await adminClient
+        .from('sites')
+        .select('currency')
+        .eq('id', siteId)
+        .maybeSingle();
+      currency = normalizeCurrencyOrNeutral((siteRow as { currency?: string | null } | null)?.currency ?? null);
+    }
 
     const confirmedAtIso = new Date().toISOString();
     const occurredAtMeta = resolveSealOccurredAt({
@@ -274,9 +338,26 @@ export async function POST(
         { status: 409 }
       );
     }
+    const optimizationStage = resolveOptimizationStage({
+      actionType,
+      leadScore,
+    });
     const backdatedMs = Math.max(0, new Date(confirmedAtIso).getTime() - new Date(occurredAtMeta.occurredAt).getTime());
     const approvalRequired = saleOccurredAtRaw.length > 0 && backdatedMs > BACKDATE_APPROVAL_MS;
-    const effectiveOciStatus = approvalRequired ? 'pending_approval' : ociStatus;
+    const isWonStage = optimizationStage === 'won';
+    const baseOciStatus =
+      isWonStage
+        ? 'sealed'
+        : optimizationStage === 'junk'
+          ? 'skipped'
+          : 'intent';
+    const effectiveOciStatus = approvalRequired ? 'pending_approval' : baseOciStatus;
+    const optimizationSnapshot = buildOptimizationSnapshot({
+      stage: optimizationStage,
+      systemScore: explicitSystemScore ?? leadScore ?? 0,
+      actualRevenue: isWonStage ? saleAmount : null,
+      helperFormPayload,
+    });
     const updatePayload: Record<string, unknown> = {
       sale_amount: saleAmount,
       currency,
@@ -297,9 +378,10 @@ export async function POST(
     };
     if (entryReason) updatePayload.sale_entry_reason = entryReason;
 
-    // Operator-verified caller phone (optional): trim, max 64; empty after trim = don't send
-    const callerPhoneRaw = typeof body.caller_phone === 'string' ? body.caller_phone.trim().slice(0, 64) : '';
-    if (callerPhoneRaw) {
+    // Operator-verified caller phone (optional): goes through the DIC SSOT
+    // (buildPhoneIdentity) so seal / stage / export all produce byte-identical hashes.
+    const callerPhoneInput = typeof body.caller_phone === 'string' ? body.caller_phone : '';
+    if (callerPhoneInput.trim()) {
       try {
         const { data: siteRow } = await adminClient
           .from('sites')
@@ -310,22 +392,26 @@ export async function POST(
         if (!siteRow?.default_country_iso) {
           logInfo('CALLER_PHONE_COUNTRY_ISO_FALLBACK', { call_id: callId, site_id: siteId });
         }
-        const salt = process.env.OCI_PHONE_HASH_SALT ?? '';
+
         const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-        if (isProd && !salt) {
+        if (isProd && !process.env.OCI_PHONE_HASH_SALT) {
           logError('OCI_PHONE_HASH_SALT_EMPTY_PRODUCTION', { call_id: callId });
           Sentry.captureMessage('OCI_PHONE_HASH_SALT_EMPTY_PRODUCTION', 'error');
         }
-        const normalized = normalizeToE164(callerPhoneRaw, countryIso);
-        if (!normalized) {
-          logWarn('CALLER_PHONE_NORMALIZATION_FAILED', { call_id: callId, raw: callerPhoneRaw });
-          updatePayload.caller_phone_raw = callerPhoneRaw;
+
+        const identity = buildPhoneIdentity({ rawPhone: callerPhoneInput, countryIso });
+        if (identity.reason === 'normalization_failed') {
+          logWarn('CALLER_PHONE_NORMALIZATION_FAILED', { call_id: callId, raw: identity.raw });
+          updatePayload.caller_phone_raw = identity.raw;
           // e164 and hash stay null; seal continues (fail-soft)
-        } else {
-          const hash = hashPhoneForEC(normalized, salt);
-          updatePayload.caller_phone_raw = callerPhoneRaw;
-          updatePayload.caller_phone_e164 = normalized;
-          updatePayload.caller_phone_hash_sha256 = hash;
+        } else if (identity.reason === 'hash_failed') {
+          logWarn('CALLER_PHONE_HASH_FAILED', { call_id: callId });
+          updatePayload.caller_phone_raw = identity.raw;
+          if (identity.e164) updatePayload.caller_phone_e164 = identity.e164;
+        } else if (identity.reason === 'ok' && identity.e164 && identity.hash) {
+          updatePayload.caller_phone_raw = identity.raw;
+          updatePayload.caller_phone_e164 = identity.e164;
+          updatePayload.caller_phone_hash_sha256 = identity.hash;
           updatePayload.phone_source_type = 'operator_verified';
         }
       } catch (e) {
@@ -333,7 +419,7 @@ export async function POST(
           call_id: callId,
           error: String((e as Error)?.message ?? e),
         });
-        updatePayload.caller_phone_raw = callerPhoneRaw;
+        updatePayload.caller_phone_raw = callerPhoneInput.trim().slice(0, 64);
       }
     }
 
@@ -376,144 +462,111 @@ export async function POST(
       );
     }
 
-    // ── V3/V4 Signal: canonical value + LCV insights ──
-    // V5 (sealed) goes to offline_conversion_queue via enqueueSealConversion.
-    // V3/V4 (Görüşüldü/Teklif) go to marketing_signals with canonical value math.
-    if (leadScore != null && leadScore >= 10 && leadScore < 100) {
+    // Phase 4 f4-notify-outbox: real-time trigger for the outbox processor.
+    // Cron at /api/cron/oci/process-outbox-events is the safety net.
+    void notifyOutboxPending({ callId, siteId, source: 'seal_bearer' });
+
+    try {
+      await adminClient
+        .from('calls')
+        .update({
+          optimization_stage: optimizationSnapshot.optimizationStage,
+          system_score: optimizationSnapshot.systemScore,
+          quality_factor: optimizationSnapshot.qualityFactor,
+          optimization_value: optimizationSnapshot.optimizationValue,
+          actual_revenue: optimizationSnapshot.actualRevenue,
+          helper_form_payload: optimizationSnapshot.helperFormPayload,
+          feature_snapshot: {
+            source: 'seal_route',
+            action_type: actionType,
+          },
+          outcome_timestamp: confirmedAtIso,
+          model_version: optimizationSnapshot.modelVersion,
+        })
+        .eq('id', callId)
+        .eq('site_id', siteId);
+    } catch (snapshotErr) {
+      logWarn('seal_snapshot_update_failed', {
+        call_id: callId,
+        error: String((snapshotErr as Error)?.message ?? snapshotErr),
+      });
+    }
+
+    if (optimizationStage === 'contacted' || optimizationStage === 'offered') {
       try {
-        const { computeLcv } = await import('@/lib/oci/lcv-engine');
-        // Fetch call context for LCV signals (device, location, source)
         const { data: callCtx } = await adminClient
           .from('calls')
-          .select('city, district, device_type, device_os, traffic_source, traffic_medium, attribution_source, matchtype, utm_term, phone_clicks, whatsapp_clicks, event_count, total_duration_sec, intent_action, is_returning, gclid, wbraid, gbraid')
+          .select('gclid, wbraid, gbraid, traffic_source, utm_term')
           .eq('id', callId)
           .maybeSingle();
 
-        // Load site AOV for base value
-        const { data: siteRow } = await adminClient
-          .from('sites')
-          .select('default_aov, oci_config, currency')
-          .eq('id', siteId)
-          .maybeSingle();
+        const gclid = (callCtx as { gclid?: string | null } | null)?.gclid?.trim() || null;
+        const wbraid = (callCtx as { wbraid?: string | null } | null)?.wbraid?.trim() || null;
+        const gbraid = (callCtx as { gbraid?: string | null } | null)?.gbraid?.trim() || null;
 
-        const ociRaw = (siteRow as { oci_config?: unknown } | null)?.oci_config;
-        const exportCfg = parseExportConfig(ociRaw);
-        const ociLegacy = parseOciConfig(ociRaw, (siteRow as { default_aov?: number | null } | null)?.default_aov ?? null);
-        const baseAov =
-          (siteRow as { default_aov?: number | null } | null)?.default_aov != null &&
-          Number.isFinite(Number((siteRow as { default_aov?: number | null }).default_aov))
-            ? Number((siteRow as { default_aov?: number | null }).default_aov)
-            : exportCfg.default_aov;
-        const stage = leadScore >= 80 ? 'V4' as const : 'V3' as const;
-        const canonicalGear = stage === 'V4' ? 'V4_INTENT' : 'V3_ENGAGE';
-        const currencySafe = (siteRow as { currency?: string | null } | null)?.currency?.trim() || currency || 'TRY';
-
-        type CallCtxRow = { city?: string|null; district?: string|null; device_type?: string|null; device_os?: string|null; traffic_source?: string|null; traffic_medium?: string|null; attribution_source?: string|null; matchtype?: string|null; utm_term?: string|null; phone_clicks?: number|null; whatsapp_clicks?: number|null; event_count?: number|null; total_duration_sec?: number|null; intent_action?: string|null; is_returning?: boolean|null; gclid?: string|null; wbraid?: string|null; gbraid?: string|null };
-        const ctx = callCtx as CallCtxRow | null;
-
-        const lcv = computeLcv({
-          stage,
-          baseAov,
-          city: ctx?.city,
-          district: ctx?.district,
-          deviceType: ctx?.device_type,
-          deviceOs: ctx?.device_os,
-          trafficSource: ctx?.traffic_source,
-          trafficMedium: ctx?.traffic_medium,
-          attributionSource: ctx?.attribution_source,
-          matchtype: ctx?.matchtype,
-          utmTerm: ctx?.utm_term,
-          phoneClicks: ctx?.phone_clicks,
-          whatsappClicks: ctx?.whatsapp_clicks,
-          eventCount: ctx?.event_count,
-          totalDurationSec: ctx?.total_duration_sec,
-          isReturning: ctx?.is_returning,
-          config: ociLegacy.intelligence,
-          gearWeights: exportCfg.gear_weights,
-        });
-        const canonicalValue = resolveConversionValueMinor({
-          gear: canonicalGear,
-          currency: currencySafe,
-          siteAovMinor: majorToMinor(baseAov, currencySafe),
-          intentWeights: {
-            pending: exportCfg.gear_weights.V2,
-            qualified: exportCfg.gear_weights.V3,
-            proposal: exportCfg.gear_weights.V4,
-            sealed: 1,
+        const upsertResult = await upsertMarketingSignal({
+          source: 'seal',
+          siteId,
+          callId,
+          traceId: requestId ?? null,
+          stage: optimizationStage,
+          signalDate: new Date(confirmedAtIso),
+          snapshot: optimizationSnapshot,
+          clickIds: { gclid, wbraid, gbraid },
+          featureSnapshotExtras: { action_type: actionType },
+          causalDna: {
+            origin: 'MANUAL_STAGE_ACTION',
+            user_id: user.id,
+            optimization_stage: optimizationSnapshot.optimizationStage,
+            system_score: optimizationSnapshot.systemScore,
+            quality_factor: optimizationSnapshot.qualityFactor,
+            helper_form_payload: optimizationSnapshot.helperFormPayload,
+            att_raw: {
+              source: (callCtx as { traffic_source?: string | null } | null)?.traffic_source ?? null,
+              term: (callCtx as { utm_term?: string | null } | null)?.utm_term ?? null,
+            },
           },
-          decayOverride: 1,
-          applySignalFloor: true,
-          minimumValueMinor: 1,
         });
 
-        const gclid = ctx?.gclid?.trim() || null;
-        const wbraid = ctx?.wbraid?.trim() || null;
-        const gbraid = ctx?.gbraid?.trim() || null;
-
-        // Only queue if there is a click ID (otherwise no attribution)
-        if (gclid || wbraid || gbraid) {
-          const conversionName = stage === 'V4'
-            ? 'OpsMantik_V4_Sicak_Teklif'
-            : 'OpsMantik_V3_Nitelikli_Gorusme';
-
-          // Forensic: Calculate sequence/hash for the marketing_signals "ledger"
-          const { createHash } = await import('node:crypto');
-          const { data: existing } = await adminClient
-            .from('marketing_signals')
-            .select('adjustment_sequence, current_hash')
-            .eq('site_id', siteId)
-            .eq('call_id', callId)
-            .eq('google_conversion_name', conversionName)
-            .order('adjustment_sequence', { ascending: false })
-            .limit(1);
-          
-          const sequence = existing && existing.length > 0 ? (existing[0].adjustment_sequence ?? 0) + 1 : 0;
-          const previousHash = existing && existing.length > 0 ? existing[0].current_hash ?? null : null;
-          const salt = process.env.VOID_LEDGER_SALT || 'void_consensus_salt_insecure';
-          const hashPayload = `${callId ?? 'null'}:${sequence}:${canonicalValue.valueMinor}:${lcv.forensicDna}:${previousHash ?? 'null'}:${salt}`;
-          const currentHash = createHash('sha256').update(hashPayload).digest('hex');
-
-          await adminClient.from('marketing_signals').insert({
-            site_id: siteId,
+        if (upsertResult.success && !upsertResult.skipped) {
+          logInfo('optimization_signal_enqueued', {
             call_id: callId,
-            signal_type: stage === 'V4' ? 'SEAL_PENDING' : 'MEETING_BOOKED',
-            google_conversion_name: conversionName,
-            google_conversion_time: confirmedAtIso, // use export-friendly col
-            conversion_value: minorToMajor(canonicalValue.valueMinor, currencySafe),
-            expected_value_cents: canonicalValue.valueMinor,
-            gclid,
-            wbraid,
-            gbraid,
-            dispatch_status: 'PENDING',
-            occurred_at: confirmedAtIso,
-            adjustment_sequence: sequence,
-            previous_hash: previousHash,
-            current_hash: currentHash,
-            causal_dna: {
-              lcv_v: '3.0.0-singularity',
-              lcv_score: lcv.singularityScore,
-              lcv_dna: lcv.forensicDna,
-              lcv_insights: lcv.insights,
-              canonical_value_cents: canonicalValue.valueMinor,
-              canonical_ratio: canonicalValue.ratio,
-              att_raw: { source: ctx?.traffic_source, term: ctx?.utm_term },
-              source: 'MANUAL_QUALIFICATION_API',
-              user_id: user.id,
-            }
-          }).select('id').maybeSingle();
-
-          logInfo('lcv_signal_enqueued', {
-            call_id: callId,
-            stage,
-            value_units: minorToMajor(canonicalValue.valueMinor, currencySafe),
-            insight_score: lcv.singularityScore,
+            stage: optimizationSnapshot.optimizationStage,
+            optimization_value: optimizationSnapshot.optimizationValue,
+            duplicate: Boolean(upsertResult.duplicate),
           });
-        } else {
-          logInfo('lcv_signal_skip_no_click_id', { call_id: callId, stage });
+        } else if (upsertResult.skipped) {
+          logInfo('optimization_signal_skip_no_click_id', {
+            call_id: callId,
+            stage: optimizationSnapshot.optimizationStage,
+          });
         }
-      } catch (lcvErr) {
-        // Non-fatal: seal continues even if LCV signal fails
-        logWarn('lcv_signal_error', { call_id: callId, error: String((lcvErr as Error)?.message ?? lcvErr) });
+      } catch (signalErr) {
+        logWarn('optimization_signal_error', {
+          call_id: callId,
+          error: String((signalErr as Error)?.message ?? signalErr),
+        });
+      }
+    }
+
+    if (isWonStage && !approvalRequired) {
+      const enqueueResult = await enqueueSealConversion({
+        callId,
+        siteId,
+        confirmedAt: confirmedAtIso,
+        saleOccurredAt: occurredAtMeta.occurredAt,
+        saleAmount,
+        currency,
+        leadScore: optimizationSnapshot.systemScore,
+        entryReason,
+        helperFormPayload,
+      });
+      if (!enqueueResult.enqueued && enqueueResult.reason && enqueueResult.reason !== 'duplicate') {
+        logWarn('optimization_sale_enqueue_skipped', {
+          call_id: callId,
+          reason: enqueueResult.reason,
+          error: enqueueResult.error ?? null,
+        });
       }
     }
 

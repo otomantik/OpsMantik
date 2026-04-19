@@ -52,9 +52,8 @@ console.log('BASE:', BASE);
 
 const t1 = curl('process-offline-conversions (OCI)', 'POST', '/api/cron/process-offline-conversions?limit=5');
 const t2 = curl('invoice-freeze', 'POST', '/api/cron/invoice-freeze');
-const t3 = curl('recover (fallback buffer)', 'GET', '/api/cron/recover');
 
-const pass = [t1, t2, t3].filter(Boolean).length;
+const pass = [t1, t2].filter(Boolean).length;
 console.log('---');
-console.log(`Sonuç: ${pass}/3 geçti`);
-process.exit(pass === 3 ? 0 : 1);
+console.log(`Sonuç: ${pass}/2 geçti`);
+process.exit(pass === 2 ? 0 : 1);

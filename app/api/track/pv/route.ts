@@ -1,22 +1,27 @@
 /**
- * POST /api/track/pv — V1_PAGEVIEW (MizanMantik 5-Gear)
+ * POST /api/track/pv — DEPRECATED (410 Gone)
  *
- * Şok cihazı — volume sinyali, 1 minor-unit visibility value. Orchestrator routes to Redis.
- * Strict GCLID gate: organic traffic silently dropped.
+ * This endpoint was part of the deleted 5-Gear (V1_PAGEVIEW) architecture. It was broken end-to-end:
+ *   - evaluateAndRouteSignal('junk', ...) without callId always pre_route_rejects.
+ *   - The 'junk' stage is explicitly dropped by the canonical stage router.
+ *   - result.pvId is never set by the orchestrator (no Redis PV writer exists).
  *
- * Body: { siteId: string, gclid?: string, wbraid?: string, gbraid?: string }
- * Response: 200 OK always (pixel fire-and-forget)
+ * The endpoint is preserved as 410 Gone so any legacy tracker code fails loudly instead of
+ * silently writing no data. Page-view pipelines should go through the canonical /api/sync path
+ * (call events and session telemetry) going forward.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
-import { RateLimitService } from '@/lib/services/rate-limit-service';
-import { SiteService } from '@/lib/services/site-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
-import { logError } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const GONE_BODY = {
+  ok: false,
+  error: 'endpoint_removed',
+  message: '/api/track/pv has been removed. Use /api/sync for telemetry ingestion.',
+} as const;
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get('origin');
@@ -27,54 +32,11 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin');
   const corsHeaders = getIngestCorsHeaders(origin, {});
+  return NextResponse.json(GONE_BODY, { status: 410, headers: corsHeaders });
+}
 
-  try {
-    const body = await req.json().catch(() => ({}));
-    const siteId = typeof body.siteId === 'string' ? body.siteId.trim() : '';
-    const gclid = typeof body.gclid === 'string' ? body.gclid.trim() : '';
-    const wbraid = typeof body.wbraid === 'string' ? body.wbraid.trim() : '';
-    const gbraid = typeof body.gbraid === 'string' ? body.gbraid.trim() : '';
-
-    // GCLID gate: reject organic traffic (no click ID)
-    const hasClickId = gclid || wbraid || gbraid;
-    if (!hasClickId) {
-      return NextResponse.json({ ok: true }, { status: 200, headers: corsHeaders });
-    }
-
-    if (!siteId) {
-      return NextResponse.json({ ok: true }, { status: 200, headers: corsHeaders });
-    }
-
-    const { valid, site } = await SiteService.validateSite(siteId);
-    if (!valid || !site) {
-      return NextResponse.json({ ok: true }, { status: 200, headers: corsHeaders });
-    }
-    const siteUuid = (site as { id: string }).id;
-
-    const clientId = RateLimitService.getClientId(req);
-    await RateLimitService.checkWithMode(clientId, 2000, 60 * 1000, {
-      mode: 'fail-closed',
-      namespace: 'track-pv',
-    });
-
-    const now = new Date();
-    const result = await evaluateAndRouteSignal('V1_PAGEVIEW', {
-      siteId: siteUuid,
-      gclid: gclid || null,
-      wbraid: wbraid || null,
-      gbraid: gbraid || null,
-      aov: 0,
-      clickDate: now,
-      signalDate: now,
-    });
-
-    if (!result.routed || !result.pvId) {
-      return NextResponse.json({ ok: false }, { status: 200, headers: corsHeaders });
-    }
-
-    return NextResponse.json({ ok: true, id: result.pvId }, { status: 200, headers: corsHeaders });
-  } catch (e) {
-    logError('TRACK_PV_ERROR', { error: e instanceof Error ? e.message : String(e) });
-    return NextResponse.json({ ok: false }, { status: 200, headers: corsHeaders });
-  }
+export async function GET(req: NextRequest) {
+  const origin = req.headers.get('origin');
+  const corsHeaders = getIngestCorsHeaders(origin, {});
+  return NextResponse.json(GONE_BODY, { status: 410, headers: corsHeaders });
 }

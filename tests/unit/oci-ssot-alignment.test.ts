@@ -1,8 +1,3 @@
-/**
- * Golden checks: SiteExportConfig gear_weights align with Mizan IntentWeights mapping
- * and parseOciConfig delegates to parseExportConfig for currency.
- */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,47 +6,42 @@ import { parseExportConfig } from '@/lib/oci/site-export-config';
 import { parseOciConfig } from '@/lib/oci/oci-config';
 import { computeLcv } from '@/lib/oci/lcv-engine';
 
-test('gear_weights map to the same shape as getSiteValueConfig derivation', () => {
-  const raw = {
-    gear_weights: { V2: 0.03, V3: 0.25, V4: 0.35 },
-  };
-  const exp = parseExportConfig(raw);
-  const derived = {
-    pending: exp.gear_weights.V2,
-    qualified: exp.gear_weights.V3,
-    proposal: exp.gear_weights.V4,
-    sealed: 1.0,
-  };
-  assert.deepEqual(derived, {
-    pending: 0.03,
-    qualified: 0.25,
-    proposal: 0.35,
-    sealed: 1.0,
-  });
-});
-
-test('parseOciConfig uses SiteExportConfig currency when intelligence absent', () => {
-  const r = parseOciConfig({ currency: 'USD', default_aov: 2000 });
-  assert.equal(r.currency, 'USD');
-  assert.equal(r.base_value, 2000);
-});
-
-test('computeLcv respects gearWeights override matching SiteExportConfig', () => {
+test('parseExportConfig discards unknown tenant math fields but returns neutral defaults', () => {
   const exp = parseExportConfig({
-    gear_weights: { V2: 0.02, V3: 0.2, V4: 0.3 },
-    default_aov: 1000,
+    gear_weights: { V2: 0.03, V3: 0.25, V4: 0.35 },
+    legacy_math: 9999,
   });
+  // Phase 4 — f4-global-hardcodes: neutral defaults are USD/UTC, never Turkey-biased.
+  assert.equal(exp.currency, 'USD');
+  assert.equal(exp.timezone, 'UTC');
+});
+
+test('parseExportConfig honors tenant-supplied currency + timezone overrides', () => {
+  const exp = parseExportConfig({ currency: 'USD', timezone: 'America/New_York' });
+  assert.equal(exp.currency, 'USD');
+  assert.equal(exp.timezone, 'America/New_York');
+});
+
+test('parseOciConfig surfaces SiteExportConfig currency and strips legacy math', () => {
+  const r = parseOciConfig({ currency: 'USD', legacy_math: 2000 });
+  assert.equal(r.currency, 'USD');
+  assert.deepEqual(r.intelligence, { premium_districts: [], high_intent_keywords: [], multipliers: {} });
+});
+
+test('computeLcv uses universal stage base and quality factor model', () => {
+  const exp = parseExportConfig({});
   const lcv = computeLcv({
-    stage: 'V3',
-    baseAov: exp.default_aov,
-    gearWeights: exp.gear_weights,
+    stage: 'contacted',
+    baseAov: 1000,
   });
-  assert.equal(lcv.stageWeight, 0.2);
+  // Phase 4 — f4-global-hardcodes: no parseExportConfig({}) should ever reintroduce TRY.
+  assert.equal(exp.currency, 'USD');
+  assert.equal(lcv.stageWeight, 10);
   assert.ok(lcv.valueCents > 0);
 });
 
-test('seal route uses canonical value for marketing_signals, not lcv money', () => {
+test('seal route writes optimization snapshot to marketing_signals', () => {
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'calls', '[id]', 'seal', 'route.ts'), 'utf8');
-  assert.ok(src.includes('expected_value_cents: canonicalValue.valueMinor'));
-  assert.ok(!src.includes('expected_value_cents: lcv.valueCents'));
+  assert.ok(src.includes('optimization_stage: optimizationSnapshot.optimizationStage'));
+  assert.ok(src.includes('optimization_value: optimizationSnapshot.optimizationValue'));
 });

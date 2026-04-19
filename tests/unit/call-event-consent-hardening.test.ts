@@ -56,7 +56,11 @@ test('E) Replay protection present (ReplayCacheService)', () => {
   assert.ok(v2.includes('checkAndStore'), 'v2 must check replay cache');
 });
 
-const RESET_KERNEL_MIGRATIONS = ['20261106213000_trt_cutoff_reset_kernel.sql'];
+const RESET_KERNEL_MIGRATIONS = [
+  '20261106213000_trt_cutoff_reset_kernel.sql',
+  '20260419170000_drop_bitemporal_marketing_signals.sql',
+  '20260419180000_drop_ingest_fallback_buffer.sql',
+];
 
 test('F) No DELETE operations on calls in migrations', () => {
   const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'));

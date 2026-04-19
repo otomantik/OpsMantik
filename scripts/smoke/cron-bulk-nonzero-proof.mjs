@@ -91,16 +91,8 @@ async function runCounts() {
     log('site_usage_monthly (freeze month)', { count: counts.freeze });
   }
 
-  const { count: recoverCount, error: recoverErr } = await supabase
-    .from('ingest_fallback_buffer')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'PENDING');
-
-  if (recoverErr) log('ingest_fallback_buffer PENDING', { error: recoverErr.message });
-  else {
-    counts.recover = recoverCount ?? 0;
-    log('ingest_fallback_buffer PENDING', { count: counts.recover });
-  }
+  // Recovery buffer retired in 20260419180000; keep the counter slot for telemetry compat.
+  counts.recover = 0;
 
   return counts;
 }
@@ -196,11 +188,11 @@ async function main() {
   log('--- Cron runs ---');
   const r1 = curl('process-offline-conversions', 'POST', '/api/cron/process-offline-conversions?limit=10');
   const r2 = curl('invoice-freeze', 'POST', '/api/cron/invoice-freeze');
-  const r3 = curl('recover', 'GET', '/api/cron/recover');
 
   const processed = r1.json?.processed ?? 0;
   const frozen = r2.json?.frozen ?? 0;
-  const claimed = r3.json?.claimed ?? 0;
+  // Recovery cron retired in 20260419180000; keep telemetry slot.
+  const claimed = 0;
 
   log('--- Evidence summary ---');
   log('Bulk workload', {

@@ -41,7 +41,7 @@ export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjec
     }
 
     const revenue = stats?.projected_revenue ?? 0;
-    const currency = stats?.currency || 'TRY';
+    const currency = stats?.currency || 'USD';
     const sealed = stats?.sealed ?? 0;
     const pending = stats?.queue_pending ?? 0;
 

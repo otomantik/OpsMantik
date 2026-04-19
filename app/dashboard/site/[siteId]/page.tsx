@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { SiteLocaleProvider } from '@/components/context/site-locale-context';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { getTodayTrtUtcRange } from '@/lib/time/today-range';
 import { resolveLocale } from '@/lib/i18n/locale';
@@ -147,14 +148,22 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
         timezone: site.timezone ?? undefined,
       }}
     >
-      <DashboardShell
-        siteId={siteId}
-        siteName={site.name || undefined}
-        siteDomain={site.domain || undefined}
-        initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
-        siteRole={siteRole}
-        activeModules={(site.active_modules ?? []).filter((m: string): m is import('@/lib/types/modules').OpsMantikModule => typeof m === 'string' && isOpsMantikModule(m))}
-      />
+      <SiteLocaleProvider
+        value={{
+          timezone: site.timezone ?? undefined,
+          currency: site.currency ?? undefined,
+          locale: site.locale ?? undefined,
+        }}
+      >
+        <DashboardShell
+          siteId={siteId}
+          siteName={site.name || undefined}
+          siteDomain={site.domain || undefined}
+          initialTodayRange={from && to ? { fromIso: from, toIso: to } : undefined}
+          siteRole={siteRole}
+          activeModules={(site.active_modules ?? []).filter((m: string): m is import('@/lib/types/modules').OpsMantikModule => typeof m === 'string' && isOpsMantikModule(m))}
+        />
+      </SiteLocaleProvider>
     </I18nProvider>
   );
 }

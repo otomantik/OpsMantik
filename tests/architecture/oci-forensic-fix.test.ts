@@ -32,7 +32,7 @@ describe('OCI Forensic Fixes (Phase 19)', () => {
     };
 
     test('Should inject SST_HEADER_FAIL when clientIp is missing', async () => {
-        const result = await evaluateAndRouteSignal('V2_PULSE', basePayload);
+        const result = await evaluateAndRouteSignal('contacted', basePayload);
         const dna = result.causalDna as Record<string, unknown>;
         const gates = (dna.gates_passed as string[]) || [];
         assert.ok(gates.includes('audit'), 'Should have audit gate');
@@ -43,7 +43,7 @@ describe('OCI Forensic Fixes (Phase 19)', () => {
     });
 
     test('Should inject GEO_FENCE_TR_CHECK for Turkish sites', async () => {
-        const result = await evaluateAndRouteSignal('V3_ENGAGE', {
+        const result = await evaluateAndRouteSignal('contacted', {
             ...basePayload,
             clientIp: '176.234.0.1' // Turkish IP 
         });

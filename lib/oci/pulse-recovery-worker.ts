@@ -3,37 +3,24 @@
  *
  * Cron every 30min. Exponential backoff: 2h → 6h → 24h.
  * Re-runs primary source (with Identity Stitcher); if click_id found, persists to signal for next export.
+ * V2 first-contact backfill was removed in the universal cutover; this worker now repairs only
+ * pending canonical signals and stale pageview processing rows.
  * Max 3 retries.
  */
 
 import { adminClient } from '@/lib/supabase/admin';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
-import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { redis } from '@/lib/upstash';
 import { getPvDataKey, getPvProcessingKeysForRecovery, getPvQueueKey } from '@/lib/oci/pv-redis';
-import { getConversionActionConfig, type SiteExportConfig } from '@/lib/oci/site-export-config';
 
 
 const BACKOFF_HOURS = [2, 6, 24] as const; // 1st retry after 2h, 2nd after 6h, 3rd after 24h
 const MAX_RECOVERY_ATTEMPTS = 3;
 const BATCH_LIMIT = 100;
-const MISSING_V2_LOOKBACK_HOURS = 48;
-const MISSING_V2_BATCH_LIMIT = 100;
 const PV_RECOVERY_STALE_MS = 15 * 60 * 1000;
 const PV_RECOVERY_BATCH_LIMIT = 200;
-
-type RecoverMissingV2SignalsParams = {
-  now?: Date;
-  siteId?: string;
-  lookbackHours?: number;
-  limit?: number;
-  statuses?: string[];
-  source?: string;
-  intentActions?: Array<'phone' | 'whatsapp' | 'form'>;
-  exportConfig?: SiteExportConfig | null;
-};
 
 function getBackoffMs(attemptIndex: number): number {
   const hours = BACKOFF_HOURS[Math.min(attemptIndex, BACKOFF_HOURS.length - 1)];
@@ -61,9 +48,9 @@ export async function runPulseRecovery(): Promise<{
   let recovered = 0;
   let attempted = 0;
   let exhausted = 0;
-  let missingSignalChecked = 0;
-  let missingSignalRecovered = 0;
-  let missingSignalDropped = 0;
+  const missingSignalChecked = 0;
+  const missingSignalRecovered = 0;
+  const missingSignalDropped = 0;
   let pvChecked = 0;
   let pvRequeued = 0;
   let pvDropped = 0;
@@ -106,16 +93,15 @@ export async function runPulseRecovery(): Promise<{
   }
 
   if (due.length === 0) {
-    const backfill = await recoverMissingV2Signals(now);
     const pvRecovery = await recoverStalePvProcessing(now);
     return {
       processed: 0,
       recovered: 0,
       attempted: 0,
       exhausted: 0,
-      missing_signal_checked: backfill.checked,
-      missing_signal_recovered: backfill.recovered,
-      missing_signal_dropped: backfill.dropped,
+      missing_signal_checked: 0,
+      missing_signal_recovered: 0,
+      missing_signal_dropped: 0,
       pv_checked: pvRecovery.checked,
       pv_requeued: pvRecovery.requeued,
       pv_dropped: pvRecovery.dropped,
@@ -218,10 +204,6 @@ export async function runPulseRecovery(): Promise<{
     processed++;
   }
 
-  const backfill = await recoverMissingV2Signals(now);
-  missingSignalChecked = backfill.checked;
-  missingSignalRecovered = backfill.recovered;
-  missingSignalDropped = backfill.dropped;
   const pvRecovery = await recoverStalePvProcessing(now);
   pvChecked = pvRecovery.checked;
   pvRequeued = pvRecovery.requeued;
@@ -327,121 +309,4 @@ async function recoverStalePvProcessing(
   }
 
   return { checked, requeued, dropped };
-}
-
-async function recoverMissingV2Signals(
-  now: Date
-): Promise<{ checked: number; recovered: number; dropped: number }> {
-  return recoverMissingV2SignalsForSite({
-    now,
-    lookbackHours: MISSING_V2_LOOKBACK_HOURS,
-    limit: MISSING_V2_BATCH_LIMIT,
-    statuses: ['intent'],
-  });
-}
-
-export async function recoverMissingV2SignalsForSite(
-  params: RecoverMissingV2SignalsParams
-): Promise<{ checked: number; recovered: number; dropped: number }> {
-  const now = params.now ?? new Date();
-  const lookbackHours = params.lookbackHours ?? MISSING_V2_LOOKBACK_HOURS;
-  const limit = params.limit ?? MISSING_V2_BATCH_LIMIT;
-  const sinceIso = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000).toISOString();
-
-  let query = adminClient
-    .from('calls')
-    .select('id, site_id, created_at, confirmed_at, matched_fingerprint, status, source, intent_action')
-    .gte('created_at', sinceIso)
-    .order('created_at', { ascending: true })
-    .limit(limit);
-
-  if (params.siteId) {
-    query = query.eq('site_id', params.siteId);
-  }
-  if (params.statuses && params.statuses.length > 0) {
-    query = query.in('status', params.statuses);
-  }
-  if (params.source) {
-    query = query.eq('source', params.source);
-  }
-  if (params.intentActions && params.intentActions.length > 0) {
-    query = query.in('intent_action', params.intentActions);
-  }
-
-  const { data: calls, error } = await query;
-
-  if (error) {
-    logWarn('pulse_recovery_missing_v2_fetch_failed', { error: error.message });
-    return { checked: 0, recovered: 0, dropped: 0 };
-  }
-
-  const rows = Array.isArray(calls) ? calls : [];
-  if (rows.length === 0) return { checked: 0, recovered: 0, dropped: 0 };
-
-  const callIds = rows.map((row) => row.id);
-  const { data: existingSignals, error: existingError } = await adminClient
-    .from('marketing_signals')
-    .select('call_id')
-    .eq('signal_type', 'INTENT_CAPTURED')
-    .in('call_id', callIds);
-
-  if (existingError) {
-    logWarn('pulse_recovery_missing_v2_existing_failed', { error: existingError.message });
-    return { checked: 0, recovered: 0, dropped: 0 };
-  }
-
-  const existingCallIds = new Set(
-    (existingSignals ?? [])
-      .map((row) => (row as { call_id?: string | null }).call_id)
-      .filter((id): id is string => Boolean(id))
-  );
-  const missing = rows.filter((row) => !existingCallIds.has(row.id));
-
-  let checked = 0;
-  let recovered = 0;
-  let dropped = 0;
-
-  for (const row of missing) {
-    checked++;
-    const primary = await getPrimarySource(row.site_id, { callId: row.id });
-    const signalTimestamp = row.confirmed_at ?? row.created_at ?? now.toISOString();
-    const signalDate = new Date(signalTimestamp);
-    const channel =
-      row.intent_action === 'phone' || row.intent_action === 'whatsapp' || row.intent_action === 'form'
-        ? row.intent_action
-        : null;
-    const conversionName =
-      params.exportConfig && channel
-        ? getConversionActionConfig(params.exportConfig, channel, 'V2_PULSE')?.action_name ?? undefined
-        : undefined;
-    const result = await evaluateAndRouteSignal('V2_PULSE', {
-      siteId: row.site_id,
-      callId: row.id,
-      gclid: primary?.gclid ?? null,
-      wbraid: primary?.wbraid ?? null,
-      gbraid: primary?.gbraid ?? null,
-      aov: 0,
-      clickDate: signalDate,
-      signalDate,
-      fingerprint: row.matched_fingerprint ?? null,
-      traceId: null,
-      conversionName,
-    });
-
-    if (result.routed) {
-      recovered++;
-    } else {
-      dropped++;
-      logWarn('pulse_recovery_missing_v2_not_routed', {
-        site_id: row.site_id,
-        call_id: row.id,
-        dropped: result.dropped ?? false,
-        has_gclid: Boolean(primary?.gclid),
-        has_wbraid: Boolean(primary?.wbraid),
-        has_gbraid: Boolean(primary?.gbraid),
-      });
-    }
-  }
-
-  return { checked, recovered, dropped };
 }

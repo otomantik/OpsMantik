@@ -33,7 +33,6 @@ function getConfig() {
     SITE_ID: getFirst(['OPSMANTIK_SITE_ID', 'OCI_SITE_ID'], '') || (isLocal ? 'mock-site-id' : ''),
     API_KEY: getFirst(['OPSMANTIK_API_KEY', 'OCI_API_KEY'], '') || (isLocal ? 'mock-api-key' : ''),
     BASE_URL: getFirst(['OPSMANTIK_BASE_URL', 'OCI_BASE_URL'], '') || 'https://console.opsmantik.com',
-    SAMPLING_RATE_V1: Number(getFirst(['OPSMANTIK_SAMPLING_RATE_V1', 'OCI_SAMPLING_RATE_V1'], '0.1')) || 0.1,
     HTTP: Object.freeze({
       MAX_RETRIES: 5,
       INITIAL_DELAY_MS: 1500,
@@ -44,11 +43,10 @@ function getConfig() {
 const CONFIG = getConfig();
 
 const CONVERSION_EVENTS = Object.freeze({
-  V1_PAGEVIEW: 'OpsMantik_V1_Nabiz',
-  V2_PULSE: 'OpsMantik_V2_Ilk_Temas',
-  V3_ENGAGE: 'OpsMantik_V3_Nitelikli_Gorusme',
-  V4_INTENT: 'OpsMantik_V4_Sicak_Teklif',
-  V5_SEAL: 'OpsMantik_V5_DEMIR_MUHUR',
+  CONTACTED: 'OpsMantik_Contacted',
+  OFFERED: 'OpsMantik_Offered',
+  WON: 'OpsMantik_Won',
+  JUNK_EXCLUSION: 'OpsMantik_Junk_Exclusion',
 });
 
 // ========================================================================
@@ -68,23 +66,6 @@ class Telemetry {
 // DETERMINISTIC ENGINE & VALIDATORS
 // ========================================================================
 class Validator {
-  /**
-   * Deterministic Hash Algorithm (DJB2)
-   * Eğer script hata alıp tekrar çalışırsa, Math.random() önceki sefer seçtiği klikleri atlayabilir.
-   * Bu algoritma gclid'ye göre her zaman aynı sonucu verir!
-   */
-  static isSampledIn(clickId, rate) {
-    if (rate >= 1.0) return true;
-    if (rate <= 0.0) return false;
-
-    let hash = 5381;
-    for (let i = 0; i < clickId.length; i++) {
-      hash = ((hash << 5) + hash) + clickId.charCodeAt(i);
-    }
-    const normalized = Math.abs(hash) % 10000 / 10000;
-    return normalized <= rate;
-  }
-
   /**
    * Google Ads: yyyyMMdd HHmmss (compact, no offset) or yyyy-mm-dd HH:mm:ss±HHmm.
    * Accept both ±HHmm and legacy ±HH:mm on input, then normalize to ±HHmm for CSV upload.
@@ -109,13 +90,6 @@ class Validator {
 
     if (!row.conversionTime) return { valid: false, reason: 'MISSING_TIME' };
     if (!this.isValidGoogleAdsTime(row.conversionTime)) return { valid: false, reason: 'INVALID_TIME_FORMAT' };
-
-    // V1 sampling lives only in the script so skippedIds stay visible to ACK/audit.
-    if (row.conversionName === CONVERSION_EVENTS.V1_PAGEVIEW) {
-      if (!this.isSampledIn(clickId, CONFIG.SAMPLING_RATE_V1)) {
-        return { valid: false, reason: 'DETERMINISTIC_SKIP' };
-      }
-    }
 
     return { valid: true, clickId };
   }
@@ -340,7 +314,7 @@ class UploadEngine {
       upload.append({
         'Order ID': orderId,
         'Google Click ID': validation.clickId,
-        'Conversion name': (row.conversionName || '').trim() || CONVERSION_EVENTS.V5_SEAL,
+        'Conversion name': (row.conversionName || '').trim() || CONVERSION_EVENTS.WON,
         'Conversion time': Validator.normalizeGoogleAdsTime(row.conversionTime),
         'Conversion value': Math.max(0, conversionValue),
         'Conversion currency': (row.conversionCurrency || 'TRY').toUpperCase()
@@ -477,7 +451,7 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
                 {
                   id: 'mock-conv-1',
                   gclid: 'TEST_GCLID_QWERT123',
-                  conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
+                  conversionName: 'OpsMantik_Won',
                   conversionTime: '2026-03-01 15:30:00+0300',
                   conversionValue: 5000,
                   conversionCurrency: 'TRY'
@@ -485,7 +459,7 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
                 {
                   id: 'mock-conv-2',
                   wbraid: 'TEST_WBRAID_XYZ890',
-                  conversionName: 'OpsMantik_V3_Nitelikli_Gorusme',
+                  conversionName: 'OpsMantik_Contacted',
                   conversionTime: '2026-03-01 16:45:00+0300',
                   conversionValue: 0,
                   conversionCurrency: 'TRY'
@@ -493,7 +467,7 @@ if (typeof module !== 'undefined' && require !== 'undefined' && require.main ===
                 {
                   id: 'mock-conv-3',
                   gclid: 'TEST_GCLID_INVALID_TIME',
-                  conversionName: 'OpsMantik_V5_DEMIR_MUHUR',
+                  conversionName: 'OpsMantik_Won',
                   conversionTime: '2026-03-01',
                   conversionValue: 1000,
                   conversionCurrency: 'TRY'

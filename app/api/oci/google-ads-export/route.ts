@@ -13,137 +13,46 @@ import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 import { getPrimarySourceBatch } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
-import { redis } from '@/lib/upstash';
-import type { SiteValuationRow } from '@/lib/oci/oci-config';
-import { hashPhoneForEC } from '@/lib/dic/identity-hash';
+import { hashE164ForEnhancedConversions } from '@/lib/dic/phone-hash';
 import { isCallSendableForSealExport, isCallStatusSendableForSignal } from '@/lib/oci/call-sendability';
 import { validateOciQueueValueCents, validateOciSignalConversionValue } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
-import { getPvDataKey, getPvProcessingKey, getPvProcessingKeysForCleanup, getPvQueueKeysForExport } from '@/lib/oci/pv-redis';
 import {
   buildSingleConversionGroupKey,
   selectHighestPriorityCandidates,
-  type SingleConversionCandidate,
-  type SingleConversionGear,
 } from '@/lib/oci/single-conversion-highest-only';
 import { createHash } from 'node:crypto';
 import * as jose from 'jose';
-import { parseExportConfig, getConversionActionConfig, validateRoasInflation } from '@/lib/oci/site-export-config';
+import { parseExportConfig, getConversionActionConfig } from '@/lib/oci/site-export-config';
 import { validateExportRow } from '@/lib/oci/export-gate';
-import { recoverMissingV2SignalsForSite } from '@/lib/oci/pulse-recovery-worker';
+import { getVoidLedgerSalt } from '@/lib/oci/marketing-signal-hash';
+import { NEUTRAL_CURRENCY, NEUTRAL_TIMEZONE, resolveSiteLocale } from '@/lib/i18n/site-locale';
+// Phase 4 f4-runner-split: types + low-level helpers live in submodules.
+import type {
+  GoogleAdsConversionItem,
+  GoogleAdsAdjustmentItem,
+  ExportCursorMark,
+  ExportCursorState,
+  QueueRow,
+  ExportSiteRow,
+  RankedExportCandidate,
+} from '@/lib/oci/google-ads-export/types';
+import {
+  resolveSignalStage,
+  normalizeSignalChannel,
+} from '@/lib/oci/google-ads-export/signal-normalizers';
+import {
+  ensureNumericValue,
+  ensureCurrencyCode,
+  readExportCursorMark,
+} from '@/lib/oci/google-ads-export/sanitize';
 
-const PV_BATCH_MAX = 500;
 /** P0-1.2: Hard cap to prevent memory exhaustion. Log warning if hit. */
 const EXPORT_QUEUE_LIMIT = 1000;
 const EXPORT_SIGNALS_LIMIT = 1000;
-const V1_PAGEVIEW_VISIBILITY_MINOR = 1;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-/**
- * Response item shape: matches Google Ads offline conversion expectations.
- * Used by Google Ads Script (UrlFetchApp → parse → AdsApp upload).
- */
-export interface GoogleAdsConversionItem {
-  /** Queue row id for idempotency / ack. */
-  id: string;
-  /** Sent as Order ID so Google Ads deduplicates by this value (same orderId → second upload ignored). */
-  orderId: string;
-  /** Google Click ID (preferred). */
-  gclid: string;
-  /** iOS web conversions. */
-  wbraid: string;
-  /** iOS app conversions. */
-  gbraid: string;
-  /** Conversion action name (e.g. "Sealed Lead"). */
-  conversionName: string;
-  /** Format: yyyy-mm-dd HH:mm:ss±HH:mm (timezone required). Prefer canonical occurred_at. */
-  conversionTime: string;
-  /** Numeric value only (e.g. 750.00). No currency symbols. */
-  conversionValue: number;
-  /** ISO currency code, e.g. TRY. */
-  conversionCurrency: string;
-  /** Optional: SHA-256 hex (64 char) for Enhanced Conversions. */
-  hashed_phone_number?: string | null;
-  /** Phase 20: OM-TRACE-UUID for conversion_custom_variable (forensic chain) */
-  om_trace_uuid?: string | null;
-  /** Modül 2: primary/secondary role for ROAS inflation logging */
-  _role?: 'primary' | 'secondary';
-}
-
-/**
- * Modül 1: Adjustment item (RETRACTION / RESTATEMENT)
- * Picked up by Google Ads Script via AdsApp.offlineConversionAdjustments()
- */
-export interface GoogleAdsAdjustmentItem {
-  /** Adjustment DB id — prefixed adj_ for ACK routing */
-  id: string;
-  /** Original conversion's orderId (stable — never changes) */
-  orderId: string;
-  /** Google Ads conversion action name */
-  conversionName: string;
-  adjustmentType: 'RETRACTION' | 'RESTATEMENT';
-  /** ISO timestamp of adjustment */
-  adjustmentTime: string;
-  /** Only set for RESTATEMENT */
-  adjustedValue?: number;
-  adjustedCurrency?: string;
-}
-
-type ExportCursorMark = {
-  t: string;
-  i: string;
-};
-
-type ExportCursorState = {
-  q?: ExportCursorMark | null;
-  s?: ExportCursorMark | null;
-};
-
-type QueueRow = {
-  id: string;
-  sale_id?: string | null;
-  call_id?: string | null;
-  session_id?: string | null;
-  gclid?: string | null;
-  wbraid?: string | null;
-  gbraid?: string | null;
-  conversion_time: string;
-  occurred_at?: string | null;
-  created_at?: string | null;
-  value_cents: number;
-  currency?: string | null;
-  action?: string | null;
-  provider_key?: string | null;
-  external_id?: string | null;
-};
-
-type RankedExportCandidate = SingleConversionCandidate<GoogleAdsConversionItem>;
-
-function resolveSignalGear(signalType: string): 'V2_PULSE' | 'V3_ENGAGE' | 'V4_INTENT' | null {
-  switch ((signalType || '').trim()) {
-    case 'INTENT_CAPTURED':
-      return 'V2_PULSE';
-    case 'MEETING_BOOKED':
-      return 'V3_ENGAGE';
-    case 'SEAL_PENDING':
-      return 'V4_INTENT';
-    default:
-      return null;
-  }
-}
-
-function normalizeSignalChannel(intentAction: string | null | undefined): 'phone' | 'whatsapp' | 'form' | null {
-  switch ((intentAction || '').trim().toLowerCase()) {
-    case 'phone':
-    case 'whatsapp':
-    case 'form':
-      return (intentAction || '').trim().toLowerCase() as 'phone' | 'whatsapp' | 'form';
-    default:
-      return null;
-  }
-}
 
 /**
  * GET /api/oci/google-ads-export?siteId=<uuid>&markAsExported=true
@@ -252,15 +161,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site by id (UUID) or public_id (e.g. 32-char hex)
-    let site: (SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null; oci_config?: unknown }) | null = null;
-    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key, oci_config').eq('id', siteId).maybeSingle();
+    let site: ExportSiteRow | null = null;
+    const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, oci_api_key, oci_config').eq('id', siteId).maybeSingle();
     if (byId.data) {
-      site = byId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null; oci_config?: unknown };
+      site = byId.data as ExportSiteRow;
     }
     if (!site) {
-      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, default_aov, intent_weights, oci_api_key, oci_config').eq('public_id', siteId).maybeSingle();
+      const byPublicId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, oci_api_key, oci_config').eq('public_id', siteId).maybeSingle();
       if (byPublicId.data) {
-        site = byPublicId.data as SiteValuationRow & { id: string; public_id?: string | null; currency?: string | null; timezone?: string | null; oci_sync_method?: string | null; oci_api_key?: string | null; oci_config?: unknown };
+        site = byPublicId.data as ExportSiteRow;
       }
     }
     if (!site) {
@@ -304,37 +213,14 @@ export async function GET(req: NextRequest) {
       throw err;
     }
 
-    // Parse SiteExportConfig (Modül 1-4: enterprise config)
+    // Parse SiteExportConfig (tenant-overridable export contract)
     const exportConfig = parseExportConfig((site as { oci_config?: unknown }).oci_config);
-    const roasWarnings = validateRoasInflation(exportConfig);
-    if (roasWarnings.length > 0) {
-      logWarn('OCI_EXPORT_ROAS_INFLATION_RISK', { site_id: siteUuid, warnings: roasWarnings });
-    }
-
-    const missingV2Recovery = await recoverMissingV2SignalsForSite({
-      now: new Date(),
-      siteId: siteUuid,
-      lookbackHours: Math.min(exportConfig.max_click_age_days, 14) * 24,
-      limit: 250,
-      statuses: ['intent', 'confirmed', 'qualified', 'real'],
-      source: 'click',
-      intentActions: ['phone', 'whatsapp'],
-      exportConfig,
-    });
-    if (missingV2Recovery.recovered > 0) {
-      logInfo('OCI_EXPORT_CLICK_SIGNAL_BACKFILL', {
-        site_id: siteUuid,
-        checked: missingV2Recovery.checked,
-        recovered: missingV2Recovery.recovered,
-        dropped: missingV2Recovery.dropped,
-      });
-    }
 
     // Phase 6.2: Deterministic Cursor-Based Query (offline_conversion_queue)
     // Formula: (updated_at, id) > (last_t, last_i)
     let query = adminClient
       .from('offline_conversion_queue')
-      .select('id, sale_id, call_id, gclid, wbraid, gbraid, conversion_time, occurred_at, created_at, updated_at, value_cents, currency, action, external_id, session_id, provider_key')
+      .select('id, sale_id, call_id, gclid, wbraid, gbraid, conversion_time, occurred_at, created_at, updated_at, value_cents, optimization_stage, optimization_value, currency, action, external_id, session_id, provider_key')
       .eq('site_id', siteUuid)
       .in('status', ['QUEUED', 'RETRY'])
       .eq('provider_key', providerFilter);
@@ -362,7 +248,7 @@ export async function GET(req: NextRequest) {
     // NOTE: marketing_signals has no updated_at column — use created_at for ordering and cursors.
     let sigQuery = adminClient
       .from('marketing_signals')
-      .select('id, call_id, signal_type, google_conversion_name, google_conversion_time, occurred_at, conversion_value, gclid, wbraid, gbraid, trace_id, created_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
+      .select('id, call_id, signal_type, optimization_stage, google_conversion_name, google_conversion_time, occurred_at, conversion_value, optimization_value, gclid, wbraid, gbraid, trace_id, created_at, adjustment_sequence, expected_value_cents, previous_hash, current_hash')
       .eq('site_id', siteUuid)
       .eq('dispatch_status', 'PENDING');
 
@@ -391,13 +277,13 @@ export async function GET(req: NextRequest) {
     // Phase 8.1: Merkle Tree Ledger Verification
     // Verify cryptographic integrity of the signal chain in memory.
     // Signals with current_hash=null are pre-Merkle legacy records — they are trusted as-is
-    // (the hash feature was introduced after these signals were created). Only signals with a
-    // non-null hash are verified to prevent tampering.
-    let salt = process.env.VOID_LEDGER_SALT?.trim();
-    if (!salt) {
-      logWarn('VOID_LEDGER_SALT_MISSING', { msg: 'Using insecure fallback; set VOID_LEDGER_SALT in production.' });
-      salt = 'void_consensus_salt_insecure';
-    }
+    // (the hash feature was introduced after these signals were created). Only signals with
+    // a non-null hash are verified against the Void ledger salt.
+    //
+    // Phase 4 (20260419180000): getVoidLedgerSalt() throws in production when
+    // VOID_LEDGER_SALT is unset — there is no insecure fallback anymore. In test
+    // and dev environments a deterministic dev salt is used.
+    const salt = getVoidLedgerSalt();
     for (const sig of signalList) {
       const s = sig as {
         id: string;
@@ -410,24 +296,18 @@ export async function GET(req: NextRequest) {
 
       if (s.current_hash === null) continue; // Legacy signal, pre-Merkle — skip hash check
 
-      // Only enforce Merkle when a custom production salt is explicitly set.
-      // If using the insecure default, the hash may have been computed with a different
-      // salt version and should not block exports — log a warning instead.
-      const hasProductionSalt = !!process.env.VOID_LEDGER_SALT;
-      if (hasProductionSalt) {
-        const payload = `${s.call_id ?? 'null'}:${s.adjustment_sequence}:${s.expected_value_cents}:${s.previous_hash ?? 'null'}:${salt}`;
-        const expectedHash = createHash('sha256').update(payload).digest('hex');
+      const payload = `${s.call_id ?? 'null'}:${s.adjustment_sequence}:${s.expected_value_cents}:${s.previous_hash ?? 'null'}:${salt}`;
+      const expectedHash = createHash('sha256').update(payload).digest('hex');
 
-        if (s.current_hash !== expectedHash) {
-          // Log the mismatch but do NOT halt the export — stale hashes from salt rotation
-          // should not block revenue signals from being sent to Google Ads.
-          logWarn('LEDGER_HASH_MISMATCH', {
-            signal_id: s.id,
-            expected: expectedHash,
-            actual: s.current_hash,
-            msg: 'Merkle hash mismatch — possible salt rotation or legacy hash. Export continues.',
-          });
-        }
+      if (s.current_hash !== expectedHash) {
+        // Log the mismatch but do NOT halt the export — stale hashes from a
+        // lawful salt rotation should not block revenue signals to Google Ads.
+        logWarn('LEDGER_HASH_MISMATCH', {
+          signal_id: s.id,
+          expected: expectedHash,
+          actual: s.current_hash,
+          msg: 'Merkle hash mismatch — possible salt rotation or legacy hash. Export continues.',
+        });
       }
     }
 
@@ -521,15 +401,30 @@ export async function GET(req: NextRequest) {
         });
         continue;
       }
-      const signalGear = resolveSignalGear(sigType);
+      const signalStage = resolveSignalStage(
+        (sig as { optimization_stage?: string | null }).optimization_stage ?? null,
+        sigType
+      );
+      if (!signalStage || signalStage === 'junk') {
+        blockedSignalIds.push((sig as { id: string }).id);
+        logWarn('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE', {
+          signal_id: (sig as { id: string }).id,
+          call_id: callId,
+          signal_type: sigType || null,
+          optimization_stage: (sig as { optimization_stage?: string | null }).optimization_stage ?? null,
+        });
+        continue;
+      }
       const signalChannel = normalizeSignalChannel(ctx?.intentAction);
       const signalActionCfg =
-        signalGear && signalChannel
-          ? getConversionActionConfig(exportConfig, signalChannel, signalGear)
+        signalChannel
+          ? getConversionActionConfig(exportConfig, signalChannel, signalStage)
           : null;
-      const conversionName = signalActionCfg?.action_name || (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Signal';
+      const conversionName = signalActionCfg?.action_name || (sig as { google_conversion_name: string }).google_conversion_name || 'OpsMantik_Contacted';
 
-      const rowValue = (sig as { conversion_value?: number | null }).conversion_value;
+      const rowValue =
+        (sig as { optimization_value?: number | null }).optimization_value ??
+        (sig as { conversion_value?: number | null }).conversion_value;
       const valueGuard = validateOciSignalConversionValue(rowValue);
       if (!valueGuard.ok) {
         blockedSignalValueIds.push((sig as { id: string }).id);
@@ -566,109 +461,22 @@ export async function GET(req: NextRequest) {
         conversionName,
         conversionTime,
         conversionValue: numVal,
-        conversionCurrency: (site as { currency?: string })?.currency || 'TRY',
+        conversionCurrency: (site as { currency?: string })?.currency || NEUTRAL_CURRENCY,
         ...(traceId && { om_trace_uuid: traceId }),
       };
       signalItems.push(item);
-      if (signalGear) {
-        signalCandidates.push({
-          id: item.id,
-          groupKey: buildSingleConversionGroupKey(ctx?.matchedSessionId ?? null, callId, signalRowId),
-          gear: signalGear,
-          sortKey: item.conversionTime,
-          value: item,
-        });
-      }
+      signalCandidates.push({
+        id: item.id,
+        groupKey: buildSingleConversionGroupKey(ctx?.matchedSessionId ?? null, callId, signalRowId),
+        gear: signalStage,
+        sortKey: item.conversionTime,
+        value: item,
+      });
     }
 
     // PENDING signals without click_id are left for Self-Healing Pulse to retry (no SKIPPED update here)
 
-    // Pipeline C: Redis Page Views (Ops_PageView)
-    // Sampling is script-owned. Backend must return every eligible V1 row so skippedIds stay auditable.
     const pvItems: GoogleAdsConversionItem[] = [];
-    if (markAsExported) try {
-      const pvIds: string[] = [];
-      const invalidPvIds: string[] = [];
-      const pvQueueKeys = getPvQueueKeysForExport(siteUuid, (site as { public_id?: string | null }).public_id);
-      const pvProcessingKey = getPvProcessingKey(siteUuid);
-      for (let i = 0; i < PV_BATCH_MAX; i++) {
-        let moved = false;
-        for (const queueKey of pvQueueKeys) {
-          const id = await redis.lmove(queueKey, pvProcessingKey, 'right', 'left');
-          if (!id || typeof id !== 'string') continue;
-          pvIds.push(id);
-          moved = true;
-          break;
-        }
-        if (!moved) break;
-      }
-      for (const pvId of pvIds) {
-        const raw = await redis.get(getPvDataKey(pvId));
-        if (!raw || typeof raw !== 'string') continue;
-        let payload: {
-          siteId?: string;
-          gclid?: string;
-          wbraid?: string;
-          gbraid?: string;
-          timestamp?: string;
-          conversionValueMinor?: number;
-        };
-        try {
-          payload = JSON.parse(raw) as typeof payload;
-        } catch {
-          continue;
-        }
-        const gclid = (payload.gclid || '').trim();
-        const wbraid = (payload.wbraid || '').trim();
-        const gbraid = (payload.gbraid || '').trim();
-        const clickId = gclid || wbraid || gbraid;
-        if (!clickId) continue;
-        const rawTime = payload.timestamp || null;
-        const conversionTime = formatGoogleAdsTimeOrNull(rawTime, (site as { timezone?: string | null }).timezone);
-        if (!conversionTime) {
-          invalidPvIds.push(pvId);
-          logError('OCI_EXPORT_PV_TIME_INVALID', { pv_id: pvId, raw_time: rawTime });
-          continue;
-        }
-        const currency = (site as { currency?: string })?.currency || 'TRY';
-        const conversionValueMinor =
-          typeof payload.conversionValueMinor === 'number' && Number.isFinite(payload.conversionValueMinor) && payload.conversionValueMinor > 0
-            ? Math.round(payload.conversionValueMinor)
-            : V1_PAGEVIEW_VISIBILITY_MINOR;
-        const pvOrderIdDDA = buildOrderId(
-          OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW,
-          clickId || null,
-          conversionTime,
-          pvId,
-          pvId,
-          0
-        );
-        pvItems.push({
-          id: pvId,
-          orderId: pvOrderIdDDA || pvId,
-          gclid: gclid || '',
-          wbraid: wbraid || '',
-          gbraid: gbraid || '',
-          conversionName: OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW,
-          conversionTime,
-          conversionValue: minorToMajor(conversionValueMinor, currency),
-          conversionCurrency: currency,
-        });
-      }
-      if (invalidPvIds.length > 0) {
-        const processingKeys = getPvProcessingKeysForCleanup(siteUuid, (site as { public_id?: string | null }).public_id);
-        await Promise.all(
-          invalidPvIds.map(async (pvId) => {
-            await Promise.all([
-              redis.del(getPvDataKey(pvId)),
-              ...processingKeys.map((processingKey) => redis.lrem(processingKey, 0, pvId)),
-            ]);
-          })
-        );
-      }
-    } catch (redisErr) {
-      logError('OCI_EXPORT_PV_REDIS_ERROR', { error: redisErr instanceof Error ? redisErr.message : String(redisErr) });
-    }
 
     if (rawList.length === 0 && signalItems.length === 0 && pvItems.length === 0) {
       return NextResponse.json({ items: [], next_cursor: null });
@@ -743,9 +551,10 @@ export async function GET(req: NextRequest) {
     });
     const list = byConversionTime;
 
-    const currency = (site as { currency?: string })?.currency || 'TRY';
+    const siteLocale = resolveSiteLocale(site as { currency?: string | null; timezone?: string | null });
+    const currency = siteLocale.currency;
 
-    const siteTimezone = (site as { timezone?: string | null }).timezone ?? 'Europe/Istanbul';
+    const siteTimezone = siteLocale.timezone;
 
     const conversions: GoogleAdsConversionItem[] = [];
     const queueCandidates: RankedExportCandidate[] = [];
@@ -812,9 +621,13 @@ export async function GET(req: NextRequest) {
         continue;
       }
       const valueCents = valueGuard.normalized;
-      const rowCurrency = row.currency || currency || 'TRY';
-      const conversionValue = ensureNumericValue(minorToMajor(valueCents, rowCurrency));
-      const conversionCurrency = ensureCurrencyCode(row.currency || currency || 'TRY');
+      const rowCurrency = row.currency || currency || NEUTRAL_CURRENCY;
+      const conversionValue = ensureNumericValue(
+        typeof row.optimization_value === 'number' && Number.isFinite(row.optimization_value)
+          ? row.optimization_value
+          : minorToMajor(valueCents, rowCurrency)
+      );
+      const conversionCurrency = ensureCurrencyCode(row.currency || currency || NEUTRAL_CURRENCY);
       const fallbackOrderId = 'seal_' + String(row.id);
       const externalId = row.external_id || computeOfflineConversionExternalId({
         providerKey: row.provider_key,
@@ -823,10 +636,9 @@ export async function GET(req: NextRequest) {
         callId: row.call_id,
         sessionId: row.session_id,
       });
-      // Modül 2: Resolve action name from SiteExportConfig (channel detection for V5_SEAL)
-      const rowChannel = ((row as { intent_action?: string | null }).intent_action || 'phone') as 'phone' | 'whatsapp' | 'form' | 'ecommerce';
-      const v5ActionCfg = getConversionActionConfig(exportConfig, rowChannel, 'V5_SEAL');
-      const convName = v5ActionCfg?.action_name ?? OPSMANTIK_CONVERSION_NAMES.V5_SEAL;
+      const rowChannel = 'phone';
+      const v5ActionCfg = getConversionActionConfig(exportConfig, rowChannel, 'won');
+      const convName = v5ActionCfg?.action_name ?? OPSMANTIK_CONVERSION_NAMES.won;
       if (v5ActionCfg) {
         logInfo('OCI_EXPORT_SEAL_ROLE', {
           queue_id: row.id,
@@ -836,14 +648,13 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      let hashedPhoneForGate: string | null = null;
-      if (row.call_id && callPhoneByCallId[row.call_id]) {
-        try {
-          hashedPhoneForGate = hashPhoneForEC(callPhoneByCallId[row.call_id]);
-        } catch {
-          // Gate may still pass via gclid/wbraid/gbraid
-        }
-      }
+      // SSOT: route through hashE164ForEnhancedConversions so this matches the
+      // hash that seal/stage write to calls.caller_phone_hash_sha256 byte for
+      // byte. The helper never throws; if it returns null the gate still has
+      // gclid/wbraid/gbraid to fall back on.
+      const hashedPhoneForGate = row.call_id
+        ? hashE164ForEnhancedConversions(callPhoneByCallId[row.call_id])
+        : null;
 
       const signalDateForGate = baseTs ? new Date(baseTs) : new Date();
       const gateResult = validateExportRow(
@@ -939,7 +750,7 @@ export async function GET(req: NextRequest) {
       queueCandidates.push({
         id: item.id,
         groupKey: buildSingleConversionGroupKey(row.session_id ?? (row.call_id ? sessionByCall[row.call_id] ?? null : null), row.call_id ?? null, row.id),
-        gear: 'V5_SEAL',
+        gear: 'won',
         sortKey: item.conversionTime,
         value: item,
       });
@@ -1273,7 +1084,7 @@ export async function GET(req: NextRequest) {
       if (adjError) {
         logError('OCI_EXPORT_ADJUSTMENTS_FETCH_ERROR', { error: adjError.message, site_id: siteUuid });
       } else {
-        const adjCurrency = (site as { currency?: string })?.currency || 'TRY';
+        const adjCurrency = (site as { currency?: string })?.currency || NEUTRAL_CURRENCY;
         const now = new Date().toISOString();
         for (const adj of (pendingAdjs ?? []) as Array<{
           id: string;
@@ -1288,7 +1099,7 @@ export async function GET(req: NextRequest) {
             orderId: adj.order_id,
             conversionName: adj.conversion_action_name,
             adjustmentType: adj.adjustment_type,
-            adjustmentTime: formatGoogleAdsTimeOrNull(now, (site as { timezone?: string | null }).timezone ?? 'Europe/Istanbul') ?? now,
+            adjustmentTime: formatGoogleAdsTimeOrNull(now, (site as { timezone?: string | null }).timezone ?? NEUTRAL_TIMEZONE) ?? now,
           };
           if (adj.adjustment_type === 'RESTATEMENT' && adj.new_value_cents != null) {
             item.adjustedValue = minorToMajor(adj.new_value_cents, adjCurrency);
@@ -1367,22 +1178,3 @@ export async function GET(req: NextRequest) {
 }
 
 
-/** Ensure value is a number suitable for Conversion value (no currency symbols). Round to 2 decimals. */
-function ensureNumericValue(value: number): number {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.round(n * 100) / 100;
-}
-
-/** Ensure currency is a clean code (e.g. TRY). Strip non-alpha. */
-function ensureCurrencyCode(raw: string): string {
-  const code = String(raw || 'TRY').trim().toUpperCase().replace(/[^A-Z]/g, '');
-  return code || 'TRY';
-}
-
-function readExportCursorMark(value: unknown): ExportCursorMark | null {
-  if (!value || typeof value !== 'object') return null;
-  const row = value as { t?: unknown; i?: unknown };
-  if (typeof row.t !== 'string' || typeof row.i !== 'string' || !row.t || !row.i) return null;
-  return { t: row.t, i: row.i };
-}

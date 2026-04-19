@@ -3,7 +3,7 @@
  *
  * Modül 1: Dönüşüm Düzeltmeleri (Restate & Retract)
  *
- * Creates a RETRACTION or RESTATEMENT record for a previously exported V5_SEAL
+ * Creates a RETRACTION or RESTATEMENT record for a previously exported canonical `satis`
  * conversion. The adjustment is picked up by /api/oci/google-ads-export in the
  * `adjustments` block, uploaded by Google Ads Script, and ACK'd via /api/oci/ack.
  *
@@ -20,7 +20,7 @@ import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
 import { verifySessionToken } from '@/lib/oci/session-auth';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { logError, logInfo, logWarn } from '@/lib/logging/logger';
-import { parseExportConfig } from '@/lib/oci/site-export-config';
+import { getConversionActionConfig, parseExportConfig } from '@/lib/oci/site-export-config';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -196,14 +196,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Determine conversion action name (from site config, fallback to queue row action)
-    // For V5_SEAL the action name in conversion_actions['phone:V5_SEAL'] or queue row's action field
-    const conversionActionName = exportConfig.conversion_actions['phone:V5_SEAL']?.action_name
+    const conversionActionName = getConversionActionConfig(exportConfig, 'phone', 'won')?.action_name
       ?? originalRow?.action
-      ?? 'OpsMantik_V5_DEMIR_MUHUR';
+      ?? 'OpsMantik_Won';
 
-    // Check that the action is marked adjustable in config
-    const v5ActionConfig = exportConfig.conversion_actions['phone:V5_SEAL'];
+    const v5ActionConfig = getConversionActionConfig(exportConfig, 'phone', 'won');
     if (v5ActionConfig && !v5ActionConfig.adjustable) {
       return NextResponse.json(
         { error: 'Conversion action is not marked as adjustable in site config', code: 'ACTION_NOT_ADJUSTABLE' },

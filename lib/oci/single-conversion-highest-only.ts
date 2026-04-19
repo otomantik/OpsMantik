@@ -1,10 +1,13 @@
-export type SingleConversionGear = 'V2_PULSE' | 'V3_ENGAGE' | 'V4_INTENT' | 'V5_SEAL';
+/**
+ * SingleConversionGear — stages that produce a real OCI export event.
+ * English-only post global-launch cutover.
+ */
+export type SingleConversionGear = 'contacted' | 'offered' | 'won';
 
 const SINGLE_CONVERSION_GEAR_RANK: Record<SingleConversionGear, number> = {
-  V2_PULSE: 1,
-  V3_ENGAGE: 2,
-  V4_INTENT: 3,
-  V5_SEAL: 4,
+  contacted: 1,
+  offered: 2,
+  won: 3,
 };
 
 export interface SingleConversionCandidate<T> {

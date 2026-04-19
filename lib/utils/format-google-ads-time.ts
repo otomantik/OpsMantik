@@ -92,14 +92,14 @@ function _formatDate(d: Date, tz: string): string {
  * Export callers MUST skip the row when this returns null.
  *
  * @param utcDate - ISO string or Date (from calls.confirmed_at / queue.conversion_time)
- * @param timezoneString - IANA timezone. Default: Europe/Istanbul
+ * @param timezoneString - IANA timezone. Neutral default: UTC. Callers should pass the site's timezone.
  */
 export function formatGoogleAdsTimeOrNull(
   utcDate: Date | string | null | undefined,
   timezoneString?: string | null
 ): string | null {
   if (utcDate == null) return null;
-  const tz = normalizeTimezone(timezoneString, 'Europe/Istanbul');
+  const tz = normalizeTimezone(timezoneString, 'UTC');
   const d = typeof utcDate === 'string' ? parseUtcTimestamp(utcDate) : utcDate;
   if (!(d instanceof Date) || Number.isNaN(d.getTime()) || d.getTime() <= 0) return null;
   const result = _formatDate(d, tz);

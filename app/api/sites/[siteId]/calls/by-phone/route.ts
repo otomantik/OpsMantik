@@ -95,19 +95,19 @@ export async function GET(
     // Optional: get projection for highest_stage and value
     const { data: proj } = await adminClient
       .from('call_funnel_projection')
-      .select('highest_stage, v4_at, v5_at, quality_score')
+      .select('highest_stage, offered_at, won_at, quality_score')
       .eq('call_id', callId)
       .maybeSingle();
 
-    const highestStage = proj?.highest_stage ?? 'V2';
+    const highestStage = proj?.highest_stage ?? 'junk';
     const stageLabel =
-      highestStage === 'V5'
-        ? 'V5 - Sealed'
-        : highestStage === 'V4'
-          ? 'V4 - Hot Intent'
-          : highestStage === 'V3'
-            ? 'V3 - Qualified Lead'
-            : 'V2 - Contact';
+      highestStage === 'won'
+        ? 'Won - Sealed'
+        : highestStage === 'offered'
+          ? 'Offered - Hot Intent'
+          : highestStage === 'contacted'
+            ? 'Contacted - Qualified Lead'
+            : 'Known Caller - Unqualified / Junk';
 
     // Merchant insight: from session if available
     let merchantInsight: string | null = null;

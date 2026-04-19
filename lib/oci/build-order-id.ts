@@ -19,7 +19,7 @@ function deterministicSuffix(clickId: string, conversionTime: string, rowId: str
 /**
  * Build a deterministic, collision-resistant order ID for Google Ads offline conversions.
  *
- * @param prefix - Conversion tag (e.g. 'V5_SEAL' or 'OpsMantik_V5_DEMIR_MUHUR')
+ * @param prefix - Conversion tag (e.g. 'OpsMantik_Won')
  * @param clickId - gclid/wbraid/gbraid (empty string = no click)
  * @param conversionTime - Canonical conversion time string (same format for same row across paths)
  * @param fallbackId - Used when no clickId (e.g. 'seal_<rowId>')

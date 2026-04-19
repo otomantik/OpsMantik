@@ -18,7 +18,6 @@ import {
   queueRowToConversionJob,
   type QueueRow,
 } from '@/lib/cron/process-offline-conversions';
-import { majorToMinor } from '@/lib/i18n/currency';
 import {
   acquireSemaphore,
   releaseSemaphore,
@@ -32,15 +31,22 @@ import {
   MAX_LIMIT_CRON,
   LIST_GROUPS_LIMIT,
 } from '@/lib/oci/constants';
-import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
+import type { QueueSnapshotUpdatePayload } from '@/lib/oci/queue-transition-ledger';
+import { logInfo, logWarn } from '@/lib/logging/logger';
+// Phase 4 f4-runner-split: helpers live in lib/oci/runner/* submodules.
+import { decryptCredentials } from '@/lib/oci/runner/credentials';
+import { writeQueueDeadLetterAudit } from '@/lib/oci/runner/dead-letter';
 import {
-  buildQueueTransitionErrorPayload,
-  type QueueSnapshotUpdatePayload,
-} from '@/lib/oci/queue-transition-ledger';
-import { chunkArray } from '@/lib/utils/batch';
-import { logInfo, logWarn, logError as loggerError } from '@/lib/logging/logger';
-import { computeConversionValue } from '@/lib/oci/oci-config';
-import { getSiteValueConfig } from '@/lib/domain/mizan-mantik/value-config';
+  logGroupOutcome,
+  logRunnerError,
+  getQueueAttemptCount,
+} from '@/lib/oci/runner/log-helpers';
+import { persistProviderOutcome } from '@/lib/oci/runner/provider-outcome';
+import {
+  bulkUpdateQueue,
+  bulkUpdateQueueGrouped,
+} from '@/lib/oci/runner/queue-bulk-update';
+import { syncQueueValuesFromCalls } from '@/lib/oci/runner/queue-value-sync';
 
 /** Options for runOfflineConversionRunner. */
 export interface RunnerOptions {
@@ -69,242 +75,6 @@ type GroupRow = {
 };
 
 type HealthRow = { state: string; next_probe_at: string | null; probe_limit: number };
-
-async function decryptCredentials(ciphertext: string): Promise<unknown> {
-  const vault = await import('@/lib/security/vault').catch(() => null);
-  if (!vault?.decryptJson) throw new Error('Vault not configured');
-  return vault.decryptJson(ciphertext);
-}
-
-function logRunnerError(prefix: string, message: string, err: unknown): void {
-  const detail = err instanceof Error ? err.message : String(err);
-  loggerError(message, { prefix, error: detail });
-}
-
-function getQueueAttemptCount(row: QueueRow, fallback: number): number {
-  const raw = (row as QueueRow & { attempt_count?: number | null }).attempt_count;
-  const value = raw ?? fallback;
-  return Number.isFinite(Number(value)) ? Number(value) : fallback;
-}
-
-async function writeQueueDeadLetterAudit(
-  siteId: string,
-  rows: QueueRow[],
-  errorCode: string,
-  errorMessage: string,
-  errorCategory: 'PERMANENT' | 'VALIDATION' | 'AUTH' | 'MAX_ATTEMPTS'
-): Promise<void> {
-  if (rows.length === 0) return;
-
-  await insertDeadLetterAuditLogs(
-    rows.map((row) => ({
-      siteId,
-      resourceType: 'oci_queue',
-      resourceId: row.id,
-      callId: row.call_id,
-      errorCode,
-      errorMessage,
-      errorCategory,
-      attemptCount: getQueueAttemptCount(row, row.retry_count ?? 0),
-      pipeline: 'WORKER',
-    }))
-  );
-}
-
-function buildWorkerBatchErrorPayload(payload: QueueSnapshotUpdatePayload): Record<string, unknown> | null {
-  const clearFields: Array<
-    'last_error' |
-    'provider_error_code' |
-    'provider_error_category' |
-    'next_retry_at' |
-    'uploaded_at' |
-    'claimed_at' |
-    'provider_request_id' |
-    'provider_ref'
-  > = [];
-
-  const maybeClear = (field: typeof clearFields[number], value: unknown): void => {
-    if (value === null) clearFields.push(field);
-  };
-
-  maybeClear('last_error', payload.last_error);
-  maybeClear('provider_error_code', payload.provider_error_code);
-  maybeClear('provider_error_category', payload.provider_error_category);
-  maybeClear('next_retry_at', payload.next_retry_at);
-  maybeClear('uploaded_at', payload.uploaded_at);
-  maybeClear('claimed_at', payload.claimed_at);
-  maybeClear('provider_request_id', payload.provider_request_id);
-  maybeClear('provider_ref', payload.provider_ref);
-
-  return buildQueueTransitionErrorPayload({
-    last_error: payload.last_error ?? undefined,
-    provider_error_code: payload.provider_error_code ?? undefined,
-    provider_error_category: payload.provider_error_category ?? undefined,
-    attempt_count: payload.attempt_count ?? undefined,
-    retry_count: payload.retry_count ?? undefined,
-    next_retry_at: payload.next_retry_at ?? undefined,
-    uploaded_at: payload.uploaded_at ?? undefined,
-    claimed_at: payload.claimed_at ?? undefined,
-    provider_request_id: payload.provider_request_id ?? undefined,
-    provider_ref: payload.provider_ref ?? undefined,
-    clear_fields: clearFields,
-  });
-}
-
-/** Bulk append queue transitions by ids. Reduced O(N) round-trips to O(N/500). */
-async function bulkUpdateQueue(
-  ids: string[],
-  payload: QueueSnapshotUpdatePayload,
-  prefix: string,
-  logLabel: string
-): Promise<void> {
-  const chunks = chunkArray(ids, 500);
-  const start = Date.now();
-  const failures: string[] = [];
-  for (const chunk of chunks) {
-    try {
-      const { data, error } = await adminClient.rpc('append_worker_transition_batch_v2', {
-        p_queue_ids: chunk,
-        p_new_status: payload.status,
-        p_created_at: payload.updated_at ?? new Date().toISOString(),
-        p_error_payload: buildWorkerBatchErrorPayload(payload),
-      });
-      if (error || typeof data !== 'number' || data !== chunk.length) {
-        throw new Error(
-          error?.message ??
-          `append_worker_transition_batch_v2 count mismatch: requested=${chunk.length} updated=${String(data)}`
-        );
-      }
-    } catch (error) {
-      logRunnerError(prefix, logLabel, error);
-      failures.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  const durationMs = Date.now() - start;
-  if (ids.length > 0) {
-    logInfo('OCI_BULK_LEDGER_APPEND', { idsCount: ids.length, chunks: chunks.length, durationMs, prefix });
-  }
-  if (failures.length > 0) {
-    throw new Error(`${logLabel}: ${failures.length} chunk(s) failed: ${failures.join(' | ')}`);
-  }
-}
-
-/** Group rows by identical transition payload; bulk append each group. */
-async function bulkUpdateQueueGrouped<T>(
-  rows: T[],
-  idFn: (r: T) => string,
-  payloadFn: (r: T) => QueueSnapshotUpdatePayload,
-  prefix: string,
-  logLabel: string
-): Promise<void> {
-  const byKey = new Map<string, { payload: QueueSnapshotUpdatePayload; ids: string[] }>();
-  for (const row of rows) {
-    const payload = payloadFn(row);
-    const key = JSON.stringify(payload);
-    const existing = byKey.get(key);
-    if (existing) existing.ids.push(idFn(row));
-    else byKey.set(key, { payload, ids: [idFn(row)] });
-  }
-  for (const { payload, ids } of byKey.values()) {
-    await bulkUpdateQueue(ids, payload, prefix, logLabel);
-  }
-}
-
-/** PR-VK-5: Re-read from calls, sanity-check value_cents. Single writer: enqueue is canonical; sync does NOT overwrite. */
-async function syncQueueValuesFromCalls(
-  siteIdUuid: string,
-  siteRows: QueueRow[],
-  prefix: string
-): Promise<Set<string>> {
-  const mismatchIds = new Set<string>();
-  const withCallId = siteRows.filter((r) => r.call_id);
-  if (withCallId.length === 0) return mismatchIds;
-
-  const callIds = [...new Set(withCallId.map((r) => r.call_id!).filter(Boolean))];
-  const { data: callsData } = await adminClient
-    .from('calls')
-    .select('id, lead_score, sale_amount, currency')
-    .in('id', callIds);
-  const callsById = new Map(
-    (callsData ?? []).map((c: { id: string; lead_score?: number | null; sale_amount?: number | null; currency?: string | null }) => [c.id, c])
-  );
-  const siteValueConfig = await getSiteValueConfig(siteIdUuid).catch(() => null);
-
-  for (const row of withCallId) {
-    const call = callsById.get(row.call_id!);
-    if (!call) continue;
-    const saleAmount = call.sale_amount != null && Number.isFinite(Number(call.sale_amount)) ? Number(call.sale_amount) : null;
-    const callCurrency = (call as { currency?: string | null }).currency ?? 'TRY';
-    const canonicalValueUnits = computeConversionValue(saleAmount, {
-      currency: callCurrency,
-      fallbackMinor: siteValueConfig?.minConversionValueCents ?? null,
-    });
-    const freshCents = canonicalValueUnits != null ? majorToMinor(canonicalValueUnits, callCurrency) : row.value_cents;
-    const storedCents = typeof row.value_cents === 'number' ? row.value_cents : Number(row.value_cents) ?? 0;
-    
-    // PR-VK-6: Apply drift tolerance to prevent fail-closed on minor rounding/exchange differences.
-    // 100 cents (1 TRY) is a safe buffer for most currency round-trips.
-    const QUEUE_VALUE_DRIFT_TOLERANCE_CENTS = 100;
-    const diff = Math.abs((freshCents ?? 0) - storedCents);
-
-    if (diff > QUEUE_VALUE_DRIFT_TOLERANCE_CENTS) {
-      logWarn('QUEUE_VALUE_MISMATCH', {
-        queue_id: row.id,
-        call_id: row.call_id,
-        stored_cents: storedCents,
-        computed_cents: freshCents,
-        diff_cents: diff,
-        prefix,
-      });
-      mismatchIds.add(row.id);
-    } else if (diff > 0) {
-      // Log accepted drift for observability without halting the queue
-      logInfo('QUEUE_VALUE_DRIFT_ACCEPTED', {
-        queue_id: row.id,
-        call_id: row.call_id,
-        stored_cents: storedCents,
-        computed_cents: freshCents,
-        diff_cents: diff,
-        prefix,
-      });
-    }
-  }
-
-  return mismatchIds;
-}
-
-/** Shared persistence: record_provider_outcome (circuit breaker). Both worker and cron use this. */
-async function persistProviderOutcome(
-  siteId: string,
-  providerKey: string,
-  isSuccess: boolean,
-  isTransient: boolean,
-  prefix: string
-): Promise<void> {
-  try {
-    await adminClient.rpc('record_provider_outcome', {
-      p_site_id: siteId,
-      p_provider_key: providerKey,
-      p_is_success: isSuccess,
-      p_is_transient: isTransient,
-    });
-  } catch (e) {
-    logRunnerError(prefix, 'record_provider_outcome failed', e);
-  }
-}
-
-/** Standardized group outcome log: mode, providerKey, claimed, success, failure, retry. */
-function logGroupOutcome(
-  prefix: string,
-  mode: 'worker' | 'cron',
-  providerKey: string,
-  claimed_count: number,
-  success_count: number,
-  failure_count: number,
-  retry_count: number
-): void {
-  logInfo('OCI_GROUP_OUTCOME', { prefix, mode, providerKey, claimed_count, success_count, failure_count, retry_count });
-}
 
 /**
  * Single runner: list groups → claim → (per group) credentials → gates → upload → persist.

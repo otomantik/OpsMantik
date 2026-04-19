@@ -14,13 +14,18 @@ import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
-import { parseOciConfig, computeConversionValue } from '@/lib/oci/oci-config';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
-import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/gears/shared';
+import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/shared';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { publishToQStash } from '@/lib/ingest/publish';
+import {
+  buildOptimizationSnapshot,
+  type HelperFormPayload,
+} from '@/lib/oci/optimization-contract';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -31,6 +36,7 @@ export interface EnqueueSealParams {
   currency: string;
   leadScore: number | null;
   entryReason?: string | null;
+  helperFormPayload?: HelperFormPayload | null;
 }
 
 export interface EnqueueSealResult {
@@ -52,26 +58,20 @@ export interface EnqueueSealResult {
 // Site OCI config loader
 // ---------------------------------------------------------------------------
 
-async function loadSiteOciConfig(siteId: string) {
+async function loadSiteOciContext(siteId: string) {
   const { data, error } = await adminClient
     .from('sites')
-    .select('oci_config, currency, default_aov, min_conversion_value_cents, oci_sync_method')
+    .select('currency, oci_sync_method')
     .eq('id', siteId)
     .maybeSingle();
 
   if (error || !data) {
     logWarn('enqueue_seal_config_missing', { site_id: siteId });
-    return { config: parseOciConfig(null), siteCurrency: 'TRY', siteFallbackMinor: null, syncMethod: 'script' };
+    return { siteCurrency: NEUTRAL_CURRENCY, syncMethod: 'script' };
   }
 
-  const defaultAov = (data as { default_aov?: number | null }).default_aov;
   return {
-    config: parseOciConfig((data as { oci_config?: unknown }).oci_config, defaultAov),
-    siteCurrency: (data as { currency?: string }).currency?.trim() || 'TRY',
-    siteFallbackMinor:
-      (data as { min_conversion_value_cents?: number | null }).min_conversion_value_cents != null
-        ? Number((data as { min_conversion_value_cents?: number | null }).min_conversion_value_cents)
-        : null,
+    siteCurrency: (data as { currency?: string }).currency?.trim() || NEUTRAL_CURRENCY,
     syncMethod: (data as { oci_sync_method?: string }).oci_sync_method || 'script',
   };
 }
@@ -86,7 +86,7 @@ async function loadSiteOciConfig(siteId: string) {
  * Idempotent via UNIQUE(call_id).
  */
 export async function enqueueSealConversion(params: EnqueueSealParams): Promise<EnqueueSealResult> {
-  const { callId, siteId, confirmedAt, saleOccurredAt, saleAmount, currency, leadScore, entryReason } = params;
+  const { callId, siteId, confirmedAt, saleOccurredAt, saleAmount, currency, leadScore, entryReason, helperFormPayload } = params;
 
   // 0. Null safety: Seal requires confirmed_at — never send broken payload to Google
   if (!confirmedAt || typeof confirmedAt !== 'string') {
@@ -162,23 +162,25 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     return { enqueued: false, reason: 'marketing_consent_required' };
   }
 
-  // 3. Load site OCI config (currency fallback)
-  const { config, siteCurrency, siteFallbackMinor, syncMethod } = await loadSiteOciConfig(siteId);
+  // 3. Load site OCI context (currency/sync only)
+  const { siteCurrency, syncMethod } = await loadSiteOciContext(siteId);
 
-  const currencySafe = currency?.trim() || config.currency || siteCurrency;
-  const valueUnits = computeConversionValue(saleAmount, {
-    currency: currencySafe,
-    fallbackMinor: siteFallbackMinor,
-    fallbackMajor: config.fallback_value_major ?? null,
+  const currencySafe = currency?.trim() || siteCurrency;
+  const optimizationSnapshot = buildOptimizationSnapshot({
+    stage: 'won',
+    systemScore: leadScore,
+    actualRevenue: saleAmount,
+    helperFormPayload: helperFormPayload ?? null,
   });
-  const valueCents = Math.round((valueUnits ?? 0) * 100);
+  const valueUnits = optimizationSnapshot.optimizationValue;
+  const valueCents = Math.max(Math.round(valueUnits * 100), 1);
   const usedFallback = !(saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0);
 
   if (usedFallback) {
-    logInfo('enqueue_seal_fallback_value', {
+    logInfo('enqueue_seal_missing_actual_revenue', {
       call_id: callId,
       lead_score: leadScore,
-      fallback_value_cents: valueCents,
+      optimization_value_cents: valueCents,
     });
   }
 
@@ -197,7 +199,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
 
   // 7. Causal DNA for Seal path (Singularity)
   const causalDna = buildMinimalCausalDna(
-    'V5_SEAL',
+    'won',
     ['auth', 'consent', 'idempotency', 'usage'],
     'Seal_Conversion',
     { saleAmount, valueUnits, usedFallback },
@@ -215,10 +217,11 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       provider_key: 'google_ads',
       external_id: computeOfflineConversionExternalId({
         providerKey: 'google_ads',
-        action: 'purchase',
+        action: OPSMANTIK_CONVERSION_NAMES.won,
         callId,
         sessionId,
       }),
+      action: OPSMANTIK_CONVERSION_NAMES.won,
       conversion_time: occurredAtMeta.occurredAt,
       occurred_at: occurredAtMeta.occurredAt,
       source_timestamp: occurredAtMeta.sourceTimestamp,
@@ -226,6 +229,22 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       occurred_at_source: occurredAtMeta.occurredAtSource,
       value_cents: valueCents,
       currency: currencySafe,
+      optimization_stage: optimizationSnapshot.optimizationStage,
+      optimization_stage_base: optimizationSnapshot.stageBase,
+      system_score: optimizationSnapshot.systemScore,
+      quality_factor: optimizationSnapshot.qualityFactor,
+      optimization_value: optimizationSnapshot.optimizationValue,
+      actual_revenue: optimizationSnapshot.actualRevenue,
+      helper_form_payload: optimizationSnapshot.helperFormPayload,
+      feature_snapshot: {
+        discovery_method: discoveryMethod,
+        discovery_confidence: discoveryConfidence,
+        has_gclid: Boolean(gclid),
+        has_wbraid: Boolean(wbraid),
+        has_gbraid: Boolean(gbraid),
+      },
+      outcome_timestamp: occurredAtMeta.occurredAt,
+      model_version: optimizationSnapshot.modelVersion,
       gclid,
       wbraid,
       gbraid,
@@ -260,14 +279,14 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
         await appendFunnelEvent({
           callId,
           siteId,
-          eventType: 'V5_SEALED',
+          eventType: 'won',
           eventSource: 'SEAL_ROUTE',
-          idempotencyKey: `v5:call:${callId}`,
+          idempotencyKey: `won:call:${callId}`,
           occurredAt: new Date(occurredAtMeta.occurredAt),
           payload: { value_cents: valueCents, currency: currencySafe },
         });
       } catch (ledgerErr) {
-        logWarn('FUNNEL_LEDGER_V5_APPEND_FAILED', { call_id: callId, queue_id: queueId, error: (ledgerErr as Error)?.message });
+        logWarn('FUNNEL_LEDGER_WON_APPEND_FAILED', { call_id: callId, queue_id: queueId, error: (ledgerErr as Error)?.message });
       }
     }
 

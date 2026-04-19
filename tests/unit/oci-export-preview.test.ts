@@ -61,16 +61,13 @@ test('google-ads-export route: signal and pageview orderIds use collision-resist
   assert.ok(src.includes('row.external_id || computeOfflineConversionExternalId'), 'seal exports must prefer DB-authoritative external_id');
   assert.ok(src.includes('`signal_${signalRowId}`') || src.includes("`signal_${signalRowId}`"), 'signal fallback id must include signal row id');
   assert.ok(!src.includes('`${clickId}_${conversionName}_${conversionTime}`.slice(0, 128)'), 'signal path must not build raw second-level orderId');
-  assert.ok(!src.includes('`${clickId}_${OPSMANTIK_CONVERSION_NAMES.V1_PAGEVIEW}_${conversionTime}`.slice(0, 128)'), 'pageview path must not build raw second-level orderId');
+  assert.ok(!src.includes('`${clickId}_${OPSMANTIK_CONVERSION_NAMES.satis}_${conversionTime}`.slice(0, 128)'), 'route must not build raw second-level orderId');
 });
 
-test('google-ads-export route: V1 sampling is script-owned and Redis keys are canonicalized', () => {
+test('google-ads-export route: pageview pipeline has been removed from export payload', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('getPvQueueKeysForExport(siteUuid'), 'export must read V1 rows from canonical queue key set');
-  assert.ok(src.includes('getPvProcessingKey(siteUuid)'), 'export must move V1 rows into canonical processing key');
-  assert.ok(src.includes('Sampling is script-owned'), 'route must document script-owned V1 sampling');
-  assert.ok(!src.includes('simpleHash(pvId)'), 'backend must not silently self-sample V1 rows');
+  assert.ok(src.includes('const pvItems: GoogleAdsConversionItem[] = [];'), 'pageview export path should stay disabled');
 });
 
 test('google-ads-export route: seals prefer canonical occurred_at over legacy conversion_time', () => {
@@ -81,20 +78,39 @@ test('google-ads-export route: seals prefer canonical occurred_at over legacy co
   assert.ok(src.includes('row.conversion_time,'), 'route must keep legacy conversion_time only as fallback');
 });
 
-test('google-ads-export route: recovers missing phone and WhatsApp V2 signals before export', () => {
+test('google-ads-export route: no longer performs V2 recovery before export', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('recoverMissingV2SignalsForSite'), 'route should invoke site-scoped V2 recovery');
-  assert.ok(src.includes("source: 'click'"), 'recovery should target click-origin intents');
-  assert.ok(src.includes("intentActions: ['phone', 'whatsapp']"), 'recovery should cover phone and WhatsApp intents');
+  assert.ok(!src.includes('recoverMissingV2SignalsForSite'), 'route should not attempt V2 recovery');
 });
 
-test('google-ads-export route: signal conversion names honor per-channel V2/V3/V4 config', () => {
+test('google-ads-export route: signal conversion names resolve from canonical stages', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('resolveSignalGear('), 'route should map legacy signal types back to gears');
+  assert.ok(src.includes('resolveSignalStage('), 'route should map signals to canonical stages');
   assert.ok(src.includes('normalizeSignalChannel(ctx?.intentAction)'), 'route should derive channel from call intent action');
-  assert.ok(src.includes('getConversionActionConfig(exportConfig, signalChannel, signalGear)'), 'route should resolve configured signal conversion action');
+  assert.ok(src.includes('getConversionActionConfig(exportConfig, signalChannel, signalStage)'), 'route should resolve canonical conversion action');
+  // After Phase 4 f4-runner-split the stage normalizer lives in its own module.
+  const normalizerPath = join(process.cwd(), 'lib', 'oci', 'google-ads-export', 'signal-normalizers.ts');
+  const normSrc = readFileSync(normalizerPath, 'utf8');
+  assert.ok(normSrc.includes("normalizedStage === 'contacted'"), 'normalizer should recognize canonical contacted rows');
+  assert.ok(normSrc.includes("normalizedStage === 'offered'"), 'normalizer should recognize canonical offered rows');
+  assert.ok(!normSrc.includes("'V3_ENGAGE'"), 'normalizer should no longer normalize V3 aliases');
+  assert.ok(!normSrc.includes("'V4_INTENT'"), 'normalizer should no longer normalize V4 aliases');
+});
+
+test('google-ads-export route: skips unknown signal stages instead of exporting legacy leftovers', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE'), 'route should log unknown-stage skips explicitly');
+  assert.ok(src.includes("if (!signalStage || signalStage === 'junk')"), 'route should block non-canonical signal stages before export');
+});
+
+test('google-ads-export route: queue export prefers optimization_value when present', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('typeof row.optimization_value === \'number\''), 'queue export should inspect optimization_value first');
+  assert.ok(src.includes(': minorToMajor(valueCents, rowCurrency)'), 'queue export should only fall back to legacy cents when optimization_value is absent');
 });
 
 test('claim RPC migration: increments attempt_count', () => {

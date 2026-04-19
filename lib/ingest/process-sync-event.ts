@@ -10,7 +10,6 @@ import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { normalizeLandingUrl } from '@/lib/ingest/normalize-landing-url';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { debugLog } from '@/lib/utils';
-import { logWarn } from '@/lib/logging/logger';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
 import type { IngestEventKind } from '@/lib/ingest/types';
 import { assertNever } from '@/lib/ingest/types';
@@ -21,15 +20,12 @@ import { IntentService } from '@/lib/services/intent-service';
 import { resolveIntentConversation } from '@/lib/services/conversation-service';
 import { incrementCapturedSafe } from '@/lib/sync/worker-stats';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
-import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
-import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonical-truth-ledger-writer';
 import { appendTruthEvidenceLedgerBestEffort } from '@/lib/domain/truth/truth-evidence-ledger-writer';
 import {
   digestSyncAttributionInputs,
   recordInferenceRunBestEffort,
 } from '@/lib/domain/truth/inference-run-writer';
-import { probeFunnelProjectionDualRead } from '@/lib/domain/truth/projection-dual-read';
 import { appendIdentityGraphEdgeBestEffort } from '@/lib/domain/truth/identity-graph-writer';
 import { runConsentProvenanceShadowForResolvedSession } from '@/lib/compliance/consent-provenance-shadow';
 
@@ -494,64 +490,21 @@ async function doProcessSyncEvent(
       leadScore
     );
     if (intentResult) {
-      try {
-        const primary = await getPrimarySource(siteIdUuid, { callId: intentResult.callId });
-        const now = new Date();
-        await resolveIntentConversation({
-          siteId: siteIdUuid,
-          source: 'sync',
-          intentAction: intentResult.canonicalAction,
-          intentTarget: intentResult.canonicalTarget,
-          primaryCallId: intentResult.callId,
-          primarySessionId: session.id,
-          mizanValue: leadScore,
-          pageUrl: intentResult.intentPageUrl,
-          clickId: intentResult.clickId,
-          formState: intentResult.formState,
-          primarySource: primary,
-          idempotencyKey: `sync:${dedupEventId}`,
-        });
-        const v2Result = await evaluateAndRouteSignal('V2_PULSE', {
-          siteId: siteIdUuid,
-          callId: intentResult.callId,
-          gclid: primary?.gclid ?? null,
-          wbraid: primary?.wbraid ?? null,
-          gbraid: primary?.gbraid ?? null,
-          aov: 0,
-          clickDate: now,
-          signalDate: now,
-          clientIp: ip,
-          traceId: null,
-        });
-        if (v2Result.routed) {
-          try {
-            await appendFunnelEvent({
-              callId: intentResult.callId,
-              siteId: siteIdUuid,
-              eventType: 'V2_CONTACT',
-              eventSource: 'SYNC',
-              idempotencyKey: `v2:call:${intentResult.callId}:source:sync`,
-              occurredAt: now,
-              payload: { gclid: primary?.gclid ?? null },
-            });
-            void probeFunnelProjectionDualRead(siteIdUuid, intentResult.callId, 'sync');
-          } catch (ledgerErr) {
-            logWarn('FUNNEL_LEDGER_V2_APPEND_FAILED', { call_id: intentResult.callId, error: (ledgerErr as Error)?.message });
-          }
-        }
-        if (!v2Result.routed) {
-          logWarn('V2_PULSE_NOT_ROUTED', {
-            site_id: siteIdUuid,
-            call_id: intentResult.callId,
-            dropped: v2Result.dropped ?? false,
-            has_gclid: Boolean(primary?.gclid),
-            has_wbraid: Boolean(primary?.wbraid),
-            has_gbraid: Boolean(primary?.gbraid),
-          });
-        }
-      } catch (v2Err) {
-        debugLog('[PROCESS_SYNC_EVENT] V2_PULSE emit failed (non-fatal)', { call_id: intentResult.callId, error: (v2Err as Error)?.message });
-      }
+      const primary = await getPrimarySource(siteIdUuid, { callId: intentResult.callId });
+      await resolveIntentConversation({
+        siteId: siteIdUuid,
+        source: 'sync',
+        intentAction: intentResult.canonicalAction,
+        intentTarget: intentResult.canonicalTarget,
+        primaryCallId: intentResult.callId,
+        primarySessionId: session.id,
+        mizanValue: leadScore,
+        pageUrl: intentResult.intentPageUrl,
+        clickId: intentResult.clickId,
+        formState: intentResult.formState,
+        primarySource: primary,
+        idempotencyKey: `sync:${dedupEventId}`,
+      });
     }
   }
 

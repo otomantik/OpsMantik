@@ -1,12 +1,19 @@
 /**
  * Attribution Truth Engine refactor — rollout flags.
- * TRUTH_SHADOW_WRITE_ENABLED gates truth_evidence_ledger inserts (Phase 1).
- * TRUTH_TYPED_EVIDENCE_ENABLED: v2 envelope + Zod validation for payload (Phase 2); invalid → legacy phase1 row + fail metric.
- * TRUTH_INFERENCE_REGISTRY_ENABLED: append-only truth_inference_runs for attribution + session-match decisions (Phase 3).
- * TRUTH_PROJECTION_READ_ENABLED: after V2_CONTACT ledger append, rebuild projection + dual-read probe (calls vs call_funnel_projection); no export cutover.
- * IDENTITY_GRAPH_ENABLED: append-only truth_identity_graph_edges (fingerprint digest → session); matcher unchanged.
- * TRUTH_ENGINE_CONSOLIDATED_ENABLED: PR4-A probe + PR4-B/C parity + PR4-E scoring-lineage parity (metrics/logs only).
- * TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED: PR3 truth_canonical_ledger shadow writes (independent of TRUTH_SHADOW_WRITE_ENABLED).
+ *
+ * Each flag gates a specialized rollout surface:
+ *   - TRUTH_SHADOW_WRITE_ENABLED           → truth_evidence_ledger inserts.
+ *   - TRUTH_TYPED_EVIDENCE_ENABLED         → v2 envelope + Zod validation for payload.
+ *   - TRUTH_INFERENCE_REGISTRY_ENABLED     → append-only truth_inference_runs.
+ *   - IDENTITY_GRAPH_ENABLED               → append-only truth_identity_graph_edges.
+ *   - TRUTH_ENGINE_CONSOLIDATED_ENABLED    → deterministic-engine parity probes.
+ *   - TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED → truth_canonical_ledger shadow writes.
+ *   - CONSENT_PROVENANCE_SHADOW_ENABLED    → consent provenance shadow audit.
+ *   - EXPLAINABILITY_API_ENABLED           → /api/truth/explain endpoint.
+ *   - LEGACY_ENDPOINTS_ENABLED             → keep legacy ingest paths alive.
+ *
+ * The old TRUTH_PROJECTION_READ_ENABLED flag was removed along with
+ * lib/domain/truth/projection-dual-read.ts. Any residual env var is ignored.
  */
 
 export type RefactorFlags = {
@@ -15,7 +22,6 @@ export type RefactorFlags = {
   /** PR4-A/B/C: deterministic-engine probe + attribution + call-event parity; default off. */
   truth_engine_consolidated_enabled: boolean;
   truth_inference_registry_enabled: boolean;
-  truth_projection_read_enabled: boolean;
   identity_graph_enabled: boolean;
   explainability_api_enabled: boolean;
   legacy_endpoints_enabled: boolean;
@@ -40,7 +46,6 @@ export function getRefactorFlags(): RefactorFlags {
     truth_typed_evidence_enabled: asBool(process.env.TRUTH_TYPED_EVIDENCE_ENABLED, false),
     truth_engine_consolidated_enabled: asBool(process.env.TRUTH_ENGINE_CONSOLIDATED_ENABLED, false),
     truth_inference_registry_enabled: asBool(process.env.TRUTH_INFERENCE_REGISTRY_ENABLED, false),
-    truth_projection_read_enabled: asBool(process.env.TRUTH_PROJECTION_READ_ENABLED, false),
     identity_graph_enabled: asBool(process.env.IDENTITY_GRAPH_ENABLED, false),
     explainability_api_enabled: asBool(process.env.EXPLAINABILITY_API_ENABLED, false),
     legacy_endpoints_enabled: asBool(process.env.LEGACY_ENDPOINTS_ENABLED, true),

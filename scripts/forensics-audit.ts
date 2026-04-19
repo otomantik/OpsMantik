@@ -56,17 +56,17 @@ async function runForensics() {
 
     // 2. Mathematical "Poison" Detection
     console.log('\n--- 2. Mathematical "Poison" Detection ---');
-    const { data: sites } = await adminClient.from('sites').select('id, name, default_aov');
+    const { data: sites } = await adminClient.from('sites').select('id, name');
     const siteMap = new Map(sites?.map(s => [s.id, s]));
 
     const poison = signals?.filter(s => {
         const val = s.conversion_value ?? 0;
         const site = siteMap.get(s.site_id);
-        const threshold = (site?.default_aov || 1000) * 10;
+        const threshold = 120; // canonical satis max at score 100 => 120
         return val === 0 || val > threshold;
     });
 
-    console.log(`🧪 Poisoned Signals (0 or >10x AOV): ${poison?.length || 0}`);
+    console.log(`🧪 Poisoned Signals (0 or > canonical max ${120}): ${poison?.length || 0}`);
 
     // 3. Geolocation & SST Failure Audit
     console.log('\n--- 3. Geolocation & SST Failure Audit ---');

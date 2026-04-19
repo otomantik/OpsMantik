@@ -8,28 +8,29 @@ alwaysApply: false
 
 **Applies to:** `lib/domain/mizan-mantik/**`, `lib/domain/funnel-kernel/**`, orchestrator.ts, runner.ts, lib/oci/**
 
-**Import ban:** `lib/utils/mizan-mantik.ts`, `lib/valuation/predictive-engine.ts` — deprecated. Use `lib/domain/funnel-kernel/funnel-policy.ts` or `lib/domain/mizan-mantik/value-calculator.ts`.
+**Import ban:** `lib/utils/mizan-mantik.ts`, `lib/valuation/predictive-engine.ts`, `lib/domain/mizan-mantik/value-calculator.ts`, `lib/domain/funnel-kernel/funnel-policy.ts`.
+Use `lib/oci/optimization-contract.ts` as the only optimization math authority.
 
 ## Golden Rules (Anayasa)
 
 | Kural | Tanım | Teknik Karşılık |
 |-------|-------|-----------------|
-| **A** Single Config Source | Oranlar asla kodda (.ts) yazılmaz | `getSiteValueConfig` üzerinden; sites.intent_weights, sites.default_aov |
-| **B** Single Time Math | Gün farkı tek fonksiyon | `calculateDecayDays` (mode: ceil, clamp: 365) |
-| **C** Single Writer | value_cents sadece enqueue'da yazılır | sync sadece denetim (alert); overwrite yasak |
-| **D** Integer Only Math | İç hesaplamalar cents | BIGINT / integer; float sadece export aşamasında |
-| **E** Consistent Mapping | Gear ↔ Stage sabit | V3→qualified, intent_weights bu isimlendirmeyi takip eder |
+| **A** Single Math Authority | Optimization değeri başka yerde hesaplanmaz | `lib/oci/optimization-contract.ts` |
+| **B** Single Stage Set | Sadece `junk`, `gorusuldu`, `teklif`, `satis` kullanılır | legacy V-stage alias yasak |
+| **C** Single Writer | Snapshot kolonları tek canonical sözleşmeden dolar | `buildOptimizationSnapshot(...)` |
+| **D** Integer Boundary | Cents sadece DB/export sınırında türetilir | `toExpectedValueCents`, queue guards |
+| **E** Operational Config Only | Site config matematiği etkilemez | export/channel config serbest, value math değil |
 
 ## AI / Geliştirici Kuralları
 
-- DO NOT use hardcoded conversion ratios (0.02, 0.1, 0.2, 0.3). Always fetch via `getSiteValueConfig`.
-- DO NOT use Math.floor for decay days. Always use `calculateDecayDays` with 'ceil' mode.
-- ALWAYS perform monetary calculations in cents (integer). Round immediately after multiplication.
-- Ensure V3_ENGAGE uses 'qualified' weight (default 0.20).
-- For any value mismatch in sync tasks, log 'QUEUE_VALUE_MISMATCH' instead of overwriting.
+- DO NOT read `sites.intent_weights`, `sites.default_aov`, or `oci_config.base_value` to shape optimization value.
+- DO NOT reintroduce V-stage aliases (`V3_ENGAGE`, `V4_INTENT`, `V5_SEAL`, etc.) in active runtime code.
+- ALWAYS derive optimization snapshots from `buildOptimizationSnapshot(...)`.
+- ALWAYS perform cents conversion at the boundary, not inside stage math.
+- For any value mismatch in sync tasks, log `QUEUE_VALUE_MISMATCH` instead of overwriting.
 
 ## Integer Cents Detay
 
-- Internal SSOT: `expected_value_cents`, `value_cents`; major unit sadece export / UI / Google Ads.
-- Örnek doğru: `baseValueCents = Math.round(aovCents * ratio); return Math.round(baseValueCents * decay);`
-- Yasak: `return base * multiplier;` (round yok), `conversion_value: aov * ratio * decay` (float zinciri)
+- Internal SSOT: `optimization_value` major units, `expected_value_cents` / `value_cents` boundary fields.
+- Örnek doğru: `const snapshot = buildOptimizationSnapshot({ stage, systemScore })`
+- Yasak: `default_aov * ratio`, `intent_weights[...]`, `decay(...)` ile optimization value üretmek

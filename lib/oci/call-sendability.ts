@@ -2,9 +2,13 @@ export type OciSendableCallStatus = 'confirmed' | 'qualified' | 'real';
 
 const SENDABLE_CALL_STATUSES = new Set<OciSendableCallStatus>(['confirmed', 'qualified', 'real']);
 
-// V2 (INTENT_CAPTURED / İlk Temas) signals fire at the moment of first contact, before a call
-// is confirmed. 'intent' is a valid and expected call status for V2 exports.
-const SIGNAL_V2_SENDABLE_STATUSES = new Set<string>(['intent', 'confirmed', 'qualified', 'real']);
+// Some signal rows are emitted before the call graduates out of "intent".
+// Canonical stage rows must stay exportable in that state or panel actions get stuck in DB only.
+const SIGNAL_INTENT_SENDABLE_STATUSES = new Set<string>(['intent', 'confirmed', 'qualified', 'real']);
+const SIGNAL_TYPES_ALLOWING_INTENT_STATUS = new Set<string>([
+  'contacted',
+  'offered',
+]);
 
 export function isCallStatusSendableForOci(status: string | null | undefined): boolean {
   if (!status) return false;
@@ -17,8 +21,9 @@ export function isCallStatusSendableForSignal(
 ): boolean {
   if (!status) return false;
   const normalized = status.trim().toLowerCase();
-  if (signalType === 'INTENT_CAPTURED') {
-    return SIGNAL_V2_SENDABLE_STATUSES.has(normalized);
+  const normalizedSignalType = signalType.trim().toLowerCase();
+  if (SIGNAL_TYPES_ALLOWING_INTENT_STATUS.has(normalizedSignalType)) {
+    return SIGNAL_INTENT_SENDABLE_STATUSES.has(normalized);
   }
   return SENDABLE_CALL_STATUSES.has(normalized as OciSendableCallStatus);
 }

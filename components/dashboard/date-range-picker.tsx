@@ -1,8 +1,10 @@
 /**
  * Date Range Picker Component
- * 
+ *
  * Displays date range selector with presets and custom range.
- * Shows dates in TRT (Europe/Istanbul) timezone.
+ * Dates are rendered in the active site's timezone via
+ * `useTranslation().formatTimestamp`, which is fed from `I18nProvider`'s
+ * siteConfig (see app/dashboard/site/[siteId]/page.tsx).
  */
 
 'use client';

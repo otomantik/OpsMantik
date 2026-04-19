@@ -88,8 +88,8 @@ function ActiveDeckCard({
   };
 
   const actions: IntentCardV2Action[] = [
-    { id: 'gorusuldu', label: t('hunter.gorusuldu'), score: 60, color: 'blue' },
-    { id: 'teklif', label: t('hunter.teklif'), score: 80, color: 'indigo' },
+    { id: 'contacted', label: t('hunter.contacted'), score: 60, color: 'blue' },
+    { id: 'offered', label: t('hunter.offered'), score: 80, color: 'indigo' },
     { id: 'seal', label: t('hunter.seal'), score: 100, color: 'emerald', isPrimary: true },
   ];
 

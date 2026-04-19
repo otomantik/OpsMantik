@@ -7,11 +7,10 @@ import { SiteService } from '@/lib/services/site-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/logging/logger';
-import { buildFallbackRow } from '@/lib/sync-fallback';
 import { getClientIp } from '@/lib/request-client-ip';
 import { getFinalUrl, normalizeIp, normalizeUserAgent } from '@/lib/types/ingest';
 import { parseSignalManifest, toValidIngestPayload } from '@/lib/types/signal-manifest';
-import { computeIdempotencyKey, computeIdempotencyKeyV2, getServerNowMs } from '@/lib/idempotency';
+import { computeIdempotencyKey, computeCanonicalIdempotencyKey, getServerNowMs } from '@/lib/idempotency';
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
 import { recordRouteHttpResponse } from '@/lib/route-metrics';
 import { publishToQStash, resolveAppBaseUrlForIngest } from '@/lib/ingest/publish';
@@ -175,8 +174,6 @@ export type SyncHandlerDeps = {
   publish?: (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown; deduplicationId: string; retries: number }) => Promise<void>;
   /** When set, used instead of executeIngest for direct-worker path tests. */
   executeWorker?: (args: { lane?: import('@/lib/ingest/publish').IngestLane; url?: string; body: unknown }) => Promise<void>;
-  /** When set, used instead of fallback buffer insert (for assertions). */
-  insertFallback?: (row: unknown) => Promise<{ error: unknown }>;
   /** When set, used instead of RateLimitService.check (for tests: avoid 429). */
   checkRateLimit?: () => Promise<SyncRateLimitResult>;
   /** When set, used instead of getSiteIngestConfig (for tests without DB). */
@@ -335,11 +332,6 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
       }
     }
 
-    const doInsertFallback = deps?.insertFallback ?? (async (row: unknown) => {
-      const { error } = await adminClient.from('ingest_fallback_buffer').insert(row as Record<string, unknown>);
-      return { error };
-    });
-
     // Real client IP: x-forwarded-for (first) then x-real-ip (multi-tenant/proxy e.g. SST)
     const clientIp = getClientIp(req);
     const ip = normalizeIp(clientIp);
@@ -418,7 +410,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
 
       const idempotencyKey =
         idempotencyVersion === '2'
-          ? await computeIdempotencyKeyV2(siteIdUuid, b, getServerNowMs())
+          ? await computeCanonicalIdempotencyKey(siteIdUuid, b, getServerNowMs())
           : await computeIdempotencyKey(siteIdUuid, b);
 
       try {
@@ -452,18 +444,15 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
             error_message_short: errorShort || null,
           });
         } catch { /* ignore */ }
-        try {
-          await doInsertFallback(buildFallbackRow(siteIdUuid, workerPayload, errorShort || null));
-        } catch (fallbackErr) {
-          logError('INGEST_FALLBACK_INSERT_FAILED', { route: 'sync', ingest_id: ingestId, site_id: b.s, error: String(fallbackErr) });
-        }
         incrementBillingIngestDegraded();
         degraded++;
       }
     }
 
     const primaryIngestId = ingestIds[0];
-    // RPO: When both QStash and fallback fail, return 503 so client retries (event stays in outbox).
+    // Phase 4 (20260419180000): fallback buffer retired. When both QStash and the
+    // direct-worker path fail we return 503 so the client's idempotent retry loop
+    // becomes the recovery path (two idempotency layers, not three).
     if (degraded > 0 && queued === 0) {
       return NextResponse.json(
         createSyncResponse(false, 0, { status: 'degraded', error: 'Ingest temporarily unavailable', ingest_id: primaryIngestId }),

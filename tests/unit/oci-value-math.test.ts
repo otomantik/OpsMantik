@@ -1,7 +1,7 @@
 /**
  * One True Math — Regression guards for OCI conversion value.
  * - Currency utilities (getMinorUnits, majorToMinor, minorToMajor)
- * - value-calculator (V5, V2–V4)
+ * - optimization-contract (stage base x quality factor)
  * - Source guard: runner must not use calculateExpectedValue; job.amount_cents = row.value_cents
  * - Import ban: OCI folders must not import predictive-engine / calculateLeadValue for value
  */
@@ -16,12 +16,11 @@ import {
   minorToMajor,
 } from '@/lib/i18n/currency';
 import {
-  calculateConversionValueMinor,
-  resolveConversionValueMinor,
-  AOV_FLOOR_MAJOR,
-} from '@/lib/domain/mizan-mantik';
-import { calculateSignalEV } from '@/lib/domain/mizan-mantik/time-decay';
-import { getValueFloorCents, normalizeWeight } from '@/lib/domain/mizan-mantik/value-config';
+  clampSystemScore,
+  OPTIMIZATION_STAGE_BASES,
+  resolveOptimizationValue,
+  resolveQualityFactor,
+} from '@/lib/oci/optimization-contract';
 
 // --- Currency utilities ---
 test('getMinorUnits: TRY/EUR/USD = 2', () => {
@@ -52,86 +51,52 @@ test('minorToMajor: converts correctly', () => {
   assert.equal(minorToMajor(1_000_000, 'KWD'), 1000);
 });
 
-// --- Value calculator V5 ---
-test('calculateConversionValueMinor V5: sale_amount_minor > 0 returns sale', () => {
-  const result = calculateConversionValueMinor({
-    gear: 'V5_SEAL',
-    currency: 'TRY',
-    saleAmountMinor: 25_000,
-    siteAovMinor: 50_000, // ignored
+test('optimization stage bases stay globally fixed (English-only canonical)', () => {
+  assert.deepEqual(OPTIMIZATION_STAGE_BASES, {
+    junk: 0.1,
+    contacted: 10,
+    offered: 50,
+    won: 100,
   });
-  assert.equal(result, 25_000);
 });
 
-test('calculateConversionValueMinor V5: sale_amount null/0 falls back to site minimum', () => {
-  assert.equal(
-    calculateConversionValueMinor({ gear: 'V5_SEAL', currency: 'TRY', saleAmountMinor: 0 }),
-    100000
-  );
-  assert.equal(
-    calculateConversionValueMinor({ gear: 'V5_SEAL', currency: 'TRY', saleAmountMinor: null }),
-    100000
-  );
+test('clampSystemScore bounds scores to 0..100', () => {
+  assert.equal(clampSystemScore(-5), 0);
+  assert.equal(clampSystemScore(42.4), 42);
+  assert.equal(clampSystemScore(142), 100);
 });
 
-test('normalizeWeight accepts both percent and ratio inputs', () => {
-  assert.equal(normalizeWeight(20), 0.2);
-  assert.equal(normalizeWeight(0.2), 0.2);
-  assert.equal(normalizeWeight(100), 1);
+test('resolveQualityFactor follows the universal formula', () => {
+  assert.equal(resolveQualityFactor(0), 0.6);
+  assert.equal(resolveQualityFactor(50), 0.9);
+  assert.equal(resolveQualityFactor(100), 1.2);
 });
 
-test('calculateConversionValueMinor V1: returns 1 minor visibility unit', () => {
-  assert.equal(
-    calculateConversionValueMinor({ gear: 'V1_PAGEVIEW', siteAovMinor: 100_000 }),
-    1
-  );
-});
-
-test('calculateConversionValueMinor V2–V4: uses AOV and decay', () => {
-  const result = calculateConversionValueMinor({
-    gear: 'V2_PULSE',
-    currency: 'TRY',
-    siteAovMinor: 100_000, // 1000 TRY
-    clickDate: new Date('2024-01-01'),
-    signalDate: new Date('2024-01-15'),
+test('resolveOptimizationValue computes canonical values deterministically', () => {
+  assert.deepEqual(resolveOptimizationValue({ stage: 'contacted', systemScore: 0 }), {
+    stageBase: 10,
+    systemScore: 0,
+    qualityFactor: 0.6,
+    optimizationValue: 6,
   });
-  assert.ok(Number.isInteger(result), 'result must be integer');
-  assert.ok(result >= 0, 'result must be non-negative');
-});
-
-test('resolveConversionValueMinor supports score-style ratioOverride without decay', () => {
-  const result = resolveConversionValueMinor({
-    gear: 'V4_INTENT',
-    currency: 'TRY',
-    siteAovMinor: 100_000,
-    ratioOverride: 80,
-    decayOverride: 1,
-    minimumValueMinor: 1,
+  assert.deepEqual(resolveOptimizationValue({ stage: 'offered', systemScore: 50 }), {
+    stageBase: 50,
+    systemScore: 50,
+    qualityFactor: 0.9,
+    optimizationValue: 45,
   });
-  assert.equal(result.ratio, 0.8);
-  assert.equal(result.valueMinor, 80_000);
+  assert.deepEqual(resolveOptimizationValue({ stage: 'won', systemScore: 100 }), {
+    stageBase: 100,
+    systemScore: 100,
+    qualityFactor: 1.2,
+    optimizationValue: 120,
+  });
 });
 
-test('calculateConversionValueMinor V2–V4: AOV floor applies for JPY', () => {
-  // AOV_FLOOR for JPY = 1000 (0 decimals)
-  assert.equal(majorToMinor(AOV_FLOOR_MAJOR, 'JPY'), 1000);
-});
-
-test('Eslamed-style signal floor no longer flattens V2–V4 to site min conversion value', () => {
-  const config = {
-    siteId: 'eslamed-test',
-    defaultAov: 1000,
-    intentWeights: { pending: 0.02, qualified: 0.2, proposal: 0.3, sealed: 1.0 },
-    minConversionValueCents: 100_000,
-  };
-  const clickDate = new Date('2026-03-04T16:00:00.000Z');
-  const signalDate = new Date('2026-03-05T16:00:00.000Z');
-  const floorCents = getValueFloorCents(config);
-
-  assert.equal(floorCents, 500, 'signal floor stays ratio-based even when site min is 1000 TRY');
-  assert.equal(calculateSignalEV('V2_PULSE', 100_000, clickDate, signalDate, config.intentWeights), 1_000, 'V2 keeps computed 10 TRY value');
-  assert.equal(calculateSignalEV('V3_ENGAGE', 100_000, clickDate, signalDate, config.intentWeights), 10_000, 'V3 keeps computed 100 TRY value');
-  assert.equal(calculateSignalEV('V4_INTENT', 100_000, clickDate, signalDate, config.intentWeights), 15_000, 'V4 keeps computed 150 TRY value');
+test('optimization values map cleanly to expected cents', () => {
+  assert.equal(Math.round(resolveOptimizationValue({ stage: 'junk', systemScore: 0 }).optimizationValue * 100), 6);
+  assert.equal(Math.round(resolveOptimizationValue({ stage: 'contacted', systemScore: 100 }).optimizationValue * 100), 1200);
+  assert.equal(Math.round(resolveOptimizationValue({ stage: 'won', systemScore: 100 }).optimizationValue * 100), 12000);
 });
 
 // --- Source guard: runner must not use calculateExpectedValue ---

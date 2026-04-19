@@ -1,6 +1,7 @@
 /**
- * Sealed/confirmed çağrılar: offline_conversion_queue'da yoksa enqueueSealConversion ile ekle.
- * sale_amount boş veya ≤0 ise site default_aov kullanılır (tahmini değer backfill).
+ * Confirmed çağrılar: offline_conversion_queue'da yoksa enqueueSealConversion ile ekle.
+ * actual_revenue bilinmiyorsa sale_amount fallback üretilmez; canonical optimization math
+ * sadece stage + system_score ile çalışır.
  *
  * Usage:
  *   npx tsx scripts/db/enqueue-orphan-calls-for-site.ts "Koç" --dry-run
@@ -53,12 +54,10 @@ async function main() {
 
   const { data: siteRow } = await supabase
     .from('sites')
-    .select('name, domain, default_aov, currency')
+    .select('name, domain, currency')
     .eq('id', siteId)
     .maybeSingle();
 
-  const defaultAov =
-    siteRow?.default_aov != null && Number(siteRow.default_aov) > 0 ? Number(siteRow.default_aov) : 100;
   const currency = (siteRow?.currency || 'TRY').trim().toUpperCase();
 
   const since = new Date(Date.now() - days * 86400_000).toISOString();
@@ -83,7 +82,7 @@ async function main() {
   const orphans = (calls ?? []).filter((c) => !queued.has(c.id));
 
   console.log(`Site: ${siteRow?.name} (${siteRow?.domain})`);
-  console.log(`Lookback: ${days}d | default_aov fallback: ${defaultAov} ${currency}`);
+  console.log(`Lookback: ${days}d | actual_revenue fallback: disabled | currency: ${currency}`);
   console.log(`Confirmed (since): ${calls?.length ?? 0} | Zaten kuyrukta: ${queued.size} | Eksik: ${orphans.length}`);
   if (dryRun) console.log('[DRY-RUN] enqueue çağrılmayacak.\n');
 
@@ -94,7 +93,7 @@ async function main() {
     const confirmedAt = call.confirmed_at as string;
     const rawSale = call.sale_amount != null ? Number(call.sale_amount) : null;
     const saleAmount =
-      rawSale != null && Number.isFinite(rawSale) && rawSale > 0 ? rawSale : defaultAov;
+      rawSale != null && Number.isFinite(rawSale) && rawSale > 0 ? rawSale : null;
 
     if (dryRun) {
       console.log('would enqueue', call.id, 'oci', call.oci_status, 'sale_in', rawSale, '->', saleAmount);

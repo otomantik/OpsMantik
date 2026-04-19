@@ -12,3 +12,4 @@ export {
   hashPhoneForEC,
   hashPhoneForECBase64,
 } from './identity-hash';
+export { buildPhoneIdentity, type HashedPhoneResult, type BuildPhoneIdentityParams } from './phone-hash';

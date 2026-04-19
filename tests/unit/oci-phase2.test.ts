@@ -1,39 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    calculateSignalEV,
-} from '@/lib/domain/mizan-mantik';
+import { resolveOptimizationValue } from '@/lib/oci/optimization-contract';
 
 // Note: Full integration testing of Cron routes (zombies, backfill) requires 
 // deep mocking of Supabase and Next.js Request/Response which is complex in node:test.
 // We focus on the core logic and mathematical requirements of Phase 2.
 
-test('Phase 2.3: Mathematical Bounds — 10% decay floor', () => {
-    const clickDate = new Date('2024-01-01T10:00:00Z');
-    const signalDate = new Date('2024-02-01T10:00:00Z'); // 31 days later
-
-    // V4 Aggressive > 10 days = 0.05 (in time-decay.ts)
-    // Phase 2 floor = 0.1
-
-    const aovCents = 10000; // 100.00 TRY
-    const intentWeights = { pending: 0.02, qualified: 0.2, proposal: 0.3, sealed: 1.0 };
-
-    // Formula: baseValueCents = round(aovCents * ratio)
-    // V4 ratio = 0.3
-    // baseValueCents = 10000 * 0.3 = 3000
-
-    // Without floor: round(3000 * 0.05) = 150
-    // With Phase 2 floor: round(3000 * 0.1) = 300
-
-    const ev = calculateSignalEV(
-        'V4_INTENT',
-        aovCents,
-        clickDate,
-        signalDate,
-        intentWeights
-    );
-
-    assert.equal(ev, 300, 'Signal EV should be floored at 10% of base value (300 cents)');
+test('Phase 2.3: Universal optimization math stays bounded and deterministic', () => {
+    const offered = resolveOptimizationValue({ stage: 'offered', systemScore: 80 });
+    assert.equal(offered.stageBase, 50);
+    assert.equal(offered.qualityFactor, 1.08);
+    assert.equal(offered.optimizationValue, 54);
 });
 
 test('Phase 2.1: Zombie Sweeper — Filter logic verification', async () => {
@@ -58,8 +35,8 @@ test('Phase 2.2: Temporal Funnel — Offset verification', () => {
 });
 
 test('Phase 2.3: Zero-Value Micro-Floor — Math verification', () => {
-    // Logic from google-ads-export/route.ts:
-    // if (valueCents <= 0) valueCents = 100;
+    // Queue/signals now clamp expected cents to at least 1.
+    // This test preserves the non-zero export invariant.
 
     const rawValueCents = 0;
     let valueCents = rawValueCents;

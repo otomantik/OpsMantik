@@ -15,7 +15,6 @@ const TRUTH_ENV_KEYS = [
   'TRUTH_TYPED_EVIDENCE_ENABLED',
   'TRUTH_ENGINE_CONSOLIDATED_ENABLED',
   'TRUTH_INFERENCE_REGISTRY_ENABLED',
-  'TRUTH_PROJECTION_READ_ENABLED',
   'IDENTITY_GRAPH_ENABLED',
   'EXPLAINABILITY_API_ENABLED',
   'LEGACY_ENDPOINTS_ENABLED',
@@ -63,7 +62,6 @@ test('PR1: sync POST response unchanged when truth env unset vs explicitly off; 
     process.env.TRUTH_TYPED_EVIDENCE_ENABLED = 'false';
     process.env.TRUTH_ENGINE_CONSOLIDATED_ENABLED = 'false';
     process.env.TRUTH_INFERENCE_REGISTRY_ENABLED = 'false';
-    process.env.TRUTH_PROJECTION_READ_ENABLED = 'false';
     process.env.IDENTITY_GRAPH_ENABLED = 'false';
     process.env.EXPLAINABILITY_API_ENABLED = 'false';
     process.env.CONSENT_PROVENANCE_SHADOW_ENABLED = 'false';
@@ -118,7 +116,6 @@ test('PR1: sync POST response unchanged when truth env unset vs explicitly off; 
       process.env.TRUTH_TYPED_EVIDENCE_ENABLED = 'false';
       process.env.TRUTH_ENGINE_CONSOLIDATED_ENABLED = 'false';
       process.env.TRUTH_INFERENCE_REGISTRY_ENABLED = 'false';
-      process.env.TRUTH_PROJECTION_READ_ENABLED = 'false';
       process.env.IDENTITY_GRAPH_ENABLED = 'false';
       process.env.EXPLAINABILITY_API_ENABLED = 'false';
       process.env.CONSENT_PROVENANCE_SHADOW_ENABLED = 'false';

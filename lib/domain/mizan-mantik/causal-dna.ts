@@ -5,7 +5,7 @@
  * Original state and transformed state coexist for non-repudiation.
  */
 
-import type { OpsGear } from './types';
+import type { PipelineStage } from './types';
 
 const MATH_VERSION = 'v1.0.4';
 
@@ -21,7 +21,7 @@ export interface CausalDnaBranch {
 
 export interface CausalDna {
   branches: CausalDnaBranch[];
-  input_gear: OpsGear;
+  input_gear: PipelineStage;
   math_version: string;
 }
 
@@ -29,7 +29,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export function createCausalDna(gear: OpsGear): CausalDna {
+export function createCausalDna(gear: PipelineStage): CausalDna {
   return {
     branches: [],
     input_gear: gear,

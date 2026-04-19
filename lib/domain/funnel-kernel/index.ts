@@ -5,17 +5,3 @@
 
 export { appendFunnelEvent, type AppendFunnelEventInput, type FunnelEventType, type FunnelEventSource } from './ledger-writer';
 export { processCallProjection, type CallFunnelProjection } from './projection-updater';
-export {
-  getStageWeight
-} from './funnel-policy';
-
-export {
-  computeSealedValue,
-  resolveConversionValueMinor,
-  calculateConversionValueMinor
-} from '../mizan-mantik/value-calculator';
-
-export type {
-  ProjectionForValue,
-  ProjectionStage
-} from '../mizan-mantik/value-calculator';

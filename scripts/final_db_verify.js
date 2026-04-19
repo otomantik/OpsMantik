@@ -29,18 +29,20 @@ async function verifyDb() {
   const testPayload = {
     site_id: siteId,
     call_id: callId,
-    signal_type: 'MEETING_BOOKED',
-    google_conversion_name: 'OpsMantik_V3_Nitelikli_Gorusme',
+    signal_type: 'gorusuldu',
+    optimization_stage: 'gorusuldu',
+    google_conversion_name: 'OpsMantik_Gorusuldu',
     google_conversion_time: now,
-    conversion_value: 15.54, // Example LCV value
-    expected_value_cents: 1554,
+    conversion_value: 9.6,
+    optimization_value: 9.6,
+    expected_value_cents: 960,
     dispatch_status: 'PENDING',
     occurred_at: now,
     adjustment_sequence: 0,
     current_hash: 'manual_verification_hash_' + Date.now(),
     causal_dna: {
-      lcv_stage: 'V3',
-      lcv_quality_multiplier: 5.18,
+      optimization_stage: 'gorusuldu',
+      quality_factor: 0.96,
       source: 'MANUAL_VERIFY_SCRIPT'
     }
   };

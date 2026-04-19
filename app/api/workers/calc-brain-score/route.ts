@@ -11,6 +11,12 @@ import {
   type ShadowSessionQualityV1_1,
 } from '@/lib/domain/deterministic-engine/scoring-lineage-parity';
 import { getRefactorFlags } from '@/lib/refactor/flags';
+import {
+  OPTIMIZATION_MODEL_VERSION,
+  buildOptimizationSnapshot,
+  clampSystemScore,
+  resolveOptimizationStage,
+} from '@/lib/oci/optimization-contract';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +45,7 @@ export async function POST(req: NextRequest) {
             payload,
             ads_context
         );
+        const systemScore = clampSystemScore(brainScore);
 
         const shadow = shadow_session_quality_v1_1 as ShadowSessionQualityV1_1 | undefined;
         const shadowFinal =
@@ -56,15 +63,20 @@ export async function POST(req: NextRequest) {
             callId: call_id,
         });
 
-        // 2. Logic: Fast-Track Routing
-        const isFastTrack = brainScore >= 80;
-        const finalStatus = isFastTrack ? 'qualified' : 'intent';
+        // 2. Canonical stage prediction from system score (prediction only, not export authority)
+        const predictedStage = resolveOptimizationStage({ leadScore: systemScore });
+        const optimizationSnapshot = buildOptimizationSnapshot({
+            stage: predictedStage,
+            systemScore,
+            modelVersion: OPTIMIZATION_MODEL_VERSION,
+        });
+        const isFastTrack = predictedStage === 'offered' || predictedStage === 'won';
 
         // 3. Update Call Record (Optimistic Locking)
         // We fetch the current record to get the 'version' for concurrency control.
         const { data: callBefore, error: fetchErr } = await tenantClient
             .from('calls')
-            .select('version, _client_value')
+            .select('version, status')
             .eq('id', call_id)
             .single();
 
@@ -74,13 +86,27 @@ export async function POST(req: NextRequest) {
         }
 
         const currentVersion = callBefore.version ?? 0;
+        const currentStatus = (callBefore as { status?: string | null }).status ?? null;
+        const finalStatus =
+            currentStatus === 'confirmed' ||
+            currentStatus === 'real' ||
+            currentStatus === 'junk' ||
+            currentStatus === 'suspicious' ||
+            currentStatus === 'cancelled'
+                ? currentStatus
+                : 'intent';
 
         const { data: updatedCall, error: updateError } = await tenantClient
             .from('calls')
             .update({
-                lead_score: brainScore,
-                lead_score_at_match: brainScore,
+                lead_score: systemScore,
+                lead_score_at_match: systemScore,
+                system_score: systemScore,
                 score_breakdown: brainBreakdown,
+                model_version: OPTIMIZATION_MODEL_VERSION,
+                optimization_stage: optimizationSnapshot.optimizationStage,
+                quality_factor: optimizationSnapshot.qualityFactor,
+                optimization_value: optimizationSnapshot.optimizationValue,
                 status: finalStatus,
                 is_fast_tracked: isFastTrack,
                 version: currentVersion + 1,
@@ -106,20 +132,15 @@ export async function POST(req: NextRequest) {
             }, { route: 'calc-brain-score' });
         }
 
-        // 5. Fast-Track push to OCI (Idempotent via DB constraint)
-        if (isFastTrack) {
-            const { enqueueSealConversion } = await import('@/lib/oci/enqueue-seal-conversion');
-            await enqueueSealConversion({
-                callId: call_id,
-                siteId: site_id,
-                confirmedAt: new Date().toISOString(),
-                saleAmount: updatedCall._client_value ?? null,
-                currency: 'TRY',
-                leadScore: brainScore,
-            });
-        }
-
-        return NextResponse.json({ ok: true, score: brainScore, status: finalStatus }, { headers: getBuildInfoHeaders() });
+        return NextResponse.json({
+            ok: true,
+            score: systemScore,
+            system_score: systemScore,
+            optimization_stage: optimizationSnapshot.optimizationStage,
+            score_breakdown: brainBreakdown,
+            model_version: OPTIMIZATION_MODEL_VERSION,
+            status: finalStatus,
+        }, { headers: getBuildInfoHeaders() });
 
     } catch (error) {
         logError('CALC_BRAIN_SCORE_FAILED', { error: error instanceof Error ? error.message : String(error) });

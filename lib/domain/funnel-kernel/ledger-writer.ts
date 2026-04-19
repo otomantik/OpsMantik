@@ -8,15 +8,16 @@ import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonic
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 
+/**
+ * FunnelEventType — canonical ledger event_type values. English-only post
+ * global-launch cutover.
+ */
 export type FunnelEventType =
-  | 'V2_CONTACT'
-  | 'V2_SYNTHETIC'
-  | 'V3_QUALIFIED'
-  | 'V4_INTENT'
-  | 'V5_SEALED'
-  | 'REPAIR_ATTEMPTED'
-  | 'REPAIR_COMPLETED'
-  | 'REPAIR_FAILED';
+  | 'junk'
+  | 'contacted'
+  | 'offered'
+  | 'won'
+  | 'system_repair';
 
 export type FunnelEventSource =
   | 'TRACK'

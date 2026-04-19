@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
     const { appended } = await appendFunnelEvent({
       callId,
       siteId: siteUuid,
-      eventType: 'V4_INTENT',
+      eventType: 'offered',
       eventSource: 'PROBE',
       idempotencyKey,
       occurredAt,

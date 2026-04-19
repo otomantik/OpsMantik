@@ -8,7 +8,8 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { createClient } from '@/lib/supabase/client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export function PanelFeed({
   initialCalls
@@ -49,7 +50,12 @@ export function PanelFeed({
   const activeIntent = filteredCalls[activeIndex];
   const queueCount = filteredCalls.length;
 
-  const handleActionComplete = async (actionType: LeadActionType, phone?: string, score?: number) => {
+  const handleActionComplete = async (
+    actionType: LeadActionType,
+    phone?: string,
+    score?: number,
+    helperFormPayload?: HelperFormPayload | null
+  ) => {
     if (!pendingAction) {
       return { success: false, error: t('toast.failedUpdate') };
     }
@@ -59,7 +65,7 @@ export function PanelFeed({
       const res = await fetch(`/api/intents/${intent.id}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, score, action_type: actionType })
+        body: JSON.stringify({ phone, score, action_type: actionType, helper_form_payload: helperFormPayload ?? null })
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok || !result?.success) {
