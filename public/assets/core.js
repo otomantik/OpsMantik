@@ -14,12 +14,6 @@
     if (!url || typeof url !== "string") return "";
     return url.replace(/\/call-event\/?$/i, "/sync");
   }
-  function deriveTrackPvUrl(url) {
-    if (!url || typeof url !== "string") return "";
-    if (/\/api\/sync\/?$/i.test(url)) return url.replace(/\/api\/sync\/?$/i, "/api/track/pv");
-    if (/\/sync\/?$/i.test(url)) return url.replace(/\/sync\/?$/i, "/track/pv");
-    return "";
-  }
   var resolvedApiUrl = syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : "");
   if (typeof window !== "undefined" && resolvedApiUrl) {
     try {
@@ -35,7 +29,6 @@
   }
   var CONFIG = {
     apiUrl: resolvedApiUrl,
-    pvUrl: runtimeConfig.opsTrackPvUrl || deriveTrackPvUrl(resolvedApiUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/track/pv" : ""),
     trackerVersion: runtimeConfig.opsTrackerVersion || "core-shadow-2026-11-05",
     sessionKey: "opsmantik_session_sid",
     fingerprintKey: "opsmantik_session_fp",
@@ -1293,25 +1286,7 @@
     }
   }
   function sendPageViewPulse() {
-    if (!siteId || !CONFIG.pvUrl) return;
-    const session = getOrCreateSession();
-    const gclid = session.context || "";
-    const wbraid = session.wbraid || "";
-    const gbraid = session.gbraid || "";
-    if (!gclid && !wbraid && !gbraid) return;
-    fetch(CONFIG.pvUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        siteId,
-        gclid,
-        wbraid,
-        gbraid
-      }),
-      keepalive: true
-    }).catch(function(e) {
-      if (typeof console !== "undefined") console.warn("[OpsMantik] TRACKER_FETCH_FAILED", "pv-pulse", e?.message || e);
-    });
+    return;
   }
   function initAutoTracking() {
     console.log("[OPSMANTIK] Auto-tracking initialized");
