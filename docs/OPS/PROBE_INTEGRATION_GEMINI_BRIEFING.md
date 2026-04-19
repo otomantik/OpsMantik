@@ -47,7 +47,7 @@ fun getPublicKeyPem(): String {
 
 ---
 
-### 2.2 V4 Intent (Quality Score) — POST /api/intents/status
+### 2.2 Canonical Teklif Signal — POST /api/intents/status
 
 **Auth:** Header'lar (Bearer yok — cihaz imzası kullanılır)
 - `X-Ops-Site-Id`: siteId (public_id veya UUID)
@@ -56,10 +56,10 @@ fun getPublicKeyPem(): String {
 **Request:**
 ```json
 {
-  "idempotencyKey": "V4_INTENT:+905321234567:167888640",
+  "idempotencyKey": "teklif:+905321234567:167888640",
   "phoneNumber": "+905321234567",
   "qualityScore": 4.0,
-  "calibratedIntentValue": 280.0,
+  "calibratedIntentValue": 50.0,
   "timestamp": 1678886412345,
   "signature": "BASE64_ENCODED_ECDSA_SIGNATURE"
 }
@@ -82,7 +82,7 @@ fun getPublicKeyPem(): String {
 ```json
 {
   "callId": "uuid",
-  "highestStage": "V3 - Qualified Lead",
+  "highestStage": "Gorusuldu - Qualified Lead",
   "merchantInsight": "Spent 5 mins on 'Premium Package' page",
   "predictedLtv": 750.50,
   "lastContact": "2026-03-09T10:00:00Z"
@@ -93,7 +93,7 @@ fun getPublicKeyPem(): String {
 
 ---
 
-### 2.4 Seal (V5 Demir Mühür) — POST /api/calls/{callId}/seal
+### 2.4 Seal (Canonical Satis) — POST /api/calls/{callId}/seal
 
 **Auth:** Header `X-Ops-Device-Id` + body'de `signature` (Probe path)
 
@@ -117,7 +117,7 @@ fun getPublicKeyPem(): String {
 ## 3. Akış Sırası (Entegrasyon Testi)
 
 1. **Cihaz Kaydı:** POST /api/probe/register (Bearer + publicKeyPem) → probe_devices tablosuna yazılır
-2. **V4 Intent:** POST /api/intents/status (X-Ops-Site-Id, X-Ops-Device-Id, imzalı body) → call_funnel_ledger'a V4_INTENT eklenir
+2. **Teklif:** POST /api/intents/status (X-Ops-Site-Id, X-Ops-Device-Id, imzalı body) → call_funnel_ledger'a canonical `teklif` eklenir
 3. **By-Phone:** GET /api/sites/{siteId}/calls/by-phone?phone=... (Bearer) → Çalmadan önce HUD için
 4. **Seal:** POST /api/calls/{callId}/seal (X-Ops-Device-Id, imzalı body) → Satış onayı
 

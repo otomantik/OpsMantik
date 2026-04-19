@@ -1,22 +1,22 @@
 # Funnel Kernel Contract (FUNNEL_CONTRACT)
 
-**OpsMantik Funnel Kernel Charter v1 — immutable semantics**
+**OpsMantik Funnel Kernel Charter v2 — immutable semantics**
 
 This document defines the kernel ontology and red lines. The application is developed according to this contract.
 
 > **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)  
-> **OCI value engines + SSOT (V2–V5, queue vs projection):** [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md)
+> **OCI value engines + SSOT:** [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md)
 
 ---
 
-## Strategic Decision: V1 Outside Kernel
+## Strategic Decision: V1/V2 Outside Kernel
 
 | Layer | Scope | Description |
 | ----- | ----- | ----------- |
-| **Observability Layer** | V1 (PAGEVIEW) | Redis volume, visibility, traffic telemetry. Not call_id-centric. |
-| **Funnel Kernel** | V2–V5 | Revenue ontology. call_id required. |
+| **Observability Layer** | V1/V2 historical residue | Traffic telemetry or archived ingress artifacts. Not canonical export ontology. |
+| **Funnel Kernel** | `junk`, `gorusuldu`, `teklif`, `satis` | Revenue ontology. call_id required. |
 
-V1 is not part of the kernel. Pageview is not forced to call_id.
+Legacy V1/V2 artifacts are not part of the kernel. Canonical runtime only reasons about `junk`, `gorusuldu`, `teklif`, `satis`.
 
 ---
 
@@ -24,14 +24,14 @@ V1 is not part of the kernel. Pageview is not forced to call_id.
 
 | Stage | Name | Description | Value |
 | ----- | ---- | ----------- | ----- |
-| V2 | PULSE | First contact | AOV×2% soft decay |
-| V3 | ENGAGE | Qualified contact | AOV×10% standard decay |
-| V4 | INTENT | Hot intent | AOV×30% aggressive decay |
-| V5 | SEAL | Iron seal | exact value_cents, no decay |
+| `junk` | Cop | Exclusion / audience-only signal | `0.1 × quality_factor` |
+| `gorusuldu` | Gorusuldu | Qualified conversation | `10 × quality_factor` |
+| `teklif` | Teklif | Proposal / hot intent | `50 × quality_factor` |
+| `satis` | Satis | Closed sale | `100 × quality_factor` |
 
 | Field | Range |
 | ----- | ----- |
-| stage | V2, V3, V4, V5 |
+| stage | `junk`, `gorusuldu`, `teklif`, `satis` |
 | quality_score | 1..5 (merchant score) |
 | confidence | 0..1 (attribution confidence) |
 
@@ -41,11 +41,10 @@ V1 is not part of the kernel. Pageview is not forced to call_id.
 
 | event_type | Description |
 | ---------- | ----------- |
-| V2_CONTACT | Real V2 contact |
-| V2_SYNTHETIC | V2 completed via repair |
-| V3_QUALIFIED | V3 qualified contact |
-| V4_INTENT | V4 hot intent |
-| V5_SEALED | Sealed sale |
+| `junk` | Canonical junk / exclusion event |
+| `gorusuldu` | Canonical qualified conversation |
+| `teklif` | Canonical proposal / hot intent |
+| `satis` | Canonical sale |
 | REPAIR_ATTEMPTED | Repair attempted |
 | REPAIR_COMPLETED | Repair completed |
 | REPAIR_FAILED | Repair failed |
@@ -58,10 +57,10 @@ V1 is not part of the kernel. Pageview is not forced to call_id.
 | ---- | ----------- |
 | Routes must not write to projection directly | Only ledger-writer + projection-updater write |
 | Google OCI export SSOT | Queue + `marketing_signals`; see [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md). Projection is for analytics / metrics, not primary OCI batch. |
-| No READY without V5 completeness | funnel_completeness = complete required |
+| No READY without `satis` completeness | `funnel_completeness = complete` required |
 | Repair cannot replace normal flow | Exception mechanism; monitored with KPI |
-| Synthetic stages must not be invisible | v2_source, synthetic_flags_json in projection |
-| Ad-hoc value calculation outside policy forbidden | Single SSOT: value-config + policy |
+| Historical residues must not be invisible | archived/historical rows may exist but do not drive canonical export |
+| Ad-hoc value calculation outside policy forbidden | Single SSOT: `optimization-contract.ts` |
 | New imports from legacy utils forbidden | mizan-mantik, predictive-engine deprecated |
 | Reducer must not deviate from deterministic order | ORDER BY fixed; immutable |
 
@@ -98,4 +97,4 @@ If the given `call_id` does not match the given `site_id`, event append must fai
 
 ## Invariant
 
-If V5 exists in projection, `funnel_completeness = complete`; otherwise repair worker or BLOCKED.
+If `satis` exists in projection, `funnel_completeness = complete`; otherwise repair worker or BLOCKED.

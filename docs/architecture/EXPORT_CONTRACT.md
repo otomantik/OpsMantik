@@ -1,8 +1,8 @@
 # Export Contract (EXPORT_CONTRACT)
 
-**Projection-based export item shape and ACK routing**
+**Canonical export item shape and ACK routing**
 
-When `USE_FUNNEL_PROJECTION=true`, export single source is `call_funnel_projection`.
+Primary export surfaces are `offline_conversion_queue` and `marketing_signals`. `call_funnel_projection` is an analytics/read-model surface, not the Google Ads write authority.
 
 > **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)
 
@@ -18,13 +18,13 @@ When `USE_FUNNEL_PROJECTION=true`, export single source is `call_funnel_projecti
 
 Deterministic external_id: derived from `call_id + stage + policy_version`. ACK routing is clean; the same logical conversion always maps to the same external_id.
 
-### orderId Collision (Phase 21 / EXTINCTION DOSSIER)
+### orderId Collision
 
 **Problem:** Two distinct conversions with same gclid + second-precision conversion_time → same orderId → Google dedup → silent undercount.
 
-**Current formula:** `${clickId}_V5_SEAL_${sanitizedOccurredAt}` slice(0,128).
+**Current formula:** `${clickId}_${prefix}_${sanitizedOccurredAt}_${deterministicSuffix}` slice(0,128).
 
-**Mitigation:** `call_id` or `queue_id` suffix can be added (if 128 char allows). P2. Details: `docs/runbooks/EXTINCTION_DOSSIER_ABYSSAL_AUDIT.md`.
+**Mitigation:** deterministic hash suffix derived from row identity. See `lib/oci/build-order-id.ts` for the canonical implementation.
 
 ---
 
@@ -48,10 +48,10 @@ Deterministic external_id: derived from `call_id + stage + policy_version`. ACK 
 
 ## READY Condition
 
-`export_status = 'READY'` only when `funnel_completeness = complete`.
+`export_status = 'READY'` only when canonical `satis` completeness is reached.
 
 ---
 
 ## ACK Routing
 
-When ACK is received, projection row is updated: `export_status = 'ACKED'`. Deterministic external_id ensures the correct row is found.
+When ACK is received, queue/signal rows are finalized and any projection mirror is updated separately. Deterministic external_id ensures the correct row is found.

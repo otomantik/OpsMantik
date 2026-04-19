@@ -1,21 +1,34 @@
 # OCI Value Engines and SSOT (Single Source of Truth)
 
-This document describes how **V2–V5 conversion values** are produced and which database columns feed each path. It complements [FUNNEL_CONTRACT.md](./FUNNEL_CONTRACT.md) with an operational, OCI-specific view.
+This document describes how conversion values are produced after the universal value cutover. It complements [FUNNEL_CONTRACT.md](./FUNNEL_CONTRACT.md) with an operational, OCI-specific view.
 
-## Three value engines (V2–V4)
+## Current SSOT
 
-| Engine | Entry point | Weight / AOV source | Output |
-|--------|-------------|----------------------|--------|
-| **Mizan outbox** | `evaluateAndRouteSignal` → `insertMarketingSignal` | `getSiteValueConfig` → `sites.default_aov` + **derived** `intentWeights` from `sites.oci_config` (SiteExportConfig `gear_weights`) when present | `marketing_signals` rows |
-| **Seal LCV** | `/api/calls/[id]/seal` (lead_score 10–99) | `parseExportConfig(sites.oci_config)` → `gear_weights`, `intelligence`; `sites.default_aov` | `marketing_signals` rows (dedup vs outbox) |
-| **Export** | `/api/oci/google-ads-export` | Reads **precomputed** `value_cents` / `expected_value_cents` from DB; applies gates (`validateExportRow`) | JSON for Google Ads Script |
+| Path | Entry point | Value source | Output |
+|------|-------------|--------------|--------|
+| **Stage signals** | panel stage route, seal route, outbox fallback | `buildOptimizationSnapshot(stage, systemScore)` | `marketing_signals.optimization_value` + `expected_value_cents` |
+| **Sale queue** | `enqueueSealConversion` | `buildOptimizationSnapshot('satis', systemScore)` | `offline_conversion_queue.optimization_value` + `value_cents` mirror |
+| **Export** | `/api/oci/google-ads-export` | Prefers `optimization_value`, falls back to stored cents only for legacy rows | JSON for Google Ads Script |
 
-V5 (seal with sale) uses **`offline_conversion_queue`**: `enqueueSealConversion` → `computeConversionValue(saleAmount)` → funnel-kernel `computeSealedValue`. No star-based gating.
+The universal formula is:
 
-## Site configuration: one JSON column
+`optimization_value = stage_base * quality_factor`
 
-- **`sites.oci_config`** — Zod `SiteExportConfig` (`parseExportConfig` in `lib/oci/site-export-config.ts`). Holds `gear_weights` (V2/V3/V4), decay, conversion action names, enhanced conversions, etc.
-- **`sites.intent_weights`** — Legacy JSONB; **prefer** `oci_config.gear_weights`. `getSiteValueConfig` derives `IntentWeights` from `gear_weights` when `oci_config` is present so Mizan matches export math.
+Where:
+
+- `junk = 0.1`
+- `gorusuldu = 10`
+- `teklif = 50`
+- `satis = 100`
+- `quality_factor = 0.6 + 0.6 * (system_score / 100)`
+
+`actual_revenue` is internal only and no longer drives Google export value.
+
+## Site configuration
+
+- `sites.oci_config` is no longer authoritative for value math.
+- `parseExportConfig()` currently returns the universal default export contract.
+- Conversion naming is fixed to `OpsMantik_Gorusuldu`, `OpsMantik_Teklif`, `OpsMantik_Satis`, `OpsMantik_Cop_Exclusion`.
 
 ## `call_funnel_projection` vs Google OCI export
 
@@ -28,5 +41,6 @@ OCI export does **not** read projection rows for batch export; queue + signals a
 
 ## Red lines
 
-- Do not add a third parallel weight column without updating this doc and `getSiteValueConfig` / `parseExportConfig`.
-- Seal LCV must pass `gearWeights` and LCV `config` from `parseExportConfig` so dashboard and Google see the same ratios.
+- Do not reintroduce AOV/decay/gear-weight based export math.
+- Do not export non-canonical signal stages from `marketing_signals`.
+- Do not let `actual_revenue` leak back into Google value bidding math.

@@ -16,7 +16,7 @@
 
 ## Drill 1 — Sync 429 & CORS
 
-**Runbook:** [DEPLOY_SYNC_429_SITE_SCOPED_RL.md](./DEPLOY_SYNC_429_SITE_SCOPED_RL.md)
+**Runbook:** [SYNC_RATE_LIMIT_AND_QUOTA_DEFAULTS.md](./SYNC_RATE_LIMIT_AND_QUOTA_DEFAULTS.md)
 
 **Scenario:** A customer reports all sync requests fail with 403/429 from browser.
 

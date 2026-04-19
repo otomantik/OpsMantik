@@ -236,10 +236,11 @@ SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROU
 - `docs/architecture/MASTER_ARCHITECTURE_MAP.md` — Single-page architecture map
 
 **Operations / audit:**
-- `docs/runbooks/OCI_SYSTEM_DEEP_ANALYSIS.md` — 5 sets, dual-head, flow
+- `docs/architecture/OCI_QUEUE_HEALTH.md` — canonical queue statuses, claim semantics
+- `docs/architecture/EXPORT_CONTRACT.md` — export shape + orderId collision mitigation
+- `docs/architecture/OCI_VALUE_ENGINES_SSOT.md` — stage-base × quality-factor math SSOT
 - `docs/runbooks/OCI_CONVERSION_INTENT_FLOW_DIAGRAM.md` — UI → conversion mapping
-- `docs/runbooks/OCI_FIVE_GEAR_ARCHITECTURAL_AUDIT.md` — Architecture audit
-- `docs/runbooks/OCI_CHAOS_RED_TEAM_AUDIT.md` — Chaos/retry analysis
+- `docs/runbooks/OCI_GOOGLE_ADS_SCRIPT_CONTROL.md` — script quarantine SOP
 
 ---
 

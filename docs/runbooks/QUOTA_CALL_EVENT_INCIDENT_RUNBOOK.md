@@ -26,8 +26,9 @@
 
 ## 2) Immediate mitigation (temporary unblock)
 
-Use the documented SQL playbook:
-- `docs/OPS/TEMP_QUOTA_UNBLOCK_SITES_2026-02-15.md`
+Use the SQL playbook in the runbook template below (the point-in-time
+2026-02-15 unblock procedure was pruned in the Phase 5 doc cleanup — the
+generic SQL shape is idempotent and fits any site).
 
 Policy (temporary):
 - `monthly_limit = 50000`

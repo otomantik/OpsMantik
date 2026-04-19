@@ -49,13 +49,11 @@
 
 ---
 
-## 0c. Sync intent'ler nabız (V2) üretmiyordu — düzeltme
+## 0c. V2 ilk temas hattı kaldırıldı
 
-**Belirti:** Sadece call-event API ile gelen aramalarda V2 (İlk Temas) nabız oluşuyordu; sync/ingest ile gelen tel/wa tıklamaları (ensure_session_intent_v1) call oluşturuyordu ama `marketing_signals`'a V2_PULSE yazılmıyordu. Sonuç: 44 intent tek satır bile nabız üretmedi, script sadece kuyruk (V5) gönderiyordu.
+**Güncel durum:** Universal cutover sonrası ilk temas / `V2_PULSE` hattı aktif export ve runtime akışından çıkarıldı. Sync ve call-event artık V2 pulse üretmez; ana optimizasyon funnel'ı sadece `gorusuldu`, `teklif`, `satis` üstünden ilerler.
 
-**Yapılan:** `lib/services/intent-service.ts` — `handleIntent` artık oluşan/güncellenen call'ın `call_id`'sini döndürüyor. `lib/ingest/process-sync-event.ts` — handleIntent sonrası bu call_id ile `getPrimarySource` ve `evaluateAndRouteSignal('V2_PULSE', ...)` çağrılıyor (best-effort, hata yutulur). Böylece sync ile gelen her intent için V2 nabız satırı oluşur; script export'ta kuyruk (V5) + nabız (V2/V3/V4) birlikte gönderilir.
-
-**Eski 44 intent için:** Geçmişte sync ile oluşan intent'lerin nabızı yok. İsterseniz bu call'lar için manuel backfill (V2_PULSE emit) yapan bir script çalıştırılabilir; yoksa sadece bundan sonraki sync intent'ler nabız üretecek.
+**Sonuç:** Google Ads script tarafında artık queue (`satis`) + canonical signal satırları (`gorusuldu` / `teklif`) beklenir. `INTENT_CAPTURED` / `V2_PULSE` artık operasyonel SSOT değildir.
 
 ---
 
@@ -67,7 +65,7 @@
 
 **Yapılan:** `app/api/oci/ack/route.ts` — Sinyal güncellemesi artık `dispatch_status = 'PROCESSING'` ile yapılıyor (SENT'e geçer). `app/api/oci/ack-failed/route.ts` — Sinyal FAILED güncellemesi `PENDING` veya `PROCESSING` olanlara uygulanıyor.
 
-**Detailed flow:** `docs/runbooks/OCI_SYSTEM_DEEP_ANALYSIS.md` — 5 sets, junk volume, dual-head, stuck points.
+**Detailed flow:** [`docs/architecture/OCI_QUEUE_HEALTH.md`](../architecture/OCI_QUEUE_HEALTH.md) and [`docs/architecture/EXPORT_CONTRACT.md`](../architecture/EXPORT_CONTRACT.md) cover queue statuses, claim semantics, and export shape.
 
 ---
 

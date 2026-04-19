@@ -33,7 +33,7 @@ When adding `Sentry.captureException` or spans:
 |-----------------|-------|
 | `sync_error_rate_high` | [OBSERVABILITY_REQUIREMENTS.md § Investigation](./OBSERVABILITY_REQUIREMENTS.md#investigation-playbook) |
 | `call_event_error_rate_high` | Same file, call-event section |
-| Redis / rate limit | [`docs/runbooks/DEPLOY_SYNC_429_SITE_SCOPED_RL.md`](../../runbooks/DEPLOY_SYNC_429_SITE_SCOPED_RL.md) |
+| Redis / rate limit | [`docs/runbooks/SYNC_RATE_LIMIT_AND_QUOTA_DEFAULTS.md`](../../runbooks/SYNC_RATE_LIMIT_AND_QUOTA_DEFAULTS.md) |
 
 ---
 
