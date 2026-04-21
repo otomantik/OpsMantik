@@ -12,9 +12,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export function PanelFeed({
-  initialCalls
+  initialCalls,
+  siteId,
 }: {
   initialCalls: HunterIntent[];
+  /** Required: scopes Realtime `calls` subscription to this site only (tenant isolation). */
+  siteId: string;
 }) {
   const { t } = useTranslation();
   const [calls, setCalls] = useState(initialCalls);
@@ -94,28 +97,45 @@ export function PanelFeed({
     }
   };
 
-  // Realtime engine
+  // Realtime engine — site-scoped channel + server filter (fail-closed tenant boundary)
   useEffect(() => {
+    if (!siteId) return;
+
     const supabase = createClient();
+    const siteFilter = `site_id=eq.${siteId}`;
     const channel = supabase
-      .channel('public:calls')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls' }, (payload) => {
-        const newCall = payload.new as HunterIntent;
-        setCalls(prev => {
-          if (prev.some(c => c.id === newCall.id)) return prev;
-          return [newCall, ...prev];
-        });
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls' }, (payload) => {
-        const updated = payload.new as HunterIntent;
-        if (updated.status === 'confirmed' || updated.status === 'junk') {
-          setCalls(prev => prev.filter(c => c.id !== updated.id));
+      .channel(`panel_calls_site_${siteId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'calls', filter: siteFilter },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          if (row.site_id !== siteId) return;
+          const newCall = payload.new as HunterIntent;
+          setCalls((prev) => {
+            if (prev.some((c) => c.id === newCall.id)) return prev;
+            return [newCall, ...prev];
+          });
         }
-      })
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'calls', filter: siteFilter },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          if (row.site_id !== siteId) return;
+          const updated = payload.new as HunterIntent;
+          if (updated.status === 'confirmed' || updated.status === 'junk') {
+            setCalls((prev) => prev.filter((c) => c.id !== updated.id));
+          }
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [siteId]);
 
   const filters = [
     { key: 'today' as const, label: t('date.today') },

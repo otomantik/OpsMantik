@@ -24,6 +24,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { rescueStaleMarketingSignalsProcessing } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { logError, logInfo, logWarn } from '@/lib/logging/logger';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { runPulseRecovery } from '@/lib/oci/pulse-recovery-worker';
@@ -104,13 +105,8 @@ async function step_sweepZombies(stats: OciMaintenanceStats): Promise<void> {
     });
     stats.queue_rescued = typeof queueRecovered === 'number' ? queueRecovered : 0;
 
-    const { data: signals } = await adminClient
-      .from('marketing_signals')
-      .update({ dispatch_status: 'PENDING', updated_at: new Date().toISOString() })
-      .eq('dispatch_status', 'PROCESSING')
-      .lt('updated_at', cutoff)
-      .select('id');
-    stats.signals_rescued = signals?.length ?? 0;
+    const signalsRescued = await rescueStaleMarketingSignalsProcessing(adminClient, cutoff);
+    stats.signals_rescued = signalsRescued;
 
     const { data: closed } = await adminClient.rpc('close_stale_uploaded_conversions', {
       p_min_age_hours: 48,

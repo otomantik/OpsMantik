@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { logError } from '@/lib/logging/logger';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import type { ExportAuthContext } from './export-auth';
 import type { BuiltExportData } from './export-build-items';
 
@@ -47,26 +48,22 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
   }
 
   if (signalIdsToMarkProcessing.length > 0) {
-    const { data, error } = await adminClient
-      .from('marketing_signals')
-      .update({ dispatch_status: 'PROCESSING' })
-      .in('id', signalIdsToMarkProcessing)
-      .eq('site_id', ctx.siteUuid)
-      .eq('dispatch_status', 'PENDING')
-      .select('id');
-    const updatedSignals = Array.isArray(data) ? data.length : 0;
-    if (error || updatedSignals !== signalIdsToMarkProcessing.length) throw new Error('SIGNAL_CLAIM_MISMATCH');
+    const updatedSignals = await applyMarketingSignalDispatchBatch(adminClient, {
+      siteId: ctx.siteUuid,
+      signalIds: signalIdsToMarkProcessing,
+      expectStatus: 'PENDING',
+      newStatus: 'PROCESSING',
+    });
+    if (updatedSignals !== signalIdsToMarkProcessing.length) throw new Error('SIGNAL_CLAIM_MISMATCH');
   }
 
   if (built.suppressedSignalIds.length > 0) {
-    const { data, error } = await adminClient
-      .from('marketing_signals')
-      .update({ dispatch_status: 'JUNK_ABORTED' })
-      .in('id', built.suppressedSignalIds)
-      .eq('site_id', ctx.siteUuid)
-      .eq('dispatch_status', 'PENDING')
-      .select('id');
-    const updated = Array.isArray(data) ? data.length : 0;
-    if (error || updated !== built.suppressedSignalIds.length) throw new Error('SIGNAL_STATE_MISMATCH');
+    const updated = await applyMarketingSignalDispatchBatch(adminClient, {
+      siteId: ctx.siteUuid,
+      signalIds: built.suppressedSignalIds,
+      expectStatus: 'PENDING',
+      newStatus: 'JUNK_ABORTED',
+    });
+    if (updated !== built.suppressedSignalIds.length) throw new Error('SIGNAL_STATE_MISMATCH');
   }
 }

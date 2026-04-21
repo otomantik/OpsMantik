@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { mutate } from 'swr';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
@@ -114,6 +114,12 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     setToast,
   } = useQueueUiState();
 
+  /** Avoid self-triggering effects when maps grow (Panoptic Phase 4 — stable callbacks). */
+  const detailsByIdRef = useRef(detailsById);
+  detailsByIdRef.current = detailsById;
+  const sessionEvidenceRef = useRef(sessionEvidence);
+  sessionEvidenceRef.current = sessionEvidence;
+
   // Holistic View: always ALL traffic (kept for parity even if unused directly)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const effectiveAdsOnly = false;
@@ -124,7 +130,8 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
   const fetchIntentDetails = useCallback(
     async (callId: string): Promise<HunterIntent | null> => {
       if (!callId) return null;
-      if (detailsById[callId]) return detailsById[callId];
+      const cached = detailsByIdRef.current[callId];
+      if (cached) return cached;
       try {
         const response = await fetch(
           `/api/intents/${encodeURIComponent(callId)}/details?siteId=${encodeURIComponent(siteId)}`,
@@ -148,7 +155,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       }
       return null;
     },
-    [detailsById, siteId]
+    [siteId]
   );
 
   const fetchKillFeed = useCallback(async () => {
@@ -345,7 +352,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     const run = async () => {
       const sessionIds = [top?.matched_session_id, next?.matched_session_id].filter((value): value is string => {
         if (!value) return false;
-        return !sessionEvidence[value];
+        return !sessionEvidenceRef.current[value];
       });
       if (sessionIds.length === 0) return;
 
@@ -378,7 +385,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     return () => {
       cancelled = true;
     };
-  }, [next?.matched_session_id, sessionEvidence, siteId, top?.matched_session_id]);
+  }, [next?.matched_session_id, siteId, top?.matched_session_id]);
 
   // Initial fetch (when range becomes available)
   useEffect(() => {

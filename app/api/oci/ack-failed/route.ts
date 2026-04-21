@@ -21,6 +21,7 @@ import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/l
 import { addSecondsIso, getDbNowIso } from '@/lib/time/db-now';
 import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
 import { appendRoutingHop } from '@/lib/oci/routing-ledger';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { assertLaneActive } from '@/lib/oci/kill-switch';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
@@ -304,17 +305,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (signalFailedIds.length > 0) {
-      const updatePayload = category === 'TRANSIENT'
-        ? { dispatch_status: 'PENDING' as const }
-        : { dispatch_status: 'FAILED' as const };
-      const { data } = await adminClient
-        .from('marketing_signals')
-        .update(updatePayload)
-        .in('id', signalFailedIds)
-        .eq('site_id', siteUuid)
-        .eq('dispatch_status', 'PROCESSING')
-        .select('id');
-      const updatedSignals = Array.isArray(data) ? data.length : 0;
+      const nextStatus = category === 'TRANSIENT' ? 'PENDING' : 'FAILED';
+      let updatedSignals = 0;
+      try {
+        updatedSignals = await applyMarketingSignalDispatchBatch(adminClient, {
+          siteId: siteUuid,
+          signalIds: signalFailedIds,
+          expectStatus: 'PROCESSING',
+          newStatus: nextStatus,
+        });
+      } catch (e) {
+        logError('OCI_ACK_FAILED_SIGNAL_UPDATE', { error: e instanceof Error ? e.message : String(e) });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
       if (updatedSignals !== signalFailedIds.length) {
         logError('OCI_ACK_FAILED_SIGNAL_MISMATCH', { requested: signalFailedIds.length, updated: updatedSignals });
         return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
@@ -400,23 +403,35 @@ export async function POST(req: NextRequest) {
     }
 
     if (signalFatalIds.length > 0) {
-      const { data } = await adminClient
-        .from('marketing_signals')
-        .update({
-          dispatch_status: 'DEAD_LETTER_QUARANTINE',
-        })
-        .in('id', signalFatalIds)
-        .eq('site_id', siteUuid)
-        .eq('dispatch_status', 'PROCESSING')
-        .select('id, trace_id');
-      const updatedRows = Array.isArray(data)
-        ? data as Array<{ id: string; trace_id: string | null }>
-        : [];
-      if (updatedRows.length !== signalFatalIds.length) {
-        logError('OCI_ACK_FAILED_FATAL_SIGNAL_MISMATCH', { requested: signalFatalIds.length, updated: updatedRows.length });
+      let fatalUpdated = 0;
+      try {
+        fatalUpdated = await applyMarketingSignalDispatchBatch(adminClient, {
+          siteId: siteUuid,
+          signalIds: signalFatalIds,
+          expectStatus: 'PROCESSING',
+          newStatus: 'DEAD_LETTER_QUARANTINE',
+        });
+      } catch (e) {
+        logError('OCI_ACK_FAILED_FATAL_SIGNAL_UPDATE', { error: e instanceof Error ? e.message : String(e) });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      if (fatalUpdated !== signalFatalIds.length) {
+        logError('OCI_ACK_FAILED_FATAL_SIGNAL_MISMATCH', { requested: signalFatalIds.length, updated: fatalUpdated });
         return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
       }
-      updatedCount += updatedRows.length;
+      const { data: traceRows, error: traceErr } = await adminClient
+        .from('marketing_signals')
+        .select('id, trace_id')
+        .in('id', signalFatalIds)
+        .eq('site_id', siteUuid);
+      if (traceErr) {
+        logError('OCI_ACK_FAILED_FATAL_SIGNAL_TRACE_FETCH', { code: (traceErr as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      const updatedRows = Array.isArray(traceRows)
+        ? traceRows as Array<{ id: string; trace_id: string | null }>
+        : [];
+      updatedCount += fatalUpdated;
       deadLetterAuditEntries.push(
         ...updatedRows.map((row) => ({
           siteId: siteUuid,

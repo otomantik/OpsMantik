@@ -44,7 +44,9 @@ test('PR-OCI-4: export route uses shared fail-closed value guards and terminaliz
   assert.ok(src.includes('blockedSignalValueIds'), 'signal zero-value rows must be tracked for terminalization');
   const markSrc = readFileSync(EXPORT_MARK, 'utf8');
   assert.ok(
-    markSrc.includes("dispatch_status: 'JUNK_ABORTED'") || markSrc.includes('dispatch_status: "JUNK_ABORTED"'),
+    markSrc.includes("dispatch_status: 'JUNK_ABORTED'") ||
+      markSrc.includes('dispatch_status: "JUNK_ABORTED"') ||
+      markSrc.includes("newStatus: 'JUNK_ABORTED'"),
     'blocked signals must be terminalized via a legal signal-state transition'
   );
   assert.ok(src.includes('blockedValueZeroIds'), 'blocked queue rows must keep VALUE_ZERO provenance');

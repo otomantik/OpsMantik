@@ -25,6 +25,7 @@ import { logError, logInfo } from '@/lib/logging/logger';
 import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/lib/oci/ack-receipt';
 import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
 import { appendRoutingHop } from '@/lib/oci/routing-ledger';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { assertLaneActive } from '@/lib/oci/kill-switch';
 import * as jose from 'jose';
 
@@ -345,19 +346,19 @@ export async function POST(req: NextRequest) {
       totalUpdated += alreadySentSignals.length;
 
       if (toUpdateSignals.length > 0) {
-        const { data: updated, error } = await adminClient
-          .from('marketing_signals')
-          .update({ dispatch_status: 'SENT', google_sent_at: now })
-          .in('id', toUpdateSignals.map(r => r.id))
-          .eq('site_id', siteUuid)
-          .eq('dispatch_status', 'PROCESSING')
-          .select('id');
-
-        if (error) {
-          logError('OCI_ACK_SIGNALS_UPDATE_ERROR', { code: (error as { code?: string })?.code });
+        try {
+          const n = await applyMarketingSignalDispatchBatch(adminClient, {
+            siteId: siteUuid,
+            signalIds: toUpdateSignals.map((r) => r.id),
+            expectStatus: 'PROCESSING',
+            newStatus: 'SENT',
+            googleSentAt: now,
+          });
+          totalUpdated += n;
+        } catch (e) {
+          logError('OCI_ACK_SIGNALS_UPDATE_ERROR', { error: e instanceof Error ? e.message : String(e) });
           return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
         }
-        totalUpdated += Array.isArray(updated) ? updated.length : 0;
       }
     }
 

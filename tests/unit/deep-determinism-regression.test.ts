@@ -96,7 +96,10 @@ test('oci workers re-check current call sendability before exporting or draining
   assert.ok(exportSrc.includes('status, oci_status'), 'queue export must fetch live call status context');
   assert.ok(exportSrc.includes("blockedSignalIds"), 'queue export must track blocked signals before terminalization');
   const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
-  assert.ok(markSrc.includes("dispatch_status: 'JUNK_ABORTED'"), 'blocked pending signals must be aborted before leak');
+  assert.ok(
+    markSrc.includes("dispatch_status: 'JUNK_ABORTED'") || markSrc.includes("newStatus: 'JUNK_ABORTED'"),
+    'blocked pending signals must be aborted before leak'
+  );
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(outboxSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'outbox worker must fail reversed outbox rows explicitly');
   assert.ok(outboxSrc.includes(".select('id, signal_type, optimization_stage')"), 'outbox duplicate prevention must inspect both legacy and canonical signal columns');

@@ -15,9 +15,12 @@ const COMMANDS_BY_MODE = {
     'npm run test:tenant-boundary',
     'npm run test:oci-kernel',
   ],
+  // Must mirror package.json `test:release-gates` (evidence parity gate)
   full: [
     'npm run test:tenant-boundary',
     'npm run test:oci-kernel',
+    'npm run test:runtime-budget',
+    'npm run test:chaos-core',
     'npm run smoke:intent-multi-site',
   ],
 };

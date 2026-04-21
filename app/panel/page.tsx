@@ -130,7 +130,10 @@ export default async function PanelRoute() {
         </div>
         {/* Surface */}
         <div className="max-w-xl mx-auto px-4 py-8">
-          <PanelFeed initialCalls={processedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]} />
+          <PanelFeed
+            siteId={targetSiteId}
+            initialCalls={processedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]}
+          />
         </div>
       </div>
     </I18nProvider>

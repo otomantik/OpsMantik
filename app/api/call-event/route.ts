@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
-import { publishToQStash } from '@/lib/ingest/publish';
+import { buildCallEventIngestWorkerBody, publishCallEventIngestWorker } from '@/lib/ingest/call-event-queue-command';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
@@ -491,9 +491,8 @@ export async function POST(req: NextRequest) {
             ? createHash('sha256').update(headerSig, 'utf8').digest('hex')
             : null;
 
-        const workerPayload = {
-            _ingest_type: 'call-event' as const,
-            site_id: site.id,
+        const workerPayload = buildCallEventIngestWorkerBody({
+            sitePublicId: site.id,
             phone_number,
             matched_session_id: matchedSessionId,
             matched_session_month: matchResult.sessionMonth ?? null,
@@ -504,7 +503,6 @@ export async function POST(req: NextRequest) {
             confidence_score: matchResult.confidenceScore ?? null,
             matched_at: matchedSessionId ? matchedAt : null,
             status: callStatus,
-            source: 'click' as const,
             intent_action,
             intent_target,
             intent_stamp,
@@ -515,20 +513,20 @@ export async function POST(req: NextRequest) {
             gbraid: body.gbraid || null,
             signature_hash: signatureHash,
             ua: body.ua || req.headers.get('user-agent'),
+            event_id: event_id ?? null,
+            client_value: value !== null ? value : null,
+            ads_context: body.ads_context ?? null,
             clientIp: getClientIp(req),
-            ...(event_id ? { event_id } : {}),
-            ...(value !== null ? { _client_value: value } : {}),
-            ...(body.ads_context ? { ads_context: body.ads_context } : {}),
-        };
+        });
 
         const deduplicationId = `ce-${site.id}-${signatureHash || event_id || intent_stamp}`.replace(/:/g, '-');
 
         try {
-            await publishToQStash({
-                lane: 'telemetry',
+            await publishCallEventIngestWorker({
+                variant: 'v1_telemetry_lane',
+                req,
                 body: workerPayload,
                 deduplicationId,
-                retries: 3,
             });
         } catch (err) {
             logError('call-event QStash publish failed', {
