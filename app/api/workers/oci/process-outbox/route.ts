@@ -2,7 +2,7 @@
  * POST /api/workers/oci/process-outbox
  *
  * Real-time trigger path for the outbox processor. Seal/stage routes publish a
- * QStash message pointing here after `apply_call_action_v1` inserts a PENDING
+ * QStash message pointing here after `apply_call_action_v2` inserts an
  * `outbox_events` row; this worker claims and processes the backlog
  * immediately instead of waiting for the 5-minute cron poll.
  *

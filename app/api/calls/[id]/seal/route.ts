@@ -8,7 +8,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase/admin';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
-import { logInfo, logError, logWarn } from '@/lib/logging/logger';
+import { logError, logWarn } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
 import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
@@ -17,14 +17,8 @@ import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { getChronologyFloorForCall } from '@/lib/oci/chronology-guard';
 import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
-import {
-  buildOptimizationSnapshot,
-  resolveOptimizationStage,
-  sanitizeHelperFormPayload,
-} from '@/lib/oci/optimization-contract';
-import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
-import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
-import { NEUTRAL_CURRENCY, normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
+import { sanitizeHelperFormPayload } from '@/lib/oci/optimization-contract';
+import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +36,6 @@ export async function POST(
       return NextResponse.json({ error: 'Missing call id' }, { status: 400 });
     }
 
-    // Kill switch: OCI_SEAL_PAUSED — emergency pause without redeploy (Phase 40)
     if (process.env.OCI_SEAL_PAUSED === 'true' || process.env.OCI_SEAL_PAUSED === '1') {
       logWarn('OCI_SEAL_PAUSED', { msg: 'Seal paused via OCI_SEAL_PAUSED env' });
       return NextResponse.json({ error: 'Seal paused', code: 'SEAL_PAUSED' }, { status: 503 });
@@ -52,7 +45,6 @@ export async function POST(
     const deviceId = req.headers.get('x-ops-device-id')?.trim();
     const isProbe = Boolean(deviceId && typeof body.signature === 'string' && body.signature.trim());
 
-    // ——— Probe (Android Edge-Node) path: ECDSA signature auth ———
     if (isProbe) {
       const { data: call } = await adminClient
         .from('calls')
@@ -71,10 +63,17 @@ export async function POST(
       if (!device?.public_key_pem) {
         return NextResponse.json({ error: 'Device not registered' }, { status: 401 });
       }
+
+      const confirmedAtIso = new Date().toISOString();
+      const occurredAtMeta = resolveSealOccurredAt({
+        saleOccurredAt: body.timestamp != null && Number.isFinite(body.timestamp) ? new Date(body.timestamp).toISOString() : null,
+        fallbackConfirmedAt: confirmedAtIso,
+      });
+
       const probePayload = {
         callId,
         saleAmount: body.saleAmount,
-        currency: body.currency ?? NEUTRAL_CURRENCY,
+        currency: body.currency ?? 'TRY',
         merchantNotes: body.merchantNotes,
         timestamp: body.timestamp,
       };
@@ -93,112 +92,40 @@ export async function POST(
       if (saleAmountProbe != null && (Number.isNaN(saleAmountProbe) || saleAmountProbe < 0)) {
         return NextResponse.json({ error: 'saleAmount must be non-negative' }, { status: 400 });
       }
-      const confirmedAtIso = new Date().toISOString();
-      const occurredAtMeta = resolveSealOccurredAt({
-        saleOccurredAt: body.timestamp != null && Number.isFinite(body.timestamp) ? new Date(body.timestamp).toISOString() : null,
-        fallbackConfirmedAt: confirmedAtIso,
-      });
-      const updatePayload: Record<string, unknown> = {
-        sale_amount: saleAmountProbe,
-        currency: currencyProbe,
-        status: 'confirmed',
-        confirmed_at: confirmedAtIso,
-        confirmed_by: null,
-        oci_status: 'sealed',
-        oci_status_updated_at: confirmedAtIso,
-        lead_score: 100,
-        sale_occurred_at: occurredAtMeta.occurredAt,
-        sale_source_timestamp: occurredAtMeta.sourceTimestamp,
-        sale_time_confidence: occurredAtMeta.timeConfidence,
-        sale_occurred_at_source: occurredAtMeta.occurredAtSource,
-        sale_is_backdated: false,
-        sale_backdated_seconds: 0,
-        sale_review_status: 'NONE',
-        sale_review_requested_at: null,
-      };
-      if (merchantNotes) updatePayload.sale_entry_reason = merchantNotes;
-      const { data: updated, error: updateError } = await adminClient.rpc('apply_call_action_v1', {
+      // Phase 2: Authoritative SQL FSM (Probe Path)
+      const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
         p_call_id: callId,
-        p_action_type: 'seal',
-        p_payload: updatePayload,
-        p_actor_type: 'system',
+        p_site_id: call.site_id,
+        p_stage: 'won',
         p_actor_id: deviceId,
-        p_metadata: { route, request_id: requestId, source: 'probe' },
+        p_lead_score: 100,
+        p_sale_metadata: {
+          amount: saleAmountProbe,
+          currency: currencyProbe,
+          occurred_at: occurredAtMeta.occurredAt,
+          notes: merchantNotes,
+        },
         p_version: call.version,
+        p_metadata: { route, request_id: requestId, source: 'probe_v2' },
       });
+
       if (updateError) {
-        if (updateError.code === 'P0003' || updateError.message?.includes('cannot_seal_from_junk_or_cancelled')) {
-          return NextResponse.json({ error: 'Cannot seal: call is junk or cancelled.' }, { status: 409 });
-        }
-        if (updateError.code === 'P0002' || updateError.message?.includes('version mismatch')) {
-          return NextResponse.json({ error: 'Concurrency conflict.' }, { status: 409 });
-        }
-        return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+        logWarn('PROBE_SEAL_V2_FAILED', { callId, error: updateError.message });
+        return NextResponse.json({ error: updateError.message }, { status: 409 });
       }
-      if (!updated) {
-        return NextResponse.json({ error: 'Call not updated' }, { status: 409 });
-      }
-      // Phase 4 f4-notify-outbox: fan out the outbox trigger immediately so
-      // the QStash worker picks up the new IntentSealed row within seconds
-      // instead of waiting for the cron poll. Best-effort (cron is safety net).
-      void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe' });
-      const optimizationSnapshot = buildOptimizationSnapshot({
-        stage: 'won',
-        systemScore: 100,
-        actualRevenue: saleAmountProbe,
-      });
-      await adminClient
-        .from('calls')
-        .update({
-          optimization_stage: optimizationSnapshot.optimizationStage,
-          system_score: optimizationSnapshot.systemScore,
-          quality_factor: optimizationSnapshot.qualityFactor,
-          optimization_value: optimizationSnapshot.optimizationValue,
-          actual_revenue: optimizationSnapshot.actualRevenue,
-          helper_form_payload: optimizationSnapshot.helperFormPayload,
-          feature_snapshot: {
-            source: 'probe_seal_route',
-          },
-          outcome_timestamp: confirmedAtIso,
-          model_version: optimizationSnapshot.modelVersion,
-        })
-        .eq('id', callId)
-        .eq('site_id', call.site_id);
-      const enqueueResult = await enqueueSealConversion({
-        callId,
-        siteId: call.site_id,
-        confirmedAt: confirmedAtIso,
-        saleOccurredAt: occurredAtMeta.occurredAt,
-        saleAmount: saleAmountProbe,
-        currency: currencyProbe,
-        leadScore: optimizationSnapshot.systemScore,
-        entryReason: merchantNotes || null,
-      });
-      if (!enqueueResult.enqueued && enqueueResult.reason !== 'duplicate') {
-        logWarn('probe_seal_enqueue_skipped', {
-          call_id: callId,
-          reason: enqueueResult.reason ?? null,
-          error: enqueueResult.error ?? null,
-        });
-      }
-      const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
+
+      const callObj = updatedCall;
+      void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
+
       return NextResponse.json({
         success: true,
         approval_required: false,
-        queued: enqueueResult.enqueued,
-        call: {
-          id: (callObj as { id?: string }).id,
-          sale_amount: (callObj as { sale_amount?: number | null }).sale_amount ?? saleAmountProbe,
-          currency: (callObj as { currency?: string }).currency ?? currencyProbe,
-          status: (callObj as { status?: string }).status ?? 'confirmed',
-          confirmed_at: (callObj as { confirmed_at?: string }).confirmed_at ?? confirmedAtIso,
-          sale_occurred_at: (callObj as { sale_occurred_at?: string | null }).sale_occurred_at ?? occurredAtMeta.occurredAt,
-          oci_status: (callObj as { oci_status?: string | null }).oci_status ?? 'sealed',
-        },
+        call: callObj,
       });
     }
 
     // ——— Bearer (dashboard) path ———
+    // ... (parsing and validation remains same) ...
     const saleAmount = body.sale_amount != null ? Number(body.sale_amount) : null;
     const bodyCurrencyRaw = typeof body.currency === 'string' && body.currency.trim() ? body.currency : null;
     const saleOccurredAtRaw = typeof body.sale_occurred_at === 'string' ? body.sale_occurred_at.trim() : '';
@@ -212,8 +139,6 @@ export async function POST(
       body.system_score != null && Number.isFinite(Number(body.system_score))
         ? Number(body.system_score)
         : null;
-    const actionType = typeof body.action_type === 'string' ? body.action_type.trim().toLowerCase() : null;
-    // lead_score: 0-100 scale (frontend sends score * 20); optional for backward compatibility
     const leadScoreRaw = body.lead_score != null ? Number(body.lead_score) : null;
     const versionRaw = body.version != null ? Number(body.version) : null;
     const version =
@@ -225,31 +150,18 @@ export async function POST(
         ? Math.round(leadScoreRaw)
         : null;
 
-    // Calibrate scaling: If leadScore is 1-5, interpolate to 20-100 for backward compatibility
     if (leadScore != null && leadScore > 0 && leadScore <= 5) {
       leadScore = leadScore * 20;
     }
 
-    // Relaxed check: Humans can seal a lead with 0 value if they choose.
-    // OCI worker will still use a floor if configured, or export as 0.
     if (saleAmount != null && (Number.isNaN(saleAmount) || saleAmount < 0)) {
-      return NextResponse.json(
-        { error: 'sale_amount must be a non-negative number' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'sale_amount must be a non-negative number' }, { status: 400 });
     }
     if (version === null) {
-      return NextResponse.json(
-        { error: 'version is required for optimistic locking; omit to reject concurrent seals' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'version is required' }, { status: 400 });
     }
-
     if (saleOccurredAtRaw && !parseWithinTemporalSanityWindow(saleOccurredAtRaw)) {
-      return NextResponse.json(
-        { error: 'sale_occurred_at outside temporal sanity window [now - 90 days, now + 1 hour]' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'sale_occurred_at outside window' }, { status: 400 });
     }
 
     const authHeader = req.headers.get('authorization');
@@ -257,67 +169,42 @@ export async function POST(
 
     let userClient: SupabaseClient | undefined;
     let user: { id: string } | null = null;
-
     if (bearerToken) {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!url || !anonKey) {
-        return NextResponse.json({ error: 'Server config missing' }, { status: 500 });
-      }
-      userClient = createClient(url, anonKey, {
+      userClient = createClient(url!, anonKey!, {
         global: { headers: { Authorization: `Bearer ${bearerToken}` } },
-        auth: { persistSession: false },
       });
-      const { data: sessionData } = await userClient.auth.setSession({
-        access_token: bearerToken,
-        refresh_token: '',
-      });
+      const { data: sessionData } = await userClient.auth.setSession({ access_token: bearerToken, refresh_token: '' });
       user = sessionData?.user ?? (await userClient.auth.getUser(bearerToken)).data.user ?? null;
     }
-
     if (!user) {
       userClient = await createServerClient();
       const { data: { user: u } } = await userClient.auth.getUser();
       user = u ?? null;
     }
+    if (!user || !userClient) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!user || !userClient) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    logInfo('seal request', { request_id: requestId, route, user_id: user.id });
-
-    // Lookup: admin only for id+site_id+created_at (do not trust client). Then gate by access; update with user client (RLS).
     const { data: call, error: fetchError } = await adminClient
       .from('calls')
-      .select('id, site_id, version, created_at')
+      .select('id, site_id, version, created_at, optimization_stage')
       .eq('id', callId)
       .maybeSingle();
 
-    if (fetchError || !call) {
-      return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
-    }
+    if (fetchError || !call) return NextResponse.json({ error: 'Call not found' }, { status: 404 });
 
-    // version=0: frontend (Grörüşüldü/Teklif) may not know DB version.
-    // Resolve actual version from DB to avoid unnecessary 409 conflicts.
     const effectiveVersion = version === 0 ? call.version : version;
-
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, userClient);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
-      return NextResponse.json({ error: 'Call not found or access denied' }, { status: 404 });
+      return NextResponse.json({ error: 'Access denied' }, { status: 404 });
     }
 
-    // Resolve currency: request body wins; otherwise read site.currency; otherwise neutral USD.
     let currency: string;
     if (bodyCurrencyRaw) {
       currency = normalizeCurrencyOrNeutral(bodyCurrencyRaw);
     } else {
-      const { data: siteRow } = await adminClient
-        .from('sites')
-        .select('currency')
-        .eq('id', siteId)
-        .maybeSingle();
+      const { data: siteRow } = await adminClient.from('sites').select('currency').eq('id', siteId).maybeSingle();
       currency = normalizeCurrencyOrNeutral((siteRow as { currency?: string | null } | null)?.currency ?? null);
     }
 
@@ -326,255 +213,59 @@ export async function POST(
       saleOccurredAt: saleOccurredAtRaw || null,
       fallbackConfirmedAt: confirmedAtIso,
     });
+
     const chronologyFloor = saleOccurredAtRaw ? await getChronologyFloorForCall(siteId, callId) : null;
     if (chronologyFloor && new Date(occurredAtMeta.occurredAt).getTime() < new Date(chronologyFloor.observedAt).getTime()) {
-      return NextResponse.json(
-        {
-          error: 'sale_occurred_at cannot be earlier than the attributed click/session time',
-          code: 'SALE_OCCURRED_AT_BEFORE_CLICK_TIME',
-          floor_at: chronologyFloor.observedAt,
-          floor_source: chronologyFloor.source,
-        },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: 'sale_occurred_at before click', code: 'SALE_OCCURRED_AT_BEFORE_CLICK_TIME' }, { status: 409 });
     }
-    const optimizationStage = resolveOptimizationStage({
-      actionType,
-      leadScore,
-    });
+
     const backdatedMs = Math.max(0, new Date(confirmedAtIso).getTime() - new Date(occurredAtMeta.occurredAt).getTime());
     const approvalRequired = saleOccurredAtRaw.length > 0 && backdatedMs > BACKDATE_APPROVAL_MS;
-    const isWonStage = optimizationStage === 'won';
-    const baseOciStatus =
-      isWonStage
-        ? 'sealed'
-        : optimizationStage === 'junk'
-          ? 'skipped'
-          : 'intent';
-    const effectiveOciStatus = approvalRequired ? 'pending_approval' : baseOciStatus;
-    const optimizationSnapshot = buildOptimizationSnapshot({
-      stage: optimizationStage,
-      systemScore: explicitSystemScore ?? leadScore ?? 0,
-      actualRevenue: isWonStage ? saleAmount : null,
-      helperFormPayload,
-    });
-    const updatePayload: Record<string, unknown> = {
-      sale_amount: saleAmount,
-      currency,
-      status: 'confirmed',
-      confirmed_at: confirmedAtIso,
-      confirmed_by: user.id,
-      oci_status: effectiveOciStatus,
-      oci_status_updated_at: confirmedAtIso,
-      lead_score: leadScore,
-      sale_occurred_at: occurredAtMeta.occurredAt,
-      sale_source_timestamp: occurredAtMeta.sourceTimestamp,
-      sale_time_confidence: occurredAtMeta.timeConfidence,
-      sale_occurred_at_source: occurredAtMeta.occurredAtSource,
-      sale_is_backdated: backdatedMs > 0,
-      sale_backdated_seconds: Math.floor(backdatedMs / 1000),
-      sale_review_status: approvalRequired ? 'PENDING_APPROVAL' : 'NONE',
-      sale_review_requested_at: approvalRequired ? confirmedAtIso : null,
-    };
-    if (entryReason) updatePayload.sale_entry_reason = entryReason;
 
-    // Operator-verified caller phone (optional): goes through the DIC SSOT
-    // (buildPhoneIdentity) so seal / stage / export all produce byte-identical hashes.
-    const callerPhoneInput = typeof body.caller_phone === 'string' ? body.caller_phone : '';
-    if (callerPhoneInput.trim()) {
-      try {
-        const { data: siteRow } = await adminClient
-          .from('sites')
-          .select('default_country_iso')
-          .eq('id', siteId)
-          .maybeSingle();
-        const countryIso = siteRow?.default_country_iso ?? 'TR';
-        if (!siteRow?.default_country_iso) {
-          logInfo('CALLER_PHONE_COUNTRY_ISO_FALLBACK', { call_id: callId, site_id: siteId });
-        }
-
-        const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-        if (isProd && !process.env.OCI_PHONE_HASH_SALT) {
-          logError('OCI_PHONE_HASH_SALT_EMPTY_PRODUCTION', { call_id: callId });
-          Sentry.captureMessage('OCI_PHONE_HASH_SALT_EMPTY_PRODUCTION', 'error');
-        }
-
-        const identity = buildPhoneIdentity({ rawPhone: callerPhoneInput, countryIso });
-        if (identity.reason === 'normalization_failed') {
-          logWarn('CALLER_PHONE_NORMALIZATION_FAILED', { call_id: callId, raw: identity.raw });
-          updatePayload.caller_phone_raw = identity.raw;
-          // e164 and hash stay null; seal continues (fail-soft)
-        } else if (identity.reason === 'hash_failed') {
-          logWarn('CALLER_PHONE_HASH_FAILED', { call_id: callId });
-          updatePayload.caller_phone_raw = identity.raw;
-          if (identity.e164) updatePayload.caller_phone_e164 = identity.e164;
-        } else if (identity.reason === 'ok' && identity.e164 && identity.hash) {
-          updatePayload.caller_phone_raw = identity.raw;
-          updatePayload.caller_phone_e164 = identity.e164;
-          updatePayload.caller_phone_hash_sha256 = identity.hash;
-          updatePayload.phone_source_type = 'operator_verified';
-        }
-      } catch (e) {
-        logWarn('CALLER_PHONE_PROCESSING_ERROR', {
-          call_id: callId,
-          error: String((e as Error)?.message ?? e),
-        });
-        updatePayload.caller_phone_raw = callerPhoneInput.trim().slice(0, 64);
-      }
+    // Phone Identity (DIC)
+    let phoneE164: string | null = null;
+    let phoneHash: string | null = null;
+    let phoneRaw: string | null = null;
+    const callerPhoneInput = typeof body.caller_phone === 'string' ? body.caller_phone.trim() : '';
+    if (callerPhoneInput) {
+      const { data: siteRow } = await adminClient.from('sites').select('default_country_iso').eq('id', siteId).maybeSingle();
+      const identity = buildPhoneIdentity({ rawPhone: callerPhoneInput, countryIso: siteRow?.default_country_iso ?? 'TR' });
+      phoneRaw = identity.raw;
+      phoneE164 = identity.e164;
+      phoneHash = identity.hash;
     }
 
-    // Apply via DB RPC to guarantee audit log + revert snapshot
-    const { data: updated, error: updateError } = await userClient.rpc('apply_call_action_v1', {
+    // Phase 2: Authoritative SQL FSM (Dashboard Path)
+    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
       p_call_id: callId,
-      p_action_type: 'seal',
-      p_payload: updatePayload,
-      p_actor_type: 'user',
-      p_actor_id: null,
-      p_metadata: { route, request_id: requestId },
-      p_version: effectiveVersion ?? call.version,
+      p_site_id: siteId,
+      p_stage: 'won',
+      p_actor_id: user.id,
+      p_lead_score: explicitSystemScore ?? leadScore ?? 100,
+      p_sale_metadata: {
+        amount: saleAmount,
+        currency,
+        occurred_at: occurredAtMeta.occurredAt,
+        notes: entryReason,
+        helper_form: helperFormPayload,
+        backdated_ms: backdatedMs,
+        approval_required: approvalRequired,
+      },
+      p_version: effectiveVersion,
+      p_metadata: { route, request_id: requestId, source: 'seal_v2' },
+      p_caller_phone_raw: phoneRaw,
+      p_caller_phone_e164: phoneE164,
+      p_caller_phone_hash: phoneHash,
     });
 
     if (updateError) {
-      // Sprint 1: State machine — cannot seal from junk or cancelled (DB-level guard)
-      if (updateError.code === 'P0003' || updateError.message?.includes('cannot_seal_from_junk_or_cancelled')) {
-        return NextResponse.json(
-          { error: 'Cannot seal: call is junk or cancelled. Restore to queue first.' },
-          { status: 409 }
-        );
-      }
-      // Concurrency conflict (e.g., version mismatch — record was updated by another process)
-      if (updateError.code === 'P0002' || updateError.message?.includes('version mismatch')) {
-        return NextResponse.json(
-          { error: 'Concurrency conflict: Call was updated by another user. Please refresh and try again.' },
-          { status: 409 }
-        );
-      }
-      const { sanitizeErrorForClient } = await import('@/lib/security/sanitize-error');
-      return NextResponse.json(
-        { error: sanitizeErrorForClient(updateError) || 'Update failed' },
-        { status: 500 }
-      );
-    }
-    if (!updated) {
-      return NextResponse.json(
-        { error: 'Call not updated (may already be confirmed)' },
-        { status: 409 }
-      );
+      logWarn('DASHBOARD_SEAL_V2_FAILED', { callId, error: updateError.message });
+      return NextResponse.json({ error: updateError.message }, { status: 409 });
     }
 
-    // Phase 4 f4-notify-outbox: real-time trigger for the outbox processor.
-    // Cron at /api/cron/oci/process-outbox-events is the safety net.
-    void notifyOutboxPending({ callId, siteId, source: 'seal_bearer' });
+    const callObj = updatedCall;
+    void notifyOutboxPending({ callId, siteId, source: 'seal_v2' });
 
-    try {
-      await adminClient
-        .from('calls')
-        .update({
-          optimization_stage: optimizationSnapshot.optimizationStage,
-          system_score: optimizationSnapshot.systemScore,
-          quality_factor: optimizationSnapshot.qualityFactor,
-          optimization_value: optimizationSnapshot.optimizationValue,
-          actual_revenue: optimizationSnapshot.actualRevenue,
-          helper_form_payload: optimizationSnapshot.helperFormPayload,
-          feature_snapshot: {
-            source: 'seal_route',
-            action_type: actionType,
-          },
-          outcome_timestamp: confirmedAtIso,
-          model_version: optimizationSnapshot.modelVersion,
-        })
-        .eq('id', callId)
-        .eq('site_id', siteId);
-    } catch (snapshotErr) {
-      logWarn('seal_snapshot_update_failed', {
-        call_id: callId,
-        error: String((snapshotErr as Error)?.message ?? snapshotErr),
-      });
-    }
-
-    if (optimizationStage === 'contacted' || optimizationStage === 'offered') {
-      try {
-        const { data: callCtx } = await adminClient
-          .from('calls')
-          .select('gclid, wbraid, gbraid, traffic_source, utm_term')
-          .eq('id', callId)
-          .maybeSingle();
-
-        const gclid = (callCtx as { gclid?: string | null } | null)?.gclid?.trim() || null;
-        const wbraid = (callCtx as { wbraid?: string | null } | null)?.wbraid?.trim() || null;
-        const gbraid = (callCtx as { gbraid?: string | null } | null)?.gbraid?.trim() || null;
-
-        const upsertResult = await upsertMarketingSignal({
-          source: 'seal',
-          siteId,
-          callId,
-          traceId: requestId ?? null,
-          stage: optimizationStage,
-          signalDate: new Date(confirmedAtIso),
-          snapshot: optimizationSnapshot,
-          clickIds: { gclid, wbraid, gbraid },
-          featureSnapshotExtras: { action_type: actionType },
-          causalDna: {
-            origin: 'MANUAL_STAGE_ACTION',
-            user_id: user.id,
-            optimization_stage: optimizationSnapshot.optimizationStage,
-            system_score: optimizationSnapshot.systemScore,
-            quality_factor: optimizationSnapshot.qualityFactor,
-            helper_form_payload: optimizationSnapshot.helperFormPayload,
-            att_raw: {
-              source: (callCtx as { traffic_source?: string | null } | null)?.traffic_source ?? null,
-              term: (callCtx as { utm_term?: string | null } | null)?.utm_term ?? null,
-            },
-          },
-        });
-
-        if (upsertResult.success && !upsertResult.skipped) {
-          logInfo('optimization_signal_enqueued', {
-            call_id: callId,
-            stage: optimizationSnapshot.optimizationStage,
-            optimization_value: optimizationSnapshot.optimizationValue,
-            duplicate: Boolean(upsertResult.duplicate),
-          });
-        } else if (upsertResult.skipped) {
-          logInfo('optimization_signal_skip_no_click_id', {
-            call_id: callId,
-            stage: optimizationSnapshot.optimizationStage,
-          });
-        }
-      } catch (signalErr) {
-        logWarn('optimization_signal_error', {
-          call_id: callId,
-          error: String((signalErr as Error)?.message ?? signalErr),
-        });
-      }
-    }
-
-    if (isWonStage && !approvalRequired) {
-      const enqueueResult = await enqueueSealConversion({
-        callId,
-        siteId,
-        confirmedAt: confirmedAtIso,
-        saleOccurredAt: occurredAtMeta.occurredAt,
-        saleAmount,
-        currency,
-        leadScore: optimizationSnapshot.systemScore,
-        entryReason,
-        helperFormPayload,
-      });
-      if (!enqueueResult.enqueued && enqueueResult.reason && enqueueResult.reason !== 'duplicate') {
-        logWarn('optimization_sale_enqueue_skipped', {
-          call_id: callId,
-          reason: enqueueResult.reason,
-          error: enqueueResult.error ?? null,
-        });
-      }
-    }
-
-    // Outbox events are written via DB trigger in apply_call_action_v1.
-    // For V3/V4: the outbox cron checks for existing signals (dedup guard) before writing,
-    // so it acts as a fallback if this LCV path fails. For V5: outbox cron calls enqueueSealConversion.
-    const callObj = Array.isArray(updated) && updated.length === 1 ? updated[0] : updated;
-    const confirmedAt = (callObj as { confirmed_at?: string }).confirmed_at ?? new Date().toISOString();
     if (approvalRequired) {
       await appendAuditLog(adminClient, {
         actor_type: 'user',
@@ -583,28 +274,14 @@ export async function POST(
         resource_type: 'call',
         resource_id: callId,
         site_id: siteId,
-        payload: {
-          sale_occurred_at: occurredAtMeta.occurredAt,
-          entry_reason: entryReason || null,
-          backdated_ms: backdatedMs,
-          floor_at: chronologyFloor?.observedAt ?? null,
-          floor_source: chronologyFloor?.source ?? null,
-        },
+        payload: { sale_occurred_at: occurredAtMeta.occurredAt, backdated_ms: backdatedMs },
       });
     }
 
     return NextResponse.json({
       success: true,
       approval_required: approvalRequired,
-      call: {
-        id: (callObj as { id?: string }).id,
-        sale_amount: (callObj as { sale_amount?: number | null }).sale_amount,
-        currency: (callObj as { currency?: string }).currency,
-        status: (callObj as { status?: string }).status,
-        confirmed_at: confirmedAt,
-        sale_occurred_at: (callObj as { sale_occurred_at?: string | null }).sale_occurred_at ?? occurredAtMeta.occurredAt,
-        oci_status: (callObj as { oci_status?: string | null }).oci_status ?? effectiveOciStatus,
-      },
+      call: callObj,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';

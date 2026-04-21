@@ -3,6 +3,7 @@ import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 /** Raw row shape from RPC (get_recent_intents_v2, etc.). All fields optional. */
 interface RpcIntentRow {
   id?: unknown;
+  version?: unknown;
   created_at?: unknown;
   intent_action?: unknown;
   intent_target?: unknown;
@@ -93,6 +94,7 @@ export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
   // Basic shape validation: need id for card key
   return rows.filter((r): r is RpcIntentRow => r != null && r.id != null).map((r) => ({
     id: String(r.id),
+    version: rowNum(r, 'version'),
     created_at: String(r.created_at),
     intent_action: r.intent_action ?? null,
     intent_target: (r.intent_target ?? r.summary) ?? null,
@@ -170,6 +172,7 @@ export function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
     .filter((r): r is RpcIntentRow => r != null && r.id != null && r.created_at != null)
     .map((r) => ({
       id: String(r.id),
+      version: rowNum(r, 'version'),
       created_at: String(r.created_at),
       status: (r.status as string | null | undefined) ?? null,
       matched_session_id: (r.matched_session_id as string | null | undefined) ?? null,

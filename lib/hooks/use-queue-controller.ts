@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { mutate } from 'swr';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { useSiteConfig } from '@/lib/hooks/use-site-config';
+import { useQueueUiState } from '@/lib/hooks/queue/use-queue-ui-state';
+import { useQueueCommandDispatcher } from '@/lib/hooks/queue/use-queue-command-dispatcher';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/qualification-queue/parsers';
@@ -84,27 +86,37 @@ export type QueueControllerActions = {
 export function useQueueController(siteId: string): { state: QueueControllerState; actions: QueueControllerActions } {
   const { t } = useTranslation();
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
-
-  const [range, setRangeState] = useState<QueueRange | null>(null);
-
-  const [intents, setIntents] = useState<HunterIntentLite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedIntent, setSelectedIntent] = useState<HunterIntent | null>(null);
-  const [detailsById, setDetailsById] = useState<Record<string, HunterIntent>>({});
-  const [sealModalOpen, setSealModalOpen] = useState(false);
-  const [intentForSeal, setIntentForSeal] = useState<HunterIntent | null>(null);
-  const [sessionEvidence, setSessionEvidence] = useState<
-    Record<string, { city?: string | null; district?: string | null; device_type?: string | null }>
-  >({});
+  const { buildSealBody } = useQueueCommandDispatcher();
+  const {
+    range,
+    setRangeState,
+    intents,
+    setIntents,
+    loading,
+    setLoading,
+    error,
+    setError,
+    selectedIntent,
+    setSelectedIntent,
+    detailsById,
+    setDetailsById,
+    sealModalOpen,
+    setSealModalOpen,
+    intentForSeal,
+    setIntentForSeal,
+    sessionEvidence,
+    setSessionEvidence,
+    history,
+    setHistory,
+    restoringIds,
+    setRestoringIds,
+    toast,
+    setToast,
+  } = useQueueUiState();
 
   // Holistic View: always ALL traffic (kept for parity even if unused directly)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const effectiveAdsOnly = false;
-
-  const [history, setHistory] = useState<ActivityRow[]>([]);
-  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
-  const [toast, setToast] = useState<QueueToastState>(null);
 
   const top = intents[0] || null;
   const next = intents[1] || null;
@@ -405,7 +417,8 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     siteId,
     intentForSeal?.id ?? '',
     intentForSeal?.matched_session_id ?? null,
-    handleQualified // Pass refetch for undo success
+    handleQualified, // Pass refetch for undo success
+    intentForSeal?.version ?? null
   );
 
   const closeDrawer = useCallback(() => {
@@ -530,18 +543,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       helperFormPayload?: HelperFormPayload | null
     ) => {
       if (!intentForSeal) return;
-      const finalScore = leadScore >= 100 || leadScore > 5 ? 100 : leadScore * 20; // Ensure max is 100
-      const body: Record<string, unknown> = {
-        sale_amount: saleAmount ?? null,
-        currency,
-        lead_score: finalScore,
-        action_type: finalScore >= 100 ? 'won' : finalScore >= 80 ? 'offered' : 'contacted',
-        helper_form_payload: helperFormPayload ?? null,
-        version: 0, // Bypass optimistic locking to allow updates from UI
-      };
-      if (callerPhone?.trim()) {
-        body.caller_phone = callerPhone.trim().slice(0, 64);
-      }
+      const body = buildSealBody(intentForSeal, saleAmount, currency, leadScore, callerPhone, helperFormPayload);
       const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -552,7 +554,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         throw new Error((j as { error?: string }).error || res.statusText);
       }
     },
-    [intentForSeal]
+    [buildSealBody, intentForSeal]
   );
 
   const onSealJunk = useCallback(async () => {
@@ -612,6 +614,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         click_id: detail?.click_id ?? top.click_id ?? null,
         matched_session_id: sid,
         status: detail?.status ?? top.status ?? null,
+        version: detail?.version ?? top.version ?? null,
         phone_clicks: detail?.phone_clicks ?? top.phone_clicks ?? null,
         whatsapp_clicks: detail?.whatsapp_clicks ?? top.whatsapp_clicks ?? null,
         traffic_source: detail?.traffic_source ?? top.traffic_source ?? null,

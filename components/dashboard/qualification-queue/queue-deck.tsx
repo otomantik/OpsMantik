@@ -39,12 +39,13 @@ function ActiveDeckCard({
     siteId,
     intent.id,
     intent.matched_session_id ?? null,
-    onQualified // Pass refetch callback for undo success
+    onQualified, // Pass refetch callback for undo success
+    intent.version ?? null
   );
 
   const fireQualify = async (params: { score: number; status: 'confirmed' | 'junk' }) => {
     try {
-      const result = await qualify(params);
+      const result = await qualify({ ...params, version: intent.version ?? null });
       if (!result.success) {
         pushToast('danger', result.error || t('toast.failedUpdate'));
       } else {

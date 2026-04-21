@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import opsmantikVoid from "./tools/eslint-plugin-opsmantik-void/index.js";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -27,6 +28,25 @@ const eslintConfig = defineConfig([
       "react-hooks/exhaustive-deps": "off",
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/immutability": "off",
+    },
+  },
+  {
+    files: [
+      "app/api/oci/ack/route.ts",
+      "app/api/oci/ack-failed/route.ts",
+      "lib/oci/outbox/process-outbox.ts",
+      "lib/oci/runner/process-conversion-batch.ts",
+      "lib/cron/with-cron-lock.ts",
+      "lib/oci/chronology-guard.ts",
+      "lib/domain/pipeline-fsm.ts",
+    ],
+    plugins: {
+      "opsmantik-void": opsmantikVoid,
+    },
+    rules: {
+      "opsmantik-void/no-empty-catch-void": "error",
+      "opsmantik-void/no-date-now-tier0": "error",
+      "opsmantik-void/pipeline-stage-mutation-guard": "error",
     },
   },
   // Disallow console.log/warn/error in backend/cron/worker paths we hardened (YELLOW-3). Prevents regressions.

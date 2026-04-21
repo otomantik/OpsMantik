@@ -97,7 +97,17 @@ export async function appendCanonicalTruthLedger(input: AppendCanonicalTruthInpu
 export async function appendCanonicalTruthLedgerBestEffort(input: AppendCanonicalTruthInput): Promise<void> {
   try {
     await appendCanonicalTruthLedger(input);
-  } catch {
-    /* best-effort */
+  } catch (error) {
+    incrementRefactorMetric('truth_canonical_ledger_failure_total');
+    logWarn('appendCanonicalTruthLedgerBestEffort failed', {
+      siteId: input.siteId,
+      streamKind: input.streamKind,
+      idempotencyKey: input.idempotencyKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
+}
+
+export async function appendCanonicalTruthLedgerFailClosed(input: AppendCanonicalTruthInput): Promise<{ appended: boolean }> {
+  return appendCanonicalTruthLedger(input);
 }

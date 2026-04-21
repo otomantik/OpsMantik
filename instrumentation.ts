@@ -9,6 +9,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     // Fail-fast on server boot in production if QStash env is misconfigured.
     assertQstashEnv();
+    const { startEventLoopMonitor } = await import('@/lib/observability/event-loop-monitor');
+    startEventLoopMonitor();
     Sentry.init({
       dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
       release: OPSMANTIK_VERSION,

@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import { getDbNowIso } from '@/lib/time/db-now';
 
 const PHONE_STITCH_WINDOW_DAYS = 30;
 const FINGERPRINT_STITCH_WINDOW_DAYS = 14;
@@ -51,7 +52,8 @@ export async function getChronologyFloorForCall(siteId: string, callId: string) 
 
   const callerPhoneE164 = (call as { caller_phone_e164?: string | null }).caller_phone_e164 ?? null;
   if (callerPhoneE164) {
-    const since = new Date(Date.now() - PHONE_STITCH_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const dbNowIso = await getDbNowIso();
+    const since = new Date(new Date(dbNowIso).getTime() - PHONE_STITCH_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { data: relatedCalls } = await adminClient
       .from('calls')
       .select('id, matched_session_id')
@@ -81,7 +83,8 @@ export async function getChronologyFloorForCall(siteId: string, callId: string) 
 
   const fingerprint = (call as { matched_fingerprint?: string | null }).matched_fingerprint ?? null;
   if (fingerprint) {
-    const since = new Date(Date.now() - FINGERPRINT_STITCH_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const dbNowIso = await getDbNowIso();
+    const since = new Date(new Date(dbNowIso).getTime() - FINGERPRINT_STITCH_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { data: sessions } = await adminClient
       .from('sessions')
       .select('created_at, gclid, wbraid, gbraid')

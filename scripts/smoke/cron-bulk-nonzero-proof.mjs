@@ -186,10 +186,15 @@ async function main() {
   }
 
   log('--- Cron runs ---');
-  const r1 = curl('process-offline-conversions', 'POST', '/api/cron/process-offline-conversions?limit=10');
+  const r1 = curl('oci-maintenance', 'POST', '/api/cron/oci-maintenance');
   const r2 = curl('invoice-freeze', 'POST', '/api/cron/invoice-freeze');
 
-  const processed = r1.json?.processed ?? 0;
+  const processed =
+    (r1.json?.runner && typeof r1.json.runner === 'object' && 'processed' in r1.json.runner
+      ? r1.json.runner.processed
+      : null) ??
+    r1.json?.processed ??
+    0;
   const frozen = r2.json?.frozen ?? 0;
   // Recovery cron retired in 20260419180000; keep telemetry slot.
   const claimed = 0;

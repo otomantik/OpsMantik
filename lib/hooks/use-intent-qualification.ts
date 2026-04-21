@@ -21,6 +21,8 @@ export interface QualifyIntentParams {
   score: number;
   status: 'confirmed' | 'junk';
   note?: string;
+  /** `calls.version` for seal / RPC optimistic locking; omit to use hook `intentRowVersion` or server-resolved `0`. */
+  version?: number | null;
 }
 
 export interface QualifyIntentResult {
@@ -33,7 +35,9 @@ export function useIntentQualification(
   siteId: string,
   intentId: string,
   matchedSessionId?: string | null,
-  onUndoSuccess?: () => void
+  onUndoSuccess?: () => void,
+  /** Current `calls.version` for the active intent row (from queue RPC). */
+  intentRowVersion?: number | null
 ) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
@@ -89,9 +93,15 @@ export function useIntentQualification(
           void matchedSessionId;
           const callIds = [intentId];
 
+          const v =
+            typeof params.version === 'number' && Number.isFinite(params.version)
+              ? params.version
+              : typeof intentRowVersion === 'number' && Number.isFinite(intentRowVersion)
+                ? intentRowVersion
+                : 0;
           const body = {
             lead_score: leadScore,
-            version: 0, // optimistic locking: DB uses current version if 0
+            version: v,
           };
 
           for (const callId of callIds) {
@@ -179,7 +189,7 @@ export function useIntentQualification(
         setSaving(false);
       }
     },
-    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess, t]
+    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess, t, intentRowVersion]
   );
 
   const clearError = useCallback(() => {

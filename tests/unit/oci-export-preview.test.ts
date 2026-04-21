@@ -10,15 +10,15 @@ import { join } from 'node:path';
 test('google-ads-export route: markAsExported returns { items, next_cursor } for script', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('items: combined') && src.includes('next_cursor'), 'script gets items and next_cursor');
-  assert.ok(src.includes('NextResponse.json(responseData)'), 'structured response fallback');
+  assert.ok(src.includes('responseData') && src.includes('next_cursor'), 'script gets items and next_cursor');
+  assert.ok(src.includes('buildExportResponseAsync'), 'response formatting delegated');
 });
 
 test('google-ads-export route: markAsExported false returns structured preview', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('siteId: siteUuid'), 'preview has siteId');
-  assert.ok(src.includes('items: combined'), 'preview has items');
+  assert.ok(src.includes('siteId: auth.siteUuid'), 'preview has siteId');
+  assert.ok(src.includes('items: built.combined'), 'preview has items');
   assert.ok(src.includes('counts:'), 'preview has counts');
   assert.ok(src.includes('warnings:'), 'preview has warnings');
 });
@@ -26,21 +26,28 @@ test('google-ads-export route: markAsExported false returns structured preview',
 test('google-ads-export route: claim uses RPC not direct update', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('append_script_claim_transition_batch'), 'uses actor-owned batch claim RPC');
+  assert.ok(src.includes('markExportProcessing(auth, built)'), 'claim/update delegated to mark-processing module');
+  const markPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts');
+  const markSrc = readFileSync(markPath, 'utf8');
+  assert.ok(markSrc.includes('append_script_claim_transition_batch'), 'uses actor-owned batch claim RPC');
 });
 
 test('google-ads-export route: next_cursor keeps queue and signal streams separate', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('const target: ExportCursorState'), 'cursor state object exists');
-  assert.ok(src.includes('q: lastRow ?'), 'queue cursor is encoded independently');
-  assert.ok(src.includes('s: lastSig ?'), 'signal cursor is encoded independently');
-  assert.ok(src.includes('readExportCursorMark(decoded?.q ?? decoded)'), 'route is backward compatible with legacy cursor');
+  const fetchPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-auth.ts');
+  const buildPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
+  const fetchSrc = readFileSync(fetchPath, 'utf8');
+  const buildSrc = readFileSync(buildPath, 'utf8');
+  assert.ok(buildSrc.includes('q: lastRow ?'), 'queue cursor is encoded independently');
+  assert.ok(buildSrc.includes('s: lastSig ?'), 'signal cursor is encoded independently');
+  assert.ok(fetchSrc.includes('readExportCursorMark(decoded?.q ?? decoded)'), 'route is backward compatible with legacy cursor');
 });
 
 test('google-ads-export route: deterministic skips keep provenance on terminal rows', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  void routePath;
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(src.includes("last_error: 'SUPPRESSED_BY_HIGHER_GEAR'"), 'highest-only suppression must keep human-readable reason');
   assert.ok(src.includes("provider_error_code: 'SUPPRESSED_BY_HIGHER_GEAR'"), 'highest-only suppression must keep explicit provider_error_code');
   assert.ok(src.includes("provider_error_category: 'DETERMINISTIC_SKIP'"), 'suppressed lower gears must stay deterministic skips');
@@ -51,28 +58,29 @@ test('google-ads-export route: partial claims fail closed before cursor advances
   const src = readFileSync(routePath, 'utf8');
   assert.ok(src.includes("code: 'QUEUE_CLAIM_MISMATCH'"), 'queue claim mismatches must fail closed');
   assert.ok(src.includes("code: 'SIGNAL_CLAIM_MISMATCH'"), 'signal claim mismatches must fail closed');
-  assert.ok(src.includes('append_script_transition_batch'), 'script terminalization must use DB-owned atomic batch RPC');
+  const markSrc = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
+  assert.ok(markSrc.includes('append_script_transition_batch'), 'script terminalization must use DB-owned atomic batch RPC');
 });
 
 test('google-ads-export route: signal and pageview orderIds use collision-resistant builder', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('buildOrderId('), 'route must use shared orderId builder');
   assert.ok(src.includes('row.external_id || computeOfflineConversionExternalId'), 'seal exports must prefer DB-authoritative external_id');
-  assert.ok(src.includes('`signal_${signalRowId}`') || src.includes("`signal_${signalRowId}`"), 'signal fallback id must include signal row id');
+  assert.ok(src.includes('`signal_${signalId}`') || src.includes("`signal_${signalId}`"), 'signal fallback id must include signal row id');
   assert.ok(!src.includes('`${clickId}_${conversionName}_${conversionTime}`.slice(0, 128)'), 'signal path must not build raw second-level orderId');
   assert.ok(!src.includes('`${clickId}_${OPSMANTIK_CONVERSION_NAMES.satis}_${conversionTime}`.slice(0, 128)'), 'route must not build raw second-level orderId');
 });
 
 test('google-ads-export route: pageview pipeline has been removed from export payload', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
-  assert.ok(src.includes('const pvItems: GoogleAdsConversionItem[] = [];'), 'pageview export path should stay disabled');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts'), 'utf8');
+  assert.ok(src.includes('pvs: 0'), 'pageview export path should stay disabled');
 });
 
 test('google-ads-export route: seals prefer canonical occurred_at over legacy conversion_time', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('pickCanonicalOccurredAt(['), 'route must use canonical timestamp picker');
   assert.ok(src.includes('row.occurred_at,'), 'queue export must inspect queue occurred_at first');
   assert.ok(src.includes('row.conversion_time,'), 'route must keep legacy conversion_time only as fallback');
@@ -86,10 +94,9 @@ test('google-ads-export route: no longer performs V2 recovery before export', ()
 
 test('google-ads-export route: signal conversion names resolve from canonical stages', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('resolveSignalStage('), 'route should map signals to canonical stages');
-  assert.ok(src.includes('normalizeSignalChannel(ctx?.intentAction)'), 'route should derive channel from call intent action');
-  assert.ok(src.includes('getConversionActionConfig(exportConfig, signalChannel, signalStage)'), 'route should resolve canonical conversion action');
+  assert.ok(src.includes('buildSingleConversionGroupKey'), 'route should create deterministic grouping keys');
   // After Phase 4 f4-runner-split the stage normalizer lives in its own module.
   const normalizerPath = join(process.cwd(), 'lib', 'oci', 'google-ads-export', 'signal-normalizers.ts');
   const normSrc = readFileSync(normalizerPath, 'utf8');
@@ -101,16 +108,16 @@ test('google-ads-export route: signal conversion names resolve from canonical st
 
 test('google-ads-export route: skips unknown signal stages instead of exporting legacy leftovers', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE'), 'route should log unknown-stage skips explicitly');
-  assert.ok(src.includes("if (!signalStage || signalStage === 'junk')"), 'route should block non-canonical signal stages before export');
+  assert.ok(src.includes("if (!stage || stage === 'junk')"), 'route should block non-canonical signal stages before export');
 });
 
 test('google-ads-export route: queue export prefers optimization_value when present', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('typeof row.optimization_value === \'number\''), 'queue export should inspect optimization_value first');
-  assert.ok(src.includes(': minorToMajor(valueCents, rowCurrency)'), 'queue export should only fall back to legacy cents when optimization_value is absent');
+  assert.ok(src.includes(': minorToMajor(valueGuard.normalized, rowCurrency)'), 'queue export should only fall back to legacy cents when optimization_value is absent');
 });
 
 test('claim RPC migration: increments attempt_count', () => {

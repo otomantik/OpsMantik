@@ -13,7 +13,7 @@ import { ShieldCheck, Trash2, Phone, CircleDollarSign, ChevronRight, ChevronLeft
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useSfx } from '@/lib/hooks/use-sfx';
-import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
+import { HELPER_FORM_DEFAULTS, type HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export interface SealModalProps {
   open: boolean;
@@ -51,13 +51,7 @@ export function SealModal({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [callerPhone, setCallerPhone] = useState<string>('');
-  const [helperFormPayload, setHelperFormPayload] = useState<HelperFormPayload>({
-    jobSize: 'orta',
-    urgency: 'orta',
-    priceDiscussed: 'evet',
-    followupExpectation: 'evet',
-    competitorComparison: 'hayir',
-  });
+  const [helperFormPayload, setHelperFormPayload] = useState<HelperFormPayload>({ ...HELPER_FORM_DEFAULTS });
   const [saving, setSaving] = useState(false);
   const [junking, setJunking] = useState(false);
   const [sealSuccessPulse, setSealSuccessPulse] = useState(false);
@@ -68,13 +62,7 @@ export function SealModal({
       // Do NOT pre-fill with clickedNumber: that's the business number the visitor clicked.
       // Operator must enter the CUSTOMER's number (they spoke with on the phone).
       setCallerPhone('');
-      setHelperFormPayload({
-        jobSize: 'orta',
-        urgency: 'orta',
-        priceDiscussed: 'evet',
-        followupExpectation: 'evet',
-        competitorComparison: 'hayir',
-      });
+      setHelperFormPayload({ ...HELPER_FORM_DEFAULTS });
     }
   }, [open]);
 

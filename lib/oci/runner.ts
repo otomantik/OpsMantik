@@ -1,64 +1,22 @@
-/**
- * PR-C4: Single OCI runner — claim, gates, adapter, persist.
- * Used by /api/workers/google-ads-oci (mode: worker) and /api/cron/process-offline-conversions (mode: cron).
- * No behavior change; consolidation only.
- *
- * Transaction safety: claim_offline_conversion_jobs_v3 uses
- * FOR UPDATE SKIP LOCKED; no double-claim. Queue transitions are appended per-row and snapped atomically.
- * Failure parity: both modes use MAX_RETRY_ATTEMPTS from constants.ts, increment retry_count,
- * and set provider_error_code / provider_error_category (worker) or last_error (cron).
- */
-
 import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { adminClient } from '@/lib/supabase/admin';
-import { getProvider } from '@/lib/providers/registry';
-import type { UploadResult } from '@/lib/providers/types';
-import {
-  nextRetryDelaySeconds,
-  queueRowToConversionJob,
-  type QueueRow,
-} from '@/lib/cron/process-offline-conversions';
-import {
-  acquireSemaphore,
-  releaseSemaphore,
-  siteProviderKey,
-  globalProviderKey,
-} from '@/lib/providers/limits/semaphore';
-import {
-  MAX_RETRY_ATTEMPTS,
-  BATCH_SIZE_WORKER,
-  DEFAULT_LIMIT_CRON,
-  MAX_LIMIT_CRON,
-  LIST_GROUPS_LIMIT,
-} from '@/lib/oci/constants';
-import type { QueueSnapshotUpdatePayload } from '@/lib/oci/queue-transition-ledger';
+import { BATCH_SIZE_WORKER, DEFAULT_LIMIT_CRON, LIST_GROUPS_LIMIT, MAX_LIMIT_CRON } from '@/lib/oci/constants';
 import { logInfo, logWarn } from '@/lib/logging/logger';
-// Phase 4 f4-runner-split: helpers live in lib/oci/runner/* submodules.
 import { decryptCredentials } from '@/lib/oci/runner/credentials';
-import { writeQueueDeadLetterAudit } from '@/lib/oci/runner/dead-letter';
-import {
-  logGroupOutcome,
-  logRunnerError,
-  getQueueAttemptCount,
-} from '@/lib/oci/runner/log-helpers';
-import { persistProviderOutcome } from '@/lib/oci/runner/provider-outcome';
-import {
-  bulkUpdateQueue,
-  bulkUpdateQueueGrouped,
-} from '@/lib/oci/runner/queue-bulk-update';
-import { syncQueueValuesFromCalls } from '@/lib/oci/runner/queue-value-sync';
+import { bulkUpdateQueue } from '@/lib/oci/runner/queue-bulk-update';
+import { logRunnerError } from '@/lib/oci/runner/log-helpers';
+import { computeFairShareClaimLimits } from '@/lib/oci/runner/claim-planner';
+import { writeProviderMetrics } from '@/lib/oci/runner/metrics-writer';
+import { dispatchWorkerWave } from '@/lib/oci/runner/worker-wave';
+import { dispatchCronClaimWave } from '@/lib/oci/runner/cron-wave';
+import type { QueueRow } from '@/lib/cron/process-offline-conversions';
+import type { ConversionGroupRow, ProviderCredentialsRow, ProviderHealthRow } from '@/lib/oci/runner/db-types';
 
-/** Options for runOfflineConversionRunner. */
 export interface RunnerOptions {
-  /** 'worker' = single-provider (e.g. google_ads), semaphore + ledger. 'cron' = all/filtered providers, health gate + metrics. */
   mode: 'worker' | 'cron';
-  /** For mode 'worker': only process this provider (e.g. 'google_ads'). */
   providerKey?: string;
-  /** For mode 'cron': optional query filter (provider_key). Null = all providers. */
   providerFilter?: string | null;
-  /** For mode 'cron': max jobs per run (default 50, max 500). Ignored for worker (uses BATCH_SIZE_WORKER). */
   limit?: number;
-  /** Log prefix for console (e.g. '[google-ads-oci]', '[process-offline-conversions]'). */
   logPrefix?: string;
 }
 
@@ -66,1004 +24,61 @@ export type RunnerResult =
   | { ok: true; processed: number; completed: number; failed: number; retry: number }
   | { ok: false; error: string };
 
-type GroupRow = {
-  site_id: string;
-  provider_key: string;
-  queued_count: number;
-  min_next_retry_at: string | null;
-  min_created_at: string;
-};
-
-type HealthRow = { state: string; next_probe_at: string | null; probe_limit: number };
-
-/**
- * Single runner: list groups → claim → (per group) credentials → gates → upload → persist.
- */
 export async function runOfflineConversionRunner(options: RunnerOptions): Promise<RunnerResult> {
-  const {
-    mode,
-    providerKey: singleProviderKey,
-    providerFilter,
-    limit: optionLimit,
-    logPrefix: prefix = '[oci-runner]',
-  } = options;
+  const { mode, providerKey: singleProviderKey, providerFilter, limit: optionLimit, logPrefix: prefix = '[oci-runner]' } = options;
+  if (mode === 'worker' && !singleProviderKey) throw new Error('OCI runner: mode worker requires providerKey');
 
-  // Production safeguard: worker mode requires providerKey (single-provider semantics).
-  if (mode === 'worker' && !singleProviderKey) {
-    throw new Error('OCI runner: mode worker requires providerKey');
-  }
-
-  // Exhaustive mode check: if a new mode is added to RunnerOptions, compilation fails here.
-  switch (mode) {
-    case 'worker':
-    case 'cron':
-      break;
-    default: {
-      const _exhaustive: never = mode;
-      return { ok: false, error: `Unknown mode: ${String(_exhaustive)}` };
-    }
-  }
-
-  const limit =
-    mode === 'worker'
-      ? BATCH_SIZE_WORKER
-      : Math.min(MAX_LIMIT_CRON, Math.max(1, optionLimit ?? DEFAULT_LIMIT_CRON));
-
+  const limit = mode === 'worker'
+    ? BATCH_SIZE_WORKER
+    : Math.min(MAX_LIMIT_CRON, Math.max(1, optionLimit ?? DEFAULT_LIMIT_CRON));
   const bySiteAndProvider = new Map<string, QueueRow[]>();
   const writtenMetricsKeys = new Set<string>();
 
   try {
-    const { data: groups, error: listError } = await adminClient.rpc('list_offline_conversion_groups', {
-      p_limit_groups: LIST_GROUPS_LIMIT,
-    });
-    if (listError) {
-      return { ok: false, error: listError.message };
-    }
-    const groupList = (groups ?? []) as GroupRow[];
-    const filteredGroups =
-      mode === 'worker' && singleProviderKey
-        ? groupList.filter((g) => g.provider_key === singleProviderKey)
-        : providerFilter
-          ? groupList.filter((g) => g.provider_key === providerFilter)
-          : groupList;
+    const filteredGroups = await listFilteredGroups(mode, singleProviderKey, providerFilter);
+    if (filteredGroups.length === 0) return { ok: true, processed: 0, completed: 0, failed: 0, retry: 0 };
 
-    if (filteredGroups.length === 0) {
-      return { ok: true, processed: 0, completed: 0, failed: 0, retry: 0 };
-    }
-
-    const healthByKey: Map<string, HealthRow | null> = new Map();
-    const claimLimits = new Map<string, number>();
-
-    if (mode === 'cron') {
-      for (const g of filteredGroups) {
-        const key = `${g.site_id}:${g.provider_key}`;
-        const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
-          p_site_id: g.site_id,
-          p_provider_key: g.provider_key,
-        });
-        healthByKey.set(key, (healthRows as HealthRow[] | null)?.[0] ?? null);
-      }
-      const closedGroups = filteredGroups.filter((g) => {
-        const h = healthByKey.get(`${g.site_id}:${g.provider_key}`);
-        return (h?.state ?? 'CLOSED') === 'CLOSED';
-      });
-      const totalQueued = closedGroups.reduce((s, g) => s + Number(g.queued_count ?? 0), 0);
-      if (totalQueued > 0) {
-        let sum = 0;
-        const raw: { key: string; lim: number; qc: number; min_next_retry_at: string | null; min_created_at: string }[] =
-          closedGroups.map((g) => {
-            const key = `${g.site_id}:${g.provider_key}`;
-            const qc = Number(g.queued_count ?? 0);
-            const lim = Math.max(1, Math.floor(limit * (qc / totalQueued)));
-            sum += lim;
-            return { key, lim, qc, min_next_retry_at: g.min_next_retry_at ?? null, min_created_at: g.min_created_at ?? '' };
-          });
-        while (sum > limit && raw.length > 0) {
-          raw.sort((a, b) => {
-            if (b.lim !== a.lim) return b.lim - a.lim;
-            const an = a.min_next_retry_at ?? '';
-            const bn = b.min_next_retry_at ?? '';
-            if (an !== bn) return an.localeCompare(bn);
-            return (a.min_created_at ?? '').localeCompare(b.min_created_at ?? '');
-          });
-          const r = raw[0];
-          if (r.lim <= 1) break;
-          r.lim--;
-          sum--;
-        }
-        let leftover = limit - sum;
-        let ri = 0;
-        while (leftover > 0 && raw.length > 0) {
-          const r = raw[ri % raw.length];
-          if (r.lim < r.qc) {
-            r.lim++;
-            leftover--;
-          }
-          ri++;
-          if (ri > raw.length * 2) break;
-        }
-        raw.forEach((r) => claimLimits.set(r.key, r.lim));
-      }
-    }
-
-    let remaining = limit;
-    const maxGroups = Math.min(filteredGroups.length, 100);
-    for (let i = 0; i < maxGroups && remaining > 0; i++) {
-      const g = filteredGroups[i];
-      const siteId = g.site_id;
-      const provKey = g.provider_key;
-      const key = `${siteId}:${provKey}`;
-
-      if (mode === 'cron') {
-        const health = healthByKey.get(key) ?? null;
-        const state = health?.state ?? 'CLOSED';
-        if (state === 'OPEN') continue;
-        const probeLimit = health?.probe_limit ?? 5;
-        const claimLimit =
-          state === 'HALF_OPEN'
-            ? Math.min(probeLimit, remaining)
-            : Math.min(claimLimits.get(key) ?? Math.max(1, Math.floor(remaining / (maxGroups - i))), remaining);
-        const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v3', {
-          p_site_id: siteId,
-          p_provider_key: provKey,
-          p_limit: claimLimit,
-        });
-        if (claimError) continue;
-        const claimedRows = (rows ?? []) as QueueRow[];
-        if (claimedRows.length === 0) continue;
-        remaining -= claimedRows.length;
-        bySiteAndProvider.set(key, claimedRows);
-      } else {
-        const claimLimit = Math.min(remaining, Math.max(1, Number(g.queued_count ?? 0)));
-        const { data: rows, error: claimError } = await adminClient.rpc('claim_offline_conversion_jobs_v3', {
-          p_site_id: siteId,
-          p_provider_key: provKey,
-          p_limit: claimLimit,
-        });
-        if (claimError) {
-          logRunnerError(prefix, `claim failed for ${siteId}`, claimError);
-          continue;
-        }
-        const claimedRows = (rows ?? []) as QueueRow[];
-        if (claimedRows.length > 0) {
-          bySiteAndProvider.set(key, claimedRows);
-          remaining -= claimedRows.length;
-        }
-      }
-    }
+    const { healthByKey, claimLimits } = await planCronClaims(mode, filteredGroups, limit);
+    await claimRows({ mode, prefix, limit, filteredGroups, bySiteAndProvider, healthByKey, claimLimits });
 
     const allClaimed = Array.from(bySiteAndProvider.values()).flat();
-    if (allClaimed.length === 0) {
-      return { ok: true, processed: 0, completed: 0, failed: 0, retry: 0 };
-    }
+    if (allClaimed.length === 0) return { ok: true, processed: 0, completed: 0, failed: 0, retry: 0 };
 
     let completed = 0;
     let failed = 0;
     let retry = 0;
 
-    async function writeProviderMetrics(
-      siteId: string,
-      provKey: string,
-      attempts: number,
-      completedDelta: number,
-      failedDelta: number,
-      retryDelta: number
-    ): Promise<void> {
-      try {
-        await adminClient.rpc('increment_provider_upload_metrics', {
-          p_site_id: siteId,
-          p_provider_key: provKey,
-          p_attempts_delta: attempts,
-          p_completed_delta: completedDelta,
-          p_failed_delta: failedDelta,
-          p_retry_delta: retryDelta,
-        });
-        writtenMetricsKeys.add(`${siteId}:${provKey}`);
-      } catch (e) {
-        logWarn('OCI_increment_provider_upload_metrics_failed', { prefix, error: e instanceof Error ? e.message : String(e) });
-      }
-    }
-
-    for (const [, siteRows] of bySiteAndProvider) {
+    for (const [key, siteRows] of bySiteAndProvider) {
       const first = siteRows[0];
       const siteIdUuid = first.site_id;
       const providerKey = first.provider_key;
-      let groupCompleted = 0;
-      let groupFailed = 0;
-      let groupRetry = 0;
-
-      const tenantClient = createTenantClient(siteIdUuid);
-      let encryptedPayload: string | null = null;
-
-      try {
-        const { data: credsData, error: credsErr } = await tenantClient
-          .from('provider_credentials')
-          .select('encrypted_payload')
-          .eq('provider_key', providerKey)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (credsErr) throw credsErr;
-        encryptedPayload = (credsData as { encrypted_payload?: string } | null)?.encrypted_payload ?? null;
-      } catch (err) {
-        logRunnerError(prefix, 'provider_credentials fetch failed', err);
-        encryptedPayload = null;
-      }
-
-      if (!encryptedPayload) {
-        const lastError = 'Credentials missing or decryption failed';
-        await bulkUpdateQueue(
-          siteRows.map((r) => r.id),
-          { status: 'FAILED', last_error: lastError, updated_at: new Date().toISOString() },
-          prefix,
-          'Update FAILED (credentials) failed'
-        );
+      const credentials = await resolveCredentials(siteIdUuid, providerKey, siteRows, prefix);
+      if (!credentials) {
         failed += siteRows.length;
-        if (mode === 'cron') await writeProviderMetrics(siteIdUuid, providerKey, siteRows.length, 0, siteRows.length, 0);
+        if (mode === 'cron') {
+          await safeWriteProviderMetrics(siteIdUuid, providerKey, siteRows.length, 0, siteRows.length, 0, prefix);
+          writtenMetricsKeys.add(key);
+        }
         continue;
       }
 
-      let credentials: unknown;
-      try {
-        credentials = await decryptCredentials(encryptedPayload);
-      } catch (err) {
-        logRunnerError(prefix, 'Decrypt credentials failed', err);
-        const lastError = 'Credentials missing or decryption failed';
-        await bulkUpdateQueue(
-          siteRows.map((r) => r.id),
-          { status: 'FAILED', last_error: lastError, updated_at: new Date().toISOString() },
-          prefix,
-          'Update FAILED (decrypt) failed'
-        );
-        failed += siteRows.length;
-        if (mode === 'cron') await writeProviderMetrics(siteIdUuid, providerKey, siteRows.length, 0, siteRows.length, 0);
-        continue;
-      }
-
-      if (mode === 'worker') {
-        const limitSite = Math.max(1, parseInt(process.env.CONCURRENCY_PER_SITE_PROVIDER ?? '2', 10) || 2);
-        const globalLimit = Math.max(0, parseInt(process.env.CONCURRENCY_GLOBAL_PER_PROVIDER ?? '10', 10));
-        const ttlMs = Math.max(60000, parseInt(process.env.SEMAPHORE_TTL_MS ?? '120000', 10) || 120000);
-        const siteKey = siteProviderKey(siteIdUuid, providerKey);
-        const globalKey = globalProviderKey(providerKey);
-        let siteToken: string | null = await acquireSemaphore(siteKey, limitSite, ttlMs);
-        if (!siteToken) {
-          const backoffSec = 30 + Math.floor(Math.random() * 11);
-          const nextRetryAt = new Date(Date.now() + backoffSec * 1000).toISOString();
-          const lastError = 'CONCURRENCY_LIMIT: Semaphore full';
-          await bulkUpdateQueue(
-            siteRows.map((r) => r.id),
-            {
-              status: 'RETRY',
-              next_retry_at: nextRetryAt,
-              last_error: lastError,
-              updated_at: new Date().toISOString(),
-              provider_error_code: 'CONCURRENCY_LIMIT',
-              provider_error_category: 'TRANSIENT',
-            },
-            prefix,
-            'Update RETRY (concurrency) failed'
-          );
-          const batchIdConv = crypto.randomUUID();
-          const startedAtConv = Date.now();
-          await adminClient.from('provider_upload_attempts').insert({
-            site_id: siteIdUuid,
-            provider_key: providerKey,
-            batch_id: batchIdConv,
-            phase: 'STARTED',
-            claimed_count: siteRows.length,
-          });
-          await adminClient.from('provider_upload_attempts').insert({
-            site_id: siteIdUuid,
-            provider_key: providerKey,
-            batch_id: batchIdConv,
-            phase: 'FINISHED',
-            claimed_count: siteRows.length,
-            completed_count: 0,
-            failed_count: 0,
-            retry_count: siteRows.length,
-            duration_ms: Date.now() - startedAtConv,
-            error_code: 'CONCURRENCY_LIMIT',
-            error_category: 'TRANSIENT',
-          });
-          await persistProviderOutcome(siteIdUuid, providerKey, false, true, prefix);
-          logGroupOutcome(prefix, 'worker', providerKey, siteRows.length, 0, 0, siteRows.length);
-          retry += siteRows.length;
-          continue;
-        }
-        let globalToken: string | null = null;
-        if (globalLimit > 0) {
-          globalToken = await acquireSemaphore(globalKey, globalLimit, ttlMs);
-          if (!globalToken) {
-            await releaseSemaphore(siteKey, siteToken);
-            siteToken = null;
-            const backoffSec = 30 + Math.floor(Math.random() * 11);
-            const nextRetryAt = new Date(Date.now() + backoffSec * 1000).toISOString();
-            const lastError = 'CONCURRENCY_LIMIT: Semaphore full';
-            await bulkUpdateQueue(
-              siteRows.map((r) => r.id),
-              {
-                status: 'RETRY',
-                next_retry_at: nextRetryAt,
-                last_error: lastError,
-                updated_at: new Date().toISOString(),
-                provider_error_code: 'CONCURRENCY_LIMIT',
-                provider_error_category: 'TRANSIENT',
-              },
-              prefix,
-              'Update RETRY (concurrency) failed'
-            );
-            const batchIdConv = crypto.randomUUID();
-            const startedAtConv = Date.now();
-            await adminClient.from('provider_upload_attempts').insert({
-              site_id: siteIdUuid,
-              provider_key: providerKey,
-              batch_id: batchIdConv,
-              phase: 'STARTED',
-              claimed_count: siteRows.length,
-            });
-            await adminClient.from('provider_upload_attempts').insert({
-              site_id: siteIdUuid,
-              provider_key: providerKey,
-              batch_id: batchIdConv,
-              phase: 'FINISHED',
-              claimed_count: siteRows.length,
-              completed_count: 0,
-              failed_count: 0,
-              retry_count: siteRows.length,
-              duration_ms: Date.now() - startedAtConv,
-              error_code: 'CONCURRENCY_LIMIT',
-              error_category: 'TRANSIENT',
-            });
-            await persistProviderOutcome(siteIdUuid, providerKey, false, true, prefix);
-            logGroupOutcome(prefix, 'worker', providerKey, siteRows.length, 0, 0, siteRows.length);
-            retry += siteRows.length;
-            continue;
-          }
-        }
-
-        const mismatchIds = await syncQueueValuesFromCalls(siteIdUuid, siteRows, prefix);
-        const failClosed = process.env.QUEUE_VALUE_MISMATCH_FAIL_CLOSED === '1';
-
-        if (failClosed && mismatchIds.size > 0) {
-          await bulkUpdateQueue(
-            [...mismatchIds],
-            { status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() },
-            prefix,
-            'Release mismatch rows (fail-closed) to QUEUED'
-          );
-          logInfo('QUEUE_VALUE_MISMATCH_FAIL_CLOSED', {
-            site_id: siteIdUuid,
-            skipped_count: mismatchIds.size,
-            prefix,
-          });
-        }
-
-        const adapter = getProvider(providerKey);
-        const blockedValueZeroIds: string[] = [];
-        const rowsWithValue = siteRows.filter((r) => {
-          if (failClosed && mismatchIds.has(r.id)) return false;
-          const raw = (r as { value_cents?: unknown }).value_cents;
-          const v = typeof raw === 'number' ? raw : Number(raw);
-          if (raw == null || raw === undefined) {
-            logWarn('OCI_ROW_SKIP_NULL_VALUE', { queue_id: r.id, prefix });
-            blockedValueZeroIds.push(r.id);
-            return false;
-          }
-          if (!Number.isFinite(v) || v <= 0) {
-            logWarn('OCI_ROW_SKIP_VALUE_ZERO', { queue_id: r.id, prefix, raw_value_cents: raw ?? null });
-            blockedValueZeroIds.push(r.id);
-            return false;
-          }
-          (r as { value_cents: number }).value_cents = v;
-          return true;
-        });
-        if (blockedValueZeroIds.length > 0) {
-          await bulkUpdateQueue(
-            blockedValueZeroIds,
-            {
-              status: 'FAILED',
-              last_error: 'VALUE_ZERO',
-              provider_error_code: 'VALUE_ZERO',
-              provider_error_category: 'PERMANENT',
-              updated_at: new Date().toISOString(),
-            },
-            prefix,
-            'Mark value_cents<=0 rows FAILED'
-          );
-        }
-        // Axiom 4: Per-row isolation — one poison pill does not kill the batch
-        const jobs: Awaited<ReturnType<typeof queueRowToConversionJob>>[] = [];
-        const poisonRowIds: string[] = [];
-        for (const r of rowsWithValue) {
-          try {
-            jobs.push(queueRowToConversionJob(r));
-          } catch (err) {
-            // const msg = err instanceof Error ? err.message : String(err); // unused
-            logRunnerError(prefix, 'queueRowToConversionJob poison pill (row isolated)', err);
-            poisonRowIds.push(r.id);
-          }
-        }
-        if (poisonRowIds.length > 0) {
-          await bulkUpdateQueue(
-            poisonRowIds,
-            {
-              status: 'DEAD_LETTER_QUARANTINE',
-              last_error: 'POISON_PILL: Malformed payload or conversion_time',
-              provider_error_code: 'POISON_PILL',
-              provider_error_category: 'PERMANENT',
-              updated_at: new Date().toISOString(),
-            },
-            prefix,
-            'Mark poison pill rows DEAD_LETTER'
-          );
-          await writeQueueDeadLetterAudit(
+      const result = mode === 'worker'
+        ? await dispatchWorkerWave({ siteIdUuid, providerKey, siteRows, credentials, prefix })
+        : await dispatchCronClaimWave({
             siteIdUuid,
-            rowsWithValue.filter((row) => poisonRowIds.includes(row.id)),
-            'POISON_PILL',
-            'POISON_PILL: Malformed payload or conversion_time',
-            'PERMANENT'
-          );
-        }
-        // Enhanced Conversions: enrich job.payload with caller_phone_hash_sha256 from calls (hashed_phone_number)
-        const callIds = [...new Set(rowsWithValue.map((r) => (r as { call_id?: string | null }).call_id).filter(Boolean))] as string[];
-        if (callIds.length > 0 && jobs.length > 0) {
-          try {
-            const rowIdToRow = new Map(rowsWithValue.map((r) => [r.id, r]));
-            const { data: callsData } = await adminClient
-              .from('calls')
-              .select('id, caller_phone_hash_sha256')
-              .in('id', callIds);
-            const hashByCallId = new Map<string, string>();
-            for (const c of callsData ?? []) {
-              const hash = (c as { caller_phone_hash_sha256?: string | null }).caller_phone_hash_sha256;
-              if (hash && typeof hash === 'string' && hash.trim().length === 64) {
-                hashByCallId.set((c as { id: string }).id, hash.trim());
-              }
-            }
-            for (let i = 0; i < jobs.length; i++) {
-              const row = rowIdToRow.get(jobs[i].id);
-              if (!row) continue;
-              const callId = (row as { call_id?: string | null }).call_id;
-              const hashedPhone = callId ? hashByCallId.get(callId) : null;
-              if (hashedPhone) {
-                jobs[i].payload = { ...(jobs[i].payload ?? {}), hashed_phone_number: hashedPhone };
-              }
-            }
-          } catch {
-            // Non-critical; upload continues without user_identifiers
-          }
-        }
-        if (jobs.length === 0) {
-          // Nothing left to upload after policy blocks/poison isolation.
-          continue;
-        }
-        const batchId = crypto.randomUUID();
-        const startedAt = Date.now();
-        let attemptCompleted = 0;
-        let attemptFailed = 0;
-        let attemptRetry = 0;
-        let attemptRequestId: string | null = null;
-        let attemptErrorCode: string | null = null;
-        let attemptErrorCategory: string | null = null;
-        let results: UploadResult[] | undefined;
-
-        try {
-          const { error: startedErr } = await adminClient.from('provider_upload_attempts').insert({
-            site_id: siteIdUuid,
-            provider_key: providerKey,
-            batch_id: batchId,
-            phase: 'STARTED',
-            claimed_count: siteRows.length,
-          });
-          if (startedErr) logRunnerError(prefix, 'Ledger STARTED insert failed', startedErr);
-
-          try {
-            results = await adapter.uploadConversions({ jobs, credentials });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            logRunnerError(prefix, 'Adapter uploadConversions threw', err);
-            attemptErrorCode = null;
-            attemptErrorCategory = 'TRANSIENT';
-            const rowsToRetry = rowsWithValue.filter((r) => !poisonRowIds.includes(r.id));
-            const rowsToDeadLetter = rowsToRetry.filter((row) => (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS);
-            await bulkUpdateQueueGrouped(
-              rowsToRetry,
-              (r) => r.id,
-              (row) => {
-                const count = (row.retry_count ?? 0) + 1;
-                const isFinal = count >= MAX_RETRY_ATTEMPTS;
-                const delaySec = nextRetryDelaySeconds(row.retry_count ?? 0);
-                const lastErrorFinal = `Max retries reached: ${msg}`.slice(0, 1000);
-                return isFinal
-                  ? {
-                    status: 'DEAD_LETTER_QUARANTINE' as const,
-                    retry_count: count,
-                    last_error: lastErrorFinal,
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: 'MAX_ATTEMPTS',
-                    provider_error_category: 'PERMANENT' as const,
-                  }
-                  : {
-                    status: 'RETRY' as const,
-                    retry_count: count,
-                    next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                    last_error: msg.slice(0, 1000),
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: null,
-                    provider_error_category: 'TRANSIENT' as const,
-                  };
-              },
-              prefix,
-              'Update RETRY/DEAD_LETTER after throw failed'
-            );
-            await writeQueueDeadLetterAudit(siteIdUuid, rowsToDeadLetter, 'MAX_ATTEMPTS', msg, 'MAX_ATTEMPTS');
-            for (const row of rowsToRetry) {
-              const count = (row.retry_count ?? 0) + 1;
-              const isFinal = count >= MAX_RETRY_ATTEMPTS;
-              if (isFinal) {
-                attemptFailed++;
-                failed++;
-              } else {
-                attemptRetry++;
-                retry++;
-              }
-            }
-            attemptFailed += poisonRowIds.length;
-            failed += poisonRowIds.length;
-          }
-
-          if (results !== undefined) {
-            const rowById = new Map(rowsWithValue.map((r) => [r.id, r]));
-            const updates: { row: QueueRow; result: UploadResult }[] = [];
-            for (const result of results) {
-              const row = rowById.get(result.job_id);
-              if (!row) continue;
-              updates.push({ row, result });
-            }
-            const deadLetterUpdates = updates.filter(({ row, result }) => {
-              if (result.status !== 'RETRY') return false;
-              const count = (row.retry_count ?? 0) + 1;
-              return count >= MAX_RETRY_ATTEMPTS;
-            });
-            await bulkUpdateQueueGrouped(
-              updates,
-              (u) => u.row.id,
-              ({ row, result }): QueueSnapshotUpdatePayload => {
-                if (result.status === 'COMPLETED') {
-                  if (result.provider_request_id && attemptRequestId == null) attemptRequestId = result.provider_request_id;
-                  const payload: QueueSnapshotUpdatePayload = {
-                    status: 'COMPLETED',
-                    last_error: null,
-                    updated_at: new Date().toISOString(),
-                    uploaded_at: new Date().toISOString(),
-                    provider_request_id: result.provider_request_id ?? null,
-                    provider_error_code: null,
-                    provider_error_category: null,
-                  };
-                  if (result.provider_ref != null) payload.provider_ref = result.provider_ref;
-                  return payload;
-                }
-                const count = (row.retry_count ?? 0) + 1;
-                const maxAttemptsHit = count >= MAX_RETRY_ATTEMPTS;
-                const isFatal = maxAttemptsHit || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
-                const delaySec = nextRetryDelaySeconds(count);
-                const errorMsg = result.error_message ?? 'Unknown error';
-                const lastErrorFinal = isFatal
-                  ? `FINAL: ${errorMsg}`.slice(0, 1000)
-                  : errorMsg.slice(0, 1000);
-                return isFatal
-                  ? {
-                    status: maxAttemptsHit ? 'DEAD_LETTER_QUARANTINE' as const : 'FAILED' as const,
-                    retry_count: count,
-                    last_error: lastErrorFinal,
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: maxAttemptsHit ? 'MAX_ATTEMPTS' : result.error_code ?? null,
-                    provider_error_category: maxAttemptsHit ? 'PERMANENT' : result.provider_error_category ?? null,
-                  }
-                  : {
-                    status: 'RETRY' as const,
-                    retry_count: count,
-                    next_retry_at: new Date(Date.now() + delaySec * 1000).toISOString(),
-                    last_error: lastErrorFinal,
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: result.error_code ?? null,
-                    provider_error_category: result.provider_error_category ?? null,
-                  };
-                const lastError = (result.error_message ?? 'Unknown error').slice(0, 1000);
-                return {
-                  status: 'FAILED',
-                  last_error: lastError,
-                  updated_at: new Date().toISOString(),
-                  provider_error_code: result.error_code ?? null,
-                  provider_error_category: result.provider_error_category ?? null,
-                };
-              },
-              prefix,
-              'Update COMPLETED/RETRY/FAILED (partial) failed'
-            );
-            await writeQueueDeadLetterAudit(
-              siteIdUuid,
-              deadLetterUpdates.map(({ row }) => row),
-              'MAX_ATTEMPTS',
-              'Queue row exhausted retry budget after provider response',
-              'MAX_ATTEMPTS'
-            );
-            for (const { row, result } of updates) {
-              if (result.status === 'COMPLETED') {
-                attemptCompleted++;
-                completed++;
-              } else if (result.status === 'RETRY') {
-                const count = (row.retry_count ?? 0) + 1;
-                const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
-                if (isFatal) {
-                  attemptFailed++;
-                  failed++;
-                } else {
-                  attemptRetry++;
-                  retry++;
-                }
-              } else {
-                attemptFailed++;
-                failed++;
-              }
-            }
-          }
-
-          const durationMs = Date.now() - startedAt;
-          const { error: finishedErr } = await adminClient.from('provider_upload_attempts').insert({
-            site_id: siteIdUuid,
-            provider_key: providerKey,
-            batch_id: batchId,
-            phase: 'FINISHED',
-            claimed_count: siteRows.length,
-            completed_count: attemptCompleted,
-            failed_count: attemptFailed,
-            retry_count: attemptRetry,
-            duration_ms: durationMs,
-            provider_request_id: attemptRequestId,
-            error_code: attemptErrorCode,
-            error_category: attemptErrorCategory,
-          });
-          if (finishedErr) logRunnerError(prefix, 'Ledger FINISHED insert failed', finishedErr);
-
-          const isTransient = attemptRetry > 0 || attemptErrorCategory === 'TRANSIENT';
-          await persistProviderOutcome(siteIdUuid, providerKey, attemptCompleted > 0, isTransient, prefix);
-          logGroupOutcome(prefix, 'worker', providerKey, siteRows.length, attemptCompleted, attemptFailed, attemptRetry);
-        } finally {
-          if (siteToken) await releaseSemaphore(siteKey, siteToken);
-          if (globalToken) await releaseSemaphore(globalKey, globalToken);
-        }
-        continue;
-      }
-
-      if (mode === 'cron') {
-        const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
-          p_site_id: siteIdUuid,
-          p_provider_key: providerKey,
-        });
-        const health: HealthRow | null = (healthRows as HealthRow[] | null)?.[0] ?? null;
-        const state = health?.state ?? 'CLOSED';
-        const nextProbeAt = health?.next_probe_at ? new Date(health.next_probe_at).getTime() : 0;
-        const probeLimit = health?.probe_limit ?? 5;
-
-        if (state === 'OPEN') {
-          if (nextProbeAt > Date.now()) {
-            const jitterMs = Math.floor(Math.random() * 31 * 1000);
-            const nextRetryAt = new Date(nextProbeAt + jitterMs).toISOString();
-            await bulkUpdateQueueGrouped(
-              siteRows,
-              (r) => r.id,
-              (row) => {
-                const count = (row.retry_count ?? 0) + 1;
-                const isFinal = count >= MAX_RETRY_ATTEMPTS;
-                return isFinal
-                  ? {
-                    status: 'DEAD_LETTER_QUARANTINE' as const,
-                    retry_count: count,
-                    last_error: 'CIRCUIT_OPEN',
-                    updated_at: new Date().toISOString(),
-                    provider_error_code: 'MAX_ATTEMPTS',
-                    provider_error_category: 'PERMANENT' as const,
-                  }
-                  : {
-                    status: 'RETRY' as const,
-                    retry_count: count,
-                    next_retry_at: nextRetryAt,
-                    last_error: 'CIRCUIT_OPEN',
-                    updated_at: new Date().toISOString(),
-                  };
-              },
-              prefix,
-              'Update CIRCUIT_OPEN failed'
-            );
-            await writeQueueDeadLetterAudit(
-              siteIdUuid,
-              siteRows.filter((row) => (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS),
-              'MAX_ATTEMPTS',
-              'CIRCUIT_OPEN',
-              'MAX_ATTEMPTS'
-            );
-            for (const row of siteRows) {
-              const count = (row.retry_count ?? 0) + 1;
-              const isFatal = count >= MAX_RETRY_ATTEMPTS;
-              if (isFatal) failed++;
-              else retry++;
-            }
-            continue;
-          }
-          await adminClient.rpc('set_provider_state_half_open', { p_site_id: siteIdUuid, p_provider_key: providerKey });
-        }
-
-        let rowsToProcess = siteRows;
-        if (state === 'HALF_OPEN') {
-          const limitProbe = Math.max(1, Math.min(probeLimit, siteRows.length));
-          rowsToProcess = siteRows.slice(0, limitProbe);
-          const remainder = siteRows.slice(limitProbe);
-          if (remainder.length > 0) {
-            await bulkUpdateQueue(
-              remainder.map((r) => r.id),
-              { status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() },
-              prefix,
-              'Update QUEUED (HALF_OPEN remainder) failed'
-            );
-          }
-        }
-
-        const mismatchIdsCron = await syncQueueValuesFromCalls(siteIdUuid, rowsToProcess, prefix);
-        const failClosedCron = process.env.QUEUE_VALUE_MISMATCH_FAIL_CLOSED === '1';
-
-        if (failClosedCron && mismatchIdsCron.size > 0) {
-          await bulkUpdateQueue(
-            [...mismatchIdsCron],
-            { status: 'QUEUED', next_retry_at: null, updated_at: new Date().toISOString() },
+            providerKey,
+            siteRows,
+            credentials,
             prefix,
-            'Release mismatch rows (fail-closed cron) to QUEUED'
-          );
-          logInfo('QUEUE_VALUE_MISMATCH_FAIL_CLOSED', {
-            site_id: siteIdUuid,
-            skipped_count: mismatchIdsCron.size,
-            prefix,
-          });
-        }
-
-        const blockedValueZeroIdsCron: string[] = [];
-        const rowsWithValue = rowsToProcess.filter((r) => {
-          if (failClosedCron && mismatchIdsCron.has(r.id)) return false;
-          const raw = (r as { value_cents?: unknown }).value_cents;
-          const v = typeof raw === 'number' ? raw : Number(raw);
-          if (raw == null || raw === undefined) {
-            logWarn('OCI_ROW_SKIP_NULL_VALUE', { queue_id: r.id, prefix });
-            blockedValueZeroIdsCron.push(r.id);
-            return false;
-          }
-          if (!Number.isFinite(v) || v <= 0) {
-            logWarn('OCI_ROW_SKIP_VALUE_ZERO', { queue_id: r.id, prefix, raw_value_cents: raw ?? null });
-            blockedValueZeroIdsCron.push(r.id);
-            return false;
-          }
-          (r as { value_cents: number }).value_cents = v;
-          return true;
-        });
-        if (blockedValueZeroIdsCron.length > 0) {
-          await bulkUpdateQueue(
-            blockedValueZeroIdsCron,
-            {
-              status: 'FAILED',
-              last_error: 'VALUE_ZERO',
-              provider_error_code: 'VALUE_ZERO',
-              provider_error_category: 'PERMANENT',
-              updated_at: new Date().toISOString(),
+            writeProviderMetrics: async (siteId, provKey, attempts, completedDelta, failedDelta, retryDelta) => {
+              await safeWriteProviderMetrics(siteId, provKey, attempts, completedDelta, failedDelta, retryDelta, prefix);
+              writtenMetricsKeys.add(`${siteId}:${provKey}`);
             },
-            prefix,
-            'Mark value_cents<=0 rows FAILED (cron)'
-          );
-        }
-        const adapter = getProvider(providerKey);
-        // Axiom 4: Per-row isolation — one poison pill does not kill the batch
-        const jobs: Awaited<ReturnType<typeof queueRowToConversionJob>>[] = [];
-        const poisonRowIdsCron: string[] = [];
-        for (const r of rowsWithValue) {
-          try {
-            jobs.push(queueRowToConversionJob(r));
-          } catch (err) {
-            logRunnerError(prefix, 'queueRowToConversionJob poison pill (cron row isolated)', err);
-            poisonRowIdsCron.push(r.id);
-          }
-        }
-        if (poisonRowIdsCron.length > 0) {
-          await bulkUpdateQueue(
-            poisonRowIdsCron,
-            {
-              status: 'DEAD_LETTER_QUARANTINE',
-              last_error: 'POISON_PILL: Malformed payload or conversion_time',
-              provider_error_code: 'POISON_PILL',
-              provider_error_category: 'PERMANENT',
-              updated_at: new Date().toISOString(),
-            },
-            prefix,
-            'Mark poison pill rows DEAD_LETTER (cron)'
-          );
-          await writeQueueDeadLetterAudit(
-            siteIdUuid,
-            rowsWithValue.filter((row) => poisonRowIdsCron.includes(row.id)),
-            'POISON_PILL',
-            'POISON_PILL: Malformed payload or conversion_time',
-            'PERMANENT'
-          );
-        }
-        // Enhanced Conversions: enrich job.payload with caller_phone_hash_sha256 from calls
-        const callIdsCron = [...new Set(rowsWithValue.map((r) => (r as { call_id?: string | null }).call_id).filter(Boolean))] as string[];
-        if (callIdsCron.length > 0 && jobs.length > 0) {
-          try {
-            const rowIdToRowCron = new Map(rowsWithValue.map((r) => [r.id, r]));
-            const { data: callsDataCron } = await adminClient
-              .from('calls')
-              .select('id, caller_phone_hash_sha256')
-              .in('id', callIdsCron);
-            const hashByCallIdCron = new Map<string, string>();
-            for (const c of callsDataCron ?? []) {
-              const hash = (c as { caller_phone_hash_sha256?: string | null }).caller_phone_hash_sha256;
-              if (hash && typeof hash === 'string' && hash.trim().length === 64) {
-                hashByCallIdCron.set((c as { id: string }).id, hash.trim());
-              }
-            }
-            for (let i = 0; i < jobs.length; i++) {
-              const row = rowIdToRowCron.get(jobs[i].id);
-              if (!row) continue;
-              const callId = (row as { call_id?: string | null }).call_id;
-              const hashedPhone = callId ? hashByCallIdCron.get(callId) : null;
-              if (hashedPhone) {
-                jobs[i].payload = { ...(jobs[i].payload ?? {}), hashed_phone_number: hashedPhone };
-              }
-            }
-          } catch {
-            // Non-critical
-          }
-        }
-        if (jobs.length === 0) {
-          // Nothing left to upload after policy blocks/poison isolation.
-          continue;
-        }
-        let results: UploadResult[];
-        try {
-          results = await adapter.uploadConversions({ jobs, credentials });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const rowsToRetryCron = rowsWithValue.filter((r) => !poisonRowIdsCron.includes(r.id));
-          const rowsToDeadLetterCron = rowsToRetryCron.filter((row) => (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS);
-          await bulkUpdateQueueGrouped(
-            rowsToRetryCron,
-            (r) => r.id,
-            (row) => {
-              const count = (row.retry_count ?? 0) + 1;
-              const isFinal = count >= MAX_RETRY_ATTEMPTS;
-              const delay = nextRetryDelaySeconds(row.retry_count ?? 0);
-              return isFinal
-                ? {
-                  status: 'DEAD_LETTER_QUARANTINE' as const,
-                  retry_count: count,
-                  last_error: msg.slice(0, 1000),
-                  updated_at: new Date().toISOString(),
-                  provider_error_code: 'MAX_ATTEMPTS',
-                  provider_error_category: 'PERMANENT' as const,
-                }
-                : {
-                  status: 'RETRY' as const,
-                  retry_count: count,
-                  next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-                  last_error: msg.slice(0, 1000),
-                  updated_at: new Date().toISOString(),
-                };
-            },
-            prefix,
-            'Update RETRY/DEAD_LETTER (cron adapter throw) failed'
-          );
-          await writeQueueDeadLetterAudit(siteIdUuid, rowsToDeadLetterCron, 'MAX_ATTEMPTS', msg, 'MAX_ATTEMPTS');
-          for (const row of rowsToRetryCron) {
-            const count = (row.retry_count ?? 0) + 1;
-            const isFatal = count >= MAX_RETRY_ATTEMPTS;
-            if (isFatal) {
-              failed++;
-              groupFailed++;
-            } else {
-              retry++;
-              groupRetry++;
-            }
-          }
-          failed += poisonRowIdsCron.length;
-          groupFailed += poisonRowIdsCron.length;
-          await writeProviderMetrics(siteIdUuid, providerKey, rowsToProcess.length, 0, groupFailed, groupRetry);
-          await persistProviderOutcome(siteIdUuid, providerKey, false, true, prefix);
-          logGroupOutcome(prefix, 'cron', providerKey, rowsToProcess.length, 0, groupFailed, groupRetry);
-          continue;
-        }
+          });
 
-        const rowById = new Map(rowsWithValue.map((r) => [r.id, r]));
-        const cronUpdates: { row: QueueRow; result: UploadResult }[] = [];
-        for (const result of results) {
-          const row = rowById.get(result.job_id);
-          if (!row) continue;
-          cronUpdates.push({ row, result });
-        }
-        const cronDeadLetterUpdates = cronUpdates.filter(({ row, result }) => {
-          if (result.status !== 'RETRY') return false;
-          return (row.retry_count ?? 0) + 1 >= MAX_RETRY_ATTEMPTS;
-        });
-        await bulkUpdateQueueGrouped(
-          cronUpdates,
-          (u) => u.row.id,
-          ({ row, result }) => {
-            if (result.status === 'COMPLETED') {
-              return {
-                status: 'COMPLETED',
-                last_error: null,
-                updated_at: new Date().toISOString(),
-                ...(result.provider_ref != null && { provider_ref: result.provider_ref }),
-              };
-            }
-            if (result.status === 'RETRY') {
-              const count = (row.retry_count ?? 0) + 1;
-              const maxAttemptsHit = count >= MAX_RETRY_ATTEMPTS;
-              const isFatal = maxAttemptsHit || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
-              const delay = nextRetryDelaySeconds(count);
-              const lastErr = (result.error_message ?? '').slice(0, 1000);
-              return isFatal
-                ? {
-                  status: maxAttemptsHit ? 'DEAD_LETTER_QUARANTINE' as const : 'FAILED' as const,
-                  retry_count: count,
-                  last_error: lastErr,
-                  updated_at: new Date().toISOString(),
-                  provider_error_code: maxAttemptsHit ? 'MAX_ATTEMPTS' : result.error_code ?? null,
-                  provider_error_category: maxAttemptsHit ? 'PERMANENT' : result.provider_error_category ?? null,
-                }
-                : {
-                  status: 'RETRY' as const,
-                  retry_count: count,
-                  next_retry_at: new Date(Date.now() + delay * 1000).toISOString(),
-                  last_error: lastErr,
-                  updated_at: new Date().toISOString(),
-                };
-            }
-            return {
-              status: 'FAILED',
-              last_error: (result.error_message ?? '').slice(0, 1000),
-              updated_at: new Date().toISOString(),
-            };
-          },
-          prefix,
-          'Update COMPLETED/RETRY/FAILED (cron results) failed'
-        );
-        await writeQueueDeadLetterAudit(
-          siteIdUuid,
-          cronDeadLetterUpdates.map(({ row }) => row),
-          'MAX_ATTEMPTS',
-          'Queue row exhausted retry budget in cron runner',
-          'MAX_ATTEMPTS'
-        );
-        for (const { row, result } of cronUpdates) {
-          if (result.status === 'COMPLETED') {
-            completed++;
-            groupCompleted++;
-          } else if (result.status === 'RETRY') {
-            const count = (row.retry_count ?? 0) + 1;
-            const isFatal = count >= MAX_RETRY_ATTEMPTS || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
-            if (isFatal) {
-              failed++;
-              groupFailed++;
-            } else {
-              retry++;
-              groupRetry++;
-            }
-          } else {
-            failed++;
-            groupFailed++;
-          }
-        }
-        await writeProviderMetrics(siteIdUuid, providerKey, rowsToProcess.length, groupCompleted, groupFailed, groupRetry);
-        await persistProviderOutcome(siteIdUuid, providerKey, groupCompleted > 0, groupRetry > 0, prefix);
-        logGroupOutcome(prefix, 'cron', providerKey, rowsToProcess.length, groupCompleted, groupFailed, groupRetry);
-      }
+      completed += result.completed;
+      failed += result.failed;
+      retry += result.retry;
     }
 
     logInfo('OCI_RUN_COMPLETE', { prefix, mode, processed: allClaimed.length, completed, failed, retry });
@@ -1074,20 +89,159 @@ export async function runOfflineConversionRunner(options: RunnerOptions): Promis
       for (const [key, siteRows] of bySiteAndProvider) {
         if (writtenMetricsKeys.has(key)) continue;
         const first = siteRows[0];
-        try {
-          await adminClient.rpc('increment_provider_upload_metrics', {
-            p_site_id: first.site_id,
-            p_provider_key: first.provider_key,
-            p_attempts_delta: siteRows.length,
-            p_completed_delta: 0,
-            p_failed_delta: 0,
-            p_retry_delta: 0,
-          });
-        } catch (e) {
-          logWarn('OCI_crash_path_increment_metrics_failed', { prefix, error: e instanceof Error ? e.message : String(e) });
-        }
+        await safeWriteProviderMetrics(first.site_id, first.provider_key, siteRows.length, 0, 0, 0, prefix);
       }
     }
     return { ok: false, error: msg };
   }
 }
+
+async function listFilteredGroups(
+  mode: RunnerOptions['mode'],
+  singleProviderKey: string | undefined,
+  providerFilter: string | null | undefined
+): Promise<ConversionGroupRow[]> {
+  const { data: groups, error: listError } = await adminClient.rpc('list_offline_conversion_groups', {
+    p_limit_groups: LIST_GROUPS_LIMIT,
+  });
+  if (listError) throw listError;
+  const groupList = (groups ?? []) as ConversionGroupRow[];
+  if (mode === 'worker' && singleProviderKey) return groupList.filter((g) => g.provider_key === singleProviderKey);
+  if (providerFilter) return groupList.filter((g) => g.provider_key === providerFilter);
+  return groupList;
+}
+
+async function planCronClaims(
+  mode: RunnerOptions['mode'],
+  filteredGroups: ConversionGroupRow[],
+  limit: number
+): Promise<{ healthByKey: Map<string, ProviderHealthRow | null>; claimLimits: Map<string, number> }> {
+  const healthByKey: Map<string, ProviderHealthRow | null> = new Map();
+  const claimLimits = new Map<string, number>();
+  if (mode !== 'cron') return { healthByKey, claimLimits };
+
+  for (const g of filteredGroups) {
+    const key = `${g.site_id}:${g.provider_key}`;
+    const { data: healthRows } = await adminClient.rpc('get_provider_health_state', {
+      p_site_id: g.site_id,
+      p_provider_key: g.provider_key,
+    });
+    healthByKey.set(key, (healthRows as ProviderHealthRow[] | null)?.[0] ?? null);
+  }
+  const closedGroups = filteredGroups.filter((g) => (healthByKey.get(`${g.site_id}:${g.provider_key}`)?.state ?? 'CLOSED') === 'CLOSED');
+  return { healthByKey, claimLimits: computeFairShareClaimLimits(closedGroups, limit) };
+}
+
+async function claimRows(input: {
+  mode: RunnerOptions['mode'];
+  prefix: string;
+  limit: number;
+  filteredGroups: ConversionGroupRow[];
+  bySiteAndProvider: Map<string, QueueRow[]>;
+  healthByKey: Map<string, ProviderHealthRow | null>;
+  claimLimits: Map<string, number>;
+}): Promise<void> {
+  const { mode, prefix, limit, filteredGroups, bySiteAndProvider, healthByKey, claimLimits } = input;
+  let remaining = limit;
+  const maxGroups = Math.min(filteredGroups.length, 100);
+  for (let i = 0; i < maxGroups && remaining > 0; i++) {
+    const g = filteredGroups[i];
+    const key = `${g.site_id}:${g.provider_key}`;
+    if (mode === 'cron') {
+      const health = healthByKey.get(key) ?? null;
+      const state = health?.state ?? 'CLOSED';
+      if (state === 'OPEN') continue;
+      const probeLimit = health?.probe_limit ?? 5;
+      const claimLimit = state === 'HALF_OPEN'
+        ? Math.min(probeLimit, remaining)
+        : Math.min(claimLimits.get(key) ?? Math.max(1, Math.floor(remaining / (maxGroups - i))), remaining);
+      const { data: rows, error } = await adminClient.rpc('claim_offline_conversion_jobs_v3', {
+        p_site_id: g.site_id,
+        p_provider_key: g.provider_key,
+        p_limit: claimLimit,
+      });
+      if (error) continue;
+      const claimedRows = (rows ?? []) as QueueRow[];
+      if (claimedRows.length === 0) continue;
+      bySiteAndProvider.set(key, claimedRows);
+      remaining -= claimedRows.length;
+      continue;
+    }
+
+    const claimLimit = Math.min(remaining, Math.max(1, Number(g.queued_count ?? 0)));
+    const { data: rows, error } = await adminClient.rpc('claim_offline_conversion_jobs_v3', {
+      p_site_id: g.site_id,
+      p_provider_key: g.provider_key,
+      p_limit: claimLimit,
+    });
+    if (error) {
+      logRunnerError(prefix, `claim failed for ${g.site_id}`, error);
+      continue;
+    }
+    const claimedRows = (rows ?? []) as QueueRow[];
+    if (claimedRows.length > 0) {
+      bySiteAndProvider.set(key, claimedRows);
+      remaining -= claimedRows.length;
+    }
+  }
+}
+
+async function resolveCredentials(
+  siteIdUuid: string,
+  providerKey: string,
+  siteRows: QueueRow[],
+  prefix: string
+): Promise<unknown | null> {
+  const tenantClient = createTenantClient(siteIdUuid);
+  let encryptedPayload: string | null = null;
+  try {
+    const { data: credsData, error } = await tenantClient
+      .from('provider_credentials')
+      .select('encrypted_payload')
+      .eq('provider_key', providerKey)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (error) throw error;
+    encryptedPayload = (credsData as ProviderCredentialsRow | null)?.encrypted_payload ?? null;
+  } catch (err) {
+    logRunnerError(prefix, 'provider_credentials fetch failed', err);
+  }
+
+  if (!encryptedPayload) {
+    await markCredentialsFailure(siteRows, prefix, 'Update FAILED (credentials) failed');
+    return null;
+  }
+  try {
+    return await decryptCredentials(encryptedPayload);
+  } catch (err) {
+    logRunnerError(prefix, 'Decrypt credentials failed', err);
+    await markCredentialsFailure(siteRows, prefix, 'Update FAILED (decrypt) failed');
+    return null;
+  }
+}
+
+async function markCredentialsFailure(siteRows: QueueRow[], prefix: string, reason: string): Promise<void> {
+  await bulkUpdateQueue(
+    siteRows.map((r) => r.id),
+    { status: 'FAILED', last_error: 'Credentials missing or decryption failed', updated_at: new Date().toISOString() },
+    prefix,
+    reason
+  );
+}
+
+async function safeWriteProviderMetrics(
+  siteId: string,
+  providerKey: string,
+  attempts: number,
+  completed: number,
+  failed: number,
+  retry: number,
+  prefix: string
+): Promise<void> {
+  try {
+    await writeProviderMetrics({ siteId, providerKey, attempts, completed, failed, retry });
+  } catch (e) {
+    logWarn('OCI_increment_provider_upload_metrics_failed', { prefix, error: e instanceof Error ? e.message : String(e) });
+  }
+}
+

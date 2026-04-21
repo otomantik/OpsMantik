@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
-import { requireCronAuth } from '@/lib/cron/require-cron-auth';
+import { requireQstashSignature } from '@/lib/qstash/require-signature';
 import { logInfo, logWarn, logError } from '@/lib/logging/logger';
 import { runOfflineConversionRunner } from '@/lib/oci/runner';
 import { RedisOutageError } from '@/lib/providers/limits/semaphore';
@@ -24,14 +24,26 @@ export const maxDuration = 60;
 
 const LOG_PREFIX = '[google-ads-oci]';
 
-export async function POST(req: NextRequest) {
-  const forbidden = requireCronAuth(req);
-  if (forbidden) {
-    logWarn('GOOGLE_ADS_OCI_AUTH_FAILED', { message: 'Invalid or missing CRON_SECRET / x-vercel-cron' });
-    return forbidden;
+async function handler(req: NextRequest) {
+  const requestId = req.headers.get('x-request-id') ?? undefined;
+  
+  // Detect "Fast-Path" wakeup signal from Postgres Trigger (via QStash)
+  let isWakeup = false;
+  try {
+    const body = await req.json();
+    if (body?.event === 'wakeup') {
+      isWakeup = true;
+      logInfo('GOOGLE_ADS_OCI_FASTPATH_WAKEUP', { 
+        site_id: body.site_id, 
+        source: body.source,
+        request_id: requestId 
+      });
+    }
+  } catch {
+    // Normal cron or empty body — proceed as usual
   }
 
-  logInfo('GOOGLE_ADS_OCI_STARTED', {});
+  logInfo('GOOGLE_ADS_OCI_STARTED', { mode: isWakeup ? 'fastpath' : 'polling', request_id: requestId });
 
   let result;
   try {
@@ -70,3 +82,5 @@ export async function POST(req: NextRequest) {
     { status: 200, headers: getBuildInfoHeaders() }
   );
 }
+
+export const POST = requireQstashSignature(handler as (req: NextRequest) => Promise<Response>);

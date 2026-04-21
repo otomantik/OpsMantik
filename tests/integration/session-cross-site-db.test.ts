@@ -83,8 +83,10 @@ test('SessionService: foreign-site client sid does not reuse or mutate another t
         is_proxy_detected: false,
       },
       deviceInfo: {
+        device_type: 'desktop',
         os: 'Windows',
         browser: 'Chrome',
+        browser_version: '124.0.0.0',
         browser_language: 'tr-TR',
         device_memory: 8,
         hardware_concurrency: 4,

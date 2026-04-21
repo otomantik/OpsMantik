@@ -17,6 +17,11 @@ import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
 import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
 import { redis } from '@/lib/upstash';
 import { getPvDataKey, getPvProcessingKeysForCleanup, getPvQueueKey } from '@/lib/oci/pv-redis';
+import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/lib/oci/ack-receipt';
+import { addSecondsIso, getDbNowIso } from '@/lib/time/db-now';
+import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
+import { appendRoutingHop } from '@/lib/oci/routing-ledger';
+import { assertLaneActive } from '@/lib/oci/kill-switch';
 import { logError, logInfo } from '@/lib/logging/logger';
 import * as jose from 'jose';
 
@@ -34,6 +39,10 @@ function getAuditErrorCategory(category: AckFailedCategory, maxAttemptsHit: bool
 
 export async function POST(req: NextRequest) {
   try {
+    const lane = assertLaneActive('OCI_ACK');
+    if (!lane.ok) {
+      return NextResponse.json({ error: 'OCI ACK paused', code: lane.code }, { status: 503 });
+    }
     const bearer = (req.headers.get('authorization') || '').trim();
     const sessionToken = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
     const apiKey = (req.headers.get('x-api-key') || '').trim();
@@ -80,11 +89,15 @@ export async function POST(req: NextRequest) {
     const siteIdBody = typeof body.siteId === 'string' ? body.siteId.trim() : '';
     const siteId = siteIdFromToken || siteIdBody;
     const rawIds = Array.isArray(body.queueIds) ? body.queueIds : [];
-    const queueIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const queueIds = sortDeterministicIds(
+      rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+    );
 
     // Phase 6.3: Poison Pill Fatal Errors
     const rawFatal = Array.isArray(body.fatalErrorIds) ? body.fatalErrorIds : [];
-    const fatalIds = rawFatal.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const fatalIds = sortDeterministicIds(
+      rawFatal.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+    );
 
     const errorCode = typeof body.errorCode === 'string' ? body.errorCode.trim().slice(0, 64) : 'VALIDATION_FAILED';
     const errorMessage = typeof body.errorMessage === 'string' ? body.errorMessage.trim().slice(0, 1024) : errorCode;
@@ -149,8 +162,48 @@ export async function POST(req: NextRequest) {
       else pvFatalIds.push(s);
     }
 
-    const now = new Date().toISOString();
-    const nextRetryAt = new Date(Date.now() + 30 * 1000).toISOString();
+    const now = await getDbNowIso();
+    const requestFingerprint = [
+      req.headers.get('x-request-id') ?? '',
+      req.headers.get('x-vercel-id') ?? '',
+      req.headers.get('user-agent') ?? '',
+    ]
+      .join('|')
+      .slice(0, 512);
+    const payloadHash = buildAckPayloadHash({
+      siteId: siteUuid,
+      kind: 'ACK_FAILED',
+      queueIds,
+      fatalErrorIds: fatalIds,
+      errorCode,
+      errorMessage,
+      errorCategory: category,
+    });
+    const receipt = await registerAckReceipt({
+      siteId: siteUuid,
+      kind: 'ACK_FAILED',
+      payloadHash,
+      requestFingerprint,
+      requestPayload: {
+        queueIds,
+        fatalErrorIds: fatalIds,
+        errorCode,
+        errorMessage,
+        errorCategory: category,
+      },
+    });
+    if (receipt.replayed) {
+      if (receipt.resultSnapshot) {
+        return NextResponse.json(receipt.resultSnapshot);
+      }
+      if (receipt.inProgress) {
+        return NextResponse.json(
+          { ok: false, code: 'ACK_FAILED_REPLAY_IN_PROGRESS', retryable: true },
+          { status: 202 }
+        );
+      }
+    }
+    const nextRetryAt = addSecondsIso(now, 30);
     let updatedCount = 0;
     const deadLetterAuditEntries: Parameters<typeof insertDeadLetterAuditLogs>[0] = [];
 
@@ -394,7 +447,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ ok: true, updated: updatedCount });
+    const responsePayload = { ok: true, updated: updatedCount };
+    if (receipt.receiptId) {
+      await completeAckReceipt({
+        receiptId: receipt.receiptId,
+        resultSnapshot: responsePayload,
+      });
+      await appendRoutingHop({
+        siteId: siteUuid,
+        lane: 'ack_failed',
+        unitId: receipt.receiptId,
+        fromState: 'REGISTERED',
+        toState: 'APPLIED',
+        reasonCode: 'ACK_FAILED_COMPUTED',
+        idempotencyKey: `ack_failed:${receipt.receiptId}`,
+      });
+    }
+    return NextResponse.json(responsePayload);
   } catch (e: unknown) {
     logError('OCI_ACK_FAILED_ERROR', { error: e instanceof Error ? e.message : String(e) });
     return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });

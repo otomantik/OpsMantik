@@ -5,6 +5,7 @@
  */
 
 import { redis } from '@/lib/upstash';
+import { adminClient } from '@/lib/supabase/admin';
 
 const LOCK_PREFIX = 'cron:lock:';
 
@@ -20,7 +21,7 @@ export async function tryAcquireCronLock(
   ttlSeconds: number
 ): Promise<boolean> {
   const key = `${LOCK_PREFIX}${cronPath}`;
-  const value = `${Date.now()}`;
+  const value = `${cronPath}:${ttlSeconds}`;
   try {
     const result = await redis.set(key, value, {
       nx: true,
@@ -28,8 +29,12 @@ export async function tryAcquireCronLock(
     });
     return result === 'OK';
   } catch {
-    // Redis unavailable — fail closed: treat as lock held to avoid duplicate work
-    return false;
+    // Redis unavailable: fallback to DB advisory lock attempt.
+    const { data, error } = await adminClient.rpc('try_acquire_cron_lock_v1', {
+      p_lock_key: key,
+    });
+    if (error) return false;
+    return data === true;
   }
 }
 

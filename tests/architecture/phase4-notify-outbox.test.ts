@@ -3,7 +3,7 @@
  *
  * The outbox processor used to run only via a 2-minute cron poll. Phase 4
  * adds a real-time QStash trigger: seal/stage routes publish a QStash message
- * pointing at a signed worker as soon as the `apply_call_action_v1` RPC
+ * pointing at a signed worker as soon as the `apply_call_action_v2` RPC
  * returns. The cron remains but as a safety net, scheduled less aggressively.
  *
  * Invariants pinned here:
@@ -14,7 +14,7 @@
  *   3) The worker route at `/api/workers/oci/process-outbox` uses
  *      `requireQstashSignature` (not `requireCronAuth`).
  *   4) `notifyOutboxPending` is called from both seal and stage routes after
- *      their respective `apply_call_action_v1` RPC succeeds.
+ *      their respective `apply_call_action_v2` RPC succeeds.
  *   5) The cron schedule in vercel.json is a safety-net frequency (>= 5 min)
  *      — if it drops below that, the real-time path is the one that must
  *      handle the load.
@@ -108,7 +108,7 @@ test('notifyOutboxPending helper exists', () => {
   );
 });
 
-test('seal route fires notifyOutboxPending after apply_call_action_v1', () => {
+test('seal route fires notifyOutboxPending after apply_call_action_v2', () => {
   const src = readFileSync(
     join(ROOT, 'app/api/calls/[id]/seal/route.ts'),
     'utf8'

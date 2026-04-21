@@ -19,6 +19,16 @@
  * default becomes unreachable in production, then flip it to 'UTC'.
  */
 export const DEFAULT_TIMEZONE = 'Europe/Istanbul';
+
+/**
+ * Prefer the site's IANA timezone for dashboard day bounds; fall back to legacy default.
+ * Callers should pass `site.timezone` from `SiteLocaleProvider` / server site row so this
+ * default is only a safety net for older entrypoints.
+ */
+export function resolveDashboardDayTimezone(siteTimezone?: string | null): string {
+  const z = typeof siteTimezone === 'string' ? siteTimezone.trim() : '';
+  return z.length > 0 ? z : DEFAULT_TIMEZONE;
+}
 // Kept for backward compatibility (TRT is UTC+03 year-round)
 export const TRT_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
 

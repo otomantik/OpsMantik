@@ -35,6 +35,7 @@ test('vercel no longer schedules the six legacy OCI recovery crons separately', 
     '/api/cron/sweep-unsent-conversions',
     '/api/cron/pulse-recovery',
     '/api/cron/providers/recover-processing',
+    '/api/cron/process-offline-conversions',
   ];
   for (const p of legacyPaths) {
     assert.ok(

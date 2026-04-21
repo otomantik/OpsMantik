@@ -15,7 +15,10 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 import { runOciMaintenance } from '@/lib/oci/maintenance/run-maintenance';
-import { logError } from '@/lib/logging/logger';
+import { runOfflineConversionRunner } from '@/lib/oci/runner';
+import { DEFAULT_LIMIT_CRON } from '@/lib/oci/constants';
+import { collectLivenessWatchdogSnapshot } from '@/lib/oci/liveness-watchdogs';
+import { logError, logWarn } from '@/lib/logging/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,9 +38,22 @@ async function handle() {
   }
   try {
     const stats = await runOciMaintenance();
-    const ok = stats.errors.length === 0;
+    let runnerSummary: Awaited<ReturnType<typeof runOfflineConversionRunner>> | null = null;
+    try {
+      runnerSummary = await runOfflineConversionRunner({
+        mode: 'cron',
+        providerFilter: null,
+        limit: Math.min(40, DEFAULT_LIMIT_CRON),
+        logPrefix: '[oci-maintenance+upload]',
+      });
+    } catch (runnerErr) {
+      const msg = runnerErr instanceof Error ? runnerErr.message : String(runnerErr);
+      logWarn('OCI_MAINTENANCE_RUNNER_AFTER_MAINTENANCE_FAILED', { error: msg });
+    }
+    const ok = stats.errors.length === 0 && (runnerSummary == null || runnerSummary.ok !== false);
+    const liveness = await collectLivenessWatchdogSnapshot();
     return NextResponse.json(
-      { ok, stats },
+      { ok, stats, runner: runnerSummary, liveness },
       { status: ok ? 200 : 207, headers: getBuildInfoHeaders() }
     );
   } catch (err) {

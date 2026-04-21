@@ -49,6 +49,7 @@ export type IntentCardData = {
   utm_term?: string | null;
   form_state?: 'started' | 'attempted' | 'validation_failed' | 'network_failed' | 'success' | string | null;
   form_summary?: Record<string, unknown> | null;
+  version?: number | null;
 };
 
 function getKind(action: string | null | undefined): IntentCardKind {
@@ -185,7 +186,8 @@ export function IntentCard({
     siteId,
     intent.id,
     intent.matched_session_id,
-    onQualified // Pass refetch for undo success
+    onQualified, // Pass refetch for undo success
+    intent.version ?? null
   );
 
   const [flash, setFlash] = useState<null | 'sealed' | 'junk'>(null);
@@ -210,7 +212,7 @@ export function IntentCard({
   }, [intent.utm_term]);
 
   const handleJunk = async () => {
-    const res = await qualify({ score: 0, status: 'junk' });
+    const res = await qualify({ score: 0, status: 'junk', version: intent.version ?? null });
     if (res.success) {
       setFlash('junk');
       setTimeout(() => setFlash(null), 900);
@@ -219,7 +221,7 @@ export function IntentCard({
   };
 
   const handleSeal = async () => {
-    const res = await qualify({ score: 5, status: 'confirmed' });
+    const res = await qualify({ score: 5, status: 'confirmed', version: intent.version ?? null });
     if (res.success) {
       setFlash('sealed');
       setTimeout(() => setFlash(null), 900);

@@ -22,10 +22,26 @@ import {
   type SingleConversionGear,
 } from '@/lib/oci/single-conversion-highest-only';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
+import { safeValidateOciPayload } from '@/lib/oci/validation/payload';
 
 export const OUTBOX_BATCH_LIMIT = 50;
 /** Separate from OCI queue MAX_RETRY_ATTEMPTS (7) — outbox events get fewer retries. */
 export const OUTBOX_MAX_ATTEMPTS = 5;
+
+async function finalizeOutboxEvent(params: {
+  outboxId: string;
+  status: 'PROCESSED' | 'FAILED' | 'PENDING';
+  lastError?: string | null;
+  attemptCount?: number | null;
+}) {
+  const { error } = await adminClient.rpc('finalize_outbox_event_v1', {
+    p_outbox_id: params.outboxId,
+    p_status: params.status,
+    p_last_error: params.lastError ?? null,
+    p_attempt_count: params.attemptCount ?? null,
+  });
+  if (error) throw error;
+}
 
 export interface ProcessOutboxResult {
   ok: boolean;
@@ -145,6 +161,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
       const callId = payload?.call_id ?? (row as { call_id: string | null }).call_id;
       const siteId = payload?.site_id ?? (row as { site_id: string }).site_id;
       const leadScore = payload?.lead_score ?? null;
+      const explicitStage = payload?.stage ?? null; // Explicit stage from v2 RPC
       const confirmedAt = payload?.confirmed_at ?? '';
       const saleOccurredAt = payload?.sale_occurred_at ?? null;
       const saleAmount = payload?.sale_amount ?? null;
@@ -160,21 +177,60 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         const callStatus = (currentCall as { status?: string | null } | null)?.status ?? null;
         const ociStatus = (currentCall as { oci_status?: string | null } | null)?.oci_status ?? null;
         if (!isCallSendableForSealExport(callStatus, ociStatus)) {
-          await adminClient
-            .from('outbox_events')
-            .update({
-              status: 'FAILED',
-              last_error: 'CALL_NOT_SENDABLE_FOR_OCI',
-              processed_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', id);
+          await finalizeOutboxEvent({
+            outboxId: id,
+            status: 'FAILED',
+            lastError: 'CALL_NOT_SENDABLE_FOR_OCI',
+          });
           failed++;
           continue;
         }
 
         const score = leadScore ?? 0;
-        const stage = resolveOutboxStage(score);
+        const stage = explicitStage ?? resolveOutboxStage(score);
+
+        if (!stage || stage === 'junk') {
+          logInfo('outbox_score_too_low', { outbox_id: id, score, message: 'Ignoring junk or low-interest click' });
+          await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
+          processed++;
+          continue;
+        }
+
+        // --- Zod Validation Guard (Shift-Left Data Integrity) ---
+        const primary = await getPrimarySource(siteId, { callId });
+        const validationResult = safeValidateOciPayload({
+          click_id: primary?.gclid || primary?.gbraid || primary?.wbraid || 'UNKNOWN_STUB',
+          conversion_value: Number(saleAmount ?? 0),
+          currency: currency,
+          conversion_time: confirmedAt,
+          site_id: siteId,
+          stage: stage,
+          gbraid: primary?.gbraid,
+          wbraid: primary?.wbraid,
+          metadata: { outbox_id: id, call_id: callId }
+        });
+
+        if (!validationResult.success || validationResult.data.click_id === 'UNKNOWN_STUB') {
+          const schemaError = !validationResult.success 
+            ? validationResult.error.errors.map(e => e.message).join(', ') 
+            : 'Missing Click ID (GCLID/GBRAID/WBRAID)';
+          
+          logWarn('outbox_validation_failed', { 
+            outbox_id: id, 
+            call_id: callId, 
+            error: schemaError 
+          });
+
+          await finalizeOutboxEvent({
+            outboxId: id,
+            status: 'FAILED',
+            lastError: `OCI_CONTRACT_VIOLATION: ${schemaError}`,
+          });
+          failed++;
+          continue;
+        }
+        // --- Validation End ---
+
         if (stage === 'won') {
           // Single-conversion mode: won suppresses lower stages for this lead.
           const result = await enqueueSealConversion({
@@ -236,10 +292,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
               requested_gear: gear,
               existing_gear: highestExistingGear,
             });
-            await adminClient
-              .from('outbox_events')
-              .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-              .eq('id', id);
+            await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
             processed++;
             continue;
           }
@@ -251,10 +304,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
               gear,
               existing_signal_id: existingSignalForRequestedGearId,
             });
-            await adminClient
-              .from('outbox_events')
-              .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-              .eq('id', id);
+            await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
             processed++;
             continue;
           }
@@ -276,30 +326,23 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             signalDate,
           });
           if (result.routed) {
-            try {
-              await appendFunnelEvent({
-                callId,
-                siteId,
-                eventType: gear as PipelineStage,
-                eventSource: 'OUTBOX_CRON',
-                idempotencyKey: `${gear}:call:${callId}:source:outbox_cron`,
-                occurredAt: signalDate,
-                payload: {},
-                causationId: id,
-              });
-            } catch (ledgerErr) {
-              logWarn('FUNNEL_LEDGER_APPEND_FAILED', { call_id: callId, gear, error: (ledgerErr as Error)?.message });
-            }
+            await appendFunnelEvent({
+              callId,
+              siteId,
+              eventType: gear as PipelineStage,
+              eventSource: 'OUTBOX_CRON',
+              idempotencyKey: `${gear}:call:${callId}:source:outbox_cron`,
+              occurredAt: signalDate,
+              payload: {},
+              causationId: id,
+            });
             logInfo('outbox_signal_emitted', { outbox_id: id, call_id: callId, gear, score });
           }
         } else {
           logInfo('outbox_score_too_low', { outbox_id: id, score, message: 'Ignoring junk or low-interest click' });
         }
 
-        await adminClient
-          .from('outbox_events')
-          .update({ status: 'PROCESSED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('id', id);
+        await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
         processed++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -310,15 +353,12 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         const attemptCount = (row as { attempt_count?: number }).attempt_count ?? 0;
         const nextAttemptCount = attemptCount + 1;
         const nextStatus = nextAttemptCount >= OUTBOX_MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
-        await adminClient
-          .from('outbox_events')
-          .update({
-            status: nextStatus,
-            attempt_count: nextAttemptCount,
-            last_error: msg.slice(0, 1000),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', id);
+        await finalizeOutboxEvent({
+          outboxId: id,
+          status: nextStatus as 'FAILED' | 'PENDING',
+          attemptCount: nextAttemptCount,
+          lastError: msg.slice(0, 1000),
+        });
       }
     }
 

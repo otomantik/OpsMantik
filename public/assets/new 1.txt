@@ -1,0 +1,11 @@
+16:46 : 05362755099
+16,38 : 05398563655
+16:08 : 05368672689
+15:14 : 05421177213
+14:54 : 05396335376
+https://console.opsmantik.com/api/health
+# Son 4 commit geri al (lokal + remote)
+git revert 79add73..06e033d
+git push origin master
+
+# Migration rollback (sadece gerekiyorsa, docs/runbooks/MIGRATION_ROLLBACK.md takip et)

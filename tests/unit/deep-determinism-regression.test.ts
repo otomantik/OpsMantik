@@ -9,6 +9,7 @@ const ACK_ROUTE = join(ROOT, 'app', 'api', 'oci', 'ack', 'route.ts');
 const ACK_FAILED_ROUTE = join(ROOT, 'app', 'api', 'oci', 'ack-failed', 'route.ts');
 const OCI_EXPORT_ROUTE = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
 const PROCESS_OUTBOX_ROUTE = join(ROOT, 'app', 'api', 'cron', 'oci', 'process-outbox-events', 'route.ts');
+const PROCESS_OUTBOX_LIB = join(ROOT, 'lib', 'oci', 'outbox', 'process-outbox.ts');
 const SWEEP_ZOMBIES_ROUTE = join(ROOT, 'app', 'api', 'cron', 'oci', 'sweep-zombies', 'route.ts');
 const PROCESS_CALL_EVENT = join(ROOT, 'lib', 'ingest', 'process-call-event.ts');
 const INTENT_QUALIFICATION = join(ROOT, 'lib', 'hooks', 'use-intent-qualification.ts');
@@ -21,12 +22,11 @@ const SCRIPT_BATCH_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261105070
 const WORKER_BATCH_V2_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261105100000_phase23c_outbox_and_worker_batch_v2.sql');
 const OCI_HARDENING_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261105130000_oci_external_id_and_reversal_void.sql');
 
-test('intent status route: restore goes through undo_last_action_v1 with system actor under service role', () => {
+test('intent status route: everything goes through apply_call_action_v2 (Authoritative SQL Path)', () => {
   const src = readFileSync(INTENT_STATUS_ROUTE, 'utf8');
-  assert.ok(src.includes("const rpcName = actionType === 'restore' ? 'undo_last_action_v1' : 'apply_call_action_v1'"), 'restore must use undo_last_action_v1');
-  assert.ok(src.includes("p_actor_type: 'system'"), 'manual queue actions must use normalized system actor under adminClient RPC');
-  assert.ok(src.includes('p_actor_id: user.id'), 'manual queue actions must preserve the human actor id for audit lineage');
-  assert.ok(src.includes('invalidatePendingOciArtifactsForCall'), 'restore/cancel/junk must invalidate pending OCI artifacts');
+  assert.ok(src.includes("adminClient.rpc('apply_call_action_v2'"), 'status route must use apply_call_action_v2');
+  assert.ok(src.includes('p_actor_id: user.id'), 'queue actions must preserve human actor id for audit lineage');
+  assert.ok(src.includes('invalidatePendingOciArtifactsForCall'), 'reversal actions must invalidate pending OCI artifacts');
 });
 
 test('call action rpc lineage: system actors are normalized before call_actions append', () => {
@@ -91,11 +91,12 @@ test('cron auth enforces dual-key production execution', () => {
 });
 
 test('oci workers re-check current call sendability before exporting or draining outbox', () => {
-  const exportSrc = readFileSync(OCI_EXPORT_ROUTE, 'utf8');
-  const outboxSrc = readFileSync(PROCESS_OUTBOX_ROUTE, 'utf8');
-  assert.ok(exportSrc.includes('isCallSendableForSealExport'), 'queue export must re-check live call sendability');
-  assert.ok(exportSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'queue export must terminalize reversed rows with explicit provenance');
-  assert.ok(exportSrc.includes("dispatch_status: 'JUNK_ABORTED'"), 'blocked pending signals must be aborted before leak');
+  const exportSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
+  const outboxSrc = readFileSync(PROCESS_OUTBOX_LIB, 'utf8');
+  assert.ok(exportSrc.includes('status, oci_status'), 'queue export must fetch live call status context');
+  assert.ok(exportSrc.includes("blockedSignalIds"), 'queue export must track blocked signals before terminalization');
+  const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
+  assert.ok(markSrc.includes("dispatch_status: 'JUNK_ABORTED'"), 'blocked pending signals must be aborted before leak');
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(outboxSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'outbox worker must fail reversed outbox rows explicitly');
   assert.ok(outboxSrc.includes(".select('id, signal_type, optimization_stage')"), 'outbox duplicate prevention must inspect both legacy and canonical signal columns');
@@ -104,7 +105,7 @@ test('oci workers re-check current call sendability before exporting or draining
 
 test('oci recovery routes and runner delegate to DB-owned batch kernels', () => {
   const sweepSrc = readFileSync(SWEEP_ZOMBIES_ROUTE, 'utf8');
-  const runnerSrc = readFileSync(RUNNER, 'utf8');
+  const runnerSrc = readFileSync(join(ROOT, 'lib', 'oci', 'runner', 'queue-bulk-update.ts'), 'utf8');
   const migrationSrc = readFileSync(WORKER_BATCH_V2_MIGRATION, 'utf8');
   assert.ok(sweepSrc.includes("recover_stuck_offline_conversion_jobs"), 'sweep-zombies must delegate processing recovery to DB recovery RPC');
   assert.ok(sweepSrc.includes("append_sweeper_transition_batch"), 'sweep-zombies must use sweeper batch append for stale uploaded rows');

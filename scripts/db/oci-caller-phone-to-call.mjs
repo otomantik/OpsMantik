@@ -63,7 +63,7 @@ async function main() {
     const supabase = createClient(url, key);
     const { data: call, error: fetchErr } = await supabase
       .from('calls')
-      .select('id, version, status, sale_amount, currency, lead_score, confirmed_at')
+      .select('id, site_id, version, status, sale_amount, currency, lead_score, confirmed_at')
       .eq('id', callId)
       .maybeSingle();
 
@@ -72,31 +72,29 @@ async function main() {
       process.exit(1);
     }
 
-    // Seal RPC tüm alanları günceller; mevcut değerleri koruyup sadece telefon ekliyoruz
-    const payload = {
-      caller_phone_raw: raw.trim().slice(0, 64),
-      caller_phone_e164: e164,
-      caller_phone_hash_sha256: hash,
-      sale_amount: call.sale_amount ?? null,
-      currency: (call.currency || 'TRY').trim(),
-      lead_score: call.lead_score ?? null,
-    };
-
-    const { error: rpcErr } = await supabase.rpc('apply_call_action_v1', {
+    const { error: rpcErr } = await supabase.rpc('apply_call_action_v2', {
       p_call_id: callId,
-      p_action_type: 'seal',
-      p_payload: payload,
-      p_actor_type: 'system',
-      p_actor_id: null,
-      p_metadata: { source: 'oci-caller-phone-to-call.mjs' },
+      p_site_id: call.site_id,
+      p_stage: 'won', // 'won' maps to seal/confirmed
+      p_actor_id: '00000000-0000-0000-0000-000000000000', // System script actor
+      p_lead_score: call.lead_score ?? null,
+      p_sale_metadata: {
+        amount: call.sale_amount ?? null,
+        currency: (call.currency || 'TRY').trim(),
+        source: 'oci-caller-phone-to-call.mjs'
+      },
       p_version: call.version ?? 0,
+      p_metadata: { source: 'oci-caller-phone-to-call.mjs' },
+      p_caller_phone_raw: raw.trim().slice(0, 64),
+      p_caller_phone_e164: e164,
+      p_caller_phone_hash: hash,
     });
 
     if (rpcErr) {
       console.error('Call güncellenemedi:', rpcErr.message);
       process.exit(1);
     }
-    console.log('Call güncellendi (caller_phone + hash).');
+    console.log('Call güncellendi (caller_phone + hash via v2 RPC).');
   } else if (callId) {
     console.error('Supabase env yok; call güncellenemedi. Sadece E.164 ve hash yazdırıldı.');
   }

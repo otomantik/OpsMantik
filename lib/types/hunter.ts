@@ -15,6 +15,8 @@ export type HunterMatchIntentType = 'exact' | 'phrase' | 'broad' | 'unknown';
  */
 export interface HunterIntentLite {
   id: string;
+  /** `calls.version` for optimistic locking on seal (RPC exposes COALESCE(version,0)). */
+  version?: number | null;
   created_at: string;
   status?: string | null;
   matched_session_id?: string | null;
@@ -56,6 +58,8 @@ export interface HunterIntentLite {
 /** Unified Hunter Intent (v3) - Single source of truth */
 export interface HunterIntent {
   id: string;
+  /** `calls.version` for optimistic locking on seal. */
+  version?: number | null;
   created_at: string;
   intent_action?: 'whatsapp' | 'phone' | 'form' | 'other' | string | null;
   intent_target?: string | null;

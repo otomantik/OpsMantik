@@ -47,7 +47,7 @@ async function main() {
   console.log('--- Cron bulk endpoints smoke test ---');
   console.log('BASE:', BASE);
 
-  const r1 = await test('process-offline-conversions (OCI)', 'POST', '/api/cron/process-offline-conversions?limit=5');
+  const r1 = await test('oci-maintenance (sweeps + OCI upload batch)', 'POST', '/api/cron/oci-maintenance');
   const r2 = await test('invoice-freeze', 'POST', '/api/cron/invoice-freeze');
 
   const pass = [r1, r2].filter(Boolean).length;

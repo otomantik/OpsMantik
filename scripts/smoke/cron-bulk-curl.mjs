@@ -50,7 +50,7 @@ function curl(name, method, path) {
 console.log('--- Cron bulk endpoints (curl.exe) ---');
 console.log('BASE:', BASE);
 
-const t1 = curl('process-offline-conversions (OCI)', 'POST', '/api/cron/process-offline-conversions?limit=5');
+const t1 = curl('oci-maintenance (sweeps + upload)', 'POST', '/api/cron/oci-maintenance');
 const t2 = curl('invoice-freeze', 'POST', '/api/cron/invoice-freeze');
 
 const pass = [t1, t2].filter(Boolean).length;

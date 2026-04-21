@@ -51,7 +51,7 @@ export async function POST(
       );
     }
 
-    // Lookup site_id (do not trust client). Then validate access using server gate (owner/admin/member).
+    // Lookup site_id (do not trust client).
     const { data: call, error: callError } = await adminClient
       .from('calls')
       .select('id, site_id')
@@ -66,6 +66,8 @@ export async function POST(
     }
 
     const siteId = call.site_id;
+
+    // ... (access validation) ...
     const access = await validateSiteAccess(siteId, user.id, supabase);
     if (!access.allowed) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -74,8 +76,7 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Route through DB-owned actions so audit log + revert snapshot remain authoritative.
-    // This endpoint is primarily used for junk/restore/cancel flows; seal happens via /api/calls/[id]/seal.
+    // Resolve target stage based on action
     const actionType =
       status === 'junk'
         ? 'junk'
@@ -92,47 +93,41 @@ export async function POST(
       );
     }
 
-    const payload: Record<string, unknown> = {};
-    if (lead_score !== undefined) payload.lead_score = lead_score;
+    const targetStage = actionType === 'restore' ? 'contacted' : 'junk';
 
-    // Use adminClient (service_role) so the write is not blocked by RLS. We already validated
-    // site access and queue:operate; without this, member role 'owner' or RLS can prevent UPDATE.
-    //
-    // IMPORTANT: apply_call_action_v1 / undo_last_action_v1 resolve p_actor_type='user' via auth.uid().
-    // A service-role RPC has no auth.uid(), so "user" would deterministically raise unauthorized and
-    // bubble up to the UI as "Failed to update status". For server-owned mutations we must call the RPC
-    // as a normalized system actor while still preserving the human actor id for audit lineage.
-    //
-    // Restore must go through undo_last_action_v1; apply_call_action_v1 has no restore branch.
-    const metadata = { route, request_id: requestId, user_id: user.id };
-    const rpcName = actionType === 'restore' ? 'undo_last_action_v1' : 'apply_call_action_v1';
-    const rpcArgs = actionType === 'restore'
-      ? {
-          p_call_id: callId,
-          p_actor_type: 'system',
-          p_actor_id: user.id,
-          p_metadata: metadata,
-        }
-      : {
-          p_call_id: callId,
-          p_action_type: actionType,
-          p_payload: payload,
-          p_actor_type: 'system',
-          p_actor_id: user.id,
-          p_metadata: metadata,
-          p_version: null,
-        };
-
-    const { data: updatedCall, error: updateError } = await adminClient.rpc(rpcName, rpcArgs);
+    // Phase 2: Authoritative SQL FSM
+    // Redundant TS-level check removed.
+    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
+      p_call_id: callId,
+      p_site_id: siteId,
+      p_stage: targetStage,
+      p_actor_id: user.id,
+      p_lead_score: lead_score !== undefined ? lead_score : null,
+      p_version: body.version ?? null, // Use version for optimistic concurrency
+      p_metadata: { route, request_id: requestId, user_id: user.id },
+    });
 
     if (updateError) {
+      const code = (updateError as { code?: string }).code;
+      if (code === '40900') {
+        return NextResponse.json(
+          { error: 'Concurrency conflict: the call state has changed. Please refresh.', code: 'CONCURRENCY_CONFLICT' },
+          { status: 409 }
+        );
+      }
+      if (code === 'P0001' && updateError.message.includes('illegal_transition')) {
+        return NextResponse.json(
+          { error: updateError.message, code: 'ILLEGAL_PIPELINE_TRANSITION' },
+          { status: 409 }
+        );
+      }
+      
       logError('intent status update failed', {
         request_id: requestId,
         route,
         call_id: callId,
-        action_type: actionType,
         error: updateError.message,
-        code: (updateError as { code?: string }).code,
+        code,
       });
       return NextResponse.json(
         { error: 'Failed to update status' },
@@ -140,18 +135,18 @@ export async function POST(
       );
     }
 
-    const callObj = Array.isArray(updatedCall) && updatedCall.length === 1 ? updatedCall[0] : updatedCall;
+    const callObj = updatedCall;
     if (!callObj || (typeof callObj === 'object' && !('id' in callObj))) {
-      logError('intent status update returned no row', { request_id: requestId, route, callId, actionType });
+      logError('intent status update returned no row', { request_id: requestId, route, callId, targetStage });
       return NextResponse.json(
         { error: 'Update did not persist; please retry.' },
         { status: 500 }
       );
     }
 
-    if (actionType === 'restore' || actionType === 'cancel' || actionType === 'junk') {
+    if (targetStage === 'junk') {
       const now = new Date().toISOString();
-      await invalidatePendingOciArtifactsForCall(callId, siteId, `CALL_STATUS_REVERSED:${actionType.toUpperCase()}`, now);
+      await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', now);
     }
 
     return NextResponse.json({

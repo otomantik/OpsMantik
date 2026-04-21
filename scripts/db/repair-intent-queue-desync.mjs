@@ -195,19 +195,23 @@ async function applyRepair(siteId, candidates) {
 
     const rpcArgs = {
       p_call_id: call.id,
-      p_action_type: repairAction === 'confirm' ? 'confirm' : 'junk',
-      p_payload: payload,
-      p_actor_type: 'system',
-      p_actor_id: null,
+      p_site_id: siteId,
+      p_stage: repairAction === 'confirm' ? 'won' : 'junk',
+      p_actor_id: '00000000-0000-0000-0000-000000000000', // System Repair Actor
+      p_lead_score: call.lead_score !== null ? Number(call.lead_score) : null,
+      p_sale_metadata: repairAction === 'confirm' ? {
+        reason: REPAIR_REASON,
+        source: 'repair_script',
+      } : null,
+      p_version: null,
       p_metadata: {
         source: 'scripts/db/repair-intent-queue-desync.mjs',
         reason: REPAIR_REASON,
         queue_ids: queueIds,
       },
-      p_version: null,
     };
 
-    let { data: updated, error: rpcError } = await supabase.rpc('apply_call_action_v1', rpcArgs);
+    let { data: updated, error: rpcError } = await supabase.rpc('apply_call_action_v2', rpcArgs);
 
     if (
       rpcError
@@ -223,7 +227,7 @@ async function applyRepair(siteId, candidates) {
 
       queueAlreadyTerminalized = true;
 
-      const retryResult = await supabase.rpc('apply_call_action_v1', rpcArgs);
+      const retryResult = await supabase.rpc('apply_call_action_v2', rpcArgs);
       updated = retryResult.data;
       rpcError = retryResult.error;
     }

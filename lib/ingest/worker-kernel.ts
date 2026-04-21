@@ -127,7 +127,20 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
           ip_address: typeof job.ip === 'string' ? job.ip : null,
           lane,
         });
-      } catch { /* best-effort */ }
+      } catch (quarantineErr) {
+        // CRITICAL: Fraud quarantine audit trail is broken — event is still blocked
+        // but the evidence is lost. Operators must investigate this fingerprint manually.
+        logError('INGEST_FRAUD_QUARANTINE_INSERT_FAILED', {
+          site_id: site.id,
+          fingerprint: fingerprint || null,
+          reason: fraudCheck.reason,
+          error: quarantineErr instanceof Error ? quarantineErr.message : String(quarantineErr),
+          lane,
+        });
+        Sentry.captureException(quarantineErr, {
+          tags: { subsystem: 'fraud_quarantine', site_id: site.id },
+        });
+      }
       return NextResponse.json({ ok: true, quarantine: true, reason: fraudCheck.reason });
     }
 
@@ -260,7 +273,27 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
           error: getErrorMessage(error),
           payload: isRecord(rawBody) ? rawBody : { note: 'rawBody_unavailable' },
         });
-      } catch { /* ignore */ }
+      } catch (dlqErr) {
+        // CRITICAL: Dead-letter queue insert failed. This event is now lost from
+        // the audit trail entirely. The original error is still logged below via
+        // QSTASH_WORKER_DLQ, but the payload evidence is gone.
+        logError('INGEST_DLQ_INSERT_FAILED', {
+          site_id: siteDbId ?? undefined,
+          qstash_message_id: qstashMessageId,
+          original_error: getErrorMessage(error),
+          dlq_error: dlqErr instanceof Error ? dlqErr.message : String(dlqErr),
+          lane,
+        });
+        Sentry.captureException(dlqErr, {
+          tags: { subsystem: 'sync_dlq', site_id: siteDbId ?? 'unknown' },
+          contexts: {
+            lost_event: {
+              original_error: getErrorMessage(error),
+              qstash_message_id: qstashMessageId,
+            },
+          },
+        });
+      }
 
       logError('QSTASH_WORKER_DLQ', {
         lane,

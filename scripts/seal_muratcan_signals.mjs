@@ -63,14 +63,19 @@ async function sealMuratcanSignals() {
             oci_status_updated_at: confirmedAtIso
         };
 
-        const { data: updated, error: updateError } = await supabase.rpc('apply_call_action_v1', {
+        const { data: updated, error: updateError } = await supabase.rpc('apply_call_action_v2', {
             p_call_id: it.id,
-            p_action_type: 'seal',
-            p_payload: updatePayload,
-            p_actor_type: 'system',
-            p_actor_id: null,
-            p_metadata: { source: 'user-request-via-antigravity', system: 'antigravity-worker' },
-            p_version: version
+            p_site_id: siteId,
+            p_stage: 'won',
+            p_actor_id: '00000000-0000-0000-0000-000000000000', // System Maintenance Actor
+            p_lead_score: 100,
+            p_sale_metadata: {
+                amount: null,
+                currency: 'TRY',
+                reason: 'MURATCAN_BATCH_SEAL'
+            },
+            p_version: version,
+            p_metadata: { source: 'scripts/seal_muratcan_signals.mjs' }
         });
 
         if (updateError) {

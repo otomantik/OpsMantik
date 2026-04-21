@@ -23,6 +23,15 @@ export interface HelperFormPayload {
   competitorComparison?: HelperYesNo | null;
 }
 
+/** SSOT defaults for operator helper form (canonical enum values; UI labels stay i18n). */
+export const HELPER_FORM_DEFAULTS: HelperFormPayload = {
+  jobSize: 'orta',
+  urgency: 'orta',
+  priceDiscussed: 'evet',
+  followupExpectation: 'evet',
+  competitorComparison: 'hayir',
+};
+
 export interface OptimizationValueSnapshot {
   optimizationStage: OptimizationStage;
   stageBase: number;

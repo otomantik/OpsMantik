@@ -65,7 +65,14 @@ export function PanelFeed({
       const res = await fetch(`/api/intents/${intent.id}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, score, action_type: actionType, helper_form_payload: helperFormPayload ?? null })
+        body: JSON.stringify({
+          phone,
+          score,
+          action_type: actionType,
+          helper_form_payload: helperFormPayload ?? null,
+          version:
+            typeof intent.version === 'number' && Number.isFinite(intent.version) ? intent.version : 0,
+        })
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok || !result?.success) {

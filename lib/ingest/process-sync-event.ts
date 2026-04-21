@@ -10,6 +10,7 @@ import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { normalizeLandingUrl } from '@/lib/ingest/normalize-landing-url';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { debugLog } from '@/lib/utils';
+import { logError, logWarn } from '@/lib/logging/logger';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
 import type { IngestEventKind } from '@/lib/ingest/types';
 import { assertNever } from '@/lib/ingest/types';
@@ -31,24 +32,26 @@ import { runConsentProvenanceShadowForResolvedSession } from '@/lib/compliance/c
 
 export type WorkerJob = Record<string, unknown> & {
   s: string;
-  sid?: string;
-  sm?: string;
-  ec?: string;
-  ea?: string;
-  el?: string;
+  url?: string | null;
+  u?: string | null;
+  sid?: string | null;
+  sm?: string | null;
+  ec?: string | null;
+  ea?: string | null;
+  el?: string | null;
   ev?: number | string | null;
-  meta?: IngestMeta;
-  r?: string;
-  ip?: string;
-  ua?: string;
-  geo_city?: string;
-  geo_district?: string;
-  geo_country?: string;
-  geo_timezone?: string;
-  geo_telco_carrier?: string;
-  isp_asn?: number | string;
-  is_proxy_detected?: boolean | number;
-  consent_scopes?: string[];
+  meta?: IngestMeta | null;
+  r?: string | null;
+  ip?: string | null;
+  ua?: string | null;
+  geo_city?: string | null;
+  geo_district?: string | null;
+  geo_country?: string | null;
+  geo_timezone?: string | null;
+  geo_telco_carrier?: string | null;
+  isp_asn?: number | string | null;
+  is_proxy_detected?: boolean | number | null;
+  consent_scopes?: string[] | null;
 };
 
 /**
@@ -210,7 +213,17 @@ export async function processSyncEvent(
         .from('processed_signals')
         .update({ status: 'failed' })
         .eq('event_id', dedupEventId);
-    } catch { /* ignore */ }
+    } catch (dedupUpdateErr) {
+      // CRITICAL: Dedup row is stuck in 'processing' status. This creates a phantom lock
+      // that will prevent this event from ever being reprocessed on retry. Operators must
+      // manually UPDATE processed_signals SET status='failed' WHERE event_id = dedupEventId.
+      logError('INGEST_DEDUP_STATUS_UPDATE_FAILED', {
+        dedup_event_id: dedupEventId,
+        site_id: siteIdUuid,
+        target_status: 'failed',
+        error: dedupUpdateErr instanceof Error ? dedupUpdateErr.message : String(dedupUpdateErr),
+      });
+    }
     throw err;
   }
 }
@@ -375,7 +388,15 @@ async function doProcessSyncEvent(
           session = { id: row.id, created_month: row.created_month };
           try {
             await adminClient.from('sessions').update({ updated_at: new Date().toISOString() }).eq('site_id', siteIdUuid).eq('id', row.id).eq('created_month', row.created_month);
-          } catch { /* updated_at column may not exist */ }
+          } catch (sessionUpdateErr) {
+            // WARN: session 'updated_at' column may not exist on older schema versions.
+            // Non-blocking — session was already resolved, only the timestamp is stale.
+            logWarn('INGEST_SESSION_UPDATED_AT_WRITE_FAILED', {
+              session_id: row.id,
+              site_id: siteIdUuid,
+              error: sessionUpdateErr instanceof Error ? sessionUpdateErr.message : String(sessionUpdateErr),
+            });
+          }
           break;
         }
       }

@@ -138,14 +138,14 @@ async function main() {
   let ok = 0;
   let err = 0;
   for (const callId of saldiriIds) {
-    const { data, error } = await supabase.rpc('apply_call_action_v1', {
+    const { data, error } = await supabase.rpc('apply_call_action_v2', {
       p_call_id: callId,
-      p_action_type: 'junk',
-      p_payload: { lead_score: 0, reason: 'oci-eslamed-junk-saldiri-2240' },
-      p_actor_type: 'system',
-      p_actor_id: null,
-      p_metadata: { script: 'oci-eslamed-junk-saldiri-2240', since: sinceIso },
+      p_site_id: siteId,
+      p_stage: 'junk',
+      p_actor_id: '00000000-0000-0000-0000-000000000000', // System Maintenance Actor
+      p_lead_score: 0,
       p_version: null,
+      p_metadata: { script: 'oci-eslamed-junk-saldiri-2240', since: sinceIso, reason: 'attack_cleanup' },
     });
     if (error) {
       console.error('  [HATA]', callId, error.message);

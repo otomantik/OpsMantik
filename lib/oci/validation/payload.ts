@@ -1,0 +1,43 @@
+import { z } from 'zod/v3';
+
+/**
+ * Production-hardened OCI Payload Schema.
+ * Uses robust regex and basic primitives to ensure compatibility with 
+ * the project's specific Zod v4 build while enforcing strict data contracts.
+ */
+export const OciPayloadSchema = z.object({
+  /** Click ID: GCLID, GBRAID, or WBRAID (min 10 chars) */
+  click_id: z.string().regex(/^.{10,}$/, 'Click ID must be at least 10 characters'),
+  
+  /** The conversion value (monetary) */
+  conversion_value: z.number().refine(v => v >= 0, 'Value must be 0 or greater'),
+  
+  /** ISO-4217 Currency Code (3 uppercase letters) */
+  currency: z.string().regex(/^[A-Z]{3}$/, 'Currency must be 3 uppercase letters'),
+  
+  /** UTC Timestamp (ISO 8601 format) */
+  conversion_time: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/, 'Must be a valid ISO 8601 datetime'),
+  
+  /** Site identifier (UUID format) */
+  site_id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Site ID must be a valid UUID'),
+  
+  /** Pipeline stage */
+  stage: z.enum(['contacted', 'offered', 'won', 'junk']),
+  
+  /** Optional braids */
+  gbraid: z.string().optional().nullable(),
+  wbraid: z.string().optional().nullable(),
+  
+  /** Optional metadata */
+  metadata: z.record(z.any()).optional(),
+});
+
+export type OciPayload = z.infer<typeof OciPayloadSchema>;
+
+export function validateOciPayload(data: unknown): OciPayload {
+  return OciPayloadSchema.parse(data);
+}
+
+export function safeValidateOciPayload(data: unknown) {
+  return OciPayloadSchema.safeParse(data);
+}

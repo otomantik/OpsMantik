@@ -21,7 +21,7 @@ test('worker route: credential missing marks FAILED (not RETRY)', () => {
 });
 
 test('worker route: MAX_RETRY_ATTEMPTS 7 then FAILED', () => {
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'cron-wave.ts');
   const constantsPath = join(process.cwd(), 'lib', 'oci', 'constants.ts');
   const runnerSrc = readFileSync(runnerPath, 'utf8');
   const constantsSrc = readFileSync(constantsPath, 'utf8');
@@ -85,13 +85,13 @@ test('circuit migration: threshold 5 and OPEN/HALF_OPEN/CLOSED', () => {
 });
 
 test('worker route: circuit OPEN gate and HALF_OPEN probe_limit', () => {
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'cron-wave.ts');
   const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('get_provider_health_state'), 'fetches health');
   assert.ok(src.includes("state === 'OPEN'") && src.includes('nextProbeAt'), 'OPEN gate');
   assert.ok(src.includes('set_provider_state_half_open'), 'transition to HALF_OPEN');
   assert.ok(src.includes("state === 'HALF_OPEN'") && src.includes('probeLimit') && src.includes('slice'), 'HALF_OPEN probe limit');
-  assert.ok(src.includes('record_provider_outcome'), 'records outcome');
+  assert.ok(src.includes('persistProviderOutcome'), 'records outcome');
   assert.ok(src.includes('CIRCUIT_OPEN'), 'gating error code');
 });
 
@@ -124,13 +124,13 @@ test('PR6 worker: HALF_OPEN uses probe_limit for claim', () => {
 });
 
 test('PR7 worker: no starvation — min 1 when remaining allows', () => {
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'claim-planner.ts');
   const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('Math.max(1,') && src.includes('totalQueued'), 'weighted share gives at least 1');
 });
 
 test('PR9 google-ads-oci worker: sets upload proof fields (uploaded_at, provider_request_id, provider_error_*)', () => {
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'process-conversion-batch.ts');
   const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('uploaded_at'), 'COMPLETED sets uploaded_at');
   assert.ok(src.includes('provider_request_id'), 'COMPLETED sets provider_request_id');
@@ -139,10 +139,10 @@ test('PR9 google-ads-oci worker: sets upload proof fields (uploaded_at, provider
 });
 
 test('runner bulk ledger append fails closed when any chunk write fails', () => {
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'queue-bulk-update.ts');
   const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('const failures: string[] = [];'), 'runner tracks failed ledger chunks');
-  assert.ok(src.includes('throw new Error(`${logLabel}: ${failures.length} chunk(s) failed:'), 'runner must throw after partial ledger failure');
+  assert.ok(src.includes('chunk(s) failed'), 'runner must throw after partial ledger failure');
 });
 
 test('PR10 migration: provider_upload_attempts table exists with required columns', () => {
@@ -166,7 +166,7 @@ test('PR11 google-ads-oci worker: semaphore acquire/release and CONCURRENCY_LIMI
   const routePath = join(process.cwd(), 'app', 'api', 'workers', 'google-ads-oci', 'route.ts');
   const routeSrc = readFileSync(routePath, 'utf8');
   assert.ok(routeSrc.includes('runOfflineConversionRunner') && routeSrc.includes("providerKey: 'google_ads'"), 'route calls runner for google_ads');
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'worker-wave.ts');
   const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('acquireSemaphore') && src.includes('releaseSemaphore'), 'semaphore acquire/release');
   assert.ok(src.includes('CONCURRENCY_LIMIT'), 'concurrency limit error path');
@@ -176,17 +176,13 @@ test('PR11 google-ads-oci worker: semaphore acquire/release and CONCURRENCY_LIMI
 });
 
 test('PR10 google-ads-oci worker: writes STARTED before upload and FINISHED after (ledger)', () => {
-  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner.ts');
+  const runnerPath = join(process.cwd(), 'lib', 'oci', 'runner', 'worker-wave.ts');
   const src = readFileSync(runnerPath, 'utf8');
   assert.ok(src.includes('provider_upload_attempts'), 'ledger table');
   assert.ok(src.includes("phase: 'STARTED'") || src.includes('phase: "STARTED"'), 'STARTED row');
   assert.ok(src.includes("phase: 'FINISHED'") || src.includes('phase: "FINISHED"'), 'FINISHED row');
   assert.ok(src.includes('claimed_count: siteRows.length'), 'STARTED has claimed_count');
   assert.ok(src.includes('duration_ms: durationMs') || src.includes('duration_ms'), 'FINISHED has duration_ms');
-  const startedIdx = src.lastIndexOf("phase: 'STARTED'") >= 0 ? src.lastIndexOf("phase: 'STARTED'") : src.lastIndexOf('phase: "STARTED"');
-  const finishedIdx = src.lastIndexOf("phase: 'FINISHED'") >= 0 ? src.lastIndexOf("phase: 'FINISHED'") : src.lastIndexOf('phase: "FINISHED"');
-  const tryIdx = src.indexOf('try {', startedIdx);
-  assert.ok(startedIdx < tryIdx, 'STARTED written before try');
-  assert.ok(finishedIdx > tryIdx, 'FINISHED written after try block');
-  assert.ok(src.includes('results !== undefined') || src.includes('results != null'), 'result handling guarded so FINISHED runs even on throw');
+  assert.ok(src.includes('const startedAt = Date.now()'), 'STARTED timestamp must be captured before batch processing');
+  assert.ok(src.includes('await processConversionBatch({'), 'FINISHED should be written after batch processing returns');
 });

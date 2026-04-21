@@ -91,7 +91,7 @@ export type ValidIngestPayloadBase = Record<string, unknown> & {
   el?: string;
   ev?: number | string | null;
   meta?: IngestMeta;
-  r?: string;
+  r?: string | null;
 };
 
 export type ValidIngestPayload =

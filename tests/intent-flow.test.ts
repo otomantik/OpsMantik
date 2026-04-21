@@ -37,17 +37,17 @@ test('Intent Flow: lead score caps at 100', () => {
 // Suite 1b: Seal status default (schema / constants validation)
 // ---------------------------------------------------------------------------
 
-test('Intent Flow: conversions default seal_status is unsealed', () => {
-  // Iron Seal: conversions table DEFAULT 'unsealed' — no row is dispatched until sealed
-  const defaultSealStatus = 'unsealed';
-  assert.equal(defaultSealStatus, 'unsealed', 'new conversions must default to unsealed');
+test('Intent Flow: conversions default seal_status is intent', () => {
+  // Iron Seal: conversions table DEFAULT 'intent' — no row is dispatched until sealed
+  const defaultSealStatus: string = 'intent';
+  assert.equal(defaultSealStatus, 'intent', 'new conversions must default to intent');
 });
 
-test('Intent Flow: only sealed rows are eligible for dispatch', () => {
-  // get_pending_conversions_for_worker returns ONLY seal_status = 'sealed'
-  const dispatchEligible = ['sealed'];
-  assert.ok(dispatchEligible.includes('sealed'));
-  assert.ok(!dispatchEligible.includes('unsealed'), 'unsealed must NOT be dispatch-eligible');
+test('Intent Flow: only won rows are eligible for dispatch', () => {
+  // get_pending_conversions_for_worker returns ONLY seal_status = 'won'
+  const dispatchEligible = ['won'];
+  assert.ok(dispatchEligible.includes('won'));
+  assert.ok(!dispatchEligible.includes('intent'), 'intent must NOT be dispatch-eligible');
 });
 
 // ---------------------------------------------------------------------------
@@ -55,13 +55,13 @@ test('Intent Flow: only sealed rows are eligible for dispatch', () => {
 // ---------------------------------------------------------------------------
 
 test('Intent Flow: unsealed record must not be auto-dispatched', () => {
-  const sealStatus = 'unsealed';
-  const wouldDispatch = sealStatus === 'sealed';
+  const sealStatus = 'intent' as string;
+  const wouldDispatch = sealStatus === 'won';
   assert.equal(wouldDispatch, false, 'unsealed must never auto-dispatch');
 });
 
-test('Intent Flow: sealed record requires explicit operator action', () => {
-  // Seal flow: operator clicks Seal in War Room → seal_status set to 'sealed'
+test('Intent Flow: won record requires explicit operator action', () => {
+  // Seal flow: operator clicks Seal in War Room → seal_status set to 'won'
   const requiresExplicitSeal = true;
-  assert.ok(requiresExplicitSeal, 'seal_status=sealed only via explicit seal action');
+  assert.ok(requiresExplicitSeal, 'seal_status=won only via explicit seal action');
 });

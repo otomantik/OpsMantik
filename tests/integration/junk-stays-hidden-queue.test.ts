@@ -100,20 +100,20 @@ test('junk flow: apply_call_action_v1 junk hides the entire same-session queue f
     'before junk: at least one of our calls should appear in lite'
   );
 
-  // 3) Junk call1 via apply_call_action_v1 (system actor for service_role test)
-  const { data: updated, error: junkErr } = await adminClient.rpc('apply_call_action_v1', {
+  // 3) Junk call1 via apply_call_action_v2 (Authoritative Phase 3 RPC)
+  const { data: updated, error: junkErr } = await adminClient.rpc('apply_call_action_v2', {
     p_call_id: call1Id,
-    p_action_type: 'junk',
-    p_payload: { lead_score: 0 },
-    p_actor_type: 'system',
-    p_actor_id: null,
-    p_metadata: { test: 'junk-stays-hidden' },
+    p_site_id: siteId,
+    p_stage: 'junk',
+    p_actor_id: randomUUID(), // Simulation of an actor
+    p_lead_score: 0,
     p_version: null,
+    p_metadata: { test: 'junk-stays-hidden-v2' },
   });
 
   assert.ifError(junkErr);
   const updatedRow = Array.isArray(updated) ? updated[0] : updated;
-  assert.ok(updatedRow, 'apply_call_action_v1 must return updated row');
+  assert.ok(updatedRow, 'apply_call_action_v2 must return updated row');
   assert.equal((updatedRow as { status?: string })?.status, 'junk', 'call1 status must be junk');
 
   // 4) After junk: lite must NOT return call1 and must also hide call2.

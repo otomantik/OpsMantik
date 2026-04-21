@@ -9,31 +9,25 @@ const PANEL_FEED = join(ROOT, 'components', 'dashboard', 'panel-feed.tsx');
 const LEAD_ACTION_OVERLAY = join(ROOT, 'components', 'dashboard', 'lead-action-overlay.tsx');
 const INVALIDATE_HELPER = join(ROOT, 'lib', 'oci', 'invalidate-pending-artifacts.ts');
 
-test('stage route checks RPC persistence before downstream side-effects', () => {
+test('stage route delegates mutation and side-effects to apply_call_action_v2', () => {
   const src = readFileSync(STAGE_ROUTE, 'utf8');
-  const rpcIndex = src.indexOf("adminClient.rpc('apply_call_action_v1'");
+  const rpcIndex = src.indexOf("adminClient.rpc('apply_call_action_v2'");
   const errorGuardIndex = src.indexOf('if (updateError) {', rpcIndex);
-  // Queue enqueue is now via the enqueueSealConversion helper (the only seal-side
-  // enqueue path). Secondary writes to marketing_signals happen for non-won stages
-  // through the upsertMarketingSignal SSOT helper (direct .from('marketing_signals')
-  // no longer appears in this route — it's owned by lib/domain/mizan-mantik/
-  // upsert-marketing-signal.ts).
-  const sealEnqueueIndex = src.indexOf('enqueueSealConversion(');
-  const upsertSignalIndex = src.indexOf('upsertMarketingSignal(');
+  
+  // Side-effects (enqueues, signals) are now handled via the outbox processor
+  // triggered by the notifyOutboxPending helper at the end of the route.
+  const outboxNotifyIndex = src.indexOf('notifyOutboxPending(');
 
-  assert.ok(rpcIndex >= 0, 'stage route must persist via apply_call_action_v1');
+  assert.ok(rpcIndex >= 0, 'stage route must persist via apply_call_action_v2');
   assert.ok(errorGuardIndex > rpcIndex, 'stage route must guard RPC failures');
-  assert.ok(sealEnqueueIndex > errorGuardIndex, 'seal enqueue must happen after RPC success guard');
-  assert.ok(upsertSignalIndex > errorGuardIndex, 'marketing_signals SSOT upsert must happen after RPC success guard');
+  assert.ok(outboxNotifyIndex > errorGuardIndex, 'outbox notification must happen after RPC success guard');
 });
 
-test('stage route treats junk as a real junk transition and invalidates pending OCI artifacts', () => {
+test('stage route treats junk as a canonical optimization_stage and invalidates pending OCI artifacts', () => {
   const src = readFileSync(STAGE_ROUTE, 'utf8');
   const helperSrc = readFileSync(INVALIDATE_HELPER, 'utf8');
 
-  assert.ok(src.includes("actionType === 'junk'"), 'stage route must recognize explicit junk action_type');
-  assert.ok(src.includes("p_action_type: 'junk'"), 'junk branch must call apply_call_action_v1(junk)');
-  assert.ok(src.includes('queued: false'), 'junk response must explicitly report queued=false');
+  assert.ok(src.includes("optimizationStage === 'junk'"), 'stage route must handle junk stage');
   assert.ok(src.includes('invalidatePendingOciArtifactsForCall(callId, siteId, \'CALL_STATUS_REVERSED:JUNK\''), 'junk branch must invalidate pending artifacts');
   assert.ok(helperSrc.includes(".from('offline_conversion_queue')"), 'invalidator must touch offline_conversion_queue');
   assert.ok(helperSrc.includes("provider_error_code: 'CALL_NOT_SENDABLE_FOR_OCI'"), 'invalidator must terminalize queue rows with deterministic skip provenance');

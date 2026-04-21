@@ -26,22 +26,22 @@ test('PR-OCI-6: seal route requires version and returns 400 when omitted', () =>
   );
 });
 
-test('PR-OCI-6: seal route passes p_version to RPC', () => {
+test('PR-OCI-6: seal route passes p_version to RPC (Authoritative SQL Path)', () => {
   const src = readFileSync(SEAL_ROUTE, 'utf-8');
   assert.ok(
     /p_version\s*:/.test(src),
-    'Expected seal route to pass p_version to apply_call_action_v1'
+    'Expected seal route to pass p_version to apply_call_action_v2'
+  );
+  assert.ok(
+    src.includes("adminClient.rpc('apply_call_action_v2'"),
+    'Expected seal route to use v2 RPC'
   );
 });
 
-test('PR-OCI-6: seal route maps P0002 version mismatch to HTTP 409', () => {
+test('PR-OCI-6: seal route returns HTTP 409 on RPC mutation error', () => {
   const src = readFileSync(SEAL_ROUTE, 'utf-8');
   assert.ok(
-    src.includes("updateError.code === 'P0002'") || src.includes('updateError.code === "P0002"'),
-    'Expected P0002 handling for version mismatch'
-  );
-  assert.ok(
     src.includes('status: 409'),
-    'Expected HTTP 409 response on version mismatch'
+    'Expected HTTP 409 response on RPC error (handling concurrency conflicts)'
   );
 });

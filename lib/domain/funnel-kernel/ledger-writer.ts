@@ -4,7 +4,7 @@
  * See: docs/architecture/FUNNEL_CONTRACT.md, PROJECTION_REDUCER_SPEC.md
  */
 
-import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonical-truth-ledger-writer';
+import { appendCanonicalTruthLedgerFailClosed } from '@/lib/domain/truth/canonical-truth-ledger-writer';
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 
@@ -88,7 +88,9 @@ export async function appendFunnelEvent(input: AppendFunnelEventInput): Promise<
     throw error;
   }
 
-  await appendCanonicalTruthLedgerBestEffort({
+  // Fail-closed: if truth append fails we abort the caller path to avoid silent
+  // divergence between funnel audit and canonical truth stream.
+  await appendCanonicalTruthLedgerFailClosed({
     siteId,
     streamKind: 'FUNNEL_LEDGER',
     idempotencyKey: `canonical:funnel:${idempotencyKey}`,
