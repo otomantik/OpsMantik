@@ -59,6 +59,7 @@ interface OutboxPayload {
   call_id: string;
   site_id: string;
   lead_score: number | null;
+  stage?: SingleConversionGear | null;
   confirmed_at: string;
   created_at?: string | null;
   sale_occurred_at?: string | null;
@@ -189,7 +190,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         const score = leadScore ?? 0;
         const stage = explicitStage ?? resolveOutboxStage(score);
 
-        if (!stage || stage === 'junk') {
+        if (!stage) {
           logInfo('outbox_score_too_low', { outbox_id: id, score, message: 'Ignoring junk or low-interest click' });
           await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
           processed++;

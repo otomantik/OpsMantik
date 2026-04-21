@@ -46,7 +46,7 @@ export function buildSignalItems(
     }
     const stage = resolveSignalStage(
       (sig.optimization_stage as string | null) ?? null,
-      (sig.signal_type as string | null) ?? null
+      typeof sig.signal_type === 'string' ? sig.signal_type : ''
     );
     if (!stage || stage === 'junk') {
       blockedSignalIds.push(signalId);
