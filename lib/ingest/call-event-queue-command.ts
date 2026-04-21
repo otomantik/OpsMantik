@@ -17,7 +17,8 @@ export type BuildCallEventIngestWorkerBodyInput = {
   matched_fingerprint: string;
   lead_score: number | null;
   lead_score_at_match: number | null;
-  score_breakdown: ScoreBreakdown | null;
+  /** Match RPC may return a loose object; worker accepts JSON-serializable breakdown. */
+  score_breakdown: ScoreBreakdown | Record<string, unknown> | null;
   confidence_score: number | null;
   matched_at: string | null;
   status: string | null;
