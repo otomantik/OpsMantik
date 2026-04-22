@@ -6,13 +6,13 @@ type RepairRow = {
   id: string;
   mismatch_id: string;
   attempt_count: number;
-  truth_parity_mismatches: {
+  truth_parity_mismatches: Array<{
     id: string;
     site_id: string;
     stream_kind: string;
     idempotency_key: string;
     payload: Record<string, unknown>;
-  } | null;
+  }>;
 };
 
 export async function runTruthParityRepairBatch(limit = 50): Promise<{
@@ -38,7 +38,9 @@ export async function runTruthParityRepairBatch(limit = 50): Promise<{
 
   for (const row of data as RepairRow[]) {
     try {
-      const mismatch = row.truth_parity_mismatches;
+      const mismatch = Array.isArray(row.truth_parity_mismatches)
+        ? row.truth_parity_mismatches[0] ?? null
+        : null;
       if (!mismatch) continue;
       const updateClaim = await adminClient
         .from('truth_parity_repair_queue')

@@ -82,6 +82,17 @@ export function useDashboardDateRange(siteId: string) {
     { label: t('date.thisMonth'), value: 'month' },
   ], [t]);
 
+  // Update range in URL
+  const updateRange = useCallback((range: DateRange) => {
+    const params = new URLSearchParams(searchParams.toString());
+    
+    // Store UTC ISO strings in URL
+    params.set('from', range.from.toISOString());
+    params.set('to', range.to.toISOString());
+    
+    router.push(`/dashboard/site/${siteId}?${params.toString()}`);
+  }, [siteId, router, searchParams]);
+
   // Apply preset
   const applyPreset = useCallback((presetValue: string) => {
     const todayKey = getTodayDateKey(siteTimezone);
@@ -136,17 +147,6 @@ export function useDashboardDateRange(siteId: string) {
 
     updateRange({ from: new Date(fromIso), to: new Date(toIso) });
   }, [siteTimezone, updateRange]);
-
-  // Update range in URL
-  const updateRange = useCallback((range: DateRange) => {
-    const params = new URLSearchParams(searchParams.toString());
-    
-    // Store UTC ISO strings in URL
-    params.set('from', range.from.toISOString());
-    params.set('to', range.to.toISOString());
-    
-    router.push(`/dashboard/site/${siteId}?${params.toString()}`);
-  }, [siteId, router, searchParams]);
 
   return {
     range: dateRange,
