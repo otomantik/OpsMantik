@@ -216,7 +216,7 @@ function resolveTenantSiteId(request: Request, tenantMap: TenantMap): string | n
 }
 
 export default {
-	async fetch(request, env: WorkerEnv): Promise<Response> {
+	async fetch(request: Request, env: WorkerEnv): Promise<Response> {
 		const origin = request.headers.get("origin");
 		const url = new URL(request.url);
 		if (request.method === "OPTIONS") {

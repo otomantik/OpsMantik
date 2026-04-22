@@ -39,6 +39,7 @@
   "exclude": [
     "node_modules",
     ".next/dev",
+    "adsmantik-engine",
     "supabase/functions",
     "tmp"
   ]
