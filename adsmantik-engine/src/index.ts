@@ -73,8 +73,15 @@ function toObject(value: unknown): Record<string, unknown> {
 	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+type EdgeCfContext = {
+	city?: string;
+	region?: string;
+	country?: string;
+	timezone?: string;
+};
+
 function injectEdgeGeo(meta: Record<string, unknown>, request: Request): Record<string, unknown> {
-	const cf = request.cf;
+	const cf = (request as Request & { cf?: EdgeCfContext }).cf;
 	const next = { ...meta };
 	if (cf?.city && !next.city) next.city = cf.city;
 	if (cf?.region && !next.region) next.region = cf.region;

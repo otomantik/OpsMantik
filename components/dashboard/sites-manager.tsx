@@ -116,15 +116,26 @@ export function SitesManager() {
         }),
       });
 
-      const data = await response.json();
+      const dataUnknown = await response.json();
+      const data =
+        dataUnknown && typeof dataUnknown === 'object' && !Array.isArray(dataUnknown)
+          ? (dataUnknown as Record<string, unknown>)
+          : {};
 
       if (!response.ok) {
-        throw new Error(data.error || t('sites.createFailed'));
+        throw new Error(typeof data.error === 'string' ? data.error : t('sites.createFailed'));
       }
 
       // Add new site to list
-      setSites((prev) => [data.site, ...prev]);
-      setNewSite(data.site);
+      const createdSite =
+        data.site && typeof data.site === 'object' && !Array.isArray(data.site)
+          ? (data.site as Site)
+          : null;
+      if (!createdSite) {
+        throw new Error(t('sites.createFailed'));
+      }
+      setSites((prev) => [createdSite, ...prev]);
+      setNewSite(createdSite);
       setSiteName('');
       setDomain('');
       setShowAddForm(false);
@@ -171,16 +182,20 @@ export function SitesManager() {
         }),
       });
 
-      const data = await response.json();
+      const dataUnknown = await response.json();
+      const data =
+        dataUnknown && typeof dataUnknown === 'object' && !Array.isArray(dataUnknown)
+          ? (dataUnknown as Record<string, unknown>)
+          : {};
 
       if (!response.ok) {
-        throw new Error(data.error || t('sites.inviteFailed'));
+        throw new Error(typeof data.error === 'string' ? data.error : t('sites.inviteFailed'));
       }
 
       setInviteSuccess((prev) => ({
         ...prev,
         [siteId]: {
-          loginUrl: data.login_url || null,
+          loginUrl: typeof data.login_url === 'string' ? data.login_url : null,
           message: t('sites.inviteSuccess'),
         },
       }));
@@ -203,21 +218,25 @@ export function SitesManager() {
 
     try {
       const response = await fetch(`/api/sites/${siteId}/status`);
-      const data = await response.json();
+      const dataUnknown = await response.json();
+      const data =
+        dataUnknown && typeof dataUnknown === 'object' && !Array.isArray(dataUnknown)
+          ? (dataUnknown as Record<string, unknown>)
+          : {};
 
       if (!response.ok) {
-        throw new Error(data.error || t('sites.failedToVerifyInstall'));
+        throw new Error(typeof data.error === 'string' ? data.error : t('sites.failedToVerifyInstall'));
       }
 
       setSiteStatus({
         ...siteStatus,
         [siteId]: {
-          status: data.status,
-          last_event_at: data.last_event_at,
-          last_session_id: data.last_session_id,
-          last_source: data.last_source,
-          last_event_category: data.last_event_category,
-          last_event_action: data.last_event_action,
+          status: typeof data.status === 'string' ? data.status : t('misc.error'),
+          last_event_at: typeof data.last_event_at === 'string' ? data.last_event_at : null,
+          last_session_id: typeof data.last_session_id === 'string' ? data.last_session_id : null,
+          last_source: typeof data.last_source === 'string' ? data.last_source : null,
+          last_event_category: typeof data.last_event_category === 'string' ? data.last_event_category : null,
+          last_event_action: typeof data.last_event_action === 'string' ? data.last_event_action : null,
         },
       });
     } catch (err: unknown) {
@@ -547,9 +566,14 @@ export function SitesManager() {
                           setFullEmbedLoading((prev) => ({ ...prev, [site.id]: true }));
                           try {
                             const res = await fetch(`/api/sites/${encodeURIComponent(site.id)}/tracker-embed`, { credentials: 'include' });
-                            const data = await res.json();
-                            if (res.ok && data.scriptTag) {
-                              setFullEmbedBySite((prev) => ({ ...prev, [site.id]: data.scriptTag }));
+                            const dataUnknown = await res.json();
+                            const data =
+                              dataUnknown && typeof dataUnknown === 'object' && !Array.isArray(dataUnknown)
+                                ? (dataUnknown as Record<string, unknown>)
+                                : {};
+                            const scriptTag = typeof data.scriptTag === 'string' ? data.scriptTag : null;
+                            if (res.ok && scriptTag) {
+                              setFullEmbedBySite((prev) => ({ ...prev, [site.id]: scriptTag }));
                             }
                           } finally {
                             setFullEmbedLoading((prev) => ({ ...prev, [site.id]: false }));

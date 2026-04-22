@@ -56,10 +56,15 @@ export async function POST(req: NextRequest) {
       logInfo('OCI_ACK_SIMPLE_AUTH', { msg: 'No crypto signature; proceeding with API Key validation.' });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const siteIdFromBody = typeof body.siteId === 'string' ? body.siteId : undefined;
     const auth = await resolveOciScriptAuth({
       req,
-      siteIdFromBody: body.siteId,
+      siteIdFromBody,
       authFailNamespace: 'oci-ack-authfail',
     });
     if (!auth.ok) return auth.response;

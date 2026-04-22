@@ -26,9 +26,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const siteId = body?.siteId as string | undefined;
-  const kind = (body?.kind as string | undefined) || 'calls';
+  const bodyUnknown = await req.json().catch(() => ({}));
+  const body =
+    bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+      ? (bodyUnknown as Record<string, unknown>)
+      : {};
+  const siteId = typeof body.siteId === 'string' ? body.siteId : undefined;
+  const kind = typeof body.kind === 'string' ? body.kind : 'calls';
 
   if (!siteId) {
     return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });

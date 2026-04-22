@@ -83,11 +83,12 @@ export function PanelFeed({
           version: intentVersion,
         })
       });
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok || !result?.success) {
+      const resultUnknown = await res.json().catch(() => ({}));
+      const result = resultUnknown as { success?: boolean; error?: string };
+      if (!res.ok || !result.success) {
         return {
           success: false,
-          error: typeof result?.error === 'string' ? result.error : t('toast.failedUpdate'),
+          error: typeof result.error === 'string' ? result.error : t('toast.failedUpdate'),
         };
       }
 

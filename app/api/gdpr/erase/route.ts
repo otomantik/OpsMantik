@@ -22,7 +22,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
     const site_id = typeof body.site_id === 'string' ? body.site_id.trim() : '';
     const identifier_type = typeof body.identifier_type === 'string' ? body.identifier_type.trim().toLowerCase() : '';
     const identifier_value = typeof body.identifier_value === 'string' ? body.identifier_value.trim() : '';

@@ -14,8 +14,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const body = await req.json();
-    const { name, domain } = body;
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const name = body.name;
+    const domain = body.domain;
 
     // Validate required fields
     if (!name || !domain) {
@@ -26,7 +31,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Normalize domain: strip protocol, path, and normalize to hostname
-    let normalizedDomain = domain.trim();
+    let normalizedDomain = typeof domain === 'string' ? domain.trim() : '';
     try {
       // Remove protocol if present
       normalizedDomain = normalizedDomain.replace(/^https?:\/\//, '');

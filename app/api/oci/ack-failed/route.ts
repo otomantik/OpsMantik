@@ -59,10 +59,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const siteIdFromBody = typeof body.siteId === 'string' ? body.siteId : undefined;
     const auth = await resolveOciScriptAuth({
       req,
-      siteIdFromBody: body.siteId,
+      siteIdFromBody,
       authFailNamespace: 'oci-ack-failed-authfail',
     });
     if (!auth.ok) return auth.response;
@@ -81,8 +86,9 @@ export async function POST(req: NextRequest) {
 
     const errorCode = typeof body.errorCode === 'string' ? body.errorCode.trim().slice(0, 64) : 'VALIDATION_FAILED';
     const errorMessage = typeof body.errorMessage === 'string' ? body.errorMessage.trim().slice(0, 1024) : errorCode;
-    const category: AckFailedCategory = ['VALIDATION', 'TRANSIENT', 'AUTH'].includes(body.errorCategory)
-      ? body.errorCategory
+    const rawCategory = typeof body.errorCategory === 'string' ? body.errorCategory : '';
+    const category: AckFailedCategory = ['VALIDATION', 'TRANSIENT', 'AUTH'].includes(rawCategory)
+      ? (rawCategory as AckFailedCategory)
       : 'VALIDATION';
 
     if (queueIds.length === 0 && fatalIds.length === 0) {

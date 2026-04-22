@@ -30,12 +30,16 @@ async function handler(req: NextRequest) {
   // Detect "Fast-Path" wakeup signal from Postgres Trigger (via QStash)
   let isWakeup = false;
   try {
-    const body = await req.json();
-    if (body?.event === 'wakeup') {
+    const bodyUnknown = await req.json();
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    if (body.event === 'wakeup') {
       isWakeup = true;
       logInfo('GOOGLE_ADS_OCI_FASTPATH_WAKEUP', { 
-        site_id: body.site_id, 
-        source: body.source,
+        site_id: typeof body.site_id === 'string' ? body.site_id : undefined, 
+        source: typeof body.source === 'string' ? body.source : undefined,
         request_id: requestId 
       });
     }

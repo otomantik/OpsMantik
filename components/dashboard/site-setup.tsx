@@ -23,20 +23,28 @@ export function SiteSetup() {
         method: 'POST',
       });
 
-      const data = await response.json();
+      const dataUnknown = await response.json();
+      const data =
+        dataUnknown && typeof dataUnknown === 'object' && !Array.isArray(dataUnknown)
+          ? (dataUnknown as Record<string, unknown>)
+          : {};
 
       if (!response.ok) {
-        const errorMessage = data.details
-          ? `${data.error}: ${data.details}`
-          : data.error || t('dashboard.setup.createTestSiteFailed');
+        const errorText = typeof data.error === 'string' ? data.error : t('dashboard.setup.createTestSiteFailed');
+        const detailsText = typeof data.details === 'string' ? data.details : null;
+        const errorMessage = detailsText ? `${errorText}: ${detailsText}` : errorText;
         console.error('[SITE_SETUP] API Error:', data);
         throw new Error(errorMessage);
       }
 
       setSuccess(true);
-      debugLog('[SITE_SETUP] Test site created:', data.site);
-      if (data.site?.public_id) {
-        debugLog('[SITE_SETUP] public_id:', data.site.public_id, 'Use in test page: data-site-id="' + data.site.public_id + '"');
+      const site =
+        data.site && typeof data.site === 'object' && !Array.isArray(data.site)
+          ? (data.site as Record<string, unknown>)
+          : null;
+      debugLog('[SITE_SETUP] Test site created:', site);
+      if (site && typeof site.public_id === 'string') {
+        debugLog('[SITE_SETUP] public_id:', site.public_id, 'Use in test page: data-site-id="' + site.public_id + '"');
       }
 
       // Reload page after 2 seconds to refresh dashboard

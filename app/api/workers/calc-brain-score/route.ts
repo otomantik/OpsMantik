@@ -31,8 +31,16 @@ export async function POST(req: NextRequest) {
     if (forbidden) return forbidden;
 
     try {
-        const body = await req.json();
-        const { site_id, call_id, payload, ads_context, shadow_session_quality_v1_1 } = body;
+        const bodyUnknown = await req.json().catch(() => ({}));
+        const body =
+            bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+                ? (bodyUnknown as Record<string, unknown>)
+                : {};
+        const site_id = typeof body.site_id === 'string' ? body.site_id : '';
+        const call_id = typeof body.call_id === 'string' ? body.call_id : '';
+        const payload = body.payload;
+        const ads_context = body.ads_context;
+        const shadow_session_quality_v1_1 = body.shadow_session_quality_v1_1;
 
         if (!site_id || !call_id) {
             return NextResponse.json({ error: 'Missing site_id or call_id' }, { status: 400 });
@@ -40,10 +48,23 @@ export async function POST(req: NextRequest) {
 
         const tenantClient = createTenantClient(site_id);
 
+        const payloadObj =
+            payload && typeof payload === 'object' && !Array.isArray(payload)
+                ? (payload as Record<string, unknown>)
+                : {};
+        const scoringPayload = {
+            ua: typeof payloadObj.ua === 'string' ? payloadObj.ua : null,
+            intent_action: typeof payloadObj.intent_action === 'string' ? payloadObj.intent_action : 'phone',
+        };
+        const adsContext =
+            ads_context && typeof ads_context === 'object' && !Array.isArray(ads_context)
+                ? ads_context
+                : null;
+
         // 1. Calculate Score
         const { score: brainScore, breakdown: brainBreakdown } = calculateBrainScore(
-            payload,
-            ads_context
+            scoringPayload,
+            adsContext
         );
         const systemScore = clampSystemScore(brainScore);
 

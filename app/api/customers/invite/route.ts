@@ -52,9 +52,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const body = await req.json();
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
     // Default operational invites to operator so queue/panel buttons are honest by default.
-    const { email, site_id, role = 'operator' } = body;
+    const email = body.email;
+    const site_id = typeof body.site_id === 'string' ? body.site_id : '';
+    const role = typeof body.role === 'string' ? body.role : 'operator';
     const emailNorm = typeof email === 'string' ? email.trim() : '';
     const emailLc = emailNorm.toLowerCase();
 

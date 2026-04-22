@@ -40,8 +40,13 @@ export async function POST(
 
     logInfo('intent status request', { request_id: requestId, route, user_id: user.id });
 
-    const body = await req.json();
-    const { status, lead_score } = body;
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const status = typeof body.status === 'string' ? body.status : null;
+    const lead_score = typeof body.lead_score === 'number' ? body.lead_score : null;
     const { id: callId } = await params;
 
     // Validate status

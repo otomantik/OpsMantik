@@ -24,7 +24,11 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
+  const bodyUnknown = await req.json().catch(() => ({}));
+  const body =
+    bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+      ? (bodyUnknown as Record<string, unknown>)
+      : {};
   const action = String(body.action ?? '').trim().toLowerCase() as ReviewAction;
   const reviewReason =
     typeof body.reason === 'string' && body.reason.trim()

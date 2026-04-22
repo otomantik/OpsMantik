@@ -31,8 +31,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { phone, score, action_type } = body;
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const phone = typeof body.phone === 'string' ? body.phone : null;
+    const score = typeof body.score === 'number' ? body.score : null;
+    const action_type = typeof body.action_type === 'string' ? body.action_type : null;
     const { id: callId } = await params;
     const actionType = typeof action_type === 'string' ? action_type.trim().toLowerCase() : null;
     const roundedScore = typeof score === 'number' ? Math.max(0, Math.min(100, Math.round(score))) : null;

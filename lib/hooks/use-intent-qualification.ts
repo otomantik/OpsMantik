@@ -57,7 +57,8 @@ export function useIntentQualification(
         });
 
         if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
+          const dataUnknown = await response.json().catch(() => ({}));
+          const data = dataUnknown as { error?: string };
           throw new Error(data.error || t('toast.error.undoFailed'));
         }
 

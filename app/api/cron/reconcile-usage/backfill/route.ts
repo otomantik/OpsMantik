@@ -15,8 +15,14 @@ export async function POST(req: NextRequest) {
     if (forbidden) return forbidden;
 
     try {
-        const body = await req.json();
-        const { from, to, site_id } = body;
+        const bodyUnknown = await req.json().catch(() => ({}));
+        const body =
+            bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+                ? (bodyUnknown as Record<string, unknown>)
+                : {};
+        const from = typeof body.from === 'string' ? body.from : '';
+        const to = typeof body.to === 'string' ? body.to : '';
+        const site_id = typeof body.site_id === 'string' ? body.site_id : '';
 
         if (!from || !to) {
             return NextResponse.json({ error: 'Missing from/to in YYYY-MM format' }, { status: 400 });

@@ -52,8 +52,12 @@ export function AdSpendWidget({ siteId }: AdSpendWidgetProps) {
           setLoading(false);
           return;
         }
-        const json = await res.json();
-        setData(json);
+        const jsonUnknown = await res.json();
+        const json =
+          jsonUnknown && typeof jsonUnknown === 'object' && !Array.isArray(jsonUnknown)
+            ? (jsonUnknown as { data?: SpendRow[] })
+            : { data: [] };
+        setData({ data: Array.isArray(json.data) ? json.data : [] });
       } catch {
         if (!cancelled) setError(t('adSpend.error'));
       } finally {

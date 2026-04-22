@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
     const phoneNumber = typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : '';
     const qualityScore = body.qualityScore != null ? Number(body.qualityScore) : null;

@@ -14,12 +14,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const siteId = String(body?.siteId || '');
-    const limit = Number(body?.limit ?? 50);
-    const offset = Number(body?.offset ?? 0);
-    const emailQuery = typeof body?.emailQuery === 'string' ? body.emailQuery : null;
-    const outcome = typeof body?.outcome === 'string' ? body.outcome : null;
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const siteId = String(body.siteId ?? '');
+    const limit = Number(body.limit ?? 50);
+    const offset = Number(body.offset ?? 0);
+    const emailQuery = typeof body.emailQuery === 'string' ? body.emailQuery : null;
+    const outcome = typeof body.outcome === 'string' ? body.outcome : null;
 
     if (!siteId) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });

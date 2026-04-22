@@ -43,7 +43,11 @@ export async function POST(
       return NextResponse.json({ error: 'Seal paused', code: 'SEAL_PAUSED' }, { status: 503 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
     const deviceId = req.headers.get('x-ops-device-id')?.trim();
     const isProbe = Boolean(deviceId && typeof body.signature === 'string' && body.signature.trim());
 
@@ -67,8 +71,14 @@ export async function POST(
       }
 
       const confirmedAtIso = new Date().toISOString();
+      const timestampMs =
+        typeof body.timestamp === 'number' && Number.isFinite(body.timestamp)
+          ? body.timestamp
+          : typeof body.timestamp === 'string' && Number.isFinite(Number(body.timestamp))
+            ? Number(body.timestamp)
+            : null;
       const occurredAtMeta = resolveSealOccurredAt({
-        saleOccurredAt: body.timestamp != null && Number.isFinite(body.timestamp) ? new Date(body.timestamp).toISOString() : null,
+        saleOccurredAt: timestampMs != null ? new Date(timestampMs).toISOString() : null,
         fallbackConfirmedAt: confirmedAtIso,
       });
 

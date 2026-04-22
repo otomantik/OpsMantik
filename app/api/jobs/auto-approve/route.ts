@@ -28,10 +28,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const siteId = String(body?.siteId || '');
-    const minAgeHours = Number(body?.minAgeHours ?? 24);
-    const limit = Number(body?.limit ?? 200);
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
+    const siteId = String(body.siteId ?? '');
+    const minAgeHours = Number(body.minAgeHours ?? 24);
+    const limit = Number(body.limit ?? 200);
 
     if (!siteId) {
       return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });

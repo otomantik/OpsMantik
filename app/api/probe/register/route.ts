@@ -19,7 +19,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyUnknown = await req.json().catch(() => ({}));
+    const body =
+      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
+        ? (bodyUnknown as Record<string, unknown>)
+        : {};
     const siteId = typeof body.siteId === 'string' ? body.siteId.trim() : '';
     const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : '';
     const publicKeyPem = typeof body.publicKeyPem === 'string' ? body.publicKeyPem.trim() : '';

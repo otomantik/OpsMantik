@@ -98,7 +98,8 @@ export function OciControlPanel({
     try {
       const res = await fetch(`/api/oci/queue-stats?siteId=${encodeURIComponent(siteId)}`);
       if (!res.ok) throw new Error(labels.loadStatsError);
-      const data = await res.json();
+      const dataUnknown = await res.json();
+      const data = dataUnknown as OciQueueStats;
       setStats(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : labels.loadStatsError);
@@ -114,7 +115,8 @@ export function OciControlPanel({
       if (cursor) params.set('cursor', cursor);
       const res = await fetch(`/api/oci/queue-rows?${params.toString()}`);
       if (!res.ok) throw new Error(labels.loadRowsError);
-      const data = await res.json();
+      const dataUnknown = await res.json();
+      const data = dataUnknown as { rows?: OciQueueRow[]; nextCursor?: string };
       setRows(data.rows ?? []);
       setNextCursor(data.nextCursor);
     } catch (e) {
