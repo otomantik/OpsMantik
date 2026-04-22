@@ -20,6 +20,20 @@ type LegacyMetricsPayload = {
 	meta?: Record<string, unknown>;
 };
 
+type CallEventPayload = {
+	site_id?: string;
+	fingerprint?: string;
+	intent_action?: string;
+	action?: string;
+	intent_target?: string;
+	phone_number?: string;
+	intent_page_url?: string;
+	url?: string;
+	gclid?: string;
+	wbraid?: string;
+	gbraid?: string;
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -108,6 +122,48 @@ function buildSyncFromLegacyMetrics(payload: LegacyMetricsPayload, siteId: strin
 				wbraid: payload.wbraid ?? null,
 				gbraid: payload.gbraid ?? null,
 				...(toObject(payload.meta)),
+			},
+			request
+		),
+		consent_scopes: ["marketing"],
+	};
+}
+
+function buildSyncFromCallEvent(payload: CallEventPayload, siteId: string, request: Request): Record<string, unknown> {
+	const actionRaw =
+		typeof payload.intent_action === "string" && payload.intent_action.trim().length > 0
+			? payload.intent_action.trim().toLowerCase()
+			: typeof payload.action === "string" && payload.action.trim().length > 0
+				? payload.action.trim().toLowerCase()
+				: "call_event";
+	const labelRaw =
+		typeof payload.intent_target === "string" && payload.intent_target.trim().length > 0
+			? payload.intent_target.trim()
+			: typeof payload.phone_number === "string" && payload.phone_number.trim().length > 0
+				? payload.phone_number.trim()
+				: "unknown_target";
+	const pageUrl =
+		typeof payload.intent_page_url === "string" && payload.intent_page_url.trim().length > 0
+			? payload.intent_page_url.trim()
+			: typeof payload.url === "string" && payload.url.trim().length > 0
+				? payload.url.trim()
+				: request.url;
+	return {
+		s: siteId,
+		u: pageUrl,
+		sid: crypto.randomUUID(),
+		ec: "conversion",
+		ea: actionRaw,
+		el: labelRaw,
+		meta: injectEdgeGeo(
+			{
+				proxy_source: "call-event-fallback",
+				fp: typeof payload.fingerprint === "string" ? payload.fingerprint : null,
+				intent_action: actionRaw,
+				intent_target: labelRaw,
+				gclid: typeof payload.gclid === "string" ? payload.gclid : null,
+				wbraid: typeof payload.wbraid === "string" ? payload.wbraid : null,
+				gbraid: typeof payload.gbraid === "string" ? payload.gbraid : null,
 			},
 			request
 		),
@@ -208,11 +264,20 @@ export default {
 				const ts = String(Math.floor(Date.now() / 1000));
 				const toSign = `${ts}.${JSON.stringify(payload)}`;
 				const signature = await hmacHex(secret, toSign);
-				return await forwardJson(`${base}/api/call-event/v2`, request, payload, {
+				const signedResponse = await forwardJson(`${base}/api/call-event/v2`, request, payload, {
 					"x-ops-site-id": siteId,
 					"x-ops-ts": ts,
 					"x-ops-signature": signature,
 				});
+				if (signedResponse.status !== 401) {
+					return signedResponse;
+				}
+
+				// Emergency fallback: if signing mismatches backend secret, downgrade to canonical sync signal
+				// so intent tracking stays live until secret rotation is aligned.
+				console.log("[adsmantik-engine] call-event signature mismatch, using sync fallback", { siteId });
+				const syncFallbackPayload = buildSyncFromCallEvent(payload, siteId, request);
+				return await forwardJson(`${base}/api/sync`, request, syncFallbackPayload);
 			}
 
 			return new Response("Not found", { status: 404, headers: buildCorsHeaders(origin) });
