@@ -111,7 +111,7 @@ function buildSyncFromLegacyMetrics(payload: LegacyMetricsPayload, siteId: strin
 			},
 			request
 		),
-		consent_scopes: ["analytics"],
+		consent_scopes: ["marketing"],
 	};
 }
 
