@@ -38,14 +38,28 @@ export default async function PanelRoute() {
     targetSiteId = ownedSite.id;
   } else {
     const { data: membership } = await adminClient
-      .from('site_members')
+      .from('site_memberships')
       .select('site_id')
       .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (membership) {
       targetSiteId = membership.site_id;
+    }
+  }
+
+  if (!targetSiteId) {
+    // Final fallback: first readable site under current RLS context.
+    const { data: readableSite } = await supabase
+      .from('sites')
+      .select('id')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (readableSite?.id) {
+      targetSiteId = readableSite.id;
     }
   }
 
