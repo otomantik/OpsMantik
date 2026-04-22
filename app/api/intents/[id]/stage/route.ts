@@ -11,6 +11,8 @@ import {
 } from '@/lib/oci/optimization-contract';
 import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,17 +64,24 @@ export async function POST(
       Number.isFinite((call as { version: number }).version)
         ? Math.round((call as { version: number }).version)
         : null;
-    const bodyVersionRaw = (body as { version?: unknown }).version;
-    const bodyVersion =
-      typeof bodyVersionRaw === 'number' && Number.isFinite(bodyVersionRaw)
-        ? Math.round(bodyVersionRaw)
-        : null;
-    const effectiveVersionForRpc =
-      bodyVersion === 0 && rowVersion != null ? rowVersion : bodyVersion ?? rowVersion;
-
     const access = await validateSiteAccess(siteId, user.id, supabase);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    const versionResolution = resolveMutationVersion({
+      rawVersion: (body as { version?: unknown }).version,
+      route,
+      siteId,
+      requestHeaders: req.headers,
+      fallbackVersion: rowVersion,
+      requestId,
+    });
+    if (!versionResolution.ok) {
+      return NextResponse.json(
+        { error: 'version must be an integer >= 1', code: 'INVALID_VERSION' },
+        { status: 400 }
+      );
     }
 
     const optimizationStage = resolveOptimizationStage({
@@ -105,7 +114,7 @@ export async function POST(
       p_stage: optimizationStage,
       p_actor_id: user.id,
       p_lead_score: roundedScore,
-      p_version: effectiveVersionForRpc,
+      p_version: versionResolution.version,
       p_metadata: { route, score: roundedScore, action_type: actionType, request_id: requestId },
       p_caller_phone_raw: callerPhoneRaw,
       p_caller_phone_e164: phoneE164,
@@ -113,6 +122,18 @@ export async function POST(
     });
 
     if (updateError) {
+      const code = (updateError as { code?: string }).code;
+      if (code === '40900') {
+        incrementRefactorMetric('mutation_conflict_total');
+        return NextResponse.json(
+          {
+            error: 'Concurrency conflict: the call state has changed. Please refresh.',
+            code: 'CONCURRENCY_CONFLICT',
+            latest_version_hint: rowVersion,
+          },
+          { status: 409 }
+        );
+      }
       logWarn('stage_v2_failed', { callId, optimizationStage, error: updateError.message });
       return NextResponse.json({ error: updateError.message, code: 'RPC_V2_FAILURE' }, { status: 409 });
     }

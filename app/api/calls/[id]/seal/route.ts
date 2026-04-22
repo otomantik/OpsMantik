@@ -20,6 +20,8 @@ import { verifyProbeSignature } from '@/lib/probe/verify-signature';
 import { sanitizeHelperFormPayload } from '@/lib/oci/optimization-contract';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 export const dynamic = 'force-dynamic';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
@@ -157,9 +159,6 @@ export async function POST(
     if (saleAmount != null && (Number.isNaN(saleAmount) || saleAmount < 0)) {
       return NextResponse.json({ error: 'sale_amount must be a non-negative number' }, { status: 400 });
     }
-    if (version === null) {
-      return NextResponse.json({ error: 'version is required' }, { status: 400 });
-    }
     if (saleOccurredAtRaw && !parseWithinTemporalSanityWindow(saleOccurredAtRaw)) {
       return NextResponse.json({ error: 'sale_occurred_at outside window' }, { status: 400 });
     }
@@ -193,11 +192,27 @@ export async function POST(
 
     if (fetchError || !call) return NextResponse.json({ error: 'Call not found' }, { status: 404 });
 
-    const effectiveVersion = version === 0 ? call.version : version;
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, userClient);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 404 });
+    }
+
+    const rowVersion =
+      typeof call.version === 'number' && Number.isFinite(call.version) ? Math.round(call.version) : null;
+    const versionResolution = resolveMutationVersion({
+      rawVersion: version,
+      route,
+      siteId,
+      requestHeaders: req.headers,
+      fallbackVersion: rowVersion,
+      requestId,
+    });
+    if (!versionResolution.ok) {
+      return NextResponse.json(
+        { error: 'version must be an integer >= 1', code: 'INVALID_VERSION' },
+        { status: 400 }
+      );
     }
 
     let currency: string;
@@ -251,7 +266,7 @@ export async function POST(
         backdated_ms: backdatedMs,
         approval_required: approvalRequired,
       },
-      p_version: effectiveVersion,
+      p_version: versionResolution.version,
       p_metadata: { route, request_id: requestId, source: 'seal_v2' },
       p_caller_phone_raw: phoneRaw,
       p_caller_phone_e164: phoneE164,
@@ -259,6 +274,18 @@ export async function POST(
     });
 
     if (updateError) {
+      const code = (updateError as { code?: string }).code;
+      if (code === '40900') {
+        incrementRefactorMetric('mutation_conflict_total');
+        return NextResponse.json(
+          {
+            error: 'Concurrency conflict: the call state has changed. Please refresh.',
+            code: 'CONCURRENCY_CONFLICT',
+            latest_version_hint: rowVersion,
+          },
+          { status: 409 }
+        );
+      }
       logWarn('DASHBOARD_SEAL_V2_FAILED', { callId, error: updateError.message });
       return NextResponse.json({ error: updateError.message }, { status: 409 });
     }

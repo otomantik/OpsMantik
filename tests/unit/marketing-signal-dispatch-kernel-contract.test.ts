@@ -61,3 +61,25 @@ test('primary OCI writers route marketing_signals dispatch transitions through k
     'maintenance must not use direct marketing_signals client updates for zombie rescue'
   );
 });
+
+test('sweep cleanup invalidate pulse vacuum use kernel for dispatch_status (no direct marketing_signals update)', () => {
+  const paths = [
+    ['invalidate-pending-artifacts', join(ROOT, 'lib', 'oci', 'invalidate-pending-artifacts.ts')],
+    ['cron/cleanup', join(ROOT, 'app', 'api', 'cron', 'cleanup', 'route.ts')],
+    ['cron/sweep-zombies', join(ROOT, 'app', 'api', 'cron', 'oci', 'sweep-zombies', 'route.ts')],
+    ['pulse-recovery-worker', join(ROOT, 'lib', 'oci', 'pulse-recovery-worker.ts')],
+    ['vacuum-worker', join(ROOT, 'lib', 'oci', 'vacuum-worker.ts')],
+  ] as const;
+
+  for (const [name, p] of paths) {
+    const src = readFileSync(p, 'utf8');
+    assert.ok(
+      src.includes('applyMarketingSignalDispatchBatch') || src.includes('rescueStaleMarketingSignalsProcessing'),
+      `${name} must import marketing signal dispatch kernel`
+    );
+    assert.ok(
+      !/\bupdate\s*\(\s*\{\s*dispatch_status\s*:/i.test(src),
+      `${name} must not use PostgREST dispatch_status object updates`
+    );
+  }
+});

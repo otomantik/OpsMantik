@@ -14,7 +14,7 @@ import { computeIdempotencyKey, computeCanonicalIdempotencyKey, getServerNowMs }
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';
 import { recordRouteHttpResponse } from '@/lib/route-metrics';
 import { publishToQStash, resolveAppBaseUrlForIngest } from '@/lib/ingest/publish';
-import { executeIngest } from '@/lib/ingest/worker-kernel';
+import { executeIngest } from '@/lib/ingest/execute-ingest-command';
 import { OPSMANTIK_VERSION } from '@/lib/version';
 import { applyRefactorObservability } from '@/lib/refactor/phase-context';
 

@@ -4,6 +4,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { isGhostGeoCity } from '@/lib/geo';
@@ -118,26 +119,34 @@ export async function runVacuum(): Promise<{
     const isTurkish = isTurkishOnlySite(siteId, siteName);
 
     if (isDusseldorf && isTurkish) {
-      const { error: updErr } = await adminClient
-        .from('marketing_signals')
-        .update({ dispatch_status: 'SKIPPED_NO_CLICK_ID', updated_at: new Date().toISOString() })
-        .eq('id', signalId)
-        .eq('site_id', siteId)
-        .eq('dispatch_status', 'PENDING');
-      if (!updErr) {
-        purged++;
-        logInfo('vacuum_dusseldorf_purge', { signal_id: signalId, site_id: siteId });
+      try {
+        const n = await applyMarketingSignalDispatchBatch(adminClient, {
+          siteId,
+          signalIds: [signalId],
+          expectStatus: 'PENDING',
+          newStatus: 'SKIPPED_NO_CLICK_ID',
+        });
+        if (n === 1) {
+          purged++;
+          logInfo('vacuum_dusseldorf_purge', { signal_id: signalId, site_id: siteId });
+        }
+      } catch {
+        // ignore single-row race
       }
       continue;
     }
 
-    const { error: stallErr } = await adminClient
-      .from('marketing_signals')
-      .update({ dispatch_status: 'STALLED_FOR_HUMAN_AUDIT', updated_at: new Date().toISOString() })
-      .eq('id', signalId)
-      .eq('site_id', siteId)
-      .eq('dispatch_status', 'PENDING');
-    if (!stallErr) stalled++;
+    try {
+      const n = await applyMarketingSignalDispatchBatch(adminClient, {
+        siteId,
+        signalIds: [signalId],
+        expectStatus: 'PENDING',
+        newStatus: 'STALLED_FOR_HUMAN_AUDIT',
+      });
+      if (n === 1) stalled++;
+    } catch {
+      // ignore single-row race
+    }
   }
 
   if (scanned > 0) {

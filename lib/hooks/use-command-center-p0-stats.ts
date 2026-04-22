@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 
 import useSWR from 'swr';
 
@@ -39,6 +39,8 @@ export type CommandCenterScope = 'ads' | 'all';
 export interface UseCommandCenterP0StatsOptions {
   /** When 'ads', stats are filtered to ads-attributed traffic only; when 'all', full calls table. */
   scope?: CommandCenterScope;
+  /** Site timezone used for default date ranges when override is absent. */
+  siteTimezone?: string | null;
 }
 
 export function useCommandCenterP0Stats(
@@ -51,13 +53,9 @@ export function useCommandCenterP0Stats(
 
   const dateRange = useMemo(() => {
     if (rangeOverride?.fromIso && rangeOverride?.toIso) return rangeOverride;
-    // Default to today
-    // Note: rangeOverride might be undefined initially, ensure stability
-    // Actually getTodayTrtUtcRange returns a new object every time, referential instability?
-    // The previous implementation used useMemo, so it was fine.
-    // We should keep stability logic.
-    return rangeOverride ?? getTodayTrtUtcRange();
-  }, [rangeOverride]);
+    const timezone = resolveDashboardDayTimezone(options?.siteTimezone);
+    return rangeOverride ?? getTodayTrtUtcRange(new Date(), timezone);
+  }, [rangeOverride, options?.siteTimezone]);
 
   // Ensure primitives for SWR key
   const fromIso = dateRange.fromIso;

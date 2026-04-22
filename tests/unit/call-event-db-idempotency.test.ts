@@ -11,7 +11,7 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const CALL_EVENT_V2 = join(ROOT, 'app', 'api', 'call-event', 'v2', 'route.ts');
 const CALL_EVENT_V1 = join(ROOT, 'app', 'api', 'call-event', 'route.ts');
-const WORKER_INGEST = join(ROOT, 'lib', 'ingest', 'worker-kernel.ts');
+const WORKER_INGEST = join(ROOT, 'lib', 'ingest', 'execute-ingest-command.ts');
 const PROCESS_CALL_EVENT = join(ROOT, 'lib', 'ingest', 'process-call-event.ts');
 const MIGRATION = join(ROOT, 'supabase', 'migrations', '20260228000000_call_event_signature_hash.sql');
 
@@ -39,7 +39,10 @@ test('B) signature_hash is sha256(signature) and stable', () => {
 test('C) Consent gate still prevents publish (analytics missing → 204)', () => {
   const v2 = readFileSync(CALL_EVENT_V2, 'utf8');
   const consentIdx = v2.indexOf('!hasAnalyticsConsent') !== -1 ? v2.indexOf('!hasAnalyticsConsent') : v2.indexOf('CONSENT_MISSING_HEADERS');
-  const publishCallIdx = v2.indexOf('await publishToQStash');
+  const publishCallIdx =
+    v2.indexOf('await publishCallEventIngestWorker') !== -1
+      ? v2.indexOf('await publishCallEventIngestWorker')
+      : v2.indexOf('await publishToQStash');
   assert.ok(v2.includes("status: 204"), 'consent gate (204 return) must exist');
   assert.ok(publishCallIdx > 0, 'publish call must exist');
   assert.ok(consentIdx > 0 && consentIdx < publishCallIdx, 'consent gate must run before publish');

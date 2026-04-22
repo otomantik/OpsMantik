@@ -12,12 +12,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats';
-import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 import { getBadgeStatus } from '@/lib/realtime-badge-status';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { Home, Target, Shield, MoreHorizontal, Check, Zap, Flame, LogOut } from 'lucide-react';
-import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
+import {
+  SiteRealtimeDashboardProvider,
+  useSiteRealtimeDashboard,
+} from '@/lib/contexts/site-realtime-dashboard-context';
 import Link from 'next/link';
 import { LiveClock } from './live-clock';
 import { useFunnelAnalytics } from '@/lib/hooks/use-funnel-analytics';
@@ -27,6 +30,7 @@ import './reset.css';
 import type { SiteRole } from '@/lib/auth/rbac';
 import type { OpsMantikModule } from '@/lib/types/modules';
 import { SiteModulesProvider } from '@/lib/contexts/site-modules-context';
+import { useSiteTimezone } from '@/components/context/site-locale-context';
 
 interface DashboardShellProps {
   siteId: string;
@@ -79,13 +83,29 @@ const TrafficSourceBreakdown = dynamic(
   }
 );
 
-export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange, siteRole, activeModules = [] }: DashboardShellProps) {
+export function DashboardShell(props: DashboardShellProps) {
+  return (
+    <SiteRealtimeDashboardProvider siteId={props.siteId}>
+      <DashboardShellInner {...props} />
+    </SiteRealtimeDashboardProvider>
+  );
+}
+
+function DashboardShellInner({
+  siteId,
+  siteName,
+  siteDomain,
+  initialTodayRange,
+  siteRole,
+  activeModules = [],
+}: DashboardShellProps) {
   const { t } = useTranslation();
+  const siteTimezone = useSiteTimezone();
+  const resolvedTimezone = resolveDashboardDayTimezone(siteTimezone);
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
-  // Real-time signals for the Shell
-  // Holistic View: always show ALL traffic (no ads-only filter).
-  const realtime = useRealtimeDashboard(siteId, undefined, { adsOnly: false });
+  // Single holistic realtime channel for shell badge + queue refetches (see provider).
+  const realtime = useSiteRealtimeDashboard();
 
   // Funnel analytics and CRO insights
   const { metrics, loading: analyticsLoading } = useFunnelAnalytics(siteId);
@@ -96,7 +116,7 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
   // GO3: single source of truth for queue day selection.
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
-    const { fromIso: todayStartUtcIso, toIso: todayEndUtcIso } = getTodayTrtUtcRange(nowUtc);
+    const { fromIso: todayStartUtcIso, toIso: todayEndUtcIso } = getTodayTrtUtcRange(nowUtc, resolvedTimezone);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
       // IMPORTANT: Use full TRT day [start, next day start) (same as server redirect).
@@ -109,13 +129,13 @@ export function DashboardShell({ siteId, siteName, siteDomain, initialTodayRange
     // Half-open range [yesterdayStart, todayStart)
     const toMs = todayStartUtcMs;
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
-  }, [selectedDay, initialFrom, initialTo]);
+  }, [selectedDay, initialFrom, initialTo, resolvedTimezone]);
 
   // Scope-aware HUD stats
   const { stats, loading, error: statsError } = useCommandCenterP0Stats(
     siteId,
     { fromIso: queueRange.fromIso, toIso: queueRange.toIso },
-    { scope: 'all' }
+    { scope: 'all', siteTimezone: resolvedTimezone }
   );
 
   const captured = loading ? '…' : String(stats?.sealed ?? 0);

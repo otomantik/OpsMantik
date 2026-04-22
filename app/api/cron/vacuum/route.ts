@@ -8,8 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { runVacuum } from '@/lib/oci/vacuum-worker';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 
 export const runtime = 'nodejs';
+const LOCK_KEY = 'vacuum';
+const LOCK_TTL_SEC = 300;
 
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
@@ -24,6 +27,13 @@ export async function POST(req: NextRequest) {
 }
 
 async function run() {
+  const acquired = await tryAcquireCronLock(LOCK_KEY, LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { status: 200, headers: getBuildInfoHeaders() }
+    );
+  }
   try {
     const result = await runVacuum();
     return NextResponse.json(
@@ -36,5 +46,7 @@ async function run() {
       { ok: false, error: msg },
       { status: 500, headers: getBuildInfoHeaders() }
     );
+  } finally {
+    await releaseCronLock(LOCK_KEY);
   }
 }

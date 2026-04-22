@@ -24,7 +24,13 @@ test('PR-OCI-5: cleanup cron implements stale PENDING -> STALLED_FOR_HUMAN_AUDIT
   );
 
   assert.ok(
-    src.includes("dispatch_status: 'STALLED_FOR_HUMAN_AUDIT'") || src.includes('dispatch_status: "STALLED_FOR_HUMAN_AUDIT"'),
-    'Expected cleanup cron to update dispatch_status to STALLED_FOR_HUMAN_AUDIT for stale PENDING rows'
+    src.includes("dispatch_status: 'STALLED_FOR_HUMAN_AUDIT'") ||
+      src.includes('dispatch_status: "STALLED_FOR_HUMAN_AUDIT"') ||
+      src.includes("newStatus: 'STALLED_FOR_HUMAN_AUDIT'"),
+    'Expected cleanup cron to terminalize stale PENDING rows to STALLED_FOR_HUMAN_AUDIT (kernel or direct update)'
+  );
+  assert.ok(
+    src.includes('applyMarketingSignalDispatchBatch'),
+    'Expected cleanup cron to route dispatch transition through marketing-signal kernel'
   );
 });

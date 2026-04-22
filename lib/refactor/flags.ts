@@ -29,6 +29,14 @@ export type RefactorFlags = {
   consent_provenance_shadow_enabled: boolean;
   /** PR3: canonical truth substrate shadow rows; no read cutover. */
   truth_canonical_ledger_shadow_enabled: boolean;
+  /** Integrity roadmap: enforce user mutation version contract at API boundaries. */
+  strict_mutation_version_enforce: boolean;
+  /** Integrity roadmap: truth parity operating mode. */
+  truth_parity_mode: 'off' | 'detect' | 'enforce';
+  /** Integrity roadmap: cron lock backend mode. */
+  lease_lock_mode: 'legacy' | 'shadow' | 'lease';
+  /** Integrity roadmap: disallow implicit non-UTC timezone fallback on critical paths. */
+  site_timezone_strict_mode: boolean;
 };
 
 function asBool(v: string | undefined, fallback: boolean): boolean {
@@ -37,6 +45,12 @@ function asBool(v: string | undefined, fallback: boolean): boolean {
   if (t === '1' || t === 'true' || t === 'on' || t === 'yes') return true;
   if (t === '0' || t === 'false' || t === 'off' || t === 'no') return false;
   return fallback;
+}
+
+function asEnum<T extends string>(v: string | undefined, allowed: readonly T[], fallback: T): T {
+  if (!v) return fallback;
+  const normalized = v.trim().toLowerCase();
+  return (allowed as readonly string[]).includes(normalized) ? (normalized as T) : fallback;
 }
 
 /** Defaults keep current production behavior (all specialized paths off; legacy endpoints on). */
@@ -51,5 +65,9 @@ export function getRefactorFlags(): RefactorFlags {
     legacy_endpoints_enabled: asBool(process.env.LEGACY_ENDPOINTS_ENABLED, true),
     consent_provenance_shadow_enabled: asBool(process.env.CONSENT_PROVENANCE_SHADOW_ENABLED, false),
     truth_canonical_ledger_shadow_enabled: asBool(process.env.TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED, false),
+    strict_mutation_version_enforce: asBool(process.env.STRICT_MUTATION_VERSION_ENFORCE, false),
+    truth_parity_mode: asEnum(process.env.TRUTH_PARITY_MODE, ['off', 'detect', 'enforce'] as const, 'off'),
+    lease_lock_mode: asEnum(process.env.LEASE_LOCK_MODE, ['legacy', 'shadow', 'lease'] as const, 'legacy'),
+    site_timezone_strict_mode: asBool(process.env.SITE_TIMEZONE_STRICT_MODE, false),
   };
 }

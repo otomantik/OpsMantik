@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { mutate } from 'swr';
 import { createClient } from '@/lib/supabase/client';
-import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
+import { useRegisterSiteRealtimeQueueRefetch } from '@/lib/contexts/site-realtime-dashboard-context';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { useSiteConfig } from '@/lib/hooks/use-site-config';
 import { useQueueUiState } from '@/lib/hooks/queue/use-queue-ui-state';
@@ -394,22 +394,11 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
     fetchKillFeed();
   }, [fetchUnscoredIntents, fetchKillFeed, range]);
 
-  // Realtime updates: refetch when new intents arrive
-  useRealtimeDashboard(
-    siteId,
-    {
-      onCallCreated: () => {
-        void fetchUnscoredIntents();
-        void fetchKillFeed();
-      },
-      onCallUpdated: () => {
-        void fetchUnscoredIntents();
-        void fetchKillFeed();
-      },
-    },
-    // Holistic View: always ALL traffic
-    { adsOnly: false }
-  );
+  // Refetch policy: call-level realtime is owned by SiteRealtimeDashboardProvider (dashboard shell).
+  useRegisterSiteRealtimeQueueRefetch(() => {
+    void fetchUnscoredIntents();
+    void fetchKillFeed();
+  });
 
   const handleQualified = useCallback(() => {
     // Intent was qualified, refresh the list

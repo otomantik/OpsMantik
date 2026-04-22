@@ -6,6 +6,7 @@ import { useCommandCenterP0Stats } from '@/lib/hooks/use-command-center-p0-stats
 import { TrendingUp, Activity, DollarSign, Zap } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
+import { useSiteTimezone } from '@/components/context/site-locale-context';
 
 export interface PulseProjectionWidgetsProps {
     siteId: string;
@@ -15,7 +16,8 @@ export interface PulseProjectionWidgetsProps {
 
 export function PulseProjectionWidgets({ siteId, dateRange, scope }: PulseProjectionWidgetsProps) {
     const { t } = useTranslation();
-    const { stats, loading } = useCommandCenterP0Stats(siteId, dateRange, { scope });
+    const siteTimezone = useSiteTimezone();
+    const { stats, loading } = useCommandCenterP0Stats(siteId, dateRange, { scope, siteTimezone });
 
     if (loading) {
         return (

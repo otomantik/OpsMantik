@@ -5,12 +5,13 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { SiteLocaleProvider } from '@/components/context/site-locale-context';
 import { isAdmin } from '@/lib/auth/is-admin';
-import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 import type { Metadata } from 'next';
 import type { SiteRole } from '@/lib/auth/rbac';
 import { isOpsMantikModule } from '@/lib/types/modules';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 // Canlıda eski HTML/JS cache'lenmesin; her istek güncel build ile dönsün.
 export const dynamic = 'force-dynamic';
@@ -52,11 +53,22 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   const sp = (await searchParams) || {};
   const from = Array.isArray(sp.from) ? sp.from[0] : sp.from;
   const to = Array.isArray(sp.to) ? sp.to[0] : sp.to;
+  const supabase = await createClient();
+  const { data: siteTimezoneRow } = await supabase
+    .from('sites')
+    .select('timezone')
+    .eq('id', siteId)
+    .maybeSingle();
 
   // Phase B1: If URL doesn't contain from/to, redirect to TODAY (TRT) range in UTC.
   // This happens at the server boundary to avoid hydration mismatch.
   if (!from || !to) {
-    const { fromIso, toIso } = getTodayTrtUtcRange();
+    const siteTimezone = (siteTimezoneRow as { timezone?: string | null } | null)?.timezone ?? null;
+    const resolvedTimezone = resolveDashboardDayTimezone(siteTimezone);
+    if (!siteTimezone && resolvedTimezone === 'UTC') {
+      incrementRefactorMetric('timezone_fallback_used_total');
+    }
+    const { fromIso, toIso } = getTodayTrtUtcRange(new Date(), resolvedTimezone);
     const qp = new URLSearchParams();
     // Preserve any other params if present
     for (const [k, v] of Object.entries(sp)) {
@@ -72,8 +84,6 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     qp.set('to', to ?? toIso);
     redirect(`/dashboard/site/${siteId}?${qp.toString()}`);
   }
-
-  const supabase = await createClient();
 
   const [userResult, userIsAdmin, siteResult] = await Promise.all([
     supabase.auth.getUser(),

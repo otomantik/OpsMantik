@@ -24,6 +24,7 @@ import { appendRoutingHop } from '@/lib/oci/routing-ledger';
 import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { assertLaneActive } from '@/lib/oci/kill-switch';
 import { logError, logInfo } from '@/lib/logging/logger';
+import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
@@ -141,27 +142,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, updated: 0 });
     }
 
-    const sealFailedIds: string[] = [];
-    const signalFailedIds: string[] = [];
-    const pvFailedIds: string[] = [];
-    for (const id of queueIds) {
-      const s = String(id);
-      if (s.startsWith('seal_')) sealFailedIds.push(s.slice(5));
-      else if (s.startsWith('signal_')) signalFailedIds.push(s.slice(7));
-      else if (s.startsWith('pv_')) pvFailedIds.push(s.slice(3));
-      else pvFailedIds.push(s);
-    }
-
-    const sealFatalIds: string[] = [];
-    const signalFatalIds: string[] = [];
-    const pvFatalIds: string[] = [];
-    for (const id of fatalIds) {
-      const s = String(id);
-      if (s.startsWith('seal_')) sealFatalIds.push(s.slice(5));
-      else if (s.startsWith('signal_')) signalFatalIds.push(s.slice(7));
-      else if (s.startsWith('pv_')) pvFatalIds.push(s.slice(3));
-      else pvFatalIds.push(s);
-    }
+    const { sealIds: sealFailedIds, signalIds: signalFailedIds, pvIds: pvFailedIds } = splitAckPrefixedIds(queueIds);
+    const { sealIds: sealFatalIds, signalIds: signalFatalIds, pvIds: pvFatalIds } = splitAckPrefixedIds(fatalIds);
 
     const now = await getDbNowIso();
     const requestFingerprint = [

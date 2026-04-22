@@ -1,5 +1,5 @@
 import { requireQstashSignature } from '@/lib/qstash/require-signature';
-import { executeIngest } from '@/lib/ingest/worker-kernel';
+import { executeIngest } from '@/lib/ingest/execute-ingest-command';
 
 export const runtime = 'nodejs';
 

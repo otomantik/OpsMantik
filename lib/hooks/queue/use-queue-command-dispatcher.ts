@@ -15,13 +15,20 @@ export function useQueueCommandDispatcher() {
       helperFormPayload?: HelperFormPayload | null
     ) => {
       const finalScore = leadScore >= 100 || leadScore > 5 ? 100 : leadScore * 20;
+      const intentVersion =
+        typeof intent.version === 'number' && Number.isFinite(intent.version) && intent.version >= 1
+          ? Math.round(intent.version)
+          : null;
+      if (intentVersion == null) {
+        throw new Error('Missing or invalid intent version');
+      }
       const body: Record<string, unknown> = {
         sale_amount: saleAmount ?? null,
         currency,
         lead_score: finalScore,
         action_type: finalScore >= 100 ? 'won' : finalScore >= 80 ? 'offered' : 'contacted',
         helper_form_payload: helperFormPayload ?? null,
-        version: typeof intent.version === 'number' && Number.isFinite(intent.version) ? intent.version : 0,
+        version: intentVersion,
       };
       if (callerPhone?.trim()) {
         body.caller_phone = callerPhone.trim().slice(0, 64);

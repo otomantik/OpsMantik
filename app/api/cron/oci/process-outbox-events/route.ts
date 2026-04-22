@@ -14,8 +14,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { runProcessOutbox } from '@/lib/oci/outbox/process-outbox';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
 
 export const runtime = 'nodejs';
+const LOCK_KEY = 'oci-process-outbox-events';
+const LOCK_TTL_SEC = 300;
 
 function toHttpResponse(result: Awaited<ReturnType<typeof runProcessOutbox>>): NextResponse {
   const headers = getBuildInfoHeaders();
@@ -46,13 +49,35 @@ function toHttpResponse(result: Awaited<ReturnType<typeof runProcessOutbox>>): N
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  const result = await runProcessOutbox();
-  return toHttpResponse(result);
+  const acquired = await tryAcquireCronLock(LOCK_KEY, LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { status: 200, headers: getBuildInfoHeaders() }
+    );
+  }
+  try {
+    const result = await runProcessOutbox();
+    return toHttpResponse(result);
+  } finally {
+    await releaseCronLock(LOCK_KEY);
+  }
 }
 
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  const result = await runProcessOutbox();
-  return toHttpResponse(result);
+  const acquired = await tryAcquireCronLock(LOCK_KEY, LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { status: 200, headers: getBuildInfoHeaders() }
+    );
+  }
+  try {
+    const result = await runProcessOutbox();
+    return toHttpResponse(result);
+  } finally {
+    await releaseCronLock(LOCK_KEY);
+  }
 }

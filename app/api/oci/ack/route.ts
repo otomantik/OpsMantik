@@ -27,6 +27,7 @@ import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
 import { appendRoutingHop } from '@/lib/oci/routing-ledger';
 import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { assertLaneActive } from '@/lib/oci/kill-switch';
+import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
@@ -131,23 +132,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const sealIds: string[] = [];
-    const signalIds: string[] = [];
-    const pvIds: string[] = [];
-    const projIds: string[] = [];   // call_funnel_projection rows (proj_ prefix)
-    const adjIds: string[] = [];    // conversion_adjustments rows (adj_ prefix)
+    const {
+      sealIds,
+      signalIds,
+      pvIds,
+      projIds, // call_funnel_projection rows (proj_ prefix)
+      adjIds, // conversion_adjustments rows (adj_ prefix)
+    } = splitAckPrefixedIds(queueIds);
     const sealSkippedIds: string[] = [];
     const signalSkippedIds: string[] = [];
     const pvSkippedIds: string[] = [];
-    for (const id of queueIds) {
-      const s = String(id);
-      if (s.startsWith('seal_')) sealIds.push(s.slice(5));
-      else if (s.startsWith('signal_')) signalIds.push(s.slice(7));
-      else if (s.startsWith('pv_')) pvIds.push(s.slice(3));
-      else if (s.startsWith('proj_')) projIds.push(s.slice(5));
-      else if (s.startsWith('adj_')) adjIds.push(s.slice(4));
-      else pvIds.push(s);
-    }
     for (const id of skippedIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealSkippedIds.push(s.slice(5));

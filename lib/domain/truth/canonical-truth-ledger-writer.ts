@@ -12,6 +12,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 import { getRefactorFlags } from '@/lib/refactor/flags';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
+import { recordTruthParityMismatch } from '@/lib/domain/truth/truth-parity';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -99,12 +100,25 @@ export async function appendCanonicalTruthLedgerBestEffort(input: AppendCanonica
     await appendCanonicalTruthLedger(input);
   } catch (error) {
     incrementRefactorMetric('truth_canonical_ledger_failure_total');
+    const mode = getRefactorFlags().truth_parity_mode;
+    if (mode === 'detect' || mode === 'enforce') {
+      await recordTruthParityMismatch({
+        siteId: input.siteId,
+        streamKind: input.streamKind,
+        idempotencyKey: input.idempotencyKey,
+        payload: input.payload,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     logWarn('appendCanonicalTruthLedgerBestEffort failed', {
       siteId: input.siteId,
       streamKind: input.streamKind,
       idempotencyKey: input.idempotencyKey,
       error: error instanceof Error ? error.message : String(error),
     });
+    if (mode === 'enforce') {
+      throw error;
+    }
   }
 }
 

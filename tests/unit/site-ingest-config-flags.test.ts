@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SITE_INGEST_CONFIG_PATH = join(process.cwd(), 'lib', 'ingest', 'site-ingest-config.ts');
-const WORKER_ROUTE_PATH = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
+const WORKER_ROUTE_PATH = join(process.cwd(), 'lib', 'ingest', 'execute-ingest-command.ts');
 const PROCESS_SYNC_EVENT_PATH = join(process.cwd(), 'lib', 'ingest', 'process-sync-event.ts');
 
 test('getSiteIngestConfig: empty/error returns strict default (all flags defined, no undefined access)', () => {

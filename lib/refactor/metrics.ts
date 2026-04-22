@@ -41,6 +41,21 @@ export const REFACTOR_METRIC_NAMES = [
   'truth_engine_scoring_lineage_parity_match_total',
   'truth_engine_scoring_lineage_parity_mismatch_total',
   'truth_engine_scoring_lineage_parity_skipped_total',
+  'mutation_version_missing_total',
+  'mutation_version_zero_total',
+  'mutation_version_invalid_total',
+  'mutation_conflict_total',
+  'mutation_compat_bypass_used_total',
+  'truth_parity_mismatch_total',
+  'truth_repair_backlog',
+  'truth_repair_success_total',
+  'lease_acquire_success',
+  'lease_acquire_denied',
+  'lease_steal_total',
+  'lease_heartbeat_lag_ms',
+  'fastpath_unclaimed_reject_total',
+  'queue_terminal_without_claim_total',
+  'timezone_fallback_used_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

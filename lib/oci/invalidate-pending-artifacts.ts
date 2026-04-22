@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { logError } from '@/lib/logging/logger';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 
 export async function invalidatePendingOciArtifactsForCall(
   callId: string,
@@ -7,7 +8,19 @@ export async function invalidatePendingOciArtifactsForCall(
   reason: string,
   now: string
 ): Promise<void> {
-  const [queueResult, outboxResult, signalPendingResult, signalProcessingResult] = await Promise.all([
+  const [{ data: pendingSigRows }, { data: processingSigRows }, queueResult, outboxResult] = await Promise.all([
+    adminClient
+      .from('marketing_signals')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('call_id', callId)
+      .eq('dispatch_status', 'PENDING'),
+    adminClient
+      .from('marketing_signals')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('call_id', callId)
+      .eq('dispatch_status', 'PROCESSING'),
     adminClient
       .from('offline_conversion_queue')
       .update({
@@ -30,22 +43,6 @@ export async function invalidatePendingOciArtifactsForCall(
       .eq('site_id', siteId)
       .eq('call_id', callId)
       .in('status', ['PENDING', 'PROCESSING']),
-    adminClient
-      .from('marketing_signals')
-      .update({
-        dispatch_status: 'JUNK_ABORTED',
-      })
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .eq('dispatch_status', 'PENDING'),
-    adminClient
-      .from('marketing_signals')
-      .update({
-        dispatch_status: 'FAILED',
-      })
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .eq('dispatch_status', 'PROCESSING'),
   ]);
 
   if (queueResult.error) {
@@ -54,10 +51,42 @@ export async function invalidatePendingOciArtifactsForCall(
   if (outboxResult.error) {
     logError('INVALIDATE_OCI_OUTBOX_FAILED', { call_id: callId, site_id: siteId, reason, error: outboxResult.error.message });
   }
-  if (signalPendingResult.error) {
-    logError('INVALIDATE_OCI_SIGNALS_PENDING_FAILED', { call_id: callId, site_id: siteId, reason, error: signalPendingResult.error.message });
+
+  const pendingIds = (Array.isArray(pendingSigRows) ? pendingSigRows : []).map((r: { id: string }) => r.id);
+  const processingIds = (Array.isArray(processingSigRows) ? processingSigRows : []).map((r: { id: string }) => r.id);
+
+  try {
+    if (pendingIds.length > 0) {
+      await applyMarketingSignalDispatchBatch(adminClient, {
+        siteId,
+        signalIds: pendingIds,
+        expectStatus: 'PENDING',
+        newStatus: 'JUNK_ABORTED',
+      });
+    }
+  } catch (e) {
+    logError('INVALIDATE_OCI_SIGNALS_PENDING_FAILED', {
+      call_id: callId,
+      site_id: siteId,
+      reason,
+      error: e instanceof Error ? e.message : String(e),
+    });
   }
-  if (signalProcessingResult.error) {
-    logError('INVALIDATE_OCI_SIGNALS_PROCESSING_FAILED', { call_id: callId, site_id: siteId, reason, error: signalProcessingResult.error.message });
+  try {
+    if (processingIds.length > 0) {
+      await applyMarketingSignalDispatchBatch(adminClient, {
+        siteId,
+        signalIds: processingIds,
+        expectStatus: 'PROCESSING',
+        newStatus: 'FAILED',
+      });
+    }
+  } catch (e) {
+    logError('INVALIDATE_OCI_SIGNALS_PROCESSING_FAILED', {
+      call_id: callId,
+      site_id: siteId,
+      reason,
+      error: e instanceof Error ? e.message : String(e),
+    });
   }
 }

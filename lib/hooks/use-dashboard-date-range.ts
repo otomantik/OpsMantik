@@ -15,6 +15,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useCallback } from 'react';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { useSiteTimezone } from '@/components/context/site-locale-context';
+import { dateKeyToUtcRange, getTodayDateKey, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 
 export interface DateRange {
   from: Date;
@@ -36,6 +38,7 @@ export function useDashboardDateRange(siteId: string) {
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const siteTimezone = resolveDashboardDayTimezone(useSiteTimezone());
 
   // Parse URL params (expects ISO strings in UTC)
   const fromParam = searchParams.get('from');
@@ -81,44 +84,58 @@ export function useDashboardDateRange(siteId: string) {
 
   // Apply preset
   const applyPreset = useCallback((presetValue: string) => {
-    const now = new Date();
-    let from: Date;
-    let to: Date = new Date(now);
-    to.setHours(23, 59, 59, 999);
+    const todayKey = getTodayDateKey(siteTimezone);
+    const todayRange = dateKeyToUtcRange(todayKey, siteTimezone);
+    const shiftDateKey = (key: string, days: number): string => {
+      const [y, m, d] = key.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0, 0));
+      dt.setUTCDate(dt.getUTCDate() + days);
+      const yy = dt.getUTCFullYear();
+      const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(dt.getUTCDate()).padStart(2, '0');
+      return `${yy}-${mm}-${dd}`;
+    };
+    let fromIso: string;
+    let toIso: string;
 
     switch (presetValue) {
-      case 'today':
-        from = new Date(now);
-        from.setHours(0, 0, 0, 0);
+      case 'today': {
+        fromIso = todayRange.fromIso;
+        toIso = todayRange.toIso;
         break;
-      case 'yesterday':
-        from = new Date(now);
-        from.setDate(from.getDate() - 1);
-        from.setHours(0, 0, 0, 0);
-        to = new Date(now);
-        to.setDate(to.getDate() - 1);
-        to.setHours(23, 59, 59, 999);
+      }
+      case 'yesterday': {
+        const yKey = shiftDateKey(todayKey, -1);
+        const yRange = dateKeyToUtcRange(yKey, siteTimezone);
+        fromIso = yRange.fromIso;
+        toIso = yRange.toIso;
         break;
-      case '7d':
-        from = new Date(now);
-        from.setDate(from.getDate() - 7);
-        from.setHours(0, 0, 0, 0);
+      }
+      case '7d': {
+        const fromKey = shiftDateKey(todayKey, -7);
+        fromIso = dateKeyToUtcRange(fromKey, siteTimezone).fromIso;
+        toIso = todayRange.toIso;
         break;
-      case '30d':
-        from = new Date(now);
-        from.setDate(from.getDate() - 30);
-        from.setHours(0, 0, 0, 0);
+      }
+      case '30d': {
+        const fromKey = shiftDateKey(todayKey, -30);
+        fromIso = dateKeyToUtcRange(fromKey, siteTimezone).fromIso;
+        toIso = todayRange.toIso;
         break;
-      case 'month':
-        from = new Date(now.getFullYear(), now.getMonth(), 1);
-        from.setHours(0, 0, 0, 0);
+      }
+      case 'month': {
+        const [y, m] = todayKey.split('-');
+        const monthStartKey = `${y}-${m}-01`;
+        fromIso = dateKeyToUtcRange(monthStartKey, siteTimezone).fromIso;
+        toIso = todayRange.toIso;
         break;
+      }
       default:
         return;
     }
 
-    updateRange({ from, to });
-  }, []);
+    updateRange({ from: new Date(fromIso), to: new Date(toIso) });
+  }, [siteTimezone, updateRange]);
 
   // Update range in URL
   const updateRange = useCallback((range: DateRange) => {

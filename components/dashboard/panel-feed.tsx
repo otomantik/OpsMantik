@@ -63,6 +63,13 @@ export function PanelFeed({
       return { success: false, error: t('toast.failedUpdate') };
     }
     const { intent } = pendingAction;
+    const intentVersion =
+      typeof intent.version === 'number' && Number.isFinite(intent.version) && intent.version >= 1
+        ? Math.round(intent.version)
+        : null;
+    if (intentVersion == null) {
+      return { success: false, error: t('toast.failedUpdate') };
+    }
 
     try {
       const res = await fetch(`/api/intents/${intent.id}/stage`, {
@@ -73,8 +80,7 @@ export function PanelFeed({
           score,
           action_type: actionType,
           helper_form_payload: helperFormPayload ?? null,
-          version:
-            typeof intent.version === 'number' && Number.isFinite(intent.version) ? intent.version : 0,
+          version: intentVersion,
         })
       });
       const result = await res.json().catch(() => ({}));

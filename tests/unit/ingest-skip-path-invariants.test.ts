@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROUTE_PATH = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
+const ROUTE_PATH = join(process.cwd(), 'lib', 'ingest', 'execute-ingest-command.ts');
 
 test('skip path: tryInsertIdempotencyKey called with billable: false', () => {
   const src = readFileSync(ROUTE_PATH, 'utf8');

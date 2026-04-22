@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logInfo, logError } from '@/lib/logging/logger';
@@ -189,9 +190,9 @@ async function runCleanup(req: NextRequest) {
 
     // Phase 4b: Terminalize stale PENDING marketing_signals for human review (30d default)
     const cutoffPendingStale = new Date(Date.now() - daysPendingStale * 24 * 60 * 60 * 1000).toISOString();
-    const { data: pendingIds, error: pendingSelectErr } = await adminClient
+    const { data: pendingRows, error: pendingSelectErr } = await adminClient
       .from('marketing_signals')
-      .select('id')
+      .select('id, site_id')
       .eq('dispatch_status', 'PENDING')
       .lt('created_at', cutoffPendingStale)
       .limit(limit);
@@ -202,21 +203,40 @@ async function runCleanup(req: NextRequest) {
         { status: 500 }
       );
     }
-    const ids = (pendingIds ?? []).map((r: { id: string }) => r.id);
-    if (ids.length > 0) {
-      const { error: pendingUpdateErr } = await adminClient
-        .from('marketing_signals')
-        .update({ dispatch_status: 'STALLED_FOR_HUMAN_AUDIT' })
-        .in('id', ids)
-        .eq('dispatch_status', 'PENDING');
-      if (pendingUpdateErr) {
-        logError('CLEANUP_STALE_PENDING_UPDATE_FAIL', { error: pendingUpdateErr.message });
-        return NextResponse.json(
-          { error: pendingUpdateErr.message, step: 'stall_stale_pending_marketing_signals' },
-          { status: 500 }
-        );
+    const rows = Array.isArray(pendingRows) ? (pendingRows as Array<{ id: string; site_id: string }>) : [];
+    const bySite = new Map<string, string[]>();
+    for (const r of rows) {
+      const list = bySite.get(r.site_id) ?? [];
+      list.push(r.id);
+      bySite.set(r.site_id, list);
+    }
+    const CHUNK = 200;
+    let stalledTotal = 0;
+    for (const [sigSiteId, ids] of bySite) {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        try {
+          const n = await applyMarketingSignalDispatchBatch(adminClient, {
+            siteId: sigSiteId,
+            signalIds: chunk,
+            expectStatus: 'PENDING',
+            newStatus: 'STALLED_FOR_HUMAN_AUDIT',
+          });
+          stalledTotal += n;
+        } catch (e) {
+          logError('CLEANUP_STALE_PENDING_KERNEL_FAIL', {
+            site_id: sigSiteId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+          return NextResponse.json(
+            { error: e instanceof Error ? e.message : String(e), step: 'stall_stale_pending_marketing_signals' },
+            { status: 500 }
+          );
+        }
       }
-      stalePendingFailed = ids.length;
+    }
+    if (stalledTotal > 0) {
+      stalePendingFailed = stalledTotal;
       logInfo('CLEANUP_STALE_PENDING_STALLED', { count: stalePendingFailed, days: daysPendingStale });
     }
 

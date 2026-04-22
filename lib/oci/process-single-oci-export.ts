@@ -4,6 +4,8 @@ import { getProvider } from '@/lib/providers/registry';
 import { queueRowToConversionJob, type QueueRow } from '@/lib/cron/process-offline-conversions';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { buildQueueTransitionErrorPayload } from '@/lib/oci/queue-transition-ledger';
+import { getRefactorFlags } from '@/lib/refactor/flags';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 async function decryptCredentials(ciphertext: string): Promise<unknown> {
   const vault = await import('@/lib/security/vault').catch(() => null);
@@ -22,7 +24,7 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
     // 1. Fetch the queue row and site sync method
     const { data: row, error: fetchErr } = await adminClient
       .from('offline_conversion_queue')
-      .select('*, sites!inner(oci_sync_method)')
+      .select('*, sites!inner(oci_sync_method), claimed_at, claimed_by')
       .eq('id', queueId)
       .eq('site_id', siteId)
       .maybeSingle();
@@ -33,6 +35,23 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
     }
 
     const qRow = row as QueueRow;
+    const claimEvidence =
+      qRow.status === 'PROCESSING' &&
+      Boolean((row as { claimed_at?: string | null }).claimed_at) &&
+      Boolean((row as { claimed_by?: string | null }).claimed_by);
+    if (!claimEvidence) {
+      incrementRefactorMetric('fastpath_unclaimed_reject_total');
+      const mode = getRefactorFlags().truth_parity_mode;
+      if (mode === 'enforce') {
+        logWarn(`${prefix} Unclaimed fast-path export rejected`, { siteId, queueId, status: qRow.status ?? null });
+        return { ok: false, error: 'UNCLAIMED_FASTPATH' };
+      }
+      logWarn(`${prefix} Unclaimed fast-path export observed in detect mode`, {
+        siteId,
+        queueId,
+        status: qRow.status ?? null,
+      });
+    }
     const siteRaw = (row as any).sites;
     const syncMethod = siteRaw?.oci_sync_method || 'script';
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { rescueStaleMarketingSignalsProcessing } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { getBuildInfoHeaders } from '@/lib/build-info';
@@ -199,20 +200,11 @@ async function runSweep() {
     // Phase 2.5: OCI Signals Zombie Sweeper (PROCESSING)
     // ─────────────────────────────────────────────────────────────────────────
     try {
-        const { data: signalsRescued, error: signalsError } = await adminClient
-            .from('marketing_signals')
-            .update({ dispatch_status: 'PENDING', updated_at: new Date().toISOString() })
-            .eq('dispatch_status', 'PROCESSING')
-            .lt('updated_at', new Date(Date.now() - SCRIPT_ACK_TIMEOUT_MINUTES * 60 * 1000).toISOString())
-            .select('id');
-
-        if (signalsError) {
-            logError('sweep_zombies_signals_failed', { error: signalsError.message });
-        } else {
-            stats.signalsRescued = signalsRescued?.length ?? 0;
-            if (stats.signalsRescued > 0) {
-                logInfo('sweep_zombies_signals_rescued', { count: stats.signalsRescued });
-            }
+        const cutoffIso = new Date(Date.now() - SCRIPT_ACK_TIMEOUT_MINUTES * 60 * 1000).toISOString();
+        const signalsRescued = await rescueStaleMarketingSignalsProcessing(adminClient, cutoffIso);
+        stats.signalsRescued = signalsRescued;
+        if (stats.signalsRescued > 0) {
+            logInfo('sweep_zombies_signals_rescued', { count: stats.signalsRescued });
         }
     } catch (err) {
         logError('sweep_zombies_signals_error', { error: err instanceof Error ? err.message : String(err) });

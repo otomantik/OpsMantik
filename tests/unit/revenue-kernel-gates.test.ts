@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 
 const SYNC_ROUTE_PATH = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
-const WORKER_INGEST_PATH = join(process.cwd(), 'lib', 'ingest', 'worker-kernel.ts');
+const WORKER_INGEST_PATH = join(process.cwd(), 'lib', 'ingest', 'execute-ingest-command.ts');
 const SYNC_GATES_PATH = join(process.cwd(), 'lib', 'ingest', 'sync-gates.ts');
 const QUOTA_LIB_PATH = join(process.cwd(), 'lib', 'quota.ts');
 const RECONCILIATION_LIB_PATH = join(process.cwd(), 'lib', 'reconciliation.ts');
@@ -79,9 +79,16 @@ test('PR gate: quota reject updates idempotency row billable=false', () => {
 test('PR gate: QStash failure path writes fallback (sync route)', () => {
   const src = readFileSync(SYNC_ROUTE_PATH, 'utf8');
   const publishCall = src.indexOf('await doPublish(') !== -1 ? src.indexOf('await doPublish(') : src.indexOf('publishToQStash({');
-  const fallbackCall = src.indexOf('doInsertFallback(');
-  assert.ok(publishCall !== -1 && fallbackCall !== -1, 'publish and fallback call must exist');
-  assert.ok(publishCall < fallbackCall, 'fallback is in catch of publish failure');
+  assert.ok(publishCall !== -1, 'publish path (doPublish / QStash) must exist');
+  const catchIdx = src.indexOf('} catch (err)', publishCall);
+  assert.ok(catchIdx !== -1, 'catch after publish try must exist');
+  const catchSlice = src.slice(catchIdx, catchIdx + 1200);
+  assert.ok(
+    catchSlice.includes('runDirectWorker') && catchSlice.includes('ingest_publish_failures'),
+    'catch must attempt direct-worker recovery and record ingest_publish_failures on hard failure',
+  );
+  const fallbackWorker = catchSlice.indexOf('runDirectWorker');
+  assert.ok(publishCall < catchIdx + fallbackWorker, 'degraded recovery runs only after publish failure');
 });
 
 test('PR gate: idempotency DB error must ack and MUST NOT persist (worker)', () => {

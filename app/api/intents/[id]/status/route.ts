@@ -15,6 +15,8 @@ import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
 import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
+import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +56,7 @@ export async function POST(
     // Lookup site_id (do not trust client).
     const { data: call, error: callError } = await adminClient
       .from('calls')
-      .select('id, site_id')
+      .select('id, site_id, version')
       .eq('id', callId)
       .single();
 
@@ -95,23 +97,46 @@ export async function POST(
 
     const targetStage = actionType === 'restore' ? 'contacted' : 'junk';
 
-    // Phase 2: Authoritative SQL FSM
-    // Redundant TS-level check removed.
+    const rowVersion =
+      typeof (call as { version?: unknown }).version === 'number' &&
+      Number.isFinite((call as { version: number }).version)
+        ? Math.round((call as { version: number }).version)
+        : null;
+    const versionResolution = resolveMutationVersion({
+      rawVersion: body.version,
+      route,
+      siteId,
+      requestHeaders: req.headers,
+      fallbackVersion: rowVersion,
+      requestId,
+    });
+    if (!versionResolution.ok) {
+      return NextResponse.json(
+        { error: 'version must be an integer >= 1', code: 'INVALID_VERSION' },
+        { status: 400 }
+      );
+    }
+
     const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
       p_call_id: callId,
       p_site_id: siteId,
       p_stage: targetStage,
       p_actor_id: user.id,
       p_lead_score: lead_score !== undefined ? lead_score : null,
-      p_version: body.version ?? null, // Use version for optimistic concurrency
+      p_version: versionResolution.version,
       p_metadata: { route, request_id: requestId, user_id: user.id },
     });
 
     if (updateError) {
       const code = (updateError as { code?: string }).code;
       if (code === '40900') {
+        incrementRefactorMetric('mutation_conflict_total');
         return NextResponse.json(
-          { error: 'Concurrency conflict: the call state has changed. Please refresh.', code: 'CONCURRENCY_CONFLICT' },
+          {
+            error: 'Concurrency conflict: the call state has changed. Please refresh.',
+            code: 'CONCURRENCY_CONFLICT',
+            latest_version_hint: rowVersion,
+          },
           { status: 409 }
         );
       }

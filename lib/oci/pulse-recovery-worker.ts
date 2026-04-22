@@ -9,6 +9,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { logInfo, logWarn } from '@/lib/logging/logger';
@@ -184,21 +185,50 @@ export async function runPulseRecovery(): Promise<{
     } else {
       const nextCount = count + 1;
       const isExhausted = nextCount >= MAX_RECOVERY_ATTEMPTS;
-      const { error: incErr } = await adminClient
-        .from('marketing_signals')
-        .update({
-          recovery_attempt_count: nextCount,
-          last_recovery_attempt_at: now.toISOString(),
-          ...(isExhausted ? { dispatch_status: 'SKIPPED_NO_CLICK_ID' } : {}),
-        })
-        .eq('id', signalId)
-        .eq('site_id', siteId)
-        .eq('dispatch_status', 'PENDING');
+      if (isExhausted) {
+        try {
+          const transitioned = await applyMarketingSignalDispatchBatch(adminClient, {
+            siteId,
+            signalIds: [signalId],
+            expectStatus: 'PENDING',
+            newStatus: 'SKIPPED_NO_CLICK_ID',
+          });
+          if (transitioned === 1) {
+            const { error: patchErr } = await adminClient
+              .from('marketing_signals')
+              .update({
+                recovery_attempt_count: nextCount,
+                last_recovery_attempt_at: now.toISOString(),
+              })
+              .eq('id', signalId)
+              .eq('site_id', siteId)
+              .eq('dispatch_status', 'SKIPPED_NO_CLICK_ID');
+            if (patchErr) {
+              logWarn('pulse_recovery_exhausted_patch_failed', { signal_id: signalId, error: patchErr.message });
+            } else {
+              exhausted++;
+            }
+          }
+        } catch (e) {
+          logWarn('pulse_recovery_exhausted_transition_failed', {
+            signal_id: signalId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      } else {
+        const { error: incErr } = await adminClient
+          .from('marketing_signals')
+          .update({
+            recovery_attempt_count: nextCount,
+            last_recovery_attempt_at: now.toISOString(),
+          })
+          .eq('id', signalId)
+          .eq('site_id', siteId)
+          .eq('dispatch_status', 'PENDING');
 
-      if (incErr) {
-        logWarn('pulse_recovery_increment_failed', { signal_id: signalId, error: incErr.message });
-      } else if (isExhausted) {
-        exhausted++;
+        if (incErr) {
+          logWarn('pulse_recovery_increment_failed', { signal_id: signalId, error: incErr.message });
+        }
       }
     }
     processed++;
