@@ -9,6 +9,7 @@ import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 import { LogOut } from 'lucide-react';
+import { isAdmin } from '@/lib/auth/is-admin';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -19,6 +20,11 @@ export default async function PanelRoute() {
 
   if (!user) {
     redirect('/login');
+  }
+
+  const userIsAdmin = await isAdmin();
+  if (userIsAdmin) {
+    redirect('/dashboard');
   }
 
   const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);

@@ -132,7 +132,7 @@ function buildSyncFromLegacyMetrics(payload: LegacyMetricsPayload, siteId: strin
 			},
 			request
 		),
-		consent_scopes: ["marketing"],
+		consent_scopes: ["analytics", "marketing"],
 	};
 }
 
@@ -174,7 +174,7 @@ function buildSyncFromCallEvent(payload: CallEventPayload, siteId: string, reque
 			},
 			request
 		),
-		consent_scopes: ["marketing"],
+		consent_scopes: ["analytics", "marketing"],
 	};
 }
 

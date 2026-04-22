@@ -57,7 +57,6 @@ export function SitesManager() {
     const { data: sitesData, error: sitesError } = await supabase
       .from('sites')
       .select('id, name, domain, public_id')
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (sitesError) {

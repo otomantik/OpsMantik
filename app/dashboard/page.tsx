@@ -58,7 +58,7 @@ export default async function DashboardPage() {
     redirect('/panel');
   }
 
-  if (siteCount === 1 && sites && sites[0]) {
+  if (!userIsAdmin && siteCount === 1 && sites && sites[0]) {
     redirect(`/dashboard/site/${sites[0].id}`);
   }
 
