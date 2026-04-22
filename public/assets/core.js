@@ -1282,8 +1282,15 @@
       return;
     }
     if (typeof console !== "undefined") {
-      console.warn("[OpsMantik] call-event not sent: missing proxyUrl or signing secret");
+      console.warn("[OpsMantik] call-event sent unsigned: missing proxyUrl or signing secret");
     }
+    fetch(callEventUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true
+    }).catch(function() {
+    });
   }
   function sendPageViewPulse() {
     return;

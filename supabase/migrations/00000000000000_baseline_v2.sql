@@ -4,11 +4,25 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE public.sites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   public_id text NOT NULL UNIQUE,
   name text NOT NULL,
+  domain text NULL,
+  locale text NOT NULL DEFAULT 'en',
+  currency text NOT NULL DEFAULT 'TRY',
   timezone text NOT NULL DEFAULT 'UTC',
+  active_modules text[] NOT NULL DEFAULT ARRAY['dashboard']::text[],
+  config jsonb NOT NULL DEFAULT '{}'::jsonb,
+  oci_sync_method text NOT NULL DEFAULT 'script',
+  oci_api_key text NULL,
+  oci_config jsonb NOT NULL DEFAULT '{}'::jsonb,
+  default_country_iso text NOT NULL DEFAULT 'TR',
+  default_aov numeric(12,2) NOT NULL DEFAULT 0,
+  intent_weights jsonb NOT NULL DEFAULT '{}'::jsonb,
+  min_conversion_value_cents integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (domain),
   CHECK (timezone = 'UTC' OR timezone ~ '^[A-Za-z]+/[A-Za-z0-9_+-]+$')
 );
 
@@ -321,6 +335,9 @@ ALTER TABLE public.ack_receipt_ledger ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY sites_membership_read ON public.sites
 FOR SELECT USING (EXISTS (SELECT 1 FROM public.site_memberships m WHERE m.site_id = sites.id AND m.user_id = auth.uid()));
+
+CREATE POLICY sites_owner_read ON public.sites
+FOR SELECT USING (sites.user_id = auth.uid());
 
 CREATE POLICY site_memberships_self_read ON public.site_memberships
 FOR SELECT USING (site_memberships.user_id = auth.uid());

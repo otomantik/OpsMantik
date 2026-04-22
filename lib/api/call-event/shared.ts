@@ -39,30 +39,74 @@ function normalizeDialTarget(raw: string): string | null {
 function canonicalizeWhatsAppTarget(raw: string): string | null {
   const t = raw.trim();
   const lower = t.toLowerCase();
-  if (!lower.startsWith('whatsapp:')) return null;
-  const payload = t.slice('whatsapp:'.length).trim();
-  const normalizedPhone = normalizeDialTarget(payload);
-  if (!normalizedPhone) return null;
-  return `whatsapp:${normalizedPhone}`;
+  if (
+    !lower.startsWith('whatsapp:') &&
+    !lower.startsWith('whatsapp://') &&
+    !lower.includes('wa.me') &&
+    !lower.includes('whatsapp.com') &&
+    !lower.includes('chat.whatsapp.com') &&
+    !lower.includes('joinchat')
+  ) {
+    return null;
+  }
+
+  const phoneFromQuery = t.match(/[?&]phone=([^&#]+)/i)?.[1] ?? null;
+  const phoneFromWaMe = t.match(/wa\.me\/([^/?#]+)/i)?.[1] ?? null;
+  const phoneFromScheme = t.match(/^whatsapp:\s*(.+)$/i)?.[1] ?? null;
+  const rawPhoneCandidate = phoneFromQuery ?? phoneFromWaMe ?? phoneFromScheme ?? '';
+  let decodedPhoneCandidate = rawPhoneCandidate;
+  try {
+    decodedPhoneCandidate = decodeURIComponent(rawPhoneCandidate);
+  } catch {
+    decodedPhoneCandidate = rawPhoneCandidate;
+  }
+  const normalizedPhone = normalizeDialTarget(decodedPhoneCandidate);
+  if (normalizedPhone) {
+    return `whatsapp:${normalizedPhone}`;
+  }
+
+  const hostMatch = t.match(/^https?:\/\/([^/?#]+)/i);
+  const host = (hostMatch?.[1] ?? '').toLowerCase();
+  const pathMatch = t.match(/^https?:\/\/[^/?#]+\/([^?#]+)/i);
+  const path = (pathMatch?.[1] ?? '').replace(/^\/+/, '');
+  if (host === 'chat.whatsapp.com') {
+    const inviteCode = path.split('/')[0] || 'unknown';
+    return `whatsapp:joinchat/${inviteCode}`;
+  }
+  if ((host === 'api.whatsapp.com' || host === 'web.whatsapp.com') && path.toLowerCase().startsWith('joinchat')) {
+    const inviteCode = path.replace(/^joinchat\/?/i, '') || 'unknown';
+    return `whatsapp:joinchat/${inviteCode}`;
+  }
+
+  const canonicalUrl = t
+    .replace(/^https?:\/\//i, '')
+    .replace(/\?.*$/, '')
+    .replace(/#.*$/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  return canonicalUrl ? `whatsapp:${canonicalUrl}` : 'whatsapp:unknown';
 }
 
 export function normalizePhoneTarget(raw: string): string {
+  // Keep a stable normalized target for dedupe. Do not over-normalize WhatsApp URLs.
   const t = raw.trim();
   const whatsappTarget = canonicalizeWhatsAppTarget(t);
   if (whatsappTarget) return whatsappTarget;
   if (t.toLowerCase().startsWith('tel:')) {
     return normalizeDialTarget(t.slice(4)) ?? '';
   }
+  // For plain numbers, normalize to digits/+ only.
   if (/^\+?\d[\d\s().-]{6,}$/.test(t)) {
     return normalizeDialTarget(t) ?? '';
   }
-  return '';
+  return t;
 }
 
 export function inferIntentAction(phoneOrHref: string): 'phone' | 'whatsapp' {
   const normalizedTarget = normalizePhoneTarget(phoneOrHref).toLowerCase();
   const v = phoneOrHref.toLowerCase();
   if (normalizedTarget.startsWith('whatsapp:')) return 'whatsapp';
+  if (v.includes('wa.me') || v.includes('whatsapp.com') || v.includes('chat.whatsapp.com') || v.includes('joinchat') || v.startsWith('whatsapp://')) return 'whatsapp';
   if (v.startsWith('tel:')) return 'phone';
   return 'phone';
 }
