@@ -37,7 +37,7 @@ function restoreTruthEnv(prev: Record<string, string | undefined>): void {
   }
 }
 
-test('getRefactorFlags: defaults — specialized off, legacy endpoints on', () => {
+test('getRefactorFlags: defaults — integrity strict modes on, legacy endpoints on', () => {
   const prev = clearTruthEnv();
   try {
     const f = getRefactorFlags();
@@ -45,13 +45,13 @@ test('getRefactorFlags: defaults — specialized off, legacy endpoints on', () =
     assert.equal(f.truth_typed_evidence_enabled, false);
     assert.equal(f.explainability_api_enabled, false);
     assert.equal(f.consent_provenance_shadow_enabled, false);
-    assert.equal(f.truth_canonical_ledger_shadow_enabled, false);
+    assert.equal(f.truth_canonical_ledger_shadow_enabled, true);
     assert.equal(f.truth_engine_consolidated_enabled, false);
     assert.equal(f.legacy_endpoints_enabled, true);
-    assert.equal(f.strict_mutation_version_enforce, false);
-    assert.equal(f.truth_parity_mode, 'off');
-    assert.equal(f.lease_lock_mode, 'legacy');
-    assert.equal(f.site_timezone_strict_mode, false);
+    assert.equal(f.strict_mutation_version_enforce, true);
+    assert.equal(f.truth_parity_mode, 'detect');
+    assert.equal(f.lease_lock_mode, 'lease');
+    assert.equal(f.site_timezone_strict_mode, true);
   } finally {
     restoreTruthEnv(prev);
   }

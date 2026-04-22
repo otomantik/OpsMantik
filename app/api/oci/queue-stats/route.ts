@@ -14,6 +14,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const STUCK_PROCESSING_MINUTES = 15;
+const OUTBOX_STALE_MINUTES = 15;
+const OUTBOX_FAILED_RECENT_HOURS = 24;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -66,6 +68,30 @@ export async function GET(req: NextRequest) {
     stuckProcessing = stuckCount;
   }
 
+  const outboxStaleCutoff = new Date(Date.now() - OUTBOX_STALE_MINUTES * 60 * 1000).toISOString();
+  const outboxFailedRecentCutoff = new Date(Date.now() - OUTBOX_FAILED_RECENT_HOURS * 60 * 60 * 1000).toISOString();
+  const { count: outboxPendingCount } = await adminClient
+    .from('outbox_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('site_id', siteUuid)
+    .eq('status', 'PENDING');
+  const { count: outboxStaleCount } = await adminClient
+    .from('outbox_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('site_id', siteUuid)
+    .eq('status', 'PROCESSING')
+    .lt('updated_at', outboxStaleCutoff);
+  const { count: outboxFailedRecentCount } = await adminClient
+    .from('outbox_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('site_id', siteUuid)
+    .eq('status', 'FAILED')
+    .gte('updated_at', outboxFailedRecentCutoff);
+  const { count: truthRepairBacklogCount } = await adminClient
+    .from('truth_parity_repair_queue')
+    .select('id', { count: 'exact', head: true })
+    .in('status', ['PENDING', 'PROCESSING']);
+
   const { data: lastRow } = await adminClient
     .from('offline_conversion_queue')
     .select('updated_at')
@@ -75,12 +101,25 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   const lastUpdatedAt = (lastRow as { updated_at?: string } | null)?.updated_at ?? undefined;
+  const outboxPending = typeof outboxPendingCount === 'number' ? outboxPendingCount : 0;
+  const outboxProcessingStale = typeof outboxStaleCount === 'number' ? outboxStaleCount : 0;
+  const outboxFailedRecent = typeof outboxFailedRecentCount === 'number' ? outboxFailedRecentCount : 0;
+  const truthRepairBacklog = typeof truthRepairBacklogCount === 'number' ? truthRepairBacklogCount : 0;
+  const queueActive = totals.QUEUED + totals.RETRY + totals.PROCESSING + totals.UPLOADED;
+  const outboxActive = outboxPending + outboxProcessingStale + outboxFailedRecent;
+  const parityDenominator = Math.max(queueActive, outboxActive, 1);
+  const outboxQueueParityRatio = Number((Math.min(queueActive, outboxActive) / parityDenominator).toFixed(4));
 
   const body: OciQueueStats = {
     siteId: siteUuid,
     totals,
     ...(stuckProcessing !== undefined && { stuckProcessing }),
     ...(lastUpdatedAt && { lastUpdatedAt }),
+    outboxPending,
+    outboxProcessingStale,
+    outboxFailedRecent,
+    truthRepairBacklog,
+    outboxQueueParityRatio,
   };
   return NextResponse.json(body);
 }

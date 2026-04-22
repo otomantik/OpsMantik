@@ -98,12 +98,17 @@ test('runProcessOutbox caps retries via OUTBOX_MAX_ATTEMPTS', () => {
     'utf8'
   );
   assert.match(src, /export const OUTBOX_MAX_ATTEMPTS\s*=\s*\d+/, 'retry cap constant missing');
-  // Retry path must bump attempt_count and flip to FAILED when the cap is hit.
-  assert.match(src, /nextAttemptCount\s*>=\s*OUTBOX_MAX_ATTEMPTS/, 'retry cap branch missing');
+  // Retry path must use claim-owned attempt_count and flip to FAILED when the cap is hit.
+  assert.match(src, /attemptCount\s*>=\s*OUTBOX_MAX_ATTEMPTS/, 'retry cap branch missing');
   assert.match(
     src,
-    /nextAttemptCount\s*>=\s*OUTBOX_MAX_ATTEMPTS\s*\?\s*'FAILED'\s*:\s*'PENDING'/,
+    /attemptCount\s*>=\s*OUTBOX_MAX_ATTEMPTS\s*\?\s*'FAILED'\s*:\s*'PENDING'/,
     'retry cap must flip FAILED vs PENDING based on the counter'
+  );
+  assert.doesNotMatch(
+    src,
+    /attemptCount\s*\+\s*1/,
+    'retry path must not double-increment attempt_count after claim RPC'
   );
 
   // 5 is the documented cap today. Future changes must be deliberate.
@@ -207,4 +212,28 @@ test('only marketing-signal-hash.ts implements computeMarketingSignalCurrentHash
     hits[0].replace(/\\/g, '/').endsWith('lib/oci/marketing-signal-hash.ts'),
     `unexpected implementation location: ${hits[0]}`
   );
+});
+
+test('ack and ack-failed routes use shared oci script auth helper', () => {
+  const ack = readFileSync(join(ROOT, 'app/api/oci/ack/route.ts'), 'utf8');
+  const ackFailed = readFileSync(join(ROOT, 'app/api/oci/ack-failed/route.ts'), 'utf8');
+  for (const src of [ack, ackFailed]) {
+    assert.ok(
+      src.includes("from '@/lib/oci/script-auth'"),
+      'route must import shared script-auth helper'
+    );
+    assert.ok(/resolveOciScriptAuth\(/.test(src), 'route must call resolveOciScriptAuth');
+    assert.ok(
+      !src.includes("from '@/lib/services/rate-limit-service'"),
+      'route must not own per-route auth fail rate-limit logic after extraction'
+    );
+    assert.ok(
+      !src.includes("from '@/lib/security/timing-safe-compare'"),
+      'route must not own per-route api-key compare logic after extraction'
+    );
+    assert.ok(
+      !src.includes("from '@/lib/oci/session-auth'"),
+      'route must not own per-route session token parsing after extraction'
+    );
+  }
 });

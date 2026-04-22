@@ -99,7 +99,6 @@ export async function appendCanonicalTruthLedgerBestEffort(input: AppendCanonica
   try {
     await appendCanonicalTruthLedger(input);
   } catch (error) {
-    incrementRefactorMetric('truth_canonical_ledger_failure_total');
     const mode = getRefactorFlags().truth_parity_mode;
     if (mode === 'detect' || mode === 'enforce') {
       await recordTruthParityMismatch({

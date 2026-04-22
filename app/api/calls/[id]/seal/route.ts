@@ -267,7 +267,7 @@ export async function POST(
         approval_required: approvalRequired,
       },
       p_version: versionResolution.version,
-      p_metadata: { route, request_id: requestId, source: 'seal_v2' },
+      p_metadata: { route, request_id: requestId, source: 'seal_v2', mutation_origin: 'user' },
       p_caller_phone_raw: phoneRaw,
       p_caller_phone_e164: phoneE164,
       p_caller_phone_hash: phoneHash,

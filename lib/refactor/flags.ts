@@ -64,10 +64,10 @@ export function getRefactorFlags(): RefactorFlags {
     explainability_api_enabled: asBool(process.env.EXPLAINABILITY_API_ENABLED, false),
     legacy_endpoints_enabled: asBool(process.env.LEGACY_ENDPOINTS_ENABLED, true),
     consent_provenance_shadow_enabled: asBool(process.env.CONSENT_PROVENANCE_SHADOW_ENABLED, false),
-    truth_canonical_ledger_shadow_enabled: asBool(process.env.TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED, false),
-    strict_mutation_version_enforce: asBool(process.env.STRICT_MUTATION_VERSION_ENFORCE, false),
-    truth_parity_mode: asEnum(process.env.TRUTH_PARITY_MODE, ['off', 'detect', 'enforce'] as const, 'off'),
-    lease_lock_mode: asEnum(process.env.LEASE_LOCK_MODE, ['legacy', 'shadow', 'lease'] as const, 'legacy'),
-    site_timezone_strict_mode: asBool(process.env.SITE_TIMEZONE_STRICT_MODE, false),
+    truth_canonical_ledger_shadow_enabled: asBool(process.env.TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED, true),
+    strict_mutation_version_enforce: asBool(process.env.STRICT_MUTATION_VERSION_ENFORCE, true),
+    truth_parity_mode: asEnum(process.env.TRUTH_PARITY_MODE, ['off', 'detect', 'enforce'] as const, 'detect'),
+    lease_lock_mode: asEnum(process.env.LEASE_LOCK_MODE, ['legacy', 'shadow', 'lease'] as const, 'lease'),
+    site_timezone_strict_mode: asBool(process.env.SITE_TIMEZONE_STRICT_MODE, true),
   };
 }

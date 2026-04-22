@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
-import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { runTruthParityRepairBatch } from '@/lib/domain/truth/parity-repair-worker';
 
@@ -17,10 +17,12 @@ async function run() {
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
+  const stopHeartbeat = startCronLockHeartbeat(LOCK_KEY, 300);
   try {
     const result = await runTruthParityRepairBatch(100);
     return NextResponse.json({ ok: true, ...result }, { headers: getBuildInfoHeaders() });
   } finally {
+    stopHeartbeat?.();
     await releaseCronLock(LOCK_KEY);
   }
 }

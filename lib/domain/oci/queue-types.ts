@@ -111,4 +111,9 @@ export interface OciQueueStats {
   totals: Record<QueueStatus, number>;
   stuckProcessing?: number;
   lastUpdatedAt?: string;
+  outboxPending?: number;
+  outboxProcessingStale?: number;
+  outboxFailedRecent?: number;
+  truthRepairBacklog?: number;
+  outboxQueueParityRatio?: number;
 }

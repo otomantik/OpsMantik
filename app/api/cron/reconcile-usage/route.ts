@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
-import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { BillingReconciliationService, type EnqueueResult, type ProcessResult } from '@/lib/services/billing-reconciliation';
 import { logError } from '@/lib/logging/logger';
@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
             { status: 200, headers: getBuildInfoHeaders() }
         );
     }
+    const stopHeartbeat = startCronLockHeartbeat('reconcile-usage', CRON_LOCK_TTL_SEC);
 
     try {
         const action = req.nextUrl.searchParams.get('action');
@@ -67,6 +68,7 @@ export async function GET(req: NextRequest) {
             { status: 500, headers: getBuildInfoHeaders() }
         );
     } finally {
+        stopHeartbeat?.();
         await releaseCronLock('reconcile-usage');
     }
 }

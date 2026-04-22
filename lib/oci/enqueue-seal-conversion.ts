@@ -37,6 +37,7 @@ export interface EnqueueSealParams {
   leadScore: number | null;
   entryReason?: string | null;
   helperFormPayload?: HelperFormPayload | null;
+  sourceOutboxEventId?: string | null;
 }
 
 export interface EnqueueSealResult {
@@ -86,7 +87,18 @@ async function loadSiteOciContext(siteId: string) {
  * Idempotent via UNIQUE(call_id).
  */
 export async function enqueueSealConversion(params: EnqueueSealParams): Promise<EnqueueSealResult> {
-  const { callId, siteId, confirmedAt, saleOccurredAt, saleAmount, currency, leadScore, entryReason, helperFormPayload } = params;
+  const {
+    callId,
+    siteId,
+    confirmedAt,
+    saleOccurredAt,
+    saleAmount,
+    currency,
+    leadScore,
+    entryReason,
+    helperFormPayload,
+    sourceOutboxEventId,
+  } = params;
 
   // 0. Null safety: Seal requires confirmed_at — never send broken payload to Google
   if (!confirmedAt || typeof confirmedAt !== 'string') {
@@ -249,6 +261,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       wbraid,
       gbraid,
       status: 'QUEUED',
+      source_outbox_event_id: sourceOutboxEventId ?? null,
       causal_dna: causalDna,
       entropy_score: 0,
       uncertainty_bit: false,

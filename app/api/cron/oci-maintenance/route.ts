@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
-import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
 import { runOciMaintenance } from '@/lib/oci/maintenance/run-maintenance';
 import { runOfflineConversionRunner } from '@/lib/oci/runner';
 import { DEFAULT_LIMIT_CRON } from '@/lib/oci/constants';
@@ -36,6 +36,7 @@ async function handle() {
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
+  const stopHeartbeat = startCronLockHeartbeat(CRON_LOCK_KEY, CRON_LOCK_TTL_SEC);
   try {
     const stats = await runOciMaintenance();
     let runnerSummary: Awaited<ReturnType<typeof runOfflineConversionRunner>> | null = null;
@@ -64,6 +65,7 @@ async function handle() {
       { status: 500, headers: getBuildInfoHeaders() }
     );
   } finally {
+    stopHeartbeat?.();
     await releaseCronLock(CRON_LOCK_KEY);
   }
 }

@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { runVacuum } from '@/lib/oci/vacuum-worker';
-import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
 
 export const runtime = 'nodejs';
 const LOCK_KEY = 'vacuum';
@@ -34,6 +34,7 @@ async function run() {
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
+  const stopHeartbeat = startCronLockHeartbeat(LOCK_KEY, LOCK_TTL_SEC);
   try {
     const result = await runVacuum();
     return NextResponse.json(
@@ -47,6 +48,7 @@ async function run() {
       { status: 500, headers: getBuildInfoHeaders() }
     );
   } finally {
+    stopHeartbeat?.();
     await releaseCronLock(LOCK_KEY);
   }
 }

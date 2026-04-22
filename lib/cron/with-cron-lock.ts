@@ -32,13 +32,25 @@ async function tryAcquireRedisOrAdvisoryFallback(key: string, ttlSeconds: number
 
 async function tryAcquireLeaseLock(key: string, ttlSeconds: number): Promise<boolean> {
   const owner = crypto.randomUUID();
-  const { data, error } = await adminClient.rpc('acquire_cron_lease_v1', {
+  const acquire = await adminClient.rpc('acquire_cron_lease_v1', {
     p_lock_name: key,
     p_owner_token: owner,
     p_ttl_seconds: ttlSeconds,
   });
-  if (error) return false;
-  const acquired = data === true;
+  if (acquire.error) return false;
+  let acquired = acquire.data === true;
+  if (!acquired) {
+    const steal = await adminClient.rpc('steal_expired_cron_lease_v1', {
+      p_lock_name: key,
+      p_owner_token: owner,
+      p_ttl_seconds: ttlSeconds,
+      p_grace_seconds: 10,
+    });
+    if (!steal.error && steal.data === true) {
+      acquired = true;
+      incrementRefactorMetric('lease_steal_total');
+    }
+  }
   if (acquired) {
     leaseOwners.set(key, owner);
     incrementRefactorMetric('lease_acquire_success');
@@ -46,6 +58,35 @@ async function tryAcquireLeaseLock(key: string, ttlSeconds: number): Promise<boo
     incrementRefactorMetric('lease_acquire_denied');
   }
   return acquired;
+}
+
+export function startCronLockHeartbeat(cronPath: string, ttlSeconds: number): (() => void) | null {
+  if (getRefactorFlags().lease_lock_mode !== 'lease') return null;
+  const key = `${LOCK_PREFIX}${cronPath}`;
+  const owner = leaseOwners.get(key);
+  if (!owner) return null;
+  const intervalMs = Math.max(5_000, Math.floor((ttlSeconds * 1000) / 3));
+  let nextTickAt = Date.now() + intervalMs;
+  const timer = setInterval(async () => {
+    const lagMs = Math.max(0, Date.now() - nextTickAt);
+    nextTickAt = Date.now() + intervalMs;
+    const hb = await adminClient.rpc('heartbeat_cron_lease_v1', {
+      p_lock_name: key,
+      p_owner_token: owner,
+      p_ttl_seconds: ttlSeconds,
+    });
+    if (hb.error || hb.data !== true) {
+      logWarn('cron_lease_heartbeat_failed', {
+        lock_name: key,
+        owner_token: owner,
+        error: hb.error?.message ?? 'heartbeat_not_acknowledged',
+      });
+      return;
+    }
+    incrementRefactorMetric('lease_heartbeat_lag_ms', lagMs);
+  }, intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 /**

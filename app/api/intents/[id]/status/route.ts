@@ -124,7 +124,7 @@ export async function POST(
       p_actor_id: user.id,
       p_lead_score: lead_score !== undefined ? lead_score : null,
       p_version: versionResolution.version,
-      p_metadata: { route, request_id: requestId, user_id: user.id },
+      p_metadata: { route, request_id: requestId, user_id: user.id, mutation_origin: 'user' },
     });
 
     if (updateError) {

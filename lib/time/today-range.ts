@@ -28,7 +28,9 @@ export const DEFAULT_TIMEZONE = 'Europe/Istanbul';
 export function resolveDashboardDayTimezone(siteTimezone?: string | null): string {
   const z = typeof siteTimezone === 'string' ? siteTimezone.trim() : '';
   if (z.length > 0) return z;
-  const strictMode = process.env.SITE_TIMEZONE_STRICT_MODE === 'true' || process.env.NEXT_PUBLIC_SITE_TIMEZONE_STRICT_MODE === 'true';
+  const strictRaw = process.env.SITE_TIMEZONE_STRICT_MODE ?? process.env.NEXT_PUBLIC_SITE_TIMEZONE_STRICT_MODE;
+  const strictMode =
+    strictRaw == null ? true : ['1', 'true', 'on', 'yes'].includes(strictRaw.trim().toLowerCase());
   return strictMode ? 'UTC' : DEFAULT_TIMEZONE;
 }
 // Kept for backward compatibility (TRT is UTC+03 year-round)

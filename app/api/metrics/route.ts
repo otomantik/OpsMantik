@@ -133,6 +133,47 @@ export async function GET(req: NextRequest) {
     } catch {
         truthIdentityGraphEdges = { status: 'tables_unavailable' };
     }
+    let ociCoexistence: Record<string, unknown> | null = null;
+    try {
+        const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const failedCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count: queueActive } = await adminClient
+            .from('offline_conversion_queue')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED']);
+        const { count: outboxPending } = await adminClient
+            .from('outbox_events')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'PENDING');
+        const { count: outboxStale } = await adminClient
+            .from('outbox_events')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'PROCESSING')
+            .lt('updated_at', staleCutoff);
+        const { count: outboxFailedRecent } = await adminClient
+            .from('outbox_events')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'FAILED')
+            .gte('updated_at', failedCutoff);
+        const { count: truthRepairBacklog } = await adminClient
+            .from('truth_parity_repair_queue')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['PENDING', 'PROCESSING']);
+        const queueActiveCount = queueActive ?? 0;
+        const outboxActiveCount = (outboxPending ?? 0) + (outboxStale ?? 0) + (outboxFailedRecent ?? 0);
+        const denominator = Math.max(queueActiveCount, outboxActiveCount, 1);
+        const parityRatio = Number((Math.min(queueActiveCount, outboxActiveCount) / denominator).toFixed(4));
+        ociCoexistence = {
+            queue_active: queueActiveCount,
+            outbox_pending: outboxPending ?? 0,
+            outbox_processing_stale: outboxStale ?? 0,
+            outbox_failed_recent: outboxFailedRecent ?? 0,
+            truth_repair_backlog: truthRepairBacklog ?? 0,
+            outbox_queue_parity_ratio: parityRatio,
+        };
+    } catch {
+        ociCoexistence = { status: 'tables_unavailable' };
+    }
     const syncRate = computeApproxErrorRate('sync', routeCombined);
     const ceRate = computeApproxErrorRate('call_event_v2', routeCombined);
 
@@ -187,6 +228,7 @@ export async function GET(req: NextRequest) {
             truth_inference_runs: truthInferenceRuns,
             truth_identity_graph_edges: truthIdentityGraphEdges,
         },
+        oci_coexistence: ociCoexistence,
         meta: {
             timestamp: new Date().toISOString(),
             env: process.env.NODE_ENV

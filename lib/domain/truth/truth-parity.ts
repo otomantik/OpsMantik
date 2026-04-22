@@ -40,7 +40,7 @@ export async function recordTruthParityMismatch(input: {
   if (!data?.id) return;
 
   const dedupKey = `repair:${mismatchKey}`;
-  await adminClient
+  const repairQueueWrite = await adminClient
     .from('truth_parity_repair_queue')
     .upsert(
       {
@@ -50,5 +50,16 @@ export async function recordTruthParityMismatch(input: {
       },
       { onConflict: 'dedup_key' }
     );
+  if (repairQueueWrite.error) {
+    incrementRefactorMetric('truth_repair_queue_upsert_failed_total');
+    logWarn('truth_parity_repair_queue_upsert_failed', {
+      site_id: input.siteId,
+      stream_kind: input.streamKind,
+      idempotency_key: input.idempotencyKey,
+      mismatch_id: data.id,
+      error: repairQueueWrite.error.message,
+    });
+    return;
+  }
   incrementRefactorMetric('truth_repair_backlog');
 }

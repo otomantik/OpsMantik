@@ -66,3 +66,47 @@ test('resolveMutationVersion allows compat bypass for allowlisted tenant', () =>
     restoreEnv(prev);
   }
 });
+
+test('resolveMutationVersion denies compat bypass after two releases', () => {
+  const prev = resetEnv();
+  try {
+    process.env.STRICT_MUTATION_VERSION_ENFORCE = 'true';
+    process.env.COMPAT_VERSION_BYPASS_UNTIL = new Date(Date.now() + 60_000).toISOString();
+    process.env.COMPAT_VERSION_BYPASS_TENANT_ALLOWLIST = 'site-a';
+    process.env.COMPAT_VERSION_BYPASS_START_RELEASE = '10';
+    process.env.OPSMANTIK_RELEASE_NUMBER = '12';
+    const headers = new Headers({ 'x-ops-compat-version-bypass': '1' });
+    const out = resolveMutationVersion({
+      rawVersion: null,
+      route: '/test',
+      siteId: 'site-a',
+      requestHeaders: headers,
+      fallbackVersion: 7,
+    });
+    assert.equal(out.ok, false);
+  } finally {
+    restoreEnv(prev);
+  }
+});
+
+test('resolveMutationVersion denies compat bypass outside allowlist', () => {
+  const prev = resetEnv();
+  try {
+    process.env.STRICT_MUTATION_VERSION_ENFORCE = 'true';
+    process.env.COMPAT_VERSION_BYPASS_UNTIL = new Date(Date.now() + 60_000).toISOString();
+    process.env.COMPAT_VERSION_BYPASS_TENANT_ALLOWLIST = 'site-a';
+    process.env.COMPAT_VERSION_BYPASS_START_RELEASE = '10';
+    process.env.OPSMANTIK_RELEASE_NUMBER = '11';
+    const headers = new Headers({ 'x-ops-compat-version-bypass': '1' });
+    const out = resolveMutationVersion({
+      rawVersion: 0,
+      route: '/test',
+      siteId: 'site-b',
+      requestHeaders: headers,
+      fallbackVersion: 9,
+    });
+    assert.equal(out.ok, false);
+  } finally {
+    restoreEnv(prev);
+  }
+});

@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import { PanelFeed } from '../../components/dashboard/panel-feed';
 import { logError } from '@/lib/logging/logger';
-import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
@@ -67,7 +67,8 @@ export default async function PanelRoute() {
   const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
 
   // Fetch via RPC
-  const { fromIso, toIso } = getTodayTrtUtcRange();
+  const panelTimezone = resolveDashboardDayTimezone(site?.timezone ?? null);
+  const { fromIso, toIso } = getTodayTrtUtcRange(new Date(), panelTimezone);
   const { data: calls, error: callsError } = await adminClient.rpc('get_recent_intents_lite_v1', {
     p_site_id: targetSiteId,
     p_date_from: fromIso,

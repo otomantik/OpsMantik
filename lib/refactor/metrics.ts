@@ -56,6 +56,10 @@ export const REFACTOR_METRIC_NAMES = [
   'fastpath_unclaimed_reject_total',
   'queue_terminal_without_claim_total',
   'timezone_fallback_used_total',
+  'truth_repair_queue_upsert_failed_total',
+  'truth_repair_reclaim_total',
+  'truth_repair_dead_letter_total',
+  'won_error_swallowed_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { runProcessOutbox } from '@/lib/oci/outbox/process-outbox';
-import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
 
 export const runtime = 'nodejs';
 const LOCK_KEY = 'oci-process-outbox-events';
@@ -56,10 +56,12 @@ export async function GET(req: NextRequest) {
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
+  const stopHeartbeat = startCronLockHeartbeat(LOCK_KEY, LOCK_TTL_SEC);
   try {
     const result = await runProcessOutbox();
     return toHttpResponse(result);
   } finally {
+    stopHeartbeat?.();
     await releaseCronLock(LOCK_KEY);
   }
 }
@@ -74,10 +76,12 @@ export async function POST(req: NextRequest) {
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
+  const stopHeartbeat = startCronLockHeartbeat(LOCK_KEY, LOCK_TTL_SEC);
   try {
     const result = await runProcessOutbox();
     return toHttpResponse(result);
   } finally {
+    stopHeartbeat?.();
     await releaseCronLock(LOCK_KEY);
   }
 }

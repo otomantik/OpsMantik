@@ -16,9 +16,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
-import { RateLimitService } from '@/lib/services/rate-limit-service';
-import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
-import { verifySessionToken } from '@/lib/oci/session-auth';
 import { getPvDataKey, getPvProcessingKeysForCleanup } from '@/lib/oci/pv-redis';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
 import { logError, logInfo } from '@/lib/logging/logger';
@@ -28,6 +25,7 @@ import { appendRoutingHop } from '@/lib/oci/routing-ledger';
 import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { assertLaneActive } from '@/lib/oci/kill-switch';
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
+import { resolveOciScriptAuth } from '@/lib/oci/script-auth';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
@@ -39,32 +37,6 @@ export async function POST(req: NextRequest) {
     if (!lane.ok) {
       return NextResponse.json({ error: 'OCI ACK paused', code: lane.code }, { status: 503 });
     }
-    const bearer = (req.headers.get('authorization') || '').trim();
-    const sessionToken = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
-    const apiKey = (req.headers.get('x-api-key') || '').trim();
-
-    let siteIdFromToken = '';
-
-    if (sessionToken) {
-      const parsed = await verifySessionToken(sessionToken);
-      if (parsed) {
-        siteIdFromToken = parsed.siteId;
-      }
-    }
-
-    // Proceed only if we have a valid session token or a per-site API key attempt.
-    // Global OCI_API_KEY bypass was removed (tenant isolation violation).
-    const hasAuthAttempt = !!siteIdFromToken || !!apiKey;
-
-    if (!hasAuthAttempt) {
-      const clientId = RateLimitService.getClientId(req);
-      await RateLimitService.checkWithMode(clientId, 30, 60 * 1000, {
-        mode: 'fail-closed',
-        namespace: 'oci-ack-authfail',
-      });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Phase 8.2: JWS Asymmetric Signature Verification (Optional enforcement)
     // If signature is present, we verify. If not, we fall back to API Key / Session auth.
     const signature = req.headers.get('x-oci-signature');
@@ -85,8 +57,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const siteIdBody = typeof body.siteId === 'string' ? body.siteId.trim() : '';
-    const siteId = siteIdFromToken || siteIdBody;
+    const auth = await resolveOciScriptAuth({
+      req,
+      siteIdFromBody: body.siteId,
+      authFailNamespace: 'oci-ack-authfail',
+    });
+    if (!auth.ok) return auth.response;
+    const siteUuid = auth.siteUuid;
+    const resolvedSite = auth.resolvedSite;
     const rawIds = Array.isArray(body.queueIds) ? body.queueIds : [];
     const queueIds = sortDeterministicIds(
       rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
@@ -97,39 +75,8 @@ export async function POST(req: NextRequest) {
     );
     const pendingConfirmation = body.pendingConfirmation === true;
 
-    if (!siteId) {
-      return NextResponse.json({ error: 'Missing siteId' }, { status: 400 });
-    }
-
     if (queueIds.length === 0 && skippedIds.length === 0) {
       return NextResponse.json({ ok: true, updated: 0 });
-    }
-
-    let siteUuid = siteId;
-    const byId = await adminClient.from('sites').select('id, public_id, oci_api_key').eq('id', siteId).maybeSingle();
-    const siteRow = byId.data ?? null;
-    let resolvedSite: { id: string; public_id?: string | null; oci_api_key?: string | null } | null = siteRow as { id: string; public_id?: string | null; oci_api_key?: string | null } | null;
-    if (!resolvedSite) {
-      const byPublic = await adminClient.from('sites').select('id, public_id, oci_api_key').eq('public_id', siteId).maybeSingle();
-      resolvedSite = byPublic.data as { id: string; public_id?: string | null; oci_api_key?: string | null } | null;
-    }
-    if (resolvedSite) siteUuid = resolvedSite.id;
-
-    // Final Authentication Verification — per-site only, no global bypass.
-    if (apiKey) {
-      if (!resolvedSite) {
-        return NextResponse.json({ error: 'Unauthorized: Site not found' }, { status: 401 });
-      }
-      const siteKey = resolvedSite.oci_api_key ?? '';
-      if (!siteKey || !timingSafeCompare(siteKey, apiKey)) {
-        return NextResponse.json({ error: 'Unauthorized: Invalid API key' }, { status: 401 });
-      }
-    } else if (siteIdFromToken) {
-      if (siteIdFromToken !== resolvedSite?.id) {
-        return NextResponse.json({ error: 'Forbidden: Token site mismatch' }, { status: 403 });
-      }
-    } else {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const {

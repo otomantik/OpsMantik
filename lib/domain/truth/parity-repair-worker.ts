@@ -6,6 +6,8 @@ type RepairRow = {
   id: string;
   mismatch_id: string;
   attempt_count: number;
+  status: 'PENDING' | 'PROCESSING' | 'DONE' | 'DEAD_LETTER';
+  updated_at: string;
   truth_parity_mismatches: Array<{
     id: string;
     site_id: string;
@@ -15,15 +17,57 @@ type RepairRow = {
   }>;
 };
 
+const REPAIR_MAX_ATTEMPTS = 10;
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
+async function reclaimStaleProcessingRows(limit: number): Promise<void> {
+  const cutoffIso = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
+  const { data: staleRows, error } = await adminClient
+    .from('truth_parity_repair_queue')
+    .select('id,mismatch_id,attempt_count')
+    .eq('status', 'PROCESSING')
+    .lt('updated_at', cutoffIso)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+  if (error || !Array.isArray(staleRows) || staleRows.length === 0) return;
+
+  for (const row of staleRows as Array<{ id: string; mismatch_id: string; attempt_count: number }>) {
+    const attempts = (row.attempt_count ?? 0) + 1;
+    const dead = attempts >= REPAIR_MAX_ATTEMPTS;
+    const update = await adminClient
+      .from('truth_parity_repair_queue')
+      .update({
+        status: dead ? 'DEAD_LETTER' : 'PENDING',
+        attempt_count: attempts,
+        next_retry_at: new Date(Date.now() + Math.min(60_000 * attempts, 30 * 60_000)).toISOString(),
+        updated_at: new Date().toISOString(),
+        last_error: 'stale_processing_reclaimed',
+      })
+      .eq('id', row.id)
+      .eq('status', 'PROCESSING')
+      .select('id')
+      .maybeSingle();
+    if (update.error || !update.data?.id) continue;
+    incrementRefactorMetric('truth_repair_reclaim_total');
+    if (!dead) continue;
+    incrementRefactorMetric('truth_repair_dead_letter_total');
+    await adminClient
+      .from('truth_parity_mismatches')
+      .update({ status: 'DEAD_LETTER', last_error: 'repair_retries_exhausted' })
+      .eq('id', row.mismatch_id);
+  }
+}
+
 export async function runTruthParityRepairBatch(limit = 50): Promise<{
   claimed: number;
   repaired: number;
   failed: number;
 }> {
+  await reclaimStaleProcessingRows(limit);
   const now = new Date().toISOString();
   const { data, error } = await adminClient
     .from('truth_parity_repair_queue')
-    .select('id,mismatch_id,attempt_count,truth_parity_mismatches!inner(id,site_id,stream_kind,idempotency_key,payload)')
+    .select('id,mismatch_id,attempt_count,status,updated_at,truth_parity_mismatches!inner(id,site_id,stream_kind,idempotency_key,payload)')
     .eq('status', 'PENDING')
     .lte('next_retry_at', now)
     .order('created_at', { ascending: true })
@@ -46,8 +90,10 @@ export async function runTruthParityRepairBatch(limit = 50): Promise<{
         .from('truth_parity_repair_queue')
         .update({ status: 'PROCESSING', updated_at: now })
         .eq('id', row.id)
-        .eq('status', 'PENDING');
-      if (updateClaim.error) continue;
+        .eq('status', 'PENDING')
+        .select('id')
+        .maybeSingle();
+      if (updateClaim.error || !updateClaim.data?.id) continue;
 
       const insert = await adminClient.from('truth_canonical_ledger').insert({
         site_id: mismatch.site_id,
@@ -74,7 +120,7 @@ export async function runTruthParityRepairBatch(limit = 50): Promise<{
     } catch (errorRepair) {
       failed += 1;
       const attempts = row.attempt_count + 1;
-      const dead = attempts >= 10;
+      const dead = attempts >= REPAIR_MAX_ATTEMPTS;
       await adminClient
         .from('truth_parity_repair_queue')
         .update({
@@ -86,6 +132,7 @@ export async function runTruthParityRepairBatch(limit = 50): Promise<{
         })
         .eq('id', row.id);
       if (dead) {
+        incrementRefactorMetric('truth_repair_dead_letter_total');
         await adminClient
           .from('truth_parity_mismatches')
           .update({ status: 'DEAD_LETTER', last_error: 'repair_retries_exhausted' })

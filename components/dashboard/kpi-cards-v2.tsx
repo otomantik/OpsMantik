@@ -6,9 +6,10 @@ import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getTodayTrtUtcRange } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 import { Icons } from '@/components/icons';
 import { useMemo } from 'react';
+import { useSiteTimezone } from '@/components/context/site-locale-context';
 
 interface KPICardsV2Props {
   siteId: string;
@@ -16,11 +17,12 @@ interface KPICardsV2Props {
 
 export function KPICardsV2({ siteId }: KPICardsV2Props) {
   const { formatNumber, t } = useTranslation();
+  const siteTimezone = resolveDashboardDayTimezone(useSiteTimezone());
   // Always use TODAY range for Command Center
   const dateRange = useMemo(() => {
-    const { fromIso, toIso } = getTodayTrtUtcRange();
+    const { fromIso, toIso } = getTodayTrtUtcRange(new Date(), siteTimezone);
     return { from: new Date(fromIso), to: new Date(toIso) };
-  }, []);
+  }, [siteTimezone]);
 
   const { stats, loading, error, refetch } = useDashboardStats(siteId, dateRange);
 

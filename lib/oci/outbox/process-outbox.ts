@@ -243,7 +243,11 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             currency,
             leadScore,
             entryReason: payload?.sale_entry_reason ?? null,
+            sourceOutboxEventId: id,
           });
+          if (!result.enqueued && result.reason === 'error') {
+            throw new Error(result.error ? `ENQUEUE_SEAL_FAILED:${result.error}` : 'ENQUEUE_SEAL_FAILED');
+          }
           if (result.enqueued) {
             logInfo('outbox_won_enqueued', { outbox_id: id, call_id: callId, queue_id: result.queueId });
           }
@@ -352,12 +356,11 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         failed++;
 
         const attemptCount = (row as { attempt_count?: number }).attempt_count ?? 0;
-        const nextAttemptCount = attemptCount + 1;
-        const nextStatus = nextAttemptCount >= OUTBOX_MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
+        const nextStatus = attemptCount >= OUTBOX_MAX_ATTEMPTS ? 'FAILED' : 'PENDING';
         await finalizeOutboxEvent({
           outboxId: id,
           status: nextStatus as 'FAILED' | 'PENDING',
-          attemptCount: nextAttemptCount,
+          attemptCount,
           lastError: msg.slice(0, 1000),
         });
       }
