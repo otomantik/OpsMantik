@@ -86,7 +86,7 @@ export interface UpsertMarketingSignalResult {
 /**
  * Upsert a marketing_signals row using the canonical hash chain.
  *
- * Callers are responsible for gating out junk / satis stages. `satis` is owned by the
+ * Callers are responsible for gating out junk / won stages. `won` is owned by the
  * seal enqueue path (offline_conversion_queue) and would violate the CHECK constraint
  * on `marketing_signals.occurred_at_source` anyway.
  */

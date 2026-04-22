@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error;
 
-    const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
+    const workerUrl = `${new URL(req.url).origin}/api/workers/ingest/telemetry`;
     await qstash.publishJSON({
       url: workerUrl,
       body: row.payload,

@@ -31,7 +31,7 @@ export class IntentService {
 
         // Goal: tel/wa clicks MUST create call intents regardless of acquisition/conversion rewrites.
         const PHONE_ACTIONS = new Set(['phone_call', 'phone_click', 'call_click', 'tel_click']);
-        const WHATSAPP_ACTIONS = new Set(['whatsapp', 'whatsapp_click', 'wa_click', 'joinchat']);
+        const WHATSAPP_ACTIONS = new Set(['whatsapp', 'whatsapp_click', 'wa_click']);
         const FORM_ACTIONS = new Set([
             'form',
             'form_submit',
@@ -47,31 +47,14 @@ export class IntentService {
         const isPhone = PHONE_ACTIONS.has(action);
         const isWa = WHATSAPP_ACTIONS.has(action);
         const isForm = FORM_ACTIONS.has(action);
-
-        // Back-compat: treat legacy actions/labels as phone/wa signals
-        const labelLc = (event_label || '').toString().toLowerCase();
-        const legacyPhoneSignal =
-            ['phone_call', 'phone_click', 'call_click'].includes((event_action || '').toString().toLowerCase()) ||
-            labelLc.startsWith('tel:');
-        const legacyWaSignal =
-            ((event_action || '').toString().toLowerCase() === 'whatsapp') ||
-            labelLc.includes('wa.me') ||
-            labelLc.includes('whatsapp.com') ||
-            labelLc.includes('chat.whatsapp.com') ||
-            labelLc.includes('joinchat');
-        const legacyFormSignal =
-            ((event_action || '').toString().toLowerCase() === 'form_submit') ||
-            action === 'form' ||
-            labelLc.startsWith('form:');
-
-        const shouldCreateIntent = !!session && (!!fingerprint || !!session.id) && (isPhone || isWa || isForm || legacyPhoneSignal || legacyWaSignal || legacyFormSignal);
+        const shouldCreateIntent = !!session && (!!fingerprint || !!session.id) && (isPhone || isWa || isForm);
 
         if (!shouldCreateIntent) return null;
 
         // 1. Normalize Action & Target
         const canonicalAction: 'phone' | 'whatsapp' | 'form' =
-            (isPhone || legacyPhoneSignal) ? 'phone' :
-                ((isWa || legacyWaSignal) ? 'whatsapp' : 'form');
+            isPhone ? 'phone' :
+                (isWa ? 'whatsapp' : 'form');
         const explicitIntentTarget = typeof meta?.intent_target === 'string' ? meta.intent_target.trim() : '';
         const phoneFromMeta = typeof meta?.phone_number === 'string' ? meta.phone_number : '';
         const canonicalTarget = canonicalAction === 'phone'
@@ -79,6 +62,9 @@ export class IntentService {
             : canonicalAction === 'whatsapp'
                 ? (explicitIntentTarget || this.normalizeWaTarget(event_label || ''))
                 : (explicitIntentTarget || this.normalizeFormTarget(event_label || '', url));
+        if (canonicalAction !== 'form' && (canonicalTarget.endsWith(':unknown') || canonicalTarget.endsWith(':invalid'))) {
+            return null;
+        }
 
         // 2. Prepare Intent Data
         const intentPageUrl = (typeof url === 'string' && url.length > 0) ? url.slice(0, 2048) : null;
@@ -150,54 +136,7 @@ export class IntentService {
     private static normalizeWaTarget(v: string): string {
         const normalized = normalizePhoneTarget(v);
         if (normalized.toLowerCase().startsWith('whatsapp:')) return normalized;
-        const raw = (v || '').toString().trim();
-        if (!raw) return 'wa:unknown';
-        if (raw.toLowerCase().startsWith('whatsapp://')) {
-            const rest = raw.slice(12).replace(/^\/+/, '') || 'unknown';
-            return `wa:${rest}`;
-        }
-        const candidate = raw.replace(/^https?:\/\//i, '');
-
-        let url: URL | null = null;
-        try {
-            url = new URL(raw.match(/^https?:\/\//i) ? raw : `https://${candidate}`);
-        } catch {
-            url = null;
-        }
-
-        const phoneParam = url?.searchParams?.get('phone') || url?.searchParams?.get('p');
-        if (phoneParam) {
-            const phone = this.canonicalizePhoneDigits(phoneParam);
-            if (phone) return `wa:${phone}`;
-        }
-
-        if (url?.hostname?.toLowerCase() === 'wa.me') {
-            const seg = (url.pathname || '').split('/').filter(Boolean)[0] || '';
-            const phone = this.canonicalizePhoneDigits(seg);
-            if (phone) return `wa:${phone}`;
-        }
-
-        const host = url?.hostname ? url.hostname.toLowerCase() : '';
-        const path = (url?.pathname || '').replace(/^\/+/, '') || '';
-        if (host === 'chat.whatsapp.com') {
-            const inviteCode = path.split('/')[0] || path || 'unknown';
-            return `wa:chat/${inviteCode}`;
-        }
-        if (host === 'api.whatsapp.com' && path.startsWith('joinchat/')) {
-            const code = path.replace(/^joinchat\/?/, '') || 'unknown';
-            return `wa:joinchat/${code}`;
-        }
-
-        const pathDigits = (url?.pathname || '').replace(/[^\d]/g, '');
-        if (pathDigits && pathDigits.length >= 10) {
-            const phone = this.canonicalizePhoneDigits(pathDigits);
-            if (phone) return `wa:${phone}`;
-        }
-
-        const hostFinal = url?.hostname ? url.hostname.toLowerCase() : candidate.split('/')[0].toLowerCase();
-        const pathFinal = url?.pathname ? url.pathname : ('/' + candidate.split('/').slice(1).join('/'));
-        const safe = `${hostFinal}${pathFinal}`.replace(/\/+$/, '');
-        return `wa:${safe || 'unknown'}`;
+        return 'wa:invalid';
     }
 
     private static normalizeFormTarget(v: string, pageUrl?: string | null): string {
@@ -289,14 +228,8 @@ export class IntentService {
         const digits = cleaned.replace(/[^\d]/g, '');
         const hasPlus = cleaned.startsWith('+');
 
-        if (!hasPlus) {
-            if (digits.length === 10) return `+90${digits}`;
-            if (digits.length === 11 && digits.startsWith('0')) return `+90${digits.slice(1)}`;
-            if (digits.length >= 11 && digits.startsWith('90')) return `+${digits}`;
-            return `+${digits}`;
-        }
-
-        if (digits.length >= 11 && digits.startsWith('90')) return `+${digits}`;
+        if (!hasPlus) return null;
+        if (digits.length < 8 || digits.length > 15) return null;
         return `+${digits}`;
     }
 }

@@ -109,7 +109,7 @@ export async function publishCallEventIngestWorker(args: {
 }): Promise<void> {
   const { variant, req, body, deduplicationId } = args;
   if (variant === 'v2_explicit_ingest_url') {
-    const workerUrl = `${new URL(req.url).origin}/api/workers/ingest`;
+    const workerUrl = `${new URL(req.url).origin}/api/workers/ingest/telemetry`;
     await publishToQStash({
       url: workerUrl,
       body,

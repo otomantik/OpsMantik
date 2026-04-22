@@ -1,19 +1,14 @@
 /**
  * OptimizationStage — Canonical pipeline stage identifier.
  *
- * English-only as of the global launch cutover. The previous Turkish literals
- * (`gorusuldu`, `teklif`, `satis`) are no longer part of this union. If a
- * legacy string still needs to be tolerated at an external boundary (e.g. an
- * inbound webhook from a tenant that hasn't updated their integration),
- * collapse it through `normalizeStage()` in `@/lib/domain/stage-aliases`
- * BEFORE it touches the type system.
+ * English-only canonical values are accepted at all boundaries.
  */
 export type OptimizationStage = 'junk' | 'contacted' | 'offered' | 'won';
 
-export type HelperJobSize = 'kucuk' | 'orta' | 'buyuk';
-export type HelperUrgency = 'dusuk' | 'orta' | 'yuksek';
-export type HelperYesNo = 'evet' | 'hayir';
-export type HelperFollowupExpectation = 'hayir' | 'belirsiz' | 'evet';
+export type HelperJobSize = 'small' | 'medium' | 'large';
+export type HelperUrgency = 'low' | 'medium' | 'high';
+export type HelperYesNo = 'yes' | 'no';
+export type HelperFollowupExpectation = 'no' | 'uncertain' | 'yes';
 
 export interface HelperFormPayload {
   jobSize?: HelperJobSize | null;
@@ -25,11 +20,11 @@ export interface HelperFormPayload {
 
 /** SSOT defaults for operator helper form (canonical enum values; UI labels stay i18n). */
 export const HELPER_FORM_DEFAULTS: HelperFormPayload = {
-  jobSize: 'orta',
-  urgency: 'orta',
-  priceDiscussed: 'evet',
-  followupExpectation: 'evet',
-  competitorComparison: 'hayir',
+  jobSize: 'medium',
+  urgency: 'medium',
+  priceDiscussed: 'yes',
+  followupExpectation: 'yes',
+  competitorComparison: 'no',
 };
 
 export interface OptimizationValueSnapshot {
@@ -117,10 +112,8 @@ export function buildOptimizationSnapshot(params: {
  * Resolve the canonical (English) optimization stage from an operator
  * actionType or a lead score.
  *
- * Legacy Turkish actionType spellings (`gorusuldu`, `teklif`, `satis`) are
- * accepted at the input boundary and collapsed to their English canonical
- * form, so a customer who hasn't cycled to the new UI build yet continues
- * to work. Everything the function RETURNS is English-only.
+ * Strict canonical mode: only English canonical stage values are accepted.
+ * Unknown actionType values are ignored and stage is derived from lead score.
  */
 export function resolveOptimizationStage(params: {
   actionType?: string | null;
@@ -128,9 +121,9 @@ export function resolveOptimizationStage(params: {
 }): OptimizationStage {
   const actionType = (params.actionType || '').trim().toLowerCase();
   if (actionType === 'junk') return 'junk';
-  if (actionType === 'contacted' || actionType === 'gorusuldu') return 'contacted';
-  if (actionType === 'offered' || actionType === 'teklif') return 'offered';
-  if (actionType === 'won' || actionType === 'satis') return 'won';
+  if (actionType === 'contacted') return 'contacted';
+  if (actionType === 'offered') return 'offered';
+  if (actionType === 'won') return 'won';
 
   const leadScore = clampSystemScore(params.leadScore);
   if (leadScore <= 0) return 'junk';
@@ -143,11 +136,11 @@ export function sanitizeHelperFormPayload(payload: HelperFormPayload | null): He
   if (!payload) return null;
 
   const sanitized: HelperFormPayload = {
-    jobSize: sanitizeEnum<HelperJobSize>(payload.jobSize, ['kucuk', 'orta', 'buyuk']),
-    urgency: sanitizeEnum<HelperUrgency>(payload.urgency, ['dusuk', 'orta', 'yuksek']),
-    priceDiscussed: sanitizeEnum<HelperYesNo>(payload.priceDiscussed, ['evet', 'hayir']),
-    followupExpectation: sanitizeEnum<HelperFollowupExpectation>(payload.followupExpectation, ['hayir', 'belirsiz', 'evet']),
-    competitorComparison: sanitizeEnum<HelperYesNo>(payload.competitorComparison, ['evet', 'hayir']),
+    jobSize: sanitizeEnum<HelperJobSize>(payload.jobSize, ['small', 'medium', 'large']),
+    urgency: sanitizeEnum<HelperUrgency>(payload.urgency, ['low', 'medium', 'high']),
+    priceDiscussed: sanitizeEnum<HelperYesNo>(payload.priceDiscussed, ['yes', 'no']),
+    followupExpectation: sanitizeEnum<HelperFollowupExpectation>(payload.followupExpectation, ['no', 'uncertain', 'yes']),
+    competitorComparison: sanitizeEnum<HelperYesNo>(payload.competitorComparison, ['yes', 'no']),
   };
 
   return Object.values(sanitized).some((value) => value != null) ? sanitized : null;

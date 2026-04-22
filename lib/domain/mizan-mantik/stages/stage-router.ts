@@ -52,7 +52,7 @@ export async function routeStage(
     return { routed: false, conversionValue: 0, dropped: true, causalDna: toJsonb(workingDna) };
   }
 
-  // Canonical stages (gorusuldu, teklif) go directly into marketing signals with mathematical snapshot evaluation
+  // Canonical stages (contacted, offered) go directly into marketing signals with mathematical snapshot evaluation
   const result = await insertMarketingSignal({
     siteId,
     callId,

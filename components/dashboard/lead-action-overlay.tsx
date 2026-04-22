@@ -36,11 +36,11 @@ export function LeadActionOverlay({
   const [phone, setPhone] = useState('');
   const [score, setScore] = useState<number>(100);
   const [helperFormPayload, setHelperFormPayload] = useState<HelperFormPayload>({
-    jobSize: 'orta',
-    urgency: 'orta',
-    priceDiscussed: 'hayir',
-    followupExpectation: 'belirsiz',
-    competitorComparison: 'hayir',
+    jobSize: 'medium',
+    urgency: 'medium',
+    priceDiscussed: 'no',
+    followupExpectation: 'uncertain',
+    competitorComparison: 'no',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -51,11 +51,11 @@ export function LeadActionOverlay({
       setStep('phone');
       setPhone('');
       setHelperFormPayload({
-        jobSize: 'orta',
-        urgency: 'orta',
-        priceDiscussed: 'hayir',
-        followupExpectation: 'belirsiz',
-        competitorComparison: 'hayir',
+        jobSize: 'medium',
+        urgency: 'medium',
+        priceDiscussed: 'no',
+        followupExpectation: 'uncertain',
+        competitorComparison: 'no',
       });
       setIsSubmitting(false);
       setSubmitError(null);
@@ -183,47 +183,47 @@ export function LeadActionOverlay({
               {actionType !== 'junk' && (
                 <div className="grid grid-cols-1 gap-3 text-left">
                   <select
-                    value={helperFormPayload.jobSize ?? 'orta'}
+                    value={helperFormPayload.jobSize ?? 'medium'}
                     onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, jobSize: e.target.value as HelperFormPayload['jobSize'] }))}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                   >
-                    <option value="kucuk">Is buyuklugu: kucuk</option>
-                    <option value="orta">Is buyuklugu: orta</option>
-                    <option value="buyuk">Is buyuklugu: buyuk</option>
+                    <option value="small">Job size: small</option>
+                    <option value="medium">Job size: medium</option>
+                    <option value="large">Job size: large</option>
                   </select>
                   <select
-                    value={helperFormPayload.urgency ?? 'orta'}
+                    value={helperFormPayload.urgency ?? 'medium'}
                     onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, urgency: e.target.value as HelperFormPayload['urgency'] }))}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                   >
-                    <option value="dusuk">Aciliyet: dusuk</option>
-                    <option value="orta">Aciliyet: orta</option>
-                    <option value="yuksek">Aciliyet: yuksek</option>
+                    <option value="low">Urgency: low</option>
+                    <option value="medium">Urgency: medium</option>
+                    <option value="high">Urgency: high</option>
                   </select>
                   <select
-                    value={helperFormPayload.priceDiscussed ?? 'hayir'}
+                    value={helperFormPayload.priceDiscussed ?? 'no'}
                     onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, priceDiscussed: e.target.value as HelperFormPayload['priceDiscussed'] }))}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                   >
-                    <option value="evet">Fiyat konusuldu: evet</option>
-                    <option value="hayir">Fiyat konusuldu: hayir</option>
+                    <option value="yes">Price discussed: yes</option>
+                    <option value="no">Price discussed: no</option>
                   </select>
                   <select
-                    value={helperFormPayload.followupExpectation ?? 'belirsiz'}
+                    value={helperFormPayload.followupExpectation ?? 'uncertain'}
                     onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, followupExpectation: e.target.value as HelperFormPayload['followupExpectation'] }))}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                   >
-                    <option value="hayir">Geri donus beklentisi: hayir</option>
-                    <option value="belirsiz">Geri donus beklentisi: belirsiz</option>
-                    <option value="evet">Geri donus beklentisi: evet</option>
+                    <option value="no">Follow-up expected: no</option>
+                    <option value="uncertain">Follow-up expected: uncertain</option>
+                    <option value="yes">Follow-up expected: yes</option>
                   </select>
                   <select
-                    value={helperFormPayload.competitorComparison ?? 'hayir'}
+                    value={helperFormPayload.competitorComparison ?? 'no'}
                     onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, competitorComparison: e.target.value as HelperFormPayload['competitorComparison'] }))}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                   >
-                    <option value="evet">Rakip kiyasi: evet</option>
-                    <option value="hayir">Rakip kiyasi: hayir</option>
+                    <option value="yes">Competitor comparison: yes</option>
+                    <option value="no">Competitor comparison: no</option>
                   </select>
                 </div>
               )}

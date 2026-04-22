@@ -119,7 +119,7 @@ function deriveSystemScore(input: LcvInput): number {
 
   const source = `${input.trafficSource ?? ''} ${input.utmTerm ?? ''}`.toLowerCase();
   if (source.includes('brand') || source.includes('marka')) score += 8;
-  if (source.includes('fiyat') || source.includes('acil') || source.includes('teklif')) score += 8;
+  if (source.includes('price') || source.includes('urgent') || source.includes('quote')) score += 8;
 
   const deviceOs = (input.deviceOs ?? '').toLowerCase();
   if (deviceOs.includes('ios')) score += 4;
