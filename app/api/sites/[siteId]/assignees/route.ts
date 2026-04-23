@@ -44,7 +44,7 @@ export async function GET(
   }
 
   const { data: members, error: membersError } = await adminClient
-    .from('site_members')
+    .from('site_memberships')
     .select('user_id, role')
     .eq('site_id', siteId);
 

@@ -62,7 +62,7 @@ test('oci control panel turns summary boxes into useful filters', () => {
 test('assignees route validates access and uses admin-backed member lookup', () => {
   const src = readFileSync(assigneesRoutePath, 'utf8');
   assert.ok(src.includes('validateSiteAccess'), 'assignees route validates site access');
-  assert.ok(src.includes("from('site_members')"), 'assignees route reads site members');
+  assert.ok(src.includes("from('site_memberships')"), 'assignees route reads site members');
   assert.ok(src.includes("from('user_emails')"), 'assignees route resolves user emails');
   assert.ok(src.includes("source: 'owner'"), 'assignees route includes owner row');
 });

@@ -9,6 +9,7 @@ import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { logWarn } from '@/lib/logging/logger';
 import { publishToQStash } from '@/lib/ingest/publish';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
+import { decideGeo } from '@/lib/geo/decision-engine';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { deriveCallEventAuthoritativePaidOrganic } from '@/lib/domain/deterministic-engine/call-event-authoritative-source';
 import { runCallEventPaidSurfaceParity } from '@/lib/domain/deterministic-engine/parity-call-event';
@@ -16,6 +17,7 @@ import { appendCanonicalTruthLedgerBestEffort } from '@/lib/domain/truth/canonic
 import { appendTruthEvidenceLedgerBestEffort } from '@/lib/domain/truth/truth-evidence-ledger-writer';
 import { resolveIntentConversation } from '@/lib/services/conversation-service';
 import { sanitizeClickId } from '@/lib/attribution';
+import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 
 // Brain Score logic moved to async worker
 
@@ -51,10 +53,21 @@ export async function processCallEvent(
 ): Promise<ProcessCallEventResult> {
   const siteId = payload.site_id;
   const tenantClient = createTenantClient(siteId);
-  const sanitizedClickId = sanitizeClickId(payload.click_id) ?? null;
-  const sanitizedGclid = sanitizeClickId(payload.gclid) ?? sanitizedClickId;
-  const sanitizedWbraid = sanitizeClickId(payload.wbraid) ?? null;
-  const sanitizedGbraid = sanitizeClickId(payload.gbraid) ?? null;
+  const rawClickId = payload.click_id;
+  const rawGclid = payload.gclid;
+  const rawWbraid = payload.wbraid;
+  const rawGbraid = payload.gbraid;
+  const sanitizedClickId = sanitizeClickId(rawClickId) ?? null;
+  const sanitizedGclid = sanitizeClickId(rawGclid) ?? sanitizedClickId;
+  const sanitizedWbraid = sanitizeClickId(rawWbraid) ?? null;
+  const sanitizedGbraid = sanitizeClickId(rawGbraid) ?? null;
+  if ((rawClickId && !sanitizedClickId) || (rawGclid && !sanitizedGclid) || (rawWbraid && !sanitizedWbraid) || (rawGbraid && !sanitizedGbraid)) {
+    logWarn('CLICK_ID_DROPPED_INVALID_CLICK_ID', {
+      site_id: siteId,
+      reason: 'invalid_click_id',
+      call_event: true,
+    });
+  }
 
   // ── GCLID-first geo: prefer AdsContext over IP-derived (Rome/Amsterdam vs Istanbul) ────────────
   const adsCtx = payload.ads_context ?? null;
@@ -86,6 +99,17 @@ export async function processCallEvent(
     resolvedDistrictName = String(adsCtx.location_name).trim();
     locationSource = 'gclid';
   }
+  const geoDecision = decideGeo({
+    hasValidClickId: hasValidClickId({
+      gclid: sanitizedGclid,
+      wbraid: sanitizedWbraid,
+      gbraid: sanitizedGbraid,
+    }),
+    adsGeo: {
+      city: adsCity,
+      district: resolvedDistrictName,
+    },
+  });
 
   // Early-call fix 1: session lacks GCLID; payload has gclid/wbraid/gbraid → persist to session for OCI
   const sessionMonth = payload.matched_session_month ?? (payload.matched_at ? new Date(payload.matched_at).toISOString().slice(0, 7) + '-01' : null);
@@ -131,9 +155,11 @@ export async function processCallEvent(
         siteId,
         sessionId: payload.matched_session_id,
         sessionMonth,
-        city: adsCity,
-        district: resolvedDistrictName,
-        source: 'ADS',
+        city: geoDecision.city,
+        district: geoDecision.district,
+        source: geoDecision.source,
+        reasonCode: geoDecision.reasonCode,
+        confidence: geoDecision.confidence,
       });
     } catch {
       // Non-critical; ingestion continues
@@ -188,8 +214,10 @@ export async function processCallEvent(
     ...(adsCtx?.device ? { device: adsCtx.device } : {}),
     ...(adsCtx?.placement ? { placement: adsCtx.placement } : {}),
     ...(adsCtx?.target_id ? { target_id: adsCtx.target_id } : {}),
-    ...(resolvedDistrictName ? { district_name: resolvedDistrictName } : {}),
+    ...(geoDecision.district ? { district_name: geoDecision.district } : {}),
     ...(locationSource ? { location_source: locationSource } : {}),
+    location_reason_code: geoDecision.reasonCode,
+    location_confidence: geoDecision.confidence,
     // AdTech Metadata
     gclid: sanitizedGclid,
     wbraid: sanitizedWbraid,
@@ -220,6 +248,11 @@ export async function processCallEvent(
 
     if (isMissingEventIdColumnError(insertError)) {
       strippedCols.add('event_id');
+      logWarn('CLICK_ID_SCHEMA_DRIFT_STRIP', {
+        site_id: siteId,
+        column: 'event_id',
+        reason: 'schema_drift_strip',
+      });
       insertPayload = { ...insertPayload };
       delete (insertPayload as Record<string, unknown>).event_id;
       continue;
@@ -230,6 +263,11 @@ export async function processCallEvent(
       const { next, stripped } = stripColumnFromInsertPayload(insertPayload, missingCol);
       if (stripped) {
         strippedCols.add(missingCol);
+        logWarn('CLICK_ID_SCHEMA_DRIFT_STRIP', {
+          site_id: siteId,
+          column: missingCol,
+          reason: 'schema_drift_strip',
+        });
         insertPayload = next;
         continue;
       }

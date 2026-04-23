@@ -12,11 +12,13 @@ const repoRoot = resolve(__dirname, '../..');
 const DEFAULT_OUTPUT = join(repoRoot, 'tmp', 'release-gates-latest.md');
 const COMMANDS_BY_MODE = {
   pr: [
+    'node scripts/ci/verify-db.mjs',
     'npm run test:tenant-boundary',
     'npm run test:oci-kernel',
   ],
   // Must mirror package.json `test:release-gates` (evidence parity gate)
   full: [
+    'node scripts/ci/verify-db.mjs',
     'npm run test:tenant-boundary',
     'npm run test:oci-kernel',
     'npm run test:runtime-budget',

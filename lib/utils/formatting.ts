@@ -134,7 +134,7 @@ export function formatRelativeTime(ts: string | null | undefined, t?: (key: Tran
 /** Ghost geo cities (IP edge / CDN / proxy locations, not real client). Never display. */
 const GHOST_GEO_CITIES = new Set([
     'rome', 'amsterdam', 'roma',
-    'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
+    'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london', 'helsinki',
 ]);
 
 /**

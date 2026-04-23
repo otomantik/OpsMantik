@@ -726,7 +726,6 @@
       element?.getAttribute?.("data-jivo") || "",
       element?.getAttribute?.("aria-label") || ""
     ].join(" ").toLowerCase();
-    if (raw.includes("joinchat")) return "joinchat";
     if (raw.includes("jivo") || raw.includes("jivosite")) return "jivo";
     return "whatsapp";
   }
@@ -1202,11 +1201,25 @@
     sendCallEvent(target, intentMeta);
     return true;
   }
+  function extractPhoneIntentFromElement(clickTarget) {
+    const el = clickTarget?.closest ? clickTarget.closest('a[href^="tel:"], [data-om-phone], [data-phone], [data-tel], [onclick*="tel:"]') : null;
+    if (!el) return null;
+    const href = typeof el.getAttribute === "function" ? el.getAttribute("href") : "";
+    const dataPhone = typeof el.getAttribute === "function" ? el.getAttribute("data-om-phone") || el.getAttribute("data-phone") || el.getAttribute("data-tel") || "" : "";
+    const onClickAttr = typeof el.getAttribute === "function" ? el.getAttribute("onclick") || "" : "";
+    const telFromOnClick = (() => {
+      const m = onClickAttr.match(/tel:[^'"\\)\s]+/i);
+      return m ? m[0] : "";
+    })();
+    const candidate = href?.startsWith("tel:") ? href : dataPhone ? dataPhone.startsWith("tel:") ? dataPhone : `tel:${dataPhone}` : telFromOnClick;
+    if (!candidate || !candidate.toLowerCase().startsWith("tel:")) return null;
+    return { target: candidate, element: el };
+  }
   function installOutboundIntentHooks() {
     if (window.__opsmantikIntentHooksInstalled) return;
     window.__opsmantikIntentHooksInstalled = true;
     document.addEventListener("pointerdown", (e) => {
-      const el = e.target && e.target.closest ? e.target.closest('[data-om-whatsapp], a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], [class*="joinchat"], [class*="jivo"], [id*="jivo"]') : null;
+      const el = e.target && e.target.closest ? e.target.closest('[data-om-whatsapp], a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], a[href^="whatsapp:"], [class*="joinchat"], [class*="jivo"], [id*="jivo"]') : null;
       if (!el) return;
       lastPointerContext = {
         ts: Date.now(),
@@ -1303,9 +1316,9 @@
     installFormTransportHooks();
     flushPendingNavigationOutcome();
     document.addEventListener("click", (e) => {
-      const tel = e.target.closest('a[href^="tel:"]');
-      if (tel) {
-        emitTrackedIntent(tel.href, "phone_call", tel.href, "phone", tel);
+      const phoneIntent = extractPhoneIntentFromElement(e.target);
+      if (phoneIntent) {
+        emitTrackedIntent(phoneIntent.target, "phone_call", phoneIntent.target, "phone", phoneIntent.element);
         return;
       }
       const dataWa = e.target.closest && e.target.closest("[data-om-whatsapp]");
@@ -1313,7 +1326,7 @@
         const href = dataWa.getAttribute("data-om-whatsapp");
         emitTrackedIntent(href, "whatsapp", href, inferWidgetSource(href, dataWa), dataWa);
       } else {
-        const wa = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"]');
+        const wa = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], a[href^="whatsapp:"]');
         if (wa) {
           emitTrackedIntent(wa.href, "whatsapp", wa.href, inferWidgetSource(wa.href, wa), wa);
         }
@@ -1373,7 +1386,7 @@
       }
     });
     document.addEventListener("mouseenter", (e) => {
-      const cta = e.target.closest && e.target.closest('a[href^="tel:"], a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], [data-om-whatsapp], [data-om-cta="true"]');
+      const cta = e.target.closest && e.target.closest('a[href^="tel:"], a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], a[href^="whatsapp:"], [data-om-whatsapp], [data-om-cta="true"]');
       if (cta) pulse.ctaHovers++;
     }, true);
     let focusStart = 0;

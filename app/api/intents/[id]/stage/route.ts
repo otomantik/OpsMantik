@@ -13,6 +13,11 @@ import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
+import { cookies } from 'next/headers';
+import {
+  getPanelPreviewCookieName,
+  verifyPanelPreviewContext,
+} from '@/lib/auth/panel-preview-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +78,14 @@ export async function POST(
     const access = await validateSiteAccess(siteId, user.id, supabase);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+    const cookieStore = await cookies();
+    const previewToken = cookieStore.get(getPanelPreviewCookieName())?.value ?? '';
+    if (previewToken) {
+      const preview = await verifyPanelPreviewContext(previewToken);
+      if (preview && preview.userId === user.id && preview.siteId === siteId && preview.scope === 'ro') {
+        return NextResponse.json({ error: 'READ_ONLY_SCOPE', code: 'READ_ONLY_SCOPE' }, { status: 403 });
+      }
     }
 
     const versionResolution = resolveMutationVersion({

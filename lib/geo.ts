@@ -52,7 +52,7 @@ export interface GeoExtractionResult {
 /** Ghost geo sentinel cities (edge/proxy/CDN locations); case-insensitive. When strictGhostGeo, return Unknown/null. */
 const GHOST_GEO_CITIES = new Set([
     'rome', 'amsterdam', 'roma',
-    'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london',
+    'düsseldorf', 'dusseldorf', 'ashburn', 'frankfurt', 'london', 'helsinki',
 ]);
 
 /** Returns true if value is a known ghost city/district (case-insensitive). */

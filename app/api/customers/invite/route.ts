@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate role
-    const validRoles = ['admin', 'operator', 'analyst', 'billing'];
+    const validRoles = ['admin', 'operator'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
 
     // Check if membership already exists
     const { data: existingMembership } = await adminClient
-      .from('site_members')
+      .from('site_memberships')
       .select('id, role')
       .eq('site_id', site_id)
       .eq('user_id', customerUserId)
@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
       // Update existing membership role if different
       if (existingMembership.role !== role) {
         const { error: updateError } = await adminClient
-          .from('site_members')
+          .from('site_memberships')
           .update({ role })
           .eq('id', existingMembership.id);
 
@@ -254,9 +254,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Insert into site_members table
+    // Insert into site_memberships table
     const { data: membership, error: insertError } = await adminClient
-      .from('site_members')
+      .from('site_memberships')
       .insert({
         site_id: site_id,
         user_id: customerUserId,

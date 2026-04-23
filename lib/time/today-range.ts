@@ -33,6 +33,29 @@ export function resolveDashboardDayTimezone(siteTimezone?: string | null): strin
     strictRaw == null ? true : ['1', 'true', 'on', 'yes'].includes(strictRaw.trim().toLowerCase());
   return strictMode ? 'UTC' : DEFAULT_TIMEZONE;
 }
+
+/**
+ * UI timezone resolver with locale-aware fallback.
+ *
+ * Why:
+ * - Some legacy TR tenants still have `site.timezone = UTC` (or empty), which
+ *   makes panel clocks appear 3 hours behind local business expectations.
+ * - For Turkish locale surfaces, we prefer Europe/Istanbul as a safe UI fallback
+ *   when timezone is missing/neutral.
+ */
+export function resolveDashboardUiTimezone(
+  siteTimezone?: string | null,
+  locale?: string | null
+): string {
+  const resolved = resolveDashboardDayTimezone(siteTimezone);
+  const localeBase = (locale || '').toString().trim().toLowerCase().split('-')[0];
+  const normalizedInput = (siteTimezone || '').toString().trim().toUpperCase();
+  const isNeutralUtc = normalizedInput === 'UTC' || normalizedInput === 'ETC/UTC';
+  if (localeBase === 'tr' && ((!siteTimezone || !String(siteTimezone).trim()) || isNeutralUtc || resolved === 'UTC')) {
+    return DEFAULT_TIMEZONE;
+  }
+  return resolved;
+}
 // Kept for backward compatibility (TRT is UTC+03 year-round)
 export const TRT_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
 

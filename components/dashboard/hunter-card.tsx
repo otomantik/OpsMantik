@@ -81,9 +81,11 @@ function EntryRow({ label, value, urgent }: { label: string; value: React.ReactN
 
 export const HunterCard = React.memo(({
   intent,
+  readOnly = false,
   onAction,
 }: {
   intent: HunterIntent;
+  readOnly?: boolean;
   onAction: (type: LeadActionType) => void;
 }) => {
   const { t: translate, locale, toLocaleUpperCase } = useTranslation();
@@ -164,24 +166,28 @@ export const HunterCard = React.memo(({
         <ActionButton 
           icon={Trash2} 
           label={translate('hunter.junk')} 
+          disabled={readOnly}
           onClick={() => onAction('junk')} 
           className="bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-600 hover:border-red-100" 
         />
         <ActionButton 
           icon={UserCheck} 
           label={translate('hunter.contacted')} 
+          disabled={readOnly}
           onClick={() => onAction('contacted')} 
           className="bg-slate-50 text-slate-400 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-100" 
         />
         <ActionButton 
           icon={Plus} 
           label={translate('hunter.offered')} 
+          disabled={readOnly}
           onClick={() => onAction('offered')} 
           className="bg-slate-50 text-slate-400 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100" 
         />
         <ActionButton 
           icon={ShieldCheck} 
           label={translate('hunter.seal')} 
+          disabled={readOnly}
           onClick={() => onAction('won')} 
           className="bg-slate-900 text-white hover:bg-emerald-600" 
         />
@@ -192,11 +198,12 @@ export const HunterCard = React.memo(({
 
 HunterCard.displayName = 'HunterCard';
 
-function ActionButton({ icon: Icon, label, onClick, className }: { icon: LucideIcon; label: string; onClick: () => void; className?: string }) {
+function ActionButton({ icon: Icon, label, onClick, className, disabled = false }: { icon: LucideIcon; label: string; onClick: () => void; className?: string; disabled?: boolean }) {
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={cn('flex flex-col items-center justify-center gap-2 py-4 rounded-2xl border border-transparent transition-all active:scale-95', className)}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(); }}
+      disabled={disabled}
+      className={cn('flex flex-col items-center justify-center gap-2 py-4 rounded-2xl border border-transparent transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed', className)}
     >
       <Icon size={18} />
       <span className="text-[9px] font-black uppercase tracking-wider leading-none">{label}</span>

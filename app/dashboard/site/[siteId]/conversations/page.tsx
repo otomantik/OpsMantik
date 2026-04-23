@@ -26,7 +26,7 @@ export default async function ConversationDeskRedirect({ params }: PageProps) {
   const userIsAdmin = await isAdmin();
   if (!userIsAdmin && site.user_id !== user.id) {
     const { data: membership } = await supabase
-      .from('site_members')
+      .from('site_memberships')
       .select('site_id')
       .eq('site_id', siteId)
       .eq('user_id', user.id)

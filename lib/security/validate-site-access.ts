@@ -2,7 +2,7 @@
  * Iron Dome v2.1 - Layer 2: Server Gate
  * 
  * Validates site access for authenticated users.
- * Checks: owner, admin, or team member via site_members table.
+ * Checks: owner, admin, or team member via site_memberships table.
  * 
  * Security: Server-only, uses Supabase server client with RLS.
  */
@@ -88,7 +88,7 @@ export async function validateSiteAccess(
 
     // Check site membership
     const { data: membership } = await supabase
-      .from('site_members')
+      .from('site_memberships')
       .select('role')
       .eq('site_id', siteId)
       .eq('user_id', currentUserId)

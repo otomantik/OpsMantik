@@ -55,9 +55,11 @@ export async function getSiteIngestConfig(siteIdUuid: string): Promise<StrictSit
     if (error || !data) return { ...DEFAULT_STRICT_CONFIG };
 
     const config = (data.config ?? {}) as Record<string, unknown>;
+    const prodDefaultGhostStrict = process.env.NODE_ENV === 'production';
     const out: StrictSiteIngestConfig = {
         ingest_strict_mode: typeof config.ingest_strict_mode === 'boolean' ? config.ingest_strict_mode : false,
-        ghost_geo_strict: typeof config.ghost_geo_strict === 'boolean' ? config.ghost_geo_strict : false,
+        // Default-safe policy: production sites run ghost quarantine unless explicitly overridden.
+        ghost_geo_strict: typeof config.ghost_geo_strict === 'boolean' ? config.ghost_geo_strict : prodDefaultGhostStrict,
         traffic_debloat: typeof config.traffic_debloat === 'boolean' ? config.traffic_debloat : false,
         page_view_10s_session_reuse: typeof config.page_view_10s_session_reuse === 'boolean' ? config.page_view_10s_session_reuse : false,
         ingest_allow_preview_uas: typeof config.ingest_allow_preview_uas === 'boolean' ? config.ingest_allow_preview_uas : false,

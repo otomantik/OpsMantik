@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     // ingest_idempotency has NO RLS for auth users, so we must verify membership explicitly
     // before using adminClient to fetch the data.
     const { data: membership, error: memberError } = await adminClient
-        .from('site_members')
+        .from('site_memberships')
         .select('role')
         .eq('site_id', siteId)
         .eq('user_id', user.id)

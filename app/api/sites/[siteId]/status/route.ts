@@ -46,11 +46,11 @@ export async function GET(
     if (!userIsAdmin && site.user_id !== user.id) {
       // Check if user is a member
       const { data: membership } = await supabase
-        .from('site_members')
+        .from('site_memberships')
         .select('site_id')
         .eq('site_id', siteId)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (!membership) {
         return NextResponse.json(

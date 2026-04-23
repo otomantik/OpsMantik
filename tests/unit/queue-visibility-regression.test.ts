@@ -7,7 +7,7 @@ const MIGRATION_PATH = join(
   process.cwd(),
   'supabase',
   'migrations',
-  '20261106210000_fail_closed_junk_queue_visibility.sql'
+  '00000000000007_runtime_recovery_rpcs.sql'
 );
 
 test('queue visibility migration: lite RPC fail-closes entire session after junk/cancel', () => {

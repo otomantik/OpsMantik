@@ -44,6 +44,10 @@ function usageKey(siteIdUuid: string, yearMonth: string): string {
   return `${USAGE_KEY_PREFIX}${siteIdUuid}:${yearMonth}`;
 }
 
+function toIngestMonthStart(yearMonth: string): string {
+  return /^\d{4}-\d{2}$/.test(yearMonth) ? `${yearMonth}-01` : yearMonth;
+}
+
 /**
  * Seconds until end of the given UTC month (for Redis key expiry).
  */
@@ -66,12 +70,13 @@ export async function reconcileUsageForMonth(
   yearMonth: string
 ): Promise<ReconcileResult> {
   // 1) Counts from ingest_idempotency (authority)
+  const ingestMonth = toIngestMonthStart(yearMonth);
   const client = adminClient();
   const { count: billableCount, error: billableError } = await client
     .from('ingest_idempotency')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteIdUuid)
-    .eq('year_month', yearMonth)
+    .eq('year_month', ingestMonth)
     .eq('billable', true);
 
   if (billableError) {
@@ -84,7 +89,7 @@ export async function reconcileUsageForMonth(
     .from('ingest_idempotency')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteIdUuid)
-    .eq('year_month', yearMonth)
+    .eq('year_month', ingestMonth)
     .eq('billable', true)
     .eq('billing_state', 'OVERAGE');
 

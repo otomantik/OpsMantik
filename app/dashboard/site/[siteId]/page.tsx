@@ -5,7 +5,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { SiteLocaleProvider } from '@/components/context/site-locale-context';
 import { isAdmin } from '@/lib/auth/is-admin';
-import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardUiTimezone } from '@/lib/time/today-range';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 import type { Metadata } from 'next';
@@ -56,15 +56,16 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   const supabase = await createClient();
   const { data: siteTimezoneRow } = await supabase
     .from('sites')
-    .select('timezone')
+    .select('timezone, locale')
     .eq('id', siteId)
     .maybeSingle();
 
   // Phase B1: If URL doesn't contain from/to, redirect to TODAY (TRT) range in UTC.
   // This happens at the server boundary to avoid hydration mismatch.
   if (!from || !to) {
-    const siteTimezone = (siteTimezoneRow as { timezone?: string | null } | null)?.timezone ?? null;
-    const resolvedTimezone = resolveDashboardDayTimezone(siteTimezone);
+    const siteTimezone = (siteTimezoneRow as { timezone?: string | null; locale?: string | null } | null)?.timezone ?? null;
+    const siteLocale = (siteTimezoneRow as { timezone?: string | null; locale?: string | null } | null)?.locale ?? null;
+    const resolvedTimezone = resolveDashboardUiTimezone(siteTimezone, siteLocale);
     if (!siteTimezone && resolvedTimezone === 'UTC') {
       incrementRefactorMetric('timezone_fallback_used_total');
     }
@@ -115,7 +116,7 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
         .eq('user_id', user.id)
         .single(),
       supabase
-        .from('site_members')
+        .from('site_memberships')
         .select('site_id, role')
         .eq('site_id', siteId)
         .eq('user_id', user.id)
@@ -149,18 +150,23 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   const acceptLanguage = headersList.get('accept-language') ?? null;
   const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
   const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
+  const effectiveUiTimezone = resolveDashboardUiTimezone(site.timezone ?? null, resolvedLocale);
+  const providerTimezone =
+    site.timezone && site.timezone.trim() && !(site.timezone.trim().toUpperCase() === 'UTC' && resolvedLocale.toLowerCase().startsWith('tr'))
+      ? site.timezone
+      : effectiveUiTimezone;
 
   return (
     <I18nProvider
       locale={resolvedLocale}
       siteConfig={{
         currency: site.currency ?? undefined,
-        timezone: site.timezone ?? undefined,
+        timezone: site.timezone && site.timezone.trim() ? providerTimezone : effectiveUiTimezone,
       }}
     >
       <SiteLocaleProvider
         value={{
-          timezone: site.timezone ?? undefined,
+          timezone: site.timezone && site.timezone.trim() ? providerTimezone : effectiveUiTimezone,
           currency: site.currency ?? undefined,
           locale: site.locale ?? undefined,
         }}

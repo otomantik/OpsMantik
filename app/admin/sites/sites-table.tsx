@@ -105,7 +105,7 @@ export function SitesTableWithSearch({ sites }: SitesTableWithSearchProps) {
                     </span>
                   </td>
                   <td className="p-3">
-                    <Link href={`/dashboard/site/${site.id}`}>
+                    <Link href={`/admin/sites/${site.id}/preview-panel`}>
                       <Button
                         variant="outline"
                         size="sm"

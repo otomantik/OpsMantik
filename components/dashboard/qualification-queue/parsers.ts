@@ -22,6 +22,8 @@ interface RpcIntentRow {
   city?: unknown;
   district?: unknown;
   location_source?: unknown;
+  location_reason_code?: unknown;
+  location_confidence?: unknown;
   device_type?: unknown;
   device_os?: unknown;
   ads_network?: unknown;
@@ -112,6 +114,8 @@ export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
     city: r.city ?? null,
     district: r.district ?? null,
     location_source: typeof r.location_source === 'string' ? r.location_source : null,
+    location_reason_code: typeof r.location_reason_code === 'string' ? r.location_reason_code : null,
+    location_confidence: rowNum(r, 'location_confidence'),
     device_type: r.device_type ?? null,
     device_os: r.device_os ?? null,
     ads_network: r.ads_network ?? null,
@@ -198,6 +202,8 @@ export function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
       city: (r.city as string | null | undefined) ?? null,
       district: (r.district as string | null | undefined) ?? null,
       location_source: typeof r.location_source === 'string' ? r.location_source : null,
+      location_reason_code: typeof r.location_reason_code === 'string' ? r.location_reason_code : null,
+      location_confidence: rowNum(r, 'location_confidence'),
       device_type: (r.device_type as string | null | undefined) ?? null,
       device_os: (r.device_os as string | null | undefined) ?? null,
       total_duration_sec: rowNum(r, 'total_duration_sec'),

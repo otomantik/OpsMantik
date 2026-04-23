@@ -14,10 +14,12 @@ import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 export function PanelFeed({
   initialCalls,
   siteId,
+  readOnly = false,
 }: {
   initialCalls: HunterIntent[];
   /** Required: scopes Realtime `calls` subscription to this site only (tenant isolation). */
   siteId: string;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [calls, setCalls] = useState(initialCalls);
@@ -61,6 +63,9 @@ export function PanelFeed({
   ) => {
     if (!pendingAction) {
       return { success: false, error: t('toast.failedUpdate') };
+    }
+    if (readOnly) {
+      return { success: false, error: 'READ_ONLY_SCOPE' };
     }
     const { intent } = pendingAction;
     const intentVersion =
@@ -200,6 +205,7 @@ export function PanelFeed({
               <SwipeableCard 
                 key={activeIntent.id}
                 intent={activeIntent}
+                readOnly={readOnly}
                 onAction={(type) => setPendingAction({ intent: activeIntent, type })}
               />
 
@@ -236,13 +242,15 @@ export function PanelFeed({
         </AnimatePresence>
       </div>
 
-      <LeadActionOverlay
-        intent={pendingAction?.intent as HunterIntent}
-        actionType={pendingAction?.type as LeadActionType}
-        isOpen={!!pendingAction}
-        onClose={() => setPendingAction(null)}
-        onComplete={handleActionComplete}
-      />
+      {!readOnly && (
+        <LeadActionOverlay
+          intent={pendingAction?.intent as HunterIntent}
+          actionType={pendingAction?.type as LeadActionType}
+          isOpen={!!pendingAction}
+          onClose={() => setPendingAction(null)}
+          onComplete={handleActionComplete}
+        />
+      )}
     </div>
   );
 }
@@ -250,9 +258,11 @@ export function PanelFeed({
 // ─── SWIPEABLE CARD WRAPPER ────────────────────────────────────────
 function SwipeableCard({ 
   intent, 
+  readOnly,
   onAction 
 }: { 
   intent: HunterIntent; 
+  readOnly: boolean;
   onAction: (type: LeadActionType) => void;
 }) {
   return (
@@ -264,6 +274,7 @@ function SwipeableCard({
     >
       <HunterCard 
         intent={intent} 
+        readOnly={readOnly}
         onAction={onAction}
       />
     </motion.div>

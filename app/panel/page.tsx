@@ -4,17 +4,26 @@ import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import { PanelFeed } from '../../components/dashboard/panel-feed';
 import { logError } from '@/lib/logging/logger';
-import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
+import { getTodayTrtUtcRange, resolveDashboardUiTimezone } from '@/lib/time/today-range';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 import { LogOut } from 'lucide-react';
-import { isAdmin } from '@/lib/auth/is-admin';
+import { validateSiteAccess } from '@/lib/security/validate-site-access';
+import {
+  getPanelPreviewCookieName,
+  verifyPanelPreviewContext,
+} from '@/lib/auth/panel-preview-context';
+import { resolvePlatformAdmin } from '@/lib/auth/platform-admin';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function PanelRoute() {
+interface PanelRouteProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function PanelRoute({ searchParams }: PanelRouteProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -22,18 +31,49 @@ export default async function PanelRoute() {
     redirect('/login');
   }
 
-  const userIsAdmin = await isAdmin();
-  if (userIsAdmin) {
-    redirect('/dashboard');
-  }
-
   const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;
   const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
   const baseLocale = resolveLocale(null, user?.user_metadata, acceptLanguage, cookieLocale);
 
+  const sp = (await searchParams) || {};
+  const requestedSiteIdRaw = Array.isArray(sp.siteId) ? sp.siteId[0] : sp.siteId;
+  const requestedSiteId = typeof requestedSiteIdRaw === 'string' && requestedSiteIdRaw.trim()
+    ? requestedSiteIdRaw.trim()
+    : null;
+  const previewModeRaw = Array.isArray(sp.preview) ? sp.preview[0] : sp.preview;
+  const wantsPreviewMode = previewModeRaw === 'customer';
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+  const isPlatformAdmin = resolvePlatformAdmin(profile?.role ?? null, user);
+
   // Find user's site
   let targetSiteId: string | null = null;
+  let isReadOnlyPreview = false;
+  const previewToken = cookieStore.get(getPanelPreviewCookieName())?.value ?? '';
+  const previewContext = previewToken ? await verifyPanelPreviewContext(previewToken) : null;
+
+  if (requestedSiteId) {
+    const access = await validateSiteAccess(requestedSiteId, user.id, supabase);
+    if (access.allowed) {
+      targetSiteId = requestedSiteId;
+      const previewValid =
+        Boolean(previewContext) &&
+        previewContext?.siteId === requestedSiteId &&
+        previewContext?.userId === user.id &&
+        previewContext?.scope === 'ro' &&
+        isPlatformAdmin;
+      if (wantsPreviewMode && previewValid) {
+        isReadOnlyPreview = true;
+      }
+    }
+  }
+
+  if (!targetSiteId) {
   const { data: ownedSite } = await adminClient
     .from('sites')
     .select('id')
@@ -44,7 +84,7 @@ export default async function PanelRoute() {
     targetSiteId = ownedSite.id;
   } else {
     const { data: membership } = await adminClient
-      .from('site_members')
+      .from('site_memberships')
       .select('site_id')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
@@ -54,6 +94,7 @@ export default async function PanelRoute() {
     if (membership) {
       targetSiteId = membership.site_id;
     }
+  }
   }
 
   if (!targetSiteId) {
@@ -87,7 +128,7 @@ export default async function PanelRoute() {
   const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
 
   // Fetch via RPC
-  const panelTimezone = resolveDashboardDayTimezone(site?.timezone ?? null);
+  const panelTimezone = resolveDashboardUiTimezone(site?.timezone ?? null, resolvedLocale);
   const { fromIso, toIso } = getTodayTrtUtcRange(new Date(), panelTimezone);
   const { data: calls, error: callsError } = await adminClient.rpc('get_recent_intents_lite_v1', {
     p_site_id: targetSiteId,
@@ -110,7 +151,7 @@ export default async function PanelRoute() {
   return (
     <I18nProvider
       locale={resolvedLocale}
-      siteConfig={{ currency: site?.currency ?? undefined, timezone: site?.timezone ?? undefined }}
+      siteConfig={{ currency: site?.currency ?? undefined, timezone: panelTimezone }}
     >
       <div className="min-h-screen bg-slate-50 font-sans">
         {/* Top Bar (Light) */}
@@ -136,6 +177,14 @@ export default async function PanelRoute() {
                   {translate(resolvedLocale, 'panel.live')}
                 </span>
               </div>
+              {isReadOnlyPreview && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest leading-none">
+                    read-only preview
+                  </span>
+                </div>
+              )}
               <form action="/auth/signout" method="post">
                 <button
                   type="submit"
@@ -154,6 +203,7 @@ export default async function PanelRoute() {
           <PanelFeed
             siteId={targetSiteId}
             initialCalls={processedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]}
+            readOnly={isReadOnlyPreview}
           />
         </div>
       </div>

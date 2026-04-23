@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { adminClient } from '@/lib/supabase/admin';
-import { logError } from '@/lib/logging/logger';
+import { logError, logWarn } from '@/lib/logging/logger';
 import { isRecord, parseValidWorkerJobData } from '@/lib/types/ingest';
 import { SiteService } from '@/lib/services/site-service';
 import { runSyncGates } from '@/lib/ingest/sync-gates';
@@ -223,6 +223,14 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
 
     const gatesResult = await runSyncGates(job, site.id);
     if (gatesResult.ok === false) {
+      logWarn('WORKERS_INGEST_GATE_REJECT', {
+        site_id: site.id,
+        lane,
+        reason: gatesResult.reason,
+        qstash_message_id: qstashMessageId,
+        ingest_id: typeof job.ingest_id === 'string' ? job.ingest_id : null,
+        trace_id: typeof job.om_trace_uuid === 'string' ? job.om_trace_uuid : null,
+      });
       return NextResponse.json({ ok: true, reason: gatesResult.reason });
     }
 

@@ -84,17 +84,13 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle()
         if (!resolvePlatformAdmin(profile?.role ?? null, user)) {
-            return NextResponse.redirect(new URL('/dashboard', request.url))
+            return NextResponse.redirect(new URL('/panel', request.url))
         }
     }
 
-    // Redirect to dashboard if logged in and trying to access login
+    // Redirect logged-in users to central landing resolver
     if (path === ('/login') && user) {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-
-    if (path === '/' && user) {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
+        return NextResponse.redirect(new URL('/', request.url))
     }
 
     return response

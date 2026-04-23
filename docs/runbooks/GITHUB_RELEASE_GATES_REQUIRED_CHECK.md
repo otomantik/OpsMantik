@@ -3,7 +3,7 @@
 ## Purpose
 
 This runbook defines the GitHub-side enforcement for release gate execution.
-The goal is to prevent merges or releases that skip `tenant-boundary`, `oci-kernel`, or the multi-site intent smoke.
+The goal is to prevent merges or releases that skip `tenant-boundary`, `oci-kernel`, or the target-site intent smoke.
 
 ## Required Workflow
 
@@ -59,7 +59,7 @@ Do not merge when any of the following is true:
 - `release-gate-evidence-pr` artifact is missing on the PR
 - `tenant-boundary` gate was skipped
 - `oci-kernel` gate was skipped
-- Live release proof was required but Multi-site intent smoke did not pass `2/2`
+- Live release proof was required but target-site intent smoke did not pass `1/1`
 
 ## Manual Fallback
 

@@ -45,6 +45,8 @@ export interface HunterIntentLite {
   city?: string | null;
   district?: string | null;
   location_source?: string | null;
+  location_reason_code?: string | null;
+  location_confidence?: number | null;
   device_type?: string | null;
   device_os?: string | null;
   total_duration_sec?: number | null;
@@ -80,6 +82,8 @@ export interface HunterIntent {
   district?: string | null;
   /** 'gclid' when location is from Google Ads (geo_target_id/location_name); null when from IP/session. */
   location_source?: string | null;
+  location_reason_code?: string | null;
+  location_confidence?: number | null;
 
   // Device (TARGET HUD)
   device_type?: string | null;

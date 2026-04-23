@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * P0 Multi-Site Intent Test — selected domains sync -> events + calls (ingest worker path)
+ * P0 Intent Test — selected domains sync -> events + calls (ingest worker path)
  *
  * DEPLOY GATE (KESİN EMİR): Bu test çalıştırılmadan deploy edilmeyecek.
  * Intent bizim belkemiğimiz. Aksi belirtilene kadar bu kesin bir emirdir.
  * docs/OPS/DEPLOY_GATE_INTENT.md
  *
  * Env:
- *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com,sosreklam.com
+ *   P0_SITES — Domain listesi (virgülle): www.kocotokurtarma.com
  *   SYNC_API_URL — default https://console.opsmantik.com/api/sync
  *   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
@@ -16,8 +16,8 @@
  * aynı projeyi hedeflemelidir; aksi halde 202 dönse bile sorgu boş kalır.
  *
  * Usage:
- *   P0_SITES="yapiozmendanismanlik.com,sosreklam.com" node scripts/smoke/p0_intent_multi_site.mjs
- *   node scripts/smoke/p0_intent_multi_site.mjs  # default 2 site
+ *   P0_SITES="www.kocotokurtarma.com" node scripts/smoke/p0_intent_multi_site.mjs
+ *   node scripts/smoke/p0_intent_multi_site.mjs  # default target site
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -38,8 +38,8 @@ if (!supabaseUrl || !serviceKey) {
 const supabase = createClient(supabaseUrl, serviceKey);
 
 const SYNC_API_URL = process.env.SYNC_API_URL || 'https://console.opsmantik.com/api/sync';
-const ORIGIN = process.env.ORIGIN || 'https://www.yapiozmendanismanlik.com';
-const DEFAULT_SITES = 'yapiozmendanismanlik.com,sosreklam.com';
+const ORIGIN = process.env.ORIGIN || 'https://www.kocotokurtarma.com';
+const DEFAULT_SITES = 'www.kocotokurtarma.com';
 const SITES_RAW = process.env.P0_SITES || DEFAULT_SITES;
 const SITES = SITES_RAW.split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -185,7 +185,7 @@ async function runTestForSite(siteInfo) {
 }
 
 async function main() {
-  console.log('🧪 P0 Multi-Site Intent Test');
+  console.log('🧪 P0 Intent Test');
   console.log(JSON.stringify({ SYNC_API_URL, SITES }, null, 2));
 
   const results = [];

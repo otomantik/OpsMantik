@@ -9,6 +9,7 @@ import { getSiteIngestConfig } from '@/lib/ingest/site-ingest-config';
 import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { normalizeLandingUrl } from '@/lib/ingest/normalize-landing-url';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
+import { decideGeo } from '@/lib/geo/decision-engine';
 import { debugLog } from '@/lib/utils';
 import { logError, logWarn } from '@/lib/logging/logger';
 import { getFinalUrl, type IngestMeta } from '@/lib/types/ingest';
@@ -29,6 +30,7 @@ import {
 } from '@/lib/domain/truth/inference-run-writer';
 import { appendIdentityGraphEdgeBestEffort } from '@/lib/domain/truth/identity-graph-writer';
 import { runConsentProvenanceShadowForResolvedSession } from '@/lib/compliance/consent-provenance-shadow';
+import { sanitizeClickId } from '@/lib/attribution';
 
 export type WorkerJob = Record<string, unknown> & {
   s: string;
@@ -327,11 +329,17 @@ async function doProcessSyncEvent(
   let attributionSource = attributionSourceBeforeDebloat;
   // When traffic_debloat: only attribute as Google Ads when valid click-id present (length >= 10)
   const trafficDebloat = siteIngestConfig.traffic_debloat || siteIngestConfig.ingest_strict_mode;
+  const sanitizedGclid = sanitizeClickId(params.get('gclid') || meta?.gclid || currentGclid || null) ?? null;
+  const sanitizedWbraid = sanitizeClickId(params.get('wbraid') || meta?.wbraid || null) ?? null;
+  const sanitizedGbraid = sanitizeClickId(params.get('gbraid') || meta?.gbraid || null) ?? null;
   if (trafficDebloat && attributionSource.includes('Ads')) {
-    const gclid = params.get('gclid') || meta?.gclid || null;
-    const wbraid = params.get('wbraid') || meta?.wbraid || null;
-    const gbraid = params.get('gbraid') || meta?.gbraid || null;
-    if (!hasValidClickId({ gclid, wbraid, gbraid })) attributionSource = 'Direct';
+    if (!hasValidClickId({ gclid: sanitizedGclid, wbraid: sanitizedWbraid, gbraid: sanitizedGbraid })) {
+      attributionSource = 'Direct';
+      logWarn('CLICK_ID_DROPPED_INVALID_CLICK_ID', {
+        site_id: siteIdUuid,
+        event_id: dedupEventId,
+      });
+    }
   }
 
   const ingestTrace = typeof job.ingest_id === 'string' ? job.ingest_id.trim() : '';
@@ -447,9 +455,16 @@ async function doProcessSyncEvent(
     },
   });
 
-  // Deterministik geo: GCLID + loc_physical_ms/loc_interest_ms → ADS geo
+  // Deterministic geo policy: click-id aware precedence with reason/confidence.
   const geoCriteriaId = utm?.loc_physical_ms || utm?.loc_interest_ms;
-  if (currentGclid && geoCriteriaId) {
+  let adsCity: string | null = null;
+  let adsDistrict: string | null = null;
+  const hasSanitizedClickId = hasValidClickId({
+    gclid: sanitizedGclid,
+    wbraid: sanitizedWbraid,
+    gbraid: sanitizedGbraid,
+  });
+  if (hasSanitizedClickId && geoCriteriaId) {
     try {
       const id = parseInt(String(geoCriteriaId), 10);
       if (Number.isFinite(id)) {
@@ -460,21 +475,32 @@ async function doProcessSyncEvent(
           .single();
         if (geoRow?.canonical_name) {
           const parts = String(geoRow.canonical_name).split(',').map((p: string) => p.trim());
-          const district = parts.length >= 2 ? `${parts[0]} / ${parts[1]}` : parts[0] || null;
-          const city = parts.length >= 2 ? parts[1] : null;
-          await upsertSessionGeo({
-            siteId: siteIdUuid,
-            sessionId: session.id,
-            sessionMonth: session.created_month,
-            city,
-            district,
-            source: 'ADS',
-          });
+          adsDistrict = parts.length >= 2 ? `${parts[0]} / ${parts[1]}` : parts[0] || null;
+          adsCity = parts.length >= 2 ? parts[1] : null;
         }
       }
     } catch (geoErr) {
-      debugLog('[PROCESS_SYNC_EVENT] geo upsert skip', { session_id: session.id, error: (geoErr as Error)?.message });
+      debugLog('[PROCESS_SYNC_EVENT] geo lookup skip', { session_id: session.id, error: (geoErr as Error)?.message });
     }
+  }
+  const geoDecision = decideGeo({
+    hasValidClickId: hasSanitizedClickId,
+    adsGeo: { city: adsCity, district: adsDistrict },
+    ipGeo: { city: geoInfo.city, district: geoInfo.district },
+  });
+  try {
+    await upsertSessionGeo({
+      siteId: siteIdUuid,
+      sessionId: session.id,
+      sessionMonth: session.created_month,
+      city: geoDecision.city,
+      district: geoDecision.district,
+      source: geoDecision.source,
+      reasonCode: geoDecision.reasonCode,
+      confidence: geoDecision.confidence,
+    });
+  } catch (geoErr) {
+    debugLog('[PROCESS_SYNC_EVENT] geo upsert skip', { session_id: session.id, error: (geoErr as Error)?.message });
   }
 
   let summary = 'Standard Traffic';

@@ -1,4 +1,4 @@
-# DEPLOY GATE — Intent Multi-Site Test (KESİN EMİR)
+# DEPLOY GATE — Intent Test (KESİN EMİR)
 
 > **Intent bizim belkemiğimiz.** Bu test çalıştırılmadan deploy edilmeyecek.
 > Aksi belirtilene kadar bu kesin bir emirdir. Unutulursa vay halimize.
@@ -11,12 +11,11 @@ Her deploy öncesi:
 npm run smoke:intent-multi-site
 ```
 
-**2/2 site PASS** olmadan deploy yapılmayacak.
+**1/1 site PASS** olmadan deploy yapılmayacak.
 
-## Test Edilen Siteler (varsayılan)
+## Test Edilen Site (varsayılan)
 
-- yapiozmendanismanlik.com
-- sosreklam.com
+- www.kocotokurtarma.com
 
 ## Ortam
 
@@ -26,7 +25,7 @@ npm run smoke:intent-multi-site
 ## Özel Site Listesi
 
 ```bash
-P0_SITES="yapiozmendanismanlik.com,sosreklam.com,yoursite.com" npm run smoke:intent-multi-site
+P0_SITES="www.kocotokurtarma.com,yoursite.com" npm run smoke:intent-multi-site
 ```
 
 ## Lokalden test (QStash olmadan)

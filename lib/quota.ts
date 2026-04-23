@@ -107,6 +107,10 @@ function usageKey(siteIdUuid: string, yearMonth: string): string {
   return `${USAGE_KEY_PREFIX}${siteIdUuid}:${yearMonth}`;
 }
 
+function toIngestMonthStart(yearMonth: string): string {
+  return /^\d{4}-\d{2}$/.test(yearMonth) ? `${yearMonth}-01` : yearMonth;
+}
+
 /**
  * Read current month usage from Redis (best-effort). Returns null on miss or error.
  * Target: <10ms for usage lookup.
@@ -143,11 +147,12 @@ export async function getUsagePgSnapshot(siteIdUuid: string, yearMonth: string):
  * COUNT(*) from ingest_idempotency (billable=true) for site + month. Expensive fallback when snapshot missing.
  */
 export async function getUsagePgCount(siteIdUuid: string, yearMonth: string): Promise<number> {
+  const ingestMonth = toIngestMonthStart(yearMonth);
   const { count, error } = await adminClient
     .from('ingest_idempotency')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteIdUuid)
-    .eq('year_month', yearMonth)
+    .eq('year_month', ingestMonth)
     .eq('billable', true);
 
   if (error) return 0;

@@ -239,9 +239,14 @@ export class IntentService {
 
         const digits = cleaned.replace(/[^\d]/g, '');
         const hasPlus = cleaned.startsWith('+');
-
-        if (!hasPlus) return null;
         if (digits.length < 8 || digits.length > 15) return null;
-        return `+${digits}`;
+        if (hasPlus) return `+${digits}`;
+
+        // Local-dial fallback (common on TR pages: tel:05xxxxxxxxx / 5xxxxxxxxx).
+        // We normalize to an E.164-like shape so tel clicks still create an intent card.
+        if (digits.length === 11 && digits.startsWith('0')) return `+90${digits.slice(1)}`;
+        if (digits.length === 10 && digits.startsWith('5')) return `+90${digits}`;
+        if (digits.length >= 10) return `+${digits}`;
+        return null;
     }
 }

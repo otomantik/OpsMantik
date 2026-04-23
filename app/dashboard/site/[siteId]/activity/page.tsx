@@ -40,7 +40,7 @@ export default async function ActivityLogPage({ params }: PageProps) {
 
     if (!ownedSite) {
       const { data: membership } = await supabase
-        .from('site_members')
+        .from('site_memberships')
         .select('site_id')
         .eq('site_id', siteId)
         .eq('user_id', user.id)

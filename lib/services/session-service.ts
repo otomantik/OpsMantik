@@ -5,6 +5,9 @@ import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import { determineTrafficSource } from '@/lib/analytics/source-classifier';
 import { sanitizeClickId, computeUtmUpdates } from '@/lib/attribution';
 import type { IngestMeta } from '@/lib/types/ingest';
+import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
+import { decideGeo } from '@/lib/geo/decision-engine';
+import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 
 /** PR-OCI-7.3.1: Evidence-based weights for monotonic attribution (never downgrade Paid → Organic) */
 const ATTRIBUTION_WEIGHTS: Record<string, number> = {
@@ -160,12 +163,21 @@ export class SessionService {
             const safeGbraidUpdate = sessionIsOrganic
                 ? null
                 : (hasExistingGbraid ? session.gbraid ?? null : (sanitizedGbraid || session.gbraid || null));
+            const geoDecision = decideGeo({
+                hasValidClickId: hasValidClickId({
+                    gclid: safeGclidUpdate,
+                    wbraid: safeWbraidUpdate,
+                    gbraid: safeGbraidUpdate,
+                }),
+                ipGeo: {
+                    city: geoInfo.city,
+                    district: geoInfo.district,
+                },
+            });
 
             const updates: Record<string, unknown> = {
                 device_type: deviceType,
                 device_os: deviceInfo.os || null,
-                city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
-                district: geoInfo.district,
                 fingerprint: fingerprint,
                 gclid: safeGclidUpdate,
                 traffic_source: traffic.traffic_source,
@@ -237,6 +249,25 @@ export class SessionService {
                     error: updateErr.message,
                     code: updateErr.code,
                 });
+            } else {
+                try {
+                    await upsertSessionGeo({
+                        siteId,
+                        sessionId: session.id,
+                        sessionMonth: dbMonth,
+                        source: geoDecision.source,
+                        city: geoDecision.city,
+                        district: geoDecision.district,
+                        reasonCode: geoDecision.reasonCode,
+                        confidence: geoDecision.confidence,
+                    });
+                } catch (geoUpdateErr) {
+                    logWarn('SESSION_GEO_UPSERT_FAILED', {
+                        session_id: session.id,
+                        site_id: siteId,
+                        error: geoUpdateErr instanceof Error ? geoUpdateErr.message : String(geoUpdateErr),
+                    });
+                }
             }
         }
     }
@@ -293,6 +324,23 @@ export class SessionService {
         const safeGclid = isOrganic ? null : (sanitizeClickId(rawGclid) ?? null);
         const safeWbraid = isOrganic ? null : (sanitizeClickId(rawWbraid) ?? null);
         const safeGbraid = isOrganic ? null : (sanitizeClickId(rawGbraid) ?? null);
+        const geoDecision = decideGeo({
+            hasValidClickId: hasValidClickId({
+                gclid: safeGclid,
+                wbraid: safeWbraid,
+                gbraid: safeGbraid,
+            }),
+            ipGeo: {
+                city: geoInfo.city,
+                district: geoInfo.district,
+            },
+        });
+        if (isOrganic && (rawGclid || rawWbraid || rawGbraid)) {
+            logWarn('CLICK_ID_DROPPED_ORGANIC_NULLING', {
+                site_id: siteId,
+                session_id: sessionId,
+            });
+        }
 
         // Always use the current server-side UTC month for partition routing.
         // The browser's sm/dbMonth can be stale (e.g. QStash replays across month boundaries,
@@ -317,8 +365,8 @@ export class SessionService {
             traffic_medium: traffic.traffic_medium,
             device_type: deviceType,
             device_os: deviceInfo.os || null,
-            city: geoInfo.city !== 'Unknown' ? geoInfo.city : null,
-            district: geoInfo.district,
+            city: geoDecision.city,
+            district: geoDecision.district,
             fingerprint: fingerprint,
             utm_term: utm?.term || null,
             matchtype: utm?.matchtype || null,
@@ -413,6 +461,24 @@ export class SessionService {
                 code: sError.code,
             });
             throw sError;
+        }
+        try {
+            await upsertSessionGeo({
+                siteId,
+                sessionId,
+                sessionMonth: insertMonth,
+                source: geoDecision.source,
+                city: geoDecision.city,
+                district: geoDecision.district,
+                reasonCode: geoDecision.reasonCode,
+                confidence: geoDecision.confidence,
+            });
+        } catch (geoUpdateErr) {
+            logWarn('SESSION_GEO_UPSERT_AFTER_CREATE_FAILED', {
+                site_id: siteId,
+                session_id: sessionId,
+                error: geoUpdateErr instanceof Error ? geoUpdateErr.message : String(geoUpdateErr),
+            });
         }
         return newSession;
     }
