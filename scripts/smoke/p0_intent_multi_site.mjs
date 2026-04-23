@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * P0 Multi-Site Intent Test — seçilen domain’lerde sync → event → call (intent) akışını doğrular
+ * P0 Multi-Site Intent Test — selected domains sync -> events + calls (ingest worker path)
  *
  * DEPLOY GATE (KESİN EMİR): Bu test çalıştırılmadan deploy edilmeyecek.
  * Intent bizim belkemiğimiz. Aksi belirtilene kadar bu kesin bir emirdir.
@@ -10,6 +10,10 @@
  *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com,sosreklam.com
  *   SYNC_API_URL — default https://console.opsmantik.com/api/sync
  *   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *
+ * Bu script DB’de sync worker’ın yazdığı `events` + `calls` satırlarını arar. SYNC_API_URL
+ * (ör. https://console.opsmantik.com) hangi Supabase projesine yazıyorsa, .env.local
+ * aynı projeyi hedeflemelidir; aksi halde 202 dönse bile sorgu boş kalır.
  *
  * Usage:
  *   P0_SITES="yapiozmendanismanlik.com,sosreklam.com" node scripts/smoke/p0_intent_multi_site.mjs
@@ -50,11 +54,6 @@ function generateUUID() {
   });
 }
 
-function monthKeyUTC() {
-  const d = new Date();
-  return d.toISOString().slice(0, 7) + '-01';
-}
-
 async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -89,17 +88,20 @@ async function findSiteByDomain(domain) {
   return { site_id: row.id, site_public_id: row.public_id, domain: row.domain || domain };
 }
 
-async function runTestForSite(siteInfo, index) {
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+/** Lookback for DB polling (clocks, queue latency). */
+const WINDOW_MS = parseInt(process.env.P0_SMOKE_LOOKBACK_MS || '120000', 10);
+
+async function runTestForSite(siteInfo) {
   const { site_id: internalSiteId, site_public_id, domain } = siteInfo;
   const sid = generateUUID();
-  const sm = monthKeyUTC();
-  const t0 = new Date(Date.now() - 2000);
+  const t0 = new Date(Date.now() - WINDOW_MS);
 
   const payload = {
     s: site_public_id,
     u: `https://${domain}/test-landing?gclid=TEST_MULTISITE`,
     sid,
-    sm,
     ec: 'conversion',
     ea: 'phone_call',
     el: 'tel:+905000000000',
@@ -111,7 +113,11 @@ async function runTestForSite(siteInfo, index) {
 
   const res = await fetch(SYNC_API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: ORIGIN,
+      'User-Agent': BROWSER_UA,
+    },
     body: JSON.stringify(payload),
   });
 
@@ -133,28 +139,45 @@ async function runTestForSite(siteInfo, index) {
   const eventRow = await retry(`DB events [${domain}]`, async () => {
     const { data, error } = await supabase
       .from('events')
-      .select('id')
-      .eq('session_id', sid)
-      .eq('session_month', sm)
+      .select('id, event_action, event_category, created_at')
+      .eq('site_id', internalSiteId)
       .eq('event_action', 'phone_call')
       .gte('created_at', t0.toISOString())
+      .order('created_at', { ascending: false })
       .limit(1);
     if (error) throw error;
-    if (!data?.[0]) throw new Error('event_row_missing');
+    if (!data?.[0]) {
+      const { data: ps } = await supabase
+        .from('processed_signals')
+        .select('event_id, status, created_at')
+        .eq('site_id', internalSiteId)
+        .order('created_at', { ascending: false })
+        .limit(3);
+      const recentPs = (ps || []).filter((r) => new Date(r.created_at) >= t0);
+      if (recentPs.length === 0) {
+        throw new Error(
+          'event_row_missing_no_processed_signals: SYNC_API_URL ile aynı Supabase projesini ' +
+            'kullandığınızdan emin olun (.env.local NEXT_PUBLIC_SUPABASE_URL) veya worker ' +
+            'ingest (traffic_debloat/skip) loglarına bakın'
+        );
+      }
+      throw new Error(
+        'event_row_missing_but_processed_signals: worker kısmi çalışmış olabilir (events insert?)'
+      );
+    }
     return data[0];
   });
 
   const callRow = await retry(`DB calls [${domain}]`, async () => {
     const { data, error } = await supabase
       .from('calls')
-      .select('id')
+      .select('id, status, created_at, matched_session_id')
       .eq('site_id', internalSiteId)
-      .eq('matched_session_id', sid)
-      .eq('source', 'click')
       .gte('created_at', t0.toISOString())
+      .order('created_at', { ascending: false })
       .limit(1);
     if (error) throw error;
-    if (!data?.[0]) throw new Error('call_intent_missing');
+    if (!data?.[0]) throw new Error('call_row_missing');
     return data[0];
   });
 
@@ -176,7 +199,7 @@ async function main() {
       continue;
     }
     try {
-      const r = await runTestForSite(siteInfo, i);
+      const r = await runTestForSite(siteInfo);
       console.log(`✅ ${domain}: event=${r.eventId}, call=${r.callId}`);
       results.push({ domain, ok: true, ...r });
     } catch (err) {

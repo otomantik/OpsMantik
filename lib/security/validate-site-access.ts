@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 import { hashForLog } from '@/lib/security/redact-for-log';
 import { logWarn, logError } from '@/lib/logging/logger';
+import { resolvePlatformAdmin } from '@/lib/auth/platform-admin';
 
 export interface SiteAccessResult {
   allowed: boolean;
@@ -55,9 +56,9 @@ export async function validateSiteAccess(
       .from('profiles')
       .select('role')
       .eq('id', currentUserId)
-      .single();
+      .maybeSingle();
 
-    if (profile?.role === 'admin') {
+    if (resolvePlatformAdmin(profile?.role ?? null, null)) {
       return {
         allowed: true,
         role: 'admin'

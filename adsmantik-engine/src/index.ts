@@ -4,6 +4,9 @@ type SecretMap = Record<string, string>;
 interface WorkerEnv {
 	OPSMANTIK_BASE_URL?: string;
 	SITE_CONFIG?: string;
+	SITE_CONFIG_URL?: string;
+	SITE_CONFIG_TTL_MS?: string;
+	WORKER_TENANT_MAP_TOKEN?: string;
 	OPS_CALL_EVENT_SECRETS?: string;
 }
 
@@ -67,6 +70,46 @@ function parseJsonMap(raw: string | undefined): Record<string, string> {
 	} catch {
 		return {};
 	}
+}
+
+let tenantMapCache: { expiresAt: number; data: TenantMap } | null = null;
+
+async function loadTenantMap(env: WorkerEnv): Promise<TenantMap> {
+	const now = Date.now();
+	if (tenantMapCache && tenantMapCache.expiresAt > now) {
+		return tenantMapCache.data;
+	}
+
+	const staticMap = parseJsonMap(env.SITE_CONFIG);
+	let mergedMap: TenantMap = { ...staticMap };
+	const mapUrl = env.SITE_CONFIG_URL?.trim();
+	if (mapUrl) {
+		try {
+			const res = await fetch(mapUrl, {
+				headers: env.WORKER_TENANT_MAP_TOKEN
+					? { "x-ops-worker-token": env.WORKER_TENANT_MAP_TOKEN }
+					: {},
+			});
+			if (res.ok) {
+				const parsed = (await res.json()) as { map?: Record<string, unknown> };
+				const remoteMapRaw =
+					parsed && typeof parsed === "object" && parsed.map && typeof parsed.map === "object"
+						? parsed.map
+						: {};
+				for (const [host, value] of Object.entries(remoteMapRaw)) {
+					if (typeof value === "string" && value.trim().length > 0) {
+						mergedMap[normalizeHost(host)] = value.trim();
+					}
+				}
+			}
+		} catch (error) {
+			console.log("[adsmantik-engine] tenant map fetch failed", String(error));
+		}
+	}
+
+	const ttl = Number(env.SITE_CONFIG_TTL_MS || 300000);
+	tenantMapCache = { expiresAt: now + (Number.isFinite(ttl) ? Math.max(10000, ttl) : 300000), data: mergedMap };
+	return mergedMap;
 }
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -223,7 +266,7 @@ export default {
 			return new Response(null, { status: 200, headers: buildCorsHeaders(origin) });
 		}
 
-		const tenantMap = parseJsonMap(env.SITE_CONFIG);
+		const tenantMap = await loadTenantMap(env);
 		const secretMap = parseJsonMap(env.OPS_CALL_EVENT_SECRETS);
 		const siteId = resolveTenantSiteId(request, tenantMap);
 		if (!siteId) {

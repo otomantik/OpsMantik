@@ -44,7 +44,7 @@ export default async function PanelRoute() {
     targetSiteId = ownedSite.id;
   } else {
     const { data: membership } = await adminClient
-      .from('site_memberships')
+      .from('site_members')
       .select('site_id')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })

@@ -1,10 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { logError } from '@/lib/logging/logger';
+import { logError, logInfo } from '@/lib/logging/logger';
+import { parseCreateSitePayload } from '@/lib/validation/site-create';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
+
+function buildOriginCandidates(domain: string): string[] {
+  const clean = domain.trim().toLowerCase().replace(/^www\./, '');
+  if (!clean) return [];
+  const origins = new Set<string>();
+  origins.add(`https://${clean}`);
+  origins.add(`https://www.${clean}`);
+  return Array.from(origins);
+}
+
+async function seedSiteAllowedOrigins(siteId: string, domain: string): Promise<void> {
+  const candidates = buildOriginCandidates(domain);
+  if (candidates.length === 0) return;
+
+  const rows = candidates.map((origin) => ({
+    site_id: siteId,
+    origin,
+    status: 'active',
+    verification_state: 'trusted',
+  }));
+
+  const { error } = await adminClient
+    .from('site_allowed_origins')
+    .upsert(rows, { onConflict: 'site_id,origin', ignoreDuplicates: false });
+
+  if (error && error.code !== '42P01') {
+    logError('SITES_CREATE_ORIGIN_SEED_FAILED', { message: error.message, code: error.code });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimit = await RateLimitService.checkWithMode(
+      `sites-create:${RateLimitService.getClientId(req)}`,
+      20,
+      60_000,
+      { namespace: 'sites_create', mode: 'fail-closed', fallbackMaxRequests: 5 }
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     // Validate user is logged in
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -13,48 +54,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse request body
     const bodyUnknown = await req.json().catch(() => ({}));
-    const body =
-      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
-        ? (bodyUnknown as Record<string, unknown>)
-        : {};
-    const name = body.name;
-    const domain = body.domain;
-
-    // Validate required fields
-    if (!name || !domain) {
-      return NextResponse.json(
-        { error: 'Name and domain are required' },
-        { status: 400 }
-      );
-    }
-
-    // Normalize domain: strip protocol, path, and normalize to hostname
-    let normalizedDomain = typeof domain === 'string' ? domain.trim() : '';
+    let payload;
     try {
-      // Remove protocol if present
-      normalizedDomain = normalizedDomain.replace(/^https?:\/\//, '');
-      // Remove path if present
-      normalizedDomain = normalizedDomain.split('/')[0];
-      // Remove port if present (for localhost cases, keep it)
-      // Actually, keep port for localhost:3000 cases
-      normalizedDomain = normalizedDomain.trim();
-    } catch {
+      payload = parseCreateSitePayload(bodyUnknown);
+    } catch (validationError) {
       return NextResponse.json(
-        { error: 'Invalid domain format' },
+        { error: validationError instanceof Error ? validationError.message : 'Invalid request payload' },
         { status: 400 }
       );
     }
+    const {
+      name: trimmedName,
+      domain: normalizedDomain,
+      locale,
+      default_country_iso: defaultCountryIso,
+      timezone,
+      currency,
+    } = payload;
 
-    if (!normalizedDomain) {
-      return NextResponse.json(
-        { error: 'Domain cannot be empty' },
-        { status: 400 }
-      );
-    }
-
-    const trimmedName = String(name).trim();
     if (!trimmedName) {
       return NextResponse.json(
         { error: 'Name cannot be empty' },
@@ -96,6 +114,10 @@ export async function POST(req: NextRequest) {
         .update({
           name: trimmedName,
           domain: normalizedDomain,
+          locale,
+          default_country_iso: defaultCountryIso,
+          timezone,
+          currency,
         })
         .eq('id', matched.id)
         .eq('user_id', user.id)
@@ -111,6 +133,13 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
+
+      await seedSiteAllowedOrigins(matched.id, normalizedDomain);
+      logInfo('SITES_CREATE_UPDATED', {
+        user_id: user.id,
+        site_id: matched.id,
+        route: '/api/sites/create',
+      });
 
       return NextResponse.json({
         success: true,
@@ -159,6 +188,10 @@ export async function POST(req: NextRequest) {
         name: trimmedName,
         domain: normalizedDomain,
         public_id: publicId,
+        locale,
+        default_country_iso: defaultCountryIso,
+        timezone,
+        currency,
       })
       .select()
       .single();
@@ -181,6 +214,13 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    await seedSiteAllowedOrigins(newSite.id, normalizedDomain);
+    logInfo('SITES_CREATE_SUCCESS', {
+      user_id: user.id,
+      site_id: newSite.id,
+      route: '/api/sites/create',
+    });
 
     return NextResponse.json({
       success: true,

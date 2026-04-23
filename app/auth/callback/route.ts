@@ -12,10 +12,10 @@ export async function GET(request: Request) {
   let redirectUrl: string;
   
   if (primaryDomain) {
-    redirectUrl = `https://console.${primaryDomain}/dashboard`;
+    redirectUrl = `https://console.${primaryDomain}/`;
   } else {
     // Fallback to current origin (development only)
-    redirectUrl = `${requestUrl.origin}/dashboard`;
+    redirectUrl = `${requestUrl.origin}/`;
     
     debugWarn('[AUTH_CALLBACK] NEXT_PUBLIC_PRIMARY_DOMAIN not set. Using fallback:', redirectUrl);
   }

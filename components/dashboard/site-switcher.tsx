@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,44 +28,34 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
 
   useEffect(() => {
     const fetchSites = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const response = await fetch('/api/sites/list', {
+        method: 'GET',
+        credentials: 'include',
+      });
+      const payloadUnknown = await response.json().catch(() => ({}));
+      const payload =
+        payloadUnknown && typeof payloadUnknown === 'object' && !Array.isArray(payloadUnknown)
+          ? (payloadUnknown as Record<string, unknown>)
+          : {};
 
-      if (!user) {
+      if (!response.ok) {
+        console.error('[SITE_SWITCHER] Error fetching sites:', payload.error);
         setIsLoading(false);
         return;
       }
 
-      // Admin sees all sites, normal users see only their sites (RLS enforces)
-      // RLS policy allows: owner OR member OR admin
-      // So we can query all sites and RLS will filter appropriately
-      const { data: sitesData, error } = await supabase
-        .from('sites')
-        .select('id, name, domain, public_id')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('[SITE_SWITCHER] Error fetching sites:', error);
-        setIsLoading(false);
-        return;
-      }
-
-      // Filter out E2E smoke test sites and sites marked as deleted
-      const filtered = (sitesData || []).filter((s) => 
-        s.name !== 'E2E Conversation Layer' && 
-        !(s.name?.startsWith('[SİLİNDİ]'))
-      );
-      setSites(filtered);
+      const sitesData = Array.isArray(payload.sites) ? (payload.sites as Site[]) : [];
+      setSites(sitesData);
       setIsLoading(false);
 
       // If no site selected and sites exist, select first one
-      if (!selectedSiteId && filtered.length > 0) {
-        setSelectedSiteId(filtered[0].id);
+      if (sitesData.length > 0) {
+        setSelectedSiteId((prev) => prev ?? sitesData[0].id);
       }
     };
 
     fetchSites();
-  }, [selectedSiteId]);
+  }, []);
 
   const handleSiteSelect = (siteId: string) => {
     setSelectedSiteId(siteId);

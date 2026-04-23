@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { StatsService } from '@/lib/services/stats-service';
-import { isOriginAllowed, parseAllowedOrigins } from '@/lib/security/cors';
+import { isAllowedOriginForSite } from '@/lib/security/origin-registry';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 
 export const runtime = 'nodejs';
-
-const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 function nowMs(): number {
     // Node runtime supports performance.now(); keep fallback for safety.
@@ -46,16 +44,6 @@ export async function GET(req: NextRequest) {
     }
     if (!originToCheck) {
         originToCheck = req.nextUrl.origin;
-    }
-    const { isAllowed } = isOriginAllowed(originToCheck, ALLOWED_ORIGINS);
-    if (!isAllowed) {
-        const totalMs = nowMs() - t0;
-        return new NextResponse(null, {
-            status: 403,
-            headers: {
-                'Server-Timing': formatServerTiming(dbMs, redisMs, totalMs),
-            },
-        });
     }
 
     const { searchParams } = new URL(req.url);
@@ -98,6 +86,18 @@ export async function GET(req: NextRequest) {
             { error: 'Site not found' },
             { status: 404, headers: { 'Server-Timing': formatServerTiming(dbMs, redisMs, totalMs) } }
         );
+    }
+
+    const isOriginAllowed = await isAllowedOriginForSite(site.id, originToCheck);
+    if (!isOriginAllowed) {
+        dbMs += nowMs() - dbStart;
+        const totalMs = nowMs() - t0;
+        return new NextResponse(null, {
+            status: 403,
+            headers: {
+                'Server-Timing': formatServerTiming(dbMs, redisMs, totalMs),
+            },
+        });
     }
 
     const access = await validateSiteAccess(site.id, user.id, supabase);

@@ -1,12 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, AlertTriangle, Rocket, Search, Loader2, CheckCircle2, Mail } from 'lucide-react';
 import { formatTimestamp } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import {
+  DEFAULT_SITE_COUNTRY,
+  DEFAULT_SITE_CURRENCY,
+  DEFAULT_SITE_LOCALE,
+  DEFAULT_SITE_TIMEZONE,
+  SITE_COUNTRY_OPTIONS,
+  SITE_CURRENCY_OPTIONS,
+  SITE_LOCALE_OPTIONS,
+  SITE_TIMEZONE_OPTIONS,
+} from '@/lib/validation/site-create';
 
 interface Site {
   id: string;
@@ -28,6 +37,10 @@ export function SitesManager() {
   // Form state
   const [siteName, setSiteName] = useState('');
   const [domain, setDomain] = useState('');
+  const [locale, setLocale] = useState<string>(DEFAULT_SITE_LOCALE);
+  const [countryIso, setCountryIso] = useState<string>(DEFAULT_SITE_COUNTRY);
+  const [timezone, setTimezone] = useState<string>(DEFAULT_SITE_TIMEZONE);
+  const [currency, setCurrency] = useState<string>(DEFAULT_SITE_CURRENCY);
 
   // Invite state (per site)
   const [inviteEmail, setInviteEmail] = useState<Record<string, string>>({});
@@ -49,46 +62,36 @@ export function SitesManager() {
   const [fullEmbedLoading, setFullEmbedLoading] = useState<Record<string, boolean>>({});
 
   const fetchSites = useCallback(async () => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { data: sitesData, error: sitesError } = await supabase
-      .from('sites')
-      .select('id, name, domain, public_id')
-      .order('created_at', { ascending: false });
-
-    if (sitesError) {
-      console.error('[SITES_MANAGER] Error fetching sites:', {
-        message: sitesError?.message,
-        code: sitesError?.code,
-        details: sitesError?.details,
-        hint: sitesError?.hint,
-        raw: sitesError
+    try {
+      const response = await fetch('/api/sites/list', {
+        method: 'GET',
+        credentials: 'include',
       });
+      const payloadUnknown = await response.json().catch(() => ({}));
+      const payload =
+        payloadUnknown && typeof payloadUnknown === 'object' && !Array.isArray(payloadUnknown)
+          ? (payloadUnknown as Record<string, unknown>)
+          : {};
 
-      const isSchemaMismatch = sitesError.code === '42703' ||
-        sitesError.code === 'PGRST116' ||
-        (sitesError.message && (
-          sitesError.message.includes('column') &&
-          sitesError.message.includes('does not exist')
-        ));
-
-      if (isSchemaMismatch) {
-        setError(t('sites.schemaMismatchFullDesc'));
-      } else {
-        setError(t('sites.errorLoading'));
+      if (!response.ok) {
+        const code = typeof payload.code === 'string' ? payload.code : '';
+        if (code === 'SCHEMA_MISMATCH') {
+          setError(t('sites.schemaMismatchFullDesc'));
+        } else {
+          setError(t('sites.errorLoading'));
+        }
+        return;
       }
-    } else {
-      // Filter out E2E smoke test sites and sites marked as deleted
-      const filtered = (sitesData || []).filter((s) => 
-        s.name !== 'E2E Conversation Layer' && 
-        !(s.name?.startsWith('[SİLİNDİ]'))
-      );
-      setSites(filtered);
+
+      const sitesData = Array.isArray(payload.sites) ? (payload.sites as Site[]) : [];
+      setSites(sitesData);
+      setError(null);
+    } catch (error) {
+      console.error('[SITES_MANAGER] Error fetching sites:', error);
+      setError(t('sites.errorLoading'));
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [t]);
 
   // Fetch sites
@@ -112,6 +115,10 @@ export function SitesManager() {
         body: JSON.stringify({
           name: siteName,
           domain: domain,
+          locale,
+          default_country_iso: countryIso,
+          timezone,
+          currency,
         }),
       });
 
@@ -137,6 +144,10 @@ export function SitesManager() {
       setNewSite(createdSite);
       setSiteName('');
       setDomain('');
+      setLocale(DEFAULT_SITE_LOCALE);
+      setCountryIso(DEFAULT_SITE_COUNTRY);
+      setTimezone(DEFAULT_SITE_TIMEZONE);
+      setCurrency(DEFAULT_SITE_CURRENCY);
       setShowAddForm(false);
     } catch (err: unknown) {
       console.error('[SITES_MANAGER] Error:', err);
@@ -392,6 +403,76 @@ export function SitesManager() {
               <p className="text-sm text-muted-foreground mt-1">
                 {t('sites.domainHelp')}
               </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="site-locale" className="block text-sm text-muted-foreground mb-1">
+                  Language
+                </label>
+                <select
+                  id="site-locale"
+                  value={locale}
+                  onChange={(event) => setLocale(event.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {SITE_LOCALE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="site-country" className="block text-sm text-muted-foreground mb-1">
+                  Country
+                </label>
+                <select
+                  id="site-country"
+                  value={countryIso}
+                  onChange={(event) => setCountryIso(event.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {SITE_COUNTRY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="site-timezone" className="block text-sm text-muted-foreground mb-1">
+                  Timezone
+                </label>
+                <select
+                  id="site-timezone"
+                  value={timezone}
+                  onChange={(event) => setTimezone(event.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {SITE_TIMEZONE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="site-currency" className="block text-sm text-muted-foreground mb-1">
+                  Currency
+                </label>
+                <select
+                  id="site-currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {SITE_CURRENCY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             {error && (
               <div className="bg-destructive/10 border border-destructive/20 p-2 rounded">

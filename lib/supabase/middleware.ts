@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolvePlatformAdmin } from '@/lib/auth/platform-admin';
 
 export async function updateSession(request: NextRequest) {
     let response = NextResponse.next({
@@ -72,7 +73,7 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Admin protection: require both logged-in AND profile.role = 'admin' (is_admin). Non-admins get 403.
+    // Admin protection: single authority via resolvePlatformAdmin (profile + metadata compatibility).
     if (path.startsWith('/admin')) {
         if (!user) {
             return NextResponse.redirect(new URL('/login', request.url))
@@ -81,8 +82,8 @@ export async function updateSession(request: NextRequest) {
             .from('profiles')
             .select('role')
             .eq('id', user.id)
-            .single()
-        if (profile?.role !== 'admin') {
+            .maybeSingle()
+        if (!resolvePlatformAdmin(profile?.role ?? null, user)) {
             return NextResponse.redirect(new URL('/dashboard', request.url))
         }
     }

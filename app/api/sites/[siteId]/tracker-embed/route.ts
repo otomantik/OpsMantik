@@ -10,6 +10,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { SiteService } from '@/lib/services/site-service';
 import { randomBytes } from 'node:crypto';
+import { RateLimitService } from '@/lib/services/rate-limit-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,10 +30,20 @@ function getPrivateClient() {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ siteId: string }> }
 ) {
   try {
+    const rateLimit = await RateLimitService.checkWithMode(
+      `tracker-embed:${RateLimitService.getClientId(req)}`,
+      60,
+      60_000,
+      { namespace: 'tracker_embed', mode: 'fail-closed', fallbackMaxRequests: 15 }
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -58,13 +69,17 @@ export async function GET(
 
     const { data: siteRow, error: siteRowErr } = await supabase
       .from('sites')
-      .select('public_id')
+      .select('public_id, domain')
       .eq('id', site.id)
       .maybeSingle();
     if (siteRowErr || !siteRow?.public_id) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
     const sitePublicId = siteRow.public_id;
+    const normalizedDomain = typeof siteRow.domain === 'string' ? siteRow.domain.trim().toLowerCase() : '';
+    const proxyUrl = normalizedDomain ? `https://${normalizedDomain}/opsmantik/call-event` : null;
+    const requestUrl = new URL(req.url);
+    const mode = requestUrl.searchParams.get('mode') === 'signed' ? 'signed' : 'proxy';
 
     const privateClient = getPrivateClient();
     if (!privateClient) {
@@ -109,12 +124,19 @@ export async function GET(
       secret = newSecret;
     }
 
-    const scriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=4" data-ops-site-id="${sitePublicId}" data-ops-secret="${secret}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"></script>`;
+    const proxyScriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=4" data-ops-site-id="${sitePublicId}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"${proxyUrl ? ` data-ops-proxy-url="${proxyUrl}"` : ''}></script>`;
+    const signedScriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=4" data-ops-site-id="${sitePublicId}" data-ops-secret="${secret}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"></script>`;
 
     return NextResponse.json({
-      scriptTag,
+      scriptTag: mode === 'signed' ? signedScriptTag : proxyScriptTag,
+      proxyScriptTag,
+      signedScriptTag,
       siteId: sitePublicId,
-      note: 'Include data-ops-secret so phone/WhatsApp clicks send call-event to OpsMantik.',
+      mode,
+      note:
+        mode === 'signed'
+          ? 'Signed mode includes data-ops-secret. Prefer proxy mode in production.'
+          : 'Proxy mode enabled. Configure /opsmantik/call-event endpoint on your site for call-event forwarding.',
     });
   } catch (e) {
     console.error('[tracker-embed]', e);

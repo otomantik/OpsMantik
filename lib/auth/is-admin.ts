@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { cache } from 'react';
 import { logWarn, logError } from '@/lib/logging/logger';
+import { resolvePlatformAdmin } from '@/lib/auth/platform-admin';
 
 /**
  * Server-only utility to check if the current user is an admin.
@@ -31,7 +32,7 @@ export const isAdmin = cache(async (): Promise<boolean> => {
       if (isDebug) logWarn('isAdmin_no_user');
       return false;
     }
-    
+
     if (isDebug) logWarn('isAdmin_checking_role');
     
     // Query profiles table for user's role
@@ -43,16 +44,15 @@ export const isAdmin = cache(async (): Promise<boolean> => {
     
     if (profileError) {
       if (isDebug) logWarn('isAdmin_profile_error', { code: profileError.code });
-      // Profile doesn't exist or query failed - not admin (fail-safe)
-      return false;
+      return resolvePlatformAdmin(null, user);
     }
     
     if (!profile) {
       if (isDebug) logWarn('isAdmin_profile_not_found');
-      return false;
+      return resolvePlatformAdmin(null, user);
     }
     
-    const isUserAdmin = profile.role === 'admin';
+    const isUserAdmin = resolvePlatformAdmin(profile.role, user);
     
     if (isDebug) logWarn('isAdmin_role_result', { role: profile.role, isAdmin: isUserAdmin });
     

@@ -12,6 +12,16 @@ export type EnsuredIntentResult = {
     formState: string | null;
 };
 
+/** Raw action for phone/wa/form matching; exported for unit tests. */
+export function resolveIntentActionForIngest(
+    meta: Record<string, unknown> | undefined,
+    event_action: string
+): string {
+    const metaIntentTrim =
+        typeof meta?.intent_action === 'string' ? meta.intent_action.trim() : '';
+    return (metaIntentTrim || event_action || '').toString().trim().toLowerCase();
+}
+
 export class IntentService {
     static async handleIntent(
         siteId: string,
@@ -42,14 +52,16 @@ export class IntentService {
             'form_submit_network_failed'
         ]);
 
-        const rawAction = (meta?.intent_action || event_action || '').toString().trim().toLowerCase();
-        const action = rawAction;
+        // meta.intent_action must not override with whitespace-only (|| treats "   " as truthy and drops event_action)
+        const action = resolveIntentActionForIngest(meta, event_action);
         const isPhone = PHONE_ACTIONS.has(action);
         const isWa = WHATSAPP_ACTIONS.has(action);
         const isForm = FORM_ACTIONS.has(action);
         const shouldCreateIntent = !!session && (!!fingerprint || !!session.id) && (isPhone || isWa || isForm);
 
-        if (!shouldCreateIntent) return null;
+        if (!shouldCreateIntent) {
+            return null;
+        }
 
         // 1. Normalize Action & Target
         const canonicalAction: 'phone' | 'whatsapp' | 'form' =

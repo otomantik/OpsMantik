@@ -6,7 +6,8 @@ Cloudflare Worker used as SST bridge for OpsMantik.
 
 - `kocotokurtarma.com` -> `93cb9966bcf349c1b4ece8ea34142ace`
 
-Update `SITE_CONFIG` in `wrangler.jsonc` as you onboard new sites.
+Primary source is now `SITE_CONFIG_URL` (runtime map pulled from OpsMantik API).
+`SITE_CONFIG` remains emergency fallback only.
 
 ## Routes
 
@@ -27,6 +28,14 @@ Example value:
 ```json
 {"93cb9966bcf349c1b4ece8ea34142ace":"REPLACE_WITH_REAL_SECRET"}
 ```
+
+Set tenant-map API token once per environment:
+
+```bash
+wrangler secret put WORKER_TENANT_MAP_TOKEN
+```
+
+The same token must be set in app runtime as `WORKER_TENANT_MAP_TOKEN`.
 
 ## Local Development
 

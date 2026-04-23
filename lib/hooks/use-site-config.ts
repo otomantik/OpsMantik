@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { SiteConfig } from '@/lib/types/database';
 
 const DEFAULT_BOUNTY_CHIPS = [1000, 5000, 10000, 25000];
-const DEFAULT_CURRENCY = 'USD';
+const DEFAULT_CURRENCY = 'TRY';
 
 export interface SiteConfigResult {
   config: SiteConfig | null;
