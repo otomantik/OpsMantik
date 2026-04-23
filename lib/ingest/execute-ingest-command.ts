@@ -209,14 +209,6 @@ export async function executeIngest(req: NextRequest, lane: IngestLane) {
           const msg = String((psErr as { message?: string })?.message ?? '');
           if (code !== '23505' && !/duplicate key/i.test(msg)) throw psErr;
         }
-        // #region agent log
-        agentSessionLog({
-          hypothesisId: 'H1',
-          location: 'execute-ingest-command.ts:traffic_debloat_skip',
-          message: 'ingest_skipped_debloat',
-          data: { skipReasonApi, botSkip, referrerSkip, hasClickId, debloat: true },
-        });
-        // #endregion
         return NextResponse.json({ ok: true, skipped: true, reason: skipReasonApi });
       }
     }
