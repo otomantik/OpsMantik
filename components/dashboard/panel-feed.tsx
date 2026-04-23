@@ -6,6 +6,8 @@ import { HunterCard } from './hunter-card';
 import { LeadActionOverlay, type LeadActionType } from './lead-action-overlay';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { useSiteTimezone } from '@/components/context/site-locale-context';
+import { getTodayDateKey } from '@/lib/time/today-range';
 import { createClient } from '@/lib/supabase/client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,6 +24,7 @@ export function PanelFeed({
   readOnly?: boolean;
 }) {
   const { t } = useTranslation();
+  const siteTz = useSiteTimezone();
   const [calls, setCalls] = useState(initialCalls);
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'all'>('today');
   
@@ -31,21 +34,20 @@ export function PanelFeed({
 
   const filteredCalls = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toDateString();
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-    const yesterdayStr = yesterday.toDateString();
+    const todayKey = getTodayDateKey(siteTz, now);
+    const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayKey = getTodayDateKey(siteTz, y);
 
-    return calls.filter(c => {
+    return calls.filter((c) => {
       if (dateFilter === 'all') return true;
-      const cDate = new Date(c.created_at).toDateString();
+      const cKey = getTodayDateKey(siteTz, new Date(c.created_at));
       const s = (c.status || '').toLowerCase();
       const isPending = !['confirmed', 'junk', 'g_trash'].includes(s);
-      if (dateFilter === 'today') return cDate === todayStr && isPending;
-      if (dateFilter === 'yesterday') return cDate === yesterdayStr && isPending;
+      if (dateFilter === 'today') return cKey === todayKey && isPending;
+      if (dateFilter === 'yesterday') return cKey === yesterdayKey && isPending;
       return true;
     });
-  }, [calls, dateFilter]);
+  }, [calls, dateFilter, siteTz]);
 
   // Reset index when filter changes
   useEffect(() => {

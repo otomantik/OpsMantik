@@ -6,6 +6,7 @@ import { PanelFeed } from '../../components/dashboard/panel-feed';
 import { logError } from '@/lib/logging/logger';
 import { getTodayTrtUtcRange, resolveDashboardUiTimezone } from '@/lib/time/today-range';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { SiteLocaleProvider } from '@/components/context/site-locale-context';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
 import { LogOut } from 'lucide-react';
@@ -129,6 +130,9 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
 
   // Fetch via RPC
   const panelTimezone = resolveDashboardUiTimezone(site?.timezone ?? null, resolvedLocale);
+  const isTrLocale = resolvedLocale.toLowerCase().startsWith('tr');
+  const rawCur = (site?.currency ?? '').toString().trim();
+  const panelCurrency = rawCur || (isTrLocale ? 'TRY' : 'USD');
   const { fromIso, toIso } = getTodayTrtUtcRange(new Date(), panelTimezone);
   const { data: calls, error: callsError } = await adminClient.rpc('get_recent_intents_lite_v1', {
     p_site_id: targetSiteId,
@@ -151,8 +155,11 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
   return (
     <I18nProvider
       locale={resolvedLocale}
-      siteConfig={{ currency: site?.currency ?? undefined, timezone: panelTimezone }}
+      siteConfig={{ currency: panelCurrency, timezone: panelTimezone }}
     >
+      <SiteLocaleProvider
+        value={{ timezone: panelTimezone, currency: panelCurrency, locale: resolvedLocale }}
+      >
       <div className="min-h-screen bg-slate-50 font-sans">
         {/* Top Bar (Light) */}
         <div className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-40 transition-all">
@@ -207,6 +214,7 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
           />
         </div>
       </div>
+      </SiteLocaleProvider>
     </I18nProvider>
   );
 }
