@@ -19,6 +19,8 @@ function buildPanelUrl(request: NextRequest, siteId: string): URL {
 
 export async function GET(request: NextRequest) {
   const siteId = request.nextUrl.searchParams.get('siteId');
+  const modeRaw = (request.nextUrl.searchParams.get('mode') || '').trim().toLowerCase();
+  const scope: 'ro' | 'rw' = modeRaw === 'ro' ? 'ro' : 'rw';
   if (!siteId) {
     return NextResponse.redirect(new URL('/admin/sites?error=missing_site', request.url));
   }
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
   const token = await signPanelPreviewContext({
     userId: user.id,
     siteId,
-    scope: 'ro',
+    scope,
   });
 
   const response = NextResponse.redirect(buildPanelUrl(request, siteId));

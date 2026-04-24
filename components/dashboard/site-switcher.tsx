@@ -60,7 +60,7 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
   const handleSiteSelect = (siteId: string) => {
     setSelectedSiteId(siteId);
     if (isAdmin) {
-      router.push(`/api/admin/panel-preview?siteId=${encodeURIComponent(siteId)}`);
+      router.push(`/api/admin/panel-preview?siteId=${encodeURIComponent(siteId)}&mode=rw`);
       return;
     }
     router.push(`/dashboard/site/${siteId}`);

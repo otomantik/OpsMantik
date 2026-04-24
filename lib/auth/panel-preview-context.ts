@@ -8,7 +8,7 @@ const PANEL_PREVIEW_TTL_SECONDS = 60 * 15;
 export interface PanelPreviewContextPayload {
   userId: string;
   siteId: string;
-  scope: 'ro';
+  scope: 'ro' | 'rw';
 }
 
 export interface VerifiedPanelPreviewContext extends PanelPreviewContextPayload {
@@ -62,9 +62,9 @@ export async function verifyPanelPreviewContext(token: string): Promise<Verified
     });
     const userId = typeof payload.userId === 'string' ? payload.userId : '';
     const siteId = typeof payload.siteId === 'string' ? payload.siteId : '';
-    const scope = payload.scope === 'ro' ? 'ro' : null;
+    const scope = payload.scope === 'ro' || payload.scope === 'rw' ? payload.scope : null;
     const exp = typeof payload.exp === 'number' ? payload.exp : 0;
-    if (!userId || !siteId || scope !== 'ro' || !exp) return null;
+    if (!userId || !siteId || !scope || !exp) return null;
     return { userId, siteId, scope, exp };
   } catch {
     return null;

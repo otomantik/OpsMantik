@@ -9,5 +9,5 @@ export default async function PreviewPanelPage({ params }: PreviewPanelPageProps
   if (!siteId) {
     redirect('/admin/sites?error=missing_site');
   }
-  redirect(`/api/admin/panel-preview?siteId=${siteId}`);
+  redirect(`/api/admin/panel-preview?siteId=${siteId}&mode=rw`);
 }

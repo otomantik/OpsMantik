@@ -26,7 +26,7 @@ export function PanelFeed({
   const { t } = useTranslation();
   const siteTz = useSiteTimezone();
   const [calls, setCalls] = useState(initialCalls);
-  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'all'>('all');
   
   // Navigation & Overlay State
   const [activeIndex, setActiveIndex] = useState(0);
