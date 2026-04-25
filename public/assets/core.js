@@ -705,7 +705,22 @@
 
   // lib/tracker/tracker.js
   function getTrackerScriptTag() {
-    return document.currentScript || document.querySelector("script[data-ops-site-id]") || document.querySelector("script[data-site-id]");
+    const scripts = Array.from(document.getElementsByTagName("script"));
+    const candidates = scripts.filter((s) => {
+      const hasSiteAttr = Boolean(s.getAttribute("data-ops-site-id") || s.getAttribute("data-site-id"));
+      if (!hasSiteAttr) return false;
+      const src = String(s.getAttribute("src") || s.src || "").toLowerCase();
+      return src.includes("/assets/core.js") || src.includes("/ux-core.js") || src.includes("core.js");
+    });
+    if (candidates.length === 0) {
+      return document.currentScript || document.querySelector("script[data-ops-site-id]") || document.querySelector("script[data-site-id]");
+    }
+    const expectedSiteId = typeof siteId === "string" ? siteId : "";
+    const matchingBySite = expectedSiteId ? candidates.filter((s) => (s.getAttribute("data-ops-site-id") || s.getAttribute("data-site-id") || "") === expectedSiteId) : [];
+    const pool = matchingBySite.length > 0 ? matchingBySite : candidates;
+    const withAuth = pool.find((s) => s.getAttribute("data-ops-proxy-url") || s.getAttribute("data-ops-secret"));
+    if (withAuth) return withAuth;
+    return pool[pool.length - 1] || pool[0];
   }
   var recentTrackedIntentAt = /* @__PURE__ */ new Map();
   var lastPointerContext = null;
@@ -1257,6 +1272,25 @@
         return originalOpen.apply(this, args);
       };
     }
+    try {
+      const wrapLocationMethod = (name) => {
+        const fn = window.location && window.location[name];
+        if (typeof fn !== "function") return;
+        if (fn.__opsmantikWrapped) return;
+        const wrapped = function(...args) {
+          const target = typeof args[0] === "string" ? args[0] : "";
+          if (target && String(target).toLowerCase().startsWith("tel:")) {
+            emitTrackedIntent(target, "phone_call", target, `location_${name}`);
+          }
+          return fn.apply(window.location, args);
+        };
+        wrapped.__opsmantikWrapped = true;
+        window.location[name] = wrapped;
+      };
+      wrapLocationMethod("assign");
+      wrapLocationMethod("replace");
+    } catch {
+    }
   }
   function sendCallEvent(phoneNumber, intentMeta = null) {
     if (!siteId) return;
@@ -1310,6 +1344,16 @@
           body: payload,
           keepalive: true
         });
+      }).then((res) => {
+        if (res && !res.ok && typeof console !== "undefined") {
+          console.warn("[OpsMantik] signed call-event rejected", {
+            status: res.status,
+            siteId,
+            hasSecret: Boolean(secret),
+            hasProxyUrl: Boolean(proxyUrl2),
+            callEventUrl
+          });
+        }
       }).catch(() => {
       });
       return;
