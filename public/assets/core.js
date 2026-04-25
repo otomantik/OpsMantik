@@ -727,6 +727,7 @@
       element?.getAttribute?.("aria-label") || ""
     ].join(" ").toLowerCase();
     if (raw.includes("jivo") || raw.includes("jivosite")) return "jivo";
+    if (raw.includes("joinchat")) return "joinchat";
     return "whatsapp";
   }
   function shouldTrackWhatsAppTarget(target) {
@@ -1201,19 +1202,36 @@
     sendCallEvent(target, intentMeta);
     return true;
   }
-  function extractPhoneIntentFromElement(clickTarget) {
-    const el = clickTarget?.closest ? clickTarget.closest('a[href^="tel:"], [data-om-phone], [data-phone], [data-tel], [onclick*="tel:"]') : null;
-    if (!el) return null;
-    const href = typeof el.getAttribute === "function" ? el.getAttribute("href") : "";
-    const dataPhone = typeof el.getAttribute === "function" ? el.getAttribute("data-om-phone") || el.getAttribute("data-phone") || el.getAttribute("data-tel") || "" : "";
-    const onClickAttr = typeof el.getAttribute === "function" ? el.getAttribute("onclick") || "" : "";
-    const telFromOnClick = (() => {
-      const m = onClickAttr.match(/tel:[^'"\\)\s]+/i);
-      return m ? m[0] : "";
-    })();
-    const candidate = href?.startsWith("tel:") ? href : dataPhone ? dataPhone.startsWith("tel:") ? dataPhone : `tel:${dataPhone}` : telFromOnClick;
-    if (!candidate || !candidate.toLowerCase().startsWith("tel:")) return null;
-    return { target: candidate, element: el };
+  function extractPhoneIntentFromElement(clickTarget, composedPath = []) {
+    const selector = 'a[href*="tel:"], [data-om-phone], [data-phone], [data-tel], [onclick*="tel:"], [data-href*="tel:"]';
+    const tryExtractFromNode = (node) => {
+      if (!node || typeof node !== "object") return null;
+      const el = node?.matches?.(selector) ? node : node?.closest ? node.closest(selector) : null;
+      if (!el) return null;
+      const hrefAttr = typeof el.getAttribute === "function" ? el.getAttribute("href") || "" : "";
+      const hrefProp = typeof el.href === "string" ? el.href : "";
+      const dataHref = typeof el.getAttribute === "function" ? el.getAttribute("data-href") || "" : "";
+      const dataPhone = typeof el.getAttribute === "function" ? el.getAttribute("data-om-phone") || el.getAttribute("data-phone") || el.getAttribute("data-tel") || "" : "";
+      const onClickAttr = typeof el.getAttribute === "function" ? el.getAttribute("onclick") || "" : "";
+      const telFromOnClick = (() => {
+        const m = onClickAttr.match(/tel:[^'"\\)\s]+/i);
+        return m ? m[0] : "";
+      })();
+      const pickTelLike = (value) => {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        if (raw.toLowerCase().startsWith("tel:")) return raw;
+        return "";
+      };
+      const candidate = pickTelLike(hrefAttr) || pickTelLike(hrefProp) || pickTelLike(dataHref) || (dataPhone ? dataPhone.toLowerCase().startsWith("tel:") ? dataPhone : `tel:${dataPhone}` : "") || telFromOnClick;
+      if (!candidate || !candidate.toLowerCase().startsWith("tel:")) return null;
+      return { target: candidate, element: el };
+    };
+    for (const node of composedPath) {
+      const match = tryExtractFromNode(node);
+      if (match) return match;
+    }
+    return tryExtractFromNode(clickTarget);
   }
   function installOutboundIntentHooks() {
     if (window.__opsmantikIntentHooksInstalled) return;
@@ -1233,6 +1251,8 @@
         if (target && shouldTrackWhatsAppTarget(target)) {
           const recentElement = lastPointerContext && Date.now() - lastPointerContext.ts < 2e3 ? lastPointerContext.element : null;
           emitTrackedIntent(target, "whatsapp", target, inferWidgetSource(target, recentElement), recentElement);
+        } else if (target && String(target).toLowerCase().startsWith("tel:")) {
+          emitTrackedIntent(target, "phone_call", target, "window_open");
         }
         return originalOpen.apply(this, args);
       };
@@ -1316,7 +1336,15 @@
     installFormTransportHooks();
     flushPendingNavigationOutcome();
     document.addEventListener("click", (e) => {
-      const phoneIntent = extractPhoneIntentFromElement(e.target);
+      const tel = e.target.closest && e.target.closest('a[href^="tel:"]');
+      if (tel) {
+        emitTrackedIntent(tel.href, "phone_call", tel.href, "phone", tel);
+        return;
+      }
+      const phoneIntent = extractPhoneIntentFromElement(
+        e.target,
+        typeof e.composedPath === "function" ? e.composedPath() : []
+      );
       if (phoneIntent) {
         emitTrackedIntent(phoneIntent.target, "phone_call", phoneIntent.target, "phone", phoneIntent.element);
         return;

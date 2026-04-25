@@ -79,7 +79,14 @@ export async function GET(
     const normalizedDomain = typeof siteRow.domain === 'string' ? siteRow.domain.trim().toLowerCase() : '';
     const proxyUrl = normalizedDomain ? `https://${normalizedDomain}/opsmantik/call-event` : null;
     const requestUrl = new URL(req.url);
-    const mode = requestUrl.searchParams.get('mode') === 'signed' ? 'signed' : 'proxy';
+    const requestedMode = requestUrl.searchParams.get('mode');
+    const mode = requestedMode === 'signed'
+      ? 'signed'
+      : requestedMode === 'proxy'
+        ? 'proxy'
+        : proxyUrl
+          ? 'proxy'
+          : 'signed';
 
     const privateClient = getPrivateClient();
     if (!privateClient) {
@@ -135,7 +142,9 @@ export async function GET(
       mode,
       note:
         mode === 'signed'
-          ? 'Signed mode includes data-ops-secret. Prefer proxy mode in production.'
+          ? (proxyUrl
+            ? 'Signed mode includes data-ops-secret. Prefer proxy mode in production.'
+            : 'Signed mode selected automatically because proxy endpoint is unavailable for this site.')
           : 'Proxy mode enabled. Configure /opsmantik/call-event endpoint on your site for call-event forwarding.',
     });
   } catch (e) {
