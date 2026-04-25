@@ -105,8 +105,10 @@ export async function findRecentSessionByFingerprint(
     }
   }
 
+  // Keep event-driven session lookup null-safe even when fallback path is used.
+  const eventsForSessionLookup = recentEvents ?? [];
   const uniquePairs = new Map<string, string>();
-  for (const e of recentEvents ?? []) {
+  for (const e of eventsForSessionLookup) {
     const key = `${e.session_id}::${e.session_month}`;
     if (!uniquePairs.has(key)) uniquePairs.set(key, e.session_month);
   }
