@@ -86,7 +86,22 @@ export async function findRecentSessionByFingerprint(
     .limit(50);
 
   if (eventsError || !recentEvents || recentEvents.length === 0) {
-    return result;
+    // Fallback: when call-event arrives before the corresponding sync event is persisted,
+    // direct session lookup by fingerprint prevents false consent-missing drops (204).
+    const { data: fallbackSessions } = await client
+      .from('sessions')
+      .select('id, created_at, created_month, consent_scopes, consent_at, consent_provenance, gclid, wbraid, gbraid')
+      .eq('site_id', siteId)
+      .eq('fingerprint', fingerprint)
+      .in('created_month', recentMonths)
+      .gte('created_at', lookbackCutoff)
+      .order('created_at', { ascending: false })
+      .limit(25);
+    if (Array.isArray(fallbackSessions) && fallbackSessions.length > 0) {
+      sessions.push(...(fallbackSessions as SessionRow[]));
+    } else {
+      return result;
+    }
   }
 
   const uniquePairs = new Map<string, string>();
