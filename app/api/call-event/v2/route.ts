@@ -325,12 +325,17 @@ async function callEventV2Inner(req: NextRequest) {
       await requireModule({ siteId: siteUuid, requiredModule: 'core_oci', site: siteRow ?? undefined });
     } catch (err) {
       if (err instanceof ModuleNotEnabledError) {
-        return NextResponse.json(
-          { error: 'Module not enabled', code: 'MODULE_NOT_ENABLED', required_module: 'core_oci' },
-          { status: 403, headers: getBuildInfoHeaders() }
-        );
+        // Do not block signed call-event ingestion for sites with stale module flags.
+        // Runtime evidence: this branch produced client-visible CORS+403 despite valid signatures.
+        logWarn('call-event-v2 module gate bypassed (fail-open)', {
+          request_id: requestId,
+          route: ROUTE,
+          site_id: siteUuid,
+          required_module: 'core_oci',
+        });
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     // ── ARCHITECTURAL HARDENING: Daily Quota (Noisy Neighbor Protection) ────────
