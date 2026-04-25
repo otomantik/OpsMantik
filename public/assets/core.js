@@ -1303,6 +1303,26 @@
     const eventId = generateUUID();
     const adsCtx = getAdsContext();
     const resolvedIntent = intentMeta || buildCallIntentMeta(phoneNumber);
+    fetch("http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e7e878" },
+      body: JSON.stringify({
+        sessionId: "e7e878",
+        runId: "pre-fix",
+        hypothesisId: "H1",
+        location: "lib/tracker/tracker.js:sendCallEvent",
+        message: "call_event_mode_decision",
+        data: {
+          siteId,
+          hasScriptTag: Boolean(scriptTag2),
+          hasSecret: Boolean(scriptTag2?.getAttribute("data-ops-secret") || (window.opsmantikConfig || window.opmantikConfig || {})?.opsSecret),
+          hasProxyUrl: Boolean(proxyUrl2),
+          callEventBase: base
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {
+    });
     const payloadObj = {
       event_id: eventId,
       site_id: siteId,
@@ -1332,6 +1352,25 @@
       const ts = Math.floor(Date.now() / 1e3);
       const enc = new TextEncoder();
       const msg = ts + "." + payload;
+      fetch("http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e7e878" },
+        body: JSON.stringify({
+          sessionId: "e7e878",
+          runId: "pre-fix",
+          hypothesisId: "H2",
+          location: "lib/tracker/tracker.js:sendCallEvent",
+          message: "signed_request_preflight",
+          data: {
+            siteId,
+            ts,
+            bodySiteId: payloadObj.site_id,
+            intentAction: payloadObj.intent_action
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {
+      });
       window.crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]).then((key) => window.crypto.subtle.sign("HMAC", key, enc.encode(msg))).then((sigBuf) => {
         const hex = Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
         return fetch(callEventUrl, {
@@ -1346,6 +1385,24 @@
           keepalive: true
         });
       }).then((res) => {
+        fetch("http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e7e878" },
+          body: JSON.stringify({
+            sessionId: "e7e878",
+            runId: "pre-fix",
+            hypothesisId: "H3",
+            location: "lib/tracker/tracker.js:sendCallEvent",
+            message: "signed_request_response",
+            data: {
+              siteId,
+              status: res?.status ?? null,
+              ok: Boolean(res?.ok)
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {
+        });
         if (res && !res.ok && typeof console !== "undefined") {
           console.warn("[OpsMantik] signed call-event rejected", {
             status: res.status,
@@ -1382,7 +1439,25 @@
       installFormTransportHooks();
       flushPendingNavigationOutcome();
     }
-    document.addEventListener("click", (e) => {
+    const handleIntentClick = (e) => {
+      fetch("http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e7e878" },
+        body: JSON.stringify({
+          sessionId: "e7e878",
+          runId: "post-fix",
+          hypothesisId: "H1",
+          location: "lib/tracker/tracker.js:initAutoTracking",
+          message: "intent_click_handler_entered",
+          data: {
+            targetTag: e?.target?.tagName || null,
+            targetHref: e?.target?.getAttribute?.("href") || null,
+            phase: e?.eventPhase || null
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {
+      });
       const tel = e.target.closest && e.target.closest('a[href^="tel:"]');
       if (tel) {
         emitTrackedIntent(tel.href, "phone_call", tel.href, "phone", tel);
@@ -1406,7 +1481,8 @@
           emitTrackedIntent(wa.href, "whatsapp", wa.href, inferWidgetSource(wa.href, wa), wa);
         }
       }
-    });
+    };
+    document.addEventListener("click", handleIntentClick, true);
     if (ENABLE_FORM_TRACKING) {
       document.addEventListener("submit", (e) => {
         if (e.target.tagName === "FORM") {
