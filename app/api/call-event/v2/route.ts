@@ -42,6 +42,25 @@ const ROUTE = '/api/call-event/v2';
 const OPSMANTIK_VERSION = '2.0.0-proxy';
 
 const MAX_BODY_BYTES = 64 * 1024;
+
+async function debugLog(runId: string, hypothesisId: string, location: string, message: string, data: Record<string, unknown>) {
+  // #region agent log
+  await fetch('http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'e7e878' },
+    body: JSON.stringify({
+      sessionId: 'e7e878',
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
 function getEventIdMode(): EventIdMode {
   return getEventIdModeFromEnv();
 }
@@ -133,12 +152,24 @@ async function callEventV2Inner(req: NextRequest) {
         !/^\d{9,12}$/.test(headerTs) ||
         !/^[0-9a-f]{64}$/i.test(headerSig)
       ) {
+        await debugLog('pre-fix', 'H4', 'app/api/call-event/v2/route.ts:header-validation', 'reject_401_header_format', {
+          hasHeaderSiteId: Boolean(headerSiteId),
+          hasHeaderTs: Boolean(headerTs),
+          hasHeaderSig: Boolean(headerSig),
+          siteIdLooksValid: SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId),
+        });
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
       }
 
       const tsNum = Number(headerTs);
       const nowSec = Math.floor(Date.now() / 1000);
       if (!Number.isFinite(tsNum) || nowSec - tsNum > 300 || tsNum - nowSec > 60) {
+        await debugLog('pre-fix', 'H5', 'app/api/call-event/v2/route.ts:timestamp-validation', 'reject_401_timestamp_window', {
+          nowSec,
+          tsNum,
+          skewPast: nowSec - tsNum,
+          skewFuture: tsNum - nowSec,
+        });
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
       }
 
@@ -158,6 +189,11 @@ async function callEventV2Inner(req: NextRequest) {
           site_id: headerSiteId,
         });
       } else if (sigErr || sigOk !== true) {
+        await debugLog('pre-fix', 'H2', 'app/api/call-event/v2/route.ts:signature-verification', 'reject_401_signature_verification', {
+          siteId: headerSiteId,
+          sigOk: sigOk === true,
+          sigErrMessage: sigErr?.message ?? null,
+        });
         logWarn('call-event-v2 signature rejected', { request_id: requestId, route: ROUTE, site_id: headerSiteId, error: sigErr?.message });
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
       }
@@ -213,7 +249,13 @@ async function callEventV2Inner(req: NextRequest) {
           p_input: headerSiteId,
         });
         if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-        if (resolvedHeaderSiteId !== resolvedSiteUuid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+        if (resolvedHeaderSiteId !== resolvedSiteUuid) {
+          await debugLog('pre-fix', 'H3', 'app/api/call-event/v2/route.ts:site-binding', 'reject_401_site_binding_mismatch', {
+            resolvedHeaderSiteId,
+            resolvedBodySiteId: resolvedSiteUuid,
+          });
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
+        }
       }
     }
 

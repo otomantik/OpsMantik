@@ -724,6 +724,7 @@
   }
   var recentTrackedIntentAt = /* @__PURE__ */ new Map();
   var lastPointerContext = null;
+  var ENABLE_FORM_TRACKING = false;
   var FORM_PENDING_STORAGE_KEY = "opsmantik_form_pending_v1";
   var formLifecycleState = /* @__PURE__ */ new WeakMap();
   var pendingFormAttempts = [];
@@ -1377,8 +1378,10 @@
     sendEvent("interaction", "view", document.title);
     sendPageViewPulse();
     installOutboundIntentHooks();
-    installFormTransportHooks();
-    flushPendingNavigationOutcome();
+    if (ENABLE_FORM_TRACKING) {
+      installFormTransportHooks();
+      flushPendingNavigationOutcome();
+    }
     document.addEventListener("click", (e) => {
       const tel = e.target.closest && e.target.closest('a[href^="tel:"]');
       if (tel) {
@@ -1404,43 +1407,45 @@
         }
       }
     });
-    document.addEventListener("submit", (e) => {
-      if (e.target.tagName === "FORM") {
-        trackFormAttempt(e.target, "submit");
+    if (ENABLE_FORM_TRACKING) {
+      document.addEventListener("submit", (e) => {
+        if (e.target.tagName === "FORM") {
+          trackFormAttempt(e.target, "submit");
+        }
+      }, true);
+      document.addEventListener("focusin", (e) => {
+        const form = e.target?.closest?.("form");
+        if (form) trackFormStart(form, "focus");
+      }, true);
+      document.addEventListener("input", (e) => {
+        const form = e.target?.closest?.("form");
+        if (form) trackFormStart(form, "input");
+      }, true);
+      document.addEventListener("invalid", (e) => {
+        const form = e.target?.closest?.("form");
+        if (form) {
+          trackFormStart(form, "invalid");
+          trackFormValidationFailure(form, "invalid");
+        }
+      }, true);
+      const formProto = window.HTMLFormElement && window.HTMLFormElement.prototype;
+      if (formProto && !formProto.__opsmantikWrapped) {
+        const originalRequestSubmit = formProto.requestSubmit;
+        const originalNativeSubmit = formProto.submit;
+        if (typeof originalRequestSubmit === "function") {
+          formProto.requestSubmit = function(...args) {
+            trackFormAttempt(this, "request_submit");
+            return originalRequestSubmit.apply(this, args);
+          };
+        }
+        if (typeof originalNativeSubmit === "function") {
+          formProto.submit = function(...args) {
+            trackFormAttempt(this, "native_submit");
+            return originalNativeSubmit.apply(this, args);
+          };
+        }
+        formProto.__opsmantikWrapped = true;
       }
-    }, true);
-    document.addEventListener("focusin", (e) => {
-      const form = e.target?.closest?.("form");
-      if (form) trackFormStart(form, "focus");
-    }, true);
-    document.addEventListener("input", (e) => {
-      const form = e.target?.closest?.("form");
-      if (form) trackFormStart(form, "input");
-    }, true);
-    document.addEventListener("invalid", (e) => {
-      const form = e.target?.closest?.("form");
-      if (form) {
-        trackFormStart(form, "invalid");
-        trackFormValidationFailure(form, "invalid");
-      }
-    }, true);
-    const formProto = window.HTMLFormElement && window.HTMLFormElement.prototype;
-    if (formProto && !formProto.__opsmantikWrapped) {
-      const originalRequestSubmit = formProto.requestSubmit;
-      const originalNativeSubmit = formProto.submit;
-      if (typeof originalRequestSubmit === "function") {
-        formProto.requestSubmit = function(...args) {
-          trackFormAttempt(this, "request_submit");
-          return originalRequestSubmit.apply(this, args);
-        };
-      }
-      if (typeof originalNativeSubmit === "function") {
-        formProto.submit = function(...args) {
-          trackFormAttempt(this, "native_submit");
-          return originalNativeSubmit.apply(this, args);
-        };
-      }
-      formProto.__opsmantikWrapped = true;
     }
     window.addEventListener("scroll", () => {
       const doc = document.documentElement;
@@ -1493,7 +1498,9 @@
     }, CONFIG.heartbeatInterval);
     window.addEventListener("beforeunload", () => {
       pulse.activeSec += Math.round((Date.now() - pulse.lastActiveAt) / 1e3);
-      stashPendingNavigationAttempt();
+      if (ENABLE_FORM_TRACKING) {
+        stashPendingNavigationAttempt();
+      }
       sendEvent("system", "session_end", "page_unload", null, { exit_page: window.location.href });
       lastGaspFlush();
     });
