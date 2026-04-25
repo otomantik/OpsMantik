@@ -73,6 +73,7 @@ export async function findRecentSessionByFingerprint(
     consentAt: null,
     consentProvenance: null,
   };
+  const sessions: SessionRow[] = [];
 
   const { data: recentEvents, error: eventsError } = await client
     .from('events')
@@ -105,12 +106,11 @@ export async function findRecentSessionByFingerprint(
   }
 
   const uniquePairs = new Map<string, string>();
-  for (const e of recentEvents) {
+  for (const e of recentEvents ?? []) {
     const key = `${e.session_id}::${e.session_month}`;
     if (!uniquePairs.has(key)) uniquePairs.set(key, e.session_month);
   }
 
-  const sessions: SessionRow[] = [];
   for (const [key, sessionMonth] of uniquePairs) {
     const sessionId = key.split('::')[0];
     const { data: sess, error } = await client
