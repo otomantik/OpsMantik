@@ -1483,6 +1483,8 @@
       }
     };
     document.addEventListener("click", handleIntentClick, true);
+    document.addEventListener("pointerdown", handleIntentClick, true);
+    document.addEventListener("touchstart", handleIntentClick, true);
     if (ENABLE_FORM_TRACKING) {
       document.addEventListener("submit", (e) => {
         if (e.target.tagName === "FORM") {
