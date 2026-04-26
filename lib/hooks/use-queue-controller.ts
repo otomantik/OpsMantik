@@ -321,19 +321,10 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
           return isPending && ts >= fromMs && ts < toMs;
         });
         
-        const seenSessionAction = new Set<string>();
-        const deduplicated = filtered.filter(r => {
-           if (!r.matched_session_id) return true;
-           const key = `${r.matched_session_id}-${r.intent_action || 'unknown'}`;
-           if (seenSessionAction.has(key)) return false;
-           seenSessionAction.add(key);
-           return true;
-        });
-
         if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {
-          logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, deduplicated: deduplicated.length, fromIso: r.fromIso, toIso: r.toIso });
+          logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, fromIso: r.fromIso, toIso: r.toIso });
         }
-        return deduplicated;
+        return filtered;
       }
 
       const rows = await fetchRange();
