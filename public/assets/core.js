@@ -728,6 +728,18 @@
   var FORM_PENDING_STORAGE_KEY = "opsmantik_form_pending_v1";
   var formLifecycleState = /* @__PURE__ */ new WeakMap();
   var pendingFormAttempts = [];
+  function isTrackerDebugEnabled() {
+    try {
+      if (typeof localStorage !== "undefined" && localStorage.getItem("opsmantik_debug") === "1") return true;
+    } catch {
+    }
+    try {
+      const tag = getTrackerScriptTag();
+      if (tag && tag.getAttribute("data-ops-debug") === "1") return true;
+    } catch {
+    }
+    return false;
+  }
   function cleanupRecentIntentWindow(now) {
     for (const [key, ts] of recentTrackedIntentAt.entries()) {
       if (now - ts > 2500) recentTrackedIntentAt.delete(key);
@@ -1205,8 +1217,24 @@
     const now = Date.now();
     cleanupRecentIntentWindow(now);
     const lastTrackedAt = recentTrackedIntentAt.get(dedupeKey) || 0;
-    if (now - lastTrackedAt < 1800) return false;
+    if (now - lastTrackedAt < 1800) {
+      if (isTrackerDebugEnabled()) {
+        console.log("[OPSMANTIK][intent] deduped", {
+          action: intentMeta.intentAction,
+          target: intentMeta.intentTarget,
+          source
+        });
+      }
+      return false;
+    }
     recentTrackedIntentAt.set(dedupeKey, now);
+    if (isTrackerDebugEnabled()) {
+      console.log("[OPSMANTIK][intent] captured", {
+        action: intentMeta.intentAction,
+        target: intentMeta.intentTarget,
+        source
+      });
+    }
     sendEvent("conversion", eventAction, label, null, {
       intent_stamp: intentMeta.intentStamp,
       intent_action: intentMeta.intentAction,
@@ -1412,7 +1440,12 @@
             callEventUrl
           });
         }
-      }).catch(() => {
+      }).catch((err) => {
+        console.warn("[OpsMantik] signed call-event send failed", {
+          message: String(err?.message || err || "unknown_error"),
+          intentAction: payloadObj.intent_action,
+          siteId
+        });
       });
       return;
     }
@@ -1424,7 +1457,12 @@
       headers: { "Content-Type": "application/json" },
       body: payload,
       keepalive: true
-    }).catch(function() {
+    }).catch(function(err) {
+      console.warn("[OpsMantik] unsigned call-event send failed", {
+        message: String(err?.message || err || "unknown_error"),
+        intentAction: payloadObj.intent_action,
+        siteId
+      });
     });
   }
   function sendPageViewPulse() {
@@ -1440,49 +1478,56 @@
       flushPendingNavigationOutcome();
     }
     const handleIntentClick = (e) => {
-      fetch("http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e7e878" },
-        body: JSON.stringify({
-          sessionId: "e7e878",
-          runId: "post-fix",
-          hypothesisId: "H1",
-          location: "lib/tracker/tracker.js:initAutoTracking",
-          message: "intent_click_handler_entered",
-          data: {
-            targetTag: e?.target?.tagName || null,
-            targetHref: e?.target?.getAttribute?.("href") || null,
-            phase: e?.eventPhase || null
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {
-      });
-      const anchor = e.target.closest && e.target.closest("a[href]");
-      if (anchor) {
-        const anchorHref = String(anchor.getAttribute("href") || anchor.href || "").trim();
-        if (anchorHref.toLowerCase().startsWith("tel:")) {
-          emitTrackedIntent(anchorHref, "phone_call", anchorHref, "phone", anchor);
+      try {
+        fetch("http://127.0.0.1:7768/ingest/ebc41d01-6b38-40fb-8c33-cee03914d3ae", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e7e878" },
+          body: JSON.stringify({
+            sessionId: "e7e878",
+            runId: "post-fix",
+            hypothesisId: "H1",
+            location: "lib/tracker/tracker.js:initAutoTracking",
+            message: "intent_click_handler_entered",
+            data: {
+              targetTag: e?.target?.tagName || null,
+              targetHref: e?.target?.getAttribute?.("href") || null,
+              phase: e?.eventPhase || null
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {
+        });
+        const anchor = e.target.closest && e.target.closest("a[href]");
+        if (anchor) {
+          const anchorHref = String(anchor.getAttribute("href") || anchor.href || "").trim();
+          if (anchorHref.toLowerCase().startsWith("tel:")) {
+            emitTrackedIntent(anchorHref, "phone_call", anchorHref, "phone", anchor);
+            return;
+          }
+        }
+        const phoneIntent = extractPhoneIntentFromElement(
+          e.target,
+          typeof e.composedPath === "function" ? e.composedPath() : []
+        );
+        if (phoneIntent) {
+          emitTrackedIntent(phoneIntent.target, "phone_call", phoneIntent.target, "phone", phoneIntent.element);
           return;
         }
-      }
-      const phoneIntent = extractPhoneIntentFromElement(
-        e.target,
-        typeof e.composedPath === "function" ? e.composedPath() : []
-      );
-      if (phoneIntent) {
-        emitTrackedIntent(phoneIntent.target, "phone_call", phoneIntent.target, "phone", phoneIntent.element);
-        return;
-      }
-      const dataWa = e.target.closest && e.target.closest("[data-om-whatsapp]");
-      if (dataWa && dataWa.getAttribute("data-om-whatsapp")) {
-        const href = dataWa.getAttribute("data-om-whatsapp");
-        emitTrackedIntent(href, "whatsapp", href, inferWidgetSource(href, dataWa), dataWa);
-      } else {
-        const wa = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], a[href^="whatsapp:"]');
-        if (wa) {
-          emitTrackedIntent(wa.href, "whatsapp", wa.href, inferWidgetSource(wa.href, wa), wa);
+        const dataWa = e.target.closest && e.target.closest("[data-om-whatsapp]");
+        if (dataWa && dataWa.getAttribute("data-om-whatsapp")) {
+          const href = dataWa.getAttribute("data-om-whatsapp");
+          emitTrackedIntent(href, "whatsapp", href, inferWidgetSource(href, dataWa), dataWa);
+        } else {
+          const wa = e.target.closest('a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="joinchat"], a[href^="whatsapp://"], a[href^="whatsapp:"]');
+          if (wa) {
+            emitTrackedIntent(wa.href, "whatsapp", wa.href, inferWidgetSource(wa.href, wa), wa);
+          }
         }
+      } catch (err) {
+        console.warn("[OPSMANTIK] intent click handler error", {
+          message: String(err?.message || err || "unknown_error"),
+          targetTag: e?.target?.tagName || null
+        });
       }
     };
     document.addEventListener("click", handleIntentClick, true);
