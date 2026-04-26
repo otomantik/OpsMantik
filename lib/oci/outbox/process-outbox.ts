@@ -73,7 +73,10 @@ interface OutboxPayload {
 
 function resolveOutboxStage(score: number): SingleConversionGear | null {
   const stage = resolveOptimizationStage({ leadScore: score });
-  return stage;
+  if (stage === 'contacted' || stage === 'offered' || stage === 'won') {
+    return stage;
+  }
+  return null;
 }
 
 function resolveSignalStageFromExisting(params: {
