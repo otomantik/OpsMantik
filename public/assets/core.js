@@ -24,7 +24,7 @@
           "[OPSMANTIK] Sync URL is same-origin (" + resolvedApiUrl + '). Events will not reach OpsMantik. Set data-api (or data-ops-sync-proxy-url) on the script tag to your OpsMantik backend, e.g. data-api="https://YOUR_APP.vercel.app/api/sync"'
         );
       }
-    } catch (_) {
+    } catch {
     }
   }
   var CONFIG = {
@@ -130,9 +130,13 @@
   }
   function normalizePhoneTarget(raw) {
     const t = (raw || "").toString().trim();
+    const lower = t.toLowerCase();
     const whatsappTarget = canonicalizeWhatsAppTarget(t);
     if (whatsappTarget) return whatsappTarget;
-    if (t.toLowerCase().startsWith("tel:")) {
+    if (lower.startsWith("callto:")) {
+      return normalizeDialTarget(t.slice(7)) || "";
+    }
+    if (lower.startsWith("tel:")) {
       return normalizeDialTarget(t.slice(4)) || "";
     }
     if (/^\+?\d[\d\s().-]{6,}$/.test(t)) {
@@ -145,7 +149,7 @@
     const t = (raw || "").toString().toLowerCase();
     if (normalizedTarget.startsWith("whatsapp:")) return "whatsapp";
     if (t.includes("wa.me") || t.includes("whatsapp.com") || t.includes("chat.whatsapp.com") || t.includes("joinchat") || t.startsWith("whatsapp://")) return "whatsapp";
-    if (t.startsWith("tel:")) return "phone";
+    if (t.startsWith("tel:") || t.startsWith("callto:")) return "phone";
     return "phone";
   }
   function rand4() {
@@ -533,7 +537,7 @@
       syncUrl.searchParams.set("_ts", Date.now().toString());
       const response = await fetch(syncUrl.toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain" },
         body,
         keepalive: true,
         signal: controller.signal,
@@ -674,7 +678,7 @@
     if (queue.length > 0 && navigator.sendBeacon) {
       const body = buildUnloadBeaconBody(queue);
       if (!body) return;
-      navigator.sendBeacon(CONFIG.apiUrl, new Blob([JSON.stringify(body)], { type: "application/json" }));
+      navigator.sendBeacon(CONFIG.apiUrl, new Blob([JSON.stringify(body)], { type: "text/plain" }));
     }
   }
 
@@ -1221,7 +1225,7 @@
     const lastTrackedAt = recentTrackedIntentAt.get(dedupeKey) || 0;
     if (now - lastTrackedAt < 1800) {
       if (isTrackerDebugEnabled()) {
-        console.log("[OPSMANTIK][intent] deduped", {
+        console.log("[OPSMANTIK][intent] deduped (memory)", {
           action: intentMeta.intentAction,
           target: intentMeta.intentTarget,
           source
@@ -1260,13 +1264,17 @@
       const dataPhone = typeof el.getAttribute === "function" ? el.getAttribute("data-om-phone") || el.getAttribute("data-phone") || el.getAttribute("data-tel") || "" : "";
       const onClickAttr = typeof el.getAttribute === "function" ? el.getAttribute("onclick") || "" : "";
       const telFromOnClick = (() => {
-        const m = onClickAttr.match(/tel:[^'"\\)\s]+/i);
-        return m ? m[0] : "";
+        const m = onClickAttr.match(/(?:tel|callto):[^'")\s]+/i);
+        if (!m) return "";
+        const v = m[0];
+        return v.toLowerCase().startsWith("callto:") ? "tel:" + v.slice(7) : v;
       })();
       const pickTelLike = (value) => {
         const raw = String(value || "").trim();
         if (!raw) return "";
-        if (raw.toLowerCase().startsWith("tel:")) return raw;
+        const l = raw.toLowerCase();
+        if (l.startsWith("tel:")) return raw;
+        if (l.startsWith("callto:")) return "tel:" + raw.slice(7);
         return "";
       };
       const candidate = pickTelLike(hrefAttr) || pickTelLike(hrefProp) || pickTelLike(dataHref) || (dataPhone ? dataPhone.toLowerCase().startsWith("tel:") ? dataPhone : `tel:${dataPhone}` : "") || telFromOnClick;
@@ -1297,8 +1305,9 @@
         if (target && shouldTrackWhatsAppTarget(target)) {
           const recentElement = lastPointerContext && Date.now() - lastPointerContext.ts < 2e3 ? lastPointerContext.element : null;
           emitTrackedIntent(target, "whatsapp", target, inferWidgetSource(target, recentElement), recentElement);
-        } else if (target && String(target).toLowerCase().startsWith("tel:")) {
-          emitTrackedIntent(target, "phone_call", target, "window_open");
+        } else if (target && (String(target).toLowerCase().startsWith("tel:") || String(target).toLowerCase().startsWith("callto:"))) {
+          const normalized = String(target).toLowerCase().startsWith("callto:") ? "tel:" + String(target).slice(7) : String(target);
+          emitTrackedIntent(normalized, "phone_call", normalized, "window_open");
         }
         return originalOpen.apply(this, args);
       };
@@ -1310,8 +1319,10 @@
         if (fn.__opsmantikWrapped) return;
         const wrapped = function(...args) {
           const target = typeof args[0] === "string" ? args[0] : "";
-          if (target && String(target).toLowerCase().startsWith("tel:")) {
-            emitTrackedIntent(target, "phone_call", target, `location_${name}`);
+          const tl = String(target || "").toLowerCase();
+          if (target && (tl.startsWith("tel:") || tl.startsWith("callto:"))) {
+            const normalized = tl.startsWith("callto:") ? "tel:" + String(target).slice(7) : String(target);
+            emitTrackedIntent(normalized, "phone_call", normalized, `location_${name}`);
           }
           return fn.apply(window.location, args);
         };
@@ -1352,7 +1363,7 @@
     if (adsCtx) payloadObj.ads_context = adsCtx;
     const payload = JSON.stringify(payloadObj);
     if (proxyUrl2) {
-      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).then((res) => {
+      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "text/plain" }, body: payload, keepalive: true }).then((res) => {
         if (!res.ok) {
           console.warn("[OpsMantik] proxied call-event rejected", {
             status: res.status,
@@ -1380,7 +1391,7 @@
         return fetch(callEventUrl, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "text/plain",
             "X-Ops-Site-Id": siteId,
             "X-Ops-Ts": String(ts),
             "X-Ops-Signature": hex
@@ -1412,7 +1423,7 @@
     }
     fetch(callEventUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" },
       body: payload,
       keepalive: true
     }).catch(function(err) {
@@ -1439,9 +1450,20 @@
       try {
         const anchor = e.target.closest && e.target.closest("a[href]");
         if (anchor) {
-          const anchorHref = String(anchor.getAttribute("href") || anchor.href || "").trim();
-          if (anchorHref.toLowerCase().startsWith("tel:")) {
+          const rawHref = String(anchor.getAttribute("href") || anchor.href || "").trim();
+          const l = rawHref.toLowerCase();
+          if (l.startsWith("tel:") || l.startsWith("callto:")) {
+            const anchorHref = l.startsWith("callto:") ? "tel:" + rawHref.slice(7) : rawHref;
+            e.preventDefault();
             emitTrackedIntent(anchorHref, "phone_call", anchorHref, "phone", anchor);
+            setTimeout(() => {
+              const navigateTo = l.startsWith("callto:") ? rawHref : anchorHref;
+              try {
+                window.top.location.href = navigateTo;
+              } catch {
+                window.location.href = navigateTo;
+              }
+            }, 300);
             return;
           }
         }
@@ -1450,7 +1472,15 @@
           typeof e.composedPath === "function" ? e.composedPath() : []
         );
         if (phoneIntent) {
+          e.preventDefault();
           emitTrackedIntent(phoneIntent.target, "phone_call", phoneIntent.target, "phone", phoneIntent.element);
+          setTimeout(() => {
+            try {
+              window.top.location.href = phoneIntent.target;
+            } catch {
+              window.location.href = phoneIntent.target;
+            }
+          }, 300);
           return;
         }
         const dataWa = e.target.closest && e.target.closest("[data-om-whatsapp]");

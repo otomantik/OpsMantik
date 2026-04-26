@@ -131,8 +131,8 @@ export async function GET(
       secret = newSecret;
     }
 
-    const proxyScriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=5" data-ops-site-id="${sitePublicId}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"${proxyUrl ? ` data-ops-proxy-url="${proxyUrl}"` : ''}></script>`;
-    const signedScriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=5" data-ops-site-id="${sitePublicId}" data-ops-secret="${secret}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"></script>`;
+    const proxyScriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=6" data-ops-site-id="${sitePublicId}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"${proxyUrl ? ` data-ops-proxy-url="${proxyUrl}"` : ''}></script>`;
+    const signedScriptTag = `<script defer src="${CONSOLE_ORIGIN}/assets/core.js?v=6" data-ops-site-id="${sitePublicId}" data-ops-secret="${secret}" data-ops-consent="analytics" data-api="${CONSOLE_ORIGIN}/api/sync"></script>`;
 
     return NextResponse.json({
       scriptTag: mode === 'signed' ? signedScriptTag : proxyScriptTag,
