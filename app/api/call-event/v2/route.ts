@@ -339,7 +339,7 @@ async function callEventV2Inner(req: NextRequest) {
         } else {
           return NextResponse.json(
             { error: 'Module not enabled', code: 'MODULE_NOT_ENABLED', required_module: 'core_oci' },
-            { status: 403, headers: getBuildInfoHeaders() }
+            { status: 403, headers: { ...baseHeaders, ...getBuildInfoHeaders() } }
           );
         }
       } else {

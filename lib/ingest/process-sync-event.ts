@@ -456,7 +456,15 @@ async function doProcessSyncEvent(
   });
 
   // Deterministic geo policy: click-id aware precedence with reason/confidence.
-  const geoCriteriaId = utm?.loc_physical_ms || utm?.loc_interest_ms;
+  // Primary source is loc_*_ms. Some Google Ads setups only send targetid; treat it as a
+  // best-effort fallback so gclid-bearing traffic can still resolve district via geo targets.
+  const geoCriteriaId =
+    utm?.loc_physical_ms ||
+    utm?.loc_interest_ms ||
+    utm?.target_id ||
+    params.get('ops_geo') ||
+    params.get('ops_tgt') ||
+    null;
   let adsCity: string | null = null;
   let adsDistrict: string | null = null;
   const hasSanitizedClickId = hasValidClickId({

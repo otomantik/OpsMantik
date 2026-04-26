@@ -278,6 +278,8 @@
   }
   function getTemplateParams(params) {
     const p = (key) => params.get(key) || void 0;
+    const opsGeo = p("ops_geo");
+    const opsTarget = p("ops_tgt");
     return {
       utm_source: p("utm_source"),
       utm_medium: p("utm_medium"),
@@ -287,12 +289,12 @@
       utm_term: p("utm_term"),
       device: p("device"),
       devicemodel: p("devicemodel"),
-      targetid: p("targetid"),
+      targetid: p("targetid") || opsTarget,
       network: p("network"),
       adposition: p("adposition"),
       feeditemid: p("feeditemid"),
       loc_interest_ms: p("loc_interest_ms"),
-      loc_physical_ms: p("loc_physical_ms"),
+      loc_physical_ms: p("loc_physical_ms") || opsGeo,
       matchtype: p("matchtype")
     };
   }
