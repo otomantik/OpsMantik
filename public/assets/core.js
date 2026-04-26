@@ -1370,7 +1370,20 @@
     if (adsCtx) payloadObj.ads_context = adsCtx;
     const payload = JSON.stringify(payloadObj);
     if (proxyUrl2) {
-      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(function(e) {
+      fetch(proxyUrl2, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).then((res) => {
+        if (!res.ok) {
+          console.warn("[OpsMantik] proxied call-event rejected", {
+            status: res.status,
+            intentAction: payloadObj.intent_action,
+            siteId
+          });
+        } else if (isTrackerDebugEnabled()) {
+          console.log("[OPSMANTIK][call-event] proxied send ok", {
+            status: res.status,
+            intentAction: payloadObj.intent_action
+          });
+        }
+      }).catch(function(e) {
         if (typeof console !== "undefined") console.warn("[OpsMantik] TRACKER_FETCH_FAILED", "call-event", e?.message || e);
       });
       return;
