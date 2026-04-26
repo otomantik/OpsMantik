@@ -42,6 +42,9 @@ const ROUTE = '/api/call-event/v2';
 const OPSMANTIK_VERSION = '2.0.0-proxy';
 
 const MAX_BODY_BYTES = 64 * 1024;
+const CALL_EVENT_MODULE_GATE_FAIL_OPEN =
+  process.env.CALL_EVENT_MODULE_GATE_FAIL_OPEN === '1' ||
+  process.env.CALL_EVENT_MODULE_GATE_FAIL_OPEN === 'true';
 
 async function debugLog(runId: string, hypothesisId: string, location: string, message: string, data: Record<string, unknown>) {
   // #region agent log
@@ -325,14 +328,20 @@ async function callEventV2Inner(req: NextRequest) {
       await requireModule({ siteId: siteUuid, requiredModule: 'core_oci', site: siteRow ?? undefined });
     } catch (err) {
       if (err instanceof ModuleNotEnabledError) {
-        // Do not block signed call-event ingestion for sites with stale module flags.
-        // Runtime evidence: this branch produced client-visible CORS+403 despite valid signatures.
-        logWarn('call-event-v2 module gate bypassed (fail-open)', {
-          request_id: requestId,
-          route: ROUTE,
-          site_id: siteUuid,
-          required_module: 'core_oci',
-        });
+        if (CALL_EVENT_MODULE_GATE_FAIL_OPEN) {
+          // Temporary rollback switch: allow signed ingest even when module flags are stale.
+          logWarn('call-event-v2 module gate bypassed (fail-open override)', {
+            request_id: requestId,
+            route: ROUTE,
+            site_id: siteUuid,
+            required_module: 'core_oci',
+          });
+        } else {
+          return NextResponse.json(
+            { error: 'Module not enabled', code: 'MODULE_NOT_ENABLED', required_module: 'core_oci' },
+            { status: 403, headers: getBuildInfoHeaders() }
+          );
+        }
       } else {
         throw err;
       }
