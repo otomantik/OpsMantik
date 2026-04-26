@@ -1219,7 +1219,7 @@
     return true;
   }
   function extractPhoneIntentFromElement(clickTarget, composedPath = []) {
-    const selector = 'a[href*="tel:"], [data-om-phone], [data-phone], [data-tel], [onclick*="tel:"], [data-href*="tel:"]';
+    const selector = "a[href], [data-om-phone], [data-phone], [data-tel], [onclick], [data-href]";
     const tryExtractFromNode = (node) => {
       if (!node || typeof node !== "object") return null;
       const el = node?.matches?.(selector) ? node : node?.closest ? node.closest(selector) : null;
@@ -1458,10 +1458,13 @@
         })
       }).catch(() => {
       });
-      const tel = e.target.closest && e.target.closest('a[href^="tel:"]');
-      if (tel) {
-        emitTrackedIntent(tel.href, "phone_call", tel.href, "phone", tel);
-        return;
+      const anchor = e.target.closest && e.target.closest("a[href]");
+      if (anchor) {
+        const anchorHref = String(anchor.getAttribute("href") || anchor.href || "").trim();
+        if (anchorHref.toLowerCase().startsWith("tel:")) {
+          emitTrackedIntent(anchorHref, "phone_call", anchorHref, "phone", anchor);
+          return;
+        }
       }
       const phoneIntent = extractPhoneIntentFromElement(
         e.target,
