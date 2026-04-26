@@ -19,6 +19,23 @@ export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: s
 
 export type QueueToastState = null | { kind: 'success' | 'danger'; text: string };
 
+function parseRpcTimestampMs(value: string | null | undefined): number {
+  if (!value) return Number.NaN;
+  const raw = String(value).trim();
+  if (!raw) return Number.NaN;
+
+  // Postgres RPC may return "YYYY-MM-DD HH:mm:ss.ssssss+00".
+  // Normalize to ISO8601 for consistent browser parsing.
+  const normalized = raw
+    .replace(' ', 'T')
+    .replace(/([+-]\d{2})$/, '$1:00')
+    .replace('Z+00:00', '+00:00');
+
+  const parsed = new Date(normalized).getTime();
+  if (Number.isFinite(parsed)) return parsed;
+  return new Date(raw).getTime();
+}
+
 export type QueueControllerState = {
   range: QueueRange | null;
   bountyChips: number[];
@@ -313,7 +330,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         const toMs = new Date(r.toIso).getTime();
 
         const filtered = rows.filter((r) => {
-          const ts = new Date(r.created_at || 0).getTime();
+          const ts = parseRpcTimestampMs(r.created_at);
           if (!Number.isFinite(ts)) return false;
           // Status filter: pending only
           const s = (r.status || '').toLowerCase();
