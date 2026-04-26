@@ -1,0 +1,5 @@
+{
+  "name": "eslint-plugin-opsmantik-void",
+  "private": true,
+  "type": "module"
+}

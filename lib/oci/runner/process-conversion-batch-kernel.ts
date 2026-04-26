@@ -33,7 +33,7 @@ export async function processConversionBatchKernel(input: ProcessBatchInput): Pr
   let failed = 0;
   let retry = 0;
   let providerRequestId: string | null = null;
-  let errorCode: string | null = null;
+  const errorCode: string | null = null;
   let errorCategory: string | null = null;
 
   const blockedValueZeroIds: string[] = [];

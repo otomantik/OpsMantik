@@ -158,6 +158,13 @@ export function useIntentQualification(
         }
 
         // Junk: Route through Status API (server uses adminClient so write always persists)
+        const v =
+          typeof params.version === 'number' && Number.isFinite(params.version)
+            ? params.version
+            : typeof intentRowVersion === 'number' && Number.isFinite(intentRowVersion)
+              ? intentRowVersion
+              : 0;
+
         const res = await fetch(`/api/intents/${intentId}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -165,6 +172,7 @@ export function useIntentQualification(
           body: JSON.stringify({
             status: 'junk',
             lead_score: leadScore,
+            version: v,
           }),
         });
 

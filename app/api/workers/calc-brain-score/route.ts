@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
                 ? currentStatus
                 : 'intent';
 
-        const { data: updatedCall, error: updateError } = await tenantClient
+        const { error: updateError } = await tenantClient
             .from('calls')
             .update({
                 lead_score: systemScore,

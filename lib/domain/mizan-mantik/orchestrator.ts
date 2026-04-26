@@ -4,7 +4,7 @@
  * Gatekeeper and Ledger Router. Routes canonical PipelineStages.
  */
 
-import { createCausalDna, appendBranch, toJsonb } from './causal-dna';
+import { createCausalDna, appendBranch } from './causal-dna';
 import { getSiteValueConfig } from './value-config';
 import { getEntropyScore } from './entropy-service';
 import type { PipelineStage, SignalPayload, EvaluateResult } from './types';

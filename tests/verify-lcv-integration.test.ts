@@ -63,7 +63,7 @@ test('Integration: LCV Signal Generation on marketing_signals', async (t) => {
       if (callCreateErr) {
         console.error('Call creation failed:', callCreateErr.message);
       }
-      call = newCall as any;
+      call = newCall as typeof call;
     }
   }
 

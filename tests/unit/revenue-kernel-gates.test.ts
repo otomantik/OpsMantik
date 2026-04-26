@@ -11,7 +11,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { NextRequest } from 'next/server';
 
 const SYNC_ROUTE_PATH = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
 const WORKER_INGEST_PATH = join(process.cwd(), 'lib', 'ingest', 'execute-ingest-command.ts');
@@ -40,7 +39,6 @@ test('PR gate: rate limit 429 sets x-opsmantik-ratelimit (non-billable)', () => 
 
 test('PR gate: evaluation order Auth (validateSite) -> Rate limit -> Consent -> Publish (route); Idempotency -> Quota -> Persist (worker)', () => {
   const sync = readFileSync(SYNC_ROUTE_PATH, 'utf8');
-  const worker = readFileSync(WORKER_INGEST_PATH, 'utf8');
   const syncGates = readFileSync(SYNC_GATES_PATH, 'utf8');
   const auth = sync.indexOf('validateSiteFn');
   const rateLimit = sync.indexOf('rl.allowed', auth);
@@ -49,7 +47,6 @@ test('PR gate: evaluation order Auth (validateSite) -> Rate limit -> Consent -> 
   assert.ok(rateLimit < publish, 'Rate limit before Publish');
   const idempotency = syncGates.indexOf('tryInsertIdempotencyKey');
   const quota = syncGates.indexOf('evaluateQuota');
-  const persist = worker.indexOf('processSyncEvent') !== -1 ? worker.indexOf('processSyncEvent') : worker.indexOf('processCallEvent');
   assert.ok(idempotency !== -1 && quota !== -1, 'worker path: idempotency and quota must exist in sync-gates');
   assert.ok(idempotency < quota, 'Idempotency before Quota in worker');
 });

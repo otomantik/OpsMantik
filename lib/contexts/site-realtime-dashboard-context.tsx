@@ -84,7 +84,10 @@ export function useSiteRealtimeDashboard(): SiteRealtimeDashboardContextValue {
 export function useRegisterSiteRealtimeQueueRefetch(onRefetch: () => void): void {
   const ctx = useContext(SiteRealtimeDashboardContext);
   const onRefetchRef = useRef(onRefetch);
-  onRefetchRef.current = onRefetch;
+
+  useEffect(() => {
+    onRefetchRef.current = onRefetch;
+  }, [onRefetch]);
 
   useEffect(() => {
     if (!ctx) return undefined;

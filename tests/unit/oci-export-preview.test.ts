@@ -33,8 +33,6 @@ test('google-ads-export route: claim uses RPC not direct update', () => {
 });
 
 test('google-ads-export route: next_cursor keeps queue and signal streams separate', () => {
-  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
-  const src = readFileSync(routePath, 'utf8');
   const fetchPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-auth.ts');
   const buildPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
   const fetchSrc = readFileSync(fetchPath, 'utf8');
@@ -64,6 +62,7 @@ test('google-ads-export route: partial claims fail closed before cursor advances
 
 test('google-ads-export route: signal and pageview orderIds use collision-resistant builder', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  void routePath;
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('buildOrderId('), 'route must use shared orderId builder');
   assert.ok(src.includes('row.external_id || computeOfflineConversionExternalId'), 'seal exports must prefer DB-authoritative external_id');
@@ -74,12 +73,14 @@ test('google-ads-export route: signal and pageview orderIds use collision-resist
 
 test('google-ads-export route: pageview pipeline has been removed from export payload', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  void routePath;
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts'), 'utf8');
   assert.ok(src.includes('pvs: 0'), 'pageview export path should stay disabled');
 });
 
 test('google-ads-export route: seals prefer canonical occurred_at over legacy conversion_time', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  void routePath;
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('pickCanonicalOccurredAt(['), 'route must use canonical timestamp picker');
   assert.ok(src.includes('row.occurred_at,'), 'queue export must inspect queue occurred_at first');
@@ -94,6 +95,7 @@ test('google-ads-export route: no longer performs V2 recovery before export', ()
 
 test('google-ads-export route: signal conversion names resolve from canonical stages', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  void routePath;
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('resolveSignalStage('), 'route should map signals to canonical stages');
   assert.ok(src.includes('buildSingleConversionGroupKey'), 'route should create deterministic grouping keys');
@@ -108,6 +110,7 @@ test('google-ads-export route: signal conversion names resolve from canonical st
 
 test('google-ads-export route: skips unknown signal stages instead of exporting legacy leftovers', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  void routePath;
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE'), 'route should log unknown-stage skips explicitly');
   assert.ok(src.includes("if (!stage || stage === 'junk')"), 'route should block non-canonical signal stages before export');
@@ -115,6 +118,7 @@ test('google-ads-export route: skips unknown signal stages instead of exporting 
 
 test('google-ads-export route: queue export prefers optimization_value when present', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  void routePath;
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   assert.ok(src.includes('typeof row.optimization_value === \'number\''), 'queue export should inspect optimization_value first');
   assert.ok(src.includes(': minorToMajor(valueGuard.normalized, rowCurrency)'), 'queue export should only fall back to legacy cents when optimization_value is absent');

@@ -142,7 +142,7 @@ export async function GET(
       predictedLtv,
       lastContact: (match.created_at as string) || new Date().toISOString(),
     });
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to lookup by phone' },
       { status: 500 }

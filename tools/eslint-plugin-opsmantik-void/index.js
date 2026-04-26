@@ -77,10 +77,12 @@ const pipelineStageMutationGuard = {
   },
 };
 
-export default {
+const plugin = {
   rules: {
     "no-empty-catch-void": noEmptyCatchVoid,
     "no-date-now-tier0": noDateNowTier0,
     "pipeline-stage-mutation-guard": pipelineStageMutationGuard,
   },
 };
+
+export default plugin;

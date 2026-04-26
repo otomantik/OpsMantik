@@ -147,6 +147,7 @@ export function formatDisplayLocation(
     district?: string | null,
     _locationSource?: string | null,
 ): string | null {
+    void _locationSource;
     const cityNorm = (city || '').toString().trim().toLowerCase();
     const districtNorm = (district || '').toString().trim().toLowerCase();
     if (GHOST_GEO_CITIES.has(cityNorm) || GHOST_GEO_CITIES.has(districtNorm)) return null;

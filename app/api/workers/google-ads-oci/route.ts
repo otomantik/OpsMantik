@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireQstashSignature } from '@/lib/qstash/require-signature';
-import { logInfo, logWarn, logError } from '@/lib/logging/logger';
+import { logInfo, logError } from '@/lib/logging/logger';
 import { runOfflineConversionRunner } from '@/lib/oci/runner';
 import { RedisOutageError } from '@/lib/providers/limits/semaphore';
 

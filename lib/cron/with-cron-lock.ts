@@ -66,10 +66,11 @@ export function startCronLockHeartbeat(cronPath: string, ttlSeconds: number): ((
   const owner = leaseOwners.get(key);
   if (!owner) return null;
   const intervalMs = Math.max(5_000, Math.floor((ttlSeconds * 1000) / 3));
-  let nextTickAt = Date.now() + intervalMs;
+  const nowMs = () => new Date().getTime();
+  let nextTickAt = nowMs() + intervalMs;
   const timer = setInterval(async () => {
-    const lagMs = Math.max(0, Date.now() - nextTickAt);
-    nextTickAt = Date.now() + intervalMs;
+    const lagMs = Math.max(0, nowMs() - nextTickAt);
+    nextTickAt = nowMs() + intervalMs;
     const hb = await adminClient.rpc('heartbeat_cron_lease_v1', {
       p_lock_name: key,
       p_owner_token: owner,
@@ -152,7 +153,11 @@ export async function releaseCronLock(cronPath: string): Promise<void> {
 
   try {
     await redis.del(key);
-  } catch {
-    // Best-effort; TTL will expire
+  } catch (error) {
+    // Best-effort; TTL will expire, but keep an audit breadcrumb.
+    logWarn('cron_lock_release_failed', {
+      lock_name: key,
+      error: String((error as Error)?.message ?? error ?? 'unknown_error'),
+    });
   }
 }

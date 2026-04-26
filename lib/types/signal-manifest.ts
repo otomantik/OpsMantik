@@ -5,7 +5,6 @@
 
 import { z } from 'zod';
 
-const MAX_UA_LEN = 512;
 const MAX_REFERRER_LEN = 2048;
 const MAX_URL_LEN = 4096;
 
@@ -62,7 +61,9 @@ export function toValidIngestPayload(
   const url = (e.url ?? '').trim();
   const u = (e.u ?? '').trim();
   const hasUrl = url.length > 0;
-  const { url: _url, u: _u, ...rest } = e as SignalManifestSingle & { url?: string; u?: string };
+  const rest = { ...(e as SignalManifestSingle & { url?: string; u?: string }) };
+  delete rest.url;
+  delete rest.u;
   if (hasUrl) {
     return { ...rest, url } as import('@/lib/types/ingest').ValidIngestPayload;
   }

@@ -12,7 +12,6 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
-import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 import { parseEntitlements, FREE_FALLBACK, PRO_FULL_ENTITLEMENTS, type Entitlements } from './types';
 

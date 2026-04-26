@@ -53,7 +53,7 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
       });
       return { ok: false, error: 'UNCLAIMED_FASTPATH' };
     }
-    const siteRaw = (row as any).sites;
+    const siteRaw = (row as { sites?: { oci_sync_method?: string | null } | null }).sites;
     const syncMethod = siteRaw?.oci_sync_method || 'script';
 
     if (syncMethod !== 'api') {

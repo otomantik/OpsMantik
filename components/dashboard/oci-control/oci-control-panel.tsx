@@ -26,7 +26,6 @@ import {
 import { cn } from '@/lib/utils';
 import type { OciQueueStats, OciQueueRow, QueueStatus } from '@/lib/domain/oci/queue-types';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import type { TranslationKey } from '@/lib/i18n/t';
 
 const STATUS_ORDER: QueueStatus[] = [
   'QUEUED',

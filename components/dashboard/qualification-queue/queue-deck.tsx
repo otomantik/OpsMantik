@@ -17,7 +17,6 @@ function ActiveDeckCard({
   onOpenDetails,
   onOptimisticRemove,
   onQualified,
-  onSkip,
   onSealDeal,
   pushToast,
   pushHistoryRow,
@@ -28,7 +27,6 @@ function ActiveDeckCard({
   onOpenDetails: (callId: string) => void;
   onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
-  onSkip: () => void;
   onSealDeal?: () => void;
   pushToast: (kind: 'success' | 'danger', text: string) => void;
   pushHistoryRow: (row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => void;
@@ -64,15 +62,16 @@ function ActiveDeckCard({
       }
       onQualified();
       return result.success;
-    } catch (err) {
+    } catch {
       pushToast('danger', t('toast.failedUpdate'));
       onQualified();
       return false;
     }
   };
 
-  const handleAction = async (intentId: string, actionId: string, score: number) => {
+  const handleAction = async (_intentId: string, actionId: string, score: number) => {
     if (readOnly) return false;
+    void score;
     
     // special case: seal/seal-deal might require the modal if it's a "Seal" action
     if (actionId === 'seal' && onSealDeal) {
@@ -85,6 +84,7 @@ function ActiveDeckCard({
 
   const handleJunk = async (intentId: string) => {
     if (readOnly) return false;
+    void intentId;
     return await fireQualify({ score: 0, status: 'junk' });
   };
 
@@ -231,7 +231,6 @@ export function QueueDeck({
             onOpenDetails={onOpenDetails}
             onOptimisticRemove={onOptimisticRemove}
             onQualified={onQualified}
-            onSkip={onSkip}
             onSealDeal={onSealDeal}
             pushToast={pushToast}
             pushHistoryRow={pushHistoryRow}

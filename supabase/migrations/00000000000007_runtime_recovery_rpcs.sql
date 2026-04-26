@@ -191,6 +191,7 @@ CREATE OR REPLACE FUNCTION public.get_recent_intents_v1(
 )
 RETURNS TABLE (
   id uuid,
+  version integer,
   created_at timestamptz,
   status text,
   matched_session_id uuid,
@@ -209,6 +210,7 @@ AS $$
   )
   SELECT
     c.id,
+    c.version,
     c.created_at,
     c.status,
     c.matched_session_id,
@@ -242,6 +244,7 @@ CREATE OR REPLACE FUNCTION public.get_recent_intents_v2(
 )
 RETURNS TABLE (
   id uuid,
+  version integer,
   created_at timestamptz,
   status text,
   matched_session_id uuid,
@@ -273,6 +276,7 @@ SET search_path = public
 AS $$
   SELECT
     c.id,
+    c.version,
     c.created_at,
     c.status,
     c.matched_session_id,
@@ -323,6 +327,7 @@ CREATE OR REPLACE FUNCTION public.get_recent_intents_lite_v1(
 )
 RETURNS TABLE (
   id uuid,
+  version integer,
   created_at timestamptz,
   status text,
   matched_session_id uuid,
@@ -358,6 +363,7 @@ SET search_path = public
 AS $$
   SELECT
     c.id,
+    c.version,
     c.created_at,
     c.status,
     c.matched_session_id,
@@ -485,6 +491,7 @@ AS $$
   FROM (
     SELECT
       c.id,
+      c.version,
       c.created_at,
       c.status,
       c.matched_session_id,

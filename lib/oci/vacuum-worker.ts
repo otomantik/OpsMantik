@@ -5,8 +5,6 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
-import { getPrimarySource } from '@/lib/conversation/primary-source';
-import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { isGhostGeoCity } from '@/lib/geo';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 

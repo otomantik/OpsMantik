@@ -1,5 +1,4 @@
 type TenantMap = Record<string, string>;
-type SecretMap = Record<string, string>;
 
 interface WorkerEnv {
 	OPSMANTIK_BASE_URL?: string;
@@ -81,7 +80,7 @@ async function loadTenantMap(env: WorkerEnv): Promise<TenantMap> {
 	}
 
 	const staticMap = parseJsonMap(env.SITE_CONFIG);
-	let mergedMap: TenantMap = { ...staticMap };
+	const mergedMap: TenantMap = { ...staticMap };
 	const mapUrl = env.SITE_CONFIG_URL?.trim();
 	if (mapUrl) {
 		try {
