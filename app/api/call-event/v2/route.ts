@@ -262,23 +262,37 @@ async function callEventV2Inner(req: NextRequest) {
     let dailyLimit = 1000;
     let siteRow: { id: string; daily_lead_limit?: number; active_modules?: string[] | null } | null = null;
     if (!siteUuid) {
-      const { data: s, error: sErr } = await adminClient
+      const { data: sCore, error: sCoreErr } = await adminClient
         .from('sites')
-        .select('id, daily_lead_limit, active_modules')
+        .select('id, active_modules')
         .eq('public_id', legacyPublicId)
         .single();
-      if (sErr || !s?.id) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
-      siteUuid = s.id;
-      dailyLimit = s.daily_lead_limit ?? 1000;
-      siteRow = s;
-    } else {
-      const { data: s } = await adminClient
+      if (sCoreErr || !sCore?.id) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
+      siteUuid = sCore.id;
+      siteRow = { id: sCore.id, active_modules: sCore.active_modules ?? null };
+
+      // Some environments may miss daily_lead_limit temporarily; keep module-gate healthy and fall back to 1000.
+      const { data: sLimit, error: sLimitErr } = await adminClient
         .from('sites')
-        .select('id, daily_lead_limit, active_modules')
+        .select('daily_lead_limit')
+        .eq('id', sCore.id)
+        .single();
+      if (!sLimitErr) dailyLimit = sLimit?.daily_lead_limit ?? 1000;
+    } else {
+      const { data: sCore, error: sCoreErr } = await adminClient
+        .from('sites')
+        .select('id, active_modules')
         .eq('id', siteUuid)
         .single();
-      dailyLimit = s?.daily_lead_limit ?? 1000;
-      siteRow = s;
+      if (sCoreErr || !sCore?.id) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
+      siteRow = { id: sCore.id, active_modules: sCore.active_modules ?? null };
+
+      const { data: sLimit, error: sLimitErr } = await adminClient
+        .from('sites')
+        .select('daily_lead_limit')
+        .eq('id', siteUuid)
+        .single();
+      if (!sLimitErr) dailyLimit = sLimit?.daily_lead_limit ?? 1000;
     }
 
     if (!siteUuid) return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: baseHeaders });
