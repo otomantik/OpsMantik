@@ -1,3 +1,6 @@
+ALTER TABLE public.calls
+  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+
 DROP FUNCTION IF EXISTS public.get_recent_intents_v1(uuid, timestamptz, integer, integer, boolean);
 DROP FUNCTION IF EXISTS public.get_recent_intents_v2(uuid, timestamptz, timestamptz, integer, boolean);
 DROP FUNCTION IF EXISTS public.get_recent_intents_lite_v1(uuid, timestamptz, timestamptz, integer, boolean);

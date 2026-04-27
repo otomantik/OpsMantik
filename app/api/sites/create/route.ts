@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { logError, logInfo } from '@/lib/logging/logger';
 import { parseCreateSitePayload } from '@/lib/validation/site-create';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
+import { ensureDefaultSiteActiveModules, DEFAULT_SITE_ACTIVE_MODULES } from '@/lib/types/modules';
 
 function buildOriginCandidates(domain: string): string[] {
   const clean = domain.trim().toLowerCase().replace(/^www\./, '');
@@ -109,6 +110,15 @@ export async function POST(req: NextRequest) {
     const matched = matchByDomain || matchByName;
 
     if (matched?.id) {
+      const { data: rowForMods } = await adminClient
+        .from('sites')
+        .select('active_modules')
+        .eq('id', matched.id)
+        .single();
+      const priorMods = rowForMods && 'active_modules' in rowForMods ? rowForMods.active_modules : undefined;
+      const active_modules = ensureDefaultSiteActiveModules(
+        Array.isArray(priorMods) ? priorMods : undefined
+      );
       const { data: updated, error: updateErr } = await adminClient
         .from('sites')
         .update({
@@ -118,6 +128,7 @@ export async function POST(req: NextRequest) {
           default_country_iso: defaultCountryIso,
           timezone,
           currency,
+          active_modules,
         })
         .eq('id', matched.id)
         .eq('user_id', user.id)
@@ -192,6 +203,7 @@ export async function POST(req: NextRequest) {
         default_country_iso: defaultCountryIso,
         timezone,
         currency,
+        active_modules: [...DEFAULT_SITE_ACTIVE_MODULES],
       })
       .select()
       .single();

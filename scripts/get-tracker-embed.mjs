@@ -60,7 +60,7 @@ async function main() {
 
   const consoleUrl = 'https://console.opsmantik.com';
   // ?v=5: cache-bust so sites load latest tracker fixes.
-  const scriptTag = `<script src="${consoleUrl}/assets/core.js?v=6" data-ops-site-id="${site.public_id}" data-ops-secret="${secret}" data-api="${consoleUrl}/api/sync"></script>`;
+  const scriptTag = `<script src="${consoleUrl}/assets/core.js?v=7" data-ops-site-id="${site.public_id}" data-ops-secret="${secret}" data-api="${consoleUrl}/api/sync"></script>`;
 
   console.log('Site:', site.name || site.public_id);
   console.log('Public ID:', site.public_id);

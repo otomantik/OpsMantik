@@ -136,6 +136,11 @@
     if (lower.startsWith("callto:")) {
       return normalizeDialTarget(t.slice(7)) || "";
     }
+    if (lower.startsWith("sms:")) {
+      const noQuery = t.split("?")[0] || t;
+      const after = noQuery.slice(4);
+      return normalizeDialTarget(after) || noQuery;
+    }
     if (lower.startsWith("tel:")) {
       return normalizeDialTarget(t.slice(4)) || "";
     }
@@ -149,7 +154,7 @@
     const t = (raw || "").toString().toLowerCase();
     if (normalizedTarget.startsWith("whatsapp:")) return "whatsapp";
     if (t.includes("wa.me") || t.includes("whatsapp.com") || t.includes("chat.whatsapp.com") || t.includes("joinchat") || t.startsWith("whatsapp://")) return "whatsapp";
-    if (t.startsWith("tel:") || t.startsWith("callto:")) return "phone";
+    if (t.startsWith("tel:") || t.startsWith("callto:") || t.startsWith("sms:")) return "phone";
     return "phone";
   }
   function rand4() {
@@ -1264,10 +1269,11 @@
       const dataPhone = typeof el.getAttribute === "function" ? el.getAttribute("data-om-phone") || el.getAttribute("data-phone") || el.getAttribute("data-tel") || "" : "";
       const onClickAttr = typeof el.getAttribute === "function" ? el.getAttribute("onclick") || "" : "";
       const telFromOnClick = (() => {
-        const m = onClickAttr.match(/(?:tel|callto):[^'")\s]+/i);
+        const m = onClickAttr.match(/(?:tel|callto|sms):[^'")\s]+/i);
         if (!m) return "";
         const v = m[0];
-        return v.toLowerCase().startsWith("callto:") ? "tel:" + v.slice(7) : v;
+        if (v.toLowerCase().startsWith("callto:")) return "tel:" + v.slice(7);
+        return v;
       })();
       const pickTelLike = (value) => {
         const raw = String(value || "").trim();
@@ -1275,10 +1281,12 @@
         const l = raw.toLowerCase();
         if (l.startsWith("tel:")) return raw;
         if (l.startsWith("callto:")) return "tel:" + raw.slice(7);
+        if (l.startsWith("sms:")) return raw;
         return "";
       };
       const candidate = pickTelLike(hrefAttr) || pickTelLike(hrefProp) || pickTelLike(dataHref) || (dataPhone ? dataPhone.toLowerCase().startsWith("tel:") ? dataPhone : `tel:${dataPhone}` : "") || telFromOnClick;
-      if (!candidate || !candidate.toLowerCase().startsWith("tel:")) return null;
+      const lc = candidate.toLowerCase();
+      if (!candidate || !lc.startsWith("tel:") && !lc.startsWith("sms:")) return null;
       return { target: candidate, element: el };
     };
     for (const node of composedPath) {
@@ -1305,9 +1313,14 @@
         if (target && shouldTrackWhatsAppTarget(target)) {
           const recentElement = lastPointerContext && Date.now() - lastPointerContext.ts < 2e3 ? lastPointerContext.element : null;
           emitTrackedIntent(target, "whatsapp", target, inferWidgetSource(target, recentElement), recentElement);
-        } else if (target && (String(target).toLowerCase().startsWith("tel:") || String(target).toLowerCase().startsWith("callto:"))) {
-          const normalized = String(target).toLowerCase().startsWith("callto:") ? "tel:" + String(target).slice(7) : String(target);
-          emitTrackedIntent(normalized, "phone_call", normalized, "window_open");
+        } else if (target) {
+          const tl = String(target).toLowerCase();
+          if (tl.startsWith("tel:") || tl.startsWith("callto:")) {
+            const normalized = tl.startsWith("callto:") ? "tel:" + String(target).slice(7) : String(target);
+            emitTrackedIntent(normalized, "phone_call", normalized, "window_open");
+          } else if (tl.startsWith("sms:")) {
+            emitTrackedIntent(String(target), "phone_call", String(target), "window_open");
+          }
         }
         return originalOpen.apply(this, args);
       };
@@ -1320,9 +1333,13 @@
         const wrapped = function(...args) {
           const target = typeof args[0] === "string" ? args[0] : "";
           const tl = String(target || "").toLowerCase();
-          if (target && (tl.startsWith("tel:") || tl.startsWith("callto:"))) {
-            const normalized = tl.startsWith("callto:") ? "tel:" + String(target).slice(7) : String(target);
-            emitTrackedIntent(normalized, "phone_call", normalized, `location_${name}`);
+          if (target) {
+            if (tl.startsWith("tel:") || tl.startsWith("callto:")) {
+              const normalized = tl.startsWith("callto:") ? "tel:" + String(target).slice(7) : String(target);
+              emitTrackedIntent(normalized, "phone_call", normalized, `location_${name}`);
+            } else if (tl.startsWith("sms:")) {
+              emitTrackedIntent(String(target), "phone_call", String(target), `location_${name}`);
+            }
           }
           return fn.apply(window.location, args);
         };
@@ -1399,14 +1416,20 @@
           body: payload,
           keepalive: true
         });
-      }).then((res) => {
+      }).then(async (res) => {
         if (res && !res.ok && typeof console !== "undefined") {
+          let responseHint = null;
+          try {
+            responseHint = (await res.clone().text()).slice(0, 500);
+          } catch {
+          }
           console.warn("[OpsMantik] signed call-event rejected", {
             status: res.status,
             siteId,
             hasSecret: Boolean(secret),
             hasProxyUrl: Boolean(proxyUrl2),
-            callEventUrl
+            callEventUrl,
+            responseBody: responseHint
           });
         }
       }).catch((err) => {
@@ -1452,18 +1475,21 @@
         if (anchor) {
           const rawHref = String(anchor.getAttribute("href") || anchor.href || "").trim();
           const l = rawHref.toLowerCase();
-          if (l.startsWith("tel:") || l.startsWith("callto:")) {
-            const anchorHref = l.startsWith("callto:") ? "tel:" + rawHref.slice(7) : rawHref;
+          if (l.startsWith("tel:") || l.startsWith("callto:") || l.startsWith("sms:")) {
             e.preventDefault();
-            emitTrackedIntent(anchorHref, "phone_call", anchorHref, "phone", anchor);
+            if (l.startsWith("sms:")) {
+              emitTrackedIntent(rawHref, "phone_call", rawHref, "phone", anchor);
+            } else {
+              const anchorHref = l.startsWith("callto:") ? "tel:" + rawHref.slice(7) : rawHref;
+              emitTrackedIntent(anchorHref, "phone_call", anchorHref, "phone", anchor);
+            }
             setTimeout(() => {
-              const navigateTo = l.startsWith("callto:") ? rawHref : anchorHref;
               try {
-                window.top.location.href = navigateTo;
+                window.top.location.href = rawHref;
               } catch {
-                window.location.href = navigateTo;
+                window.location.href = rawHref;
               }
-            }, 300);
+            }, 0);
             return;
           }
         }
@@ -1480,7 +1506,7 @@
             } catch {
               window.location.href = phoneIntent.target;
             }
-          }, 300);
+          }, 0);
           return;
         }
         const dataWa = e.target.closest && e.target.closest("[data-om-whatsapp]");

@@ -11,6 +11,7 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+const DEFAULT_ACTIVE_MODULES = ['dashboard', 'core_oci', 'scoring_v1'];
 
 async function createTestSite() {
   console.log('🔧 Test site oluşturuluyor...\n');
@@ -61,6 +62,8 @@ async function createTestSite() {
         user_id: testUserId,
         public_id: testPublicId,
         domain: testDomain,
+        name: 'Test site',
+        active_modules: DEFAULT_ACTIVE_MODULES,
       })
       .select()
       .single();

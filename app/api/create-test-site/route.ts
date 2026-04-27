@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { DEFAULT_SITE_ACTIVE_MODULES } from '@/lib/types/modules';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,8 @@ export async function POST() {
           user_id: user.id, // RLS requires this to match auth.uid()
           public_id: publicId,
           domain: 'localhost:3000',
+          name: 'Local test site',
+          active_modules: [...DEFAULT_SITE_ACTIVE_MODULES],
         })
         .select()
         .single();
