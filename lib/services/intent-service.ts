@@ -40,7 +40,7 @@ export class IntentService {
         const { fingerprint, event_action, event_label, meta, url, currentGclid, params } = data;
 
         // Goal: tel/wa clicks MUST create call intents regardless of acquisition/conversion rewrites.
-        const PHONE_ACTIONS = new Set(['phone_call', 'phone_click', 'call_click', 'tel_click']);
+        const PHONE_ACTIONS = new Set(['phone', 'phone_call', 'phone_click', 'call_click', 'tel_click']);
         const WHATSAPP_ACTIONS = new Set(['whatsapp', 'whatsapp_click', 'wa_click']);
         const FORM_ACTIONS = new Set([
             'form',

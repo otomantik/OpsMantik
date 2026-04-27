@@ -19,3 +19,10 @@ test('non-empty meta.intent_action still overrides', () => {
     'form_submit'
   );
 });
+
+test('canonical phone meta.intent_action stays phone', () => {
+  assert.equal(
+    resolveIntentActionForIngest({ intent_action: ' phone ' }, 'phone_call'),
+    'phone'
+  );
+});

@@ -141,17 +141,8 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!url || !anonKey) {
-            logError('call-event verifier misconfigured (missing supabase env)', { request_id: requestId, route: CALL_EVENT_ROUTE });
-            return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
-        }
-        const { createClient } = await import('@supabase/supabase-js');
-        const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
-
         // COMPLIANCE: Route order — HMAC → Replay → Rate limit → Session lookup → Consent gate → Insert. Consent before HMAC = brute-force risk.
-        // --- 1) Auth boundary: verify signature BEFORE any service-role DB call ---
+        // --- 1) Auth boundary: verify signature before any write/ingest operation ---
         // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
         const signingDisabled =
             process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
@@ -180,7 +171,7 @@ export async function POST(req: NextRequest) {
             }
 
             // Verify signature via DB (boolean only; secrets never leave DB).
-            const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
+            const { data: sigOk, error: sigErr } = await adminClient.rpc('verify_call_event_signature_v1', {
                 p_site_public_id: headerSiteId,
                 p_ts: tsNum,
                 p_raw_body: rawBody,
@@ -250,7 +241,7 @@ export async function POST(req: NextRequest) {
         let resolvedSiteUuid: string | null = null;
         let legacyPublicId: string | null = null;
 
-        const { data: resolvedBodySiteId, error: resolveBodyErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+        const { data: resolvedBodySiteId, error: resolveBodyErr } = await adminClient.rpc('resolve_site_identifier_v1', {
             p_input: body.site_id,
         });
         if (resolveBodyErr) {
@@ -280,7 +271,7 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
                 }
             } else {
-                const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+                const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await adminClient.rpc('resolve_site_identifier_v1', {
                     p_input: headerSiteId,
                 });
                 if (resolveHeaderErr || !resolvedHeaderSiteId) {

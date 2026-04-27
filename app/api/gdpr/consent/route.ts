@@ -6,7 +6,6 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { createClient } from '@supabase/supabase-js';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { SITE_PUBLIC_ID_RE, SITE_UUID_RE } from '@/lib/security/site-identifier';
 import { verifyGdprConsentSignatureV1 } from '@/lib/security/verify-gdpr-consent-signature-v1';
@@ -97,8 +96,6 @@ export async function POST(req: NextRequest) {
   if (!url || !anonKey) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-  const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
-
   const signingDisabled = isGdprConsentSigningDisabled();
   let headerSiteId = '';
 
@@ -222,7 +219,7 @@ export async function POST(req: NextRequest) {
   }
 
   let siteUuidFinal: string;
-  const { data: resolved } = await anonClient.rpc('resolve_site_identifier_v1', { p_input: headerSiteId });
+  const { data: resolved } = await adminClient.rpc('resolve_site_identifier_v1', { p_input: headerSiteId });
   if (typeof resolved === 'string') {
     siteUuidFinal = resolved;
   } else {

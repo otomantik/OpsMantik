@@ -105,20 +105,11 @@ async function callEventV2Inner(req: NextRequest) {
 
     const clientId = RateLimitService.getClientId(req);
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anonKey) {
-      logError('call-event-v2 verifier misconfigured (missing supabase env)', { request_id: requestId, route: ROUTE });
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: baseHeaders });
-    }
-    const { createClient } = await import('@supabase/supabase-js');
-    const anonClient = createClient(url, anonKey, { auth: { persistSession: false } });
-
     // COMPLIANCE INVARIANT — Route order (DO NOT change):
     // 1) HMAC verify — MUST run first. Consent before HMAC = signature brute-force risk.
     // 2) Replay check  3) Rate limit  4) Session lookup  5) Analytics consent gate  6) Insert  7) OCI enqueue (seal).
     //
-    // Auth boundary: verify signature BEFORE any service-role DB call.
+    // Auth boundary: verify signature before any write/ingest operation.
     // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
     const signingDisabled =
       process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
@@ -146,7 +137,7 @@ async function callEventV2Inner(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
       }
 
-      const { data: sigOk, error: sigErr } = await anonClient.rpc('verify_call_event_signature_v1', {
+      const { data: sigOk, error: sigErr } = await adminClient.rpc('verify_call_event_signature_v1', {
         p_site_public_id: headerSiteId,
         p_ts: tsNum,
         p_raw_body: rawBody,
@@ -191,7 +182,7 @@ async function callEventV2Inner(req: NextRequest) {
     let resolvedSiteUuid: string | null = null;
     let legacyPublicId: string | null = null;
 
-    const { data: resolvedBodySiteId, error: resolveBodyErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+    const { data: resolvedBodySiteId, error: resolveBodyErr } = await adminClient.rpc('resolve_site_identifier_v1', {
       p_input: body.site_id,
     });
     if (resolveBodyErr) {
@@ -213,7 +204,7 @@ async function callEventV2Inner(req: NextRequest) {
 
       // Enforce header/body binding when signing is enabled (prevents cross-site signature reuse).
       if (!signingDisabled) {
-        const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await anonClient.rpc('resolve_site_identifier_v1', {
+        const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await adminClient.rpc('resolve_site_identifier_v1', {
           p_input: headerSiteId,
         });
         if (resolveHeaderErr || !resolvedHeaderSiteId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
