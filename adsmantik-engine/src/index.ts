@@ -9,33 +9,6 @@ interface WorkerEnv {
 	OPS_CALL_EVENT_SECRETS?: string;
 }
 
-type LegacyMetricsPayload = {
-	event?: string;
-	label?: string;
-	value?: number | string | null;
-	url?: string;
-	session_id?: string;
-	fingerprint?: string;
-	gclid?: string;
-	wbraid?: string;
-	gbraid?: string;
-	meta?: Record<string, unknown>;
-};
-
-type CallEventPayload = {
-	site_id?: string;
-	fingerprint?: string;
-	intent_action?: string;
-	action?: string;
-	intent_target?: string;
-	phone_number?: string;
-	intent_page_url?: string;
-	url?: string;
-	gclid?: string;
-	wbraid?: string;
-	gbraid?: string;
-};
-
 function jsonResponse(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -132,91 +105,67 @@ function injectEdgeGeo(meta: Record<string, unknown>, request: Request): Record<
 	return next;
 }
 
-function applySiteAndGeoToSyncPayload(payload: unknown, siteId: string, request: Request): unknown {
-	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
-	const obj = payload as Record<string, unknown>;
+function normalizeSyncPayload(incoming: unknown, siteId: string, request: Request): Record<string, unknown> {
+	if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+		return { s: siteId, events: [], consent_scopes: ["analytics"] };
+	}
+	const obj = incoming as Record<string, unknown>;
+	const consentScopes = Array.isArray(obj.consent_scopes) ? obj.consent_scopes : ["analytics", "marketing"];
 
+	// 1. Resolve events array
+	let eventsRaw: unknown[] = [];
 	if (Array.isArray(obj.events)) {
-		const events = obj.events.map((event) => {
-			const e = toObject(event);
-			const withSite = typeof e.s === "string" && e.s.trim().length > 0 ? e : { ...e, s: siteId };
-			const meta = injectEdgeGeo(toObject(withSite.meta), request);
-			return { ...withSite, meta };
-		});
-		return { ...obj, events };
+		eventsRaw = obj.events;
+	} else if (Array.isArray(obj.batch)) {
+		eventsRaw = obj.batch;
+	} else if (typeof obj.event === "string" || typeof obj.ea === "string" || typeof obj.intent_action === "string") {
+		// Single event or legacy metrics/call-event format
+		eventsRaw = [obj];
 	}
 
-	const withSite = typeof obj.s === "string" && obj.s.trim().length > 0 ? obj : { ...obj, s: siteId };
-	const meta = injectEdgeGeo(toObject(withSite.meta), request);
-	return { ...withSite, meta };
-}
+	// 2. Map and normalize each event
+	const events = eventsRaw.map((event) => {
+		const e = toObject(event);
+		// Ensure event level s
+		const s = typeof e.s === "string" && e.s.trim().length > 0 ? e.s.trim() : siteId;
 
-function buildSyncFromLegacyMetrics(payload: LegacyMetricsPayload, siteId: string, request: Request): Record<string, unknown> {
-	const action = typeof payload.event === "string" && payload.event.trim().length > 0 ? payload.event.trim() : "custom_event";
-	const label = typeof payload.label === "string" ? payload.label : null;
-	const url = typeof payload.url === "string" && payload.url.length > 0 ? payload.url : request.url;
-	const value = payload.value ?? null;
+		// Map legacy fields if present
+		const action = (e.ea || e.event || e.intent_action || "custom_event") as string;
+		const category = (e.ec || (e.intent_action ? "conversion" : "interaction")) as string;
+		const label = (e.el || e.label || e.intent_target || e.phone_number || null) as string | null;
+		const url = (e.u || e.url || e.intent_page_url || request.url) as string;
+		const value = (e.ev ?? e.value ?? null) as number | string | null;
+		const sid = (e.sid || e.session_id || crypto.randomUUID()) as string;
+
+		const res: Record<string, unknown> = {
+			s,
+			u: url,
+			sid,
+			ec: category,
+			ea: action,
+			consent_scopes: consentScopes, // BURASI KRİTİK!
+			meta: injectEdgeGeo(
+				{
+					...(toObject(e.meta)),
+					fp: e.fp || e.fingerprint || null,
+					gclid: e.gclid || null,
+					wbraid: e.wbraid || null,
+					gbraid: e.gbraid || null,
+				},
+				request
+			),
+		};
+
+		if (label) res.el = label;
+		if (value !== null) res.ev = value;
+
+		return res;
+	});
+
 	return {
 		s: siteId,
-		u: url,
-		sid: payload.session_id ?? crypto.randomUUID(),
-		ec: "interaction",
-		ea: action,
-		el: label,
-		ev: value,
-		meta: injectEdgeGeo(
-			{
-				fp: payload.fingerprint ?? null,
-				gclid: payload.gclid ?? null,
-				wbraid: payload.wbraid ?? null,
-				gbraid: payload.gbraid ?? null,
-				...(toObject(payload.meta)),
-			},
-			request
-		),
-		consent_scopes: ["analytics", "marketing"],
-	};
-}
-
-function buildSyncFromCallEvent(payload: CallEventPayload, siteId: string, request: Request): Record<string, unknown> {
-	const actionRaw =
-		typeof payload.intent_action === "string" && payload.intent_action.trim().length > 0
-			? payload.intent_action.trim().toLowerCase()
-			: typeof payload.action === "string" && payload.action.trim().length > 0
-				? payload.action.trim().toLowerCase()
-				: "call_event";
-	const labelRaw =
-		typeof payload.intent_target === "string" && payload.intent_target.trim().length > 0
-			? payload.intent_target.trim()
-			: typeof payload.phone_number === "string" && payload.phone_number.trim().length > 0
-				? payload.phone_number.trim()
-				: "unknown_target";
-	const pageUrl =
-		typeof payload.intent_page_url === "string" && payload.intent_page_url.trim().length > 0
-			? payload.intent_page_url.trim()
-			: typeof payload.url === "string" && payload.url.trim().length > 0
-				? payload.url.trim()
-				: request.url;
-	return {
-		s: siteId,
-		u: pageUrl,
-		sid: crypto.randomUUID(),
-		ec: "conversion",
-		ea: actionRaw,
-		el: labelRaw,
-		meta: injectEdgeGeo(
-			{
-				proxy_source: "call-event-fallback",
-				fp: typeof payload.fingerprint === "string" ? payload.fingerprint : null,
-				intent_action: actionRaw,
-				intent_target: labelRaw,
-				gclid: typeof payload.gclid === "string" ? payload.gclid : null,
-				wbraid: typeof payload.wbraid === "string" ? payload.wbraid : null,
-				gbraid: typeof payload.gbraid === "string" ? payload.gbraid : null,
-			},
-			request
-		),
-		consent_scopes: ["analytics", "marketing"],
+		events,
+		consent_scopes: consentScopes,
 	};
 }
 
@@ -233,22 +182,29 @@ async function forwardJson(
 	payload: unknown,
 	extraHeaders: Record<string, string> = {}
 ): Promise<Response> {
-	const upstream = await fetch(url, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			...extraHeaders,
-		},
-		body: JSON.stringify(payload),
-	});
-	const text = await upstream.text();
-	return new Response(text, {
-		status: upstream.status,
-		headers: {
-			"content-type": upstream.headers.get("content-type") ?? "application/json",
-			...buildCorsHeaders(request.headers.get("origin")),
-		},
-	});
+	const origin = request.headers.get("origin");
+	try {
+		const upstream = await fetch(url, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"x-ops-proxy-worker": "adsmantik-engine",
+				...extraHeaders,
+			},
+			body: JSON.stringify(payload),
+		});
+		const text = await upstream.text();
+		return new Response(text, {
+			status: upstream.status,
+			headers: {
+				"content-type": upstream.headers.get("content-type") ?? "application/json",
+				...buildCorsHeaders(origin),
+			},
+		});
+	} catch (error) {
+		console.log("[adsmantik-engine] forward failed", url, String(error));
+		return jsonResponse({ error: "upstream_error", message: String(error) }, 502);
+	}
 }
 
 function resolveTenantSiteId(request: Request, tenantMap: TenantMap): string | null {
@@ -276,17 +232,30 @@ export default {
 		const base = (env.OPSMANTIK_BASE_URL || "https://console.opsmantik.com").replace(/\/+$/, "");
 
 		try {
+			if (url.pathname === "/opsmantik/core.js") {
+				const assetUrl = "https://assets.opsmantik.com/assets/core.js";
+				const assetRes = await fetch(assetUrl);
+				return new Response(assetRes.body, {
+					status: assetRes.status,
+					headers: {
+						"content-type": "application/javascript; charset=utf-8",
+						"cache-control": "public, max-age=3600",
+						...buildCorsHeaders(origin),
+					},
+				});
+			}
+
 			if (url.pathname === "/opsmantik/sync" && request.method === "POST") {
 				const incoming = await request.json().catch(() => null);
 				if (!incoming) return jsonResponse({ error: "invalid_json" }, 400);
-				const payload = applySiteAndGeoToSyncPayload(incoming, siteId, request);
+				const payload = normalizeSyncPayload(incoming, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, payload);
 			}
 
 			if (url.pathname === "/metrics/track" && request.method === "POST") {
-				const incoming = (await request.json().catch(() => null)) as LegacyMetricsPayload | null;
+				const incoming = await request.json().catch(() => null);
 				if (!incoming) return jsonResponse({ error: "invalid_json" }, 400);
-				const payload = buildSyncFromLegacyMetrics(incoming, siteId, request);
+				const payload = normalizeSyncPayload(incoming, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, payload);
 			}
 
@@ -322,10 +291,9 @@ export default {
 					return signedResponse;
 				}
 
-				// Emergency fallback: if signing mismatches backend secret, downgrade to canonical sync signal
-				// so intent tracking stays live until secret rotation is aligned.
+				// Emergency fallback: normalize and send to sync
 				console.log("[adsmantik-engine] call-event signature mismatch, using sync fallback", { siteId });
-				const syncFallbackPayload = buildSyncFromCallEvent(payload, siteId, request);
+				const syncFallbackPayload = normalizeSyncPayload(payload, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, syncFallbackPayload);
 			}
 

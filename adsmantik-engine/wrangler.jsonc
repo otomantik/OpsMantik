@@ -17,7 +17,7 @@
 	"upload_source_maps": true,
 	"vars": {
 		"OPSMANTIK_BASE_URL": "https://console.opsmantik.com",
-		"SITE_CONFIG": "{\"kocotokurtarma.com\":\"93cb9966bcf349c1b4ece8ea34142ace\"}",
+		"SITE_CONFIG": "{\"kocotokurtarma.com\":\"93cb9966bcf349c1b4ece8ea34142ace\",\"muratcanaku.com\":\"178c4e31306e436b8be67d5f6134b118\"}",
 		"SITE_CONFIG_URL": "https://console.opsmantik.com/api/internal/worker/tenant-map",
 		"SITE_CONFIG_TTL_MS": "300000"
 	}

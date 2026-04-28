@@ -14,13 +14,21 @@
     if (!url || typeof url !== "string") return "";
     return url.replace(/\/call-event\/?$/i, "/sync");
   }
-  var resolvedApiUrl = syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || (typeof window !== "undefined" ? window.location.origin + "/api/sync" : "");
+  function safeResolveUrl(val) {
+    if (!val || typeof val !== "string") return "";
+    if (val.startsWith("http://") || val.startsWith("https://") || val.startsWith("//")) return val;
+    const base = typeof window !== "undefined" ? window.location.origin : "";
+    return base + (val.startsWith("/") ? "" : "/") + val;
+  }
+  var resolvedApiUrl = safeResolveUrl(
+    syncProxyUrl || runtimeConfig.opsSyncProxyUrl || dataApi || deriveSyncProxyUrl(proxyUrl || runtimeConfig.opsProxyUrl || "") || "/api/sync"
+  );
   if (typeof window !== "undefined" && resolvedApiUrl) {
     try {
-      const apiUrl = new URL(resolvedApiUrl);
-      const apiHost = apiUrl.hostname;
+      const syncUrl = new URL(resolvedApiUrl, window.location.origin);
+      const apiHost = syncUrl.hostname;
       const pageHost = window.location.hostname;
-      const apiPath = apiUrl.pathname || "";
+      const apiPath = syncUrl.pathname || "";
       const allowedSameOriginProxyPath = apiPath.startsWith("/opsmantik/") || apiPath === "/opsmantik/sync" || apiPath === "/metrics/track";
       if (apiHost === pageHost && !allowedSameOriginProxyPath) {
         console.warn(
@@ -541,7 +549,7 @@
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(new DOMException(`Sync timeout after ${SYNC_TIMEOUT_MS / 1e3}s`, "AbortError")), SYNC_TIMEOUT_MS);
       lastFlushAt = now;
-      const syncUrl = new URL(CONFIG.apiUrl);
+      const syncUrl = new URL(CONFIG.apiUrl, typeof window !== "undefined" ? window.location.origin : void 0);
       syncUrl.searchParams.set("_ts", Date.now().toString());
       const response = await fetch(syncUrl.toString(), {
         method: "POST",
