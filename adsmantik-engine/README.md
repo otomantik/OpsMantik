@@ -49,3 +49,13 @@ npm run dev
 ```bash
 npm run deploy
 ```
+
+## Muratcan AKU SST Bootstrap
+
+From repo root, generate Cloudflare/SST-ready artifacts (site map, secret map, embed, core.js copy):
+
+```bash
+npm run muratcan:sst -- --site-public-id <SITE_PUBLIC_ID> --domain <DOMAIN> --worker-url <https://your-worker.workers.dev>
+```
+
+Output folder: `artifacts/muratcan-aku`

@@ -41,6 +41,7 @@
     "worker:google-ads-oci": "node scripts/trigger-google-ads-oci-worker.mjs",
     "tracker:build": "node scripts/build-tracker.mjs",
     "tracker:embed": "node scripts/get-tracker-embed.mjs",
+    "muratcan:sst": "node scripts/deploy-muratcan-aku-sst.mjs",
     "smoke:api": "node scripts/smoke/api.prod.mjs",
     "smoke:cron-bulk": "node scripts/smoke/cron-bulk-curl.mjs",
     "smoke:cron-bulk-nonzero": "node scripts/smoke/cron-bulk-nonzero-proof.mjs",

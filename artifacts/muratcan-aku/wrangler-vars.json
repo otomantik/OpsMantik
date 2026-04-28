@@ -1,0 +1,6 @@
+{
+  "OPSMANTIK_BASE_URL": "https://console.opsmantik.com",
+  "SITE_CONFIG": "{\"muratcanaku.com\":\"28cf0aefaa074f5bb29e818a9d53b488\"}",
+  "SITE_CONFIG_URL": "https://console.opsmantik.com/api/internal/worker/tenant-map",
+  "SITE_CONFIG_TTL_MS": "300000"
+}
