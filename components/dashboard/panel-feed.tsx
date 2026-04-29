@@ -12,6 +12,21 @@ import { createClient } from '@/lib/supabase/client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+function dedupeLatestBySession(calls: HunterIntent[]): HunterIntent[] {
+  const seen = new Set<string>();
+  const out: HunterIntent[] = [];
+  for (const call of calls) {
+    const key =
+      typeof call.matched_session_id === 'string' && call.matched_session_id.trim()
+        ? `sid:${call.matched_session_id.trim()}`
+        : `call:${call.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(call);
+  }
+  return out;
+}
+
 export function PanelFeed({
   initialCalls,
   siteId,
@@ -24,7 +39,7 @@ export function PanelFeed({
 }) {
   const { t } = useTranslation();
   const siteTz = useSiteTimezone();
-  const [calls, setCalls] = useState(initialCalls);
+  const [calls, setCalls] = useState(() => dedupeLatestBySession(initialCalls));
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'all'>('all');
   
   // Navigation & Overlay State
@@ -37,7 +52,7 @@ export function PanelFeed({
     const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const yesterdayKey = getTodayDateKey(siteTz, y);
 
-    return calls.filter((c) => {
+    const scoped = calls.filter((c) => {
       if (dateFilter === 'all') return true;
       const cKey = getTodayDateKey(siteTz, new Date(c.created_at));
       const s = (c.status || '').toLowerCase();
@@ -46,6 +61,7 @@ export function PanelFeed({
       if (dateFilter === 'yesterday') return cKey === yesterdayKey && isPending;
       return true;
     });
+    return dedupeLatestBySession(scoped);
   }, [calls, dateFilter, siteTz]);
 
   // Reset index when filter changes
@@ -137,6 +153,22 @@ export function PanelFeed({
           const newCall = payload.new as HunterIntent;
           setCalls((prev) => {
             if (prev.some((c) => c.id === newCall.id)) return prev;
+            const sessionId =
+              typeof newCall.matched_session_id === 'string' && newCall.matched_session_id.trim()
+                ? newCall.matched_session_id.trim()
+                : null;
+            if (sessionId) {
+              // Secondary guard: keep one visible card per session.
+              const withoutSession = prev.filter(
+                (c) =>
+                  !(
+                    typeof c.matched_session_id === 'string' &&
+                    c.matched_session_id.trim() &&
+                    c.matched_session_id.trim() === sessionId
+                  )
+              );
+              return [newCall, ...withoutSession];
+            }
             return [newCall, ...prev];
           });
         }

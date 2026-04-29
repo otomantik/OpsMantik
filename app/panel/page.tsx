@@ -159,6 +159,25 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
     if (s === 'confirmed' || s === 'junk' || s === 'g_trash') return false;
     return true;
   });
+  const dedupedProcessedCalls = processedCalls.filter((
+    call: import('@/lib/types/hunter').HunterIntent,
+    index: number,
+    arr: import('@/lib/types/hunter').HunterIntent[]
+  ) => {
+    const sid =
+      typeof call.matched_session_id === 'string' && call.matched_session_id.trim()
+        ? call.matched_session_id.trim()
+        : null;
+    if (!sid) return true;
+    return (
+      arr.findIndex(
+        (x: import('@/lib/types/hunter').HunterIntent) =>
+          typeof x.matched_session_id === 'string' &&
+          x.matched_session_id.trim() &&
+          x.matched_session_id.trim() === sid
+      ) === index
+    );
+  });
 
   return (
     <I18nProvider
@@ -217,7 +236,7 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
         <div className="max-w-xl mx-auto px-4 py-8">
           <PanelFeed
             siteId={targetSiteId}
-            initialCalls={processedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]}
+            initialCalls={dedupedProcessedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]}
             readOnly={isReadOnlyPreview}
           />
         </div>

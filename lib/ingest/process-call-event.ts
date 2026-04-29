@@ -33,7 +33,6 @@ function derivePhoneSourceType(payload: CallEventWorkerPayload): string | null {
 import { isMissingEventIdColumnError } from '@/lib/api/call-event/shared';
 import {
   extractMissingColumnName,
-  stripColumnFromInsertPayload,
 } from '@/lib/api/call-event/schema-drift';
 import type { CallEventWorkerPayload } from './call-event-worker-payload';
 
@@ -179,29 +178,40 @@ export async function processCallEvent(
     sanitizedClickId,
   });
 
-  const baseInsert: Record<string, unknown> = {
-    site_id: siteId,
-    phone_number: payload.phone_number,
-    matched_session_id: payload.matched_session_id,
-    matched_fingerprint: payload.matched_fingerprint,
+  // Authoritative single-card contract:
+  // converge call-event writes onto ensure_session_intent_v1 so sync + call-event
+  // share the same session-canonical upsert authority.
+  const { data: ensuredCallIdRaw, error: ensureErr } = await tenantClient.rpc('ensure_session_intent_v1', {
+    p_site_id: siteId,
+    p_session_id: payload.matched_session_id,
+    p_fingerprint: payload.matched_fingerprint,
+    p_lead_score: payload.lead_score,
+    p_intent_action: payload.intent_action,
+    p_intent_target: payload.intent_target,
+    p_intent_page_url: payload.intent_page_url,
+    p_click_id: sanitizedClickId,
+    p_form_state: null,
+    p_form_summary: null,
+  });
+  if (ensureErr) {
+    throw ensureErr;
+  }
+  const ensuredCallId = Array.isArray(ensuredCallIdRaw)
+    ? (ensuredCallIdRaw[0] as string | undefined) ?? null
+    : (ensuredCallIdRaw as string | null);
+  if (!ensuredCallId) {
+    throw new Error('ensure_session_intent_v1 returned no call id');
+  }
+
+  const enrichmentUpdate: Record<string, unknown> = {
     ...(sessionMonth ? { session_created_month: sessionMonth } : {}),
-    // Scoring will update these later
-    lead_score: 0,
-    lead_score_at_match: 0,
-    score_breakdown: null,
     confidence_score: payload.confidence_score,
     matched_at: payload.matched_at,
     status: initialStatus,
     is_fast_tracked: false,
-    // expires_at: omitted to let DB trigger handle NOW() + 7 days
-    source: payload.source,
-    intent_action: payload.intent_action,
-    intent_target: payload.intent_target,
-    intent_stamp: payload.intent_stamp,
-    intent_page_url: payload.intent_page_url,
-    click_id: sanitizedClickId,
     ...(payload._client_value != null ? { _client_value: payload._client_value } : {}),
     ...(payload.signature_hash ? { signature_hash: payload.signature_hash } : {}),
+    ...(payload.event_id ? { event_id: payload.event_id } : {}),
     // Google Ads enrichment
     ...(adsCtx?.keyword ? { keyword: adsCtx.keyword } : {}),
     ...(adsCtx?.match_type ? { match_type: adsCtx.match_type } : {}),
@@ -218,67 +228,60 @@ export async function processCallEvent(
     ...(locationSource ? { location_source: locationSource } : {}),
     location_reason_code: geoDecision.reasonCode,
     location_confidence: geoDecision.confidence,
-    // AdTech Metadata
     gclid: sanitizedGclid,
     wbraid: sanitizedWbraid,
     gbraid: sanitizedGbraid,
     source_type: authoritativeCallEventSourceType,
-    // DIC: user_agent for ECL / device entropy; phone_source_type for Trust Score
     ...(payload.ua != null && String(payload.ua).trim() !== '' ? { user_agent: String(payload.ua).trim() } : {}),
     ...(derivePhoneSourceType(payload) ? { phone_source_type: derivePhoneSourceType(payload) } : {}),
   };
 
-  const insertWithEventId = payload.event_id
-    ? { ...baseInsert, event_id: payload.event_id }
-    : baseInsert;
+  // Null-safe enrichment: only fill fields that are currently empty to avoid
+  // accidental downgrades of stronger records.
+  const { data: currentCallRow } = await tenantClient
+    .from('calls')
+    .select('id, created_at, confidence_score, session_created_month, _client_value, signature_hash, event_id, keyword, match_type, device_model, geo_target_id, campaign_id, adgroup_id, creative_id, network, device, placement, target_id, district_name, location_source, location_reason_code, location_confidence, gclid, wbraid, gbraid, source_type, user_agent, phone_source_type')
+    .eq('id', ensuredCallId)
+    .maybeSingle();
 
-  let insertPayload: Record<string, unknown> = payload.event_id ? insertWithEventId : baseInsert;
-  const strippedCols = new Set<string>();
-  let callRecord: { id: string; created_at?: string } | null = null;
-
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const { error: insertError, data: rData } = await tenantClient
-      .from('calls')
-      .insert({ ...insertPayload }) // TenantClient automatically adds site_id filter
-      .select('id, created_at')
-      .single();
-    callRecord = rData;
-
-    if (!insertError) break;
-
-    if (isMissingEventIdColumnError(insertError)) {
-      strippedCols.add('event_id');
-      logWarn('CLICK_ID_SCHEMA_DRIFT_STRIP', {
-        site_id: siteId,
-        column: 'event_id',
-        reason: 'schema_drift_strip',
-      });
-      insertPayload = { ...insertPayload };
-      delete (insertPayload as Record<string, unknown>).event_id;
-      continue;
+  const safePatch: Record<string, unknown> = {};
+  const currentObj = (currentCallRow as Record<string, unknown> | null) ?? null;
+  for (const [key, value] of Object.entries(enrichmentUpdate)) {
+    if (value == null) continue;
+    const existing = currentObj?.[key];
+    if (existing == null || existing === '') {
+      safePatch[key] = value;
     }
+  }
 
-    const missingCol = extractMissingColumnName(insertError);
-    if (missingCol && !strippedCols.has(missingCol)) {
-      const { next, stripped } = stripColumnFromInsertPayload(insertPayload, missingCol);
-      if (stripped) {
-        strippedCols.add(missingCol);
-        logWarn('CLICK_ID_SCHEMA_DRIFT_STRIP', {
-          site_id: siteId,
-          column: missingCol,
-          reason: 'schema_drift_strip',
-        });
-        insertPayload = next;
-        continue;
+  if (Object.keys(safePatch).length > 0) {
+    const { error: patchErr } = await tenantClient
+      .from('calls')
+      .update(safePatch)
+      .eq('id', ensuredCallId);
+    if (patchErr) {
+      const missingCol = extractMissingColumnName(patchErr);
+      if (missingCol) {
+        // Schema-drift tolerant fallback: strip unknown field and retry once.
+        delete safePatch[missingCol];
+        if (Object.keys(safePatch).length > 0) {
+          const { error: retryErr } = await tenantClient
+            .from('calls')
+            .update(safePatch)
+            .eq('id', ensuredCallId);
+          if (retryErr) throw retryErr;
+        }
+      } else if (!isMissingEventIdColumnError(patchErr)) {
+        throw patchErr;
       }
     }
-
-    throw insertError;
   }
 
-  if (!callRecord?.id) {
-    throw new Error('Call insert returned no record');
-  }
+  const callRecord = {
+    id: ensuredCallId,
+    created_at:
+      (currentObj?.created_at as string | undefined) ?? payload.matched_at ?? new Date().toISOString(),
+  };
 
   runCallEventPaidSurfaceParity({
     siteId,

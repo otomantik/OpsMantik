@@ -35,6 +35,21 @@ function parseRpcTimestampMs(value: string | null | undefined): number {
   return new Date(raw).getTime();
 }
 
+function dedupeLatestBySession(rows: HunterIntentLite[]): HunterIntentLite[] {
+  const seen = new Set<string>();
+  const out: HunterIntentLite[] = [];
+  for (const row of rows) {
+    const sessionKey =
+      typeof row.matched_session_id === 'string' && row.matched_session_id.trim()
+        ? `sid:${row.matched_session_id.trim()}`
+        : `call:${row.id}`;
+    if (seen.has(sessionKey)) continue;
+    seen.add(sessionKey);
+    out.push(row);
+  }
+  return out;
+}
+
 export type QueueControllerState = {
   range: QueueRange | null;
   bountyChips: number[];
@@ -339,7 +354,7 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {
           logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, fromIso: r.fromIso, toIso: r.toIso });
         }
-        return filtered;
+        return dedupeLatestBySession(filtered);
       }
 
       const rows = await fetchRange();

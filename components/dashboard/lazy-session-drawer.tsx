@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatTimestamp, formatDisplayLocation } from '@/lib/utils';
 import type { LiveInboxIntent } from '@/lib/types/dashboard';
+import type { SessionTimelineItem } from '@/lib/types/timeline';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { getLocalizedLabel, formatEventType } from '@/lib/i18n/mapping';
 
@@ -29,16 +30,6 @@ type SessionDetailsRow = {
   fingerprint: string | null;
 };
 
-type TimelineEvent = {
-  id: string;
-  created_at: string;
-  event_category: string;
-  event_action: string;
-  event_label: string | null;
-  url: string | null;
-  metadata: Record<string, unknown>;
-};
-
 export function LazySessionDrawer({
   siteId,
   intent,
@@ -51,7 +42,7 @@ export function LazySessionDrawer({
   const sessionId = intent.matched_session_id;
   const { t } = useTranslation();
   const [details, setDetails] = useState<SessionDetailsRow | null>(null);
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [events, setEvents] = useState<SessionTimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,7 +74,14 @@ export function LazySessionDrawer({
         const row = Array.isArray(sData) ? sData[0] : null;
         setDetails(row || null);
         if (tErr) throw tErr;
-        setEvents(Array.isArray(tData) ? (tData as TimelineEvent[]) : []);
+        const timelineRows = Array.isArray(tData) ? (tData as SessionTimelineItem[]) : [];
+        const sorted = [...timelineRows].sort((a, b) => {
+          const aMs = new Date(a.created_at).getTime();
+          const bMs = new Date(b.created_at).getTime();
+          if (bMs !== aMs) return bMs - aMs;
+          return String(b.id).localeCompare(String(a.id));
+        });
+        setEvents(sorted);
       } catch (e: unknown) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : t('session.loadFailed'));
@@ -164,13 +162,29 @@ export function LazySessionDrawer({
                 ) : (
                   <div className="space-y-2">
                     {events.slice(0, 100).map((e) => (
-                      <div key={e.id} className="p-3 rounded border border-slate-200 bg-white">
+                      <div
+                        key={e.id}
+                        className={`p-3 rounded border ${
+                          e.source_kind === 'ledger'
+                            ? 'border-indigo-200 bg-indigo-50/40'
+                            : 'border-slate-200 bg-white'
+                        }`}
+                      >
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm text-foreground truncate">
-                            {formatEventType(e.event_category, e.event_action, t)}
+                            {e.source_kind === 'ledger'
+                              ? `Ledger: ${getLocalizedLabel(e.ledger_action_type || e.event_action, t)}`
+                              : formatEventType(e.event_category, e.event_action, t)}
                           </div>
-                          <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
-                            {formatTimestamp(e.created_at, { hour: '2-digit', minute: '2-digit' })}
+                          <div className="flex items-center gap-2">
+                            {e.source_kind === 'ledger' && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-100 text-indigo-700">
+                                ledger
+                              </span>
+                            )}
+                            <div className="text-sm text-muted-foreground tabular-nums" suppressHydrationWarning>
+                              {formatTimestamp(e.created_at, { hour: '2-digit', minute: '2-digit' })}
+                            </div>
                           </div>
                         </div>
                         {(e.event_label || e.url) && (

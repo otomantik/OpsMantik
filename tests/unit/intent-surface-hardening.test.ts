@@ -18,11 +18,15 @@ const OCI_CONTROL_PAGE = join(ROOT, 'app', 'dashboard', 'site', '[siteId]', 'oci
 const OCI_CONTROL_PANEL = join(ROOT, 'components', 'dashboard', 'oci-control', 'oci-control-panel.tsx');
 const SITE_CONFIG_ROUTE = join(ROOT, 'app', 'api', 'sites', '[siteId]', 'config', 'route.ts');
 const PANEL_PAGE = join(ROOT, 'app', 'panel', 'page.tsx');
+const TIMELINE_RPC_MIGRATION = join(ROOT, 'supabase', 'migrations', '20260429170000_unify_session_timeline_with_ledger.sql');
+const LAZY_SESSION_DRAWER = join(ROOT, 'components', 'dashboard', 'lazy-session-drawer.tsx');
 
 test('click-origin ingestion stays inside canonical call ontology', () => {
   const src = readFileSync(PROCESS_CALL_EVENT, 'utf8');
   assert.ok(src.includes("const initialStatus = 'intent'"), 'process-call-event must insert canonical intent status');
   assert.ok(!src.includes("const initialStatus = 'pending_score'"), 'process-call-event must not invent pending_score state');
+  assert.ok(src.includes("rpc('ensure_session_intent_v1'"), 'call-event path must converge on session upsert RPC authority');
+  assert.ok(!src.includes(".from('calls')\n      .insert"), 'call-event path must not keep direct calls.insert authority');
   assert.ok(
     src.includes('shadow_session_quality_v1_1') && src.includes('shadowSessionQualityV1_1'),
     'process-call-event must pass shadow V1.1 scoring context to calc-brain-score for parity telemetry'
@@ -127,6 +131,22 @@ test('panel onboarding respects site write capability and avoids operator deadlo
 
 test('panel feed query uses existing calls columns (no stale schema fields)', () => {
   const panelSrc = readFileSync(PANEL_PAGE, 'utf8');
+  const panelFeedSrc = readFileSync(join(ROOT, 'components', 'dashboard', 'panel-feed.tsx'), 'utf8');
+  const queueControllerSrc = readFileSync(join(ROOT, 'lib', 'hooks', 'use-queue-controller.ts'), 'utf8');
   assert.ok(panelSrc.includes("rpc('get_recent_intents_lite_v1'"), 'panel calls query must use stable RPC surface');
   assert.ok(panelSrc.includes('p_site_id: targetSiteId'), 'panel feed RPC must be scoped by site');
+  assert.ok(panelSrc.includes('dedupedProcessedCalls'), 'panel bootstrap must dedupe cards by session as secondary guard');
+  assert.ok(panelFeedSrc.includes('dedupeLatestBySession'), 'panel feed must keep one visible card per session');
+  assert.ok(panelFeedSrc.includes('const withoutSession = prev.filter'), 'realtime inserts must replace existing session card');
+  assert.ok(queueControllerSrc.includes('dedupeLatestBySession(filtered)'), 'queue controller must dedupe latest card per session');
+});
+
+test('session timeline unifies legacy events with ledger actions', () => {
+  const migrationSrc = readFileSync(TIMELINE_RPC_MIGRATION, 'utf8');
+  const drawerSrc = readFileSync(LAZY_SESSION_DRAWER, 'utf8');
+  assert.ok(migrationSrc.includes('session_intent_actions_ledger'), 'timeline RPC must include session intent ledger table');
+  assert.ok(migrationSrc.includes('UNION ALL'), 'timeline RPC must interleave events and ledger rows');
+  assert.ok(migrationSrc.includes('source_kind'), 'timeline RPC must expose source discriminator');
+  assert.ok(drawerSrc.includes("e.source_kind === 'ledger'"), 'drawer must render ledger events distinctly');
+  assert.ok(drawerSrc.includes('sort((a, b)'), 'drawer must enforce chronological sorting by created_at');
 });
