@@ -133,6 +133,88 @@ export function resolveOptimizationStage(params: {
   return 'contacted';
 }
 
+/**
+ * Helper form payload genelde JSON olarak taşınır; burada sadece "safe"
+ * JSON-serializable bir objeyi geri veriyoruz (aksi halde `null`).
+ *
+ * Amaç: Tip hatasını düzeltmek + beklenmeyen/şişkin payload'ların
+ * DB'ye gitmesini engellemek.
+ */
+export function sanitizeHelperFormPayload(input: unknown): Record<string, unknown> | null {
+  if (input === null || input === undefined) return null;
+  if (typeof input !== 'object' || Array.isArray(input)) return null;
+
+  const obj = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const [k, v] of Object.entries(obj)) {
+    // JSON key güvenliği
+    if (!k || typeof k !== 'string') continue;
+
+    // Primitives
+    if (v === null) {
+      out[k] = null;
+      continue;
+    }
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      // Aşırı uzun string'leri kırp (DB storage / log spam)
+      out[k] = trimmed.length > 2000 ? trimmed.slice(0, 2000) : trimmed;
+      continue;
+    }
+    if (typeof v === 'number') {
+      if (Number.isFinite(v)) out[k] = v;
+      continue;
+    }
+    if (typeof v === 'boolean') {
+      out[k] = v;
+      continue;
+    }
+
+    // Nested objects/arrays: çok derine inmeden sadece JSON-safe basit yapıları al
+    if (Array.isArray(v)) {
+      const safeArr: unknown[] = [];
+      for (const item of v.slice(0, 50)) {
+        if (
+          item === null ||
+          typeof item === 'string' ||
+          typeof item === 'number' ||
+          typeof item === 'boolean'
+        ) {
+          if (typeof item === 'string') {
+            const t = item.trim();
+            safeArr.push(t.length > 2000 ? t.slice(0, 2000) : t);
+          } else if (typeof item === 'number') {
+            if (Number.isFinite(item)) safeArr.push(item);
+          } else {
+            safeArr.push(item);
+          }
+        }
+      }
+      out[k] = safeArr;
+      continue;
+    }
+
+    if (v && typeof v === 'object') {
+      const nested = v as Record<string, unknown>;
+      // Tek seviye nested destekle
+      const nestedOut: Record<string, unknown> = {};
+      for (const [nk, nv] of Object.entries(nested).slice(0, 50)) {
+        if (!nk) continue;
+        if (nv === null) nestedOut[nk] = null;
+        else if (typeof nv === 'string') {
+          const t = nv.trim();
+          nestedOut[nk] = t.length > 2000 ? t.slice(0, 2000) : t;
+        } else if (typeof nv === 'number' && Number.isFinite(nv)) nestedOut[nk] = nv;
+        else if (typeof nv === 'boolean') nestedOut[nk] = nv;
+      }
+      out[k] = nestedOut;
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 function roundToTwo(value: number): number {
   return Math.round(value * 100) / 100;
 }
