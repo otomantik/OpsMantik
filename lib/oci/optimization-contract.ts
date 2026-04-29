@@ -20,6 +20,11 @@ export interface OptimizationValueSnapshot {
   qualityFactor: number;
   optimizationValue: number;
   actualRevenue: number | null;
+  /**
+   * Optional helper payload for form-based signals.
+   * Most callers do not provide form context, so we default to `null`.
+   */
+  helperFormPayload: Record<string, unknown> | null;
   modelVersion: string;
 }
 
@@ -102,6 +107,7 @@ export function buildOptimizationSnapshot(params: {
       params.actualRevenue != null && Number.isFinite(params.actualRevenue) && params.actualRevenue >= 0
         ? roundToTwo(params.actualRevenue)
         : null,
+    helperFormPayload: null,
     modelVersion: params.modelVersion?.trim() || OPTIMIZATION_MODEL_VERSION,
   };
 }
