@@ -7,6 +7,8 @@
     "lint:i18n": "node scripts/verify-i18n-no-hardcoded.mjs --mode=baseline --baseline=i18n-baseline.json",
     "lint:i18n:report": "node scripts/verify-i18n-no-hardcoded.mjs --mode=report",
     "lint:i18n:strict": "node scripts/verify-i18n-no-hardcoded.mjs",
+    "lint:no-any:report": "node scripts/ci/no-any-report.mjs",
+    "lint:no-any:strict": "node scripts/ci/no-any-report.mjs --strict",
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
     "verify:partition-triggers": "node scripts/verify-partition-triggers.mjs",
     "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs",

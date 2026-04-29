@@ -57,7 +57,16 @@ async function loadSites(siteQuery) {
 
 async function loadEntitlement(siteId) {
   const { data, error } = await supabase.rpc('get_entitlements_for_site', { p_site_id: siteId });
-  if (error) return { ok: false, tier: null, googleAdsSync: false, error: error.message };
+  if (error) {
+    const entitlementRpcMissing = Boolean(error.message?.includes("Could not find the function public.get_entitlements_for_site"));
+    return {
+      ok: false,
+      tier: null,
+      googleAdsSync: false,
+      error: error.message,
+      entitlementRpcMissing,
+    };
+  }
   return { ok: true, tier: data?.tier ?? null, googleAdsSync: data?.capabilities?.google_ads_sync === true, error: null };
 }
 
@@ -141,16 +150,50 @@ async function run() {
     gatePassSites: reports.filter((r) => r.gate.pass).length,
     tableSchemaWarnings: reports.filter((r) => r.metrics.queueTableMissing || r.metrics.outboxTableMissing).length,
   };
+  const schemaDriftSites = reports
+    .filter((r) => r.metrics.queueTableMissing || r.metrics.outboxTableMissing)
+    .map((r) => ({
+      site: r.site.name || r.site.public_id || r.site.id,
+      missing: [
+        ...(r.metrics.queueTableMissing ? ['offline_conversion_queue'] : []),
+        ...(r.metrics.outboxTableMissing ? ['outbox_events'] : []),
+      ],
+    }));
+  const missingApiKeySites = reports
+    .filter((r) => !r.auth.hasApiKey)
+    .map((r) => r.site.name || r.site.public_id || r.site.id);
+  const missingEntitlementSites = reports
+    .filter((r) => !r.auth.googleAdsSync)
+    .map((r) => r.site.name || r.site.public_id || r.site.id);
+  const missingEntitlementRpcSites = reports
+    .filter((r) => r.auth.entitlementOk === false && r.auth.entitlementError && r.auth.entitlementError.includes('get_entitlements_for_site'))
+    .map((r) => r.site.name || r.site.public_id || r.site.id);
   const canary = recommendCanary(reports);
   const strictFailures = [];
   if (summary.totalSites === 0) strictFailures.push('no_sites_found');
   if (summary.authReadySites === 0) strictFailures.push('no_auth_ready_sites');
   if (summary.gatePassSites < summary.totalSites) strictFailures.push('observability_gate_failures_present');
-  if (summary.tableSchemaWarnings > 0) strictFailures.push('schema_or_rpc_drift_detected');
+  if (summary.tableSchemaWarnings > 0) strictFailures.push('schema_drift_detected');
+  if (missingApiKeySites.length > 0) strictFailures.push('missing_api_key_sites');
+  if (missingEntitlementSites.length > 0) strictFailures.push('missing_google_ads_sync_capability');
+  if (missingEntitlementRpcSites.length > 0) strictFailures.push('missing_entitlement_rpc');
   if (!canary) strictFailures.push('no_canary_candidate');
 
   if (args.json) {
-    console.log(JSON.stringify({ summary, profile: args.profile, thresholds: { stuckMax: args.stuckMax, retryRateMax: args.retryRateMax, failedRateMax: args.failedRateMax }, canary: canary?.site || null, strict: { enabled: args.strict, pass: strictFailures.length === 0, failures: strictFailures }, reports }, null, 2));
+    console.log(JSON.stringify({
+      summary,
+      profile: args.profile,
+      thresholds: { stuckMax: args.stuckMax, retryRateMax: args.retryRateMax, failedRateMax: args.failedRateMax },
+      canary: canary?.site || null,
+      actionable: {
+        missingApiKeySites,
+        missingEntitlementSites,
+        missingEntitlementRpcSites,
+        schemaDriftSites,
+      },
+      strict: { enabled: args.strict, pass: strictFailures.length === 0, failures: strictFailures },
+      reports,
+    }, null, 2));
     if (args.strict && strictFailures.length > 0) process.exit(1);
     return;
   }

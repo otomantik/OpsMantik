@@ -47,6 +47,30 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
     }
   }
 
+  if (built.blockedQueueIds.length > 0) {
+    const { data: claimedCount, error: claimError } = await adminClient.rpc(
+      'append_script_claim_transition_batch',
+      { p_queue_ids: built.blockedQueueIds, p_claimed_at: now }
+    );
+    if (claimError || typeof claimedCount !== 'number' || claimedCount !== built.blockedQueueIds.length) {
+      throw new Error('QUEUE_CLAIM_MISMATCH');
+    }
+    const { data: updatedCount, error: updateError } = await adminClient.rpc('append_script_transition_batch', {
+      p_queue_ids: built.blockedQueueIds,
+      p_new_status: 'FAILED',
+      p_created_at: now,
+      p_error_payload: {
+        last_error: 'CALL_NOT_SENDABLE_FOR_OCI',
+        provider_error_code: 'CALL_NOT_SENDABLE_FOR_OCI',
+        provider_error_category: 'DETERMINISTIC_SKIP',
+        clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+      },
+    });
+    if (updateError || typeof updatedCount !== 'number') {
+      throw new Error('SERVER_ERROR');
+    }
+  }
+
   if (signalIdsToMarkProcessing.length > 0) {
     const updatedSignals = await applyMarketingSignalDispatchBatch(adminClient, {
       siteId: ctx.siteUuid,

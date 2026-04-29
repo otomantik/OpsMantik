@@ -20,6 +20,23 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
   const prefix = `[oci-value-lane:${queueId}]`;
   
   try {
+    const claimNowIso = new Date().toISOString();
+
+    // Fast-path may arrive while row is still QUEUED/RETRY.
+    // Atomically claim the row before trying provider upload.
+    const { error: claimErr } = await adminClient.rpc('append_worker_transition_batch_v2', {
+      p_queue_ids: [queueId],
+      p_new_status: 'PROCESSING',
+      p_created_at: claimNowIso,
+      p_error_payload: {
+        claimed_at: claimNowIso,
+        claimed_by: 'FASTPATH_OCI_EXPORT',
+      },
+    });
+    if (claimErr) {
+      logInfo(`${prefix} Fast-path claim skipped`, { siteId, queueId, reason: claimErr.message });
+    }
+
     // 1. Fetch the queue row and site sync method
     const { data: row, error: fetchErr } = await adminClient
       .from('offline_conversion_queue')

@@ -29,3 +29,23 @@ Near-term production rollout thresholds for OCI queue integrity.
 - Canary starts only if strict readiness passes with target profile.
 - Any threshold breach during canary => stop rollout, investigate, and re-run strict readiness.
 - Global rollout is allowed only after sustained canary pass.
+
+## Strict Failure Codes
+
+- `no_sites_found`
+- `no_auth_ready_sites`
+- `schema_drift_detected`
+- `missing_entitlement_rpc`
+- `missing_api_key_sites`
+- `missing_google_ads_sync_capability`
+- `observability_gate_failures_present`
+- `no_canary_candidate`
+
+## Actionable Readiness Payload
+
+`node scripts/oci-rollout-readiness.mjs --strict --json` returns operator patch lists:
+
+- `actionable.missingApiKeySites`
+- `actionable.missingEntitlementSites`
+- `actionable.missingEntitlementRpcSites`
+- `actionable.schemaDriftSites` (includes missing table names per site)
