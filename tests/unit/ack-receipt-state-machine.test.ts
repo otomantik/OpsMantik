@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readMigrationByContractHints } from '@/tests/helpers/migration-contract-resolver';
 
 test('ack receipt migration defines REGISTERED/APPLIED state machine', () => {
-  const migration = readFileSync(
-    join(process.cwd(), 'supabase', 'migrations', '20261222010000_ack_receipt_state_machine.sql'),
-    'utf8'
-  );
+  const { source: migration } = readMigrationByContractHints([
+    'register_ack_receipt_v1',
+    "'REGISTERED'",
+    "'APPLIED'",
+    'apply_state',
+  ]);
   assert.ok(migration.includes('apply_state'), 'migration must add apply_state');
   assert.ok(migration.includes("'REGISTERED'") && migration.includes("'APPLIED'"), 'state machine must define REGISTERED/APPLIED');
   assert.ok(migration.includes('in_progress boolean'), 'register function must return in_progress replay signal');

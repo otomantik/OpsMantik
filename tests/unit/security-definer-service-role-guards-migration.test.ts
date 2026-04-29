@@ -1,22 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readMigrationByContractHints } from '@/tests/helpers/migration-contract-resolver';
 
 /**
  * Contract: privileged ACK/outbox/cron RPCs must fail closed for non-service_role callers
  * (Panoptic Phase 1 — DB auth symmetry with adminClient-only app paths).
  */
 test('migration 20261223010000 adds service_role guards and explicit grants for ACK/outbox ops RPCs', () => {
-  const migration = readFileSync(
-    join(
-      process.cwd(),
-      'supabase',
-      'migrations',
-      '20261223010000_ack_outbox_ops_service_role_guards.sql'
-    ),
-    'utf8'
-  );
+  const { source: migration } = readMigrationByContractHints([
+    'register_ack_receipt_v1',
+    'complete_ack_receipt_v1',
+    "auth.role() IS DISTINCT FROM 'service_role'",
+    'REVOKE ALL ON FUNCTION public.register_ack_receipt_v1',
+  ]);
 
   const mustGuard = [
     'register_ack_receipt_v1',

@@ -24,6 +24,7 @@ const COMMANDS_BY_MODE = {
     'npm run test:runtime-budget',
     'npm run test:chaos-core',
     'npm run smoke:intent-multi-site',
+    'npm run smoke:oci-rollout-readiness:strict',
   ],
 };
 

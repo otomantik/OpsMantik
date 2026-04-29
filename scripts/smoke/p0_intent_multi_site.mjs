@@ -7,7 +7,7 @@
  * docs/OPS/DEPLOY_GATE_INTENT.md
  *
  * Env:
- *   P0_SITES — Domain listesi (virgülle): www.kocotokurtarma.com
+ *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com,sosreklam.com
  *   SYNC_API_URL — default https://console.opsmantik.com/api/sync
  *   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
@@ -16,7 +16,7 @@
  * aynı projeyi hedeflemelidir; aksi halde 202 dönse bile sorgu boş kalır.
  *
  * Usage:
- *   P0_SITES="www.kocotokurtarma.com" node scripts/smoke/p0_intent_multi_site.mjs
+ *   P0_SITES="yapiozmendanismanlik.com,sosreklam.com" node scripts/smoke/p0_intent_multi_site.mjs
  *   node scripts/smoke/p0_intent_multi_site.mjs  # default target site
  */
 
@@ -38,8 +38,8 @@ if (!supabaseUrl || !serviceKey) {
 const supabase = createClient(supabaseUrl, serviceKey);
 
 const SYNC_API_URL = process.env.SYNC_API_URL || 'https://console.opsmantik.com/api/sync';
-const ORIGIN = process.env.ORIGIN || 'https://www.kocotokurtarma.com';
-const DEFAULT_SITES = 'www.kocotokurtarma.com';
+const ORIGIN = process.env.ORIGIN || 'https://yapiozmendanismanlik.com';
+const DEFAULT_SITES = 'yapiozmendanismanlik.com,sosreklam.com';
 const SITES_RAW = process.env.P0_SITES || DEFAULT_SITES;
 const SITES = SITES_RAW.split(',').map((s) => s.trim()).filter(Boolean);
 

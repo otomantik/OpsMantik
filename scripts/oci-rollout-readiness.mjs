@@ -19,16 +19,26 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function parseArgs(argv) {
-  const out = { site: null, json: false, strict: false, stuckMax: 20, retryRateMax: 0.3, failedRateMax: 0.2 };
+  const out = { site: null, json: false, strict: false, profile: 'prod', stuckMax: 20, retryRateMax: 0.3, failedRateMax: 0.2 };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--site') out.site = argv[i + 1] || null;
     if (a === '--json') out.json = true;
     if (a === '--strict') out.strict = true;
+    if (a === '--profile') out.profile = argv[i + 1] || out.profile;
     if (a === '--stuck-max') out.stuckMax = Number(argv[i + 1] || out.stuckMax);
     if (a === '--retry-rate-max') out.retryRateMax = Number(argv[i + 1] || out.retryRateMax);
     if (a === '--failed-rate-max') out.failedRateMax = Number(argv[i + 1] || out.failedRateMax);
   }
+  const profileLimits = {
+    dev: { stuckMax: 50, retryRateMax: 0.5, failedRateMax: 0.35 },
+    stage: { stuckMax: 30, retryRateMax: 0.4, failedRateMax: 0.25 },
+    prod: { stuckMax: 20, retryRateMax: 0.3, failedRateMax: 0.2 },
+  };
+  const selected = profileLimits[out.profile] || profileLimits.prod;
+  if (!argv.includes('--stuck-max')) out.stuckMax = selected.stuckMax;
+  if (!argv.includes('--retry-rate-max')) out.retryRateMax = selected.retryRateMax;
+  if (!argv.includes('--failed-rate-max')) out.failedRateMax = selected.failedRateMax;
   return out;
 }
 
@@ -140,7 +150,7 @@ async function run() {
   if (!canary) strictFailures.push('no_canary_candidate');
 
   if (args.json) {
-    console.log(JSON.stringify({ summary, canary: canary?.site || null, strict: { enabled: args.strict, pass: strictFailures.length === 0, failures: strictFailures }, reports }, null, 2));
+    console.log(JSON.stringify({ summary, profile: args.profile, thresholds: { stuckMax: args.stuckMax, retryRateMax: args.retryRateMax, failedRateMax: args.failedRateMax }, canary: canary?.site || null, strict: { enabled: args.strict, pass: strictFailures.length === 0, failures: strictFailures }, reports }, null, 2));
     if (args.strict && strictFailures.length > 0) process.exit(1);
     return;
   }

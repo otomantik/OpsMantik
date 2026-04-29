@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "contracts": [
+    {
+      "id": "rpc.apply_call_action_v2",
+      "kind": "rpc",
+      "name": "apply_call_action_v2"
+    },
+    {
+      "id": "rpc.finalize_outbox_event_v1",
+      "kind": "rpc",
+      "name": "finalize_outbox_event_v1"
+    },
+    {
+      "id": "rpc.ensure_session_intent_v1",
+      "kind": "rpc",
+      "name": "ensure_session_intent_v1"
+    },
+    {
+      "id": "rpc.append_script_claim_transition_batch",
+      "kind": "rpc",
+      "name": "append_script_claim_transition_batch"
+    },
+    {
+      "id": "rpc.append_script_transition_batch",
+      "kind": "rpc",
+      "name": "append_script_transition_batch"
+    },
+    {
+      "id": "rpc.append_worker_transition_batch_v2",
+      "kind": "rpc",
+      "name": "append_worker_transition_batch_v2"
+    },
+    {
+      "id": "rpc.claim_outbox_events",
+      "kind": "rpc",
+      "name": "claim_outbox_events"
+    },
+    {
+      "id": "rpc.claim_offline_conversion_jobs_v3",
+      "kind": "rpc",
+      "name": "claim_offline_conversion_jobs_v3"
+    },
+    {
+      "id": "rpc.register_ack_receipt_v1",
+      "kind": "rpc",
+      "name": "register_ack_receipt_v1"
+    },
+    {
+      "id": "rpc.complete_ack_receipt_v1",
+      "kind": "rpc",
+      "name": "complete_ack_receipt_v1"
+    },
+    {
+      "id": "sql.calls_site_intent_stamp_uniq",
+      "kind": "sql_constraint",
+      "name": "calls_site_intent_stamp_uniq"
+    },
+    {
+      "id": "sql.trigger.calls_click_intent_stamp_canonicalize_v1",
+      "kind": "sql_trigger",
+      "name": "trg_calls_click_intent_stamp_canonicalize_v1"
+    }
+  ]
+}

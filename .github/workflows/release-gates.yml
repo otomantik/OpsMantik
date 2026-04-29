@@ -52,7 +52,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SYNC_API_URL: ${{ secrets.SYNC_API_URL || 'https://console.opsmantik.com/api/sync' }}
-          P0_SITES: ${{ secrets.P0_SITES || 'www.kocotokurtarma.com' }}
+          P0_SITES: ${{ secrets.P0_SITES || 'yapiozmendanismanlik.com,sosreklam.com' }}
         run: npm run release:evidence
 
       - name: Upload PR release gate evidence

@@ -1,5 +1,7 @@
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.get_session_timeline(uuid, uuid, integer);
+
 CREATE OR REPLACE FUNCTION public.get_session_timeline(
   p_site_id uuid,
   p_session_id uuid,

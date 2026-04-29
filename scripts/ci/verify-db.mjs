@@ -6,13 +6,14 @@
  * Exits non-zero if any required checks fail.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 
 const outDir = join(process.cwd(), 'ci-reports');
 mkdirSync(outDir, { recursive: true });
 const outPath = join(outDir, 'db-verify.json');
+const contractCatalogPath = join(process.cwd(), 'docs', 'contracts', 'contract-id-catalog.json');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -54,6 +55,18 @@ const checks = [
   { name: 'decrement_and_delete_idempotency', args: { p_site_id: sampleSiteId, p_month: '1970-01-01', p_idempotency_key: 'verify-db', p_kind: 'revenue_events' } },
 ];
 
+const presenceOnlyRpcs = [
+  'apply_call_action_v2',
+  'finalize_outbox_event_v1',
+  'append_script_claim_transition_batch',
+  'append_script_transition_batch',
+  'append_worker_transition_batch_v2',
+  'claim_outbox_events',
+  'claim_offline_conversion_jobs_v3',
+  'register_ack_receipt_v1',
+  'complete_ack_receipt_v1',
+];
+
 const tableChecks = [
   'site_plans',
   'site_usage_monthly',
@@ -67,6 +80,31 @@ const columnChecks = [
   { name: 'calls_clickid_geo_columns', table: 'calls', select: 'id,location_source,click_id,gclid,wbraid,gbraid' },
   { name: 'sessions_geo_decision_columns', table: 'sessions', select: 'id,geo_source,geo_city,geo_district,geo_reason_code,geo_confidence' },
 ];
+
+const localContractChecks = [];
+if (existsSync(contractCatalogPath)) {
+  try {
+    const catalog = JSON.parse(readFileSync(contractCatalogPath, 'utf8'));
+    const contractCount = Array.isArray(catalog?.contracts) ? catalog.contracts.length : 0;
+    localContractChecks.push({
+      name: 'local:contract_catalog',
+      ok: contractCount > 0,
+      count: contractCount,
+    });
+  } catch (error) {
+    localContractChecks.push({
+      name: 'local:contract_catalog',
+      ok: false,
+      error: { message: error instanceof Error ? error.message : String(error) },
+    });
+  }
+} else {
+  localContractChecks.push({
+    name: 'local:contract_catalog',
+    ok: false,
+    error: { message: `Missing file: ${contractCatalogPath}` },
+  });
+}
 
 function isMissingFunctionError(error) {
   const msg = String(error?.message || '');
@@ -93,6 +131,21 @@ for (const c of checks) {
     continue;
   }
   results.push({ name: c.name, ok: true, sample: data });
+}
+
+for (const fnName of presenceOnlyRpcs) {
+  // eslint-disable-next-line no-await-in-loop
+  const { error } = await supabase.rpc(fnName, {});
+  if (error) {
+    results.push({
+      name: `rpc_presence:${fnName}`,
+      ok: !isMissingFunctionError(error),
+      missing: isMissingFunctionError(error),
+      error: { message: error.message, code: error.code },
+    });
+    continue;
+  }
+  results.push({ name: `rpc_presence:${fnName}`, ok: true });
 }
 
 for (const table of tableChecks) {
@@ -143,7 +196,8 @@ const report = {
   used_key: serviceKey ? 'service_role' : 'anon',
   missing_count: missing.length,
   failed_count: failed.length,
-  results,
+  local_contract_checks: localContractChecks,
+  results: [...localContractChecks, ...results],
 };
 
 writeFileSync(outPath, JSON.stringify(report, null, 2));

@@ -52,15 +52,16 @@ export async function processCallEvent(
 ): Promise<ProcessCallEventResult> {
   const siteId = payload.site_id;
   const tenantClient = createTenantClient(siteId);
-  const rawClickId = payload.click_id;
-  const rawGclid = payload.gclid;
-  const rawWbraid = payload.wbraid;
-  const rawGbraid = payload.gbraid;
-  const sanitizedClickId = sanitizeClickId(rawClickId) ?? null;
-  const sanitizedGclid = sanitizeClickId(rawGclid) ?? sanitizedClickId;
-  const sanitizedWbraid = sanitizeClickId(rawWbraid) ?? null;
-  const sanitizedGbraid = sanitizeClickId(rawGbraid) ?? null;
-  if ((rawClickId && !sanitizedClickId) || (rawGclid && !sanitizedGclid) || (rawWbraid && !sanitizedWbraid) || (rawGbraid && !sanitizedGbraid)) {
+  const sanitizedClickId = sanitizeClickId(payload.click_id) ?? null;
+  const sanitizedGclid = sanitizeClickId(payload.gclid) ?? sanitizedClickId;
+  const sanitizedWbraid = sanitizeClickId(payload.wbraid) ?? null;
+  const sanitizedGbraid = sanitizeClickId(payload.gbraid) ?? null;
+  if (
+    (payload.click_id && !sanitizedClickId) ||
+    (payload.gclid && !sanitizedGclid) ||
+    (payload.wbraid && !sanitizedWbraid) ||
+    (payload.gbraid && !sanitizedGbraid)
+  ) {
     logWarn('CLICK_ID_DROPPED_INVALID_CLICK_ID', {
       site_id: siteId,
       reason: 'invalid_click_id',
@@ -240,7 +241,7 @@ export async function processCallEvent(
   // accidental downgrades of stronger records.
   const { data: currentCallRow } = await tenantClient
     .from('calls')
-    .select('id, created_at, confidence_score, session_created_month, _client_value, signature_hash, event_id, keyword, match_type, device_model, geo_target_id, campaign_id, adgroup_id, creative_id, network, device, placement, target_id, district_name, location_source, location_reason_code, location_confidence, gclid, wbraid, gbraid, source_type, user_agent, phone_source_type')
+    .select('id, created_at, status, confidence_score, session_created_month, _client_value, signature_hash, event_id, keyword, match_type, device_model, geo_target_id, campaign_id, adgroup_id, creative_id, network, device, placement, target_id, district_name, location_source, location_reason_code, location_confidence, gclid, wbraid, gbraid, source_type, user_agent, phone_source_type')
     .eq('id', ensuredCallId)
     .maybeSingle();
 
