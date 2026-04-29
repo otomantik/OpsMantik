@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback } from 'react';
-import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 import type { HunterIntent } from '@/lib/types/hunter';
 
 export function useQueueCommandDispatcher() {
@@ -11,10 +10,8 @@ export function useQueueCommandDispatcher() {
       saleAmount: number | null,
       currency: string,
       leadScore: number,
-      callerPhone?: string,
-      helperFormPayload?: HelperFormPayload | null
+      callerPhone?: string
     ) => {
-      const finalScore = leadScore >= 100 || leadScore > 5 ? 100 : leadScore * 20;
       const intentVersion =
         typeof intent.version === 'number' && Number.isFinite(intent.version) && intent.version >= 1
           ? Math.round(intent.version)
@@ -22,14 +19,19 @@ export function useQueueCommandDispatcher() {
       if (intentVersion == null) {
         throw new Error('Missing or invalid intent version');
       }
+
+      // Use leadScore directly to support wide data universe (0-100)
+      const finalScore = Math.max(0, Math.min(100, Math.round(leadScore)));
+
       const body: Record<string, unknown> = {
         sale_amount: saleAmount ?? null,
         currency,
         lead_score: finalScore,
-        action_type: finalScore >= 100 ? 'won' : finalScore >= 80 ? 'offered' : 'contacted',
-        helper_form_payload: helperFormPayload ?? null,
+        // Status is always 'won' for Seal process
+        action_type: 'won',
         version: intentVersion,
       };
+
       if (callerPhone?.trim()) {
         body.caller_phone = callerPhone.trim().slice(0, 64);
       }

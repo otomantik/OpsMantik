@@ -13,7 +13,6 @@ import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/qualification-queue/parsers';
 import type { ActivityRow } from '@/components/dashboard/qualification-queue/activity-log-inline';
 import { logger } from '@/lib/logging/logger';
-import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 
@@ -91,8 +90,7 @@ export type QueueControllerActions = {
     saleAmount: number | null,
     currency: string,
     leadScore: number,
-    callerPhone?: string,
-    helperFormPayload?: HelperFormPayload | null
+    callerPhone?: string
   ) => Promise<void>;
   onSealJunk: () => Promise<void>;
   onSealSuccess: () => void;
@@ -553,11 +551,10 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       saleAmount: number | null,
       currency: string,
       leadScore: number,
-      callerPhone?: string,
-      helperFormPayload?: HelperFormPayload | null
+      callerPhone?: string
     ) => {
       if (!intentForSeal) return;
-      const body = buildSealBody(intentForSeal, saleAmount, currency, leadScore, callerPhone, helperFormPayload);
+      const body = buildSealBody(intentForSeal, saleAmount, currency, leadScore, callerPhone);
       const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

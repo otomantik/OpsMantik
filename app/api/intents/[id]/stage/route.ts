@@ -5,10 +5,7 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { logError, logWarn } from '@/lib/logging/logger';
 import { hasCapability } from '@/lib/auth/rbac';
 import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
-import {
-  resolveOptimizationStage,
-  sanitizeHelperFormPayload,
-} from '@/lib/oci/optimization-contract';
+import { resolveOptimizationStage } from '@/lib/oci/optimization-contract';
 import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
@@ -47,13 +44,6 @@ export async function POST(
     const { id: callId } = await params;
     const actionType = typeof action_type === 'string' ? action_type.trim().toLowerCase() : null;
     const roundedScore = typeof score === 'number' ? Math.max(0, Math.min(100, Math.round(score))) : null;
-    
-    // helperFormPayload sanitized but currently passed via v2 RPC metadata or lead_score
-    sanitizeHelperFormPayload(
-      body.helper_form_payload && typeof body.helper_form_payload === 'object'
-        ? body.helper_form_payload
-        : null
-    );
 
     if (roundedScore === null && !actionType) {
       return NextResponse.json({ error: 'score or action_type is required' }, { status: 400 });
@@ -108,8 +98,6 @@ export async function POST(
       leadScore: roundedScore,
     });
 
-    // Route phone through the canonical DIC normalize+hash SSOT so the stored
-    // hash matches what the seal path / export pipeline would produce.
     let phoneHash: string | null = null;
     let phoneE164: string | null = null;
     let callerPhoneRaw: string | null = null;
@@ -126,7 +114,6 @@ export async function POST(
       phoneHash = identity.hash;
     }
 
-    // Phase 2: Authoritative SQL FSM — Unified Path
     const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
       p_call_id: callId,
       p_site_id: siteId,

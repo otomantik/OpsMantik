@@ -121,6 +121,9 @@ function normalizeSyncPayload(incoming: unknown, siteId: string, request: Reques
 	} else if (typeof obj.event === "string" || typeof obj.ea === "string" || typeof obj.intent_action === "string") {
 		// Single event or legacy metrics/call-event format
 		eventsRaw = [obj];
+	} else {
+		// Aggressive fallback: treat any object as a single event to avoid 422 empty array
+		eventsRaw = [obj];
 	}
 
 	// 2. Map and normalize each event
@@ -275,8 +278,9 @@ export default {
 				};
 				const secret = secretMap[siteId];
 				if (!secret) {
-					console.log("[adsmantik-engine] missing call-event secret", { siteId });
-					return jsonResponse({ error: "missing_secret" }, 401);
+					console.log("[adsmantik-engine] missing call-event secret, using sync fallback", { siteId });
+					const syncFallbackPayload = normalizeSyncPayload(payload, siteId, request);
+					return await forwardJson(`${base}/api/sync`, request, syncFallbackPayload);
 				}
 
 				const ts = String(Math.floor(Date.now() / 1000));

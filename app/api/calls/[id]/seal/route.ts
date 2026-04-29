@@ -17,7 +17,6 @@ import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { getChronologyFloorForCall } from '@/lib/oci/chronology-guard';
 import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
-import { sanitizeHelperFormPayload } from '@/lib/oci/optimization-contract';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
@@ -142,11 +141,6 @@ export async function POST(
     const bodyCurrencyRaw = typeof body.currency === 'string' && body.currency.trim() ? body.currency : null;
     const saleOccurredAtRaw = typeof body.sale_occurred_at === 'string' ? body.sale_occurred_at.trim() : '';
     const entryReason = typeof body.entry_reason === 'string' ? body.entry_reason.trim().slice(0, 500) : '';
-    const helperFormPayload = sanitizeHelperFormPayload(
-      body.helper_form_payload && typeof body.helper_form_payload === 'object'
-        ? body.helper_form_payload
-        : null
-    );
     const explicitSystemScore =
       body.system_score != null && Number.isFinite(Number(body.system_score))
         ? Number(body.system_score)
@@ -272,7 +266,6 @@ export async function POST(
         currency,
         occurred_at: occurredAtMeta.occurredAt,
         notes: entryReason,
-        helper_form: helperFormPayload,
         backdated_ms: backdatedMs,
         approval_required: approvalRequired,
       },

@@ -97,6 +97,11 @@ export const HunterCard = React.memo(({
     return toLocaleUpperCase(out || translate('hunter.locationUnknown'));
   }, [intent.city, intent.district, intent.location_source, toLocaleUpperCase, translate]);
 
+  const isGclidConfirmed = useMemo(() => {
+    // Support both gclid and click_id (legacy/new consistency)
+    return Boolean(intent.gclid || intent.click_id || intent.wbraid || intent.gbraid);
+  }, [intent.gclid, intent.click_id, intent.wbraid, intent.gbraid]);
+
   const deviceDisplay = useMemo(() => {
     const type = intent.device_type === 'mobile' ? translate('device.mobile') : translate('device.desktop');
     let os = intent.device_os || '';
@@ -118,13 +123,19 @@ export const HunterCard = React.memo(({
     <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl shadow-slate-200/50 flex flex-col relative">
 
       {/* ── TOP NAV ────────────────────────────────────── */}
-      <div className="px-6 py-4 flex items-center border-b border-slate-50 bg-slate-50/30">
+      <div className="px-6 py-4 flex items-center justify-between border-b border-slate-50 bg-slate-50/30">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
             {formatTimeDisplay(intent.created_at, locale, siteTimezone, translate)}
           </span>
         </div>
+        {isGclidConfirmed && (
+          <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full border border-emerald-100 shadow-sm">
+            <Icons.check size={10} className="fill-emerald-600/10 animate-pulse" />
+            <span className="text-[9px] font-black uppercase tracking-tighter italic">GCLID ONAYLI</span>
+          </div>
+        )}
       </div>
 
       {/* ── HEADER ─────────────────────────────────────── */}
@@ -133,9 +144,10 @@ export const HunterCard = React.memo(({
           <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
             <IntentIcon size={24} className="text-slate-600" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3 className="text-2xl font-black text-slate-900 leading-none truncate tracking-tight uppercase">
-              {safeDecode((intent.utm_term || '').trim()) || (intent.intent_target ? intent.intent_target : translate('hunter.anonimContact'))}
+              {safeDecode((intent.utm_term || '').trim()) || 
+               (isGclidConfirmed ? 'REKLAM TRAFİĞİ' : (intent.intent_target ? intent.intent_target : translate('hunter.anonimContact')))}
             </h3>
             <div className="flex items-center gap-1.5 mt-2">
               <MapPin size={12} className="text-slate-400" />

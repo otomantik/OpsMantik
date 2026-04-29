@@ -22,7 +22,6 @@ import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { publishToQStash } from '@/lib/ingest/publish';
 import {
   buildOptimizationSnapshot,
-  type HelperFormPayload,
 } from '@/lib/oci/optimization-contract';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
@@ -36,7 +35,6 @@ export interface EnqueueSealParams {
   currency: string;
   leadScore: number | null;
   entryReason?: string | null;
-  helperFormPayload?: HelperFormPayload | null;
   sourceOutboxEventId?: string | null;
 }
 
@@ -96,7 +94,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     currency,
     leadScore,
     entryReason,
-    helperFormPayload,
     sourceOutboxEventId,
   } = params;
 
@@ -182,7 +179,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     stage: 'won',
     systemScore: leadScore,
     actualRevenue: saleAmount,
-    helperFormPayload: helperFormPayload ?? null,
   });
   const valueUnits = optimizationSnapshot.optimizationValue;
   const valueCents = Math.max(Math.round(valueUnits * 100), 1);
@@ -244,10 +240,10 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       optimization_stage: optimizationSnapshot.optimizationStage,
       optimization_stage_base: optimizationSnapshot.stageBase,
       system_score: optimizationSnapshot.systemScore,
-      quality_factor: optimizationSnapshot.qualityFactor,
+      quality_factor: null,
       optimization_value: optimizationSnapshot.optimizationValue,
       actual_revenue: optimizationSnapshot.actualRevenue,
-      helper_form_payload: optimizationSnapshot.helperFormPayload,
+      helper_form_payload: null,
       feature_snapshot: {
         discovery_method: discoveryMethod,
         discovery_confidence: discoveryConfidence,
