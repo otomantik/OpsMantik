@@ -129,8 +129,10 @@ function normalizeSyncPayload(incoming: unknown, siteId: string, request: Reques
 	// 2. Map and normalize each event
 	const events = eventsRaw.map((event) => {
 		const e = toObject(event);
-		// Ensure event level s
-		const s = typeof e.s === "string" && e.s.trim().length > 0 ? e.s.trim() : siteId;
+		// Force event-level `s` to be the tenant-resolved siteId.
+		// Some embed integrations may send a different `data-ops-site-id` value;
+		// validating strictly requires the canonical tenant mapping.
+		const s = siteId;
 
 		// Map legacy fields if present
 		const action = (e.ea || e.event || e.intent_action || "custom_event") as string;
