@@ -170,7 +170,7 @@ export function LeadActionOverlay({
                     <Star size={24} fill="currentColor" className="opacity-20" />
                   </div>
                   <div className="text-left">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.score')}: 25</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.pts')}: 25</div>
                     <div className="text-lg font-black text-slate-900 uppercase tracking-tight">SOĞUK / DÜŞÜK</div>
                   </div>
                 </button>
@@ -184,7 +184,7 @@ export function LeadActionOverlay({
                     <Star size={24} fill="currentColor" className="opacity-60" />
                   </div>
                   <div className="text-left">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.score')}: 60</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.pts')}: 60</div>
                     <div className="text-lg font-black text-slate-900 uppercase tracking-tight">NORMAL / ORTA</div>
                   </div>
                 </button>
@@ -198,7 +198,7 @@ export function LeadActionOverlay({
                     <Star size={24} fill="currentColor" />
                   </div>
                   <div className="text-left">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.score')}: 100</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.pts')}: 100</div>
                     <div className="text-lg font-black text-slate-900 uppercase tracking-tight">SICAK / YÜKSEK</div>
                   </div>
                 </button>
