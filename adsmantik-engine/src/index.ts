@@ -249,15 +249,36 @@ export default {
 			}
 
 			if (url.pathname === "/opsmantik/sync" && request.method === "POST") {
-				const incoming = await request.json().catch(() => null);
-				if (!incoming) return jsonResponse({ error: "invalid_json" }, 400);
+				// core.js POST'larında Content-Type bazen `text/plain` olabiliyor.
+				// Bu durumda `request.json()` bazı runtime'larda parse etmeyi reddedebiliyor.
+				// O yüzden her zaman text alıp JSON.parse deniyoruz.
+				const rawBody = await request.text().catch(() => "");
+				if (!rawBody) return jsonResponse({ error: "empty_body" }, 400);
+				let incoming: unknown = null;
+				try {
+					incoming = JSON.parse(rawBody);
+				} catch {
+					return jsonResponse(
+						{ error: "invalid_json", raw_preview: rawBody.slice(0, 200) },
+						400
+					);
+				}
 				const payload = normalizeSyncPayload(incoming, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, payload);
 			}
 
 			if (url.pathname === "/metrics/track" && request.method === "POST") {
-				const incoming = await request.json().catch(() => null);
-				if (!incoming) return jsonResponse({ error: "invalid_json" }, 400);
+				const rawBody = await request.text().catch(() => "");
+				if (!rawBody) return jsonResponse({ error: "empty_body" }, 400);
+				let incoming: unknown = null;
+				try {
+					incoming = JSON.parse(rawBody);
+				} catch {
+					return jsonResponse(
+						{ error: "invalid_json", raw_preview: rawBody.slice(0, 200) },
+						400
+					);
+				}
 				const payload = normalizeSyncPayload(incoming, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, payload);
 			}
