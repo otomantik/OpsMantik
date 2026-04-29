@@ -12,6 +12,12 @@ export const CATEGORICAL_SCORES = {
 
 export type OptimizationStage = 'junk' | 'contacted' | 'offered' | 'won';
 
+/**
+ * Optional "helper form" JSON context.
+ * Used by some router paths to attach extra form metadata.
+ */
+export type HelperFormPayload = Record<string, unknown>;
+
 export interface OptimizationValueSnapshot {
   optimizationStage: OptimizationStage;
   stageBase: number;
@@ -24,7 +30,7 @@ export interface OptimizationValueSnapshot {
    * Optional helper payload for form-based signals.
    * Most callers do not provide form context, so we default to `null`.
    */
-  helperFormPayload: Record<string, unknown> | null;
+  helperFormPayload: HelperFormPayload | null;
   modelVersion: string;
 }
 
@@ -140,12 +146,12 @@ export function resolveOptimizationStage(params: {
  * Amaç: Tip hatasını düzeltmek + beklenmeyen/şişkin payload'ların
  * DB'ye gitmesini engellemek.
  */
-export function sanitizeHelperFormPayload(input: unknown): Record<string, unknown> | null {
+export function sanitizeHelperFormPayload(input: unknown): HelperFormPayload | null {
   if (input === null || input === undefined) return null;
   if (typeof input !== 'object' || Array.isArray(input)) return null;
 
   const obj = input as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
+  const out: HelperFormPayload = {};
 
   for (const [k, v] of Object.entries(obj)) {
     // JSON key güvenliği
