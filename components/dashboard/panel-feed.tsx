@@ -11,7 +11,6 @@ import { getTodayDateKey } from '@/lib/time/today-range';
 import { createClient } from '@/lib/supabase/client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export function PanelFeed({
   initialCalls,
@@ -60,8 +59,7 @@ export function PanelFeed({
   const handleActionComplete = async (
     actionType: LeadActionType,
     phone?: string,
-    score?: number,
-    helperFormPayload?: HelperFormPayload | null
+    score?: number
   ) => {
     if (!pendingAction) {
       return { success: false, error: t('toast.failedUpdate') };
@@ -86,13 +84,24 @@ export function PanelFeed({
           phone,
           score,
           action_type: actionType,
-          helper_form_payload: helperFormPayload ?? null,
           version: intentVersion,
         })
       });
       const resultUnknown = await res.json().catch(() => ({}));
       const result = resultUnknown as { success?: boolean; error?: string };
       if (!res.ok || !result.success) {
+        // If the call row disappeared between opening the overlay and confirming,
+        // treat it as an optimistic "already processed" state: remove the card
+        // and close the overlay instead of showing a confusing 404 error.
+        if (res.status === 404 && typeof result.error === 'string' && result.error.toLowerCase().includes('call not found')) {
+          setCalls((prev) => prev.filter((c) => c.id !== intent.id));
+          setPendingAction(null);
+          if (activeIndex >= filteredCalls.length - 1) {
+            setActiveIndex(Math.max(0, activeIndex - 1));
+          }
+          return { success: true };
+        }
+
         return {
           success: false,
           error: typeof result.error === 'string' ? result.error : t('toast.failedUpdate'),
