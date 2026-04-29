@@ -133,7 +133,15 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
   const isTrLocale = resolvedLocale.toLowerCase().startsWith('tr');
   const rawCur = (site?.currency ?? '').toString().trim();
   const panelCurrency = rawCur || (isTrLocale ? 'TRY' : 'USD');
-  const { fromIso, toIso } = getTodayTrtUtcRange(new Date(), panelTimezone);
+  // Deck visibility is "today/yesterday" in `PanelFeed`, but the panel bootstrap
+  // previously fetched only the "today" window. If intents were created in the
+  // tail of "yesterday" (timezone offset crossing), the UI could show an empty
+  // deck until the next boot/re-fetch. Fetch a 48h window covering both buckets.
+  const now = new Date();
+  const todayRange = getTodayTrtUtcRange(now, panelTimezone);
+  const yesterdayRange = getTodayTrtUtcRange(new Date(now.getTime() - 24 * 60 * 60 * 1000), panelTimezone);
+  const fromIso = yesterdayRange.fromIso;
+  const toIso = todayRange.toIso;
   const { data: calls, error: callsError } = await adminClient.rpc('get_recent_intents_lite_v1', {
     p_site_id: targetSiteId,
     p_date_from: fromIso,

@@ -7,7 +7,6 @@ import { Card } from '@/components/ui/card';
 import { cn, safeDecode } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { HunterIntent } from '@/lib/types/hunter';
-import type { HelperFormPayload } from '@/lib/oci/optimization-contract';
 
 export type LeadActionType = 'junk' | 'contacted' | 'offered' | 'won';
 
@@ -20,7 +19,7 @@ interface LeadActionOverlayProps {
     actionType: LeadActionType,
     phone?: string,
     score?: number,
-    helperFormPayload?: HelperFormPayload | null
+    helperFormPayload?: null
   ) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -35,13 +34,6 @@ export function LeadActionOverlay({
   const [step, setStep] = useState<'phone' | 'rating' | 'success'>('phone');
   const [phone, setPhone] = useState('');
   const [score, setScore] = useState<number>(100);
-  const [helperFormPayload, setHelperFormPayload] = useState<HelperFormPayload>({
-    jobSize: 'medium',
-    urgency: 'medium',
-    priceDiscussed: 'no',
-    followupExpectation: 'uncertain',
-    competitorComparison: 'no',
-  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -50,18 +42,14 @@ export function LeadActionOverlay({
     if (isOpen && actionType) {
       setStep('phone');
       setPhone('');
-      setHelperFormPayload({
-        jobSize: 'medium',
-        urgency: 'medium',
-        priceDiscussed: 'no',
-        followupExpectation: 'uncertain',
-        competitorComparison: 'no',
-      });
       setIsSubmitting(false);
       setSubmitError(null);
       
       switch (actionType) {
-        case 'junk': setScore(0); setStep('rating'); break;
+        // For junk we do NOT show rating selection.
+        // Backend treats junk as a fixed negative signal (optimizationValue = 0.1).
+        // We still pass `0.1` so UI intent is explicit.
+        case 'junk': setScore(0.1); setStep('phone'); break;
         case 'contacted': setScore(60); break;
         case 'offered': setScore(80); break;
         case 'won': setScore(100); break;
@@ -81,17 +69,17 @@ export function LeadActionOverlay({
 
   const handleNext = () => {
     if (actionType === 'junk') {
-      handleComplete(0);
+      handleComplete(0.1, phone);
     } else {
       setStep('rating');
     }
   };
 
-  const handleComplete = async (finalScore: number) => {
+  const handleComplete = async (finalScore: number, phoneOverride?: string) => {
     if (!actionType) return;
     setIsSubmitting(true);
     setSubmitError(null);
-    const result = await onComplete(actionType, phone, finalScore, helperFormPayload);
+    const result = await onComplete(actionType, phoneOverride ?? phone, finalScore, null);
     setIsSubmitting(false);
     if (!result.success) {
       setSubmitError(result.error ?? t('toast.failedUpdate'));
@@ -150,9 +138,11 @@ export function LeadActionOverlay({
                 <Button onClick={handleNext} className="w-full h-16 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg">
                   {t('seal.next')} <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
-                <button onClick={() => setStep('rating')} className="w-full py-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">
-                  {t('hunter.skip')}
-                </button>
+                {actionType !== 'junk' && (
+                  <button onClick={() => setStep('rating')} className="w-full py-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">
+                    {t('hunter.skip')}
+                  </button>
+                )}
                 {submitError && (
                   <p className="text-center text-xs font-bold text-red-600">{submitError}</p>
                 )}
@@ -160,85 +150,62 @@ export function LeadActionOverlay({
             </div>
           )}
 
-          {step === 'rating' && (
-            <div className="w-full space-y-8 animate-in fade-in zoom-in-95 duration-300 text-center">
-              <div className="space-y-3">
+          {step === 'rating' && actionType !== 'junk' && (
+            <div className="w-full space-y-10 animate-in fade-in zoom-in-95 duration-300">
+              <div className="text-center space-y-3">
                 <div className={cn('inline-flex p-5 rounded-2xl mb-2', config.bg, config.color)}>
                    <Star size={32} />
                 </div>
                 <h3 className="text-2xl font-black text-slate-900">{config.label}</h3>
-                <p className="text-slate-500 font-bold text-xs uppercase tracking-wider">{t('hunter.scoreConfirmation')}: {score} {t('hunter.pts')}</p>
+                <p className="text-slate-500 font-bold text-xs uppercase tracking-wider">{t('hunter.scoreConfirmation')}</p>
               </div>
 
-              <div className="relative max-w-xs mx-auto">
-                <input 
-                  type="number"
-                  value={score}
-                  onChange={(e) => setScore(parseInt(e.target.value) || 0)}
-                  className="w-full h-24 text-center text-5xl font-black bg-slate-50 border-2 border-slate-100 rounded-3xl focus:border-emerald-500 focus:bg-white outline-none transition-all"
-                />
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 font-black">{t('hunter.pts')}</div>
+              <div className="grid grid-cols-1 gap-4">
+                <button 
+                  onClick={() => handleComplete(25)}
+                  disabled={isSubmitting}
+                  className="group relative flex items-center gap-4 p-6 bg-slate-50 hover:bg-red-50 border-2 border-slate-100 hover:border-red-200 rounded-3xl transition-all duration-300"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-red-600 shadow-sm group-hover:scale-110 transition-transform">
+                    <Star size={24} fill="currentColor" className="opacity-20" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.score')}: 25</div>
+                    <div className="text-lg font-black text-slate-900 uppercase tracking-tight">SOĞUK / DÜŞÜK</div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => handleComplete(60)}
+                  disabled={isSubmitting}
+                  className="group relative flex items-center gap-4 p-6 bg-slate-50 hover:bg-blue-50 border-2 border-slate-100 hover:border-blue-200 rounded-3xl transition-all duration-300"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-blue-600 shadow-sm group-hover:scale-110 transition-transform">
+                    <Star size={24} fill="currentColor" className="opacity-60" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.score')}: 60</div>
+                    <div className="text-lg font-black text-slate-900 uppercase tracking-tight">NORMAL / ORTA</div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => handleComplete(100)}
+                  disabled={isSubmitting}
+                  className="group relative flex items-center gap-4 p-6 bg-slate-50 hover:bg-emerald-50 border-2 border-slate-100 hover:border-emerald-200 rounded-3xl transition-all duration-300"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-emerald-600 shadow-sm group-hover:scale-110 transition-transform">
+                    <Star size={24} fill="currentColor" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('hunter.score')}: 100</div>
+                    <div className="text-lg font-black text-slate-900 uppercase tracking-tight">SICAK / YÜKSEK</div>
+                  </div>
+                </button>
               </div>
 
-              {actionType !== 'junk' && (
-                <div className="grid grid-cols-1 gap-3 text-left">
-                  <select
-                    value={helperFormPayload.jobSize ?? 'medium'}
-                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, jobSize: e.target.value as HelperFormPayload['jobSize'] }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                  >
-                    <option value="small">Job size: small</option>
-                    <option value="medium">Job size: medium</option>
-                    <option value="large">Job size: large</option>
-                  </select>
-                  <select
-                    value={helperFormPayload.urgency ?? 'medium'}
-                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, urgency: e.target.value as HelperFormPayload['urgency'] }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                  >
-                    <option value="low">Urgency: low</option>
-                    <option value="medium">Urgency: medium</option>
-                    <option value="high">Urgency: high</option>
-                  </select>
-                  <select
-                    value={helperFormPayload.priceDiscussed ?? 'no'}
-                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, priceDiscussed: e.target.value as HelperFormPayload['priceDiscussed'] }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                  >
-                    <option value="yes">Price discussed: yes</option>
-                    <option value="no">Price discussed: no</option>
-                  </select>
-                  <select
-                    value={helperFormPayload.followupExpectation ?? 'uncertain'}
-                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, followupExpectation: e.target.value as HelperFormPayload['followupExpectation'] }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                  >
-                    <option value="no">Follow-up expected: no</option>
-                    <option value="uncertain">Follow-up expected: uncertain</option>
-                    <option value="yes">Follow-up expected: yes</option>
-                  </select>
-                  <select
-                    value={helperFormPayload.competitorComparison ?? 'no'}
-                    onChange={(e) => setHelperFormPayload((prev) => ({ ...prev, competitorComparison: e.target.value as HelperFormPayload['competitorComparison'] }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                  >
-                    <option value="yes">Competitor comparison: yes</option>
-                    <option value="no">Competitor comparison: no</option>
-                  </select>
-                </div>
-              )}
-
-              <Button 
-                onClick={() => handleComplete(score)}
-                disabled={isSubmitting}
-                className={cn('w-full h-16 rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg text-white', 
-                  actionType === 'junk' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
-                )}
-              >
-                {isSubmitting ? t('seal.sealing') : t('button.confirm').toUpperCase()}
-              </Button>
               {submitError && (
-                <p className="text-center text-xs font-bold text-red-600">{submitError}</p>
+                <p className="text-center text-xs font-bold text-red-600 mt-4 animate-bounce">{submitError}</p>
               )}
             </div>
           )}

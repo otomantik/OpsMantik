@@ -108,7 +108,9 @@ test('junk mutations wait for server confirmation and OCI panel exposes honest r
   const deckSrc = readFileSync(QUEUE_DECK, 'utf8');
   const ociPageSrc = readFileSync(OCI_CONTROL_PAGE, 'utf8');
   const ociPanelSrc = readFileSync(OCI_CONTROL_PANEL, 'utf8');
-  assert.ok(deckSrc.includes("const result = await qualify(params);"), 'junk action must wait for server mutation');
+  // Implementation now passes through version to qualify() (v2 mutation contract),
+  // so we assert on the call shape instead of the exact `qualify(params)` literal.
+  assert.ok(deckSrc.includes('const result = await qualify({ ...params'), 'junk action must wait for server mutation');
   assert.ok(deckSrc.includes('if (!result.success)'), 'junk action must branch on server result');
   assert.ok(deckSrc.includes('onOptimisticRemove(intent.id);'), 'card removal should happen only after success');
   assert.ok(ociPageSrc.includes("canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}"), 'OCI control page must derive canOperate from RBAC');
