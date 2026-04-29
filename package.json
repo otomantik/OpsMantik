@@ -54,6 +54,8 @@
     "smoke:intent-multi-site": "node scripts/smoke/p0_intent_multi_site.mjs",
     "smoke:geo-gclid-policy": "node --import tsx scripts/smoke/geo_gclid_policy.ts",
     "smoke:forensic": "node scripts/tests/forensic-smoke-test.mjs",
+    "smoke:oci-rollout-readiness": "node scripts/oci-rollout-readiness.mjs",
+    "smoke:oci-rollout-readiness:strict": "node scripts/oci-rollout-readiness.mjs --strict --json",
     "predeploy": "npm run test:release-gates",
     "diagnostics": "node scripts/run-diagnostics.mjs",
     "load:smoke": "k6 run tests/load/smoke-load.js",

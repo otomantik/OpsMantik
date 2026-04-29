@@ -53,6 +53,18 @@ export interface EnqueueSealResult {
   error?: string;
 }
 
+export function hasAnyClickId(params: {
+  gclid?: string | null;
+  wbraid?: string | null;
+  gbraid?: string | null;
+}): boolean {
+  return Boolean(
+    (params.gclid ?? '').trim() ||
+      (params.wbraid ?? '').trim() ||
+      (params.gbraid ?? '').trim()
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Site OCI config loader
 // ---------------------------------------------------------------------------
@@ -159,7 +171,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const discoveryMethod = discovered?.discoveryMethod ?? null;
   const discoveryConfidence = discovered?.discoveryConfidence ?? null;
 
-  if (!gclid && !wbraid && !gbraid) {
+  if (!hasAnyClickId({ gclid, wbraid, gbraid })) {
     logInfo('enqueue_seal_skip', { call_id: callId, reason: 'no_click_id' });
     return { enqueued: false, reason: 'no_click_id' };
   }
