@@ -17,8 +17,8 @@ export interface QualificationQueueProps {
 }
 
 export const QualificationQueue: React.FC<QualificationQueueProps> = ({ siteId, range, siteRole }) => {
-  const { data: state, handlers: actions, isLoading, error } = useQualificationQueue({ siteId, range });
   const readOnly = !hasCapability(siteRole, 'queue:operate');
+  const { data: state, handlers: actions, isLoading, error } = useQualificationQueue({ siteId, range, readOnly });
 
   const queueMeta = useMemo(
     () => (

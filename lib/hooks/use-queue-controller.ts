@@ -13,6 +13,7 @@ import type { HunterIntent, HunterIntentLite } from '@/lib/types/hunter';
 import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/dashboard/qualification-queue/parsers';
 import type { ActivityRow } from '@/components/dashboard/qualification-queue/activity-log-inline';
 import { logger } from '@/lib/logging/logger';
+import { parseMutationError } from '@/lib/queue/mutation-error';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 
@@ -113,7 +114,7 @@ export type QueueControllerActions = {
   onSealError: (message: string) => void;
 };
 
-export function useQueueController(siteId: string): { state: QueueControllerState; actions: QueueControllerActions } {
+export function useQueueController(siteId: string, readOnly = false): { state: QueueControllerState; actions: QueueControllerActions } {
   const { t } = useTranslation();
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
   const { buildSealBody } = useQueueCommandDispatcher();
@@ -568,7 +569,14 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
       leadScore: number,
       callerPhone?: string
     ) => {
-      if (!intentForSeal) return;
+      if (readOnly) {
+        logger.warn('queue_action_denied_readonly_total', { site_id: siteId, action: 'seal_confirm' });
+        throw new Error('READ_ONLY_SCOPE');
+      }
+      if (!intentForSeal) {
+        logger.warn('queue_action_missing_intent_total', { site_id: siteId, action: 'seal_confirm' });
+        throw new Error('Islem yapilacak kayit bulunamadi.');
+      }
       const body = buildSealBody(intentForSeal, saleAmount, currency, leadScore, callerPhone);
       const res = await fetch(`/api/calls/${intentForSeal.id}/seal`, {
         method: 'POST',
@@ -576,11 +584,14 @@ export function useQueueController(siteId: string): { state: QueueControllerStat
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error || res.statusText);
+        const parsed = await parseMutationError(res, t);
+        if (parsed.telemetry) {
+          logger.warn(parsed.telemetry, { site_id: siteId, call_id: intentForSeal.id, status: parsed.status, code: parsed.code });
+        }
+        throw new Error(parsed.message);
       }
     },
-    [buildSealBody, intentForSeal]
+    [buildSealBody, intentForSeal, readOnly, siteId, t]
   );
 
   const onSealJunk = useCallback(async () => {

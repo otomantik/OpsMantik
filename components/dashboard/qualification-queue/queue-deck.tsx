@@ -7,6 +7,7 @@ import { cn, formatTimestamp } from '@/lib/utils';
 import { useIntentQualification } from '@/lib/hooks/use-intent-qualification';
 import { peekBorderClass } from './utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { logger } from '@/lib/logging/logger';
 
 import { IntentCardV2, type IntentCardV2Action } from '../intent-card-v2';
 
@@ -32,6 +33,14 @@ function ActiveDeckCard({
   pushHistoryRow: (row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => void;
 }) {
   const { t } = useTranslation();
+  const mapUiError = (raw?: string | null): string => {
+    const msg = (raw ?? '').toUpperCase();
+    if (msg.includes('READ_ONLY_SCOPE')) return 'Mudahale yetkiniz yok (salt okunur).';
+    if (msg.includes('CONCURRENCY_CONFLICT') || msg.includes('INVALID_VERSION')) {
+      return 'Kayit baska bir islemde guncellendi, lutfen yenileyin.';
+    }
+    return raw || t('toast.failedUpdate');
+  };
   // Hook must be called unconditionally (no conditional wrapper).
   const { qualify, saving } = useIntentQualification(
     siteId,
@@ -45,7 +54,14 @@ function ActiveDeckCard({
     try {
       const result = await qualify({ ...params, version: intent.version ?? null });
       if (!result.success) {
-        pushToast('danger', result.error || t('toast.failedUpdate'));
+        const errorText = mapUiError(result.error);
+        if (errorText.includes('salt okunur')) {
+          logger.warn('queue_action_denied_readonly_total', { call_id: intent.id, site_id: siteId });
+        }
+        if (errorText.includes('guncellendi')) {
+          logger.warn('queue_action_conflict_total', { call_id: intent.id, site_id: siteId });
+        }
+        pushToast('danger', errorText);
       } else {
         onOptimisticRemove(intent.id);
         pushHistoryRow({
@@ -70,7 +86,11 @@ function ActiveDeckCard({
   };
 
   const handleAction = async (_intentId: string, actionId: string, score: number) => {
-    if (readOnly) return false;
+    if (readOnly) {
+      logger.warn('queue_action_denied_readonly_total', { call_id: intent.id, site_id: siteId });
+      pushToast('danger', 'Mudahale yetkiniz yok (salt okunur).');
+      return false;
+    }
     void score;
     
     // special case: seal/seal-deal might require the modal if it's a "Seal" action
@@ -83,7 +103,11 @@ function ActiveDeckCard({
   };
 
   const handleJunk = async (intentId: string) => {
-    if (readOnly) return false;
+    if (readOnly) {
+      logger.warn('queue_action_denied_readonly_total', { call_id: intent.id, site_id: siteId });
+      pushToast('danger', 'Mudahale yetkiniz yok (salt okunur).');
+      return false;
+    }
     void intentId;
     return await fireQualify({ score: 0, status: 'junk' });
   };

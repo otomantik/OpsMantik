@@ -16,6 +16,19 @@ async function findUserIdByEmailLc(emailLc: string): Promise<string | null> {
   return String(data.id);
 }
 
+async function findAuthUserIdByEmailLc(emailLc: string): Promise<string | null> {
+  // Fallback path for drift cases where `user_emails` mapping row is missing.
+  for (let page = 1; page <= 25; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) return null;
+    const users = data?.users ?? [];
+    const hit = users.find((u) => (u.email ?? '').toLowerCase() === emailLc);
+    if (hit?.id) return hit.id;
+    if (users.length < 200) break;
+  }
+  return null;
+}
+
 async function auditInvite(params: {
   inviterUserId: string;
   siteId: string;
@@ -161,6 +174,15 @@ export async function POST(req: NextRequest) {
     // Find user id via indexed mapping (scales; avoids listUsers pagination issues).
     // Requires migration: 20260205130000_user_email_index.sql
     let customerUserId = await findUserIdByEmailLc(emailLc);
+    if (!customerUserId) {
+      customerUserId = await findAuthUserIdByEmailLc(emailLc);
+      if (customerUserId) {
+        // Self-heal mapping so next invite path stays O(1).
+        void adminClient
+          .from('user_emails')
+          .upsert({ id: customerUserId, email: emailNorm, email_lc: emailLc }, { onConflict: 'id' });
+      }
+    }
 
     if (!customerUserId) {
       // Create new user via Admin API (idempotent-ish: if already exists, we fall back).
@@ -176,6 +198,14 @@ export async function POST(req: NextRequest) {
       if (createError || !newUser.user) {
         // If user already exists, createUser may error; retry lookup.
         customerUserId = await findUserIdByEmailLc(emailLc);
+        if (!customerUserId) {
+          customerUserId = await findAuthUserIdByEmailLc(emailLc);
+          if (customerUserId) {
+            void adminClient
+              .from('user_emails')
+              .upsert({ id: customerUserId, email: emailNorm, email_lc: emailLc }, { onConflict: 'id' });
+          }
+        }
         if (!customerUserId) {
           console.error('[CUSTOMERS_INVITE] Error creating user:', createError);
           await auditInvite({

@@ -5,6 +5,8 @@ import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { hasCapability } from '@/lib/auth/rbac';
 import { appendAuditLog } from '@/lib/audit/audit-log';
 import { getBuildInfoHeaders } from '@/lib/build-info';
+import { logWarn } from '@/lib/logging/logger';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 type ReviewAction = 'approve' | 'reject';
 
@@ -51,8 +53,21 @@ export async function POST(
 
   const siteId = (sale as { site_id: string }).site_id;
   const access = await validateSiteAccess(siteId, user.id, supabase);
-  if (!access.allowed || !access.role || !hasCapability(access.role, 'site:write')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: getBuildInfoHeaders() });
+  if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
+    incrementRefactorMetric('queue_action_denied_readonly_total');
+    logWarn('SALES_REVIEW_READ_ONLY_SCOPE', {
+      route: '/api/sales/[id]/review',
+      site_id: siteId,
+      sale_id: saleId,
+      actor_id: user.id,
+      actor_role: access.role ?? null,
+      status: 403,
+      code: 'READ_ONLY_SCOPE',
+    });
+    return NextResponse.json(
+      { error: 'READ_ONLY_SCOPE', code: 'READ_ONLY_SCOPE' },
+      { status: 403, headers: getBuildInfoHeaders() }
+    );
   }
 
   const currentStatus = (sale as { status: string }).status;

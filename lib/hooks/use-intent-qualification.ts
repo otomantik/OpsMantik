@@ -15,6 +15,8 @@ import { useCallback, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { parseMutationError } from '@/lib/queue/mutation-error';
+import { logger } from '@/lib/logging/logger';
 
 export interface QualifyIntentParams {
   /** 0 = junk, 1-100 = lead quality score. */
@@ -113,8 +115,13 @@ export function useIntentQualification(
               credentials: 'include',
             });
             if (!res.ok) {
-              const data = await res.json().catch(() => ({}));
-              const msg = (data as { error?: string }).error || (res.status === 404 ? t('toast.error.intentAlreadyQualified') : t('toast.error.qualifyFailed'));
+              const parsed = await parseMutationError(res, t);
+              if (parsed.telemetry) {
+                logger.warn(parsed.telemetry, { site_id: siteId, call_id: callId, status: parsed.status, code: parsed.code });
+              }
+              const msg =
+                parsed.message ||
+                (res.status === 404 ? t('toast.error.intentAlreadyQualified') : t('toast.error.qualifyFailed'));
               setError(msg);
               return { success: false, error: msg };
             }
@@ -177,8 +184,11 @@ export function useIntentQualification(
         });
 
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          const msg = (data as { error?: string }).error || t('toast.error.qualifyFailed');
+          const parsed = await parseMutationError(res, t);
+          if (parsed.telemetry) {
+            logger.warn(parsed.telemetry, { site_id: siteId, call_id: intentId, status: parsed.status, code: parsed.code });
+          }
+          const msg = parsed.message || t('toast.error.qualifyFailed');
           setError(msg);
           return { success: false, error: msg };
         }

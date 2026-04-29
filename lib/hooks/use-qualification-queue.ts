@@ -21,9 +21,11 @@ export type QualificationQueueFilters = {
 export function useQualificationQueue({
   siteId,
   range,
+  readOnly,
 }: {
   siteId: string;
   range: QueueRange;
+  readOnly?: boolean;
 }): {
   data: ReturnType<typeof useQueueController>['state'];
   isLoading: boolean;
@@ -32,7 +34,7 @@ export function useQualificationQueue({
   setFilters: { setRange: (next: QueueRange) => void };
   handlers: ReturnType<typeof useQueueController>['actions'];
 } {
-  const { state, actions } = useQueueController(siteId);
+  const { state, actions } = useQueueController(siteId, Boolean(readOnly));
 
   // Keep range as prop, but sync to controller (controller owns side effects).
   useEffect(() => {

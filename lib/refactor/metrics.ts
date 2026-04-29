@@ -60,6 +60,9 @@ export const REFACTOR_METRIC_NAMES = [
   'truth_repair_reclaim_total',
   'truth_repair_dead_letter_total',
   'won_error_swallowed_total',
+  'queue_action_denied_readonly_total',
+  'queue_action_conflict_total',
+  'queue_action_missing_intent_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

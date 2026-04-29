@@ -199,7 +199,18 @@ export async function POST(
     const siteId = call.site_id;
     const access = await validateSiteAccess(siteId, user.id, userClient);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 404 });
+      incrementRefactorMetric('queue_action_denied_readonly_total');
+      logWarn('SEAL_READ_ONLY_SCOPE', {
+        route,
+        request_id: requestId,
+        site_id: siteId,
+        call_id: callId,
+        actor_id: user.id,
+        actor_role: access.role ?? null,
+        status: 403,
+        code: 'READ_ONLY_SCOPE',
+      });
+      return NextResponse.json({ error: 'READ_ONLY_SCOPE', code: 'READ_ONLY_SCOPE' }, { status: 403 });
     }
 
     const rowVersion =
