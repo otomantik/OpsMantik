@@ -9,22 +9,27 @@ export function buildExportResponse(
   ctx: ExportAuthContext,
   built: BuiltExportData
 ): NextResponse {
-  const responseData = ctx.markAsExported
-    ? { items: built.combined, adjustments: [], next_cursor: built.nextCursor }
-    : {
-        siteId: ctx.siteUuid,
-        items: built.combined,
-        adjustments: [],
-        next_cursor: built.nextCursor,
-        counts: {
-          queued: built.keptConversions.length,
-          signals: built.keptSignalItems.length,
-          pvs: 0,
-          suppressed: built.suppressedQueueIds.length + built.suppressedSignalIds.length,
-          adjustments: 0,
-        },
-        warnings: ctx.isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
-      };
+  const responseData = {
+    data: built.combined,
+    meta: {
+      hasNextPage: Boolean(built.nextCursor),
+      nextCursor: built.nextCursor,
+    },
+    siteId: ctx.siteUuid,
+    counts: {
+      queued: built.keptConversions.length,
+      signals: built.keptSignalItems.length,
+      pvs: 0,
+      suppressed: built.suppressedQueueIds.length + built.suppressedSignalIds.length,
+      adjustments: 0,
+    },
+    warnings: ctx.isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
+    // backward compatibility
+    items: built.combined,
+    adjustments: [],
+    next_cursor: built.nextCursor,
+    markAsExported: ctx.markAsExported,
+  };
 
   void req;
   if (ctx.publicKeyB64 && ctx.wantsJwe) {

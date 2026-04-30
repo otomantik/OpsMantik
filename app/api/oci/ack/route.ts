@@ -6,7 +6,9 @@
  * - signal_* → marketing_signals (dispatch_status=SENT, google_sent_at=NOW)
  * - pv_* → Redis: DEL pv:data:{id}, LREM pv:processing:{siteId}
  *
- * Body: { siteId: string, queueIds: string[], skippedIds?: string[], pendingConfirmation?: boolean }
+ * Body:
+ * - Legacy: { siteId: string, queueIds: string[], skippedIds?: string[], pendingConfirmation?: boolean }
+ * - Granular: { siteId: string, results: [{ id: string, status: 'SUCCESS'|'FAILED', reason?: string }], pendingConfirmation?: boolean }
  * - pendingConfirmation=true: AdsApp bulk upload is asynchronous; mark seal_* as UPLOADED (not COMPLETED).
  *   Row-level errors cannot be fetched via Scripts — check Google Ads UI > Tools > Uploads.
  * - pendingConfirmation=false or omitted: Mark as COMPLETED (API path or explicit confirmation).
@@ -70,9 +72,23 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.response;
     const siteUuid = auth.siteUuid;
     const resolvedSite = auth.resolvedSite;
+    const rawResults = Array.isArray(body.results) ? body.results : [];
+    const granularResults = rawResults
+      .filter((r): r is { id: string; status: 'SUCCESS' | 'FAILED'; reason?: string } => {
+        if (!r || typeof r !== 'object') return false;
+        const rec = r as Record<string, unknown>;
+        return typeof rec.id === 'string' && (rec.status === 'SUCCESS' || rec.status === 'FAILED');
+      })
+      .map((r) => ({
+        id: r.id,
+        status: r.status,
+        reason: typeof r.reason === 'string' ? r.reason.slice(0, 128) : null,
+      }));
+
     const rawIds = Array.isArray(body.queueIds) ? body.queueIds : [];
+    const successIdsFromResults = granularResults.filter((r) => r.status === 'SUCCESS').map((r) => r.id);
     const queueIds = sortDeterministicIds(
-      rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+      [...rawIds, ...successIdsFromResults].filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
     );
     const rawSkipped = Array.isArray(body.skippedIds) ? body.skippedIds : [];
     const skippedIds = sortDeterministicIds(
@@ -80,7 +96,7 @@ export async function POST(req: NextRequest) {
     );
     const pendingConfirmation = body.pendingConfirmation === true;
 
-    if (queueIds.length === 0 && skippedIds.length === 0) {
+    if (queueIds.length === 0 && skippedIds.length === 0 && granularResults.length === 0) {
       return NextResponse.json({ ok: true, updated: 0 });
     }
 
@@ -90,16 +106,27 @@ export async function POST(req: NextRequest) {
       pvIds,
       projIds, // call_funnel_projection rows (proj_ prefix)
       adjIds, // conversion_adjustments rows (adj_ prefix)
+      unknownIds,
     } = splitAckPrefixedIds(queueIds);
+    if (unknownIds.length > 0) {
+      return NextResponse.json({ error: 'Unknown ACK id prefix', code: 'ACK_UNKNOWN_PREFIX', unknownIds }, { status: 400 });
+    }
     const sealSkippedIds: string[] = [];
     const signalSkippedIds: string[] = [];
     const pvSkippedIds: string[] = [];
+    const unknownSkippedIds: string[] = [];
     for (const id of skippedIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealSkippedIds.push(s.slice(5));
       else if (s.startsWith('signal_')) signalSkippedIds.push(s.slice(7));
       else if (s.startsWith('pv_')) pvSkippedIds.push(s.slice(3));
-      else pvSkippedIds.push(s);
+      else unknownSkippedIds.push(s);
+    }
+    if (unknownSkippedIds.length > 0) {
+      return NextResponse.json(
+        { error: 'Unknown ACK skipped id prefix', code: 'ACK_UNKNOWN_PREFIX', unknownIds: unknownSkippedIds },
+        { status: 400 }
+      );
     }
 
     const now = new Date().toISOString();
@@ -115,6 +142,7 @@ export async function POST(req: NextRequest) {
       kind: 'ACK',
       queueIds,
       skippedIds,
+      results: granularResults,
       pendingConfirmation,
     });
     const receipt = await registerAckReceipt({
@@ -126,6 +154,7 @@ export async function POST(req: NextRequest) {
         queueIds,
         skippedIds,
         pendingConfirmation,
+        results: granularResults,
       },
     });
     if (receipt.replayed) {
@@ -159,6 +188,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
       const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string; call_id: string | null }> : [];
+      if (allRows.length !== sealIds.length) {
+        logError('OCI_ACK_SEAL_ID_MISMATCH', { requested: sealIds.length, found: allRows.length });
+        return NextResponse.json({ error: 'Queue rows not found for ACK', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      }
       const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
       const processingRows = allRows.filter(r => r.status === 'PROCESSING');
       const unexpected = allRows.filter(r => !TERMINAL_STATES.includes(r.status) && r.status !== 'PROCESSING');
@@ -236,6 +269,82 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const failedGranularIds = granularResults.filter((r) => r.status === 'FAILED').map((r) => r.id);
+    if (failedGranularIds.length > 0) {
+      const failedReasonById = new Map(granularResults.filter((r) => r.status === 'FAILED').map((r) => [r.id, r.reason]));
+      const {
+        sealIds: sealFailedIdsRaw,
+        signalIds: signalFailedIdsRaw,
+        unknownIds: unknownFailedIds,
+      } = splitAckPrefixedIds(failedGranularIds);
+      if (unknownFailedIds.length > 0) {
+        return NextResponse.json(
+          { error: 'Unknown ACK result id prefix', code: 'ACK_UNKNOWN_PREFIX', unknownIds: unknownFailedIds },
+          { status: 400 }
+        );
+      }
+      const sealFailedIds = sealFailedIdsRaw.map((id) => id.trim()).filter(Boolean);
+      const signalFailedIds = signalFailedIdsRaw.map((id) => id.trim()).filter(Boolean);
+
+      if (sealFailedIds.length > 0) {
+        const { data: rows, error } = await adminClient
+          .from('offline_conversion_queue')
+          .select('id, status')
+          .in('id', sealFailedIds)
+          .eq('site_id', siteUuid);
+        if (error) {
+          logError('OCI_ACK_GRANULAR_FAILED_SQL_ERROR', { code: (error as { code?: string })?.code });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        const processingRows = (rows ?? []).filter((row) => (row as { status?: string }).status === 'PROCESSING') as Array<{ id: string }>;
+        if (processingRows.length > 0) {
+          const payload = {
+            provider_error_code: 'SCRIPT_ROW_FAILED',
+            provider_error_category: 'VALIDATION',
+            last_error: 'SCRIPT_ROW_FAILED',
+            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          };
+          const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
+            p_queue_ids: processingRows.map((r) => r.id),
+            p_new_status: 'FAILED',
+            p_created_at: now,
+            p_error_payload: payload,
+          });
+          if (rpcError || typeof updatedCount !== 'number') {
+            logError('OCI_ACK_GRANULAR_FAILED_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code });
+            return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+          }
+          totalUpdated += updatedCount;
+          for (const r of processingRows) {
+            const key = `seal_${r.id}`;
+            const reason = failedReasonById.get(key);
+            if (reason) {
+              logInfo('OCI_ACK_GRANULAR_ROW_FAILED', { site_id: siteUuid, queue_id: r.id, reason });
+            }
+          }
+        }
+      }
+
+      if (signalFailedIds.length > 0) {
+        try {
+          const n = await applyMarketingSignalDispatchBatch(adminClient, {
+            siteId: siteUuid,
+            signalIds: signalFailedIds,
+            expectStatus: 'PROCESSING',
+            newStatus: 'FAILED',
+          });
+          if (n !== signalFailedIds.length) {
+            logError('OCI_ACK_GRANULAR_SIGNAL_MISMATCH', { requested: signalFailedIds.length, updated: n });
+            return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+          }
+          totalUpdated += n;
+        } catch (e) {
+          logError('OCI_ACK_GRANULAR_SIGNAL_FAILED', { error: e instanceof Error ? e.message : String(e) });
+          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+      }
+    }
+
     if (sealSkippedIds.length > 0) {
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
@@ -286,6 +395,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
       const signalRows = Array.isArray(allSignals) ? allSignals as Array<{ id: string; dispatch_status: string }> : [];
+      if (signalRows.length !== signalIds.length) {
+        logError('OCI_ACK_SIGNAL_ID_MISMATCH', { requested: signalIds.length, found: signalRows.length });
+        return NextResponse.json({ error: 'Signal rows not found for ACK', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+      }
       const alreadySentSignals = signalRows.filter(r => r.dispatch_status === 'SENT');
       const toUpdateSignals = signalRows.filter(r => r.dispatch_status === 'PROCESSING');
 
@@ -300,6 +413,10 @@ export async function POST(req: NextRequest) {
             newStatus: 'SENT',
             googleSentAt: now,
           });
+          if (n !== toUpdateSignals.length) {
+            logError('OCI_ACK_SIGNALS_MISMATCH', { requested: toUpdateSignals.length, updated: n });
+            return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+          }
           totalUpdated += n;
         } catch (e) {
           logError('OCI_ACK_SIGNALS_UPDATE_ERROR', { error: e instanceof Error ? e.message : String(e) });
@@ -310,35 +427,69 @@ export async function POST(req: NextRequest) {
 
     // ── proj_ prefix: call_funnel_projection rows ────────────────────────────
     if (projIds.length > 0) {
-      const { error: projError } = await adminClient
+      const { data: projRows, error: projFetchError } = await adminClient
         .from('call_funnel_projection')
-        .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: new Date().toISOString() })
+        .select('call_id')
         .in('call_id', projIds)
         .eq('site_id', siteUuid)
         .eq('export_status', 'READY');
+      if (projFetchError) {
+        logError('OCI_ACK_PROJ_FETCH_ERROR', { code: (projFetchError as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      const targetProjIds = Array.isArray(projRows)
+        ? (projRows as Array<{ call_id: string | null }>).map((r) => r.call_id).filter((v): v is string => Boolean(v))
+        : [];
+      if (targetProjIds.length > 0) {
+        const { data: updatedProjRows, error: projError } = await adminClient
+          .from('call_funnel_projection')
+          .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: new Date().toISOString() })
+          .in('call_id', targetProjIds)
+          .eq('site_id', siteUuid)
+          .eq('export_status', 'READY')
+          .select('call_id');
 
-      if (projError) {
-        logError('OCI_ACK_PROJ_ERROR', { code: (projError as { code?: string })?.code });
-      } else {
-        totalUpdated += projIds.length;
-        logInfo('OCI_ACK_PROJ_COMPLETED', { site_id: siteUuid, count: projIds.length });
+        if (projError) {
+          logError('OCI_ACK_PROJ_ERROR', { code: (projError as { code?: string })?.code });
+        } else {
+          const updatedCount = Array.isArray(updatedProjRows) ? updatedProjRows.length : 0;
+          totalUpdated += updatedCount;
+          logInfo('OCI_ACK_PROJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
+        }
       }
     }
 
     // ── adj_ prefix: conversion_adjustments rows ─────────────────────────────
     if (adjIds.length > 0) {
-      const { error: adjError } = await adminClient
+      const { data: adjRows, error: adjFetchError } = await adminClient
         .from('conversion_adjustments')
-        .update({ status: 'COMPLETED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .select('id')
         .in('id', adjIds)
         .eq('site_id', siteUuid)
         .eq('status', 'PROCESSING');
+      if (adjFetchError) {
+        logError('OCI_ACK_ADJ_FETCH_ERROR', { code: (adjFetchError as { code?: string })?.code });
+        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+      }
+      const targetAdjIds = Array.isArray(adjRows)
+        ? (adjRows as Array<{ id: string | null }>).map((r) => r.id).filter((v): v is string => Boolean(v))
+        : [];
+      if (targetAdjIds.length > 0) {
+        const { data: updatedAdjRows, error: adjError } = await adminClient
+          .from('conversion_adjustments')
+          .update({ status: 'COMPLETED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .in('id', targetAdjIds)
+          .eq('site_id', siteUuid)
+          .eq('status', 'PROCESSING')
+          .select('id');
 
-      if (adjError) {
-        logError('OCI_ACK_ADJ_ERROR', { code: (adjError as { code?: string })?.code });
-      } else {
-        totalUpdated += adjIds.length;
-        logInfo('OCI_ACK_ADJ_COMPLETED', { site_id: siteUuid, count: adjIds.length });
+        if (adjError) {
+          logError('OCI_ACK_ADJ_ERROR', { code: (adjError as { code?: string })?.code });
+        } else {
+          const updatedCount = Array.isArray(updatedAdjRows) ? updatedAdjRows.length : 0;
+          totalUpdated += updatedCount;
+          logInfo('OCI_ACK_ADJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
+        }
       }
     }
 

@@ -4,6 +4,7 @@ import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
 import { buildOrderId } from '@/lib/oci/build-order-id';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
+import { resolveOciConversionName } from '@/lib/domain/mizan-mantik/conversion-ssot';
 import { validateOciQueueValueCents } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
 import { buildSingleConversionGroupKey } from '@/lib/oci/single-conversion-highest-only';
@@ -90,7 +91,7 @@ export function buildQueueItems(
       gclid: (row.gclid || '').trim(),
       wbraid: (row.wbraid || '').trim(),
       gbraid: (row.gbraid || '').trim(),
-      conversionName: OPSMANTIK_CONVERSION_NAMES.won,
+      conversionName: resolveOciConversionName('won'),
       conversionTime,
       conversionValue,
       conversionCurrency,

@@ -179,7 +179,7 @@ class QuantumClient {
   }
 
   fetchConversionsPage(siteId, cursor) {
-    let url = `${this.baseUrl}/api/oci/google-ads-export?siteId=${encodeURIComponent(siteId)}&markAsExported=true`;
+    let url = `${this.baseUrl}/api/oci/google-ads-export?siteId=${encodeURIComponent(siteId)}&markAsExported=true&limit=200`;
     if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
     const response = this._fetchWithSessionRetry(url, {
       method: 'get',
@@ -192,30 +192,57 @@ class QuantumClient {
     if (Array.isArray(payload)) {
       return { items: payload, nextCursor: null };
     }
-    return {
-      items: Array.isArray(payload.items) ? payload.items : [],
-      nextCursor: payload.next_cursor || null
-    };
+    const data = Array.isArray(payload.data) ? payload.data : (Array.isArray(payload.items) ? payload.items : []);
+    const nextCursor = payload.meta && typeof payload.meta === 'object'
+      ? payload.meta.nextCursor || null
+      : (payload.next_cursor || null);
+    const hasNextPage = payload.meta && typeof payload.meta === 'object'
+      ? payload.meta.hasNextPage === true
+      : Boolean(nextCursor);
+    return { items: data, nextCursor, hasNextPage };
   }
 
-  fetchConversions(siteId) {
+  processConversionPages(siteId, onPage, onPageError) {
     let cursor = null;
-    const items = [];
+    let hasNextPage = true;
+    let pageCount = 0;
     do {
       const page = this.fetchConversionsPage(siteId, cursor);
+      pageCount++;
       if (page.items && page.items.length > 0) {
-        Array.prototype.push.apply(items, page.items);
+        try {
+          onPage(page.items, pageCount);
+        } catch (err) {
+          Telemetry.error(`Sayfa ${pageCount} isleme hatasi`, err);
+          if (typeof onPageError === 'function') {
+            try {
+              onPageError(page.items, pageCount, err);
+            } catch (handlerErr) {
+              Telemetry.error(`Sayfa ${pageCount} hata-isleyici arizasi`, handlerErr);
+            }
+          }
+          // Fail-closed: do not continue silently with partially processed pages.
+          throw err;
+        }
       }
       cursor = page.nextCursor;
-    } while (cursor);
-    return items;
+      hasNextPage = Boolean(page.hasNextPage && cursor);
+    } while (hasNextPage);
+    return pageCount;
   }
 
-  sendAck(siteId, queueIds, skippedIds) {
-    if (!queueIds.length && (!skippedIds || !skippedIds.length)) return null;
+  sendAck(siteId, queueIds, skippedIds, failedRows) {
+    if (!queueIds.length && (!skippedIds || !skippedIds.length) && (!failedRows || !failedRows.length)) return null;
     const url = `${this.baseUrl}/api/oci/ack`;
     const payload = { siteId, queueIds: queueIds || [] };
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
+    if (failedRows && failedRows.length > 0) {
+      payload.results = []
+        .concat((queueIds || []).map(function (id) { return { id: id, status: 'SUCCESS' }; }))
+        .concat((failedRows || []).map(function (f) {
+          return { id: f.queueId, status: 'FAILED', reason: f.errorCode || 'SCRIPT_ROW_FAILED' };
+        }));
+    }
     const response = this._fetchWithSessionRetry(url, {
       method: 'post',
       headers: {
@@ -353,62 +380,85 @@ function main() {
     Telemetry.info('Ag protokolu dogrulaniyor...');
     client.verifyHandshake(CONFIG.SITE_ID);
 
-    // 2. Fetch Data
+    // 2. Fetch and process pages (memory-safe)
     Telemetry.info('Kuyruk dinleniyor...');
-    const conversions = client.fetchConversions(CONFIG.SITE_ID);
+    let hasAnyWork = false;
+    let totalUploaded = 0;
+    let totalSkippedDeterministic = 0;
+    let totalSkippedValidation = 0;
+    let totalAckUpdated = 0;
+    let totalAutoFailedUploadApply = 0;
+    let totalAutoFailedPageProcessing = 0;
+    let totalPages = 0;
 
-    if (!Array.isArray(conversions) || conversions.length === 0) {
+    // 3. Upload & Validate per page
+    const engine = new UploadEngine();
+    totalPages = client.processConversionPages(CONFIG.SITE_ID, function (conversions, pageNo) {
+      if (!Array.isArray(conversions) || conversions.length === 0) return;
+      hasAnyWork = true;
+      Telemetry.info(`Sayfa ${pageNo}: ${conversions.length} ham sinyal yakalandi. Validasyon basliyor...`);
+      const stats = engine.process(conversions, {
+        onUploadFailure: function (ids, errorCode, errorMessage, errorCategory) {
+          if (ids && ids.length > 0) {
+            Telemetry.warn('Upload apply failed; marking appended rows FAILED (TRANSIENT)', { count: ids.length, page: pageNo });
+            client.sendAckFailed(CONFIG.SITE_ID, ids, errorCode, errorMessage, errorCategory);
+            totalAutoFailedUploadApply += ids.length;
+          }
+        }
+      });
+
+      totalUploaded += stats.uploaded || 0;
+      totalSkippedDeterministic += stats.skippedDeterministic || 0;
+      totalSkippedValidation += stats.skippedValidation || 0;
+
+      Telemetry.info(
+        `Sayfa ${pageNo} bilanco: Yuklendi=${stats.uploaded}, Deterministic Skip=${stats.skippedDeterministic || 0}, Validation Fail=${stats.skippedValidation || 0}`
+      );
+
+      // 4. Muhurleme (ACK) - uploadFailed invariant: ACK blokla
+      if (stats.uploadFailed) return;
+
+      if (
+        stats.successIds.length > 0 ||
+        (stats.skippedIds && stats.skippedIds.length > 0) ||
+        (stats.failedRows && stats.failedRows.length > 0)
+      ) {
+        const total =
+          (stats.successIds.length || 0) +
+          ((stats.skippedIds && stats.skippedIds.length) || 0) +
+          ((stats.failedRows && stats.failedRows.length) || 0);
+        Telemetry.info(`Sayfa ${pageNo}: ${total} kayit icin API\'ye Muhur (ACK) gonderiliyor...`);
+        const ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds, stats.failedRows || []);
+        if (ackRes) {
+          totalAckUpdated += Number(ackRes.updated || 0);
+          Telemetry.info(
+            `Sayfa ${pageNo} ACK: ok=${!!ackRes.ok}, updated=${ackRes.updated != null ? ackRes.updated : 0}${
+              ackRes.warnings ? ` | uyari=${JSON.stringify(ackRes.warnings)}` : ''
+            }`
+          );
+        }
+      }
+    }, function (conversions, pageNo, err) {
+      const ids = (Array.isArray(conversions) ? conversions : [])
+        .map(function (row) { return row && row.id ? String(row.id) : ''; })
+        .filter(function (id) { return id.length > 0; });
+      if (ids.length > 0) {
+        const msg = (err && err.message) ? String(err.message).slice(0, 500) : 'PAGE_PROCESSING_FAILURE';
+        Telemetry.warn(`Sayfa ${pageNo}: ${ids.length} kayit TRANSIENT fail olarak isaretleniyor`, { reason: msg });
+        client.sendAckFailed(CONFIG.SITE_ID, ids, 'PAGE_PROCESSING_FAILURE', msg, 'TRANSIENT');
+        totalAutoFailedPageProcessing += ids.length;
+      }
+    });
+
+    if (!hasAnyWork) {
       Telemetry.info('Islenecek yeni donusum bulunamadi. Uyku moduna geciliyor.');
       return;
     }
 
-    Telemetry.info(`${conversions.length} ham sinyal yakalandi. Validasyon basliyor...`);
-
-    // 3. Upload & Validate
-    const engine = new UploadEngine();
-    const stats = engine.process(conversions, {
-      onUploadFailure: function (ids, errorCode, errorMessage, errorCategory) {
-        if (ids && ids.length > 0) {
-          Telemetry.warn('Upload apply failed; marking appended rows FAILED (TRANSIENT)', { count: ids.length });
-          client.sendAckFailed(CONFIG.SITE_ID, ids, errorCode, errorMessage, errorCategory);
-        }
-      }
-    });
-
-    Telemetry.info(`Yukleme Bilancosu: Yuklendi: ${stats.uploaded}, Deterministic Skip: ${stats.skippedDeterministic || 0}, Validation Fail: ${stats.skippedValidation || 0}`);
-
-    // 4. Muhurleme (ACK) - uploadFailed invariant: ACK blokla
-    if (stats.uploadFailed) return;
-
-    if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0)) {
-      const total = (stats.successIds.length || 0) + (stats.skippedIds && stats.skippedIds.length || 0);
-      Telemetry.info(`${total} kayit icin API\'ye Muhur (ACK) gonderiliyor...`);
-      const ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds);
-      if (ackRes) {
-        Telemetry.info(`ACK geri donus: ok=${!!ackRes.ok}, updated=${ackRes.updated != null ? ackRes.updated : 0}${ackRes.warnings ? ` | uyari=${JSON.stringify(ackRes.warnings)}` : ''}`);
-        Telemetry.info(`Google\'a giden -> offline_conversion_queue COMPLETED: ${stats.successIds.join(', ') || '-'}`);
-        Telemetry.info(`DETERMINISTIC_SKIP (V1 sampled) -> COMPLETED: ${(stats.skippedIds || []).join(', ') || '-'}`);
-      }
-    }
-
-    // 5. Başarısız satırlar (validation fail) → ack-failed (PROCESSING → FAILED)
-    if (stats.failedRows && stats.failedRows.length > 0) {
-      const byError = {};
-      for (const f of stats.failedRows) {
-        const key = f.errorCode + '|' + f.errorCategory;
-        if (!byError[key]) byError[key] = { queueIds: [], errorCode: f.errorCode, errorMessage: f.errorMessage, errorCategory: f.errorCategory };
-        byError[key].queueIds.push(f.queueId);
-      }
-      for (const key of Object.keys(byError)) {
-        const g = byError[key];
-        Telemetry.info(`${g.queueIds.length} kayit FAILED isaretleniyor: ${g.errorCode}`);
-        client.sendAckFailed(CONFIG.SITE_ID, g.queueIds, g.errorCode, g.errorMessage, g.errorCategory);
-      }
-    }
-
-    if (stats.successIds.length > 0 || (stats.skippedIds && stats.skippedIds.length > 0) || (stats.failedRows && stats.failedRows.length > 0)) {
-      Telemetry.info('Senkronizasyon tamamlandi.');
-    }
+    Telemetry.info(
+      `Toplam bilanco: sayfa=${totalPages}, yuklendi=${totalUploaded}, deterministicSkip=${totalSkippedDeterministic}, validationFail=${totalSkippedValidation}, ackUpdated=${totalAckUpdated}, autoFailedUploadApply=${totalAutoFailedUploadApply}, autoFailedPageProcessing=${totalAutoFailedPageProcessing}, autoFailedTotal=${totalAutoFailedUploadApply + totalAutoFailedPageProcessing}`
+    );
+    Telemetry.info('Senkronizasyon tamamlandi.');
 
   } catch (error) {
     Telemetry.wtf('Script kritik bir cekirdek hatasiyla durduruldu.');

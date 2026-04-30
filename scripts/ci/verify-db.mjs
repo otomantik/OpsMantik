@@ -63,8 +63,31 @@ const presenceOnlyRpcs = [
   'append_worker_transition_batch_v2',
   'claim_outbox_events',
   'claim_offline_conversion_jobs_v3',
-  'register_ack_receipt_v1',
   'complete_ack_receipt_v1',
+];
+
+const signatureAwareChecks = [
+  {
+    name: 'register_ack_receipt_v1',
+    variants: [
+      {
+        args: {
+          p_site_id: sampleSiteId,
+          p_kind: 'ACK',
+          p_payload_hash: 'verify-db-payload-hash',
+          p_request_fingerprint: 'verify-db',
+          p_request_payload: { probe: true },
+        },
+      },
+      {
+        args: {
+          p_site_id: sampleSiteId,
+          p_request_key: 'ACK:verify-db-payload-hash',
+          p_payload_hash: 'verify-db-payload-hash',
+        },
+      },
+    ],
+  },
 ];
 
 const tableChecks = [
@@ -111,6 +134,15 @@ function isMissingFunctionError(error) {
   return error?.code === 'PGRST116' || error?.code === 'PGRST202' || /not found|does not exist|404/i.test(msg);
 }
 
+function isAcceptableSignatureProbeError(error) {
+  const code = String(error?.code || '');
+  const msg = String(error?.message || '');
+  // These errors still prove function+signature resolution succeeded and execution entered function body.
+  if (['P0001', '42501'].includes(code)) return true;
+  if (/^2350\d$/.test(code) || /^22\d{3}$/.test(code)) return true;
+  return /service_role required|ACK_PAYLOAD_HASH_MISMATCH|permission denied|violates|invalid input/i.test(msg);
+}
+
 const results = [];
 for (const c of checks) {
   if (c.serviceRoleOnly && !serviceKey) {
@@ -146,6 +178,34 @@ for (const fnName of presenceOnlyRpcs) {
     continue;
   }
   results.push({ name: `rpc_presence:${fnName}`, ok: true });
+}
+
+for (const check of signatureAwareChecks) {
+  let okVariant = false;
+  let lastError = null;
+  for (const variant of check.variants) {
+    // eslint-disable-next-line no-await-in-loop
+    const { error } = await supabase.rpc(check.name, variant.args);
+    if (!error) {
+      okVariant = true;
+      break;
+    }
+    if (isAcceptableSignatureProbeError(error)) {
+      okVariant = true;
+      break;
+    }
+    if (!isMissingFunctionError(error)) {
+      lastError = error;
+      // Fail hard on unexpected runtime errors (no false-green).
+      break;
+    }
+    lastError = error;
+  }
+  results.push({
+    name: `rpc_signature:${check.name}`,
+    ok: okVariant,
+    error: okVariant || !lastError ? undefined : { message: lastError.message, code: lastError.code },
+  });
 }
 
 for (const table of tableChecks) {

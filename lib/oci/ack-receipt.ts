@@ -23,6 +23,7 @@ export function buildAckPayloadHash(input: {
   kind: AckReceiptKind;
   queueIds: string[];
   skippedIds?: string[];
+  results?: Array<{ id: string; status: 'SUCCESS' | 'FAILED'; reason?: string | null }>;
   fatalErrorIds?: string[];
   pendingConfirmation?: boolean;
   errorCode?: string;
@@ -34,6 +35,15 @@ export function buildAckPayloadHash(input: {
     kind: input.kind,
     queueIds: [...input.queueIds].sort(),
     skippedIds: [...(input.skippedIds ?? [])].sort(),
+    results: [...(input.results ?? [])]
+      .map((r) => ({ id: r.id, status: r.status, reason: r.reason ?? null }))
+      .sort((a, b) => {
+        const idCmp = a.id.localeCompare(b.id);
+        if (idCmp !== 0) return idCmp;
+        const statusCmp = a.status.localeCompare(b.status);
+        if (statusCmp !== 0) return statusCmp;
+        return (a.reason ?? '').localeCompare(b.reason ?? '');
+      }),
     fatalErrorIds: [...(input.fatalErrorIds ?? [])].sort(),
     pendingConfirmation: input.pendingConfirmation === true,
     errorCode: input.errorCode ?? null,
@@ -50,13 +60,29 @@ export async function registerAckReceipt(params: {
   requestFingerprint: string;
   requestPayload: Record<string, unknown>;
 }): Promise<AckReceiptRegistration> {
-  const { data, error } = await adminClient.rpc('register_ack_receipt_v1', {
+  let data: unknown;
+  let error: { code?: string; message?: string } | null = null;
+  const modern = await adminClient.rpc('register_ack_receipt_v1', {
     p_site_id: params.siteId,
     p_kind: params.kind,
     p_payload_hash: params.payloadHash,
     p_request_fingerprint: params.requestFingerprint,
     p_request_payload: params.requestPayload,
   });
+  data = modern.data;
+  error = modern.error as { code?: string; message?: string } | null;
+
+  // Backward-compatible fallback for environments that still expose 3-arg signature.
+  if (error && (String(error.message || '').includes('function') || error.code === 'PGRST202')) {
+    const requestKey = `${params.kind}:${params.payloadHash}`;
+    const legacy = await adminClient.rpc('register_ack_receipt_v1', {
+      p_site_id: params.siteId,
+      p_request_key: requestKey,
+      p_payload_hash: params.payloadHash,
+    });
+    data = legacy.data;
+    error = legacy.error as { code?: string; message?: string } | null;
+  }
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   return {

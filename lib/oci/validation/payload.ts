@@ -1,4 +1,6 @@
 import { z } from 'zod/v3';
+import { isOciCanonicalStage } from '@/lib/domain/mizan-mantik/conversion-ssot';
+import { hashNormalizedEmail, hashNormalizedPhoneE164 } from './crypto';
 
 /**
  * Production-hardened OCI Payload Schema.
@@ -40,4 +42,15 @@ export function validateOciPayload(data: unknown): OciPayload {
 
 export function safeValidateOciPayload(data: unknown) {
   return OciPayloadSchema.safeParse(data);
+}
+
+export function validateCanonicalStage(stage: string): boolean {
+  return isOciCanonicalStage(stage);
+}
+
+export function normalizeAndHashPii(input: { email?: string | null; phone?: string | null }) {
+  return {
+    emailSha256: hashNormalizedEmail(input.email),
+    phone: hashNormalizedPhoneE164(input.phone),
+  };
 }

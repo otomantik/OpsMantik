@@ -19,7 +19,7 @@
    # Windows PowerShell'de curl alias'ı farklı olduğu için curl.exe kullanın
    curl.exe -s -w "\n%{http_code}" "https://console.opsmantik.com/api/oci/google-ads-export?siteId=81d957f3c7534f53b12ff305f9f07ae7" -H "x-api-key: BURAYA_DEPLOY_SCRIPTTEKI_X_API_KEY"
    ```
-   - 200 + JSON (`items`, `next_cursor`) → API erişilebilir.
+  - 200 + JSON (`data`, `meta.hasNextPage`, `meta.nextCursor`) → API erişilebilir.
    - 401 → API key yanlış veya eksik; deploy script'teki `CONFIG.X_API_KEY` ile aynı değeri kullandığınızdan emin olun.
    - 404 → Path yanlış veya bu path o ortamda yok (deploy / rewrite kontrolü).
 3. **Vercel deploy:** Son deploy’da `app/api/oci/google-ads-export/route.ts` var mı? Production branch güncel mi?
@@ -71,7 +71,7 @@
 
 ## 0e. Script–API uyumluluk (Eslamed / Muratcan deploy)
 
-**Kontrol edilen:** Yapılan düzeltmelere (export `{ items, next_cursor }`, ack PROCESSING, ack response kontrolü) deploy script’lerin uyumu.
+**Kontrol edilen:** Yapılan düzeltmelere (export `{ data, meta }`, ack PROCESSING/granular result, ack response kontrolü) deploy script’lerin uyumu.
 
 | Kontrol | Eslamed-OCI-Quantum.js | Muratcan-OCI-Quantum.js |
 |--------|------------------------|--------------------------|

@@ -11,6 +11,8 @@ export type FetchedExportData = {
 };
 
 export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedExportData> {
+  const queueLimit = Math.min(EXPORT_QUEUE_LIMIT, Math.max(1, ctx.pageLimit));
+  const signalLimit = Math.min(EXPORT_SIGNALS_LIMIT, Math.max(1, ctx.pageLimit));
   let queueQuery = adminClient
     .from('offline_conversion_queue')
     .select('id, sale_id, call_id, gclid, wbraid, gbraid, conversion_time, occurred_at, created_at, updated_at, value_cents, optimization_stage, optimization_value, currency, action, external_id, session_id, provider_key')
@@ -23,7 +25,7 @@ export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedEx
   const { data: queueRows, error: queueError } = await queueQuery
     .order('updated_at', { ascending: true })
     .order('id', { ascending: true })
-    .limit(EXPORT_QUEUE_LIMIT);
+    .limit(queueLimit);
   if (queueError) throw queueError;
 
   let signalQuery = adminClient
@@ -37,7 +39,7 @@ export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedEx
   const { data: signalRows, error: signalError } = await signalQuery
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
-    .limit(EXPORT_SIGNALS_LIMIT);
+    .limit(signalLimit);
   if (signalError) throw signalError;
 
   return {

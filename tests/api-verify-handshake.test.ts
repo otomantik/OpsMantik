@@ -8,6 +8,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { config } from 'dotenv';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 config({ path: '.env.local' });
 
@@ -123,4 +125,11 @@ test('POST /api/oci/v2/verify: valid public_id and x-api-key returns 200 with se
   } finally {
     restoreEnv(saved);
   }
+});
+
+test('POST /api/oci/v2/verify route enforces google_ads_sync capability gate', () => {
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'v2', 'verify', 'route.ts'), 'utf8');
+  assert.ok(src.includes('OCI_VERIFY_CAPABILITY_ENFORCE'), 'verify route must support controlled capability-gate rollout');
+  assert.ok(src.includes("requireCapability(entitlements, 'google_ads_sync')"), 'verify route must enforce capability gate');
+  assert.ok(src.includes("code: 'CAPABILITY_REQUIRED'"), 'verify route must expose capability-required response code');
 });

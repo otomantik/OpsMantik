@@ -28,6 +28,11 @@ export interface AdminMetricsSnapshot {
     completed_last_24h: number;
     failed: number;
     dead_letter_depth: number;
+    script_auto_failed_last_24h: {
+      upload_exception: number;
+      page_processing_failure: number;
+      total: number;
+    };
   };
   signals: {
     pending: number;
@@ -105,6 +110,24 @@ async function countByStatusInSince(
   }
 }
 
+/** Count queue rows by provider_error_code in terminal/retry statuses over a window. */
+async function countQueueByErrorCodeSince(
+  errorCode: string,
+  since: string
+): Promise<number> {
+  try {
+    const { count, error } = await adminClient
+      .from('offline_conversion_queue')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['RETRY', 'FAILED', 'DEAD_LETTER_QUARANTINE'])
+      .eq('provider_error_code', errorCode)
+      .gte('updated_at', since);
+    return error ? 0 : count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** Count rows matching `dispatch_status = value`. */
 async function countByDispatchStatus(status: string): Promise<number> {
   try {
@@ -170,6 +193,8 @@ export async function buildAdminMetricsSnapshot(
     queueCompleted24h,
     queueFailed,
     queueDlq,
+    queueUploadException24h,
+    queuePageProcessingFailure24h,
     signalsPending,
     signalsProcessed24h,
     signalsFailed,
@@ -194,6 +219,8 @@ export async function buildAdminMetricsSnapshot(
     ),
     countByStatus('offline_conversion_queue', 'FAILED'),
     countByStatus('offline_conversion_queue', 'DEAD_LETTER_QUARANTINE'),
+    countQueueByErrorCodeSince('UPLOAD_EXCEPTION', windowStart),
+    countQueueByErrorCodeSince('PAGE_PROCESSING_FAILURE', windowStart),
 
     // marketing_signals — optional dispatch_status column (exists in most deploys).
     countByDispatchStatus('PENDING'),
@@ -221,6 +248,11 @@ export async function buildAdminMetricsSnapshot(
       completed_last_24h: queueCompleted24h,
       failed: queueFailed,
       dead_letter_depth: queueDlq,
+      script_auto_failed_last_24h: {
+        upload_exception: queueUploadException24h,
+        page_processing_failure: queuePageProcessingFailure24h,
+        total: queueUploadException24h + queuePageProcessingFailure24h,
+      },
     },
     signals: {
       pending: signalsPending,
@@ -252,6 +284,9 @@ export function snapshotToSentryTags(snapshot: AdminMetricsSnapshot): Record<str
     'metrics.queue.retry': String(snapshot.queue.retry),
     'metrics.queue.failed': String(snapshot.queue.failed),
     'metrics.queue.dead_letter_depth': String(snapshot.queue.dead_letter_depth),
+    'metrics.queue.script_auto_failed_24h.upload_exception': String(snapshot.queue.script_auto_failed_last_24h.upload_exception),
+    'metrics.queue.script_auto_failed_24h.page_processing_failure': String(snapshot.queue.script_auto_failed_last_24h.page_processing_failure),
+    'metrics.queue.script_auto_failed_24h.total': String(snapshot.queue.script_auto_failed_last_24h.total),
     'metrics.signals.pending': String(snapshot.signals.pending),
     'metrics.signals.failed': String(snapshot.signals.failed),
     'metrics.dlq.sync_dlq_depth': String(snapshot.dlq.sync_dlq_depth),

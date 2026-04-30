@@ -26,6 +26,21 @@ test('canonical OCI script accepts and normalizes compact Google Ads timezone of
   assert.ok(src.includes("'Conversion time': Validator.normalizeGoogleAdsTime(row.conversionTime)"), 'script must upload normalized conversion time');
 });
 
+test('canonical OCI script consumes paginated export meta contract', () => {
+  const src = readFileSync(CANONICAL_SCRIPT, 'utf8');
+  assert.ok(src.includes('limit=200'), 'script export fetch must request bounded page size');
+  assert.ok(src.includes('payload.meta.nextCursor') || src.includes('payload.meta.nextCursor || null'), 'script must read meta.nextCursor');
+  assert.ok(src.includes('payload.meta.hasNextPage'), 'script must read meta.hasNextPage');
+  assert.ok(src.includes('while (hasNextPage)'), 'script must iterate via hasNextPage loop');
+});
+
+test('canonical OCI script sends granular mixed ACK payload', () => {
+  const src = readFileSync(CANONICAL_SCRIPT, 'utf8');
+  assert.ok(src.includes('payload.results'), 'script must send granular results array to ack endpoint');
+  assert.ok(src.includes("status: 'SUCCESS'"), 'script must mark success rows explicitly');
+  assert.ok(src.includes("status: 'FAILED'"), 'script must mark failed rows explicitly');
+});
+
 test('canonical OCI script uses the universal English action names only', () => {
   const src = readFileSync(CANONICAL_SCRIPT, 'utf8');
   assert.ok(src.includes("OpsMantik_Contacted"), 'script must include contacted action');

@@ -95,8 +95,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, updated: 0 });
     }
 
-    const { sealIds: sealFailedIds, signalIds: signalFailedIds, pvIds: pvFailedIds } = splitAckPrefixedIds(queueIds);
-    const { sealIds: sealFatalIds, signalIds: signalFatalIds, pvIds: pvFatalIds } = splitAckPrefixedIds(fatalIds);
+    const {
+      sealIds: sealFailedIds,
+      signalIds: signalFailedIds,
+      pvIds: pvFailedIds,
+      unknownIds: unknownFailedIds,
+    } = splitAckPrefixedIds(queueIds);
+    const {
+      sealIds: sealFatalIds,
+      signalIds: signalFatalIds,
+      pvIds: pvFatalIds,
+      unknownIds: unknownFatalIds,
+    } = splitAckPrefixedIds(fatalIds);
+    if (unknownFailedIds.length > 0 || unknownFatalIds.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Unknown ACK_FAILED id prefix',
+          code: 'ACK_UNKNOWN_PREFIX',
+          unknownIds: [...unknownFailedIds, ...unknownFatalIds],
+        },
+        { status: 400 }
+      );
+    }
 
     const now = await getDbNowIso();
     const requestFingerprint = [

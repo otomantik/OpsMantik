@@ -49,3 +49,9 @@ Near-term production rollout thresholds for OCI queue integrity.
 - `actionable.missingEntitlementSites`
 - `actionable.missingEntitlementRpcSites`
 - `actionable.schemaDriftSites` (includes missing table names per site)
+
+## Script Export Contract (Current)
+
+- Export API supports `limit` + `cursor` query params.
+- Response contract is `{ data, meta }` where `meta.hasNextPage` and `meta.nextCursor` drive script pagination.
+- ACK contract supports granular row-level batch: `results: [{ id, status: SUCCESS|FAILED, reason? }]`.

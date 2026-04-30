@@ -153,7 +153,7 @@ export function verifySessionTokenSync(token: string): { siteId: string; expires
 }
 
 function legacySecret(): string {
-  return process.env.OCI_SESSION_SECRET || process.env.CRON_SECRET || process.env.OCI_API_KEY || '';
+  return process.env.OCI_SESSION_SECRET || process.env.CRON_SECRET || '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

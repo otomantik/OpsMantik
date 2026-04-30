@@ -29,6 +29,11 @@ function baseSnapshot(
       completed_last_24h: 0,
       failed: 0,
       dead_letter_depth: 0,
+      script_auto_failed_last_24h: {
+        upload_exception: 0,
+        page_processing_failure: 0,
+        total: 0,
+      },
     },
     signals: { pending: 0, processed_last_24h: 0, failed: 0 },
     dlq: { sync_dlq_depth: 0 },
@@ -48,6 +53,11 @@ test('snapshotToSentryTags flattens every metric into a string map', () => {
       completed_last_24h: 990,
       failed: 10,
       dead_letter_depth: 2,
+      script_auto_failed_last_24h: {
+        upload_exception: 6,
+        page_processing_failure: 4,
+        total: 10,
+      },
     },
     signals: { pending: 5, processed_last_24h: 220, failed: 3 },
     dlq: { sync_dlq_depth: 9 },
@@ -60,6 +70,9 @@ test('snapshotToSentryTags flattens every metric into a string map', () => {
   assert.equal(tags['metrics.queue.queued'], '3');
   assert.equal(tags['metrics.queue.failed'], '10');
   assert.equal(tags['metrics.queue.dead_letter_depth'], '2');
+  assert.equal(tags['metrics.queue.script_auto_failed_24h.upload_exception'], '6');
+  assert.equal(tags['metrics.queue.script_auto_failed_24h.page_processing_failure'], '4');
+  assert.equal(tags['metrics.queue.script_auto_failed_24h.total'], '10');
   assert.equal(tags['metrics.signals.pending'], '5');
   assert.equal(tags['metrics.signals.failed'], '3');
   assert.equal(tags['metrics.dlq.sync_dlq_depth'], '9');

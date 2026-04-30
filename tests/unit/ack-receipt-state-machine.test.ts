@@ -14,7 +14,11 @@ test('ack receipt migration defines REGISTERED/APPLIED state machine', () => {
   assert.ok(migration.includes('apply_state'), 'migration must add apply_state');
   assert.ok(migration.includes("'REGISTERED'") && migration.includes("'APPLIED'"), 'state machine must define REGISTERED/APPLIED');
   assert.ok(migration.includes('in_progress boolean'), 'register function must return in_progress replay signal');
-  assert.ok(migration.includes("existing_state = 'REGISTERED'"), 'replay should expose registered in-progress state');
+  assert.ok(
+    migration.includes("(apply_state = 'REGISTERED') AS in_progress") ||
+      migration.includes("existing_state = 'REGISTERED'"),
+    'replay should expose registered in-progress state'
+  );
   assert.ok(migration.includes("apply_state = 'APPLIED'"), 'complete function must atomically set APPLIED');
 });
 

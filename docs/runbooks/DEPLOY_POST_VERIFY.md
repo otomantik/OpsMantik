@@ -14,3 +14,7 @@ If step 1 fails: check Supabase + `NEXT_PUBLIC_SUPABASE_*` on Vercel.
 If `routes.source` is `memory` in metrics: Redis may be down — see [INFRA_REDIS_QSTASH_CHECKLIST.md](./INFRA_REDIS_QSTASH_CHECKLIST.md).
 
 If **`POST /api/sync`** returns **503** with `Ingest temporarily unavailable` and response header **`x-opsmantik-degraded: qstash_publish_failed`**: QStash could not enqueue the worker job. Check **Vercel → Environment**: `QSTASH_TOKEN`, signing keys, and **`NEXT_PUBLIC_APP_URL`** = full console origin (e.g. `https://console.opsmantik.com`). Without an absolute worker URL, enqueue fails and intent/sync stops. Vercel also sets `VERCEL_URL`; the app uses it as fallback when building the worker URL for QStash.
+
+OCI script lane quick checks:
+- `GET /api/oci/google-ads-export?siteId=<id>&limit=200` returns `data` and `meta.hasNextPage`.
+- `POST /api/oci/ack` accepts granular `results[]` and mixed success/failure rows in one request.

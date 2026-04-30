@@ -70,6 +70,9 @@ test('AdminMetricsSnapshot shape covers the launch checklist keys', () => {
     'queued',
     'completed_last_24h',
     'dead_letter_depth',
+    'script_auto_failed_last_24h',
+    'upload_exception',
+    'page_processing_failure',
     // signals
     'signals',
     // dlq

@@ -33,6 +33,7 @@ export type ExportAuthContext = {
   signalCursorId: string | null;
   wantsJwe: boolean;
   publicKeyB64: string | undefined;
+  pageLimit: number;
 };
 
 export async function authorizeExportRequest(req: NextRequest): Promise<ExportAuthContext> {
@@ -63,6 +64,8 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
   let signalCursorUpdatedAt: string | null = null;
   let signalCursorId: string | null = null;
   const cursorStr = searchParams.get('cursor');
+  const requestedLimit = Number(searchParams.get('limit') ?? 250);
+  const pageLimit = Math.min(1000, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 250));
   if (cursorStr) {
     try {
       const decoded = JSON.parse(Buffer.from(cursorStr, 'base64').toString('utf8'));
@@ -78,11 +81,20 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
   }
 
   let isGhostCursor = false;
+
+  const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, oci_api_key, oci_config').eq('id', siteId).maybeSingle();
+  const byPublicId = byId.data
+    ? null
+    : await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, oci_api_key, oci_config').eq('public_id', siteId).maybeSingle();
+  const site = (byId.data ?? byPublicId?.data ?? null) as ExportSiteRow | null;
+  if (!site) throw new ExportHttpError(404, { error: 'Site not found' });
+
+  // Run ghost-cursor detection only after resolving canonical site UUID.
   if (queueCursorUpdatedAt) {
     const { data: latestRow } = await adminClient
       .from('offline_conversion_queue')
       .select('updated_at')
-      .eq('site_id', siteId)
+      .eq('site_id', site.id)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -92,7 +104,7 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
       const { data: consensus } = await adminClient
         .from('offline_conversion_queue')
         .select('updated_at, id')
-        .eq('site_id', siteId)
+        .eq('site_id', site.id)
         .eq('status', 'COMPLETED')
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -103,13 +115,6 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
       }
     }
   }
-
-  const byId = await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, oci_api_key, oci_config').eq('id', siteId).maybeSingle();
-  const byPublicId = byId.data
-    ? null
-    : await adminClient.from('sites').select('id, public_id, currency, timezone, oci_sync_method, oci_api_key, oci_config').eq('public_id', siteId).maybeSingle();
-  const site = (byId.data ?? byPublicId?.data ?? null) as ExportSiteRow | null;
-  if (!site) throw new ExportHttpError(404, { error: 'Site not found' });
 
   if (apiKey) {
     if (!site.oci_api_key || !timingSafeCompare(site.oci_api_key, apiKey)) {
@@ -153,5 +158,6 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     signalCursorId,
     wantsJwe: req.headers.get('x-oci-jwe-accept') === 'true',
     publicKeyB64: process.env.VOID_PUBLIC_KEY,
+    pageLimit,
   };
 }

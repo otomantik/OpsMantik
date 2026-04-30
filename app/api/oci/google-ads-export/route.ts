@@ -15,22 +15,27 @@ export async function GET(req: NextRequest) {
     const fetched = await fetchExportData(auth);
     const built = await buildExportItems(auth, fetched);
     await markExportProcessing(auth, built);
-    const responseData = auth.markAsExported
-      ? { items: built.combined, adjustments: [], next_cursor: built.nextCursor }
-      : {
-          siteId: auth.siteUuid,
-          items: built.combined,
-          adjustments: [],
-          next_cursor: built.nextCursor,
-          counts: {
-            queued: built.keptConversions.length,
-            signals: built.keptSignalItems.length,
-            pvs: 0,
-            suppressed: built.suppressedQueueIds.length + built.suppressedSignalIds.length,
-            adjustments: 0,
-          },
-          warnings: auth.isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
-        };
+    const responseData = {
+      data: built.combined,
+      meta: {
+        hasNextPage: Boolean(built.nextCursor),
+        nextCursor: built.nextCursor,
+      },
+      siteId: auth.siteUuid,
+      counts: {
+        queued: built.keptConversions.length,
+        signals: built.keptSignalItems.length,
+        pvs: 0,
+        suppressed: built.suppressedQueueIds.length + built.suppressedSignalIds.length,
+        adjustments: 0,
+      },
+      warnings: auth.isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],
+      // Backward-compatible fields (legacy script readers)
+      items: built.combined,
+      adjustments: [],
+      next_cursor: built.nextCursor,
+      markAsExported: auth.markAsExported,
+    };
     return await buildExportResponseAsync(auth, responseData);
   } catch (e: unknown) {
     if (e instanceof ExportHttpError) {
