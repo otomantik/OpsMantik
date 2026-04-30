@@ -388,12 +388,11 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
         const filtered = rows.filter((r) => {
           const ts = parseRpcTimestampMs(r.created_at);
           if (!Number.isFinite(ts)) return false;
-          // Status filter: pending only
+          // Queue SSOT: only unreviewed intent rows stay in active deck.
           const s = (r.status || '').toLowerCase();
-          const isPending = !s || s === 'intent' || s === 'contacted';
+          const isPending = !s || s === 'intent';
           const isUnreviewed = !r.reviewed_at;
-          const reviewedOk = showAll ? true : isUnreviewed;
-          return isPending && reviewedOk && ts >= fromMs && ts < toMs;
+          return isPending && isUnreviewed && ts >= fromMs && ts < toMs;
         });
         
         if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {

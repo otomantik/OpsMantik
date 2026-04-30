@@ -43,11 +43,12 @@ test('panel feed waits for real server success before removing a card', () => {
   assert.ok(src.indexOf("if (!res.ok || !result.success)") < src.indexOf('setCalls(prev => prev.filter(c => c.id !== intent.id));'), 'card removal must happen after server success check');
 });
 
-test('panel feed hides terminal rows and keeps only intent/contacted pending states', () => {
+test('panel feed hides terminal/reviewed rows and keeps only unreviewed intent states', () => {
   const src = readFileSync(PANEL_FEED, 'utf8');
-  assert.ok(src.includes("const isPending = !s || s === 'intent' || s === 'contacted';"), 'pending contract must match queue FSM');
-  assert.ok(src.includes('if (!isPending) return false;'), 'all-time filter must still exclude terminal rows');
-  assert.ok(src.includes('if (!stillPending) {'), 'realtime updates must remove terminal rows from deck');
+  assert.ok(src.includes('function isPanelPending(call: HunterIntent): boolean {'), 'panel must centralize pending predicate');
+  assert.ok(src.includes("return (!s || s === 'intent') && !call.reviewed_at;"), 'pending contract must be unreviewed intent only');
+  assert.ok(src.includes('if (!isPanelPending(c)) return false;'), 'all-time filter must still exclude terminal/reviewed rows');
+  assert.ok(src.includes('if (!isPanelPending(updated)) {'), 'realtime updates must remove non-pending rows from deck');
 });
 
 test('lead action overlay shows success only when parent completion succeeds', () => {

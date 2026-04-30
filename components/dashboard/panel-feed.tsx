@@ -27,6 +27,11 @@ function dedupeLatestBySession(calls: HunterIntent[]): HunterIntent[] {
   return out;
 }
 
+function isPanelPending(call: HunterIntent): boolean {
+  const s = (call.status || '').toLowerCase();
+  return (!s || s === 'intent') && !call.reviewed_at;
+}
+
 export function PanelFeed({
   initialCalls,
   siteId,
@@ -53,14 +58,11 @@ export function PanelFeed({
     const yesterdayKey = getTodayDateKey(siteTz, y);
 
     const scoped = calls.filter((c) => {
-      const s = (c.status || '').toLowerCase();
-      // Queue SSOT: only intent/contacted are actionable; terminal rows must stay hidden.
-      const isPending = !s || s === 'intent' || s === 'contacted';
-      if (!isPending) return false;
+      if (!isPanelPending(c)) return false;
       if (dateFilter === 'all') return true;
       const cKey = getTodayDateKey(siteTz, new Date(c.created_at));
-      if (dateFilter === 'today') return cKey === todayKey && isPending;
-      if (dateFilter === 'yesterday') return cKey === yesterdayKey && isPending;
+      if (dateFilter === 'today') return cKey === todayKey;
+      if (dateFilter === 'yesterday') return cKey === yesterdayKey;
       return true;
     });
     return dedupeLatestBySession(scoped);
@@ -153,6 +155,7 @@ export function PanelFeed({
           const row = payload.new as Record<string, unknown>;
           if (row.site_id !== siteId) return;
           const newCall = payload.new as HunterIntent;
+          if (!isPanelPending(newCall)) return;
           setCalls((prev) => {
             if (prev.some((c) => c.id === newCall.id)) return prev;
             const sessionId =
@@ -182,9 +185,7 @@ export function PanelFeed({
           const row = payload.new as Record<string, unknown>;
           if (row.site_id !== siteId) return;
           const updated = payload.new as HunterIntent;
-          const nextStatus = String(updated.status || '').toLowerCase();
-          const stillPending = !nextStatus || nextStatus === 'intent' || nextStatus === 'contacted';
-          if (!stillPending) {
+          if (!isPanelPending(updated)) {
             setCalls((prev) => prev.filter((c) => c.id !== updated.id));
           }
         }
