@@ -51,6 +51,10 @@ export async function validateSiteAccess(
       currentUserId = user.id;
     }
 
+    // Load auth user as compatibility bridge (profile role is primary truth,
+    // user metadata/app_metadata is fallback for legacy super-admin sessions).
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
     // Check if user is admin (admins have access to all sites)
     const { data: profile } = await supabase
       .from('profiles')
@@ -58,7 +62,7 @@ export async function validateSiteAccess(
       .eq('id', currentUserId)
       .maybeSingle();
 
-    if (resolvePlatformAdmin(profile?.role ?? null, null)) {
+    if (resolvePlatformAdmin(profile?.role ?? null, authUser ?? null)) {
       return {
         allowed: true,
         role: 'admin'
