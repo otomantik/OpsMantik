@@ -339,8 +339,8 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
           p_date_to: r.toIso,
           p_limit: 100,
           p_ads_only: adsOnly,
-          p_only_unreviewed: false,
-          p_include_reviewed: true,
+          p_only_unreviewed: !showAll,
+          p_include_reviewed: false,
         });
         const liteMsg0 = String(lite.error?.message || lite.error?.details || '').toLowerCase();
         if (lite.error && (liteMsg0.includes('does not exist') || liteMsg0.includes('not found') || liteMsg0.includes('function'))) {
@@ -362,8 +362,8 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
             p_date_from: r.fromIso,
             p_date_to: r.toIso,
             p_ads_only: adsOnly,
-            p_only_unreviewed: false,
-            p_include_reviewed: true,
+            p_only_unreviewed: !showAll,
+            p_include_reviewed: false,
             rowCount: count,
             error: liteErr?.message ?? null,
           });
@@ -410,7 +410,7 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
             to: r.toIso,
             ads_only: adsOnly,
             only_unreviewed: !showAll,
-            include_reviewed: true,
+            include_reviewed: false,
           },
           sample: rows.slice(0, 5).map((x) => ({
             call_id: x.id,

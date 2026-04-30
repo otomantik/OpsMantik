@@ -9,16 +9,16 @@ const PANEL_FEED = join(ROOT, 'components', 'dashboard', 'panel-feed.tsx');
 const LEAD_ACTION_OVERLAY = join(ROOT, 'components', 'dashboard', 'lead-action-overlay.tsx');
 const INVALIDATE_HELPER = join(ROOT, 'lib', 'oci', 'invalidate-pending-artifacts.ts');
 
-test('stage route delegates mutation and side-effects to apply_call_action_v2', () => {
+test('stage route delegates mutation and side-effects to atomic status+review RPC', () => {
   const src = readFileSync(STAGE_ROUTE, 'utf8');
-  const rpcIndex = src.indexOf("adminClient.rpc('apply_call_action_v2'");
+  const rpcIndex = src.indexOf("adminClient.rpc('apply_call_action_with_review_v1'");
   const errorGuardIndex = src.indexOf('if (updateError) {', rpcIndex);
   
   // Side-effects (enqueues, signals) are now handled via the outbox processor
   // triggered by the notifyOutboxPending helper at the end of the route.
   const outboxNotifyIndex = src.indexOf('notifyOutboxPending(');
 
-  assert.ok(rpcIndex >= 0, 'stage route must persist via apply_call_action_v2');
+  assert.ok(rpcIndex >= 0, 'stage route must persist via apply_call_action_with_review_v1');
   assert.ok(errorGuardIndex > rpcIndex, 'stage route must guard RPC failures');
   assert.ok(outboxNotifyIndex > errorGuardIndex, 'outbox notification must happen after RPC success guard');
 });
@@ -36,16 +36,24 @@ test('stage route treats junk as a canonical optimization_stage and invalidates 
 test('panel feed waits for real server success before removing a card', () => {
   const src = readFileSync(PANEL_FEED, 'utf8');
 
-  assert.ok(src.includes('body: JSON.stringify({ phone, score, action_type: actionType'), 'panel feed must send action_type to the stage route');
-  assert.ok(src.includes("if (!res.ok || !result?.success)"), 'panel feed must gate completion on server success');
+  assert.ok(src.includes('/api/intents/${intent.id}/stage'), 'panel feed must call stage route');
+  assert.ok(src.includes('action_type: actionType'), 'panel feed must send action_type to the stage route');
+  assert.ok(src.includes("if (!res.ok || !result.success)"), 'panel feed must gate completion on server success');
   assert.ok(src.includes('setCalls(prev => prev.filter(c => c.id !== intent.id));'), 'panel feed must still remove cards after success');
-  assert.ok(src.indexOf("if (!res.ok || !result?.success)") < src.indexOf('setCalls(prev => prev.filter(c => c.id !== intent.id));'), 'card removal must happen after server success check');
+  assert.ok(src.indexOf("if (!res.ok || !result.success)") < src.indexOf('setCalls(prev => prev.filter(c => c.id !== intent.id));'), 'card removal must happen after server success check');
+});
+
+test('panel feed hides terminal rows and keeps only intent/contacted pending states', () => {
+  const src = readFileSync(PANEL_FEED, 'utf8');
+  assert.ok(src.includes("const isPending = !s || s === 'intent' || s === 'contacted';"), 'pending contract must match queue FSM');
+  assert.ok(src.includes('if (!isPending) return false;'), 'all-time filter must still exclude terminal rows');
+  assert.ok(src.includes('if (!stillPending) {'), 'realtime updates must remove terminal rows from deck');
 });
 
 test('lead action overlay shows success only when parent completion succeeds', () => {
   const src = readFileSync(LEAD_ACTION_OVERLAY, 'utf8');
 
-  assert.ok(src.includes('const result = await onComplete(actionType, phone, finalScore'), 'overlay must await the parent completion result');
+  assert.ok(src.includes('const result = await onComplete(actionType, phoneOverride ?? phone, finalScore, null);'), 'overlay must await the parent completion result');
   assert.ok(src.includes('if (!result.success) {'), 'overlay must keep the user in-flow on failure');
   assert.ok(src.includes("setSubmitError(result.error ?? t('toast.failedUpdate'));"), 'overlay must surface the server failure to the user');
   assert.ok(src.indexOf('if (!result.success) {') < src.indexOf("setStep('success');"), 'success screen must only happen after a positive result');

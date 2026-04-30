@@ -23,3 +23,17 @@ test('queue client fails closed instead of silently falling back to legacy visib
   assert.ok(src.includes('Queue visibility contract missing: get_recent_intents_lite_v1 is required'), 'client must refuse legacy queue fallback when fail-closed RPC is missing');
   assert.ok(!src.includes("const v1 = await supabase.rpc('get_recent_intents_v1'"), 'legacy queue fallback must be removed from client path');
 });
+
+test('queue client keeps session blacklist active by not setting include_reviewed on main fetch', () => {
+  const src = readFileSync(join(process.cwd(), 'lib', 'hooks', 'use-queue-controller.ts'), 'utf8');
+  assert.ok(src.includes('p_include_reviewed: false'), 'main queue fetch must keep include_reviewed false');
+});
+
+test('queue blacklist ignores merged archive cancelled rows', () => {
+  const src = readFileSync(
+    join(process.cwd(), 'supabase', 'migrations', '20260430184500_queue_blacklist_ignore_merged_archives.sql'),
+    'utf8'
+  );
+  assert.ok(src.includes("c2.status IN ('junk','cancelled')"), 'blacklist must still block true cancelled/junk sessions');
+  assert.ok(src.includes('c2.merged_into_call_id IS NULL'), 'blacklist must ignore archived merged cancelled rows');
+});

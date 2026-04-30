@@ -158,8 +158,7 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
 
   const processedCalls = (calls || []).filter((c: import('@/lib/types/hunter').HunterIntent) => {
     const s = (c.status || '').toLowerCase();
-    if (s === 'confirmed' || s === 'junk' || s === 'g_trash') return false;
-    return true;
+    return !s || s === 'intent' || s === 'contacted';
   });
   const dedupedProcessedCalls = processedCalls.filter((
     call: import('@/lib/types/hunter').HunterIntent,

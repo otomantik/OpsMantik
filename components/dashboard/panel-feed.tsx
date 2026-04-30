@@ -53,10 +53,12 @@ export function PanelFeed({
     const yesterdayKey = getTodayDateKey(siteTz, y);
 
     const scoped = calls.filter((c) => {
+      const s = (c.status || '').toLowerCase();
+      // Queue SSOT: only intent/contacted are actionable; terminal rows must stay hidden.
+      const isPending = !s || s === 'intent' || s === 'contacted';
+      if (!isPending) return false;
       if (dateFilter === 'all') return true;
       const cKey = getTodayDateKey(siteTz, new Date(c.created_at));
-      const s = (c.status || '').toLowerCase();
-      const isPending = !['confirmed', 'junk', 'g_trash'].includes(s);
       if (dateFilter === 'today') return cKey === todayKey && isPending;
       if (dateFilter === 'yesterday') return cKey === yesterdayKey && isPending;
       return true;
@@ -180,7 +182,9 @@ export function PanelFeed({
           const row = payload.new as Record<string, unknown>;
           if (row.site_id !== siteId) return;
           const updated = payload.new as HunterIntent;
-          if (updated.status === 'confirmed' || updated.status === 'junk') {
+          const nextStatus = String(updated.status || '').toLowerCase();
+          const stillPending = !nextStatus || nextStatus === 'intent' || nextStatus === 'contacted';
+          if (!stillPending) {
             setCalls((prev) => prev.filter((c) => c.id !== updated.id));
           }
         }
