@@ -114,13 +114,14 @@ export async function POST(
       phoneHash = identity.hash;
     }
 
-    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
+    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_with_review_v1', {
       p_call_id: callId,
       p_site_id: siteId,
       p_stage: optimizationStage,
       p_actor_id: user.id,
       p_lead_score: roundedScore,
       p_version: versionResolution.version,
+      p_reviewed: true,
       p_metadata: {
         route,
         score: roundedScore,

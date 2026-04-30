@@ -20,3 +20,9 @@ test('review endpoint exists and marks only intent/contacted rows', () => {
   assert.ok(src.includes('reviewed_by'), 'review endpoint must set reviewed_by');
 });
 
+test('stage route marks reviewed atomically to prevent reappearing cards', () => {
+  const src = readFileSync(join(ROOT, 'app', 'api', 'intents', '[id]', 'stage', 'route.ts'), 'utf8');
+  assert.ok(src.includes('apply_call_action_with_review_v1'), 'stage route must use atomic status+review RPC');
+  assert.ok(src.includes('p_reviewed: true'), 'stage route must mark queue item reviewed on stage mutation');
+});
+
