@@ -76,28 +76,17 @@ async function main() {
   const { todayKey, today, yesterday } = computeRanges();
 
   async function callRange(label, range) {
-    let { data, error } = await supabase.rpc('get_recent_intents_v2', {
+    let { data, error } = await supabase.rpc('get_recent_intents_lite_v1', {
       p_site_id: siteId,
       p_date_from: range.fromIso,
       p_date_to: range.toIso,
       p_limit: 500,
       p_ads_only: true,
+      p_only_unreviewed: true,
+      p_include_reviewed: false,
     });
 
-    if (error) {
-      // fallback to v1 if v2 isn't deployed yet
-      const v1 = await supabase.rpc('get_recent_intents_v1', {
-        p_site_id: siteId,
-        p_since: range.fromIso,
-        p_minutes_lookback: 24 * 60,
-        p_limit: 500,
-        p_ads_only: true,
-      });
-      data = v1.data;
-      error = v1.error;
-      if (error) throw error;
-      console.log(`[${label}] WARN v2 missing; used v1 fallback`);
-    }
+    if (error) throw error;
 
     const arr = Array.isArray(data) ? data : [];
     const fromMs = Date.parse(range.fromIso);

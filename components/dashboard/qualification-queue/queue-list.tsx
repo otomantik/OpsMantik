@@ -30,7 +30,6 @@ export function QueueList({
         mergedNext={state.mergedNext}
         readOnly={readOnly}
         onOpenDetails={actions.openDrawerWithLazyDetails}
-        onOptimisticRemove={actions.optimisticRemove}
         onQualified={actions.handleQualified}
         onSkip={actions.rotateSkip}
         onSealDeal={() => {
@@ -47,6 +46,32 @@ export function QueueList({
 
       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              variant={state.showAll ? 'outline' : 'default'}
+              size="sm"
+              className="h-9"
+              onClick={() => actions.setShowAll(false)}
+            >
+              Görülmemiş
+            </Button>
+            <Button
+              variant={state.showAll ? 'default' : 'outline'}
+              size="sm"
+              className="h-9"
+              onClick={() => actions.setShowAll(true)}
+            >
+              Tümü
+            </Button>
+            <Button
+              variant={state.adsOnly ? 'default' : 'outline'}
+              size="sm"
+              className="h-9"
+              onClick={() => actions.setAdsOnly(!state.adsOnly)}
+            >
+              Ads-only
+            </Button>
+          </div>
           <div className="grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2 sm:gap-6">
             <div>
               <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{t('dashboard.intents')}</div>
@@ -65,6 +90,17 @@ export function QueueList({
             <Icons.refresh className="h-4 w-4 mr-2" />
             {t('button.refresh')}
           </Button>
+          {state.top && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 w-full sm:w-auto"
+              disabled={readOnly}
+              onClick={() => actions.markIntentReviewed(state.top!.id)}
+            >
+              Görüldü
+            </Button>
+          )}
         </div>
       </div>
 
@@ -81,6 +117,21 @@ export function QueueList({
         }}
         readOnly={readOnly}
       />
+
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-400">Girilenler (Son 50)</div>
+        <div className="space-y-2">
+          {state.recentEntered.slice(0, 50).map((row) => (
+            <div key={row.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-xs">
+              <span className="truncate pr-2">{row.intent_target || row.summary || row.id}</span>
+              <span className="text-slate-500">{row.status || 'intent'}</span>
+            </div>
+          ))}
+          {state.recentEntered.length === 0 && (
+            <div className="text-xs text-slate-500">Henüz girilen kayıt yok.</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

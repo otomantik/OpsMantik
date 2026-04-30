@@ -2,7 +2,7 @@
 /**
  * Smoke: HunterCard Data Correctness v1
  * Checks: Keyword (utm_term), Match (matchtype), Campaign (utm_campaign), Device (device_type + device_os).
- * RPC get_recent_intents_v2 must return these from sessions; card maps them.
+ * RPC get_recent_intents_lite_v1 must return these from sessions; card maps them.
  *
  * Usage: node scripts/smoke/hunter-card-data-correctness.mjs
  * Requires: .env.local with NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -47,12 +47,14 @@ async function main() {
     return;
   }
 
-  const { data: rows, error } = await supabase.rpc('get_recent_intents_v2', {
+  const { data: rows, error } = await supabase.rpc('get_recent_intents_lite_v1', {
     p_site_id: siteId,
     p_date_from: fromIso,
     p_date_to: toIso,
     p_limit: 5,
     p_ads_only: false,
+    p_only_unreviewed: false,
+    p_include_reviewed: true,
   });
 
   if (error) {
@@ -62,7 +64,7 @@ async function main() {
   }
 
   const intents = Array.isArray(rows) ? rows : [];
-  log(`1) get_recent_intents_v2 returned ${intents.length} intent(s)`, 'cyan');
+  log(`1) get_recent_intents_lite_v1 returned ${intents.length} intent(s)`, 'cyan');
 
   const requiredKeys = ['utm_term', 'matchtype', 'utm_campaign', 'device_type', 'device_os'];
   const first = intents[0];

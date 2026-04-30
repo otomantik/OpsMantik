@@ -1,6 +1,6 @@
 /**
  * GO3 SQL proof: Print pending intents count for today vs yesterday (TRT boundaries).
- * Uses get_recent_intents_v2 with date_from/date_to; same logic as DashboardShell + QualificationQueue.
+ * Uses get_recent_intents_lite_v1 with date_from/date_to; same logic as QualificationQueue.
  */
 import dotenv from 'dotenv';
 import path from 'node:path';
@@ -79,26 +79,17 @@ async function main() {
   const { todayKey, today, yesterday } = computeRanges();
 
   async function countForRange(label, range) {
-    let { data, error } = await supabase.rpc('get_recent_intents_v2', {
+    let { data, error } = await supabase.rpc('get_recent_intents_lite_v1', {
       p_site_id: siteId,
       p_date_from: range.fromIso,
       p_date_to: range.toIso,
       p_limit: 500,
       p_ads_only: true,
+      p_only_unreviewed: true,
+      p_include_reviewed: false,
     });
 
-    if (error) {
-      const v1 = await supabase.rpc('get_recent_intents_v1', {
-        p_site_id: siteId,
-        p_since: range.fromIso,
-        p_minutes_lookback: 24 * 60,
-        p_limit: 500,
-        p_ads_only: true,
-      });
-      data = v1.data;
-      error = v1.error;
-      if (error) throw error;
-    }
+    if (error) throw error;
 
     const arr = Array.isArray(data) ? data : [];
     const pending = filterPending(arr, range.fromIso, range.toIso);

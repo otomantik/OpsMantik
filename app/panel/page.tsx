@@ -147,7 +147,9 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
     p_date_from: fromIso,
     p_date_to: toIso,
     p_limit: 50,
-    p_ads_only: false
+    p_ads_only: false,
+    p_only_unreviewed: false,
+    p_include_reviewed: true,
   });
 
   if (callsError) {

@@ -116,7 +116,8 @@ test('junk mutations wait for server confirmation and OCI panel exposes honest r
   // so we assert on the call shape instead of the exact `qualify(params)` literal.
   assert.ok(deckSrc.includes('const result = await qualify({ ...params'), 'junk action must wait for server mutation');
   assert.ok(deckSrc.includes('if (!result.success)'), 'junk action must branch on server result');
-  assert.ok(deckSrc.includes('onOptimisticRemove(intent.id);'), 'card removal should happen only after success');
+  assert.ok(!deckSrc.includes('onOptimisticRemove('), 'queue card must not use optimistic remove anymore');
+  assert.ok(deckSrc.includes('onQualified();'), 'queue card should refresh from backend SSOT after mutation');
   assert.ok(ociPageSrc.includes("canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}"), 'OCI control page must derive canOperate from RBAC');
   assert.ok(ociPanelSrc.includes('disabled={!canOperate || actionBusy}'), 'OCI panel action buttons must respect read-only state');
 });

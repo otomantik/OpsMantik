@@ -50,6 +50,11 @@ interface RpcIntentRow {
   intent_events?: unknown;
   form_state?: unknown;
   form_summary?: unknown;
+  reviewed_at?: unknown;
+  reviewed_by?: unknown;
+  dedupe_key?: unknown;
+  canonical_intent_key?: unknown;
+  duplicate_hint?: unknown;
 }
 
 function rowNum(r: RpcIntentRow, key: keyof RpcIntentRow): number | null {
@@ -141,6 +146,11 @@ export function parseHunterIntentsFull(data: unknown): HunterIntent[] {
     traffic_medium: typeof r.traffic_medium === 'string' ? r.traffic_medium : null,
     form_state: typeof r.form_state === 'string' ? r.form_state : null,
     form_summary: rowObj(r, 'form_summary'),
+    reviewed_at: typeof r.reviewed_at === 'string' ? r.reviewed_at : null,
+    reviewed_by: typeof r.reviewed_by === 'string' ? r.reviewed_by : null,
+    dedupe_key: typeof r.dedupe_key === 'string' ? r.dedupe_key : null,
+    canonical_intent_key: typeof r.canonical_intent_key === 'string' ? r.canonical_intent_key : null,
+    duplicate_hint: typeof r.duplicate_hint === 'boolean' ? r.duplicate_hint : null,
   })) as HunterIntent[];
 }
 
@@ -212,6 +222,11 @@ export function parseHunterIntentsLite(data: unknown): HunterIntentLite[] {
       currency: (r.currency as string | null | undefined) ?? null,
       form_state: typeof r.form_state === 'string' ? r.form_state : null,
       form_summary: rowObj(r, 'form_summary'),
+      reviewed_at: typeof r.reviewed_at === 'string' ? r.reviewed_at : null,
+      reviewed_by: typeof r.reviewed_by === 'string' ? r.reviewed_by : null,
+      dedupe_key: typeof r.dedupe_key === 'string' ? r.dedupe_key : null,
+      canonical_intent_key: typeof r.canonical_intent_key === 'string' ? r.canonical_intent_key : null,
+      duplicate_hint: typeof r.duplicate_hint === 'boolean' ? r.duplicate_hint : null,
     })) as HunterIntentLite[];
 }
 

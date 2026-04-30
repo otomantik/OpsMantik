@@ -29,14 +29,18 @@ async function checkStats() {
 
         // Check if any intents have GCLID via session join
         if (cCount > 0) {
-            const { data: adsIntents } = await supabase.rpc('get_recent_intents_v2', {
+            const now = new Date();
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            const { data: adsIntents } = await supabase.rpc('get_recent_intents_lite_v1', {
                 p_site_id: site.id,
-                p_date_from: '2026-01-01T00:00:00Z',
-                p_date_to: '2026-02-01T00:00:00Z',
+                p_date_from: monthAgo.toISOString(),
+                p_date_to: now.toISOString(),
                 p_limit: 10,
-                p_ads_only: true
+                p_ads_only: true,
+                p_only_unreviewed: false,
+                p_include_reviewed: true
             });
-            console.log(`  Recent Ads Intents (last month): ${adsIntents?.length || 0}`);
+            console.log(`  Recent Ads Intents (last 30d): ${adsIntents?.length || 0}`);
         }
         console.log('');
     }

@@ -10,6 +10,7 @@ export type QueueToastStateUi = null | { kind: 'success' | 'danger'; text: strin
 export function useQueueUiState() {
   const [range, setRangeState] = useState<QueueRangeUi | null>(null);
   const [intents, setIntents] = useState<HunterIntentLite[]>([]);
+  const [recentEntered, setRecentEntered] = useState<HunterIntentLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<HunterIntent | null>(null);
@@ -22,12 +23,16 @@ export function useQueueUiState() {
   const [history, setHistory] = useState<ActivityRow[]>([]);
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<QueueToastStateUi>(null);
+  const [adsOnly, setAdsOnly] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   return {
     range,
     setRangeState,
     intents,
     setIntents,
+    recentEntered,
+    setRecentEntered,
     loading,
     setLoading,
     error,
@@ -48,5 +53,9 @@ export function useQueueUiState() {
     setRestoringIds,
     toast,
     setToast,
+    adsOnly,
+    setAdsOnly,
+    showAll,
+    setShowAll,
   };
 }

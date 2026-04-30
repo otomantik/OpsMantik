@@ -17,6 +17,7 @@ import { hasCapability } from '@/lib/auth/rbac';
 import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
+import { buildCanonicalIntentKey } from '@/lib/intents/canonical-intent-key';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,9 @@ export async function POST(
         : {};
     const status = typeof body.status === 'string' ? body.status : null;
     const lead_score = typeof body.lead_score === 'number' ? body.lead_score : null;
+    const sourceSurface = typeof body.source_surface === 'string' && body.source_surface.trim()
+      ? body.source_surface.trim().slice(0, 80)
+      : 'dashboard.queue';
     const { id: callId } = await params;
 
     // Validate status
@@ -61,7 +65,7 @@ export async function POST(
     // Lookup site_id (do not trust client).
     const { data: call, error: callError } = await adminClient
       .from('calls')
-      .select('id, site_id, version')
+      .select('id, site_id, version, matched_session_id, intent_action, created_at, status, reviewed_at')
       .eq('id', callId)
       .single();
 
@@ -73,6 +77,13 @@ export async function POST(
     }
 
     const siteId = call.site_id;
+    const dedupeKey = buildCanonicalIntentKey({
+      callId,
+      siteId,
+      matchedSessionId: (call as { matched_session_id?: string | null }).matched_session_id ?? null,
+      intentAction: (call as { intent_action?: string | null }).intent_action ?? null,
+      occurredAt: (call as { created_at?: string | null }).created_at ?? null,
+    });
 
     // ... (access validation) ...
     const access = await validateSiteAccess(siteId, user.id, supabase);
@@ -122,14 +133,22 @@ export async function POST(
       );
     }
 
-    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
+    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_with_review_v1', {
       p_call_id: callId,
       p_site_id: siteId,
       p_stage: targetStage,
       p_actor_id: user.id,
       p_lead_score: lead_score !== undefined ? lead_score : null,
       p_version: versionResolution.version,
-      p_metadata: { route, request_id: requestId, user_id: user.id, mutation_origin: 'user' },
+      p_reviewed: actionType !== 'restore',
+      p_metadata: {
+        route,
+        request_id: requestId,
+        user_id: user.id,
+        mutation_origin: 'user',
+        source_surface: sourceSurface,
+        dedupe_key: dedupeKey,
+      },
     });
 
     if (updateError) {
@@ -178,6 +197,20 @@ export async function POST(
       const now = new Date().toISOString();
       await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', now);
     }
+
+    logInfo('intent status mutation forensics', {
+      request_id: requestId,
+      route,
+      site_id: siteId,
+      intent_id: callId,
+      call_id: callId,
+      matched_session_id: (call as { matched_session_id?: string | null }).matched_session_id ?? null,
+      source_surface: sourceSurface,
+      query_params_snapshot: { status, lead_score },
+      status_before: (call as { status?: string | null }).status ?? null,
+      reviewed_at_before: (call as { reviewed_at?: string | null }).reviewed_at ?? null,
+      dedupe_key: dedupeKey,
+    });
 
     return NextResponse.json({
       success: true,

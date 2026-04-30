@@ -18,3 +18,14 @@ If **`POST /api/sync`** returns **503** with `Ingest temporarily unavailable` an
 OCI script lane quick checks:
 - `GET /api/oci/google-ads-export?siteId=<id>&limit=200` returns `data` and `meta.hasNextPage`.
 - `POST /api/oci/ack` accepts granular `results[]` and mixed success/failure rows in one request.
+
+Intent stabilization quick checks (when `INTENT_REVIEWED_FILTER_ENABLED` rollout is active):
+- Create one new intent and verify it appears in default `Gorulmemis` queue.
+- Mark it as reviewed (`POST /api/intents/:id/review`) and verify it disappears from default queue.
+- Verify the same row appears in `Girilenler` (Recent Entered, last 50).
+- Undo to intent (`POST /api/intents/:id/status` with `status=intent`) and verify it reappears in default queue.
+- Repeat the same insert payload in a short window and verify no second visible row is rendered (canonical dedupe path).
+
+Feature flag notes:
+- Client gate: `NEXT_PUBLIC_INTENT_REVIEWED_FILTER_ENABLED=true`
+- Server gate reference: `INTENT_REVIEWED_FILTER_ENABLED=true` (ops runbook alignment)

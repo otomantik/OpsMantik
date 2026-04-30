@@ -31,7 +31,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Targets (ms) — guidelines only
 const TARGETS = {
-  get_recent_intents_v2: 2000,
+  get_recent_intents_lite_v1: 2000,
   get_command_center_p0_stats_v2: 1500,
   '/api/stats/realtime': 500,
 };
@@ -97,20 +97,22 @@ async function main() {
   console.log('Site:', siteId);
   console.log('');
 
-  // 1) get_recent_intents_v2 (last 2h, limit 50, ads_only true)
-  const r1 = await timeRpc('get_recent_intents_v2', () =>
-    supabase.rpc('get_recent_intents_v2', {
+  // 1) get_recent_intents_lite_v1 (last 2h, limit 50, ads_only true)
+  const r1 = await timeRpc('get_recent_intents_lite_v1', () =>
+    supabase.rpc('get_recent_intents_lite_v1', {
       p_site_id: siteId,
       p_date_from: twoHoursAgo.toISOString(),
       p_date_to: now.toISOString(),
       p_limit: 50,
       p_ads_only: true,
+      p_only_unreviewed: true,
+      p_include_reviewed: false,
     })
   );
   console.log(
     r1.ok
-      ? `  get_recent_intents_v2   ${r1.ms} ms  ${r1.status || ''}  (target ${r1.target} ms)`
-      : `  get_recent_intents_v2   ${r1.ms} ms  ❌ ${r1.error}`
+      ? `  get_recent_intents_lite_v1   ${r1.ms} ms  ${r1.status || ''}  (target ${r1.target} ms)`
+      : `  get_recent_intents_lite_v1   ${r1.ms} ms  ❌ ${r1.error}`
   );
 
   // 2) get_command_center_p0_stats_v2 (last 24h, ads_only true)

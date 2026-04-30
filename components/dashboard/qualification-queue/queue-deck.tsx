@@ -16,7 +16,6 @@ function ActiveDeckCard({
   intent,
   readOnly,
   onOpenDetails,
-  onOptimisticRemove,
   onQualified,
   onSealDeal,
   pushToast,
@@ -26,7 +25,6 @@ function ActiveDeckCard({
   intent: HunterIntent; // full intent preferred for the heavy HunterCard view
   readOnly: boolean;
   onOpenDetails: (callId: string) => void;
-  onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
   onSealDeal?: () => void;
   pushToast: (kind: 'success' | 'danger', text: string) => void;
@@ -54,6 +52,17 @@ function ActiveDeckCard({
     try {
       const result = await qualify({ ...params, version: intent.version ?? null });
       if (!result.success) {
+        logger.warn('INTENT_DUPLICATE_FORENSICS_MUTATION_FAILED', {
+          site_id: siteId,
+          intent_id: intent.id,
+          call_id: intent.id,
+          matched_session_id: intent.matched_session_id ?? null,
+          source_surface: 'qualification-queue.card',
+          status: intent.status ?? null,
+          reviewed_at: intent.reviewed_at ?? null,
+          dedupe_key: intent.dedupe_key ?? intent.canonical_intent_key ?? null,
+          requested_status: params.status,
+        });
         const errorText = mapUiError(result.error);
         if (errorText.includes('salt okunur')) {
           logger.warn('queue_action_denied_readonly_total', { call_id: intent.id, site_id: siteId });
@@ -63,7 +72,17 @@ function ActiveDeckCard({
         }
         pushToast('danger', errorText);
       } else {
-        onOptimisticRemove(intent.id);
+        logger.info('INTENT_DUPLICATE_FORENSICS_MUTATION_SUCCESS', {
+          site_id: siteId,
+          intent_id: intent.id,
+          call_id: intent.id,
+          matched_session_id: intent.matched_session_id ?? null,
+          source_surface: 'qualification-queue.card',
+          status: intent.status ?? null,
+          reviewed_at: intent.reviewed_at ?? null,
+          dedupe_key: intent.dedupe_key ?? intent.canonical_intent_key ?? null,
+          requested_status: params.status,
+        });
         pushHistoryRow({
           id: intent.id,
           status: params.status,
@@ -214,7 +233,6 @@ export function QueueDeck({
   mergedNext,
   readOnly,
   onOpenDetails,
-  onOptimisticRemove,
   onQualified,
   onSkip,
   onSealDeal,
@@ -227,7 +245,6 @@ export function QueueDeck({
   mergedNext: HunterIntentLite | null;
   readOnly: boolean;
   onOpenDetails: (callId: string) => void;
-  onOptimisticRemove: (id: string) => void;
   onQualified: () => void;
   onSkip: () => void;
   onSealDeal: () => void;
@@ -253,7 +270,6 @@ export function QueueDeck({
             intent={mergedTop}
             readOnly={readOnly}
             onOpenDetails={onOpenDetails}
-            onOptimisticRemove={onOptimisticRemove}
             onQualified={onQualified}
             onSealDeal={onSealDeal}
             pushToast={pushToast}

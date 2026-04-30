@@ -30,11 +30,16 @@ export interface IntentRow {
   phone_number?: string | null; // For calls
   event_category?: string; // For conversions
   event_action?: string; // For conversions
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  dedupe_key?: string | null;
+  duplicate_hint?: boolean;
 }
 
 export function useIntents(
   siteId: string | undefined,
-  dateRange: DateRange
+  dateRange: DateRange,
+  opts?: { adsOnly?: boolean; onlyUnreviewed?: boolean; includeReviewed?: boolean; sourceSurface?: string }
 ) {
   const [intents, setIntents] = useState<IntentRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -50,16 +55,33 @@ export function useIntents(
       const supabase = createClient();
 
       // Use RPC function for server-side aggregation (v2.2 contract)
-      const { data: intentsData, error: rpcError } = await supabase.rpc('get_dashboard_intents', {
+      let intentsData: unknown = null;
+      let rpcError: { message?: string } | null = null;
+      const modern = await supabase.rpc('get_dashboard_intents', {
         p_site_id: siteId,
         p_date_from: dateRange.from.toISOString(),
         p_date_to: dateRange.to.toISOString(),
         p_status: null,
         p_search: null,
-        // ADS Command Center: enforce Ads-only server-side filter
-        p_ads_only: true,
+        p_ads_only: opts?.adsOnly ?? true,
+        p_only_unreviewed: opts?.onlyUnreviewed ?? true,
+        p_include_reviewed: opts?.includeReviewed ?? false,
       });
-
+      intentsData = modern.data;
+      rpcError = modern.error;
+      const msg = String(rpcError?.message || '').toLowerCase();
+      if (rpcError && (msg.includes('does not exist') || msg.includes('not found') || msg.includes('function'))) {
+        const legacy = await supabase.rpc('get_dashboard_intents', {
+          p_site_id: siteId,
+          p_date_from: dateRange.from.toISOString(),
+          p_date_to: dateRange.to.toISOString(),
+          p_status: null,
+          p_search: null,
+          p_ads_only: opts?.adsOnly ?? true,
+        });
+        intentsData = legacy.data;
+        rpcError = legacy.error;
+      }
       if (rpcError) throw rpcError;
 
       // FIX 2: Transform RPC response to IntentRow[] with defensive parsing
@@ -80,7 +102,41 @@ export function useIntents(
           phone_number: typeof intent.phone_number === 'string' ? intent.phone_number : null,
           event_category: typeof intent.event_category === 'string' ? intent.event_category : undefined,
           event_action: typeof intent.event_action === 'string' ? intent.event_action : undefined,
+          reviewed_at: typeof intent.reviewed_at === 'string' ? intent.reviewed_at : null,
+          reviewed_by: typeof intent.reviewed_by === 'string' ? intent.reviewed_by : null,
+          dedupe_key:
+            typeof intent.dedupe_key === 'string'
+              ? intent.dedupe_key
+              : typeof intent.canonical_intent_key === 'string'
+                ? intent.canonical_intent_key
+                : null,
+          duplicate_hint: intent.duplicate_hint === true,
         }));
+        if (process.env.NODE_ENV !== 'production') {
+          const dupes = transformed.filter((x) => x.duplicate_hint || x.dedupe_key == null).length;
+          console.info('[intent-forensics] intent_load', {
+            site_id: siteId,
+            source_surface: opts?.sourceSurface || 'use-intents',
+            query_params_snapshot: {
+              from: dateRange.from.toISOString(),
+              to: dateRange.to.toISOString(),
+              ads_only: opts?.adsOnly ?? true,
+              only_unreviewed: opts?.onlyUnreviewed ?? true,
+              include_reviewed: opts?.includeReviewed ?? false,
+            },
+            loaded: transformed.length,
+            duplicate_hint_count: transformed.filter((x) => x.duplicate_hint).length,
+            missing_dedupe_key_count: transformed.filter((x) => !x.dedupe_key).length,
+            sample: transformed.slice(0, 3).map((x) => ({
+              intent_id: x.id,
+              matched_session_id: x.matched_session_id,
+              status: x.status,
+              reviewed_at: x.reviewed_at ?? null,
+              dedupe_key: x.dedupe_key ?? null,
+            })),
+            anomalies: dupes,
+          });
+        }
         setIntents(transformed);
       } else {
         setIntents([]);
@@ -92,7 +148,7 @@ export function useIntents(
     } finally {
       setLoading(false);
     }
-  }, [siteId, dateRange]);
+  }, [siteId, dateRange, opts?.adsOnly, opts?.onlyUnreviewed, opts?.includeReviewed, opts?.sourceSurface]);
 
   useEffect(() => {
     fetchIntents();

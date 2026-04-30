@@ -57,6 +57,7 @@ const checks = [
 
 const presenceOnlyRpcs = [
   'apply_call_action_v2',
+  'apply_call_action_with_review_v1',
   'finalize_outbox_event_v1',
   'append_script_claim_transition_batch',
   'append_script_transition_batch',
@@ -102,6 +103,7 @@ const tableChecks = [
 const columnChecks = [
   { name: 'calls_clickid_geo_columns', table: 'calls', select: 'id,location_source,click_id,gclid,wbraid,gbraid' },
   { name: 'sessions_geo_decision_columns', table: 'sessions', select: 'id,geo_source,geo_city,geo_district,geo_reason_code,geo_confidence' },
+  { name: 'calls_intent_review_columns', table: 'calls', select: 'id,reviewed_at,reviewed_by,canonical_intent_key' },
 ];
 
 const localContractChecks = [];

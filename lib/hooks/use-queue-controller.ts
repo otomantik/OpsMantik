@@ -51,12 +51,38 @@ function dedupeLatestBySession(rows: HunterIntentLite[]): HunterIntentLite[] {
   return out;
 }
 
+function dedupeByIdOrCanonicalKey(rows: HunterIntentLite[]): HunterIntentLite[] {
+  const byPrimary = new Map<string, HunterIntentLite>();
+  for (const row of rows) {
+    const key =
+      (typeof row.id === 'string' && row.id.trim()) ||
+      (typeof row.canonical_intent_key === 'string' && row.canonical_intent_key.trim()) ||
+      (typeof row.dedupe_key === 'string' && row.dedupe_key.trim()) ||
+      '';
+    if (!key) continue;
+    const prev = byPrimary.get(key);
+    if (!prev) {
+      byPrimary.set(key, row);
+      continue;
+    }
+    const prevTs = parseRpcTimestampMs(prev.created_at);
+    const curTs = parseRpcTimestampMs(row.created_at);
+    if (!Number.isFinite(prevTs) || (Number.isFinite(curTs) && curTs >= prevTs)) {
+      byPrimary.set(key, row);
+    }
+  }
+  return Array.from(byPrimary.values());
+}
+
 export type QueueControllerState = {
   range: QueueRange | null;
+  adsOnly: boolean;
+  showAll: boolean;
   bountyChips: number[];
   siteCurrency: string;
 
   intents: HunterIntentLite[];
+  recentEntered: HunterIntentLite[];
   loading: boolean;
   error: string | null;
 
@@ -80,6 +106,8 @@ export type QueueControllerState = {
 
 export type QueueControllerActions = {
   setRange: (range: QueueRange) => void;
+  setAdsOnly: (next: boolean) => void;
+  setShowAll: (next: boolean) => void;
 
   fetchUnscoredIntents: () => void;
   fetchKillFeed: () => void;
@@ -90,13 +118,13 @@ export type QueueControllerActions = {
   closeDrawer: () => void;
 
   rotateSkip: () => void;
-  optimisticRemove: (id: string) => void;
 
   pushToast: (kind: 'success' | 'danger', text: string) => void;
   pushHistoryRow: (_row: { id: string; status: 'confirmed' | 'junk'; intent_action: string | null; identity: string | null }) => void;
 
   undoLastAction: (callId: string) => void;
   cancelDeal: (callId: string) => void;
+  markIntentReviewed: (callId: string) => void;
 
   openSealModal: (intent: HunterIntent) => void;
   setSealModalOpen: (open: boolean) => void;
@@ -123,6 +151,8 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
     setRangeState,
     intents,
     setIntents,
+    recentEntered,
+    setRecentEntered,
     loading,
     setLoading,
     error,
@@ -143,6 +173,10 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
     setRestoringIds,
     toast,
     setToast,
+    adsOnly,
+    setAdsOnly,
+    showAll,
+    setShowAll,
   } = useQueueUiState();
 
   /** Avoid self-triggering effects when maps grow (Panoptic Phase 4 — stable callbacks). */
@@ -154,6 +188,7 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
   // Holistic View: always ALL traffic (kept for parity even if unused directly)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const effectiveAdsOnly = false;
+  const reviewedFilterEnabled = true;
 
   const top = intents[0] || null;
   const next = intents[1] || null;
@@ -298,13 +333,25 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
       async function fetchRange(): Promise<HunterIntentLite[]> {
         let data: unknown = null;
         // 1) Lite RPC (default limit 100) — cheap list payload
-        const lite = await supabase.rpc('get_recent_intents_lite_v1', {
+        let lite = await supabase.rpc('get_recent_intents_lite_v1', {
           p_site_id: siteId,
           p_date_from: r.fromIso,
           p_date_to: r.toIso,
           p_limit: 100,
-          p_ads_only: false,
+          p_ads_only: adsOnly,
+          p_only_unreviewed: false,
+          p_include_reviewed: true,
         });
+        const liteMsg0 = String(lite.error?.message || lite.error?.details || '').toLowerCase();
+        if (lite.error && (liteMsg0.includes('does not exist') || liteMsg0.includes('not found') || liteMsg0.includes('function'))) {
+          lite = await supabase.rpc('get_recent_intents_lite_v1', {
+            p_site_id: siteId,
+            p_date_from: r.fromIso,
+            p_date_to: r.toIso,
+            p_limit: 100,
+            p_ads_only: adsOnly,
+          });
+        }
         data = lite.data;
         const liteErr = lite.error;
 
@@ -314,25 +361,18 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
             siteId,
             p_date_from: r.fromIso,
             p_date_to: r.toIso,
+            p_ads_only: adsOnly,
+            p_only_unreviewed: false,
+            p_include_reviewed: true,
             rowCount: count,
             error: liteErr?.message ?? null,
           });
         }
 
-        // Fallback: some environments may still expose only the full v2 RPC during rollout.
+        // Fail-closed: if lite RPC is missing after signature fallback, refuse legacy path.
         const liteMsg = String(liteErr?.message || liteErr?.details || '').toLowerCase();
         if (liteErr && (liteMsg.includes('not found') || liteMsg.includes('does not exist'))) {
-          const v2 = await supabase.rpc('get_recent_intents_v2', {
-            p_site_id: siteId,
-            p_date_from: r.fromIso,
-            p_date_to: r.toIso,
-            p_limit: 100,
-            p_ads_only: false,
-          });
-          data = v2.data;
-          if (v2.error) {
-            throw new Error('Queue visibility contract missing: get_recent_intents_lite_v1 is required');
-          }
+          throw new Error('Queue visibility contract missing: get_recent_intents_lite_v1 is required');
         } else if (liteErr) {
           throw liteErr;
         }
@@ -348,24 +388,80 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
           if (!Number.isFinite(ts)) return false;
           // Status filter: pending only
           const s = (r.status || '').toLowerCase();
-          const isPending = !s || s === 'intent';
-          return isPending && ts >= fromMs && ts < toMs;
+          const isPending = !s || s === 'intent' || s === 'contacted';
+          const isUnreviewed = !r.reviewed_at;
+          const reviewedOk = showAll ? true : isUnreviewed;
+          return isPending && reviewedOk && ts >= fromMs && ts < toMs;
         });
         
         if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {
           logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, fromIso: r.fromIso, toIso: r.toIso });
         }
-        return dedupeLatestBySession(filtered);
+        return dedupeByIdOrCanonicalKey(dedupeLatestBySession(filtered));
       }
 
       const rows = await fetchRange();
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info('INTENT_DUPLICATE_FORENSICS_LOAD', {
+          site_id: siteId,
+          source_surface: 'qualification-queue',
+          query_params_snapshot: {
+            from: r.fromIso,
+            to: r.toIso,
+            ads_only: adsOnly,
+            only_unreviewed: !showAll,
+            include_reviewed: true,
+          },
+          sample: rows.slice(0, 5).map((x) => ({
+            call_id: x.id,
+            intent_id: x.id,
+            matched_session_id: x.matched_session_id ?? null,
+            status: x.status ?? null,
+            reviewed_at: x.reviewed_at ?? null,
+            dedupe_key: x.dedupe_key ?? x.canonical_intent_key ?? null,
+          })),
+        });
+      }
       setIntents(rows);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('dashboard.commandCenter.queue.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [range, siteId, t]);
+  }, [adsOnly, range, reviewedFilterEnabled, showAll, siteId, t]);
+
+  const fetchRecentEntered = useCallback(async () => {
+    if (!range) return;
+    try {
+      const supabase = createClient();
+      let { data, error: rpcError } = await supabase.rpc('get_recent_intents_lite_v1', {
+        p_site_id: siteId,
+        p_date_from: range.fromIso,
+        p_date_to: range.toIso,
+        p_limit: 50,
+        p_ads_only: adsOnly,
+        p_only_unreviewed: false,
+        p_include_reviewed: reviewedFilterEnabled,
+      });
+      const msg = String(rpcError?.message || '').toLowerCase();
+      if (rpcError && (msg.includes('does not exist') || msg.includes('not found') || msg.includes('function'))) {
+        const legacy = await supabase.rpc('get_recent_intents_lite_v1', {
+          p_site_id: siteId,
+          p_date_from: range.fromIso,
+          p_date_to: range.toIso,
+          p_limit: 50,
+          p_ads_only: adsOnly,
+        });
+        data = legacy.data;
+        rpcError = legacy.error;
+      }
+      if (rpcError) throw rpcError;
+      const rows = parseHunterIntentsLite(data);
+      setRecentEntered(dedupeByIdOrCanonicalKey(rows).slice(0, 50));
+    } catch (err) {
+      logger.warn('fetchRecentEntered error', { error: String((err as Error)?.message ?? err), site_id: siteId });
+    }
+  }, [adsOnly, range, reviewedFilterEnabled, setRecentEntered, siteId]);
 
   // Preload full details for the active card and the next one so skip/rotate
   // keeps the full-size card ready instead of briefly falling back to the lite shell.
@@ -423,22 +519,25 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
   useEffect(() => {
     if (!range) return;
     fetchUnscoredIntents();
+    fetchRecentEntered();
     fetchKillFeed();
-  }, [fetchUnscoredIntents, fetchKillFeed, range]);
+  }, [fetchUnscoredIntents, fetchRecentEntered, fetchKillFeed, range]);
 
   // Refetch policy: call-level realtime is owned by SiteRealtimeDashboardProvider (dashboard shell).
   useRegisterSiteRealtimeQueueRefetch(() => {
     void fetchUnscoredIntents();
+    void fetchRecentEntered();
     void fetchKillFeed();
   });
 
   const handleQualified = useCallback(() => {
     // Intent was qualified, refresh the list
     void fetchUnscoredIntents();
+    void fetchRecentEntered();
     void fetchKillFeed();
     // Revalidate P0 stats (revenue/kasa) so GELİR TAHMİNİ updates immediately
     mutate((key) => Array.isArray(key) && key[0] === 'get_command_center_p0_stats_v2');
-  }, [fetchUnscoredIntents, fetchKillFeed]);
+  }, [fetchKillFeed, fetchRecentEntered, fetchUnscoredIntents]);
 
   // Modal qualification hook (must be after handleQualified definition)
   const { qualify: qualifyModalIntent } = useIntentQualification(
@@ -467,16 +566,6 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
       if (prev.length <= 1) return prev;
       const [first, ...rest] = prev;
       return [...rest, first];
-    });
-  }, []);
-
-  const optimisticRemove = useCallback((id: string) => {
-    setIntents((prev) => {
-      if (prev.length === 0) return prev;
-      // Fast path: remove top card by slice (preferred UX)
-      if (prev[0]?.id === id) return prev.slice(1);
-      // Fallback: remove by id
-      return prev.filter((x) => x.id !== id);
     });
   }, []);
 
@@ -553,6 +642,32 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
     [fetchKillFeed, pushToast, t]
   );
 
+  const markIntentReviewed = useCallback(
+    async (callId: string) => {
+      if (readOnly) {
+        pushToast('danger', 'Mudahale yetkiniz yok (salt okunur).');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/intents/${callId}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source_surface: 'qualification-queue' }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error((j as { error?: string }).error || 'Failed to mark reviewed');
+        }
+        pushToast('success', 'Kayit goruldu olarak isaretlendi.');
+        void fetchUnscoredIntents();
+        void fetchRecentEntered();
+      } catch (err) {
+        pushToast('danger', err instanceof Error ? err.message : 'Goruldu islemi basarisiz.');
+      }
+    },
+    [fetchRecentEntered, fetchUnscoredIntents, pushToast, readOnly]
+  );
+
   const openSealModal = useCallback((intent: HunterIntent) => {
     setIntentForSeal(intent);
     setSealModalOpen(true);
@@ -601,7 +716,6 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
 
   const onSealSuccess = useCallback(() => {
     if (!intentForSeal) return;
-    optimisticRemove(intentForSeal.id);
     pushHistoryRow({
       id: intentForSeal.id,
       status: 'confirmed',
@@ -612,11 +726,10 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
     setSealModalOpen(false);
     setIntentForSeal(null);
     handleQualified();
-  }, [handleQualified, intentForSeal, optimisticRemove, pushHistoryRow, pushToast, t]);
+  }, [handleQualified, intentForSeal, pushHistoryRow, pushToast, t]);
 
   const onSealJunkSuccess = useCallback(() => {
     if (!intentForSeal) return;
-    optimisticRemove(intentForSeal.id);
     pushHistoryRow({
       id: intentForSeal.id,
       status: 'junk',
@@ -627,7 +740,7 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
     setSealModalOpen(false);
     setIntentForSeal(null);
     handleQualified();
-  }, [handleQualified, intentForSeal, optimisticRemove, pushHistoryRow, pushToast, t]);
+  }, [handleQualified, intentForSeal, pushHistoryRow, pushToast, t]);
 
   const onSealError = useCallback(
     (message: string) => {
@@ -690,9 +803,12 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
 
   const state: QueueControllerState = {
     range,
+    adsOnly,
+    showAll,
     bountyChips,
     siteCurrency,
     intents,
+    recentEntered,
     loading,
     error,
     selectedIntent,
@@ -711,17 +827,19 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
 
   const actions: QueueControllerActions = {
     setRange: (r) => setRangeState(r),
+    setAdsOnly: (next) => setAdsOnly(next),
+    setShowAll: (next) => setShowAll(next),
     fetchUnscoredIntents: () => void fetchUnscoredIntents(),
     fetchKillFeed: () => void fetchKillFeed(),
     handleQualified,
     openDrawerWithLazyDetails: (callId) => void openDrawerWithLazyDetails(callId),
     closeDrawer,
     rotateSkip,
-    optimisticRemove,
     pushToast,
     pushHistoryRow,
     undoLastAction: (callId) => void undoLastAction(callId),
     cancelDeal: (callId) => void cancelDeal(callId),
+    markIntentReviewed: (callId) => void markIntentReviewed(callId),
     openSealModal,
     setSealModalOpen,
     clearSealIntent,

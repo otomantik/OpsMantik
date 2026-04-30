@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Smoke: HunterCard field mapping rules proof
- * Loads a recent intent row from get_recent_intents_v2 and asserts UI mapping helpers
+ * Loads a recent intent row from get_recent_intents_lite_v1 and asserts UI mapping helpers
  * return expected strings: keywordDisplay (utm_term or '—'), matchDisplay (matchtype or '—'),
  * campaignDisplay (utm_campaign or '—').
  *
@@ -67,12 +67,14 @@ async function main() {
     return;
   }
 
-  const { data: rows, error } = await supabase.rpc('get_recent_intents_v2', {
+  const { data: rows, error } = await supabase.rpc('get_recent_intents_lite_v1', {
     p_site_id: siteId,
     p_date_from: fromIso,
     p_date_to: toIso,
     p_limit: 5,
     p_ads_only: false,
+    p_only_unreviewed: false,
+    p_include_reviewed: true,
   });
 
   if (error) {

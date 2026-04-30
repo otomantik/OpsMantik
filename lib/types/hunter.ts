@@ -55,6 +55,11 @@ export interface HunterIntentLite {
   currency?: string | null;
   form_state?: 'started' | 'attempted' | 'validation_failed' | 'network_failed' | 'success' | string | null;
   form_summary?: Record<string, unknown> | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  dedupe_key?: string | null;
+  canonical_intent_key?: string | null;
+  duplicate_hint?: boolean | null;
 }
 
 /** Unified Hunter Intent (v3) - Single source of truth */
@@ -134,6 +139,11 @@ export interface HunterIntent {
   event_count?: number | null;
   form_state?: 'started' | 'attempted' | 'validation_failed' | 'network_failed' | 'success' | string | null;
   form_summary?: Record<string, unknown> | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  dedupe_key?: string | null;
+  canonical_intent_key?: string | null;
+  duplicate_hint?: boolean | null;
 
   /** Session action counts (evidence for "2x phone, 1x WhatsApp"). */
   phone_clicks?: number | null;
