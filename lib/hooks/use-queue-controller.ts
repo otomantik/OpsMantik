@@ -41,9 +41,11 @@ function dedupeLatestBySession(rows: HunterIntentLite[]): HunterIntentLite[] {
   const out: HunterIntentLite[] = [];
   for (const row of rows) {
     const sessionKey =
-      typeof row.matched_session_id === 'string' && row.matched_session_id.trim()
+      (typeof row.canonical_intent_key === 'string' && row.canonical_intent_key.trim()) ||
+      (typeof row.dedupe_key === 'string' && row.dedupe_key.trim()) ||
+      (typeof row.matched_session_id === 'string' && row.matched_session_id.trim()
         ? `sid:${row.matched_session_id.trim()}`
-        : `call:${row.id}`;
+        : `call:${row.id}`);
     if (seen.has(sessionKey)) continue;
     seen.add(sessionKey);
     out.push(row);

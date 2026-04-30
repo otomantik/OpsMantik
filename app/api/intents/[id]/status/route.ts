@@ -179,7 +179,7 @@ export async function POST(
         code,
       });
       return NextResponse.json(
-        { error: 'Failed to update status' },
+        { error: 'Failed to update status', detail: updateError.message, code },
         { status: 500 }
       );
     }
