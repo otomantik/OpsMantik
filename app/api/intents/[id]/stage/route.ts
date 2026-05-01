@@ -83,7 +83,7 @@ export async function POST(
 
     const { data: call, error: callError } = await adminClient
       .from('calls')
-      .select('id, site_id, version, matched_session_id, currency, gclid, wbraid, gbraid, optimization_stage')
+      .select('id, site_id, version, matched_session_id')
       .eq('id', callId)
       .single();
 
