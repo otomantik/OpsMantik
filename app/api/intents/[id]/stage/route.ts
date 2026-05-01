@@ -114,7 +114,7 @@ export async function POST(
       phoneHash = identity.hash;
     }
 
-    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_with_review_v1', {
+    const rpcPayloadBase = {
       p_call_id: callId,
       p_site_id: siteId,
       p_stage: optimizationStage,
@@ -129,10 +129,29 @@ export async function POST(
         request_id: requestId,
         mutation_origin: 'user',
       },
+    };
+    const rpcPayloadWithCaller = {
+      ...rpcPayloadBase,
       p_caller_phone_raw: callerPhoneRaw,
       p_caller_phone_e164: phoneE164,
       p_caller_phone_hash: phoneHash,
-    });
+    };
+    let { data: updatedCall, error: updateError } = await adminClient.rpc(
+      'apply_call_action_with_review_v1',
+      rpcPayloadWithCaller
+    );
+
+    const isLegacySignatureMissing = (err: { code?: string; message?: string } | null): boolean => {
+      if (!err) return false;
+      const msg = (err.message || '').toLowerCase();
+      return err.code === 'PGRST202' && msg.includes('apply_call_action_with_review_v1');
+    };
+
+    if (isLegacySignatureMissing(updateError as { code?: string; message?: string } | null)) {
+      const retry = await adminClient.rpc('apply_call_action_with_review_v1', rpcPayloadBase);
+      updatedCall = retry.data;
+      updateError = retry.error;
+    }
 
     if (updateError) {
       const code = (updateError as { code?: string }).code;

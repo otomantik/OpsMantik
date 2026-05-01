@@ -22,6 +22,7 @@ test('stage route delegates mutation and side-effects to atomic status+review RP
   assert.ok(rpcIndex >= 0, 'stage route must persist via apply_call_action_with_review_v1');
   assert.ok(errorGuardIndex > rpcIndex, 'stage route must guard RPC failures');
   assert.ok(outboxNotifyIndex > errorGuardIndex, 'outbox notification must happen after RPC success guard');
+  assert.ok(src.includes("err.code === 'PGRST202'"), 'stage route must tolerate legacy RPC signatures during rollout');
 });
 
 test('stage route treats junk as a canonical optimization_stage and invalidates pending OCI artifacts', () => {
