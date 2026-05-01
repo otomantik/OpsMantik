@@ -27,6 +27,8 @@ import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module'
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { getClientIp } from '@/lib/request-client-ip';
 import { getRefactorFlags } from '@/lib/refactor/flags';
+import { sanitizeClickId } from '@/lib/attribution';
+import { shouldReuseSessionV1 } from '@/lib/intents/session-reuse-v1';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -35,8 +37,17 @@ export const dynamic = 'force-dynamic';
 
 // Global version for debug verification
 const OPSMANTIK_VERSION = '1.0.2-bulletproof';
+const SESSION_REUSE_HARDENING_ENABLED =
+    process.env.INTENT_SESSION_REUSE_HARDENING === '1' ||
+    process.env.INTENT_SESSION_REUSE_HARDENING === 'true' ||
+    process.env.INTENT_SESSION_REUSE_HARDENING === 'on';
 
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
+
+function hashTarget(value: string | null): string | null {
+    if (!value) return null;
+    return createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 16);
+}
 
 const CallEventSchema = z
     .object({
@@ -439,7 +450,8 @@ export async function POST(req: NextRequest) {
         });
 
         const matchedAt = new Date().toISOString();
-        const matchedSessionId = matchResult.matchedSessionId;
+        let matchedSessionId = matchResult.matchedSessionId;
+        let matchedSessionMonth = matchResult.sessionMonth;
         const leadScore = matchResult.leadScore;
         const scoreBreakdown = matchResult.scoreBreakdown as ScoreBreakdown | null;
         const callStatus = matchResult.callStatus;
@@ -477,6 +489,81 @@ export async function POST(req: NextRequest) {
             ? body.click_id.trim()
             : null;
 
+        if (SESSION_REUSE_HARDENING_ENABLED && matchedSessionId) {
+            const primaryClickId =
+                sanitizeClickId(body.gclid || null) ??
+                sanitizeClickId(body.wbraid || null) ??
+                sanitizeClickId(body.gbraid || null) ??
+                null;
+            if (primaryClickId && intent_target && ['phone', 'whatsapp', 'form'].includes(intent_action)) {
+                const { data: reuseRows, error: reuseErr } = await adminClient.rpc('find_or_reuse_session_v1', {
+                    p_site_id: siteUuidFinal,
+                    p_primary_click_id: primaryClickId,
+                    p_intent_action: intent_action,
+                    p_normalized_intent_target: intent_target,
+                    p_occurred_at: matchedAt,
+                    p_candidate_session_id: matchedSessionId,
+                    p_proposed_session_id: null,
+                    p_fingerprint: fingerprint,
+                    p_entry_page: intent_page_url,
+                    p_ip_address: getClientIp(req),
+                    p_user_agent: body.ua || req.headers.get('user-agent'),
+                    p_gclid: sanitizeClickId(body.gclid || null),
+                    p_wbraid: sanitizeClickId(body.wbraid || null),
+                    p_gbraid: sanitizeClickId(body.gbraid || null),
+                    p_attribution_source: null,
+                    p_traffic_source: null,
+                    p_traffic_medium: null,
+                    p_device_type: null,
+                    p_device_os: null,
+                });
+                if (!reuseErr && Array.isArray(reuseRows) && reuseRows.length > 0) {
+                    const row = reuseRows[0] as {
+                        matched_session_id?: string | null;
+                        matched_session_month?: string | null;
+                        time_delta_ms?: number | null;
+                        lifecycle_status?: string | null;
+                        candidate_session_id?: string | null;
+                    };
+                    const decision = shouldReuseSessionV1({
+                        siteMatches: true,
+                        primaryClickId,
+                        primaryClickIdValid: true,
+                        intentAction: intent_action,
+                        candidateIntentAction: intent_action,
+                        normalizedIntentTarget: intent_target,
+                        candidateIntentTarget: intent_target,
+                        timeDeltaMs: row.time_delta_ms ?? null,
+                        lifecycleStatus: row.lifecycle_status ?? null,
+                        candidateSessionId: row.candidate_session_id ?? row.matched_session_id ?? null,
+                    });
+                    logWarn('session_reuse_decision_v1', {
+                        reuse_hit: decision.reuse,
+                        reuse_miss_reason: decision.reason,
+                        site_id: siteUuidFinal,
+                        primary_click_id_present: decision.telemetry.primary_click_id_present,
+                        intent_action: decision.telemetry.intent_action,
+                        normalized_intent_target_hash: hashTarget(intent_target),
+                        candidate_session_id: decision.telemetry.candidate_session_id,
+                        matched_session_id: row.matched_session_id ?? matchedSessionId,
+                        time_delta_ms: decision.telemetry.time_delta_ms,
+                        lifecycle_status: decision.telemetry.lifecycle_status,
+                        source_path: 'call-event',
+                    });
+                    if (row.matched_session_id) {
+                        matchedSessionId = row.matched_session_id;
+                        matchedSessionMonth = row.matched_session_month ?? matchedSessionMonth;
+                    }
+                } else if (reuseErr) {
+                    logWarn('session_reuse_rpc_failed_v1', {
+                        site_id: siteUuidFinal,
+                        error: reuseErr.message,
+                        source_path: 'call-event',
+                    });
+                }
+            }
+        }
+
         // 4. Publish to QStash worker → 202 Accepted
         const signatureHash = headerSig
             ? createHash('sha256').update(headerSig, 'utf8').digest('hex')
@@ -486,7 +573,7 @@ export async function POST(req: NextRequest) {
             sitePublicId: site.id,
             phone_number,
             matched_session_id: matchedSessionId,
-            matched_session_month: matchResult.sessionMonth ?? null,
+            matched_session_month: matchedSessionMonth ?? null,
             matched_fingerprint: fingerprint,
             lead_score: leadScore,
             lead_score_at_match: matchedSessionId ? leadScore : null,

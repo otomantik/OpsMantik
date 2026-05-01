@@ -424,6 +424,8 @@ async function doProcessSyncEvent(
         attributionSource,
         deviceType,
         fingerprint,
+        event_action,
+        event_label,
         utm,
         referrer,
         consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
