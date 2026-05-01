@@ -148,8 +148,9 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
     p_date_to: toIso,
     p_limit: 50,
     p_ads_only: false,
-    p_only_unreviewed: false,
-    p_include_reviewed: true,
+    // Keep RPC in pending-only mode so session blacklist remains fail-closed.
+    p_only_unreviewed: true,
+    p_include_reviewed: false,
   });
 
   if (callsError) {

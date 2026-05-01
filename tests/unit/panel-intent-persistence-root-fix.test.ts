@@ -6,6 +6,7 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const STAGE_ROUTE = join(ROOT, 'app', 'api', 'intents', '[id]', 'stage', 'route.ts');
 const PANEL_FEED = join(ROOT, 'components', 'dashboard', 'panel-feed.tsx');
+const PANEL_PAGE = join(ROOT, 'app', 'panel', 'page.tsx');
 const LEAD_ACTION_OVERLAY = join(ROOT, 'components', 'dashboard', 'lead-action-overlay.tsx');
 const INVALIDATE_HELPER = join(ROOT, 'lib', 'oci', 'invalidate-pending-artifacts.ts');
 
@@ -58,4 +59,12 @@ test('lead action overlay shows success only when parent completion succeeds', (
   assert.ok(src.includes('if (!result.success) {'), 'overlay must keep the user in-flow on failure');
   assert.ok(src.includes("setSubmitError(result.error ?? t('toast.failedUpdate'));"), 'overlay must surface the server failure to the user');
   assert.ok(src.indexOf('if (!result.success) {') < src.indexOf("setStep('success');"), 'success screen must only happen after a positive result');
+});
+
+test('panel bootstrap keeps queue RPC in pending-only mode', () => {
+  const src = readFileSync(PANEL_PAGE, 'utf8');
+
+  assert.ok(src.includes("adminClient.rpc('get_recent_intents_lite_v1'"), 'panel page must bootstrap from lite queue RPC');
+  assert.ok(src.includes('p_only_unreviewed: true'), 'panel bootstrap must request only unreviewed rows');
+  assert.ok(src.includes('p_include_reviewed: false'), 'panel bootstrap must keep reviewed include flag disabled');
 });
