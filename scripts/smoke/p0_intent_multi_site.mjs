@@ -38,6 +38,14 @@ if (!supabaseUrl || !serviceKey) {
 const supabase = createClient(supabaseUrl, serviceKey);
 
 const SYNC_API_URL = process.env.SYNC_API_URL || 'https://console.opsmantik.com/api/sync';
+const APP_BASE_URL = (() => {
+  try {
+    const u = new URL(SYNC_API_URL);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return 'https://console.opsmantik.com';
+  }
+})();
 const ORIGIN = process.env.ORIGIN || 'https://yapiozmendanismanlik.com';
 const DEFAULT_SITES = 'yapiozmendanismanlik.com,sosreklam.com';
 const SITES_RAW = process.env.P0_SITES || DEFAULT_SITES;
@@ -45,6 +53,12 @@ const SITES = SITES_RAW.split(',').map((s) => s.trim()).filter(Boolean);
 
 const dbRetries = parseInt(process.env.P0_DB_RETRIES || '12', 10);
 const dbRetryMs = parseInt(process.env.P0_DB_RETRY_MS || '2000', 10);
+const ENABLE_PERSISTENCE_WRITE_CHECK = (() => {
+  const raw = process.env.P0_ENABLE_PERSISTENCE_WRITE_CHECK;
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+})();
 
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -96,6 +110,7 @@ const WINDOW_MS = parseInt(process.env.P0_SMOKE_LOOKBACK_MS || '120000', 10);
 async function runTestForSite(siteInfo) {
   const { site_id: internalSiteId, site_public_id, domain } = siteInfo;
   const sid = generateUUID();
+  const actorId = generateUUID();
   const t0 = new Date(Date.now() - WINDOW_MS);
 
   const payload = {
@@ -171,7 +186,7 @@ async function runTestForSite(siteInfo) {
   const callRow = await retry(`DB calls [${domain}]`, async () => {
     const { data, error } = await supabase
       .from('calls')
-      .select('id, status, created_at, matched_session_id')
+      .select('id, status, created_at, matched_session_id, version, reviewed_at')
       .eq('site_id', internalSiteId)
       .gte('created_at', t0.toISOString())
       .order('created_at', { ascending: false })
@@ -181,12 +196,97 @@ async function runTestForSite(siteInfo) {
     return data[0];
   });
 
-  return { domain, sid, eventId: eventRow.id, callId: callRow.id };
+  const beforeVersion = Number.isFinite(Number(callRow.version)) ? Number(callRow.version) : 1;
+  let afterVersion = beforeVersion;
+  let persistedStatus = callRow.status;
+  if (ENABLE_PERSISTENCE_WRITE_CHECK) {
+    const mutate = await supabase.rpc('apply_call_action_with_review_v1', {
+      p_call_id: callRow.id,
+      p_site_id: internalSiteId,
+      p_stage: 'junk',
+      p_actor_id: actorId,
+      p_lead_score: 0,
+      p_version: beforeVersion,
+      p_metadata: {
+        source: 'smoke_intent_multi_site',
+        request: 'panel_persistence_contract',
+        site_domain: domain,
+      },
+      p_reviewed: true,
+      p_caller_phone_raw: '+905000000000',
+      p_caller_phone_e164: '+905000000000',
+      p_caller_phone_hash: 'smoke',
+    });
+    if (mutate.error) {
+      throw new Error(`panel_mutation_failed:${mutate.error.code || 'unknown'}:${mutate.error.message}`);
+    }
+
+    const persisted = await retry(`DB persisted mutation [${domain}]`, async () => {
+      const { data, error } = await supabase
+        .from('calls')
+        .select('id, status, reviewed_at, version')
+        .eq('id', callRow.id)
+        .eq('site_id', internalSiteId)
+        .single();
+      if (error) throw error;
+      if (!data) throw new Error('call_row_missing_after_mutation');
+      if ((data.status || '').toLowerCase() !== 'junk') throw new Error(`status_not_junk:${data.status}`);
+      if (!data.reviewed_at) throw new Error('reviewed_at_missing_after_mutation');
+      const persistedVersion = Number.isFinite(Number(data.version)) ? Number(data.version) : null;
+      if (persistedVersion == null || persistedVersion <= beforeVersion) {
+        throw new Error(`version_not_incremented:before=${beforeVersion}:after=${String(persistedVersion)}`);
+      }
+      return data;
+    });
+
+    const queue = await supabase.rpc('get_recent_intents_lite_v1', {
+      p_site_id: internalSiteId,
+      p_date_from: t0.toISOString(),
+      p_date_to: new Date(Date.now() + WINDOW_MS).toISOString(),
+      p_limit: 200,
+      p_ads_only: false,
+      p_only_unreviewed: true,
+      p_include_reviewed: false,
+    });
+    if (queue.error) {
+      throw new Error(`queue_rpc_failed:${queue.error.code || 'unknown'}:${queue.error.message}`);
+    }
+    const queueRows = Array.isArray(queue.data) ? queue.data : [];
+    const leaked = queueRows.some((row) => row?.id === callRow.id);
+    if (leaked) {
+      throw new Error(`persistence_leak_detected:call_id=${callRow.id}`);
+    }
+    afterVersion = Number(persisted.version);
+    persistedStatus = persisted.status;
+  }
+
+  return {
+    domain,
+    sid,
+    eventId: eventRow.id,
+    callId: callRow.id,
+    beforeVersion,
+    afterVersion,
+    persistedStatus,
+    persistenceWriteCheckEnabled: ENABLE_PERSISTENCE_WRITE_CHECK,
+  };
 }
 
 async function main() {
   console.log('🧪 P0 Intent Test');
-  console.log(JSON.stringify({ SYNC_API_URL, SITES }, null, 2));
+  console.log(JSON.stringify({ SYNC_API_URL, APP_BASE_URL, SITES }, null, 2));
+
+  const stageProbe = await fetch(`${APP_BASE_URL}/api/intents/00000000-0000-0000-0000-000000000000/stage`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-ops-api-version': '2026-05-01',
+    },
+    body: JSON.stringify({ action_type: 'junk', version: 1 }),
+  });
+  if (stageProbe.status === 404) {
+    throw new Error(`stage_route_missing:${APP_BASE_URL}/api/intents/[id]/stage`);
+  }
 
   const results = [];
   for (let i = 0; i < SITES.length; i++) {

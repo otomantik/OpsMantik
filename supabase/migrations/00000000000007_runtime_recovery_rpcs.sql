@@ -210,7 +210,7 @@ AS $$
   )
   SELECT
     c.id,
-    c.version,
+    coalesce((to_jsonb(c)->>'version')::integer, 1) AS version,
     c.created_at,
     c.status,
     c.matched_session_id,
@@ -276,7 +276,7 @@ SET search_path = public
 AS $$
   SELECT
     c.id,
-    c.version,
+    coalesce((to_jsonb(c)->>'version')::integer, 1) AS version,
     c.created_at,
     c.status,
     c.matched_session_id,
@@ -363,7 +363,7 @@ SET search_path = public
 AS $$
   SELECT
     c.id,
-    c.version,
+    coalesce((to_jsonb(c)->>'version')::integer, 1) AS version,
     c.created_at,
     c.status,
     c.matched_session_id,
@@ -491,7 +491,7 @@ AS $$
   FROM (
     SELECT
       c.id,
-      c.version,
+      coalesce((to_jsonb(c)->>'version')::integer, 1) AS version,
       c.created_at,
       c.status,
       c.matched_session_id,

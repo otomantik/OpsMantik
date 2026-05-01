@@ -11,11 +11,22 @@ Her deploy öncesi:
 npm run smoke:intent-multi-site
 ```
 
-**1/1 site PASS** olmadan deploy yapılmayacak.
+**2/2 site PASS** olmadan deploy yapılmayacak.
 
-## Test Edilen Site (varsayılan)
+## Test Edilen Siteler (varsayılan)
 
-- www.kocotokurtarma.com
+- yapiozmendanismanlik.com
+- sosreklam.com
+
+## Gate İçeriği
+
+`smoke:intent-multi-site` artık yalnız ingest varlığını değil aşağıdaki contract kontrollerini de doğrular:
+
+- `POST /api/intents/[id]/stage` route 404 olmamalı (route drift guard)
+- Varsayılan modda **non-destructive** çalışır (ingest + route drift + readback)
+- Opsiyonel destructive persistence doğrulaması için:
+  - `P0_ENABLE_PERSISTENCE_WRITE_CHECK=1 npm run smoke:intent-multi-site`
+  - Bu mod test `call` satırını `junk` statüsüne çekerek persist/queue-leak doğrulaması yapar.
 
 ## Ortam
 

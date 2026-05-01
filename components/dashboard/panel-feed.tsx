@@ -12,6 +12,14 @@ import { createClient } from '@/lib/supabase/client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const PANEL_API_VERSION = '2026-05-01';
+const STAGE_FALLBACK_ENABLED = (() => {
+  const raw = process.env.NEXT_PUBLIC_INTENT_STAGE_FALLBACK_ENABLED;
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+})();
+
 function dedupeLatestBySession(calls: HunterIntent[]): HunterIntent[] {
   const seen = new Set<string>();
   const out: HunterIntent[] = [];
@@ -97,9 +105,12 @@ export function PanelFeed({
     }
 
     try {
-      const res = await fetch(`/api/intents/${intent.id}/stage`, {
+      let res = await fetch(`/api/intents/${intent.id}/stage`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ops-api-version': PANEL_API_VERSION,
+        },
         body: JSON.stringify({
           phone,
           score,
@@ -107,8 +118,42 @@ export function PanelFeed({
           version: intentVersion,
         })
       });
-      const resultUnknown = await res.json().catch(() => ({}));
-      const result = resultUnknown as { success?: boolean; error?: string };
+      let resultUnknown = await res.json().catch(() => ({}));
+      let result = resultUnknown as { success?: boolean; error?: string };
+
+      // Backward-compat fallback for deploy drift where /stage is missing on runtime.
+      if (
+        STAGE_FALLBACK_ENABLED &&
+        res.status === 404 &&
+        !(typeof result.error === 'string' && result.error.toLowerCase().includes('call not found'))
+      ) {
+        if (actionType === 'junk') {
+          res = await fetch(`/api/intents/${intent.id}/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: 'junk',
+              lead_score: 0,
+              version: intentVersion,
+            }),
+            credentials: 'include',
+          });
+        } else {
+          res = await fetch(`/api/calls/${intent.id}/seal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              caller_phone: phone,
+              lead_score: score,
+              version: intentVersion,
+            }),
+            credentials: 'include',
+          });
+        }
+        resultUnknown = await res.json().catch(() => ({}));
+        result = resultUnknown as { success?: boolean; error?: string };
+      }
+
       if (!res.ok || !result.success) {
         // If the call row disappeared between opening the overlay and confirming,
         // treat it as an optimistic "already processed" state: remove the card

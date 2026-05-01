@@ -23,6 +23,8 @@ test('stage route delegates mutation and side-effects to atomic status+review RP
   assert.ok(errorGuardIndex > rpcIndex, 'stage route must guard RPC failures');
   assert.ok(outboxNotifyIndex > errorGuardIndex, 'outbox notification must happen after RPC success guard');
   assert.ok(src.includes("err.code === 'PGRST202'"), 'stage route must tolerate legacy RPC signatures during rollout');
+  assert.ok(src.includes("req.headers.get('x-ops-api-version')"), 'stage route must validate API version header');
+  assert.ok(src.includes("code: 'API_VERSION_MISMATCH'"), 'stage route must emit deterministic API version mismatch code');
 });
 
 test('stage route treats junk as a canonical optimization_stage and invalidates pending OCI artifacts', () => {
@@ -39,10 +41,18 @@ test('panel feed waits for real server success before removing a card', () => {
   const src = readFileSync(PANEL_FEED, 'utf8');
 
   assert.ok(src.includes('/api/intents/${intent.id}/stage'), 'panel feed must call stage route');
+  assert.ok(src.includes("'x-ops-api-version': PANEL_API_VERSION"), 'panel feed must send API version header');
   assert.ok(src.includes('action_type: actionType'), 'panel feed must send action_type to the stage route');
   assert.ok(src.includes("if (!res.ok || !result.success)"), 'panel feed must gate completion on server success');
   assert.ok(src.includes('setCalls(prev => prev.filter(c => c.id !== intent.id));'), 'panel feed must still remove cards after success');
   assert.ok(src.indexOf("if (!res.ok || !result.success)") < src.indexOf('setCalls(prev => prev.filter(c => c.id !== intent.id));'), 'card removal must happen after server success check');
+});
+
+test('panel fallback stays feature-flagged and disabled by default', () => {
+  const src = readFileSync(PANEL_FEED, 'utf8');
+  assert.ok(src.includes('NEXT_PUBLIC_INTENT_STAGE_FALLBACK_ENABLED'), 'panel fallback must be governed by env flag');
+  assert.ok(src.includes('if (!raw) return false;'), 'panel fallback must default to disabled when env is missing');
+  assert.ok(src.includes('STAGE_FALLBACK_ENABLED &&'), 'panel fallback branch must be explicitly gated');
 });
 
 test('panel feed hides terminal/reviewed rows and keeps only unreviewed intent states', () => {

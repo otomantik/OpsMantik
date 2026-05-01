@@ -19,6 +19,13 @@ import {
 export const dynamic = 'force-dynamic';
 
 const route = '/api/intents/[id]/stage';
+const PANEL_API_VERSION = '2026-05-01';
+
+const isPanelApiVersionAccepted = (headerValue: string | null): boolean => {
+  if (!headerValue) return false;
+  const normalized = headerValue.trim();
+  return normalized === PANEL_API_VERSION || normalized === '1';
+};
 
 export async function POST(
   req: NextRequest,
@@ -26,11 +33,28 @@ export async function POST(
 ) {
   const requestId = req.headers.get('x-request-id') ?? undefined;
   try {
+    const apiVersionHeader = req.headers.get('x-ops-api-version');
+    if (!isPanelApiVersionAccepted(apiVersionHeader)) {
+      incrementRefactorMetric('panel_stage_api_version_mismatch_total');
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unsupported API version for panel stage route. Expected ${PANEL_API_VERSION}.`,
+          code: 'API_VERSION_MISMATCH',
+          request_id: requestId,
+        },
+        { status: 409 }
+      );
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED', request_id: requestId },
+        { status: 401 }
+      );
     }
 
     const bodyUnknown = await req.json().catch(() => ({}));
@@ -46,7 +70,15 @@ export async function POST(
     const roundedScore = typeof score === 'number' ? Math.max(0, Math.min(100, Math.round(score))) : null;
 
     if (roundedScore === null && !actionType) {
-      return NextResponse.json({ error: 'score or action_type is required' }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'score or action_type is required',
+          code: 'INVALID_PAYLOAD',
+          request_id: requestId,
+        },
+        { status: 400 }
+      );
     }
 
     const { data: call, error: callError } = await adminClient
@@ -56,7 +88,11 @@ export async function POST(
       .single();
 
     if (callError || !call) {
-      return NextResponse.json({ error: 'Call not found' }, { status: 404 });
+      incrementRefactorMetric('panel_stage_404_total');
+      return NextResponse.json(
+        { success: false, error: 'Call not found', code: 'CALL_NOT_FOUND', request_id: requestId },
+        { status: 404 }
+      );
     }
 
     const siteId = call.site_id;
@@ -67,14 +103,20 @@ export async function POST(
         : null;
     const access = await validateSiteAccess(siteId, user.id, supabase);
     if (!access.allowed || !access.role || !hasCapability(access.role, 'queue:operate')) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Access denied', code: 'ACCESS_DENIED', request_id: requestId },
+        { status: 403 }
+      );
     }
     const cookieStore = await cookies();
     const previewToken = cookieStore.get(getPanelPreviewCookieName())?.value ?? '';
     if (previewToken) {
       const preview = await verifyPanelPreviewContext(previewToken);
       if (preview && preview.userId === user.id && preview.siteId === siteId && preview.scope === 'ro') {
-        return NextResponse.json({ error: 'READ_ONLY_SCOPE', code: 'READ_ONLY_SCOPE' }, { status: 403 });
+        return NextResponse.json(
+          { success: false, error: 'READ_ONLY_SCOPE', code: 'READ_ONLY_SCOPE', request_id: requestId },
+          { status: 403 }
+        );
       }
     }
 
@@ -88,7 +130,12 @@ export async function POST(
     });
     if (!versionResolution.ok) {
       return NextResponse.json(
-        { error: 'version must be an integer >= 1', code: 'INVALID_VERSION' },
+        {
+          success: false,
+          error: 'version must be an integer >= 1',
+          code: 'INVALID_VERSION',
+          request_id: requestId,
+        },
         { status: 400 }
       );
     }
@@ -148,6 +195,7 @@ export async function POST(
     };
 
     if (isLegacySignatureMissing(updateError as { code?: string; message?: string } | null)) {
+      incrementRefactorMetric('panel_stage_rpc_signature_mismatch_total');
       const retry = await adminClient.rpc('apply_call_action_with_review_v1', rpcPayloadBase);
       updatedCall = retry.data;
       updateError = retry.error;
@@ -167,10 +215,31 @@ export async function POST(
         );
       }
       logWarn('stage_v2_failed', { callId, optimizationStage, error: updateError.message });
-      return NextResponse.json({ error: updateError.message, code: 'RPC_V2_FAILURE' }, { status: 409 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: updateError.message,
+          code: 'RPC_V2_FAILURE',
+          request_id: requestId,
+        },
+        { status: 409 }
+      );
     }
 
     const callObj = updatedCall;
+    const persistedStatus = (callObj as { status?: string }).status ?? 'intent';
+    if (persistedStatus === 'intent') {
+      incrementRefactorMetric('panel_stage_persistence_miss_total');
+      logWarn('panel_stage_persistence_miss', {
+        request_id: requestId,
+        route,
+        call_id: callId,
+        site_id: siteId,
+        status: persistedStatus,
+      });
+    } else {
+      incrementRefactorMetric('panel_stage_success_total');
+    }
     if (optimizationStage === 'junk') {
       await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', new Date().toISOString());
     }
@@ -180,12 +249,22 @@ export async function POST(
     return NextResponse.json({
       success: true,
       call: callObj,
-      persisted_status: (callObj as { status?: string }).status ?? 'intent',
+      persisted_status: persistedStatus,
       queued: true,
+      code: 'OK',
+      request_id: requestId,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error';
     logError(message, { request_id: requestId, route });
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+        request_id: requestId,
+      },
+      { status: 500 }
+    );
   }
 }

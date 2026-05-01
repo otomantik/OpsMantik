@@ -25,6 +25,12 @@ import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 export const dynamic = 'force-dynamic';
 const BACKDATE_APPROVAL_MS = 48 * 60 * 60 * 1000;
 
+const isApplyCallActionV2SignatureMissing = (err: { code?: string; message?: string } | null): boolean => {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  return err.code === 'PGRST202' && msg.includes('apply_call_action_v2');
+};
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -104,7 +110,7 @@ export async function POST(
         return NextResponse.json({ error: 'saleAmount must be non-negative' }, { status: 400 });
       }
       // Phase 2: Authoritative SQL FSM (Probe Path)
-      const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
+      const rpcPayload = {
         p_call_id: callId,
         p_site_id: call.site_id,
         p_stage: 'won',
@@ -118,7 +124,32 @@ export async function POST(
         },
         p_version: call.version,
         p_metadata: { route, request_id: requestId, source: 'probe_v2' },
-      });
+      };
+      let { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', rpcPayload);
+      if (isApplyCallActionV2SignatureMissing(updateError as { code?: string; message?: string } | null)) {
+        const retry = await adminClient.rpc('apply_call_action_v2', {
+          p_call_id: callId,
+          p_site_id: call.site_id,
+          p_stage: 'won',
+          p_actor_id: deviceId,
+          p_lead_score: 100,
+          p_version: call.version,
+          p_metadata: {
+            route,
+            request_id: requestId,
+            source: 'probe_v2',
+            compat_path: 'legacy_v2_signature',
+            sale_metadata: {
+              amount: saleAmountProbe,
+              currency: currencyProbe,
+              occurred_at: occurredAtMeta.occurredAt,
+              notes: merchantNotes,
+            },
+          },
+        });
+        updatedCall = retry.data;
+        updateError = retry.error;
+      }
 
       if (updateError) {
         logWarn('PROBE_SEAL_V2_FAILED', { callId, error: updateError.message });
@@ -251,6 +282,7 @@ export async function POST(
 
     const backdatedMs = Math.max(0, new Date(confirmedAtIso).getTime() - new Date(occurredAtMeta.occurredAt).getTime());
     const approvalRequired = saleOccurredAtRaw.length > 0 && backdatedMs > BACKDATE_APPROVAL_MS;
+    const requestedScore = explicitSystemScore ?? leadScore ?? 100;
 
     // Phone Identity (DIC)
     let phoneE164: string | null = null;
@@ -266,12 +298,12 @@ export async function POST(
     }
 
     // Phase 2: Authoritative SQL FSM (Dashboard Path)
-    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', {
+    const rpcPayload = {
       p_call_id: callId,
       p_site_id: siteId,
       p_stage: 'won',
       p_actor_id: user.id,
-      p_lead_score: explicitSystemScore ?? leadScore ?? 100,
+      p_lead_score: requestedScore,
       p_sale_metadata: {
         amount: saleAmount,
         currency,
@@ -285,7 +317,40 @@ export async function POST(
       p_caller_phone_raw: phoneRaw,
       p_caller_phone_e164: phoneE164,
       p_caller_phone_hash: phoneHash,
-    });
+    };
+    let { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_v2', rpcPayload);
+    if (isApplyCallActionV2SignatureMissing(updateError as { code?: string; message?: string } | null)) {
+      const retry = await adminClient.rpc('apply_call_action_v2', {
+        p_call_id: callId,
+        p_site_id: siteId,
+        p_stage: 'won',
+        p_actor_id: user.id,
+        p_lead_score: requestedScore,
+        p_version: versionResolution.version,
+        p_metadata: {
+          route,
+          request_id: requestId,
+          source: 'seal_v2',
+          mutation_origin: 'user',
+          compat_path: 'legacy_v2_signature',
+          sale_metadata: {
+            amount: saleAmount,
+            currency,
+            occurred_at: occurredAtMeta.occurredAt,
+            notes: entryReason,
+            backdated_ms: backdatedMs,
+            approval_required: approvalRequired,
+          },
+          caller_phone: {
+            raw: phoneRaw,
+            e164: phoneE164,
+            hash: phoneHash,
+          },
+        },
+      });
+      updatedCall = retry.data;
+      updateError = retry.error;
+    }
 
     if (updateError) {
       const code = (updateError as { code?: string }).code;

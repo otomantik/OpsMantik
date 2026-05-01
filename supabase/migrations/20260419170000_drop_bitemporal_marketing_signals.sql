@@ -1,6 +1,12 @@
 BEGIN;
 
-DROP TRIGGER IF EXISTS trg_marketing_signals_bitemporal ON public.marketing_signals;
+DO $$
+BEGIN
+  IF to_regclass('public.marketing_signals') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS trg_marketing_signals_bitemporal ON public.marketing_signals;
+  END IF;
+END;
+$$;
 DROP FUNCTION IF EXISTS public.marketing_signals_bitemporal_audit();
 DROP FUNCTION IF EXISTS public.get_marketing_signals_as_of(uuid, timestamptz);
 DROP TABLE IF EXISTS public.marketing_signals_history;

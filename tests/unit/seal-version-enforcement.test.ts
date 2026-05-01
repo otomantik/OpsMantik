@@ -18,11 +18,15 @@ test('PR-OCI-6: seal route fetches call.version (server-side source of truth)', 
   );
 });
 
-test('PR-OCI-6: seal route requires version and returns 400 when omitted', () => {
+test('PR-OCI-6: seal route resolves mutation version through integrity guard', () => {
   const src = readFileSync(SEAL_ROUTE, 'utf-8');
   assert.ok(
-    src.includes('version === null') && src.includes('status: 400'),
-    'Expected seal route to return 400 when version is missing (Phase 8: require version)'
+    src.includes('resolveMutationVersion('),
+    'Expected seal route to use resolveMutationVersion contract'
+  );
+  assert.ok(
+    src.includes("code: 'INVALID_VERSION'") && src.includes('status: 400'),
+    'Expected seal route to return INVALID_VERSION with 400 when version contract fails'
   );
 });
 

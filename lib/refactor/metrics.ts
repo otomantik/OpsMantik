@@ -63,6 +63,11 @@ export const REFACTOR_METRIC_NAMES = [
   'queue_action_denied_readonly_total',
   'queue_action_conflict_total',
   'queue_action_missing_intent_total',
+  'panel_stage_404_total',
+  'panel_stage_success_total',
+  'panel_stage_rpc_signature_mismatch_total',
+  'panel_stage_persistence_miss_total',
+  'panel_stage_api_version_mismatch_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];
