@@ -41,8 +41,13 @@ test('Apps Script engines share the four literal conversion names', () => {
     join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptTecrubeliBakici.js'),
     'utf8'
   );
+  const mur = readFileSync(
+    join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptMuratcanAku.js'),
+    'utf8'
+  );
   for (const m of must) {
     assert.ok(gas.includes(`'${m}'`), `GoogleAdsScript.js missing ${m}`);
     assert.ok(tec.includes(`'${m}'`), `GoogleAdsScriptTecrubeliBakici.js missing ${m}`);
+    assert.ok(mur.includes(`'${m}'`), `GoogleAdsScriptMuratcanAku.js missing ${m}`);
   }
 });

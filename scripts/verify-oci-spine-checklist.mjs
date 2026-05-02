@@ -25,6 +25,7 @@ for (const m of must) {
 
 const gas = readFileSync(join(root, 'scripts/google-ads-oci/GoogleAdsScript.js'), 'utf8');
 const tec = readFileSync(join(root, 'scripts/google-ads-oci/GoogleAdsScriptTecrubeliBakici.js'), 'utf8');
+const mur = readFileSync(join(root, 'scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js'), 'utf8');
 for (const m of must) {
   if (!gas.includes(`'${m}'`)) {
     console.error(`[verify-oci-spine] GoogleAdsScript.js missing ${m}`);
@@ -32,6 +33,10 @@ for (const m of must) {
   }
   if (!tec.includes(`'${m}'`)) {
     console.error(`[verify-oci-spine] GoogleAdsScriptTecrubeliBakici.js missing ${m}`);
+    process.exit(1);
+  }
+  if (!mur.includes(`'${m}'`)) {
+    console.error(`[verify-oci-spine] GoogleAdsScriptMuratcanAku.js missing ${m}`);
     process.exit(1);
   }
 }

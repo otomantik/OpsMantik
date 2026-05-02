@@ -5,7 +5,11 @@
 
 **Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)
 
+**Muratcan Akü (`muratcanaku.com`):** hardened script kaynağı **`GoogleAdsScriptMuratcanAku.js`** — `OPSMANTIK_RUN_MODE`: `peek` (kuyruk log’ları, yükleme yok) veya `sync` (yükleyici + ACK). Kimlikleri inline veya Script Properties.
+
 **SECURITY:** Prefer Script Properties over hardcoded keys. Set `OCI_API_KEY` and `OPSMANTIK_SITE_ID` in File > Project properties > Script properties. Deploy snapshots support this; fallback to CONFIG for backward compatibility.
+
+`deploy/Muratcan-OCI-Quantum.js` **deprecated** — eski sızdırılmış snapshot; kullanmayın.
 
 **OCI credentials (SITE_ID, API_KEY)** — Supabase'den çekip scripte yaz veya Script Properties kullan:
 ```bash
