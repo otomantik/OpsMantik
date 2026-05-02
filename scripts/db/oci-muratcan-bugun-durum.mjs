@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
- * Muratcan bugünkü durum: Mühür sayısı, GCLID var mı, kuyrukta mı, gidebilir mi?
+ * Muratcan bugünkü durum: mühür / won / mühür-legacy, GCLID, kuyruk.
+ * Şema uyumlu: `calls` seçiminde * (sale_amount / oci_status opsiyonel).
+ *
  * Kullanım: node scripts/db/oci-muratcan-bugun-durum.mjs
+ *           node scripts/db/oci-muratcan-bugun-durum.mjs muratcanaku.com
  */
 
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { resolveSiteId } from './lib/resolve-site-id.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '..', '.env.local') });
@@ -20,53 +24,69 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key);
-const MURATCAN_SITE_ID = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073';
+
+function sealedLike(call) {
+  const st = (call.status ?? '').trim().toLowerCase();
+  if (st === 'won') return true;
+  if (!['confirmed', 'qualified', 'real'].includes(st)) return false;
+  if (Object.prototype.hasOwnProperty.call(call, 'oci_status')) {
+    return (call.oci_status ?? '').trim().toLowerCase() === 'sealed';
+  }
+  return true;
+}
 
 async function run() {
+  const siteArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
+  const siteId = await resolveSiteId(supabase, siteArg || 'muratcanaku');
+  if (!siteId) {
+    console.error('Site bulunamadı.');
+    process.exit(1);
+  }
+
+  const { data: label } = await supabase.from('sites').select('name,domain').eq('id', siteId).maybeSingle();
   const today = new Date().toISOString().slice(0, 10);
 
-  console.log('Muratcan AKÜ — Bugünkü durum');
+  console.log(`${label?.name ?? 'Site'} (${label?.domain ?? '—'}) — Bugünkü durum`);
+  console.log('site_id:', siteId);
   console.log('Tarih:', today);
   console.log('');
 
-  // Bugünkü mühür (sealed) call'lar
-  const { data: calls, error: callsErr } = await supabase
+  const { data: rawCalls, error: callsErr } = await supabase
     .from('calls')
-    .select('id, confirmed_at, matched_at, lead_score, sale_amount, status, oci_status')
-    .eq('site_id', MURATCAN_SITE_ID)
-    .in('status', ['confirmed', 'qualified', 'real'])
-    .eq('oci_status', 'sealed');
+    .select('*')
+    .eq('site_id', siteId)
+    .in('status', ['won', 'confirmed', 'qualified', 'real']);
 
   if (callsErr) {
     console.error('Calls hatası:', callsErr.message);
     process.exit(1);
   }
 
-  const bugunCalls = (calls || []).filter(
-    (c) =>
-      (c.confirmed_at && c.confirmed_at.startsWith(today)) ||
-      (c.matched_at && c.matched_at.startsWith(today))
-  );
+  const mühürAdayları = (rawCalls || []).filter(sealedLike);
+  const bugunCalls = mühürAdayları.filter((c) => {
+    const ca = (c.confirmed_at && String(c.confirmed_at).startsWith(today)) || false;
+    const ma = (c.matched_at && String(c.matched_at).startsWith(today)) || false;
+    const cre = c.created_at && String(c.created_at).startsWith(today);
+    return ca || ma || cre;
+  });
 
-  console.log('--- BUGÜN MÜHÜR OLAN CALL\'LAR ---');
+  console.log("--- BUGÜN 'MÜHÜR / WON / SEAL-LIKE' CALL'LAR ---");
   console.log('Toplam:', bugunCalls.length);
   if (bugunCalls.length === 0) {
-    console.log('Bugün mühür yok.');
+    console.log('Bugün kayıt yok.');
     process.exit(0);
   }
 
-  // Kuyruk satırları (bu call'lar için)
   const callIds = bugunCalls.map((c) => c.id);
   const { data: queueRows } = await supabase
     .from('offline_conversion_queue')
     .select('call_id, status, gclid, wbraid, gbraid, value_cents, last_error')
-    .eq('site_id', MURATCAN_SITE_ID)
+    .eq('site_id', siteId)
     .eq('provider_key', 'google_ads')
     .in('call_id', callIds);
 
   const queueByCall = new Map((queueRows || []).map((q) => [q.call_id, q]));
 
-  // Her call için session'dan gclid/wbraid/gbraid al (get_call_session_for_oci)
   let withClickId = 0;
   let inQueue = 0;
   let queueCompleted = 0;
@@ -78,7 +98,7 @@ async function run() {
     const q = queueByCall.get(c.id);
     const { data: rpcRows } = await supabase.rpc('get_call_session_for_oci', {
       p_call_id: c.id,
-      p_site_id: MURATCAN_SITE_ID,
+      p_site_id: siteId,
     });
     const session = Array.isArray(rpcRows) && rpcRows.length > 0 ? rpcRows[0] : null;
     const hasGclid = session?.gclid != null && String(session.gclid).trim() !== '';
@@ -97,9 +117,13 @@ async function run() {
       else if (q.status === 'QUEUED' || q.status === 'PROCESSING') queueQueued++;
     }
 
-    const value = c.sale_amount != null ? `${c.sale_amount} TL` : (c.lead_score != null ? `score ${c.lead_score}` : '-');
+    const saleAmt = typeof c.sale_amount === 'number' ? c.sale_amount : c.sale_amount != null ? Number(c.sale_amount) : null;
+    const value =
+      saleAmt != null && Number.isFinite(saleAmt) ? `${saleAmt} TL` : c.lead_score != null ? `score ${c.lead_score}` : '-';
+
     detay.push({
       call_id: c.id.slice(0, 8) + '...',
+      stat: (c.status ?? '').slice(0, 4),
       value,
       gclid: hasGclid ? 'var' : '-',
       wbraid: hasWbraid ? 'var' : '-',
@@ -112,16 +136,16 @@ async function run() {
   console.table(detay);
   console.log('');
   console.log('--- ÖZET ---');
-  console.log('Bugün mühür:', bugunCalls.length);
-  console.log('GCLID/wbraid/gbraid olan (kuyruğa alınsa gidebilecek):', withClickId);
-  console.log('Kuyrukta kayıt var:', inQueue, '  → COMPLETED:', queueCompleted, '| QUEUED/PROCESSING:', queueQueued, '| FAILED/RETRY:', queueFailed);
-  console.log('GCLID olmayan (kuyruğa alsak da Google kabul etmez):', bugunCalls.length - withClickId);
+  console.log('Bugün (seal-like):', bugunCalls.length);
+  console.log('Click id olan:', withClickId);
+  console.log('Kuyrukta:', inQueue, ' → COMPLETED:', queueCompleted, '| QUEUED/PROCESSING:', queueQueued, '| FAILED/RETRY:', queueFailed);
+  console.log('Click id eksik:', bugunCalls.length - withClickId);
   console.log('');
   if (queueFailed > 0 && withClickId > 0) {
-    console.log('→ FAILED/RETRY olanlar için: node scripts/db/oci-muratcan-only-gclid.mjs ve/veya oci-muratcan-backfill-gclid-from-session.mjs sonra worker çalıştır.');
+    console.log('→ FAILED/RETRY: oci-muratcan-only-gclid / backfill + worker.');
   }
   if (withClickId > inQueue) {
-    console.log('→ GCLID var ama kuyrukta olmayan mühür var; enqueue (seal sırasında veya manuel) gerekir.');
+    console.log('→ Click id var, kuyrukta yok: outbox + enqueue kontrol.');
   }
 }
 

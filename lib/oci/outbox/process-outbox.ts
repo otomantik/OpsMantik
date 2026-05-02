@@ -27,6 +27,7 @@ import {
 } from '@/lib/oci/single-conversion-highest-only';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { safeValidateOciPayload } from '@/lib/oci/validation/payload';
+import { fetchCallSendabilityContext } from '@/lib/oci/call-sendability-fetch';
 
 export const OUTBOX_BATCH_LIMIT = 50;
 /** Separate from OCI queue MAX_RETRY_ATTEMPTS (7) — outbox events get fewer retries. */
@@ -188,14 +189,10 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
       const currency = normalizeCurrencyOrNeutral(payload?.currency);
 
       try {
-        const { data: currentCall } = await adminClient
-          .from('calls')
-          .select('status, oci_status')
-          .eq('id', callId)
-          .eq('site_id', siteId)
-          .maybeSingle();
-        const callStatus = (currentCall as { status?: string | null } | null)?.status ?? null;
-        const ociStatus = (currentCall as { oci_status?: string | null } | null)?.oci_status ?? null;
+        const { status: callStatus, oci_status: ociStatus } =
+          callId && siteId
+            ? await fetchCallSendabilityContext(callId, siteId)
+            : { status: null as string | null, oci_status: null as string | null };
 
         const score = leadScore ?? 0;
         const stage = explicitStage ?? resolveOutboxStage(score);

@@ -1,6 +1,6 @@
-import { adminClient } from '@/lib/supabase/admin';
 import { selectHighestPriorityCandidates } from '@/lib/oci/single-conversion-highest-only';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
+import { fetchExportCallContextRows } from '@/lib/oci/call-sendability-fetch';
 import type { GoogleAdsConversionItem } from '@/lib/oci/google-ads-export/types';
 import type { ExportAuthContext } from './export-auth';
 import type { FetchedExportData } from './export-fetch';
@@ -42,13 +42,12 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   for (let i = 0; i < rawList.length; i++) {
     if (rawList[i].call_id) callIds.push(rawList[i].call_id as string);
   }
-  const { data: calls } = callIds.length > 0
-    ? await adminClient.from('calls').select('id, matched_session_id, confirmed_at, status, oci_status').eq('site_id', ctx.siteUuid).in('id', callIds)
-    : { data: [] };
+  const calls =
+    callIds.length > 0 ? await fetchExportCallContextRows(ctx.siteUuid, callIds) : [];
   const sessionByCall: Record<string, string> = {};
   const confirmedByCall: Record<string, string> = {};
   const sendabilityByCall: Record<string, boolean> = {};
-  for (const c of calls ?? []) {
+  for (const c of calls) {
     const id = (c as { id: string }).id;
     const sid = (c as { matched_session_id?: string | null }).matched_session_id;
     if (sid) sessionByCall[id] = sid;

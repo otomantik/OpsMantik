@@ -115,9 +115,11 @@ test('cron auth enforces dual-key production execution', () => {
 });
 
 test('oci workers re-check current call sendability before exporting or draining outbox', () => {
+  const fetchSrc = readFileSync(join(ROOT, 'lib', 'oci', 'call-sendability-fetch.ts'), 'utf8');
   const exportSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   const outboxSrc = readFileSync(PROCESS_OUTBOX_LIB, 'utf8');
-  assert.ok(exportSrc.includes('status, oci_status'), 'queue export must fetch live call status context');
+  assert.ok(fetchSrc.includes('status, oci_status'), 'sendability helper must probe oci_status (with drift fallback)');
+  assert.ok(exportSrc.includes('fetchExportCallContextRows'), 'queue export must use shared sendability fetch');
   assert.ok(exportSrc.includes("blockedSignalIds"), 'queue export must track blocked signals before terminalization');
   const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(

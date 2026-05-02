@@ -20,6 +20,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
 import { getPvDataKey, getPvProcessingKeysForCleanup } from '@/lib/oci/pv-redis';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
+import { fetchCallSendabilityRowsForSite } from '@/lib/oci/call-sendability-fetch';
 import { logError, logInfo } from '@/lib/logging/logger';
 import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/lib/oci/ack-receipt';
 import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
@@ -198,20 +199,9 @@ export async function POST(req: NextRequest) {
       const processingCallIds = [...new Set(processingRows.map((row) => row.call_id).filter((value): value is string => Boolean(value)))];
       const callStatusById = new Map<string, { status: string | null; oci_status: string | null }>();
       if (processingCallIds.length > 0) {
-        const { data: calls, error: callError } = await adminClient
-          .from('calls')
-          .select('id, status, oci_status')
-          .in('id', processingCallIds)
-          .eq('site_id', siteUuid);
-        if (callError) {
-          logError('OCI_ACK_CALL_STATE_SQL_ERROR', { code: (callError as { code?: string })?.code });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
-        }
-        for (const call of calls ?? []) {
-          callStatusById.set((call as { id: string }).id, {
-            status: (call as { status?: string | null }).status ?? null,
-            oci_status: (call as { oci_status?: string | null }).oci_status ?? null,
-          });
+        const sendabilityMap = await fetchCallSendabilityRowsForSite(siteUuid, processingCallIds);
+        for (const callId of processingCallIds) {
+          callStatusById.set(callId, sendabilityMap.get(callId) ?? { status: null, oci_status: null });
         }
       }
       const blockedRows = processingRows.filter((row) => {

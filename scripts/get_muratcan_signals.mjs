@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { resolveSiteId } from './db/lib/resolve-site-id.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,9 +14,13 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, serviceKey);
 
 async function checkMuratcanSignals() {
-    const siteId = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'; // Muratcan Akü
+    const q = process.argv[2]?.trim() || 'muratcanaku';
+    const siteId = await resolveSiteId(supabase, q);
+    if (!siteId) {
+        console.error('Site not found:', q);
+        return;
+    }
 
-    // Get site name to be sure
     const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).single();
     if (!site) {
         console.log("Site not found:", siteId);

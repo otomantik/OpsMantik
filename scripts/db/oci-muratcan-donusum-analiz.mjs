@@ -15,6 +15,7 @@ import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { resolveSiteId } from './lib/resolve-site-id.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '..', '.env.local') });
@@ -27,7 +28,6 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key);
-const MURATCAN_SITE_ID = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073';
 
 /** Google Ads conversion_time regex: yyyy-mm-dd hh:mm:ss±hhmm (kolonsuz) */
 const GOOGLE_ADS_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{4}$/;
@@ -128,6 +128,13 @@ async function run() {
   const jsonOut = process.argv.includes('--json');
   const outArg = process.argv.find((a) => a.startsWith('--out='));
   const outFile = outArg ? outArg.slice('--out='.length).trim() : null;
+  const siteArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
+  const MURATCAN_SITE_ID = await resolveSiteId(supabase, siteArg || 'muratcanaku');
+  if (!MURATCAN_SITE_ID) {
+    console.error('Site bulunamadı.');
+    process.exit(1);
+  }
+
   const { today, yesterday, since } = getDateRanges();
 
   // Dün ve bugün: kuyruk satırları (created_at veya updated_at bu iki günde)
@@ -154,10 +161,7 @@ async function run() {
 
   let callConfirmedAt = {};
   if (callIds.length > 0) {
-    const { data: calls } = await supabase
-      .from('calls')
-      .select('id, confirmed_at, matched_at, status, oci_status')
-      .in('id', callIds);
+    const { data: calls } = await supabase.from('calls').select('id, confirmed_at, matched_at, status').in('id', callIds);
     callConfirmedAt = Object.fromEntries((calls || []).map((c) => [c.id, c.confirmed_at || c.matched_at]));
   }
 

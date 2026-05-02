@@ -12,6 +12,7 @@ import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { resolveSiteId } from './lib/resolve-site-id.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '..', '.env.local') });
@@ -24,9 +25,15 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key);
-const MURATCAN_SITE_ID = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073';
 
 async function run() {
+  const siteArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
+  const MURATCAN_SITE_ID = await resolveSiteId(supabase, siteArg || 'muratcanaku');
+  if (!MURATCAN_SITE_ID) {
+    console.error('Site bulunamadı.');
+    process.exit(1);
+  }
+
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  Muratcan AKÜ — Derin durum analizi');
   console.log('═══════════════════════════════════════════════════════════════\n');
