@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { safeValidateOciPayload } from '../../lib/oci/validation/payload';
+import { normalizeOciConversionTimeUtcZ, safeValidateOciPayload } from '../../lib/oci/validation/payload';
 
 test('Zod Validation: accepts valid OCI payload', () => {
   const valid = {
@@ -78,4 +78,19 @@ test('Zod Validation: rejects invalid ISO date', () => {
 
   const result = safeValidateOciPayload(invalid);
   assert.strictEqual(result.success, false);
+});
+
+test('normalizeOciConversionTimeUtcZ accepts Postgres offset timestamps for Zod pipeline', () => {
+  const raw = '2026-05-02T13:24:24.591922+00:00';
+  const z = normalizeOciConversionTimeUtcZ(raw);
+  assert.ok(z?.endsWith('Z'));
+  const r = safeValidateOciPayload({
+    click_id: 'GCLID_EX_1234567890',
+    conversion_value: 0,
+    currency: 'TRY',
+    conversion_time: z as string,
+    site_id: '00000000-0000-0000-0000-000000000001',
+    stage: 'won',
+  });
+  assert.strictEqual(r.success, true);
 });

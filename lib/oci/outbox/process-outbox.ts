@@ -26,7 +26,7 @@ import {
   type SingleConversionGear,
 } from '@/lib/oci/single-conversion-highest-only';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
-import { safeValidateOciPayload } from '@/lib/oci/validation/payload';
+import { normalizeOciConversionTimeUtcZ, safeValidateOciPayload } from '@/lib/oci/validation/payload';
 import { fetchCallSendabilityContext } from '@/lib/oci/call-sendability-fetch';
 
 export const OUTBOX_BATCH_LIMIT = 50;
@@ -194,6 +194,27 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             ? await fetchCallSendabilityContext(callId, siteId)
             : { status: null as string | null, oci_status: null as string | null };
 
+        let conversionTimeUtcZ =
+          normalizeOciConversionTimeUtcZ(confirmedAt) ??
+          normalizeOciConversionTimeUtcZ(saleOccurredAt ?? '');
+        if (!conversionTimeUtcZ && callId && siteId) {
+          const { data: tsRow } = await adminClient
+            .from('calls')
+            .select('confirmed_at, matched_at, created_at')
+            .eq('id', callId)
+            .eq('site_id', siteId)
+            .maybeSingle();
+          const row = tsRow as {
+            confirmed_at?: string | null;
+            matched_at?: string | null;
+            created_at?: string | null;
+          } | null;
+          conversionTimeUtcZ =
+            normalizeOciConversionTimeUtcZ(row?.confirmed_at) ??
+            normalizeOciConversionTimeUtcZ(row?.matched_at) ??
+            normalizeOciConversionTimeUtcZ(row?.created_at);
+        }
+
         const score = leadScore ?? 0;
         const stage = explicitStage ?? resolveOutboxStage(score);
 
@@ -234,18 +255,33 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           continue;
         }
 
+        if (!conversionTimeUtcZ) {
+          logWarn('outbox_validation_failed', {
+            outbox_id: id,
+            call_id: callId,
+            error: 'Missing or unparseable conversion_time (confirmed_at)',
+          });
+          await finalizeOutboxEvent({
+            outboxId: id,
+            status: 'FAILED',
+            lastError: 'OCI_CONTRACT_VIOLATION: missing_conversion_time',
+          });
+          failed++;
+          continue;
+        }
+
         // --- Zod Validation Guard (Shift-Left Data Integrity) ---
         const primary = await getPrimarySource(siteId, { callId });
         const validationResult = safeValidateOciPayload({
           click_id: primary?.gclid || primary?.gbraid || primary?.wbraid || 'UNKNOWN_STUB',
           conversion_value: Number(saleAmount ?? 0),
           currency: currency,
-          conversion_time: confirmedAt,
+          conversion_time: conversionTimeUtcZ,
           site_id: siteId,
           stage: stage,
           gbraid: primary?.gbraid,
           wbraid: primary?.wbraid,
-          metadata: { outbox_id: id, call_id: callId }
+          metadata: { outbox_id: id, call_id: callId },
         });
 
         if (!validationResult.success || validationResult.data.click_id === 'UNKNOWN_STUB') {
@@ -274,7 +310,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           const result = await enqueueSealConversion({
             callId,
             siteId,
-            confirmedAt,
+            confirmedAt: conversionTimeUtcZ,
             saleOccurredAt,
             saleAmount,
             currency,
@@ -355,11 +391,11 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             continue;
           }
 
-          const callCreatedAt = payload?.created_at ?? confirmedAt;
-          const primary = await getPrimarySource(siteId, { callId });
-          const callCreatedAtDate = new Date(callCreatedAt);
+          const fallbackCreatedNorm =
+            normalizeOciConversionTimeUtcZ(payload?.created_at ?? '') ?? conversionTimeUtcZ;
+          const callCreatedAtDate = new Date(fallbackCreatedNorm);
           const clickDate = await getSessionClickDate(callId, callCreatedAtDate);
-          const signalDate = new Date(confirmedAt);
+          const signalDate = new Date(conversionTimeUtcZ);
 
           const result = await evaluateAndRouteSignal(gear as PipelineStage, {
             siteId,

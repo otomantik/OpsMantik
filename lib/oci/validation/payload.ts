@@ -44,6 +44,18 @@ export function safeValidateOciPayload(data: unknown) {
   return OciPayloadSchema.safeParse(data);
 }
 
+/**
+ * Postgres / panel timestamps are often offset-form ISO (`+00:00`) while {@link OciPayloadSchema}
+ * requires UTC `...Z`. Parse and normalize to `Date.toISOString()`.
+ */
+export function normalizeOciConversionTimeUtcZ(input: string | null | undefined): string | null {
+  const s = (input ?? '').trim();
+  if (!s) return null;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 export function validateCanonicalStage(stage: string): boolean {
   return isOciCanonicalStage(stage);
 }
