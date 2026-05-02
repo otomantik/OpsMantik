@@ -17,8 +17,15 @@ export const OciPayloadSchema = z.object({
   /** ISO-4217 Currency Code (3 uppercase letters) */
   currency: z.string().regex(/^[A-Z]{3}$/, 'Currency must be 3 uppercase letters'),
   
-  /** UTC Timestamp (ISO 8601 format) */
-  conversion_time: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/, 'Must be a valid ISO 8601 datetime'),
+  /** Event time: normalize to UTC `Z` for Google OCI (accepts Postgres offsets). */
+  conversion_time: z
+    .string()
+    .min(1)
+    .refine(
+      (s) => /\d{4}-\d{2}-\d{2}T/.test(s.trim()) && !Number.isNaN(Date.parse(s.trim())),
+      'Must be a valid ISO 8601 datetime'
+    )
+    .transform((s) => new Date(s.trim()).toISOString()),
   
   /** Site identifier (UUID format) */
   site_id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Site ID must be a valid UUID'),
