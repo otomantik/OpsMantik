@@ -17,7 +17,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireQstashSignature } from '@/lib/qstash/require-signature';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { runProcessOutbox } from '@/lib/oci/outbox/process-outbox';
-import { logInfo } from '@/lib/logging/logger';
+import { logError, logInfo } from '@/lib/logging/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,34 +28,51 @@ export async function processOutboxWorkerHandler(
   runner: typeof runProcessOutbox = runProcessOutbox
 ): Promise<NextResponse> {
   const requestId = req.headers.get('x-request-id') ?? undefined;
-  const result = await runner();
-
-  logInfo('OCI_PROCESS_OUTBOX_WORKER_DONE', {
-    request_id: requestId,
-    claimed: result.claimed,
-    processed: result.processed,
-    failed: result.failed,
-    ok: result.ok,
-  });
-
   const headers = getBuildInfoHeaders();
-  if (!result.ok) {
-    return NextResponse.json(
-      { ok: false, error: result.error, code: 'PROCESS_OUTBOX_ERROR' },
-      { status: 500, headers }
-    );
-  }
-  return NextResponse.json(
-    {
-      ok: true,
+
+  try {
+    const result = await runner();
+
+    logInfo('OCI_PROCESS_OUTBOX_WORKER_DONE', {
+      request_id: requestId,
       claimed: result.claimed,
       processed: result.processed,
       failed: result.failed,
-      message: result.message,
-      errors: result.errors,
-    },
-    { status: 200, headers }
-  );
+      ok: result.ok,
+    });
+
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.error, code: 'PROCESS_OUTBOX_ERROR' },
+        { status: 500, headers }
+      );
+    }
+    return NextResponse.json(
+      {
+        ok: true,
+        claimed: result.claimed,
+        processed: result.processed,
+        failed: result.failed,
+        message: result.message,
+        errors: result.errors,
+      },
+      { status: 200, headers }
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logError('OCI_PROCESS_OUTBOX_WORKER_FATAL', {
+      request_id: requestId,
+      error: msg,
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: msg.slice(0, 2000),
+        code: 'PROCESS_OUTBOX_UNHANDLED_EXCEPTION',
+      },
+      { status: 500, headers }
+    );
+  }
 }
 
 export const POST = requireQstashSignature(

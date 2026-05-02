@@ -1,7 +1,9 @@
 /**
  * Best-effort primary_source extraction from call or session (gclid, wbraid, gbraid, utm_*).
  * Tenant-safe: all reads filtered by site_id. Returns null on any error or uncertain partition resolution.
- * OCI-9E: Bounded retry (2 retries, 50–150ms jitter) for replica lag; Sentry on final failure.
+ * OCI-9E: Bounded retry (3 attempts, 50–150ms jitter) for replica lag; after RPC exhaustion,
+ * resolves via matched_session_id + sessions (same logic as getPrimarySourceBatch).
+ * Sentry on final failure when neither path yields click ids.
  *
  * Attribution precedence (for fan-out from conversation_links): Call > Session > Event.
  * Call is treated as higher intent; when resolving GCLID from multiple linked entities, prefer the call's
@@ -52,63 +54,72 @@ export async function getPrimarySource(
 ): Promise<PrimarySource | null> {
   if (input.callId) {
     let lastError: unknown = null;
-  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
-    try {
-      const { data: rows, error } = await adminClient.rpc('get_call_session_for_oci', {
-        p_call_id: input.callId,
-        p_site_id: siteId,
-      });
-      if (error) {
-        lastError = error;
+    for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+      try {
+        const { data: rows, error } = await adminClient.rpc('get_call_session_for_oci', {
+          p_call_id: input.callId,
+          p_site_id: siteId,
+        });
+        if (error) {
+          lastError = error;
+          if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
+          continue;
+        }
+        if (!Array.isArray(rows) || rows.length === 0) {
+          lastError = new Error('PRIMARY_SOURCE_NOT_FOUND');
+          if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
+          continue;
+        }
+        const row = rows[0] as {
+          gclid?: string | null;
+          wbraid?: string | null;
+          gbraid?: string | null;
+          utm_source?: string | null;
+          utm_medium?: string | null;
+          utm_campaign?: string | null;
+          utm_content?: string | null;
+          utm_term?: string | null;
+          referrer_host?: string | null;
+        };
+        return {
+          gclid: row.gclid ?? null,
+          wbraid: row.wbraid ?? null,
+          gbraid: row.gbraid ?? null,
+          utm_source: row.utm_source ?? null,
+          utm_medium: row.utm_medium ?? null,
+          utm_campaign: row.utm_campaign ?? null,
+          utm_content: row.utm_content ?? null,
+          utm_term: row.utm_term ?? null,
+          referrer: row.referrer_host ?? null,
+        };
+      } catch (e) {
+        lastError = e;
         if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
-        continue;
       }
-      if (!Array.isArray(rows) || rows.length === 0) {
-        lastError = new Error('PRIMARY_SOURCE_NOT_FOUND');
-        if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
-        continue;
-      }
-      const row = rows[0] as {
-        gclid?: string | null;
-        wbraid?: string | null;
-        gbraid?: string | null;
-        utm_source?: string | null;
-        utm_medium?: string | null;
-        utm_campaign?: string | null;
-        utm_content?: string | null;
-        utm_term?: string | null;
-        referrer_host?: string | null;
-      };
-      return {
-        gclid: row.gclid ?? null,
-        wbraid: row.wbraid ?? null,
-        gbraid: row.gbraid ?? null,
-        utm_source: row.utm_source ?? null,
-        utm_medium: row.utm_medium ?? null,
-        utm_campaign: row.utm_campaign ?? null,
-        utm_content: row.utm_content ?? null,
-        utm_term: row.utm_term ?? null,
-        referrer: row.referrer_host ?? null,
-      };
-    } catch (e) {
-      lastError = e;
-      if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
     }
-  }
 
-  const msg = lastError instanceof Error ? lastError.message : String(lastError);
-  logWarn('getPrimarySource returned null', {
-    callId: input.callId,
-    siteId,
-    reason: 'PRIMARY_SOURCE_NOT_FOUND',
-    attempts: RETRY_ATTEMPTS,
-    lastError: msg,
-  });
-  Sentry.captureMessage('getPrimarySource returned null', {
-    level: 'warning',
-    extra: { callId: input.callId, siteId, reason: 'PRIMARY_SOURCE_NOT_FOUND', lastError: msg },
-  });
-  return null;
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    const batchMap = await getPrimarySourceBatch(siteId, [input.callId]);
+    const fromSession = batchMap.get(input.callId);
+    if (
+      fromSession &&
+      (fromSession.gclid?.trim() || fromSession.wbraid?.trim() || fromSession.gbraid?.trim())
+    ) {
+      return fromSession;
+    }
+
+    logWarn('getPrimarySource returned null', {
+      callId: input.callId,
+      siteId,
+      reason: 'PRIMARY_SOURCE_NOT_FOUND',
+      attempts: RETRY_ATTEMPTS,
+      lastError: msg,
+    });
+    Sentry.captureMessage('getPrimarySource returned null', {
+      level: 'warning',
+      extra: { callId: input.callId, siteId, reason: 'PRIMARY_SOURCE_NOT_FOUND', lastError: msg },
+    });
+    return null;
   }
   if (input.sessionId) {
     return getPrimarySourceFromSession(siteId, input.sessionId);
