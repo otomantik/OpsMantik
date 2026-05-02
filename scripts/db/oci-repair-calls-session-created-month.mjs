@@ -57,10 +57,19 @@ async function main() {
     .from('calls')
     .select('id, matched_session_id, session_created_month')
     .eq('site_id', siteId)
-    .not('matched_session_id', 'is', null);
+    .not('matched_session_id', 'is', null)
+    .limit(5000);
 
   if (cErr) {
-    console.error(cErr.message);
+    const msg = cErr.message || '';
+    if (/session_created_month/i.test(msg) && /does not exist|column/i.test(msg)) {
+      console.log(
+        'Atlandı: bu projede calls.session_created_month sütunu yok (RPC şeması farklı).',
+        '\nOCI taraflı düzeltme zaten getPrimarySource batch/call-row fallback ile yapılıyor.'
+      );
+      process.exit(0);
+    }
+    console.error(msg);
     process.exit(1);
   }
 

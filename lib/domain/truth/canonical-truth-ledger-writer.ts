@@ -15,8 +15,25 @@ import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { recordTruthParityMismatch } from '@/lib/domain/truth/truth-parity';
 
 const PG_UNIQUE_VIOLATION = '23505';
+/** PostgreSQL undefined_table — relation missing (or PostgREST schema cache drift). */
+const PG_UNDEFINED_TABLE = '42P01';
 
 export type CanonicalStreamKind = 'INGEST_SYNC' | 'INGEST_CALL_EVENT' | 'FUNNEL_LEDGER';
+
+/**
+ * Some environments have not migrated `truth_canonical_ledger`; fail-closed funnel/OCI paths
+ * must not abort when only the shadow table is absent (see appendFunnelEvent).
+ */
+export function isMissingLedgerTableError(error: { code?: string; message?: string }): boolean {
+  if (error.code === PG_UNDEFINED_TABLE) return true;
+  const m = String(error.message ?? '').toLowerCase();
+  if (!m.includes('truth_canonical_ledger')) return false;
+  return (
+    m.includes('does not exist') ||
+    m.includes('schema cache') ||
+    m.includes('not find the table')
+  );
+}
 
 export type AppendCanonicalTruthInput = {
   siteId: string;
@@ -79,6 +96,16 @@ export async function appendCanonicalTruthLedger(input: AppendCanonicalTruthInpu
   if (error) {
     if (classifyCanonicalLedgerInsertError(error) === 'duplicate') {
       incrementRefactorMetric('truth_canonical_ledger_success_total');
+      return { appended: false };
+    }
+    if (isMissingLedgerTableError(error)) {
+      incrementRefactorMetric('truth_canonical_ledger_failure_total');
+      logWarn('appendCanonicalTruthLedger skipped: table unavailable', {
+        siteId,
+        idempotencyKey,
+        streamKind,
+        error: error.message,
+      });
       return { appended: false };
     }
     incrementRefactorMetric('truth_canonical_ledger_failure_total');

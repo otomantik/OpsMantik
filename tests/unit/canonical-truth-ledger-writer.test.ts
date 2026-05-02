@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   appendCanonicalTruthLedger,
   classifyCanonicalLedgerInsertError,
+  isMissingLedgerTableError,
 } from '@/lib/domain/truth/canonical-truth-ledger-writer';
 import { getRefactorMetricsMemory, resetRefactorMetricsMemoryForTests } from '@/lib/refactor/metrics';
 
@@ -37,4 +38,16 @@ test('classifyCanonicalLedgerInsertError: 23505 is duplicate (success path for m
 test('classifyCanonicalLedgerInsertError: other codes are not duplicate', () => {
   assert.equal(classifyCanonicalLedgerInsertError({ code: '42703' }), 'other');
   assert.equal(classifyCanonicalLedgerInsertError({ code: undefined }), 'other');
+});
+
+test('isMissingLedgerTableError: PostgREST schema cache + table name', () => {
+  assert.ok(
+    isMissingLedgerTableError({
+      message: `Could not find the table 'public.truth_canonical_ledger' in the schema cache`,
+    })
+  );
+});
+
+test('isMissingLedgerTableError: Postgres undefined_table', () => {
+  assert.ok(isMissingLedgerTableError({ code: '42P01', message: 'relation "truth_canonical_ledger" does not exist' }));
 });
