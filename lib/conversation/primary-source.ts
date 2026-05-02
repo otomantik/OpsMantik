@@ -1,9 +1,10 @@
 /**
  * Best-effort primary_source extraction from call or session (gclid, wbraid, gbraid, utm_*).
  * Tenant-safe: all reads filtered by site_id. Returns null on any error or uncertain partition resolution.
- * OCI-9E: Bounded retry (3 attempts, 50–150ms jitter) for replica lag; after RPC exhaustion,
- * resolves via matched_session_id + sessions (same logic as getPrimarySourceBatch).
- * Sentry on final failure when neither path yields click ids.
+ * OCI-9E: Bounded retry (3 attempts, 50–150ms jitter) for replica lag; when RPC returns a row
+ * but session partition join yields no click ids (session_created_month drift), falls back to
+ * getPrimarySourceBatch then call-row gclid/wbraid/gbraid/click_id.
+ * Sentry on final failure when no path yields click ids.
  *
  * Attribution precedence (for fan-out from conversation_links): Call > Session > Event.
  * Call is treated as higher intent; when resolving GCLID from multiple linked entities, prefer the call's
@@ -81,7 +82,7 @@ export async function getPrimarySource(
           utm_term?: string | null;
           referrer_host?: string | null;
         };
-        return {
+        const fromRpc: PrimarySource = {
           gclid: row.gclid ?? null,
           wbraid: row.wbraid ?? null,
           gbraid: row.gbraid ?? null,
@@ -92,6 +93,15 @@ export async function getPrimarySource(
           utm_term: row.utm_term ?? null,
           referrer: row.referrer_host ?? null,
         };
+        if (
+          fromRpc.gclid?.trim() ||
+          fromRpc.wbraid?.trim() ||
+          fromRpc.gbraid?.trim()
+        ) {
+          return fromRpc;
+        }
+        lastError = new Error('PRIMARY_SOURCE_RPC_NO_CLICK_IDS_AFTER_JOIN');
+        break;
       } catch (e) {
         lastError = e;
         if (attempt < RETRY_ATTEMPTS - 1) await sleep(jitterMs());
@@ -106,6 +116,14 @@ export async function getPrimarySource(
       (fromSession.gclid?.trim() || fromSession.wbraid?.trim() || fromSession.gbraid?.trim())
     ) {
       return fromSession;
+    }
+
+    const fromCall = await getPrimarySourceFromCallRow(siteId, input.callId);
+    if (
+      fromCall &&
+      (fromCall.gclid?.trim() || fromCall.wbraid?.trim() || fromCall.gbraid?.trim())
+    ) {
+      return fromCall;
     }
 
     logWarn('getPrimarySource returned null', {
@@ -198,6 +216,47 @@ export async function getPrimarySourceBatch(
   } catch {
     uniqueCallIds.forEach((id) => result.set(id, null));
     return result;
+  }
+}
+
+async function getPrimarySourceFromCallRow(
+  siteId: string,
+  callId: string
+): Promise<PrimarySource | null> {
+  try {
+    const { data: c, error } = await adminClient
+      .from('calls')
+      .select('gclid, wbraid, gbraid, click_id')
+      .eq('id', callId)
+      .eq('site_id', siteId)
+      .maybeSingle();
+
+    if (error || !c) return null;
+
+    const row = c as {
+      gclid?: string | null;
+      wbraid?: string | null;
+      gbraid?: string | null;
+      click_id?: string | null;
+    };
+    const gclid = row.gclid?.trim() || row.click_id?.trim() || null;
+    const wbraid = row.wbraid?.trim() || null;
+    const gbraid = row.gbraid?.trim() || null;
+    if (!gclid && !wbraid && !gbraid) return null;
+
+    return {
+      gclid,
+      wbraid,
+      gbraid,
+      utm_source: null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_content: null,
+      utm_term: null,
+      referrer: null,
+    };
+  } catch {
+    return null;
   }
 }
 
