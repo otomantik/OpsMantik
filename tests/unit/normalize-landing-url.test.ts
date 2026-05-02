@@ -27,6 +27,12 @@ test('normalizeLandingUrl: strips gclid/wbraid/gbraid', () => {
   assert.equal(withGclid, without);
 });
 
+test('normalizeLandingUrl: strips ops_geo/ops_tgt aliases', () => {
+  const withOpsAliases = normalizeLandingUrl('https://site.com/landing?ops_geo=1012782&ops_tgt=123456');
+  const without = normalizeLandingUrl('https://site.com/landing');
+  assert.equal(withOpsAliases, without);
+});
+
 test('normalizeLandingUrl: same normalized URL equals (reuse case)', () => {
   const u1 = normalizeLandingUrl('https://mysite.com/page?utm_source=fb&utm_medium=social');
   const u2 = normalizeLandingUrl('https://mysite.com/page?gclid=abc1234567');

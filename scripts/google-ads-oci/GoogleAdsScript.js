@@ -33,6 +33,8 @@ function getConfig() {
     SITE_ID: getFirst(['OPSMANTIK_SITE_ID', 'OCI_SITE_ID'], '') || (isLocal ? 'mock-site-id' : ''),
     API_KEY: getFirst(['OPSMANTIK_API_KEY', 'OCI_API_KEY'], '') || (isLocal ? 'mock-api-key' : ''),
     BASE_URL: getFirst(['OPSMANTIK_BASE_URL', 'OCI_BASE_URL'], '') || 'https://console.opsmantik.com',
+    // Optional comma-separated queue-id allowlist for controlled one-shot exports.
+    ALLOWLIST_IDS: getFirst(['OPSMANTIK_ALLOWLIST_IDS'], ''),
     HTTP: Object.freeze({
       MAX_RETRIES: 5,
       INITIAL_DELAY_MS: 1500,
@@ -41,6 +43,18 @@ function getConfig() {
   });
 }
 const CONFIG = getConfig();
+
+function parseAllowlistIds(raw) {
+  const value = (raw || '').trim();
+  if (!value) return null;
+  const set = new Set(
+    value
+      .split(',')
+      .map((x) => (x || '').trim())
+      .filter((x) => x.length > 0)
+  );
+  return set.size > 0 ? set : null;
+}
 
 const CONVERSION_EVENTS = Object.freeze({
   CONTACTED: 'OpsMantik_Contacted',
@@ -391,13 +405,23 @@ function main() {
     let totalAutoFailedPageProcessing = 0;
     let totalPages = 0;
 
+    // Optional one-shot controlled export: only process IDs from allowlist.
+    const allowlistIds = parseAllowlistIds(CONFIG.ALLOWLIST_IDS);
+    if (allowlistIds) {
+      Telemetry.warn('ALLOWLIST MODE ACTIVE', { allowlist_count: allowlistIds.size });
+    }
+
     // 3. Upload & Validate per page
     const engine = new UploadEngine();
     totalPages = client.processConversionPages(CONFIG.SITE_ID, function (conversions, pageNo) {
       if (!Array.isArray(conversions) || conversions.length === 0) return;
+      const filtered = allowlistIds
+        ? conversions.filter((row) => row && row.id && allowlistIds.has(String(row.id)))
+        : conversions;
+      if (!filtered.length) return;
       hasAnyWork = true;
-      Telemetry.info(`Sayfa ${pageNo}: ${conversions.length} ham sinyal yakalandi. Validasyon basliyor...`);
-      const stats = engine.process(conversions, {
+      Telemetry.info(`Sayfa ${pageNo}: ${filtered.length}/${conversions.length} satir secildi. Validasyon basliyor...`);
+      const stats = engine.process(filtered, {
         onUploadFailure: function (ids, errorCode, errorMessage, errorCategory) {
           if (ids && ids.length > 0) {
             Telemetry.warn('Upload apply failed; marking appended rows FAILED (TRANSIENT)', { count: ids.length, page: pageNo });

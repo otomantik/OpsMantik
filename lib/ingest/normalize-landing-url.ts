@@ -8,6 +8,8 @@ const STRIP_PARAMS = new Set([
   'gclid', 'wbraid', 'gbraid', 'gclsrc', 'fbclid', 'ttclid', 'msclkid',
   'matchtype', 'device', 'devicemodel', 'targetid', 'network', 'adposition', 'feeditemid',
   'loc_interest_ms', 'loc_physical_ms',
+  // Tracker-safe aliases used in Google Ads templates.
+  'ops_geo', 'ops_tgt',
 ]);
 
 /**

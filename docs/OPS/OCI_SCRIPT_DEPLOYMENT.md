@@ -56,3 +56,53 @@ When a site is switched to **Worker (API)** — `oci_sync_method = 'api'` — it
 2. Check OCI Control dashboard for COMPLETED / FAILED status
 3. DETERMINISTIC_SKIP rows should show `provider_error_category = 'DETERMINISTIC_SKIP'` in OCI Control
 4. If V1 is absent, verify tracker traffic reaches `/api/track/pv` before investigating the export route
+
+## Rotate-All OCI API Key Rollout
+
+When `oci_api_key` values are rotated for all sites, every script must be updated before normal export resumes.
+
+### Phase 1 — DB migration
+
+Apply migrations in order:
+
+1. `20260501184500_oci_api_key_auto_provision.sql`
+2. `20260501184600_oci_api_key_rotate_all_sites.sql`
+
+Effects:
+- New sites get `oci_api_key` automatically on insert (DB trigger).
+- Existing site keys are regenerated (old keys become invalid).
+
+### Phase 2 — key extraction and secure delivery
+
+Generate masked rollout report:
+
+```sql
+select
+  id,
+  name,
+  public_id,
+  left(oci_api_key, 8) || '...' as key_mask
+from public.sites
+order by name;
+```
+
+Full keys must be shared only over approved secure channel (never Git, never chat logs, never plain runbooks).
+
+### Phase 3 — script update checklist
+
+For each Google Ads Script:
+
+1. Update `OPSMANTIK_SITE_ID`.
+2. Update `OPSMANTIK_API_KEY` to new value.
+3. Keep `OPSMANTIK_BASE_URL=https://console.opsmantik.com` unless environment requires otherwise.
+4. Run one manual script execution and verify no `INVALID_CREDENTIALS` in logs.
+
+### Phase 4 — canary then full rollout
+
+1. Select 2 canary sites and run script once.
+2. Verify `/api/oci/v2/verify` handshake success and export+ack success.
+3. If clean, continue with remaining sites.
+
+### Rollback note
+
+Rotate-all is not reversible. If a key is lost/leaked, rotate again and re-distribute script credentials.

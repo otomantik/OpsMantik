@@ -1,6 +1,10 @@
 import { adminClient } from '@/lib/supabase/admin';
+import {
+  isMissingOciRelationError,
+  supabaseErrorToError,
+} from '@/lib/oci/format-supabase-error';
 import type { QueueRow } from '@/lib/oci/google-ads-export/types';
-import type { ExportAuthContext } from './export-auth';
+import { ExportHttpError, type ExportAuthContext } from './export-auth';
 
 const EXPORT_QUEUE_LIMIT = 1000;
 const EXPORT_SIGNALS_LIMIT = 1000;
@@ -26,7 +30,16 @@ export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedEx
     .order('updated_at', { ascending: true })
     .order('id', { ascending: true })
     .limit(queueLimit);
-  if (queueError) throw queueError;
+  if (queueError) {
+    if (isMissingOciRelationError(queueError)) {
+      throw new ExportHttpError(503, {
+        error: 'OCI export unavailable: database tables missing or not exposed',
+        code: 'OCI_SCHEMA_INCOMPLETE',
+        details: supabaseErrorToError('offline_conversion_queue', queueError).message,
+      });
+    }
+    throw supabaseErrorToError('offline_conversion_queue', queueError);
+  }
 
   let signalQuery = adminClient
     .from('marketing_signals')
@@ -40,7 +53,16 @@ export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedEx
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
     .limit(signalLimit);
-  if (signalError) throw signalError;
+  if (signalError) {
+    if (isMissingOciRelationError(signalError)) {
+      throw new ExportHttpError(503, {
+        error: 'OCI export unavailable: database tables missing or not exposed',
+        code: 'OCI_SCHEMA_INCOMPLETE',
+        details: supabaseErrorToError('marketing_signals', signalError).message,
+      });
+    }
+    throw supabaseErrorToError('marketing_signals', signalError);
+  }
 
   return {
     rawList: Array.isArray(queueRows) ? (queueRows as QueueRow[]) : [],

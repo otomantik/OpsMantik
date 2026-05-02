@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { formatSupabaseClientError } from '@/lib/oci/format-supabase-error';
 import { logError } from '@/lib/logging/logger';
 import { authorizeExportRequest, ExportHttpError } from './export-auth';
 import { fetchExportData } from './export-fetch';
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }
     }
-    const details = e instanceof Error ? e.message : String(e);
+    const details = formatSupabaseClientError(e);
     logError('OCI_EXPORT_FATAL', { error: details });
     return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });
   }
