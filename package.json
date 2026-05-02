@@ -31,6 +31,8 @@
     "db:enqueue": "node scripts/db/oci-enqueue.mjs",
     "db:oci-outbox-backfill": "node scripts/db/oci-outbox-missed-backfill.mjs",
     "db:oci-outbox-backfill:all": "node scripts/db/oci-outbox-missed-backfill.mjs --all-sites",
+    "db:oci-pipeline-sync": "node scripts/db/oci-pipeline-fill-and-report.mjs",
+    "db:oci-pipeline-report": "node scripts/db/oci-pipeline-fill-and-report.mjs --no-backfill --no-drain",
     "db:enqueue:today": "node scripts/db/oci-enqueue.mjs Eslamed --today",
     "db:enqueue:fix": "node scripts/db/oci-enqueue.mjs Eslamed --today --force-reset-completed",
     "db:queue-check": "node scripts/db/oci-queue-check.mjs",
