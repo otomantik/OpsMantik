@@ -1,3 +1,9 @@
+/** RPC reasons that bypass strict click-chain checks (dual ingest / burst coalescing). */
+export const SESSION_RPC_BURST_REUSE_REASONS = [
+  'reused_recent_fingerprint_burst',
+  'reused_recent_ip_entry_burst',
+] as const;
+
 export const ACTIVE_SINGLE_CARD_STATUSES = ['intent', 'contacted', 'offered'] as const;
 export const TERMINAL_STATUSES = ['won', 'confirmed', 'junk', 'cancelled'] as const;
 export const ARCHIVAL_STATUSES = ['merged'] as const;
@@ -41,6 +47,23 @@ function normalizeLifecycle(value: string | null): ReuseLifecycleStatus {
 
 function isNonEmpty(value: string | null): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+const BURST_REASON_SET = new Set<string>(SESSION_RPC_BURST_REUSE_REASONS);
+
+export function burstRpcSessionReuseAllowed(
+  reason: string | null | undefined,
+  row: { matched_session_id?: string | null; time_delta_ms?: number | null }
+): boolean {
+  const r = (reason ?? '').trim();
+  if (!BURST_REASON_SET.has(r)) return false;
+  if (!row.matched_session_id?.trim()) return false;
+  const msRaw = row.time_delta_ms;
+  if (typeof msRaw !== 'number' || !Number.isFinite(msRaw)) return false;
+  const ms = Math.max(0, Math.round(msRaw));
+  if (r === 'reused_recent_fingerprint_burst') return ms <= 5_500;
+  if (r === 'reused_recent_ip_entry_burst') return ms <= 1_200;
+  return false;
 }
 
 export function shouldReuseSessionV1(input: SessionReuseDecisionInput): SessionReuseDecision {

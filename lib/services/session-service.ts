@@ -10,7 +10,12 @@ import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { decideGeo } from '@/lib/geo/decision-engine';
 import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { inferIntentAction, normalizePhoneTarget } from '@/lib/api/call-event/shared';
-import { shouldReuseSessionV1 } from '@/lib/intents/session-reuse-v1';
+import {
+    burstRpcSessionReuseAllowed,
+    type SessionReuseDecision,
+    shouldReuseSessionV1,
+} from '@/lib/intents/session-reuse-v1';
+import { intentSessionReuseHardeningEnabled } from '@/lib/config/intent-session-reuse-hardening';
 
 /** PR-OCI-7.3.1: Evidence-based weights for monotonic attribution (never downgrade Paid → Organic) */
 const ATTRIBUTION_WEIGHTS: Record<string, number> = {
@@ -51,11 +56,6 @@ interface IncomingData {
     } | null;
     referrer?: string | null;
 }
-
-const SESSION_REUSE_HARDENING_ENABLED =
-    process.env.INTENT_SESSION_REUSE_HARDENING === '1' ||
-    process.env.INTENT_SESSION_REUSE_HARDENING === 'true' ||
-    process.env.INTENT_SESSION_REUSE_HARDENING === 'on';
 
 function hashTarget(value: string | null): string | null {
     if (!value) return null;
@@ -112,33 +112,33 @@ export class SessionService {
         // Step B: Create session if not found
         if (!session) {
             const finalSessionId = isUuid ? client_sid : this.generateUUID();
-            if (SESSION_REUSE_HARDENING_ENABLED) {
-                const primaryClickId =
-                    sanitizeClickId(data.currentGclid ?? null) ??
-                    sanitizeClickId(data.params.get('wbraid') || data.meta?.wbraid || null) ??
-                    sanitizeClickId(data.params.get('gbraid') || data.meta?.gbraid || null) ??
-                    null;
+            if (intentSessionReuseHardeningEnabled()) {
                 const rawTarget = typeof data.event_label === 'string' ? data.event_label : null;
                 const normalizedTarget = rawTarget && rawTarget.trim() ? normalizePhoneTarget(rawTarget) : null;
                 const intentAction =
                     normalizedTarget && normalizedTarget.toLowerCase().startsWith('whatsapp:')
                         ? 'whatsapp'
                         : inferIntentAction(rawTarget || '');
-                const canAttemptReuse = Boolean(
-                    primaryClickId &&
-                    normalizedTarget &&
-                    ['phone', 'whatsapp', 'form'].includes(intentAction) &&
-                    hasValidClickId({
-                        gclid: sanitizeClickId(data.currentGclid ?? null) ?? null,
-                        wbraid: sanitizeClickId(data.params.get('wbraid') || data.meta?.wbraid || null) ?? null,
-                        gbraid: sanitizeClickId(data.params.get('gbraid') || data.meta?.gbraid || null) ?? null,
-                    })
-                );
+                const primaryClickId =
+                    sanitizeClickId(data.currentGclid ?? null) ??
+                    sanitizeClickId(data.params.get('wbraid') || data.meta?.wbraid || null) ??
+                    sanitizeClickId(data.params.get('gbraid') || data.meta?.gbraid || null) ??
+                    null;
+                const primaryClickIdValid = hasValidClickId({
+                    gclid: sanitizeClickId(data.currentGclid ?? null) ?? null,
+                    wbraid: sanitizeClickId(data.params.get('wbraid') || data.meta?.wbraid || null) ?? null,
+                    gbraid: sanitizeClickId(data.params.get('gbraid') || data.meta?.gbraid || null) ?? null,
+                });
+                const rpcClickId =
+                    primaryClickId && primaryClickIdValid ? primaryClickId : null;
 
-                if (canAttemptReuse) {
+                const canAttemptRpcBurst =
+                    Boolean(normalizedTarget) && ['phone', 'whatsapp', 'form'].includes(intentAction);
+
+                if (canAttemptRpcBurst) {
                     const { data: reuseRows, error: reuseErr } = await adminClient.rpc('find_or_reuse_session_v1', {
                         p_site_id: siteId,
-                        p_primary_click_id: primaryClickId,
+                        p_primary_click_id: rpcClickId,
                         p_intent_action: intentAction,
                         p_normalized_intent_target: normalizedTarget,
                         p_occurred_at: new Date().toISOString(),
@@ -168,35 +168,92 @@ export class SessionService {
                     } : null;
 
                     if (!reuseErr && firstReuseRow?.matched_session_id) {
-                        const decision = shouldReuseSessionV1({
-                            siteMatches: true,
-                            primaryClickId,
-                            primaryClickIdValid: true,
-                            intentAction,
-                            candidateIntentAction: intentAction,
-                            normalizedIntentTarget: normalizedTarget,
-                            candidateIntentTarget: normalizedTarget,
-                            timeDeltaMs: firstReuseRow.time_delta_ms ?? null,
-                            lifecycleStatus: firstReuseRow.lifecycle_status ?? null,
-                            candidateSessionId: firstReuseRow.candidate_session_id ?? firstReuseRow.matched_session_id ?? null,
-                        });
+                        const reuseReasonRpc = firstReuseRow.reason ?? '';
+                        const trivialRpcSession =
+                            reuseReasonRpc === 'fallback_candidate_session' ||
+                            reuseReasonRpc === 'created_new_session';
+                        const burstOk = burstRpcSessionReuseAllowed(reuseReasonRpc, firstReuseRow);
+
+                        const reuseDecision: SessionReuseDecision =
+                            trivialRpcSession ?
+                                {
+                                    reuse: true,
+                                    reason: reuseReasonRpc,
+                                    telemetry: {
+                                        primary_click_id_present: Boolean(primaryClickId),
+                                        intent_action: intentAction || 'unknown',
+                                        normalized_target_present: Boolean(normalizedTarget?.trim()),
+                                        time_delta_ms:
+                                            typeof firstReuseRow.time_delta_ms === 'number' &&
+                                            Number.isFinite(firstReuseRow.time_delta_ms)
+                                                ? Math.max(0, Math.round(firstReuseRow.time_delta_ms))
+                                                : null,
+                                        lifecycle_status: firstReuseRow.lifecycle_status ?? null,
+                                        candidate_session_id:
+                                            firstReuseRow.candidate_session_id ??
+                                            firstReuseRow.matched_session_id ??
+                                            null,
+                                    },
+                                }
+                            : burstOk ?
+                                {
+                                    reuse: true,
+                                    reason: reuseReasonRpc || 'burst_rpc',
+                                    telemetry: {
+                                        primary_click_id_present: Boolean(primaryClickId),
+                                        intent_action: intentAction || 'unknown',
+                                        normalized_target_present: Boolean(normalizedTarget?.trim()),
+                                        time_delta_ms:
+                                            typeof firstReuseRow.time_delta_ms === 'number' &&
+                                            Number.isFinite(firstReuseRow.time_delta_ms)
+                                                ? Math.max(0, Math.round(firstReuseRow.time_delta_ms))
+                                                : null,
+                                        lifecycle_status: null,
+                                        candidate_session_id:
+                                            firstReuseRow.candidate_session_id ??
+                                            firstReuseRow.matched_session_id ??
+                                            null,
+                                    },
+                                }
+                            :   shouldReuseSessionV1({
+                                    siteMatches: true,
+                                    primaryClickId: rpcClickId,
+                                    primaryClickIdValid: Boolean(rpcClickId && primaryClickIdValid),
+                                    intentAction,
+                                    candidateIntentAction: intentAction,
+                                    normalizedIntentTarget: normalizedTarget,
+                                    candidateIntentTarget: normalizedTarget,
+                                    timeDeltaMs: firstReuseRow.time_delta_ms ?? null,
+                                    lifecycleStatus: firstReuseRow.lifecycle_status ?? null,
+                                    candidateSessionId:
+                                        firstReuseRow.candidate_session_id ??
+                                        firstReuseRow.matched_session_id ??
+                                        null,
+                                });
+
                         debugLog('session_reuse_decision', {
-                            reuse_hit: decision.reuse,
-                            reuse_miss_reason: decision.reason,
+                            reuse_hit: reuseDecision.reuse,
+                            reuse_miss_reason: reuseDecision.reason,
                             site_id: siteId,
-                            primary_click_id_present: decision.telemetry.primary_click_id_present,
-                            intent_action: decision.telemetry.intent_action,
+                            primary_click_id_present: rpcClickId !== null,
+                            trivial_rpc_session: trivialRpcSession,
+                            secondary_burst_ok: burstOk,
+                            intent_action: intentAction,
                             normalized_intent_target_hash: hashTarget(normalizedTarget),
-                            candidate_session_id: decision.telemetry.candidate_session_id,
+                            candidate_session_id: reuseDecision.telemetry.candidate_session_id,
                             matched_session_id: firstReuseRow.matched_session_id,
-                            time_delta_ms: decision.telemetry.time_delta_ms,
-                            lifecycle_status: decision.telemetry.lifecycle_status,
+                            time_delta_ms: firstReuseRow.time_delta_ms ?? null,
+                            lifecycle_status:
+                                burstOk ? null : (firstReuseRow.lifecycle_status ?? null),
                             source_path: 'sync',
                         });
-                        return {
-                            id: firstReuseRow.matched_session_id,
-                            created_month: firstReuseRow.matched_session_month || dbMonth,
-                        };
+
+                        if (reuseDecision.reuse) {
+                            return {
+                                id: firstReuseRow.matched_session_id,
+                                created_month: firstReuseRow.matched_session_month || dbMonth,
+                            };
+                        }
                     }
 
                     if (reuseErr) {

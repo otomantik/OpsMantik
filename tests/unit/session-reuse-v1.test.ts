@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { shouldReuseSessionV1 } from '@/lib/intents/session-reuse-v1';
+import {
+  burstRpcSessionReuseAllowed,
+  shouldReuseSessionV1,
+} from '@/lib/intents/session-reuse-v1';
 
 test('shouldReuseSessionV1 accepts valid active candidate within 90 seconds', () => {
   const result = shouldReuseSessionV1({
@@ -120,6 +123,42 @@ test('shouldReuseSessionV1 rejects terminal statuses', () => {
   });
   assert.equal(result.reuse, false);
   assert.equal(result.reason, 'terminal_status');
+});
+
+test('burstRpcSessionReuseAllowed accepts fingerprint burst within SLA', () => {
+  assert.ok(
+    burstRpcSessionReuseAllowed('reused_recent_fingerprint_burst', {
+      matched_session_id: '8b3c52d2-1111-4aaa-8111-111111111111',
+      time_delta_ms: 3_900,
+    })
+  );
+});
+
+test('burstRpcSessionReuseAllowed rejects fingerprint burst outside SLA', () => {
+  assert.ok(
+    !burstRpcSessionReuseAllowed('reused_recent_fingerprint_burst', {
+      matched_session_id: '8b3c52d2-1111-4aaa-8111-111111111111',
+      time_delta_ms: 9_999,
+    })
+  );
+});
+
+test('burstRpcSessionReuseAllowed accepts ip-entry burst within SLA', () => {
+  assert.ok(
+    burstRpcSessionReuseAllowed('reused_recent_ip_entry_burst', {
+      matched_session_id: '8b3c52d2-2222-4aaa-8222-222222222222',
+      time_delta_ms: 800,
+    })
+  );
+});
+
+test('burstRpcSessionReuseAllowed rejects unrelated reasons', () => {
+  assert.ok(
+    !burstRpcSessionReuseAllowed('reused_existing_active_signal', {
+      matched_session_id: 'x',
+      time_delta_ms: 100,
+    })
+  );
 });
 
 test('shouldReuseSessionV1 rejects merged archival status', () => {

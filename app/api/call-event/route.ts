@@ -28,7 +28,9 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 import { getClientIp } from '@/lib/request-client-ip';
 import { getRefactorFlags } from '@/lib/refactor/flags';
 import { sanitizeClickId } from '@/lib/attribution';
-import { shouldReuseSessionV1 } from '@/lib/intents/session-reuse-v1';
+import { burstRpcSessionReuseAllowed, shouldReuseSessionV1 } from '@/lib/intents/session-reuse-v1';
+import { intentSessionReuseHardeningEnabled } from '@/lib/config/intent-session-reuse-hardening';
+import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -37,11 +39,6 @@ export const dynamic = 'force-dynamic';
 
 // Global version for debug verification
 const OPSMANTIK_VERSION = '1.0.2-bulletproof';
-const SESSION_REUSE_HARDENING_ENABLED =
-    process.env.INTENT_SESSION_REUSE_HARDENING === '1' ||
-    process.env.INTENT_SESSION_REUSE_HARDENING === 'true' ||
-    process.env.INTENT_SESSION_REUSE_HARDENING === 'on';
-
 const MAX_CALL_EVENT_BODY_BYTES = 64 * 1024; // 64KB
 
 function hashTarget(value: string | null): string | null {
@@ -489,16 +486,27 @@ export async function POST(req: NextRequest) {
             ? body.click_id.trim()
             : null;
 
-        if (SESSION_REUSE_HARDENING_ENABLED && matchedSessionId) {
+        if (intentSessionReuseHardeningEnabled() && matchedSessionId) {
             const primaryClickId =
                 sanitizeClickId(body.gclid || null) ??
                 sanitizeClickId(body.wbraid || null) ??
                 sanitizeClickId(body.gbraid || null) ??
                 null;
-            if (primaryClickId && intent_target && ['phone', 'whatsapp', 'form'].includes(intent_action)) {
+            const primaryClickIdValid = hasValidClickId({
+                gclid: sanitizeClickId(body.gclid || null) ?? null,
+                wbraid: sanitizeClickId(body.wbraid || null) ?? null,
+                gbraid: sanitizeClickId(body.gbraid || null) ?? null,
+            });
+            const rpcClickId =
+                primaryClickId && primaryClickIdValid ? primaryClickId : null;
+
+            const canBurstCoalesceRpc =
+                Boolean(intent_target) && ['phone', 'whatsapp', 'form'].includes(intent_action);
+
+            if (canBurstCoalesceRpc) {
                 const { data: reuseRows, error: reuseErr } = await adminClient.rpc('find_or_reuse_session_v1', {
                     p_site_id: siteUuidFinal,
-                    p_primary_click_id: primaryClickId,
+                    p_primary_click_id: rpcClickId,
                     p_intent_action: intent_action,
                     p_normalized_intent_target: intent_target,
                     p_occurred_at: matchedAt,
@@ -524,24 +532,69 @@ export async function POST(req: NextRequest) {
                         time_delta_ms?: number | null;
                         lifecycle_status?: string | null;
                         candidate_session_id?: string | null;
+                        reason?: string | null;
                     };
-                    const decision = shouldReuseSessionV1({
-                        siteMatches: true,
-                        primaryClickId,
-                        primaryClickIdValid: true,
-                        intentAction: intent_action,
-                        candidateIntentAction: intent_action,
-                        normalizedIntentTarget: intent_target,
-                        candidateIntentTarget: intent_target,
-                        timeDeltaMs: row.time_delta_ms ?? null,
-                        lifecycleStatus: row.lifecycle_status ?? null,
-                        candidateSessionId: row.candidate_session_id ?? row.matched_session_id ?? null,
-                    });
+                    const reuseReasonRpc = row.reason ?? '';
+                    const trivialRpcSession =
+                        reuseReasonRpc === 'fallback_candidate_session' ||
+                        reuseReasonRpc === 'created_new_session';
+                    const burstOk = burstRpcSessionReuseAllowed(reuseReasonRpc, row);
+                    const decision =
+                        trivialRpcSession ?
+                            {
+                                reuse: true,
+                                reason: reuseReasonRpc,
+                                telemetry: {
+                                    primary_click_id_present: Boolean(primaryClickId),
+                                    intent_action: intent_action,
+                                    normalized_target_present: true,
+                                    time_delta_ms:
+                                        typeof row.time_delta_ms === 'number' &&
+                                        Number.isFinite(row.time_delta_ms)
+                                            ? Math.max(0, Math.round(row.time_delta_ms))
+                                            : null,
+                                    lifecycle_status: row.lifecycle_status ?? null,
+                                    candidate_session_id:
+                                        row.candidate_session_id ?? row.matched_session_id ?? null,
+                                },
+                            }
+                        : burstOk ?
+                            {
+                                reuse: true,
+                                reason: reuseReasonRpc || 'burst_rpc',
+                                telemetry: {
+                                    primary_click_id_present: Boolean(primaryClickId),
+                                    intent_action: intent_action,
+                                    normalized_target_present: true,
+                                    time_delta_ms:
+                                        typeof row.time_delta_ms === 'number' &&
+                                        Number.isFinite(row.time_delta_ms)
+                                            ? Math.max(0, Math.round(row.time_delta_ms))
+                                            : null,
+                                    lifecycle_status: null,
+                                    candidate_session_id:
+                                        row.candidate_session_id ?? row.matched_session_id ?? null,
+                                },
+                            }
+                        :   shouldReuseSessionV1({
+                                siteMatches: true,
+                                primaryClickId: rpcClickId,
+                                primaryClickIdValid: Boolean(rpcClickId && primaryClickIdValid),
+                                intentAction: intent_action,
+                                candidateIntentAction: intent_action,
+                                normalizedIntentTarget: intent_target,
+                                candidateIntentTarget: intent_target,
+                                timeDeltaMs: row.time_delta_ms ?? null,
+                                lifecycleStatus: row.lifecycle_status ?? null,
+                                candidateSessionId: row.candidate_session_id ?? row.matched_session_id ?? null,
+                            });
                     logWarn('session_reuse_decision_v1', {
                         reuse_hit: decision.reuse,
                         reuse_miss_reason: decision.reason,
                         site_id: siteUuidFinal,
                         primary_click_id_present: decision.telemetry.primary_click_id_present,
+                        trivial_rpc_session: trivialRpcSession,
+                        secondary_burst_ok: burstOk,
                         intent_action: decision.telemetry.intent_action,
                         normalized_intent_target_hash: hashTarget(intent_target),
                         candidate_session_id: decision.telemetry.candidate_session_id,
@@ -550,7 +603,7 @@ export async function POST(req: NextRequest) {
                         lifecycle_status: decision.telemetry.lifecycle_status,
                         source_path: 'call-event',
                     });
-                    if (row.matched_session_id) {
+                    if (decision.reuse && row.matched_session_id) {
                         matchedSessionId = row.matched_session_id;
                         matchedSessionMonth = row.matched_session_month ?? matchedSessionMonth;
                     }
