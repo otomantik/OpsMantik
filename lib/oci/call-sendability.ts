@@ -4,7 +4,15 @@ const SENDABLE_CALL_STATUSES = new Set<OciSendableCallStatus>(['confirmed', 'qua
 
 // Some signal rows are emitted before the call graduates out of "intent".
 // Canonical stage rows must stay exportable in that state or panel actions get stuck in DB only.
-const SIGNAL_INTENT_SENDABLE_STATUSES = new Set<string>(['intent', 'confirmed', 'qualified', 'real']);
+/** Call rows may already mirror funnel stage (`contacted` / `offered`) while emitting the same-named signal. */
+const SIGNAL_INTENT_SENDABLE_STATUSES = new Set<string>([
+  'intent',
+  'contacted',
+  'offered',
+  'confirmed',
+  'qualified',
+  'real',
+]);
 const SIGNAL_TYPES_ALLOWING_INTENT_STATUS = new Set<string>([
   'contacted',
   'offered',

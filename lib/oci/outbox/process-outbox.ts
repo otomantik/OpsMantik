@@ -185,6 +185,8 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
       const explicitStage = payload?.stage ?? null; // Explicit stage from v2 RPC
       const confirmedAt = payload?.confirmed_at ?? '';
       const saleOccurredAt = payload?.sale_occurred_at ?? null;
+      const saleSourceTs = payload?.sale_source_timestamp ?? null;
+      const payloadCreatedAt = payload?.created_at ?? null;
       const saleAmount = payload?.sale_amount ?? null;
       const currency = normalizeCurrencyOrNeutral(payload?.currency);
 
@@ -196,7 +198,9 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
 
         let conversionTimeUtcZ =
           normalizeOciConversionTimeUtcZ(confirmedAt) ??
-          normalizeOciConversionTimeUtcZ(saleOccurredAt ?? '');
+          normalizeOciConversionTimeUtcZ(saleOccurredAt ?? '') ??
+          normalizeOciConversionTimeUtcZ(saleSourceTs ?? '') ??
+          normalizeOciConversionTimeUtcZ(payloadCreatedAt ?? '');
         if (!conversionTimeUtcZ && callId && siteId) {
           const { data: tsRow } = await adminClient
             .from('calls')

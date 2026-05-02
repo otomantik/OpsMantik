@@ -80,6 +80,18 @@ test('Zod Validation: rejects invalid ISO date', () => {
   assert.strictEqual(result.success, false);
 });
 
+test('safeValidate coerces Postgres offset conversion_time inside schema (no prior normalize)', () => {
+  const r = safeValidateOciPayload({
+    click_id: 'GCLID_EX_1234567890',
+    conversion_value: 0,
+    currency: 'TRY',
+    conversion_time: '2026-05-02T13:24:24.591922+00:00',
+    site_id: '00000000-0000-4000-8000-000000000002',
+    stage: 'junk',
+  });
+  assert.strictEqual(r.success, true);
+});
+
 test('normalizeOciConversionTimeUtcZ accepts Postgres offset timestamps for Zod pipeline', () => {
   const raw = '2026-05-02T13:24:24.591922+00:00';
   const z = normalizeOciConversionTimeUtcZ(raw);

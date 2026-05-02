@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isCallSendableForSealExport,
+  isCallSendableForOutboxSignalStage,
   isCallStatusSendableForSignal,
 } from '@/lib/oci/call-sendability';
 
@@ -9,6 +10,11 @@ test('canonical contacted and offered signals remain sendable while call status 
   assert.equal(isCallStatusSendableForSignal('intent', 'contacted'), true);
   assert.equal(isCallStatusSendableForSignal('intent', 'offered'), true);
   assert.equal(isCallStatusSendableForSignal('intent', 'legacy_signal'), false);
+});
+
+test('outbox contacted/offered signals match panel call statuses contacted and offered', () => {
+  assert.equal(isCallSendableForOutboxSignalStage('contacted', 'contacted'), true);
+  assert.equal(isCallSendableForOutboxSignalStage('offered', 'offered'), true);
 });
 
 test('sale-like signal rows still require confirmed sendable statuses', () => {
