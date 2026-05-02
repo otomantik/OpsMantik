@@ -10,6 +10,7 @@
     "lint:no-any:report": "node scripts/ci/no-any-report.mjs",
     "lint:no-any:strict": "node scripts/ci/no-any-report.mjs --strict",
     "verify:oci-spine": "node scripts/verify-oci-spine-checklist.mjs",
+    "verify:oci-write-schema": "node scripts/db/verify-oci-write-schema.mjs",
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
     "verify:partition-triggers": "node scripts/verify-partition-triggers.mjs",
     "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs",

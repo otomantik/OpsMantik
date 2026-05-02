@@ -45,7 +45,7 @@ test('getRefactorFlags: defaults — integrity strict modes on, legacy endpoints
     assert.equal(f.truth_typed_evidence_enabled, false);
     assert.equal(f.explainability_api_enabled, false);
     assert.equal(f.consent_provenance_shadow_enabled, false);
-    assert.equal(f.truth_canonical_ledger_shadow_enabled, true);
+    assert.equal(f.truth_canonical_ledger_shadow_enabled, false);
     assert.equal(f.truth_engine_consolidated_enabled, false);
     assert.equal(f.legacy_endpoints_enabled, true);
     assert.equal(f.strict_mutation_version_enforce, true);

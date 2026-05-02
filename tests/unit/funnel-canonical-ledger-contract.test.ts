@@ -8,12 +8,12 @@ import { join } from 'node:path';
 
 const ROOT = process.cwd();
 
-test('appendFunnelEvent: wires appendCanonicalTruthLedgerBestEffort with canonical:funnel: prefix', () => {
+test('appendFunnelEvent: wires appendCanonicalTruthLedgerFailClosed after funnel insert', () => {
   const p = join(ROOT, 'lib', 'domain', 'funnel-kernel', 'ledger-writer.ts');
   const src = readFileSync(p, 'utf8');
   assert.ok(
-    src.includes('appendCanonicalTruthLedgerBestEffort'),
-    'funnel ledger writer must shadow-write canonical substrate'
+    src.includes('appendCanonicalTruthLedgerFailClosed'),
+    'funnel ledger writer must shadow-write canonical substrate (failClosed → appendCanonicalTruthLedger handles missing table)'
   );
   assert.ok(
     src.includes('`canonical:funnel:${idempotencyKey}`'),

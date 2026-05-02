@@ -1,6 +1,7 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
+import { isPostgrestRelationUnavailableError } from '@/lib/supabase/postgrest-relation-unavailable';
 
 type RepairRow = {
   id: string;
@@ -104,6 +105,20 @@ export async function runTruthParityRepairBatch(limit = 50): Promise<{
         schema_version: 'canonical_v1',
       });
       if (insert.error && insert.error.code !== '23505') {
+        if (isPostgrestRelationUnavailableError(insert.error, 'truth_canonical_ledger')) {
+          await adminClient
+            .from('truth_parity_repair_queue')
+            .update({
+              status: 'PENDING',
+              last_error: 'canonical_ledger_unavailable',
+              next_retry_at: new Date(Date.now() + 7 * 86400_000).toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', row.id);
+          logWarn('truth_parity_repair_deferred', { queue_id: row.id, reason: 'truth_canonical_ledger_unavailable' });
+          failed += 1;
+          continue;
+        }
         throw insert.error;
       }
 

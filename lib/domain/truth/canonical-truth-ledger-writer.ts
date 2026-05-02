@@ -1,6 +1,6 @@
 /**
  * Append-only shadow writes to truth_canonical_ledger (PR3).
- * Gated by TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED; failures must never break ingest.
+ * Gated by TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED (default off — opt in when table exists).
  *
  * Payload: flexible jsonb at rest; callers must follow the canonical payload contract
  * (small refs + class enums — no raw PII, no upstream metadata dumps). See append sites in ingest + funnel.
@@ -13,26 +13,15 @@ import { logWarn } from '@/lib/logging/logger';
 import { getRefactorFlags } from '@/lib/refactor/flags';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { recordTruthParityMismatch } from '@/lib/domain/truth/truth-parity';
+import { isPostgrestRelationUnavailableError } from '@/lib/supabase/postgrest-relation-unavailable';
 
 const PG_UNIQUE_VIOLATION = '23505';
-/** PostgreSQL undefined_table — relation missing (or PostgREST schema cache drift). */
-const PG_UNDEFINED_TABLE = '42P01';
 
 export type CanonicalStreamKind = 'INGEST_SYNC' | 'INGEST_CALL_EVENT' | 'FUNNEL_LEDGER';
 
-/**
- * Some environments have not migrated `truth_canonical_ledger`; fail-closed funnel/OCI paths
- * must not abort when only the shadow table is absent (see appendFunnelEvent).
- */
+/** Unit tests + legacy call sites: truth_canonical_ledger relation-missing heuristic. */
 export function isMissingLedgerTableError(error: { code?: string; message?: string }): boolean {
-  if (error.code === PG_UNDEFINED_TABLE) return true;
-  const m = String(error.message ?? '').toLowerCase();
-  if (!m.includes('truth_canonical_ledger')) return false;
-  return (
-    m.includes('does not exist') ||
-    m.includes('schema cache') ||
-    m.includes('not find the table')
-  );
+  return isPostgrestRelationUnavailableError(error, 'truth_canonical_ledger');
 }
 
 export type AppendCanonicalTruthInput = {
@@ -98,7 +87,7 @@ export async function appendCanonicalTruthLedger(input: AppendCanonicalTruthInpu
       incrementRefactorMetric('truth_canonical_ledger_success_total');
       return { appended: false };
     }
-    if (isMissingLedgerTableError(error)) {
+    if (isPostgrestRelationUnavailableError(error, 'truth_canonical_ledger')) {
       incrementRefactorMetric('truth_canonical_ledger_failure_total');
       logWarn('appendCanonicalTruthLedger skipped: table unavailable', {
         siteId,

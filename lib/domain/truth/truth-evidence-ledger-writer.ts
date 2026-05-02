@@ -13,6 +13,7 @@ import {
   type TruthEvidenceKind,
   type TruthIngestSource,
 } from '@/lib/domain/truth/truth-evidence-envelope';
+import { isPostgrestRelationUnavailableError } from '@/lib/supabase/postgrest-relation-unavailable';
 
 export type { TruthEvidenceKind, TruthIngestSource };
 
@@ -81,6 +82,15 @@ export async function appendTruthEvidenceLedger(input: AppendTruthEvidenceInput)
 
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) {
+      return { appended: false };
+    }
+    if (isPostgrestRelationUnavailableError(error, 'truth_evidence_ledger')) {
+      logWarn('appendTruthEvidenceLedger skipped: table unavailable', {
+        siteId,
+        idempotencyKey,
+        evidenceKind,
+        error: error.message,
+      });
       return { appended: false };
     }
     logWarn('appendTruthEvidenceLedger failed', {

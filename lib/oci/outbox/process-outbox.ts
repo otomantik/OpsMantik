@@ -29,6 +29,19 @@ import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { normalizeOciConversionTimeUtcZ, safeValidateOciPayload } from '@/lib/oci/validation/payload';
 import { fetchCallSendabilityContext } from '@/lib/oci/call-sendability-fetch';
 
+function formatOutboxCaughtError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message: unknown }).message;
+    if (typeof m === 'string' && m.trim()) return m;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 export const OUTBOX_BATCH_LIMIT = 50;
 /** Separate from OCI queue MAX_RETRY_ATTEMPTS (7) — outbox events get fewer retries. */
 export const OUTBOX_MAX_ATTEMPTS = 5;
@@ -431,7 +444,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
         processed++;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = formatOutboxCaughtError(err);
         logError('outbox_process_failed', { outbox_id: id, call_id: callId, error: msg });
         errors.push(`${id}: ${msg}`);
         failed++;
@@ -455,7 +468,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
       errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatOutboxCaughtError(err);
     logError('process_outbox_error', { error: msg });
     return { ok: false, claimed: 0, processed: 0, failed: 0, error: msg };
   }

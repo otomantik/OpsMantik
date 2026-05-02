@@ -7,6 +7,7 @@
 import { appendCanonicalTruthLedgerFailClosed } from '@/lib/domain/truth/canonical-truth-ledger-writer';
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
+import { isPostgrestRelationUnavailableError } from '@/lib/supabase/postgrest-relation-unavailable';
 
 /**
  * FunnelEventType — canonical ledger event_type values. English-only post
@@ -82,6 +83,15 @@ export async function appendFunnelEvent(input: AppendFunnelEventInput): Promise<
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) {
       // Idempotent skip
+      return { appended: false };
+    }
+    if (isPostgrestRelationUnavailableError(error, 'call_funnel_ledger')) {
+      logWarn('appendFunnelEvent skipped: call_funnel_ledger unavailable', {
+        callId,
+        siteId,
+        idempotencyKey,
+        error: error.message,
+      });
       return { appended: false };
     }
     logWarn('appendFunnelEvent failed', { callId, siteId, idempotencyKey, error: error.message });
