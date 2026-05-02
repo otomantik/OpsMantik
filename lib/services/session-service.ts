@@ -12,6 +12,7 @@ import { upsertSessionGeo } from '@/lib/geo/upsert-session-geo';
 import { inferIntentAction, normalizePhoneTarget } from '@/lib/api/call-event/shared';
 import {
     burstRpcSessionReuseAllowed,
+    normalizeSessionReuseLifecycleStatus,
     type SessionReuseDecision,
     shouldReuseSessionV1,
 } from '@/lib/intents/session-reuse-v1';
@@ -188,7 +189,9 @@ export class SessionService {
                                             Number.isFinite(firstReuseRow.time_delta_ms)
                                                 ? Math.max(0, Math.round(firstReuseRow.time_delta_ms))
                                                 : null,
-                                        lifecycle_status: firstReuseRow.lifecycle_status ?? null,
+                                        lifecycle_status: normalizeSessionReuseLifecycleStatus(
+                                            firstReuseRow.lifecycle_status ?? null
+                                        ),
                                         candidate_session_id:
                                             firstReuseRow.candidate_session_id ??
                                             firstReuseRow.matched_session_id ??

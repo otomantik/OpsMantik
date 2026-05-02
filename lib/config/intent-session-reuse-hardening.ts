@@ -2,8 +2,10 @@
  * Session burst / click-chain reuse RPC is default ON so dual-path ingest cannot
  * silently create sibling sessions. Tests or local quirks: INTENT_SESSION_REUSE_HARDENING=0|false|off
  */
+type EnvBag = Record<string, string | undefined>;
+
 export function intentSessionReuseHardeningEnabledFromEnv(
-    env: Pick<NodeJS.ProcessEnv, 'INTENT_SESSION_REUSE_HARDENING'> = process.env
+    env: EnvBag = process.env as EnvBag
 ): boolean {
     const v = env.INTENT_SESSION_REUSE_HARDENING;
     if (v === undefined || v === '') return true;

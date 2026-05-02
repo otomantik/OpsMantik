@@ -75,6 +75,8 @@ export const REFACTOR_METRIC_NAMES = [
   'panel_stage_outbox_skip_no_ads_click_id_total',
   'panel_stage_outbox_skip_test_click_id_total',
   'panel_stage_api_version_mismatch_total',
+  'panel_stage_reconciliation_append_failed_total',
+  'outbox_inline_drain_failed_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

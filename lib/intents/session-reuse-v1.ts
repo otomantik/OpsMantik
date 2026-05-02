@@ -36,13 +36,18 @@ export interface SessionReuseDecision {
   };
 }
 
-function normalizeLifecycle(value: string | null): ReuseLifecycleStatus {
+/** Normalize RPC / DB lifecycle strings into {@link SessionReuseDecision} telemetry. */
+export function normalizeSessionReuseLifecycleStatus(value: string | null | undefined): ReuseLifecycleStatus {
   const raw = (value ?? '').trim().toLowerCase();
   if (!raw) return null;
   if (ACTIVE_SINGLE_CARD_STATUSES.includes(raw as (typeof ACTIVE_SINGLE_CARD_STATUSES)[number])) return raw as ReuseLifecycleStatus;
   if (TERMINAL_STATUSES.includes(raw as (typeof TERMINAL_STATUSES)[number])) return raw as ReuseLifecycleStatus;
   if (ARCHIVAL_STATUSES.includes(raw as (typeof ARCHIVAL_STATUSES)[number])) return raw as ReuseLifecycleStatus;
   return 'unknown';
+}
+
+function normalizeLifecycle(value: string | null): ReuseLifecycleStatus {
+  return normalizeSessionReuseLifecycleStatus(value);
 }
 
 function isNonEmpty(value: string | null): value is string {
