@@ -23,9 +23,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-async function handler(req: NextRequest): Promise<NextResponse> {
+export async function processOutboxWorkerHandler(
+  req: NextRequest,
+  runner: typeof runProcessOutbox = runProcessOutbox
+): Promise<NextResponse> {
   const requestId = req.headers.get('x-request-id') ?? undefined;
-  const result = await runProcessOutbox();
+  const result = await runner();
 
   logInfo('OCI_PROCESS_OUTBOX_WORKER_DONE', {
     request_id: requestId,
@@ -55,4 +58,6 @@ async function handler(req: NextRequest): Promise<NextResponse> {
   );
 }
 
-export const POST = requireQstashSignature(handler as (req: NextRequest) => Promise<Response>);
+export const POST = requireQstashSignature(
+  processOutboxWorkerHandler as (req: NextRequest) => Promise<Response>
+);

@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
     .select('id', { count: 'exact', head: true })
     .eq('site_id', siteUuid)
     .eq('status', 'PROCESSING')
-    .lt('updated_at', outboxStaleCutoff);
+    .or(`processing_started_at.lt.${outboxStaleCutoff},and(processing_started_at.is.null,updated_at.lt.${outboxStaleCutoff})`);
   const { count: outboxFailedRecentCount } = await adminClient
     .from('outbox_events')
     .select('id', { count: 'exact', head: true })

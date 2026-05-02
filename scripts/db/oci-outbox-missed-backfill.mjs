@@ -17,7 +17,7 @@
  *   (--since: calls.created_at üzerinden)
  *   calls satırları `select('*')` ile çekilir (sale_amount / sale_* / updated_at eksik eski şemalarda
  *   sabit kolon listesi 42703 hatası vermez; payload’da olmayan alanlar null kalır).
- *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --trigger   # CRON_SECRET + BASE_URL ile cron tetikler
+ *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --trigger   # CRON_SECRET + BASE_URL ile worker tetikler
  *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --dry-run       # tüm tenants (liste `sites`)
  *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --apply --trigger
  *
@@ -234,17 +234,20 @@ async function triggerOutboxCron() {
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
   if (!secret || !base) {
     console.warn(
-      '[trigger] CRON_SECRET veya BASE_URL/NEXT_PUBLIC_APP_URL eksik; outbox cron tetiklenmedi. Manuel: node scripts/trigger_outbox_processor.mjs'
+      '[trigger] CRON_SECRET veya BASE_URL/NEXT_PUBLIC_APP_URL eksik; outbox worker tetiklenmedi. Manuel: node scripts/trigger_outbox_processor.mjs'
     );
     return false;
   }
-  const cronUrl = `${String(base).replace(/\/$/, '')}/api/cron/oci/process-outbox-events`;
-  const res = await fetch(cronUrl, {
+  const workerUrl = `${String(base).replace(/\/$/, '')}/api/workers/oci/process-outbox`;
+  const res = await fetch(workerUrl, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${secret}` },
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      'x-opsmantik-internal-worker': '1',
+    },
   });
   const text = await res.text();
-  console.log('[trigger] POST', cronUrl, '→', res.status, text.slice(0, 500));
+  console.log('[trigger] POST', workerUrl, '→', res.status, text.slice(0, 500));
   return res.ok;
 }
 

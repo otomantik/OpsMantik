@@ -3,8 +3,25 @@ import { logInfo, logWarn } from '@/lib/logging/logger';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import {
   isLikelyInternalTestClickId,
-  sessionRowHasGoogleAdsClickId,
 } from '@/lib/oci/oci-click-eligibility';
+import { hasAnyAdsClickId } from '@/lib/oci/session-click-id';
+import { appendOciReconciliationEvent } from '@/lib/oci/reconciliation-events';
+import { OCI_RECONCILIATION_REASONS } from '@/lib/oci/reconciliation-reasons';
+
+async function appendReconciliationBestEffort(params: Parameters<typeof appendOciReconciliationEvent>[0]): Promise<void> {
+  try {
+    await appendOciReconciliationEvent(params);
+  } catch (error) {
+    incrementRefactorMetric('panel_stage_reconciliation_append_failed_total');
+    logWarn('panel_stage_reconciliation_append_failed', {
+      call_id: params.callId,
+      site_id: params.siteId,
+      stage: params.stage,
+      reason: params.reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 /**
  * Tek SSOT yüzü: panel/stage/seal başarından sonra IntentSealed outbox.
@@ -50,6 +67,15 @@ export type PanelReturnedCall = {
 export async function enqueuePanelStageOciOutbox(call: PanelReturnedCall): Promise<{ ok: boolean }> {
   const stage = resolveOciStageFromCallStatus(call.status);
   if (!stage) {
+    await appendReconciliationBestEffort({
+      siteId: call.site_id,
+      callId: call.id,
+      stage: 'none',
+      reason: OCI_RECONCILIATION_REASONS.NOT_EXPORTABLE_STAGE,
+      matchedSessionId: call.matched_session_id ?? null,
+      primaryClickIdPresent: false,
+      payload: { call_status: call.status ?? null },
+    });
     return { ok: true };
   }
 
@@ -61,6 +87,14 @@ export async function enqueuePanelStageOciOutbox(call: PanelReturnedCall): Promi
       call_id: call.id,
       site_id: call.site_id,
       stage,
+    });
+    await appendReconciliationBestEffort({
+      siteId: call.site_id,
+      callId: call.id,
+      stage,
+      reason: OCI_RECONCILIATION_REASONS.NO_MATCHED_SESSION,
+      matchedSessionId: null,
+      primaryClickIdPresent: false,
     });
     return { ok: true };
   }
@@ -81,6 +115,15 @@ export async function enqueuePanelStageOciOutbox(call: PanelReturnedCall): Promi
       session_id: sessionId,
       err: sessionErr?.message,
     });
+    await appendReconciliationBestEffort({
+      siteId: call.site_id,
+      callId: call.id,
+      stage,
+      reason: OCI_RECONCILIATION_REASONS.SESSION_NOT_FOUND,
+      matchedSessionId: sessionId,
+      primaryClickIdPresent: false,
+      payload: { session_error: sessionErr?.message ?? null },
+    });
     return { ok: true };
   }
 
@@ -88,16 +131,32 @@ export async function enqueuePanelStageOciOutbox(call: PanelReturnedCall): Promi
   if (isLikelyInternalTestClickId(s)) {
     incrementRefactorMetric('panel_stage_outbox_skip_test_click_id_total');
     logInfo('panel_stage_outbox_skip', { reason: 'test_click_id', call_id: call.id, site_id: call.site_id });
+    await appendReconciliationBestEffort({
+      siteId: call.site_id,
+      callId: call.id,
+      stage,
+      reason: OCI_RECONCILIATION_REASONS.TEST_CLICK_ID,
+      matchedSessionId: sessionId,
+      primaryClickIdPresent: hasAnyAdsClickId(s),
+    });
     return { ok: true };
   }
 
-  if (!sessionRowHasGoogleAdsClickId(s)) {
+  if (!hasAnyAdsClickId(s)) {
     incrementRefactorMetric('panel_stage_outbox_skip_no_ads_click_id_total');
     logInfo('panel_stage_outbox_skip', {
       reason: 'no_ads_click_id',
       call_id: call.id,
       site_id: call.site_id,
       session_id: sessionId,
+    });
+    await appendReconciliationBestEffort({
+      siteId: call.site_id,
+      callId: call.id,
+      stage,
+      reason: OCI_RECONCILIATION_REASONS.NO_ADS_CLICK_ID,
+      matchedSessionId: sessionId,
+      primaryClickIdPresent: false,
     });
     return { ok: true };
   }
@@ -142,6 +201,24 @@ export async function enqueuePanelStageOciOutbox(call: PanelReturnedCall): Promi
       stage,
       message: error.message,
     });
+    try {
+      await appendOciReconciliationEvent({
+        siteId: call.site_id,
+        callId: call.id,
+        stage,
+        reason: OCI_RECONCILIATION_REASONS.OUTBOX_INSERT_FAILED,
+        matchedSessionId: sessionId,
+        primaryClickIdPresent: true,
+        payload: { insert_error: error.message },
+      });
+    } catch (reconciliationError) {
+      logWarn('panel_stage_outbox_insert_failed_reconciliation_best_effort_failed', {
+        call_id: call.id,
+        site_id: call.site_id,
+        stage,
+        error: reconciliationError instanceof Error ? reconciliationError.message : String(reconciliationError),
+      });
+    }
     return { ok: false };
   }
 

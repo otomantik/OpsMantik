@@ -30,6 +30,7 @@ import type { OptimizationValueSnapshot } from '@/lib/oci/optimization-contract'
 import { computeMarketingSignalCurrentHash } from '@/lib/oci/marketing-signal-hash';
 import type { MarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import { appendOciReconciliationEvent } from '@/lib/oci/reconciliation-events';
+import { OCI_RECONCILIATION_REASONS } from '@/lib/oci/reconciliation-reasons';
 
 export type UpsertMarketingSignalSource =
   | 'router'
@@ -130,7 +131,7 @@ export async function upsertMarketingSignal(
           siteId,
           callId,
           stage,
-          reason: 'missing_click_ids',
+          reason: OCI_RECONCILIATION_REASONS.NO_ADS_CLICK_ID,
           expectedConversionName: conversionNameOverride ?? OPSMANTIK_CONVERSION_NAMES[stage],
           result: 'skipped',
           payload: { source },

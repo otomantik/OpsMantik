@@ -5,6 +5,9 @@ Every PR that adds a writer path or retry path must update this contract.
 
 ## Contract Boundaries
 
+- OCI producer identity
+  - Mechanism: panel mutation must end with either `outbox_events` row or idempotent `oci_reconciliation_events` row (explicit skip reason).
+  - Owner: `enqueuePanelStageOciOutbox`.
 - Marketing signal ingest
   - Mechanism: `idempotency_key` + unique violation collapse.
   - Owner: `upsertMarketingSignal`.
@@ -12,7 +15,7 @@ Every PR that adds a writer path or retry path must update this contract.
   - Mechanism: `UNIQUE(call_id)` on `offline_conversion_queue` (`23505` -> skip).
   - Owner: `enqueueSealConversion`.
 - Outbox worker parallelism
-  - Mechanism: claim RPC + `FOR UPDATE SKIP LOCKED` semantics.
+  - Mechanism: claim RPC flips `PENDING -> PROCESSING` atomically (`attempt_count` bump, `processing_started_at` stamp) + `FOR UPDATE SKIP LOCKED`.
   - Owner: `lib/oci/outbox/process-outbox.ts`.
 - Funnel ledger replay
   - Mechanism: `idempotency_key` unique on `call_funnel_ledger`.
@@ -40,6 +43,7 @@ Every PR that adds a writer path or retry path must update this contract.
 
 - `enqueueSealConversion` inserts the queue row first. Queue insert remains the money gate.
 - Outbox and ACK flows are fail-closed. Any finalize/ledger failure must surface as an error, not a silent success.
+- Manual deterministic drain is worker-first (`POST /api/workers/oci/process-outbox` + `x-opsmantik-internal-worker: 1` + `Bearer CRON_SECRET`); cron endpoint remains safety-net lock path.
 
 ## Required Evidence
 

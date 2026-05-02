@@ -2,6 +2,7 @@
 /**
  * Trigger outbox processing worker.
  * Moves IntentSealed events to the OCI queue.
+ * Pass --use-cron-lock to hit cron safety-net endpoint instead.
  */
 import { config } from 'dotenv';
 import { resolve } from 'path';
@@ -14,6 +15,7 @@ const baseUrl =
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
   'http://localhost:3000';
 const secret = process.env.CRON_SECRET;
+const useCronLock = process.argv.includes('--use-cron-lock');
 
 if (!secret) {
   console.error('CRON_SECRET not found. Set it in .env.local');
@@ -25,13 +27,20 @@ if (!/^https?:\/\//i.test(String(baseUrl))) {
   process.exit(1);
 }
 
-const url = `${baseUrl.replace(/\/$/, '')}/api/cron/oci/process-outbox-events`;
+const url = useCronLock
+  ? `${baseUrl.replace(/\/$/, '')}/api/cron/oci/process-outbox-events`
+  : `${baseUrl.replace(/\/$/, '')}/api/workers/oci/process-outbox`;
 console.log('--- Outbox Processor Tetikleniyor ---');
 console.log('POST', url);
 
 const res = await fetch(url, {
   method: 'POST',
-  headers: { Authorization: `Bearer ${secret}` },
+  headers: useCronLock
+    ? { Authorization: `Bearer ${secret}` }
+    : {
+        Authorization: `Bearer ${secret}`,
+        'x-opsmantik-internal-worker': '1',
+      },
 });
 
 const body = await res.text();

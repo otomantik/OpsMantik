@@ -12,7 +12,7 @@ Bu belge production’a **yüksek hacimli (“tanrı modu”)** dönüşüm gön
 
 | Adım | Koşul | Sonuç |
 |------|--------|--------|
-| Export adayı | En az bir click id | `marketing_signals` upsert; yoksa `oci_reconciliation_events` (`missing_click_ids`) |
+| Export adayı | En az bir click id | `marketing_signals` upsert; yoksa `oci_reconciliation_events` (`NO_ADS_CLICK_ID`, legacy: `missing_click_ids`) |
 | Sıra bloklayıcı dispatch | `PENDING`, `PROCESSING`, `STALLED_FOR_HUMAN_AUDIT` | Won tarafı **`BLOCKED_PRECEEDING_SIGNALS`** (queue’da satır var) |
 
 ## Hat B — Won (offline_conversion_queue)

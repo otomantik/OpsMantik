@@ -6,7 +6,8 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 
 ## 1. Click ID on the call
 
-- Confirm the sealed call has a usable `gclid`, `wbraid`, or `gbraid` (direct session or stitch). Without a click ID, **won** never enters `offline_conversion_queue`, and **marketing_signals** upserts skip with `missing_click_ids` (recorded in `oci_reconciliation_events` when applicable).
+- Confirm the sealed call has a usable `gclid`, `wbraid`, or `gbraid` (direct session or stitch). Without a click ID, **won** never enters `offline_conversion_queue`, and **marketing_signals** upserts skip with canonical reason `NO_ADS_CLICK_ID` (recorded in `oci_reconciliation_events` when applicable; legacy label `missing_click_ids` may appear in older telemetry).
+- Panel mutations follow a strict producer identity: each successful mutation must leave either a new `outbox_events` row or an idempotent `oci_reconciliation_events` row with explicit reason (`NO_MATCHED_SESSION`, `SESSION_NOT_FOUND`, `NO_ADS_CLICK_ID`, `TEST_CLICK_ID`, `NOT_EXPORTABLE_STAGE`, `OUTBOX_INSERT_FAILED`).
 
 ## 2. Precursor marketing signals (ordering)
 
@@ -28,6 +29,11 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 
 - After upload, ACK routes move rows to **`COMPLETED`** / signal **`SENT`**. Failed ACK paths mark **`FAILED`** / **`COMPLETED_UNVERIFIED`** per existing contracts.
 
+## 6. Drain path and lock behavior
+
+- Deterministic manual drain should target **worker path**: `POST /api/workers/oci/process-outbox` with `Authorization: Bearer CRON_SECRET` and `x-opsmantik-internal-worker: 1`.
+- Cron endpoint (`/api/cron/oci/process-outbox-events`) remains safety net. `lock_held` there is expected when another run owns the lock; for deterministic drain use worker-first scripts.
+
 ## SSOT tables (mental model)
 
 | Concern | Primary table |
@@ -42,6 +48,7 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 
 - `GET /api/oci/queue-stats?siteId=...` — queue totals, stuck processing, signal dispatch breakdown, oldest blocked timestamp.
 - `GET /api/oci/export-coverage?siteId=...` — compact SSOT snapshot + reconciliation event volume (24h).
+- `GET /api/oci/export-coverage?siteId=...&window=last_1h|last_24h|last_7d` — reconciliation reason distribution by time window.
 
 ## Operational cron (secured)
 

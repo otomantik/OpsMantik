@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * OCI boru hattı: eksik outbox backfill → (opsiyonel) cron ile drain → özet rapor.
+ * OCI boru hattı: eksik outbox backfill → (opsiyonel) worker-first drain → özet rapor.
  *
  * 1) outbox_events: seal/stage sonrası kaçmış satırlar — oci-outbox-missed-backfill ile.
- * 2) drain: BASE_URL + CRON_SECRET ile POST /api/cron/oci/process-outbox-events (batch batch)
+ * 2) drain: BASE_URL + CRON_SECRET ile POST /api/workers/oci/process-outbox (varsayılan)
+ *    --use-cron-lock verilirse cron endpointi kullanılır.
  *    claim_outbox_events → marketing_signals / offline_conversion_queue.
  * 3) rapor: outbox durumları + offline_conversion_queue + marketing_signals.dispatch_status (site bazlı öz).
  *
@@ -17,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { OCI_RECONCILIATION_REASONS } from './oci-reconciliation-reasons.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '..', '.env.local') });
@@ -35,6 +37,12 @@ function parseArgs(argv) {
       const n = parseInt(argv[i + 1], 10);
       return Number.isFinite(n) && n > 0 ? n : 120;
     })(),
+    useCronLock: argv.includes('--use-cron-lock'),
+    reconciliationWindow: (() => {
+      const i = argv.indexOf('--window');
+      const raw = i < 0 ? 'last_24h' : String(argv[i + 1] || '').trim();
+      return raw === 'last_1h' || raw === 'last_24h' || raw === 'last_7d' ? raw : 'last_24h';
+    })(),
     json: argv.includes('--json'),
   };
 }
@@ -43,7 +51,13 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function drainOutboxOverHttp(maxBatches) {
+const WINDOW_MS = {
+  last_1h: 60 * 60 * 1000,
+  last_24h: 24 * 60 * 60 * 1000,
+  last_7d: 7 * 24 * 60 * 60 * 1000,
+};
+
+async function drainOutboxOverHttp(maxBatches, useCronLock) {
   const base =
     process.env.BASE_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -58,7 +72,9 @@ async function drainOutboxOverHttp(maxBatches) {
     return { skipped: true, reason: 'no_cron_secret', rounds: [], totalClaimed: 0, totalProcessed: 0 };
   }
 
-  const endpoint = `${String(base).replace(/\/$/, '')}/api/cron/oci/process-outbox-events`;
+  const endpoint = useCronLock
+    ? `${String(base).replace(/\/$/, '')}/api/cron/oci/process-outbox-events`
+    : `${String(base).replace(/\/$/, '')}/api/workers/oci/process-outbox`;
   const rounds = [];
   let totalClaimed = 0;
   let totalProcessed = 0;
@@ -69,7 +85,12 @@ async function drainOutboxOverHttp(maxBatches) {
       try {
         res = await fetch(endpoint, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${secret}` },
+          headers: useCronLock
+            ? { Authorization: `Bearer ${secret}` }
+            : {
+                Authorization: `Bearer ${secret}`,
+                'x-opsmantik-internal-worker': '1',
+              },
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -107,7 +128,7 @@ async function drainOutboxOverHttp(maxBatches) {
         return { skipped: false, ok: false, rounds, totalClaimed, totalProcessed, error: body };
       }
 
-      if (body.skipped && body.reason === 'lock_held') {
+      if (useCronLock && body.skipped && body.reason === 'lock_held') {
         await sleep(2500);
         continue;
       }
@@ -157,6 +178,26 @@ async function fetchSiteFieldPages(admin, table, siteId, fieldName) {
   return out;
 }
 
+async function fetchSiteFieldPagesSince(admin, table, siteId, fieldName, sinceIso) {
+  const page = 3000;
+  let from = 0;
+  const out = [];
+  for (;;) {
+    const { data, error } = await admin
+      .from(table)
+      .select(fieldName)
+      .eq('site_id', siteId)
+      .gte('created_at', sinceIso)
+      .range(from, from + page - 1);
+    if (error) throw error;
+    const chunk = data || [];
+    out.push(...chunk);
+    if (chunk.length < page) break;
+    from += page;
+  }
+  return out;
+}
+
 async function fetchQueueSamples(admin, siteId, limit) {
   const { data, error } = await admin
     .from('offline_conversion_queue')
@@ -169,7 +210,7 @@ async function fetchQueueSamples(admin, siteId, limit) {
   return data || [];
 }
 
-async function buildReport(siteIdFilter) {
+async function buildReport(siteIdFilter, reconciliationWindow) {
   const admin = createClient(url, key, { auth: { persistSession: false } });
 
   let sites = [];
@@ -190,6 +231,7 @@ async function buildReport(siteIdFilter) {
   const gSig = {};
   /** @type {Array<{site_id:string,site_label:string,outbox:any,offline_queue:any,marketing_signals_dispatch:any,queued_or_retry_hint:number,sample_queue_exports:any[]}>} */
   const sections = [];
+  const sinceIso = new Date(Date.now() - WINDOW_MS[reconciliationWindow]).toISOString();
 
   for (const s of sites) {
     const sid = s.id;
@@ -197,6 +239,7 @@ async function buildReport(siteIdFilter) {
     let qRows = [];
     let sigRows = [];
     let samples = [];
+    let recoRows = [];
     try {
       obRows = await fetchSiteFieldPages(admin, 'outbox_events', sid, 'status');
     } catch {
@@ -217,11 +260,23 @@ async function buildReport(siteIdFilter) {
     } catch {
       samples = [];
     }
+    try {
+      recoRows = await fetchSiteFieldPagesSince(admin, 'oci_reconciliation_events', sid, 'reason', sinceIso);
+    } catch {
+      recoRows = [];
+    }
 
     const outbox = countBy(obRows, 'status');
     const offline_queue = countBy(qRows, 'status');
     const marketing_signals_dispatch = countBy(sigRows, 'dispatch_status');
     const queued_or_retry_hint = ['QUEUED', 'RETRY'].reduce((acc, st) => acc + (offline_queue[st] || 0), 0);
+    const reconciliation_by_reason = Object.fromEntries(
+      Object.values(OCI_RECONCILIATION_REASONS).map((reason) => [reason, 0])
+    );
+    for (const row of recoRows) {
+      const reason = String(row.reason ?? 'UNKNOWN');
+      reconciliation_by_reason[reason] = (reconciliation_by_reason[reason] || 0) + 1;
+    }
 
     for (const [k, v] of Object.entries(outbox)) gOut[k] = (gOut[k] || 0) + v;
     for (const [k, v] of Object.entries(offline_queue)) gQ[k] = (gQ[k] || 0) + v;
@@ -235,6 +290,8 @@ async function buildReport(siteIdFilter) {
         outbox,
         offline_queue,
         marketing_signals_dispatch,
+        reconciliation_window: reconciliationWindow,
+        reconciliation_by_reason,
         queued_or_retry_hint,
         sample_queue_exports: samples.map((r) => ({ id: r.id, status: r.status, call_id: r.call_id })),
       });
@@ -298,8 +355,8 @@ async function main() {
 
   let drainResult = null;
   if (!args.noDrain) {
-    console.log('\n[B] Drain (cron outbox işleyici)...\n');
-    drainResult = await drainOutboxOverHttp(args.maxBatches);
+    console.log(args.useCronLock ? '\n[B] Drain (cron lock safety-net)...\n' : '\n[B] Drain (worker-first)...\n');
+    drainResult = await drainOutboxOverHttp(args.maxBatches, args.useCronLock);
     if (drainResult.skipped) {
       console.warn('[B] Drain:', drainResult.reason);
     } else if (!drainResult.ok) {
@@ -324,7 +381,7 @@ async function main() {
   }
 
   console.log('\n[C] Şema özeti rapor\n');
-  const report = await buildReport(args.site);
+  const report = await buildReport(args.site, args.reconciliationWindow);
 
   if (args.json) {
     console.log(JSON.stringify({ drain: drainResult, report }, null, 2));
@@ -345,6 +402,7 @@ async function main() {
     console.log('  outbox_events (status):', sec.outbox);
     console.log('  offline_conversion_queue (status):', sec.offline_queue);
     console.log('  marketing_signals (dispatch_status):', sec.marketing_signals_dispatch);
+    console.log(`  reconciliation (${sec.reconciliation_window}) by reason:`, sec.reconciliation_by_reason);
     console.log('  Script export için sıra ipucu (QUEUED+RETRY):', sec.queued_or_retry_hint);
     if (sec.sample_queue_exports?.length) {
       console.log('  Örnek sıradaki queue id / call_id:');
@@ -359,7 +417,8 @@ async function main() {
   console.log('  Panel/RPC sonrası: outbox_events (PENDING)');
   console.log('  İşçi (cron/QStash): PENDING→PROCESS→marketing_signals veya Won→offline_conversion_queue');
   console.log('  Google Ads script PEEK: /api/oci/google-ads-export içinde QUEUED+sinyaller (outbox doğrudan sayılmaz)');
-  console.log('  Drain için .env.local: BASE_URL (veya NEXT_PUBLIC_APP_URL) = prod origin; CRON_SECRET = cron Bearer.');
+  console.log('  Drain için .env.local: BASE_URL (veya NEXT_PUBLIC_APP_URL) = prod origin; CRON_SECRET gerekir.');
+  console.log('  Varsayılan drain worker endpointini kullanır; cron lock yolu için --use-cron-lock ver.');
   console.log('  Tek komut (backfill+drain+rapor): npm run db:oci-pipeline-sync');
 }
 

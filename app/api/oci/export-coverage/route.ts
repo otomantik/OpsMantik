@@ -9,11 +9,33 @@ import { adminClient } from '@/lib/supabase/admin';
 import { requireOciControlAuth } from '@/lib/oci/control-auth';
 import { EXPORT_COVERAGE_CLASS } from '@/lib/domain/oci/export-eligible-taxonomy';
 import { QueueStatsQuerySchema, QUEUE_STATUSES, type QueueStatus } from '@/lib/domain/oci/queue-types';
+import { OCI_RECONCILIATION_REASONS } from '@/lib/oci/reconciliation-reasons';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const RECONCILIATION_WINDOWS = {
+  last_1h: 60 * 60 * 1000,
+  last_24h: 24 * 60 * 60 * 1000,
+  last_7d: 7 * 24 * 60 * 60 * 1000,
+} as const;
+type ReconciliationWindow = keyof typeof RECONCILIATION_WINDOWS;
+const SIGNAL_DISPATCH_STATUSES = [
+  'PENDING',
+  'PROCESSING',
+  'SENT',
+  'FAILED',
+  'JUNK_ABORTED',
+  'DEAD_LETTER_QUARANTINE',
+  'SKIPPED_NO_CLICK_ID',
+  'STALLED_FOR_HUMAN_AUDIT',
+] as const;
+
+function resolveReconciliationWindow(raw: string | null): ReconciliationWindow {
+  if (!raw) return 'last_24h';
+  if (raw === 'last_1h' || raw === 'last_24h' || raw === 'last_7d') return raw;
+  return 'last_24h';
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -31,45 +53,56 @@ export async function GET(req: NextRequest) {
   const auth = await requireOciControlAuth(parsed.data.siteId);
   if (auth instanceof NextResponse) return auth;
   const siteUuid = auth.siteUuid;
+  const reconciliationWindow = resolveReconciliationWindow(searchParams.get('window'));
 
-  const totals = Object.fromEntries(QUEUE_STATUSES.map((status) => [status, 0])) as Record<
-    QueueStatus,
-    number
-  >;
+  const totals = Object.fromEntries(QUEUE_STATUSES.map((status) => [status, 0])) as Record<QueueStatus, number>;
+  const signalDispatch: Record<string, number> = Object.fromEntries(
+    SIGNAL_DISPATCH_STATUSES.map((status) => [status, 0])
+  );
 
-  const { data: queueRows, error: qErr } = await adminClient
-    .from('offline_conversion_queue')
-    .select('status')
-    .eq('site_id', siteUuid);
+  const queueCountJobs = QUEUE_STATUSES.map(async (status) => {
+    const { count, error } = await adminClient
+      .from('offline_conversion_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteUuid)
+      .eq('status', status);
+    if (error) throw error;
+    totals[status] = typeof count === 'number' ? count : 0;
+  });
 
-  if (qErr) {
+  const signalCountJobs = SIGNAL_DISPATCH_STATUSES.map(async (status) => {
+    const { count, error } = await adminClient
+      .from('marketing_signals')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteUuid)
+      .eq('dispatch_status', status);
+    if (error) throw error;
+    signalDispatch[status] = typeof count === 'number' ? count : 0;
+  });
+
+  try {
+    await Promise.all([...queueCountJobs, ...signalCountJobs]);
+  } catch {
     return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
   }
 
-  for (const r of Array.isArray(queueRows) ? queueRows : []) {
-    const s = (r as { status?: string }).status;
-    if (s && QUEUE_STATUSES.includes(s as QueueStatus)) {
-      totals[s as QueueStatus]++;
-    }
-  }
-
-  const { data: signalRows } = await adminClient
-    .from('marketing_signals')
-    .select('dispatch_status')
-    .eq('site_id', siteUuid);
-
-  const signalDispatch: Record<string, number> = {};
-  for (const sr of Array.isArray(signalRows) ? signalRows : []) {
-    const d = (sr as { dispatch_status?: string }).dispatch_status ?? 'UNKNOWN';
-    signalDispatch[d] = (signalDispatch[d] ?? 0) + 1;
-  }
-
-  const since = new Date(Date.now() - DAY_MS).toISOString();
-  const { count: reconciliation24h } = await adminClient
+  const since = new Date(Date.now() - RECONCILIATION_WINDOWS[reconciliationWindow]).toISOString();
+  const { data: reconciliationRows, error: reconciliationErr } = await adminClient
     .from('oci_reconciliation_events')
-    .select('id', { count: 'exact', head: true })
+    .select('reason')
     .eq('site_id', siteUuid)
     .gte('created_at', since);
+  if (reconciliationErr) {
+    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+  }
+  const reconciliationByReason = Object.fromEntries(
+    Object.values(OCI_RECONCILIATION_REASONS).map((reason) => [reason, 0])
+  ) as Record<string, number>;
+  for (const row of reconciliationRows ?? []) {
+    const reason = String((row as { reason?: string | null }).reason ?? 'UNKNOWN');
+    reconciliationByReason[reason] = (reconciliationByReason[reason] ?? 0) + 1;
+  }
+  const reconciliationCount = Object.values(reconciliationByReason).reduce((acc, n) => acc + n, 0);
 
   const exportSelectableQueue =
     totals.QUEUED + totals.RETRY;
@@ -81,7 +114,9 @@ export async function GET(req: NextRequest) {
     queueTotals: totals,
     exportSelectableQueue,
     marketingSignalsByDispatch: signalDispatch,
-    ociReconciliationEventsLast24h: typeof reconciliation24h === 'number' ? reconciliation24h : 0,
+    reconciliationWindow,
+    ociReconciliationEventCount: reconciliationCount,
+    ociReconciliationEventsByReason: reconciliationByReason,
     coverageClassification: {
       [EXPORT_COVERAGE_CLASS.ORDERING_VIOLATION_RISK]: orderingViolationRiskCount,
     },

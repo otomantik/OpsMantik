@@ -2,29 +2,29 @@
  * Append-only audit for OCI reconciliation / skipped writes (idempotent via DB unique index).
  */
 
-import { createHash } from 'crypto';
 import { adminClient } from '@/lib/supabase/admin';
+import { buildOciEvidenceHash } from '@/lib/oci/evidence-hash';
+import type { OciReconciliationReason } from '@/lib/oci/reconciliation-reasons';
 
 export async function appendOciReconciliationEvent(params: {
   siteId: string;
   callId: string | null;
   stage: string;
-  reason: string;
+  reason: OciReconciliationReason;
+  matchedSessionId?: string | null;
+  primaryClickIdPresent?: boolean;
   expectedConversionName?: string | null;
   result?: string;
   payload?: Record<string, unknown>;
 }): Promise<{ inserted: boolean }> {
-  const evidenceHash = createHash('sha256')
-    .update(
-      [
-        params.siteId,
-        params.callId ?? '',
-        params.stage,
-        params.reason,
-        params.expectedConversionName ?? '',
-      ].join('|')
-    )
-    .digest('hex');
+  const evidenceHash = buildOciEvidenceHash({
+    siteId: params.siteId,
+    callId: params.callId,
+    stage: params.stage,
+    reason: params.reason,
+    matchedSessionId: params.matchedSessionId,
+    primaryClickIdPresent: params.primaryClickIdPresent ?? false,
+  });
 
   const { error } = await adminClient.from('oci_reconciliation_events').insert({
     site_id: params.siteId,

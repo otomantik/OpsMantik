@@ -18,7 +18,7 @@ export async function collectLivenessWatchdogSnapshot(): Promise<WatchdogSnapsho
       .from('outbox_events')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'PROCESSING')
-      .lt('updated_at', thirtyOneMinutesAgo),
+      .or(`processing_started_at.lt.${thirtyOneMinutesAgo},and(processing_started_at.is.null,updated_at.lt.${thirtyOneMinutesAgo})`),
     adminClient
       .from('offline_conversion_queue')
       .select('id', { count: 'exact', head: true })
