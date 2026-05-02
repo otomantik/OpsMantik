@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 
-/** Queue row status. Terminal: COMPLETED, COMPLETED_UNVERIFIED, FAILED, DEAD_LETTER_QUARANTINE. */
+/** Queue row status. Terminal: COMPLETED, COMPLETED_UNVERIFIED, FAILED, DEAD_LETTER_QUARANTINE, VOIDED_BY_REVERSAL. */
 export type QueueStatus =
   | 'QUEUED'
   | 'RETRY'
@@ -14,7 +14,9 @@ export type QueueStatus =
   | 'COMPLETED'
   | 'COMPLETED_UNVERIFIED'
   | 'FAILED'
-  | 'DEAD_LETTER_QUARANTINE';
+  | 'DEAD_LETTER_QUARANTINE'
+  | 'VOIDED_BY_REVERSAL'
+  | 'BLOCKED_PRECEDING_SIGNALS';
 
 /** Provider error category for FAILED rows. PERMANENT = terminal non-retry (e.g. attempt cap, manual). */
 export type ProviderErrorCategory =
@@ -38,6 +40,8 @@ export const QUEUE_STATUSES: QueueStatus[] = [
   'COMPLETED_UNVERIFIED',
   'FAILED',
   'DEAD_LETTER_QUARANTINE',
+  'VOIDED_BY_REVERSAL',
+  'BLOCKED_PRECEDING_SIGNALS',
 ];
 
 /** All valid provider error categories. */
@@ -92,6 +96,8 @@ export interface OciQueueRow {
   id: string;
   call_id: string | null;
   status: QueueStatus;
+  block_reason?: string | null;
+  blocked_at?: string | null;
   provider_error_code: string | null;
   provider_error_category: ProviderErrorCategory | null;
   last_error: string | null;
@@ -106,6 +112,21 @@ export interface OciQueueRow {
 }
 
 /** Queue stats response. */
+/** marketing_signals.dispatch_status bucket counts (site scope). */
+export type MarketingSignalDispatchBreakdown = Partial<
+  Record<
+    | 'PENDING'
+    | 'PROCESSING'
+    | 'SENT'
+    | 'FAILED'
+    | 'JUNK_ABORTED'
+    | 'DEAD_LETTER_QUARANTINE'
+    | 'SKIPPED_NO_CLICK_ID'
+    | 'STALLED_FOR_HUMAN_AUDIT',
+    number
+  >
+>;
+
 export interface OciQueueStats {
   siteId: string;
   totals: Record<QueueStatus, number>;
@@ -116,4 +137,19 @@ export interface OciQueueStats {
   outboxFailedRecent?: number;
   truthRepairBacklog?: number;
   outboxQueueParityRatio?: number;
+  marketingSignalsByDispatch?: MarketingSignalDispatchBreakdown;
+  /** Oldest blocked_at among BLOCKED_PRECEDING_SIGNALS rows (ISO), if any. */
+  blockedQueueOldestAt?: string | null;
+  /** Seconds since oldest blocked_at (same row as blockedQueueOldestAt). */
+  oldestBlockedAgeSeconds?: number | null;
+  /** Counts of block_reason text among BLOCKED_PRECEDING_SIGNALS rows. */
+  blockReasonBreakdown?: Record<string, number>;
+  /**
+   * Among the first ~500 blocked rows (scan cap), precursors no longer blocking — reconciler should promote.
+   * When promotionScanCapped is true, total blocked may exceed the sample.
+   */
+  promotionReadyInSample?: number;
+  blockedPromotionScanCapped?: boolean;
+  lastQueueUploadAt?: string | null;
+  lastQueueCompletedAt?: string | null;
 }

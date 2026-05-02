@@ -28,6 +28,7 @@ import {
   computeMarketingSignalCurrentHash,
   toExpectedValueCents,
 } from '@/lib/oci/marketing-signal-hash';
+import { appendOciReconciliationEvent } from '@/lib/oci/reconciliation-events';
 
 export type UpsertMarketingSignalSource =
   | 'router'
@@ -111,6 +112,21 @@ export async function upsertMarketingSignal(
 
   const hasAnyClickId = Boolean(clickIds.gclid || clickIds.wbraid || clickIds.gbraid);
   if (!hasAnyClickId) {
+    if (callId) {
+      try {
+        await appendOciReconciliationEvent({
+          siteId,
+          callId,
+          stage,
+          reason: 'missing_click_ids',
+          expectedConversionName: conversionNameOverride ?? OPSMANTIK_CONVERSION_NAMES[stage],
+          result: 'skipped',
+          payload: { source },
+        });
+      } catch {
+        // Best-effort audit; SSOT skip path still succeeds.
+      }
+    }
     return {
       success: true,
       skipped: true,

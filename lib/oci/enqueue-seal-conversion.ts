@@ -25,6 +25,7 @@ import {
 } from '@/lib/oci/optimization-contract';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
+import { resolveWonQueueInitialStatus } from '@/lib/oci/preceding-signals';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -229,6 +230,9 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   // 8. Insert into queue. Keep legacy conversion_time populated for compatibility,
   // but canonical export should prefer occurred_at.
   try {
+    const queueGate = await resolveWonQueueInitialStatus(siteId, callId);
+    const nowIso = new Date().toISOString();
+
     const insertPayload: Record<string, unknown> = {
       site_id: siteId,
       call_id: callId,
@@ -268,7 +272,9 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       gclid,
       wbraid,
       gbraid,
-      status: 'QUEUED',
+      status: queueGate.status,
+      block_reason: queueGate.blockReason,
+      blocked_at: queueGate.status === 'BLOCKED_PRECEDING_SIGNALS' ? nowIso : null,
       source_outbox_event_id: sourceOutboxEventId ?? null,
       causal_dna: causalDna,
       entropy_score: 0,
@@ -321,7 +327,8 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
 
     // 9. Fast-Track: Trigger immediate Value-Lane synchronization
     // Only trigger if site is in 'api' mode. 'script' sites must wait for polling.
-    if (syncMethod === 'api') {
+    // Rows blocked on precursor signals must not fast-track until promoted to QUEUED.
+    if (syncMethod === 'api' && queueGate.status === 'QUEUED') {
         try {
             await publishToQStash({
                 lane: 'conversion',

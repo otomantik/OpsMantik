@@ -163,6 +163,17 @@ test('oci script routes use atomic script transition batch rpc', () => {
   assert.ok(migrationSrc.includes('CREATE OR REPLACE FUNCTION public.append_script_transition_batch'), 'migration must define script batch rpc');
 });
 
+test('oci ssot migration adds blocked predecessor status and reconciliation events table', () => {
+  const path = join(ROOT, 'supabase', 'migrations', '20260503100000_oci_ssot_blocked_and_reconciliation.sql');
+  if (!existsSync(path)) {
+    assert.ok(true, 'oci ssot migration not in workspace');
+    return;
+  }
+  const src = readFileSync(path, 'utf8');
+  assert.ok(src.includes('BLOCKED_PRECEDING_SIGNALS'), 'ssot migration must add BLOCKED_PRECEDING_SIGNALS');
+  assert.ok(src.includes('oci_reconciliation_events'), 'ssot migration must create oci_reconciliation_events');
+});
+
 test('oci hardening migration adds reversal voiding and external_id invariants', () => {
   const migration = readMigrationByContractHintsOptional([
     'compute_offline_conversion_external_id',

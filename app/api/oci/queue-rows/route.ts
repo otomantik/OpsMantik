@@ -50,7 +50,9 @@ export async function GET(req: NextRequest) {
 
   let query = adminClient
     .from('offline_conversion_queue')
-    .select('id, call_id, status, provider_error_code, provider_error_category, last_error, attempt_count, brain_score, match_score, queue_priority, score_version, score_flags, created_at, updated_at')
+    .select(
+      'id, call_id, status, block_reason, blocked_at, provider_error_code, provider_error_category, last_error, attempt_count, brain_score, match_score, queue_priority, score_version, score_flags, created_at, updated_at'
+    )
     .eq('site_id', siteUuid);
 
   if (statusFilter && QUEUE_STATUSES.includes(statusFilter as QueueStatus)) {
@@ -80,6 +82,8 @@ export async function GET(req: NextRequest) {
       id: string;
       call_id: string | null;
       status: string;
+      block_reason?: string | null;
+      blocked_at?: string | null;
       provider_error_code: string | null;
       provider_error_category: string | null;
       last_error: string | null;
@@ -96,6 +100,8 @@ export async function GET(req: NextRequest) {
       id: row.id,
       call_id: row.call_id ?? null,
       status: (QUEUE_STATUSES.includes(row.status as QueueStatus) ? row.status : 'QUEUED') as QueueStatus,
+      block_reason: row.block_reason ?? null,
+      blocked_at: row.blocked_at ?? null,
       provider_error_code: row.provider_error_code ?? null,
       provider_error_category: PROVIDER_ERROR_CATEGORIES.includes(
         row.provider_error_category as ProviderErrorCategory

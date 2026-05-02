@@ -90,6 +90,12 @@ export const en = {
   'ociControl.actions': 'Actions',
   'ociControl.loading': 'Preparing list',
   'ociControl.loadMore': 'Load more',
+  'ociControl.signalsPending': 'Signals PENDING',
+  'ociControl.blockedSince': 'Oldest blocked',
+  'ociControl.lastUpload': 'Last queue upload',
+  'ociControl.lastCompleted': 'Last completed',
+  'ociControl.promotionReady': 'Promotion-ready (sample)',
+  'ociControl.blockedAgeSec': 'Oldest blocked age (s)',
   'ociControl.error.loadStats': 'Could not load summary',
   'ociControl.error.loadRows': 'Could not load rows',
   'ociControl.error.actionFailed': 'The action could not be completed',
@@ -101,6 +107,8 @@ export const en = {
   'ociControl.status.COMPLETED_UNVERIFIED': 'Awaiting verification',
   'ociControl.status.FAILED': 'Failed',
   'ociControl.status.DEAD_LETTER_QUARANTINE': 'Review queue',
+  'ociControl.status.VOIDED_BY_REVERSAL': 'Voided (reversal)',
+  'ociControl.status.BLOCKED_PRECEDING_SIGNALS': 'Blocked (precursor signals)',
 
   // Dashboard
   'common.backToDashboard': 'Back to Dashboard',

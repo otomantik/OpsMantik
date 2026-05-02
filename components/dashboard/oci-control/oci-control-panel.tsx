@@ -29,6 +29,7 @@ import { useTranslation } from '@/lib/i18n/useTranslation';
 
 const STATUS_ORDER: QueueStatus[] = [
   'QUEUED',
+  'BLOCKED_PRECEDING_SIGNALS',
   'RETRY',
   'PROCESSING',
   'UPLOADED',
@@ -36,6 +37,7 @@ const STATUS_ORDER: QueueStatus[] = [
   'COMPLETED_UNVERIFIED',
   'FAILED',
   'DEAD_LETTER_QUARANTINE',
+  'VOIDED_BY_REVERSAL',
 ];
 
 function statusLabel(
@@ -87,6 +89,12 @@ export function OciControlPanel({
     actions: t('ociControl.actions'),
     loading: t('ociControl.loading'),
     loadMore: t('ociControl.loadMore'),
+    signalsPending: t('ociControl.signalsPending'),
+    blockedSince: t('ociControl.blockedSince'),
+    lastUpload: t('ociControl.lastUpload'),
+    lastCompleted: t('ociControl.lastCompleted'),
+    promotionReady: t('ociControl.promotionReady'),
+    blockedAgeSec: t('ociControl.blockedAgeSec'),
     loadStatsError: t('ociControl.error.loadStats'),
     loadRowsError: t('ociControl.error.loadRows'),
     actionFailed: t('ociControl.error.actionFailed'),
@@ -233,7 +241,7 @@ export function OciControlPanel({
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3 mb-6">
           {STATUS_ORDER.map((status) => (
             <button
               key={status}
@@ -251,6 +259,9 @@ export function OciControlPanel({
                   {status === 'FAILED' && <XCircle className="h-3.5 w-3.5 text-red-600" />}
                   {status === 'PROCESSING' && <Clock className="h-3.5 w-3.5 text-slate-500" />}
                   {status === 'RETRY' && <RotateCcw className="h-3.5 w-3.5 text-amber-600" />}
+                  {status === 'BLOCKED_PRECEDING_SIGNALS' && (
+                    <Clock className="h-3.5 w-3.5 text-violet-600" />
+                  )}
                   {statusLabel(status, tUnsafe)}
                 </CardTitle>
               </CardHeader>
@@ -278,6 +289,54 @@ export function OciControlPanel({
             </Card>
           )}
         </div>
+
+        {stats && (
+          <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600 border border-slate-200 rounded-lg bg-white px-4 py-3">
+            <span>
+              {labels.signalsPending}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.marketingSignalsByDispatch?.PENDING ?? 0}
+              </strong>
+            </span>
+            <span>
+              {labels.blockedSince}:{' '}
+              <strong className="text-slate-900">
+                {stats.blockedQueueOldestAt
+                  ? new Date(stats.blockedQueueOldestAt).toLocaleString()
+                  : '—'}
+              </strong>
+            </span>
+            <span>
+              {labels.lastUpload}:{' '}
+              <strong className="text-slate-900">
+                {stats.lastQueueUploadAt
+                  ? new Date(stats.lastQueueUploadAt).toLocaleString()
+                  : '—'}
+              </strong>
+            </span>
+            <span>
+              {labels.lastCompleted}:{' '}
+              <strong className="text-slate-900">
+                {stats.lastQueueCompletedAt
+                  ? new Date(stats.lastQueueCompletedAt).toLocaleString()
+                  : '—'}
+              </strong>
+            </span>
+            <span>
+              {labels.promotionReady}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.promotionReadyInSample != null ? stats.promotionReadyInSample : '—'}
+                {stats.blockedPromotionScanCapped ? '+' : ''}
+              </strong>
+            </span>
+            <span>
+              {labels.blockedAgeSec}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.oldestBlockedAgeSeconds != null ? stats.oldestBlockedAgeSeconds : '—'}
+              </strong>
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <select
@@ -371,7 +430,9 @@ export function OciControlPanel({
                 rows.map((row) => (
                   <TableRow key={row.id} className="border-slate-100">
                     <TableCell className="py-2">
-                      {(row.status === 'FAILED' || row.status === 'RETRY') && (
+                      {(row.status === 'FAILED' ||
+                        row.status === 'RETRY' ||
+                        row.status === 'BLOCKED_PRECEDING_SIGNALS') && (
                         <input
                           type="checkbox"
                           checked={selectedIds.has(row.id)}
@@ -390,11 +451,19 @@ export function OciControlPanel({
                           row.status === 'FAILED' && 'bg-red-100 text-red-800',
                           row.status === 'PROCESSING' && 'bg-slate-100 text-slate-700',
                           row.status === 'RETRY' && 'bg-amber-100 text-amber-800',
-                          row.status === 'QUEUED' && 'bg-slate-100 text-slate-600'
+                          row.status === 'QUEUED' && 'bg-slate-100 text-slate-600',
+                          row.status === 'BLOCKED_PRECEDING_SIGNALS' &&
+                            'bg-violet-100 text-violet-800',
+                          row.status === 'VOIDED_BY_REVERSAL' && 'bg-zinc-200 text-zinc-700'
                         )}
                       >
                         {statusLabel(row.status, tUnsafe)}
                       </span>
+                      {row.block_reason ? (
+                        <div className="text-[10px] text-slate-500 mt-0.5 max-w-[140px] truncate" title={row.block_reason}>
+                          {row.block_reason}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-xs py-2">{row.provider_error_code ?? '—'}</TableCell>
                     <TableCell className="text-xs py-2">{row.provider_error_category ?? '—'}</TableCell>
@@ -413,6 +482,18 @@ export function OciControlPanel({
                           className="min-h-[44px] min-w-[44px]"
                           disabled={!canOperate || actionBusy}
                           onClick={() => runAction('RETRY_SELECTED', [row.id])}
+                          title={!canOperate ? labels.readOnly : undefined}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {row.status === 'BLOCKED_PRECEDING_SIGNALS' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="min-h-[44px] min-w-[44px]"
+                          disabled={!canOperate || actionBusy}
+                          onClick={() => runAction('RESET_TO_QUEUED', [row.id])}
                           title={!canOperate ? labels.readOnly : undefined}
                         >
                           <RotateCcw className="h-4 w-4" />
