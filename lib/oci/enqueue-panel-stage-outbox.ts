@@ -7,6 +7,9 @@ import {
 } from '@/lib/oci/oci-click-eligibility';
 
 /**
+ * Tek SSOT yüzü: panel/stage/seal başarından sonra IntentSealed outbox.
+ * Tüm prod mutasyon yüzleri burayı çağırır — kanıt: `tests/architecture/oci-outbox-producer-invariant.test.ts`.
+ *
  * Maps persisted call.status (panel / RPC) to the explicit OCI pipeline stage
  * stored on outbox payload. Must stay aligned with process-outbox + SingleConversionGear.
  */

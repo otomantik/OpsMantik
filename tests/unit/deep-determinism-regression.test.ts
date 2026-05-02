@@ -20,11 +20,16 @@ const TRACKER = join(ROOT, 'lib', 'tracker', 'tracker.js');
 const ACTIVITY_LOG = join(ROOT, 'components', 'dashboard', 'qualification-queue', 'activity-log-inline.tsx');
 const STAGE_ROUTE = join(ROOT, 'app', 'api', 'calls', '[id]', 'stage', 'route.ts');
 
-test('intent status route: everything goes through apply_call_action_v2 (Authoritative SQL Path)', () => {
+test('intent status route: atomic RPC + OCI outbox notify (delegates v2 internally)', () => {
   const src = readFileSync(INTENT_STATUS_ROUTE, 'utf8');
-  assert.ok(src.includes("adminClient.rpc('apply_call_action_v2'"), 'status route must use apply_call_action_v2');
+  assert.ok(
+    src.includes("adminClient.rpc('apply_call_action_with_review_v1'"),
+    'status route must use apply_call_action_with_review_v1 (wraps v2)'
+  );
   assert.ok(src.includes('p_actor_id: user.id'), 'queue actions must preserve human actor id for audit lineage');
   assert.ok(src.includes('invalidatePendingOciArtifactsForCall'), 'reversal actions must invalidate pending OCI artifacts');
+  assert.ok(src.includes('enqueuePanelStageOciOutbox'), 'junk/restore mutations must enqueue IntentSealed outbox');
+  assert.ok(src.includes('notifyOutboxPending'), 'junk/restore must notify outbox processor');
 });
 
 test('call action rpc lineage: system actors are normalized before call_actions append', () => {

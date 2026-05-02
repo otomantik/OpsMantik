@@ -52,8 +52,12 @@ test('core spine: panel sends calls.version on seal when known', () => {
   assert.ok(src.includes('intentForSeal.version'), 'seal body must use intent version from RPC');
 });
 
-test('core spine: stage route passes optimistic version to apply_call_action_v2', () => {
+test('core spine: stage route passes mutation version through apply_call_action_with_review_v1', () => {
   const src = readFileSync(join(ROOT, 'app', 'api', 'intents', '[id]', 'stage', 'route.ts'), 'utf8');
-  assert.ok(src.includes('p_version: effectiveVersionForRpc'), 'stage RPC must receive resolved version');
-  assert.ok(src.includes('apply_call_action_v2'), 'stage RPC must be v2');
+  assert.ok(src.includes('p_version: versionResolution.version'), 'stage RPC must receive integrity-resolved version');
+  assert.ok(
+    src.includes("adminClient.rpc('apply_call_action_with_review_v1'"),
+    'stage route must persist via apply_call_action_with_review_v1 (delegates v2)'
+  );
+  assert.ok(src.includes('enqueuePanelStageOciOutbox'), 'stage mutations must enqueue OCI outbox after RPC');
 });

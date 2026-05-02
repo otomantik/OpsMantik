@@ -130,7 +130,7 @@ test('seal route enqueues IntentSealed + fires notifyOutboxPending after apply_c
   );
 });
 
-test('stage route fires notifyOutboxPending after confirm RPC', () => {
+test('stage route enqueues IntentSealed + fires notifyOutboxPending after panel RPC', () => {
   const src = readFileSync(
     join(ROOT, 'app/api/intents/[id]/stage/route.ts'),
     'utf8'
@@ -139,10 +139,17 @@ test('stage route fires notifyOutboxPending after confirm RPC', () => {
     src.includes("from '@/lib/oci/notify-outbox'"),
     'stage route must import notifyOutboxPending'
   );
+  assert.ok(src.includes('enqueuePanelStageOciOutbox'), 'stage route must insert outbox after RPC success');
   assert.ok(
     /notifyOutboxPending\(/.test(src),
     'stage route must call notifyOutboxPending'
   );
+});
+
+test('intent status route enqueues IntentSealed + fires notifyOutboxPending', () => {
+  const src = readFileSync(join(ROOT, 'app/api/intents/[id]/status/route.ts'), 'utf8');
+  assert.ok(src.includes('enqueuePanelStageOciOutbox'), 'status route must insert outbox after RPC success');
+  assert.ok(/notifyOutboxPending\(/.test(src), 'status route must notify outbox processor');
 });
 
 // ---------------------------------------------------------------------------

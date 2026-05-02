@@ -15,6 +15,8 @@
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --since=2026-04-01 --limit=200
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --trigger   # CRON_SECRET + BASE_URL ile cron tetikler
+ *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --dry-run       # tüm tenants (liste `sites`)
+ *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --apply --trigger
  *
  * Outbox insert sonrası işlem için (deploy ortamında):
  *   node scripts/trigger_outbox_processor.mjs
@@ -74,9 +76,14 @@ function parseArgs(argv) {
     since: null,
     limit: null,
     siteQuery: null,
+    allSites: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
+    if (a === '--all-sites') {
+      out.allSites = true;
+      continue;
+    }
     if (a === '--apply') {
       out.apply = true;
       out.dryRun = false;
@@ -245,17 +252,53 @@ async function main() {
   const supabase = createClient(url, key);
   const args = parseArgs(process.argv.slice(2));
 
-  const siteId = await resolveSiteId(supabase, args.siteQuery);
-  if (!siteId) {
-    console.error('Site bulunamadı. Örnek: node scripts/db/oci-outbox-missed-backfill.mjs Muratcan');
+  if (args.allSites && args.siteQuery) {
+    console.error('--all-sites ile birlikte site adı/id verme; tek tenant için positional arg kullan.');
     process.exit(1);
   }
 
-  const { data: siteRow } = await supabase.from('sites').select('id, name, domain').eq('id', siteId).maybeSingle();
-  console.log('Site:', siteRow?.name ?? siteId, siteRow?.domain ? `(${siteRow.domain})` : '');
+  /** @type {Array<{ id: string, name?: string | null, domain?: string | null }>} */
+  let siteTargets = [];
+  if (args.allSites) {
+    const { data: allRows, error: allErr } = await supabase.from('sites').select('id, name, domain').order('domain', { ascending: true });
+    if (allErr) {
+      console.error('sites çekilemedi:', allErr.message);
+      process.exit(1);
+    }
+    siteTargets = allRows || [];
+    if (!siteTargets.length) {
+      console.error('sites tablosu boş');
+      process.exit(1);
+    }
+    console.log('Tüm siteler:', siteTargets.length, 'tenant');
+  } else {
+    const siteId = await resolveSiteId(supabase, args.siteQuery);
+    if (!siteId) {
+      console.error(
+        'Site bulunamadı. Örnek: node scripts/db/oci-outbox-missed-backfill.mjs Muratcan\n' +
+          '  veya çok kiracılı: ... --all-sites --dry-run'
+      );
+      process.exit(1);
+    }
+    const { data: one } = await supabase.from('sites').select('id, name, domain').eq('id', siteId).maybeSingle();
+    siteTargets = one ? [one] : [{ id: siteId, name: null, domain: null }];
+  }
+
   console.log('Mod:', args.apply ? 'APPLY (yazılacak)' : 'DRY-RUN (sadece rapor)');
   if (args.since) console.log('since updated_at >=', args.since);
   if (args.limit) console.log('limit', args.limit);
+
+  let grandTotalInserted = 0;
+
+  for (const siteMeta of siteTargets) {
+    const siteId = siteMeta.id;
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(
+      'Site:',
+      siteMeta?.name ?? siteId,
+      siteMeta?.domain ? `(${siteMeta.domain})` : '',
+      `\nUUID: ${siteId}`
+    );
 
   let q = supabase
     .from('calls')
@@ -368,17 +411,25 @@ async function main() {
     }
   }
 
-  console.log('\n--- Özet ---');
+  console.log('\n--- Site özeti ---');
   console.log('Aday çağrı (export status + session):', (calls || []).length);
   console.log('Pipeline kurallarından sonra eklenebilir:', eligible);
   console.log('Atlanan:', skipped, skipReasons);
   if (args.apply) {
     console.log('Insert edilen outbox satırı:', inserted);
+    grandTotalInserted += inserted;
+  }
   }
 
-  if (args.apply && args.trigger) {
+  console.log('\n════════ GENEL ════════');
+  console.log('İşlenen tenant sayısı:', siteTargets.length);
+  if (args.apply) {
+    console.log('Toplam insert (tüm siteler):', grandTotalInserted);
+  }
+
+  if (args.apply && args.trigger && grandTotalInserted > 0) {
     await triggerOutboxCron();
-  } else if (args.apply && inserted > 0) {
+  } else if (args.apply && grandTotalInserted > 0) {
     console.log('\nOutbox işlemesi için: node scripts/trigger_outbox_processor.mjs');
     console.log('  (veya --apply --trigger ile CRON_SECRET + BASE_URL kullan)');
   }
