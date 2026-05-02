@@ -14,7 +14,9 @@
  *   node scripts/db/oci-outbox-missed-backfill.mjs 7eb8f5c0-4a96-4a0e-bd89-a463127b26b8 --dry-run
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --since=2026-04-01 --limit=200
- *   (--since: calls.created_at üzerinden; bazı projelerde calls.updated_at kolonu yok)
+ *   (--since: calls.created_at üzerinden)
+ *   calls satırları `select('*')` ile çekilir (sale_amount / sale_* / updated_at eksik eski şemalarda
+ *   sabit kolon listesi 42703 hatası vermez; payload’da olmayan alanlar null kalır).
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --trigger   # CRON_SECRET + BASE_URL ile cron tetikler
  *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --dry-run       # tüm tenants (liste `sites`)
  *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --apply --trigger
@@ -149,7 +151,8 @@ function buildPayload(call, stage) {
     (typeof call.updated_at === 'string' ? call.updated_at : null) ??
     (typeof call.created_at === 'string' ? call.created_at : null) ??
     nowIso;
-  const currency = (call.currency ?? 'TRY').trim() || 'TRY';
+  const curRaw = call.currency != null ? String(call.currency) : 'TRY';
+  const currency = curRaw.trim() || 'TRY';
   return {
     call_id: call.id,
     site_id: call.site_id,
@@ -304,24 +307,7 @@ async function main() {
 
   let q = supabase
     .from('calls')
-    .select(
-      [
-        'id',
-        'site_id',
-        'status',
-        'matched_session_id',
-        'lead_score',
-        'confirmed_at',
-        'created_at',
-        'sale_amount',
-        'currency',
-        'sale_occurred_at',
-        'sale_source_timestamp',
-        'sale_time_confidence',
-        'sale_occurred_at_source',
-        'sale_entry_reason',
-      ].join(', ')
-    )
+    .select('*')
     .eq('site_id', siteId)
     .not('matched_session_id', 'is', null)
     .in('status', EXPORT_STATUSES)
