@@ -68,6 +68,8 @@ export const REFACTOR_METRIC_NAMES = [
   'panel_stage_rpc_signature_mismatch_total',
   'panel_stage_persistence_miss_total',
   'panel_stage_outbox_insert_failed_total',
+  'seal_route_outbox_insert_failed_total',
+  'intent_status_route_outbox_insert_failed_total',
   'oci_outbox_contract_violation_total',
   'panel_stage_outbox_skip_no_matched_session_total',
   'panel_stage_outbox_skip_no_ads_click_id_total',
