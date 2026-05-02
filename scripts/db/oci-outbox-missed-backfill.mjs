@@ -14,6 +14,7 @@
  *   node scripts/db/oci-outbox-missed-backfill.mjs 7eb8f5c0-4a96-4a0e-bd89-a463127b26b8 --dry-run
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --since=2026-04-01 --limit=200
+ *   (--since: calls.created_at üzerinden; bazı projelerde calls.updated_at kolonu yok)
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan --apply --trigger   # CRON_SECRET + BASE_URL ile cron tetikler
  *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --dry-run       # tüm tenants (liste `sites`)
  *   node scripts/db/oci-outbox-missed-backfill.mjs --all-sites --apply --trigger
@@ -146,6 +147,7 @@ function buildPayload(call, stage) {
   const confirmedAt =
     (wonLike ? call.confirmed_at : null) ??
     (typeof call.updated_at === 'string' ? call.updated_at : null) ??
+    (typeof call.created_at === 'string' ? call.created_at : null) ??
     nowIso;
   const currency = (call.currency ?? 'TRY').trim() || 'TRY';
   return {
@@ -285,7 +287,7 @@ async function main() {
   }
 
   console.log('Mod:', args.apply ? 'APPLY (yazılacak)' : 'DRY-RUN (sadece rapor)');
-  if (args.since) console.log('since updated_at >=', args.since);
+  if (args.since) console.log('since created_at >=', args.since);
   if (args.limit) console.log('limit', args.limit);
 
   let grandTotalInserted = 0;
@@ -311,7 +313,6 @@ async function main() {
         'lead_score',
         'confirmed_at',
         'created_at',
-        'updated_at',
         'sale_amount',
         'currency',
         'sale_occurred_at',
@@ -324,10 +325,10 @@ async function main() {
     .eq('site_id', siteId)
     .not('matched_session_id', 'is', null)
     .in('status', EXPORT_STATUSES)
-    .order('updated_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (args.since) {
-    q = q.gte('updated_at', args.since);
+    q = q.gte('created_at', args.since);
   }
   if (args.limit) {
     q = q.limit(args.limit);
