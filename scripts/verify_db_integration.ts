@@ -55,6 +55,13 @@ async function verifySignalGeneration() {
     systemScore: lcv.breakdown.systemScore,
   });
 
+  const { loadMarketingSignalEconomics } = await import('../lib/oci/marketing-signal-value-ssot');
+  const economics = await loadMarketingSignalEconomics({
+    siteId,
+    stage: 'contacted',
+    snapshot: canonicalValue,
+  });
+
   const conversionName = OPSMANTIK_CONVERSION_NAMES.contacted;
 
   console.log('Writing to marketing_signals...');
@@ -64,13 +71,16 @@ async function verifySignalGeneration() {
     signal_type: 'contacted',
     google_conversion_name: conversionName,
     google_conversion_time: confirmedAtIso,
-    conversion_value: canonicalValue.optimizationValue,
-    expected_value_cents: Math.round(canonicalValue.optimizationValue * 100),
+    currency_code: economics.currencyCode,
+    value_source: economics.valueSource,
+    conversion_time_source: economics.conversionTimeSource,
+    conversion_value: economics.conversionValueMajor,
+    expected_value_cents: economics.expectedValueCents,
     optimization_stage: canonicalValue.optimizationStage,
     optimization_stage_base: canonicalValue.stageBase,
     system_score: canonicalValue.systemScore,
     quality_factor: canonicalValue.qualityFactor,
-    optimization_value: canonicalValue.optimizationValue,
+    optimization_value: economics.conversionValueMajor,
     gclid: call.gclid || 'test_gclid',
     dispatch_status: 'PENDING',
     occurred_at: confirmedAtIso,

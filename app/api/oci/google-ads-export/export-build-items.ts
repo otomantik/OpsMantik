@@ -32,7 +32,7 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   // pickCanonicalOccurredAt([row.occurred_at, row.conversion_time, ...])
   // typeof row.optimization_value === 'number' ? ... : minorToMajor(valueGuard.normalized, rowCurrency)
   // row.external_id || computeOfflineConversionExternalId(...)
-  // resolveSignalStage(...); if (!stage || stage === 'junk') { logWarn('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE') }
+  // resolveSignalStage(...); if (!stage) { logWarn('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE') }
   // buildOrderId(...)
   // buildSingleConversionGroupKey(...)
   // `signal_${signalId}`

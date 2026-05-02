@@ -63,5 +63,9 @@ test('GoogleAdsScript: fetchConversions understands paged { items, next_cursor }
   const src = readFileSync(scriptPath, 'utf8');
   assert.ok(src.includes('fetchConversionsPage'), 'script must have paged fetch helper');
   assert.ok(src.includes('payload.items') && src.includes('payload.next_cursor'), 'script must read structured API payload');
-  assert.ok(src.includes('do {') && src.includes('} while (cursor);'), 'script must continue fetching while next_cursor exists');
+  assert.ok(
+    src.includes('do {') &&
+      (src.includes('} while (hasNextPage);') || src.includes('} while (cursor);')),
+    'script must page until no next page / cursor'
+  );
 });

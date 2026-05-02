@@ -32,5 +32,26 @@ export function isCallSendableForSealExport(
   status: string | null | undefined,
   ociStatus: string | null | undefined
 ): boolean {
+  const st = (status ?? '').trim().toLowerCase();
+  // Panel / apply_call_action_v2 persists terminal sale as status=won without war-room seal metadata.
+  // enqueueSealConversion still enforces click id + consent + temporal sanity.
+  if (st === 'won') {
+    return true;
+  }
   return isCallStatusSendableForOci(status) && (ociStatus ?? '').trim().toLowerCase() === 'sealed';
+}
+
+/**
+ * Outbox → marketing_signals (contacted / offered / junk). Won uses {@link isCallSendableForSealExport}.
+ * Junk satırı: çağrı durumu junk olmalı; contacted/offered için intent + mevcut sinyal kuralları.
+ */
+export function isCallSendableForOutboxSignalStage(
+  callStatus: string | null | undefined,
+  stage: 'contacted' | 'offered' | 'junk'
+): boolean {
+  const st = (callStatus ?? '').trim().toLowerCase();
+  if (stage === 'junk') {
+    return st === 'junk';
+  }
+  return isCallStatusSendableForSignal(callStatus, stage);
 }

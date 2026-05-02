@@ -48,7 +48,7 @@ export function buildSignalItems(
       (sig.optimization_stage as string | null) ?? null,
       typeof sig.signal_type === 'string' ? sig.signal_type : ''
     );
-    if (!stage || stage === 'junk') {
+    if (!stage) {
       blockedSignalIds.push(signalId);
       logWarn('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE', {
         signal_id: signalId,

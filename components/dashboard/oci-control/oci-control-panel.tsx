@@ -95,6 +95,12 @@ export function OciControlPanel({
     lastCompleted: t('ociControl.lastCompleted'),
     promotionReady: t('ociControl.promotionReady'),
     blockedAgeSec: t('ociControl.blockedAgeSec'),
+    unifiedExportBacklog: t('ociControl.unifiedExportBacklog'),
+    wonQueueBacklogActive: t('ociControl.wonQueueBacklogActive'),
+    wonQueueInFlightUploaded: t('ociControl.wonQueueInFlightUploaded'),
+    marketingSignalsExportActive: t('ociControl.marketingSignalsExportActive'),
+    ociSyncPathScript: t('ociControl.ociSyncMethod.script'),
+    ociSyncPathApi: t('ociControl.ociSyncMethod.api'),
     loadStatsError: t('ociControl.error.loadStats'),
     loadRowsError: t('ociControl.error.loadRows'),
     actionFailed: t('ociControl.error.actionFailed'),
@@ -292,6 +298,33 @@ export function OciControlPanel({
 
         {stats && (
           <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600 border border-slate-200 rounded-lg bg-white px-4 py-3">
+            <span>
+              {labels.unifiedExportBacklog}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.unifiedExportBacklog ?? '—'}
+              </strong>
+            </span>
+            <span>
+              {labels.marketingSignalsExportActive}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.marketingSignalsExportActive ?? '—'}
+              </strong>
+            </span>
+            <span>
+              {labels.wonQueueBacklogActive}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.wonQueueBacklogActive ?? '—'}
+              </strong>
+            </span>
+            <span>
+              {labels.wonQueueInFlightUploaded}:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {stats.wonQueueInFlightUploaded ?? '—'}
+              </strong>
+            </span>
+            <span>
+              {stats.ociSyncMethod === 'api' ? labels.ociSyncPathApi : labels.ociSyncPathScript}
+            </span>
             <span>
               {labels.signalsPending}:{' '}
               <strong className="text-slate-900 tabular-nums">

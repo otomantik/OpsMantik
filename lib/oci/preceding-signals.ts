@@ -1,6 +1,11 @@
 /**
  * Won-queue ordering: block offline_conversion_queue until precursor marketing_signals
  * (OpsMantik_Contacted / OpsMantik_Offered) are past blocking dispatch states.
+ *
+ * Product / ops (precursor-won policy): either (a) run backfill + promote so precursors
+ * exist before won is accepted, or (b) add a stricter worker block that refuses won
+ * queue rows until contacted/offered signals exist — that second option is a breaking
+ * behavioral change and needs explicit rollout.
  */
 
 import { adminClient } from '@/lib/supabase/admin';

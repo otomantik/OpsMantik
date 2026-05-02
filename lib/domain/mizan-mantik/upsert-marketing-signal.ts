@@ -13,6 +13,9 @@
  * `source` so that the row's `feature_snapshot.source` and `causal_dna.source`
  * carry the provenance needed for forensic replay.
  *
+ * Economics (**value_cents / currency / value_source**) are **never computed here**
+ * — callers MUST pass **`economics`** from `loadMarketingSignalEconomics`.
+ *
  * The helper is idempotent at the DB level via the
  * (site_id, call_id, google_conversion_name, adjustment_sequence) unique index:
  * a 23505 duplicate violation collapses to `{ success: true, duplicate: true }`.
@@ -21,13 +24,11 @@
 import { adminClient } from '@/lib/supabase/admin';
 import type { PipelineStage } from './types';
 import { OPSMANTIK_CONVERSION_NAMES } from './conversion-names';
-import { logError, logInfo } from '@/lib/logging/logger';
+import { logError, logInfo, logWarn } from '@/lib/logging/logger';
 import { resolveSignalOccurredAt } from '@/lib/oci/occurred-at';
 import type { OptimizationValueSnapshot } from '@/lib/oci/optimization-contract';
-import {
-  computeMarketingSignalCurrentHash,
-  toExpectedValueCents,
-} from '@/lib/oci/marketing-signal-hash';
+import { computeMarketingSignalCurrentHash } from '@/lib/oci/marketing-signal-hash';
+import type { MarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import { appendOciReconciliationEvent } from '@/lib/oci/reconciliation-events';
 
 export type UpsertMarketingSignalSource =
@@ -41,6 +42,11 @@ export interface ClickIds {
   gbraid: string | null;
 }
 
+function normalizeClickSegment(s: string | null | undefined): string | null {
+  const v = typeof s === 'string' ? s.trim() : '';
+  return v.length > 0 ? v : null;
+}
+
 export interface UpsertMarketingSignalParams {
   /** Provenance tag — must uniquely identify the caller path for audit/replay. */
   source: UpsertMarketingSignalSource;
@@ -51,15 +57,17 @@ export interface UpsertMarketingSignalParams {
   /** Cross-system trace (OpenTelemetry / request_id). */
   traceId: string | null;
   /**
-   * Canonical pipeline stage driving the row. Junk and 'won' are gated by the
-   * caller — only intent-bearing stages (`contacted`, `offered`) reach the
-   * upsert SSOT.
+   * Canonical pipeline stage. `won` is excluded: satış dönüşümü yalnızca
+   * `enqueueSealConversion` → `offline_conversion_queue` (OpsMantik_Won).
+   * `contacted`, `offered`, `junk` bu helper üzerinden `marketing_signals`’a gider.
    */
-  stage: Exclude<PipelineStage, 'junk' | 'won'>;
+  stage: Exclude<PipelineStage, 'won'>;
   /** Signal timestamp (business time, typically `now()` at stage transition). */
   signalDate: Date;
   /** Pre-computed optimization snapshot (stage-base × quality factor × system score). */
   snapshot: OptimizationValueSnapshot;
+  /** SSOT economics from loadMarketingSignalEconomics / resolveMarketingSignalEconomics. */
+  economics: MarketingSignalEconomics;
   /** Click IDs harvested from the originating call (at least one is needed for OCI). */
   clickIds: ClickIds;
   /** feature_snapshot.* fields (merged with `{ source }` by this helper). */
@@ -78,7 +86,7 @@ export interface UpsertMarketingSignalResult {
   signalId?: string | null;
   duplicate?: boolean;
   skipped?: boolean;
-  skippedReason?: 'missing_click_ids' | 'junk_stage';
+  skippedReason?: 'missing_click_ids';
   expectedValueCents: number;
   currentHash: string;
   adjustmentSequence: number;
@@ -87,9 +95,7 @@ export interface UpsertMarketingSignalResult {
 /**
  * Upsert a marketing_signals row using the canonical hash chain.
  *
- * Callers are responsible for gating out junk / won stages. `won` is owned by the
- * seal enqueue path (offline_conversion_queue) and would violate the CHECK constraint
- * on `marketing_signals.occurred_at_source` anyway.
+ * Callers must not pass `won` — seal enqueue owns Won (offline_conversion_queue).
  */
 export async function upsertMarketingSignal(
   params: UpsertMarketingSignalParams
@@ -102,6 +108,7 @@ export async function upsertMarketingSignal(
     stage,
     signalDate,
     snapshot,
+    economics,
     clickIds,
     featureSnapshotExtras,
     causalDna,
@@ -110,7 +117,12 @@ export async function upsertMarketingSignal(
     conversionNameOverride,
   } = params;
 
-  const hasAnyClickId = Boolean(clickIds.gclid || clickIds.wbraid || clickIds.gbraid);
+  const nClick = {
+    gclid: normalizeClickSegment(clickIds.gclid),
+    wbraid: normalizeClickSegment(clickIds.wbraid),
+    gbraid: normalizeClickSegment(clickIds.gbraid),
+  };
+  const hasAnyClickId = Boolean(nClick.gclid || nClick.wbraid || nClick.gbraid);
   if (!hasAnyClickId) {
     if (callId) {
       try {
@@ -137,9 +149,20 @@ export async function upsertMarketingSignal(
     };
   }
 
-  const conversionName = conversionNameOverride ?? OPSMANTIK_CONVERSION_NAMES[stage];
+  const canonicalName = OPSMANTIK_CONVERSION_NAMES[stage];
+  const conversionName = conversionNameOverride ?? canonicalName;
+  if (conversionNameOverride != null && conversionNameOverride.trim() !== canonicalName) {
+    logWarn('MARKETING_SIGNAL_CONVERSION_NAME_OVERRIDE_DRIFT', {
+      site_id: siteId,
+      call_id: callId,
+      stage,
+      canonical_name: canonicalName,
+      override: conversionNameOverride,
+    });
+  }
+
   const occurredAtMeta = resolveSignalOccurredAt(signalDate, stage);
-  const expectedValueCents = toExpectedValueCents(snapshot.optimizationValue);
+  const expectedValueCents = economics.expectedValueCents;
   const signalIso = signalDate.toISOString();
 
   let sequence = 0;
@@ -168,9 +191,9 @@ export async function upsertMarketingSignal(
 
   const featureSnapshot: Record<string, unknown> = {
     source,
-    has_gclid: Boolean(clickIds.gclid),
-    has_wbraid: Boolean(clickIds.wbraid),
-    has_gbraid: Boolean(clickIds.gbraid),
+    has_gclid: Boolean(nClick.gclid),
+    has_wbraid: Boolean(nClick.wbraid),
+    has_gbraid: Boolean(nClick.gbraid),
     ...(featureSnapshotExtras ?? {}),
   };
 
@@ -178,6 +201,10 @@ export async function upsertMarketingSignal(
     source,
     ...causalDna,
   };
+
+  const isJunk = stage === 'junk';
+  const stageBasePersist = isJunk ? 0.1 : snapshot.stageBase;
+  const qualityFactorPersist = isJunk ? 1 : snapshot.qualityFactor;
 
   const insertPayload: Record<string, unknown> = {
     site_id: siteId,
@@ -191,12 +218,15 @@ export async function upsertMarketingSignal(
     time_confidence: occurredAtMeta.timeConfidence,
     occurred_at_source: occurredAtMeta.occurredAtSource,
     expected_value_cents: expectedValueCents,
-    conversion_value: snapshot.optimizationValue,
+    currency_code: economics.currencyCode,
+    value_source: economics.valueSource,
+    conversion_time_source: economics.conversionTimeSource,
+    conversion_value: economics.conversionValueMajor,
     optimization_stage: snapshot.optimizationStage,
-    optimization_stage_base: snapshot.stageBase,
+    optimization_stage_base: stageBasePersist,
     system_score: snapshot.systemScore,
-    quality_factor: snapshot.qualityFactor,
-    optimization_value: snapshot.optimizationValue,
+    quality_factor: qualityFactorPersist,
+    optimization_value: economics.conversionValueMajor,
     actual_revenue: snapshot.actualRevenue,
     helper_form_payload: snapshot.helperFormPayload,
     feature_snapshot: featureSnapshot,
@@ -206,9 +236,9 @@ export async function upsertMarketingSignal(
     causal_dna: causalDnaPayload,
     entropy_score: entropyScore ?? null,
     uncertainty_bit: uncertaintyBit ?? null,
-    gclid: clickIds.gclid,
-    wbraid: clickIds.wbraid,
-    gbraid: clickIds.gbraid,
+    gclid: nClick.gclid,
+    wbraid: nClick.wbraid,
+    gbraid: nClick.gbraid,
     adjustment_sequence: sequence,
     previous_hash: previousHash,
     current_hash: currentHash,

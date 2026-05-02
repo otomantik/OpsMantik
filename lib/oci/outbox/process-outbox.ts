@@ -13,8 +13,12 @@ import { PipelineStage } from '@/lib/domain/mizan-mantik/types';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
-import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
+import {
+  isCallSendableForSealExport,
+  isCallSendableForOutboxSignalStage,
+} from '@/lib/oci/call-sendability';
 import { resolveOptimizationStage } from '@/lib/oci/optimization-contract';
 import {
   getSingleConversionGearRank,
@@ -41,6 +45,13 @@ async function finalizeOutboxEvent(params: {
     p_attempt_count: params.attemptCount ?? null,
   });
   if (error) throw error;
+  if (
+    params.status === 'FAILED' &&
+    typeof params.lastError === 'string' &&
+    params.lastError.includes('OCI_CONTRACT_VIOLATION')
+  ) {
+    incrementRefactorMetric('oci_outbox_contract_violation_total');
+  }
 }
 
 export interface ProcessOutboxResult {
@@ -59,7 +70,8 @@ interface OutboxPayload {
   call_id: string;
   site_id: string;
   lead_score: number | null;
-  stage?: SingleConversionGear | null;
+  /** RPC explicit stage — junk dahil (score çözümlemesi junk üretmeyebilir). */
+  stage?: SingleConversionGear | 'junk' | null;
   confirmed_at: string;
   created_at?: string | null;
   sale_occurred_at?: string | null;
@@ -71,10 +83,13 @@ interface OutboxPayload {
   currency: string;
 }
 
-function resolveOutboxStage(score: number): SingleConversionGear | null {
+function resolveOutboxStage(score: number): SingleConversionGear | 'junk' | null {
   const stage = resolveOptimizationStage({ leadScore: score });
   if (stage === 'contacted' || stage === 'offered' || stage === 'won') {
     return stage;
+  }
+  if (stage === 'junk') {
+    return 'junk';
   }
   return null;
 }
@@ -82,21 +97,22 @@ function resolveOutboxStage(score: number): SingleConversionGear | null {
 function resolveSignalStageFromExisting(params: {
   signalType?: string | null;
   optimizationStage?: string | null;
-}): SingleConversionGear | null {
+}): SingleConversionGear | 'junk' | null {
   // Input is already normalized by producers to English canonical. We still
   // lowercase + trim to defend against accidental header-case drift.
   const optimizationStage = (params.optimizationStage ?? '').trim().toLowerCase();
   if (
     optimizationStage === 'contacted' ||
     optimizationStage === 'offered' ||
-    optimizationStage === 'won'
+    optimizationStage === 'won' ||
+    optimizationStage === 'junk'
   ) {
-    return optimizationStage as SingleConversionGear;
+    return optimizationStage as SingleConversionGear | 'junk';
   }
 
   const signalType = (params.signalType ?? '').trim().toLowerCase();
-  if (signalType === 'contacted' || signalType === 'offered' || signalType === 'won') {
-    return signalType as SingleConversionGear;
+  if (signalType === 'contacted' || signalType === 'offered' || signalType === 'won' || signalType === 'junk') {
+    return signalType as SingleConversionGear | 'junk';
   }
   return null;
 }
@@ -180,15 +196,6 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           .maybeSingle();
         const callStatus = (currentCall as { status?: string | null } | null)?.status ?? null;
         const ociStatus = (currentCall as { oci_status?: string | null } | null)?.oci_status ?? null;
-        if (!isCallSendableForSealExport(callStatus, ociStatus)) {
-          await finalizeOutboxEvent({
-            outboxId: id,
-            status: 'FAILED',
-            lastError: 'CALL_NOT_SENDABLE_FOR_OCI',
-          });
-          failed++;
-          continue;
-        }
 
         const score = leadScore ?? 0;
         const stage = explicitStage ?? resolveOutboxStage(score);
@@ -197,6 +204,36 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           logInfo('outbox_score_too_low', { outbox_id: id, score, message: 'Ignoring junk or low-interest click' });
           await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
           processed++;
+          continue;
+        }
+
+        if (stage === 'won') {
+          if (!isCallSendableForSealExport(callStatus, ociStatus)) {
+            await finalizeOutboxEvent({
+              outboxId: id,
+              status: 'FAILED',
+              lastError: 'CALL_NOT_SENDABLE_FOR_OCI',
+            });
+            failed++;
+            continue;
+          }
+        } else if (stage === 'contacted' || stage === 'offered' || stage === 'junk') {
+          if (!isCallSendableForOutboxSignalStage(callStatus, stage)) {
+            await finalizeOutboxEvent({
+              outboxId: id,
+              status: 'FAILED',
+              lastError: 'CALL_NOT_SENDABLE_FOR_OCI_SIGNAL',
+            });
+            failed++;
+            continue;
+          }
+        } else {
+          await finalizeOutboxEvent({
+            outboxId: id,
+            status: 'FAILED',
+            lastError: `UNKNOWN_OUTBOX_STAGE:${String(stage)}`,
+          });
+          failed++;
           continue;
         }
 
@@ -280,7 +317,9 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
               optimizationStage: (signal as { optimization_stage?: string | null }).optimization_stage ?? null,
             });
             if (!normalized) continue;
-            existingGears.push(normalized);
+            if (normalized !== 'junk') {
+              existingGears.push(normalized);
+            }
             if (normalized === gear && !existingSignalForRequestedGearId) {
               existingSignalForRequestedGearId = (signal as { id?: string | null }).id ?? null;
             }
@@ -291,6 +330,8 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
 
           const highestExistingGear = pickHighestPriorityGear(existingGears);
           if (
+            gear !== 'junk' &&
+            (gear === 'contacted' || gear === 'offered') &&
             highestExistingGear &&
             getSingleConversionGearRank(highestExistingGear) > getSingleConversionGearRank(gear)
           ) {

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isCallStatusSendableForSignal } from '@/lib/oci/call-sendability';
+import {
+  isCallSendableForSealExport,
+  isCallStatusSendableForSignal,
+} from '@/lib/oci/call-sendability';
 
 test('canonical contacted and offered signals remain sendable while call status is intent', () => {
   assert.equal(isCallStatusSendableForSignal('intent', 'contacted'), true);
@@ -11,4 +14,9 @@ test('canonical contacted and offered signals remain sendable while call status 
 test('sale-like signal rows still require confirmed sendable statuses', () => {
   assert.equal(isCallStatusSendableForSignal('intent', 'won'), false);
   assert.equal(isCallStatusSendableForSignal('confirmed', 'won'), true);
+});
+
+test('panel won status is sendable for seal outbox path without war-room oci sealed', () => {
+  assert.equal(isCallSendableForSealExport('won', null), true);
+  assert.equal(isCallSendableForSealExport('won', 'pending'), true);
 });

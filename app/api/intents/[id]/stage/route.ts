@@ -8,6 +8,10 @@ import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pendi
 import { resolveOptimizationStage } from '@/lib/oci/optimization-contract';
 import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import {
+  enqueuePanelStageOciOutbox,
+  type PanelReturnedCall,
+} from '@/lib/oci/enqueue-panel-stage-outbox';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { cookies } from 'next/headers';
@@ -242,6 +246,11 @@ export async function POST(
     }
     if (optimizationStage === 'junk') {
       await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', new Date().toISOString());
+    }
+
+    const outboxOk = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall);
+    if (!outboxOk.ok) {
+      incrementRefactorMetric('panel_stage_outbox_insert_failed_total');
     }
 
     void notifyOutboxPending({ callId, siteId, source: 'panel_stage_v2' });

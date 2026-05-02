@@ -1,10 +1,12 @@
 /**
  * SingleConversionGear — stages that produce a real OCI export event.
  * English-only post global-launch cutover.
+ * `junk` ranks lowest so Won/Offered/Contacted win the same-call single-slot race.
  */
-export type SingleConversionGear = 'contacted' | 'offered' | 'won';
+export type SingleConversionGear = 'junk' | 'contacted' | 'offered' | 'won';
 
 const SINGLE_CONVERSION_GEAR_RANK: Record<SingleConversionGear, number> = {
+  junk: 0,
   contacted: 1,
   offered: 2,
   won: 3,

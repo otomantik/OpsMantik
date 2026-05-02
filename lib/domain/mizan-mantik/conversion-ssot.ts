@@ -1,16 +1,13 @@
-export const OCI_CONVERSION_SSOT = {
-  junk: 'OpsMantik_Junk_Exclusion',
-  contacted: 'OpsMantik_Contacted',
-  offered: 'OpsMantik_Offered',
-  won: 'OpsMantik_Won',
-} as const;
+import type { OptimizationStage } from '@/lib/oci/optimization-contract';
+import {
+  OPSMANTIK_CONVERSION_NAMES,
+  isOciCanonicalStage,
+  resolveOciConversionName,
+} from './conversion-names';
 
-export type OciCanonicalStage = keyof typeof OCI_CONVERSION_SSOT;
+/** Same object reference as `OPSMANTIK_CONVERSION_NAMES` — façade for legacy imports. */
+export const OCI_CONVERSION_SSOT = OPSMANTIK_CONVERSION_NAMES;
 
-export function resolveOciConversionName(stage: OciCanonicalStage): string {
-  return OCI_CONVERSION_SSOT[stage];
-}
+export type OciCanonicalStage = OptimizationStage;
 
-export function isOciCanonicalStage(value: string): value is OciCanonicalStage {
-  return value in OCI_CONVERSION_SSOT;
-}
+export { resolveOciConversionName, isOciCanonicalStage };

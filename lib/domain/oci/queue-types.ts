@@ -129,6 +129,19 @@ export type MarketingSignalDispatchBreakdown = Partial<
 
 export interface OciQueueStats {
   siteId: string;
+  /** sites.oci_sync_method — script (GAS pull) vs api (worker push); avoid dual exporters per site. */
+  ociSyncMethod?: 'script' | 'api' | string;
+  /**
+   * Pre-upload backlog: signals PENDING+PROCESSING plus won QUEUED+RETRY+PROCESSING (excludes UPLOADED).
+   */
+  unifiedExportBacklog?: number;
+  marketingSignalsExportActive?: number;
+  /** Won rows waiting before upload completes (SCRIPT/API still to confirm). */
+  wonQueueBacklogActive?: number;
+  /** Won rows uploaded to Google, ACK pending — shown separately from backlog. */
+  wonQueueInFlightUploaded?: number;
+  /** Won queue: QUEUED+RETRY+PROCESSING+UPLOADED (operational totals). */
+  wonQueueExportActive?: number;
   totals: Record<QueueStatus, number>;
   stuckProcessing?: number;
   lastUpdatedAt?: string;

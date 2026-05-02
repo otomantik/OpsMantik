@@ -9,8 +9,10 @@ import { adminClient } from '@/lib/supabase/admin';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
 import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
+import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
 import { planPrecursorBackfillStages, type BackfillTimeSource } from '@/lib/oci/precursor-backfill-plan';
+import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
 
 export interface PrecursorBackfillParams {
   siteId: string;
@@ -163,14 +165,21 @@ export async function runPrecursorSignalBackfill(
       result.upsertAttempts++;
       bumpSourceCounter(result, plan.source);
 
+      const economics = await loadMarketingSignalEconomics({
+        siteId: params.siteId,
+        stage: plan.stage as Exclude<PipelineStage, 'won'>,
+        snapshot,
+      });
+
       const up = await upsertMarketingSignal({
         source: 'router',
         siteId: params.siteId,
         callId,
         traceId: null,
-        stage: plan.stage,
+        stage: plan.stage as Exclude<PipelineStage, 'won'>,
         signalDate,
         snapshot,
+        economics,
         clickIds: { gclid, wbraid, gbraid },
         featureSnapshotExtras: {
           source_detail: 'precursor_backfill',

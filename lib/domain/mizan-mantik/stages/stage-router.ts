@@ -31,28 +31,20 @@ export async function routeStage(
 
   workingDna = appendBranch(workingDna, 'pre_route_pass', ['validation'], { callId, stage }, {});
 
-  // Junk and 'won' both short-circuit here so they never reach insertMarketingSignal.
-  //   - 'junk' has no economic value.
-  //   - 'won' is exclusively owned by the seal path (enqueueSealConversion →
-  //     offline_conversion_queue). Router-side inserts only emit intent-level
-  //     rows (`contacted`, `offered`).
-  if (stage === 'junk' || stage === 'won') {
+  // 'won' is exclusively owned by the seal path (enqueueSealConversion → offline_conversion_queue).
+  // contacted / offered / junk → insertMarketingSignal → marketing_signals (OCI export).
+  if (stage === 'won') {
     workingDna = appendBranch(
       workingDna,
-      stage === 'junk' ? 'junk_drop' : 'won_seal_only',
-      stage === 'junk' ? [] : ['seal_ownership'],
+      'won_seal_only',
+      ['seal_ownership'],
       {},
-      {
-        reason:
-          stage === 'junk'
-            ? 'junk_stage_has_no_marketing_signal'
-            : 'won_is_owned_by_seal_enqueue_path',
-      }
+      { reason: 'won_is_owned_by_seal_enqueue_path' }
     );
     return { routed: false, conversionValue: 0, dropped: true, causalDna: toJsonb(workingDna) };
   }
 
-  // Canonical stages (contacted, offered) go directly into marketing signals with mathematical snapshot evaluation
+  // contacted, offered, junk → marketing_signals
   const result = await insertMarketingSignal({
     siteId,
     callId,

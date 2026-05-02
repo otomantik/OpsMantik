@@ -39,6 +39,14 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const siteUuid = auth.siteUuid;
 
+  const { data: siteMeta } = await adminClient
+    .from('sites')
+    .select('oci_sync_method')
+    .eq('id', siteUuid)
+    .maybeSingle();
+  const ociSyncMethod =
+    (siteMeta as { oci_sync_method?: string } | null)?.oci_sync_method?.trim() || 'script';
+
   const totals = Object.fromEntries(QUEUE_STATUSES.map((status) => [status, 0])) as Record<QueueStatus, number>;
 
   const { data: rows, error: countError } = await adminClient
@@ -137,6 +145,13 @@ export async function GET(req: NextRequest) {
   }
   const marketingSignalsByDispatch = byDispatch as MarketingSignalDispatchBreakdown;
 
+  const marketingSignalsExportActive =
+    (marketingSignalsByDispatch.PENDING ?? 0) + (marketingSignalsByDispatch.PROCESSING ?? 0);
+  const wonQueueBacklogActive = totals.QUEUED + totals.RETRY + totals.PROCESSING;
+  const wonQueueInFlightUploaded = totals.UPLOADED;
+  const wonQueueExportActive = wonQueueBacklogActive + wonQueueInFlightUploaded;
+  const unifiedExportBacklog = marketingSignalsExportActive + wonQueueBacklogActive;
+
   const lastUpdatedAt = (lastRow as { updated_at?: string } | null)?.updated_at ?? undefined;
   const blockedQueueOldestAt = blockedMetrics.oldestBlockedAtIso;
   const lastQueueUploadAt =
@@ -154,6 +169,12 @@ export async function GET(req: NextRequest) {
 
   const body: OciQueueStats = {
     siteId: siteUuid,
+    ociSyncMethod,
+    unifiedExportBacklog,
+    marketingSignalsExportActive,
+    wonQueueBacklogActive,
+    wonQueueInFlightUploaded,
+    wonQueueExportActive,
     totals,
     ...(stuckProcessing !== undefined && { stuckProcessing }),
     ...(lastUpdatedAt && { lastUpdatedAt }),

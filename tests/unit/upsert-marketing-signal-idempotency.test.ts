@@ -8,9 +8,8 @@
  *      The helper is short-circuit-safe: callers still succeed, but no row is
  *      written. This stops the export pipeline from ever emitting a row
  *      without provenance.
- *   2) Junk / won stages are type-level gated (`Exclude<PipelineStage,
- *      'junk' | 'won'>`). We pin this at the source-file level since
- *      TypeScript erases types at runtime.
+ *   2) The `won` stage is type-level gated (`Exclude<PipelineStage, 'won'>`).
+ *      Won rows are owned by offline_conversion_queue, not marketing_signals.
  *
  * DB-level idempotency (23505 → duplicate: true) is covered by the file-level
  * architecture test; it requires a live Supabase admin client to exercise.
@@ -22,6 +21,19 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
+import { resolveMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+
+const CONTACTED_SNAPSHOT = buildOptimizationSnapshot({
+  stage: 'contacted',
+  systemScore: 60,
+  actualRevenue: null,
+});
+
+const CONTACTED_ECONOMICS = resolveMarketingSignalEconomics({
+  stage: 'contacted',
+  snapshot: CONTACTED_SNAPSHOT,
+  siteCurrency: 'TRY',
+});
 
 const BASE_PARAMS = {
   source: 'router' as const,
@@ -30,11 +42,8 @@ const BASE_PARAMS = {
   traceId: 'trace-1',
   stage: 'contacted' as const,
   signalDate: new Date('2026-04-19T10:00:00.000Z'),
-  snapshot: buildOptimizationSnapshot({
-    stage: 'contacted',
-    systemScore: 60,
-    actualRevenue: null,
-  }),
+  snapshot: CONTACTED_SNAPSHOT,
+  economics: CONTACTED_ECONOMICS,
   causalDna: { origin: 'unit-test' } as Record<string, unknown>,
 };
 
@@ -70,22 +79,23 @@ test('upsertMarketingSignal source type accepts router / seal / panel_stage only
     join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts'),
     'utf8'
   );
-  assert.match(
-    src,
-    /export type UpsertMarketingSignalSource\s*=\s*\|\s*'router'\s*\|\s*'seal'\s*\|\s*'panel_stage'/,
+  assert.ok(
+    /export type UpsertMarketingSignalSource[\s\S]*'router'[\s\S]*'seal'[\s\S]*'panel_stage'/.test(
+      src
+    ),
     'source enum drifted — update this test if a new provenance is intentional'
   );
 });
 
-test('upsertMarketingSignal stage type gates out junk and won at compile time', () => {
+test('upsertMarketingSignal stage type gates out won at compile time (seal owns Won)', () => {
   const src = readFileSync(
     join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts'),
     'utf8'
   );
   assert.match(
     src,
-    /stage:\s*Exclude<PipelineStage,\s*'junk'\s*\|\s*'won'>/,
-    'stage type-gate drifted — junk and won must never reach this helper'
+    /stage:\s*Exclude<PipelineStage,\s*'won'>/,
+    'stage type-gate drifted — won must be seal/offline queue only; junk/contacted/offered use this helper'
   );
 });
 

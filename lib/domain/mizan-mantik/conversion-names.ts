@@ -7,7 +7,8 @@ import type { OptimizationStage } from '@/lib/oci/optimization-contract';
  * names registered in each customer's Google Ads account. The canonical
  * naming scheme is English-only:
  *
- *   junk       → OpsMantik_Junk_Exclusion
+ *   junk       → OpsMantik_Junk_Exclusion (exclusion/negative-quality in Google Ads; fixed
+ *                 nominal upload value is technical only — not a positive ROAS signal)
  *   contacted  → OpsMantik_Contacted
  *   offered    → OpsMantik_Offered
  *   won        → OpsMantik_Won
@@ -25,3 +26,11 @@ export const OPSMANTIK_CONVERSION_NAMES: Record<OptimizationStage, string> = {
   offered: 'OpsMantik_Offered',
   won: 'OpsMantik_Won',
 };
+
+export function resolveOciConversionName(stage: OptimizationStage): string {
+  return OPSMANTIK_CONVERSION_NAMES[stage];
+}
+
+export function isOciCanonicalStage(value: string): value is OptimizationStage {
+  return Object.prototype.hasOwnProperty.call(OPSMANTIK_CONVERSION_NAMES, value);
+}

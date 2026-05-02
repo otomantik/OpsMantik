@@ -14,8 +14,13 @@ import { appendBranch, toJsonb } from './causal-dna';
 import { OPSMANTIK_CONVERSION_NAMES } from './conversion-names';
 import { logShadowDecision, appendCausalDnaLedgerSafe } from './shared';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
-import { toExpectedValueCents } from '@/lib/oci/marketing-signal-hash';
+import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import { upsertMarketingSignal } from './upsert-marketing-signal';
+
+function normalizeClickSegment(s: string | null | undefined): string | null {
+  const v = typeof s === 'string' ? s.trim() : '';
+  return v.length > 0 ? v : null;
+}
 
 export interface InsertMarketingSignalParams {
   siteId: string;
@@ -38,10 +43,9 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   const { siteId, callId, traceId, stage, payload, dna, entropyScore, uncertaintyBit } = params;
   const { signalDate, conversionName, gclid, wbraid, gbraid } = payload;
 
-  // 'junk' has no economic value. 'won' is owned exclusively by the seal
-  // path (offline_conversion_queue). Both are short-circuited here so this
-  // router-side insert only emits intent-level rows (contacted / offered).
-  if (stage === 'junk' || stage === 'won') {
+  // 'won' is owned exclusively by the seal path (offline_conversion_queue).
+  // contacted / offered / junk → marketing_signals → Google (OCI script birleşik export).
+  if (stage === 'won') {
     return { success: false, conversionValue: 0, causalDna: toJsonb(dna), duplicate: false };
   }
 
@@ -51,12 +55,31 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
     modelVersion: 'universal-value-v1',
   });
 
-  const finalCents = toExpectedValueCents(snapshot.optimizationValue);
-  const conversionValue = snapshot.optimizationValue;
+  const clickNorm = {
+    gclid: normalizeClickSegment(gclid ?? null),
+    wbraid: normalizeClickSegment(wbraid ?? null),
+    gbraid: normalizeClickSegment(gbraid ?? null),
+  };
+  const hasAnyClickId = Boolean(clickNorm.gclid || clickNorm.wbraid || clickNorm.gbraid);
+  if (!hasAnyClickId) {
+    const dnaSkip = appendBranch(
+      dna,
+      `${stage}_marketing_signals_skip`,
+      [],
+      { signalDate: signalDate.toISOString() },
+      { reason: 'missing_click_ids' }
+    );
+    return { success: true, signalId: null, conversionValue: 0, causalDna: toJsonb(dnaSkip) };
+  }
 
-  logShadowDecision(siteId, 'signal', null, 'UNIVERSAL_VALUE', 'Universal stage-base x quality-factor model', {
+  const economics = await loadMarketingSignalEconomics({ siteId, stage, snapshot });
+  const finalCents = economics.expectedValueCents;
+  const conversionValue = economics.conversionValueMajor;
+
+  logShadowDecision(siteId, 'signal', null, 'UNIVERSAL_VALUE', 'SSOT marketing signal economics', {
     stage: snapshot.optimizationStage,
     value_cents: finalCents,
+    value_source: economics.valueSource,
     quality_factor: snapshot.qualityFactor,
   });
 
@@ -71,6 +94,8 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
       finalCents,
       qualityFactor: snapshot.qualityFactor,
       systemScore: snapshot.systemScore,
+      valueSource: economics.valueSource,
+      currency_code: economics.currencyCode,
     }
   );
 
@@ -84,11 +109,8 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
     stage: stage,
     signalDate,
     snapshot,
-    clickIds: {
-      gclid: gclid ?? null,
-      wbraid: wbraid ?? null,
-      gbraid: gbraid ?? null,
-    },
+    economics,
+    clickIds: clickNorm,
     featureSnapshotExtras: { source_detail: 'mizan_marketing_signal_insert' },
     causalDna: causalDnaJson,
     entropyScore,
