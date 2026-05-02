@@ -19,6 +19,7 @@ import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import { triggerOutboxNowBestEffort } from '@/lib/oci/outbox/trigger-now';
 import {
   enqueuePanelStageOciOutbox,
   type PanelReturnedCall,
@@ -165,6 +166,7 @@ export async function POST(
       if (!outboxOkProbe.ok) incrementRefactorMetric('seal_route_outbox_insert_failed_total');
 
       void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
+      void triggerOutboxNowBestEffort({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
 
       return NextResponse.json({
         success: true,
@@ -381,6 +383,7 @@ export async function POST(
     if (!outboxOkSeal.ok) incrementRefactorMetric('seal_route_outbox_insert_failed_total');
 
     void notifyOutboxPending({ callId, siteId, source: 'seal_v2' });
+    void triggerOutboxNowBestEffort({ callId, siteId, source: 'seal_v2' });
 
     if (approvalRequired) {
       await appendAuditLog(adminClient, {

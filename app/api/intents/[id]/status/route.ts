@@ -16,6 +16,7 @@ import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
 import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import { triggerOutboxNowBestEffort } from '@/lib/oci/outbox/trigger-now';
 import {
   enqueuePanelStageOciOutbox,
   type PanelReturnedCall,
@@ -208,6 +209,7 @@ export async function POST(
       incrementRefactorMetric('intent_status_route_outbox_insert_failed_total');
     }
     void notifyOutboxPending({ callId, siteId, source: 'panel_status_v1' });
+    void triggerOutboxNowBestEffort({ callId, siteId, source: 'panel_status_v1' });
 
     logInfo('intent status mutation forensics', {
       request_id: requestId,

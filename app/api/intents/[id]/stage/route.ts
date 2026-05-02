@@ -8,6 +8,7 @@ import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pendi
 import { resolveOptimizationStage } from '@/lib/oci/optimization-contract';
 import { buildPhoneIdentity } from '@/lib/dic/phone-hash';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import { triggerOutboxNowBestEffort } from '@/lib/oci/outbox/trigger-now';
 import {
   enqueuePanelStageOciOutbox,
   type PanelReturnedCall,
@@ -254,6 +255,7 @@ export async function POST(
     }
 
     void notifyOutboxPending({ callId, siteId, source: 'panel_stage_v2' });
+    void triggerOutboxNowBestEffort({ callId, siteId, source: 'panel_stage_v2' });
 
     return NextResponse.json({
       success: true,
