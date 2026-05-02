@@ -1,8 +1,9 @@
 /**
  * OCI outbox notifier — real-time trigger for the outbox processor.
  *
- * Call this after a seal/stage RPC has written a PENDING row to
- * `outbox_events`. It publishes a QStash message pointing at the signed
+ * Call this after `enqueuePanelStageOciOutbox` has written a PENDING row to
+ * `outbox_events` (seal/stage/status routes; the v2 RPC alone does not insert).
+ * It publishes a QStash message pointing at the signed
  * worker at /api/workers/oci/process-outbox, so the processor runs within
  * seconds instead of waiting for the cron poll.
  *

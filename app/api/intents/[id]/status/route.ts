@@ -15,6 +15,11 @@ import { logInfo, logError } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
 import { hasCapability } from '@/lib/auth/rbac';
 import { invalidatePendingOciArtifactsForCall } from '@/lib/oci/invalidate-pending-artifacts';
+import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import {
+  enqueuePanelStageOciOutbox,
+  type PanelReturnedCall,
+} from '@/lib/oci/enqueue-panel-stage-outbox';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { buildCanonicalIntentKey } from '@/lib/intents/canonical-intent-key';
@@ -197,6 +202,12 @@ export async function POST(
       const now = new Date().toISOString();
       await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', now);
     }
+
+    const outboxOk = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall);
+    if (!outboxOk.ok) {
+      incrementRefactorMetric('intent_status_route_outbox_insert_failed_total');
+    }
+    void notifyOutboxPending({ callId, siteId, source: 'panel_status_v1' });
 
     logInfo('intent status mutation forensics', {
       request_id: requestId,

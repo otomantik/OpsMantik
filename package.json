@@ -29,6 +29,7 @@
     "seed:google-ads": "node scripts/seed-google-ads-credentials.mjs",
     "oci:credentials": "node scripts/get-oci-credentials.mjs",
     "db:enqueue": "node scripts/db/oci-enqueue.mjs",
+    "db:oci-outbox-backfill": "node scripts/db/oci-outbox-missed-backfill.mjs",
     "db:enqueue:today": "node scripts/db/oci-enqueue.mjs Eslamed --today",
     "db:enqueue:fix": "node scripts/db/oci-enqueue.mjs Eslamed --today --force-reset-completed",
     "db:queue-check": "node scripts/db/oci-queue-check.mjs",

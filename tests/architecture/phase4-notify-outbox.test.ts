@@ -2,9 +2,9 @@
  * Phase 4 guard — f4-notify-outbox.
  *
  * The outbox processor used to run only via a 2-minute cron poll. Phase 4
- * adds a real-time QStash trigger: seal/stage routes publish a QStash message
- * pointing at a signed worker as soon as the `apply_call_action_v2` RPC
- * returns. The cron remains but as a safety net, scheduled less aggressively.
+ * adds a real-time QStash trigger: seal/stage/status routes publish after
+ * `enqueuePanelStageOciOutbox` persists `outbox_events` (post-RPC). The cron
+ * remains but as a safety net, scheduled less aggressively.
  *
  * Invariants pinned here:
  *   1) The shared `runProcessOutbox` lives in `lib/oci/outbox/process-outbox.ts`
@@ -13,8 +13,9 @@
  *      `runProcessOutbox` implementation anymore.
  *   3) The worker route at `/api/workers/oci/process-outbox` uses
  *      `requireQstashSignature` (not `requireCronAuth`).
- *   4) `notifyOutboxPending` is called from both seal and stage routes after
- *      their respective `apply_call_action_v2` RPC succeeds.
+ *   4) `notifyOutboxPending` is called from seal, stage, and intent status routes
+ *      after outbox enqueue attempts (panel stage already did this; seal/status
+ *      must too because v2 RPCs do not insert outbox rows).
  *   5) The cron schedule in vercel.json is a safety-net frequency (>= 5 min)
  *      — if it drops below that, the real-time path is the one that must
  *      handle the load.
@@ -108,7 +109,7 @@ test('notifyOutboxPending helper exists', () => {
   );
 });
 
-test('seal route fires notifyOutboxPending after apply_call_action_v2', () => {
+test('seal route enqueues IntentSealed + fires notifyOutboxPending after apply_call_action_v2', () => {
   const src = readFileSync(
     join(ROOT, 'app/api/calls/[id]/seal/route.ts'),
     'utf8'
@@ -116,6 +117,10 @@ test('seal route fires notifyOutboxPending after apply_call_action_v2', () => {
   assert.ok(
     src.includes("from '@/lib/oci/notify-outbox'"),
     'seal route must import notifyOutboxPending'
+  );
+  assert.ok(
+    src.includes('enqueuePanelStageOciOutbox'),
+    'seal route must insert outbox rows (apply_call_action_v2 does not write outbox internally)'
   );
   // Probe + bearer paths both call it.
   const calls = src.match(/notifyOutboxPending\(/g) ?? [];

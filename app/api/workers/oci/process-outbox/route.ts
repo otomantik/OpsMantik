@@ -1,9 +1,9 @@
 /**
  * POST /api/workers/oci/process-outbox
  *
- * Real-time trigger path for the outbox processor. Seal/stage routes publish a
- * QStash message pointing here after `apply_call_action_v2` inserts an
- * `outbox_events` row; this worker claims and processes the backlog
+ * Real-time trigger path for the outbox processor. Seal/stage/status routes publish a
+ * QStash message pointing here after `enqueuePanelStageOciOutbox` inserts an
+ * `outbox_events` row (the RPC only mutates `calls`); this worker claims and processes the backlog
  * immediately instead of waiting for the 5-minute cron poll.
  *
  * Auth: requireQstashSignature (also accepts the internal worker auth path

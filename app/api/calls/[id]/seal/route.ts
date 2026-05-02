@@ -19,6 +19,10 @@ import { appendAuditLog } from '@/lib/audit/audit-log';
 import { verifyProbeSignature } from '@/lib/probe/verify-signature';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { notifyOutboxPending } from '@/lib/oci/notify-outbox';
+import {
+  enqueuePanelStageOciOutbox,
+  type PanelReturnedCall,
+} from '@/lib/oci/enqueue-panel-stage-outbox';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
@@ -156,7 +160,10 @@ export async function POST(
         return NextResponse.json({ error: updateError.message }, { status: 409 });
       }
 
-      const callObj = updatedCall;
+      const callObj = updatedCall as PanelReturnedCall;
+      const outboxOkProbe = await enqueuePanelStageOciOutbox(callObj);
+      if (!outboxOkProbe.ok) incrementRefactorMetric('seal_route_outbox_insert_failed_total');
+
       void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
 
       return NextResponse.json({
@@ -369,7 +376,10 @@ export async function POST(
       return NextResponse.json({ error: updateError.message }, { status: 409 });
     }
 
-    const callObj = updatedCall;
+    const callObj = updatedCall as PanelReturnedCall;
+    const outboxOkSeal = await enqueuePanelStageOciOutbox(callObj);
+    if (!outboxOkSeal.ok) incrementRefactorMetric('seal_route_outbox_insert_failed_total');
+
     void notifyOutboxPending({ callId, siteId, source: 'seal_v2' });
 
     if (approvalRequired) {
