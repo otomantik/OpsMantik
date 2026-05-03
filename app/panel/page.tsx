@@ -16,6 +16,7 @@ import {
   verifyPanelPreviewContext,
 } from '@/lib/auth/panel-preview-context';
 import { resolvePlatformAdmin } from '@/lib/auth/platform-admin';
+import { dedupeLatestByIntentKey } from '@/lib/queue/dedupe-latest-by-intent-key';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -161,25 +162,7 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
     const s = (c.status || '').toLowerCase();
     return (!s || s === 'intent') && !c.reviewed_at;
   });
-  const dedupedProcessedCalls = processedCalls.filter((
-    call: import('@/lib/types/hunter').HunterIntent,
-    index: number,
-    arr: import('@/lib/types/hunter').HunterIntent[]
-  ) => {
-    const sid =
-      typeof call.matched_session_id === 'string' && call.matched_session_id.trim()
-        ? call.matched_session_id.trim()
-        : null;
-    if (!sid) return true;
-    return (
-      arr.findIndex(
-        (x: import('@/lib/types/hunter').HunterIntent) =>
-          typeof x.matched_session_id === 'string' &&
-          x.matched_session_id.trim() &&
-          x.matched_session_id.trim() === sid
-      ) === index
-    );
-  });
+  const dedupedProcessedCalls = dedupeLatestByIntentKey(processedCalls);
 
   return (
     <I18nProvider

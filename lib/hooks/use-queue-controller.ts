@@ -14,6 +14,7 @@ import { parseHunterIntentsFull, parseHunterIntentsLite } from '@/components/das
 import type { ActivityRow } from '@/components/dashboard/qualification-queue/activity-log-inline';
 import { logger } from '@/lib/logging/logger';
 import { parseMutationError } from '@/lib/queue/mutation-error';
+import { dedupeLatestByIntentKey } from '@/lib/queue/dedupe-latest-by-intent-key';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 
@@ -34,23 +35,6 @@ function parseRpcTimestampMs(value: string | null | undefined): number {
   const parsed = new Date(normalized).getTime();
   if (Number.isFinite(parsed)) return parsed;
   return new Date(raw).getTime();
-}
-
-function dedupeLatestBySession(rows: HunterIntentLite[]): HunterIntentLite[] {
-  const seen = new Set<string>();
-  const out: HunterIntentLite[] = [];
-  for (const row of rows) {
-    const sessionKey =
-      (typeof row.canonical_intent_key === 'string' && row.canonical_intent_key.trim()) ||
-      (typeof row.dedupe_key === 'string' && row.dedupe_key.trim()) ||
-      (typeof row.matched_session_id === 'string' && row.matched_session_id.trim()
-        ? `sid:${row.matched_session_id.trim()}`
-        : `call:${row.id}`);
-    if (seen.has(sessionKey)) continue;
-    seen.add(sessionKey);
-    out.push(row);
-  }
-  return out;
 }
 
 function dedupeByIdOrCanonicalKey(rows: HunterIntentLite[]): HunterIntentLite[] {
@@ -398,7 +382,7 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
         if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {
           logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, fromIso: r.fromIso, toIso: r.toIso });
         }
-        return dedupeByIdOrCanonicalKey(dedupeLatestBySession(filtered));
+        return dedupeByIdOrCanonicalKey(dedupeLatestByIntentKey(filtered));
       }
 
       const rows = await fetchRange();

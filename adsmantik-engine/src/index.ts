@@ -188,12 +188,14 @@ async function forwardJson(
 	extraHeaders: Record<string, string> = {}
 ): Promise<Response> {
 	const origin = request.headers.get("origin");
+	const clientUa = request.headers.get("user-agent")?.trim();
 	try {
 		const upstream = await fetch(url, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
 				"x-ops-proxy-worker": "adsmantik-engine",
+				...(clientUa ? { "x-ops-client-user-agent": clientUa } : {}),
 				...extraHeaders,
 			},
 			body: JSON.stringify(payload),

@@ -11,6 +11,7 @@ import { getTodayDateKey } from '@/lib/time/today-range';
 import { createClient } from '@/lib/supabase/client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { dedupeLatestByIntentKey, intentDedupeKey } from '@/lib/queue/dedupe-latest-by-intent-key';
 
 const PANEL_API_VERSION = '2026-05-01';
 const STAGE_FALLBACK_ENABLED = (() => {
@@ -19,21 +20,6 @@ const STAGE_FALLBACK_ENABLED = (() => {
   const v = raw.trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 })();
-
-function dedupeLatestBySession(calls: HunterIntent[]): HunterIntent[] {
-  const seen = new Set<string>();
-  const out: HunterIntent[] = [];
-  for (const call of calls) {
-    const key =
-      typeof call.matched_session_id === 'string' && call.matched_session_id.trim()
-        ? `sid:${call.matched_session_id.trim()}`
-        : `call:${call.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(call);
-  }
-  return out;
-}
 
 function isPanelPending(call: HunterIntent): boolean {
   const s = (call.status || '').toLowerCase();
@@ -52,7 +38,7 @@ export function PanelFeed({
 }) {
   const { t } = useTranslation();
   const siteTz = useSiteTimezone();
-  const [calls, setCalls] = useState(() => dedupeLatestBySession(initialCalls));
+  const [calls, setCalls] = useState(() => dedupeLatestByIntentKey(initialCalls));
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'all'>('all');
   
   // Navigation & Overlay State
@@ -73,7 +59,7 @@ export function PanelFeed({
       if (dateFilter === 'yesterday') return cKey === yesterdayKey;
       return true;
     });
-    return dedupeLatestBySession(scoped);
+    return dedupeLatestByIntentKey(scoped);
   }, [calls, dateFilter, siteTz]);
 
   // Reset index when filter changes
@@ -203,23 +189,9 @@ export function PanelFeed({
           if (!isPanelPending(newCall)) return;
           setCalls((prev) => {
             if (prev.some((c) => c.id === newCall.id)) return prev;
-            const sessionId =
-              typeof newCall.matched_session_id === 'string' && newCall.matched_session_id.trim()
-                ? newCall.matched_session_id.trim()
-                : null;
-            if (sessionId) {
-              // Secondary guard: keep one visible card per session.
-              const withoutSession = prev.filter(
-                (c) =>
-                  !(
-                    typeof c.matched_session_id === 'string' &&
-                    c.matched_session_id.trim() &&
-                    c.matched_session_id.trim() === sessionId
-                  )
-              );
-              return [newCall, ...withoutSession];
-            }
-            return [newCall, ...prev];
+            const k = intentDedupeKey(newCall);
+            const withoutSameKey = prev.filter((c) => intentDedupeKey(c) !== k);
+            return [newCall, ...withoutSameKey];
           });
         }
       )

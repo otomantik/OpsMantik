@@ -335,7 +335,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
     // Real client IP: x-forwarded-for (first) then x-real-ip (multi-tenant/proxy e.g. SST)
     const clientIp = getClientIp(req);
     const ip = normalizeIp(clientIp);
-    const ua = normalizeUserAgent(req.headers.get('user-agent'));
+    const { resolveClientUserAgentForSync } = await import('@/lib/ingest/resolve-client-user-agent-for-sync');
     const { extractGeoInfo } = await import('@/lib/geo');
     const { getSiteIngestConfig } = await import('@/lib/ingest/site-ingest-config');
     const siteIngestConfig = deps?.getSiteIngestConfig
@@ -385,6 +385,7 @@ async function syncPostInner(req: NextRequest, deps?: SyncHandlerDeps): Promise<
           : [];
       if (!consentScopes.includes('analytics')) continue;
 
+      const ua = resolveClientUserAgentForSync(req, b);
       const { geoInfo } = extractGeoInfo(req, ua, b.meta, { strictGhostGeo });
       const ingestId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       ingestIds.push(ingestId);
