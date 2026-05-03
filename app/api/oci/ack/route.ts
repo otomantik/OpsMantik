@@ -25,16 +25,23 @@ import { logError, logInfo } from '@/lib/logging/logger';
 import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/lib/oci/ack-receipt';
 import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
 import { appendRoutingHop } from '@/lib/oci/routing-ledger';
-import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { assertLaneActive } from '@/lib/oci/kill-switch';
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import { resolveOciScriptAuth } from '@/lib/oci/script-auth';
+import {
+  dbUpstreamResponse,
+  isInfrastructurePostgrestError,
+  parseAckJsonEnvelope,
+  promoteSingleGranularResult,
+  reconcileSignalDispatchOutcome,
+} from '@/lib/oci/oci-ack-route-helpers';
 import * as jose from 'jose';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  const warnings: Record<string, unknown> = {};
   try {
     const lane = assertLaneActive('OCI_ACK');
     if (!lane.ok) {
@@ -59,11 +66,20 @@ export async function POST(req: NextRequest) {
       logInfo('OCI_ACK_SIMPLE_AUTH', { msg: 'No crypto signature; proceeding with API Key validation.' });
     }
 
-    const bodyUnknown = await req.json().catch(() => ({}));
-    const body =
-      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
-        ? (bodyUnknown as Record<string, unknown>)
-        : {};
+    let bodyUnknown: unknown;
+    try {
+      bodyUnknown = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, { status: 400 });
+    }
+    const parsed = parseAckJsonEnvelope(bodyUnknown);
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { error: 'Body must be a JSON object or granular results array', code: 'BAD_REQUEST' },
+        { status: 400 }
+      );
+    }
+    const body = promoteSingleGranularResult(parsed.body);
     const siteIdFromBody = typeof body.siteId === 'string' ? body.siteId : undefined;
     const auth = await resolveOciScriptAuth({
       req,
@@ -185,13 +201,14 @@ export async function POST(req: NextRequest) {
         .eq('site_id', siteUuid);
 
       if (error) {
-        logError('OCI_ACK_SQL_ERROR', { code: (error as { code?: string })?.code });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        return dbUpstreamResponse('OCI_ACK_SQL_ERROR', error, 'OCI_ACK_SQL_ERROR');
       }
       const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string; call_id: string | null }> : [];
-      if (allRows.length !== sealIds.length) {
-        logError('OCI_ACK_SEAL_ID_MISMATCH', { requested: sealIds.length, found: allRows.length });
-        return NextResponse.json({ error: 'Queue rows not found for ACK', code: 'QUEUE_STATE_MISMATCH' }, { status: 409 });
+      const sealFound = new Set(allRows.map((r) => r.id));
+      const missingSealIds = sealIds.filter((id) => !sealFound.has(id));
+      if (missingSealIds.length > 0) {
+        logError('OCI_ACK_SEAL_PARTIAL_MISSING', { requested: sealIds.length, found: allRows.length, missingSealIds });
+        warnings.missing_seal_ids = missingSealIds;
       }
       const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
       const processingRows = allRows.filter(r => r.status === 'PROCESSING');
@@ -229,8 +246,11 @@ export async function POST(req: NextRequest) {
           p_error_payload: { uploaded_at: now, clear_fields: clearFields },
         });
         if (rpcError || typeof updatedCount !== 'number') {
-          logError('OCI_ACK_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: toTransition.length, updated: updatedCount });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+          return dbUpstreamResponse(
+            'OCI_ACK_BATCH_RPC_FAILED',
+            rpcError ?? new Error('append_script_transition_batch returned non-number'),
+            'OCI_ACK_BATCH_RPC_FAILED'
+          );
         }
         totalUpdated += updatedCount;
       }
@@ -247,12 +267,11 @@ export async function POST(req: NextRequest) {
           },
         });
         if (rpcError || typeof updatedCount !== 'number' || updatedCount !== blockedRows.length) {
-          logError('OCI_ACK_BLOCKED_BATCH_RPC_FAILED', {
-            code: (rpcError as { code?: string })?.code,
-            requested: blockedRows.length,
-            updated: updatedCount,
-          });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+          return dbUpstreamResponse(
+            'OCI_ACK_BLOCKED_BATCH_RPC_FAILED',
+            rpcError ?? new Error(`blocked batch expected ${blockedRows.length}, got ${updatedCount}`),
+            'OCI_ACK_BLOCKED_BATCH_RPC_FAILED'
+          );
         }
         totalUpdated += updatedCount;
         logInfo('OCI_ACK_BLOCKED_CALLS_TERMINALIZED', { site_id: siteUuid, count: blockedRows.length });
@@ -283,8 +302,7 @@ export async function POST(req: NextRequest) {
           .in('id', sealFailedIds)
           .eq('site_id', siteUuid);
         if (error) {
-          logError('OCI_ACK_GRANULAR_FAILED_SQL_ERROR', { code: (error as { code?: string })?.code });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+          return dbUpstreamResponse('OCI_ACK_GRANULAR_FAILED_SQL_ERROR', error, 'OCI_ACK_GRANULAR_FAILED_SQL_ERROR');
         }
         const processingRows = (rows ?? []).filter((row) => (row as { status?: string }).status === 'PROCESSING') as Array<{ id: string }>;
         if (processingRows.length > 0) {
@@ -301,8 +319,11 @@ export async function POST(req: NextRequest) {
             p_error_payload: payload,
           });
           if (rpcError || typeof updatedCount !== 'number') {
-            logError('OCI_ACK_GRANULAR_FAILED_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code });
-            return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+            return dbUpstreamResponse(
+              'OCI_ACK_GRANULAR_FAILED_BATCH_RPC_FAILED',
+              rpcError ?? new Error('granular failed batch RPC'),
+              'OCI_ACK_GRANULAR_FAILED_BATCH_RPC_FAILED'
+            );
           }
           totalUpdated += updatedCount;
           for (const r of processingRows) {
@@ -316,21 +337,27 @@ export async function POST(req: NextRequest) {
       }
 
       if (signalFailedIds.length > 0) {
-        try {
-          const n = await applyMarketingSignalDispatchBatch(adminClient, {
-            siteId: siteUuid,
-            signalIds: signalFailedIds,
-            expectStatus: 'PROCESSING',
-            newStatus: 'FAILED',
-          });
-          if (n !== signalFailedIds.length) {
-            logError('OCI_ACK_GRANULAR_SIGNAL_MISMATCH', { requested: signalFailedIds.length, updated: n });
-            return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        const granFail = await reconcileSignalDispatchOutcome(adminClient, {
+          siteId: siteUuid,
+          signalIds: signalFailedIds,
+          expectStatus: 'PROCESSING',
+          newStatus: 'FAILED',
+        });
+        for (const id of signalFailedIds) {
+          const st = granFail.rowsSnapshot.get(id);
+          if (st !== undefined && st !== 'PROCESSING') {
+            totalUpdated += 1;
           }
-          totalUpdated += n;
-        } catch (e) {
-          logError('OCI_ACK_GRANULAR_SIGNAL_FAILED', { error: e instanceof Error ? e.message : String(e) });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        if (granFail.missingIds.length > 0) {
+          warnings.granular_failed_missing_signal_ids = granFail.missingIds;
+        }
+        if (granFail.stuckProcessingIds.length > 0) {
+          logError('OCI_ACK_GRANULAR_SIGNAL_STILL_PROCESSING', {
+            ids: granFail.stuckProcessingIds,
+            rpcApplied: granFail.rpcApplied,
+          });
+          warnings.signals_still_processing = granFail.stuckProcessingIds;
         }
       }
     }
@@ -343,8 +370,7 @@ export async function POST(req: NextRequest) {
         .eq('site_id', siteUuid);
 
       if (error) {
-        logError('OCI_ACK_SKIPPED_SQL_ERROR', { code: (error as { code?: string })?.code });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        return dbUpstreamResponse('OCI_ACK_SKIPPED_SQL_ERROR', error, 'OCI_ACK_SKIPPED_SQL_ERROR');
       }
       const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string }> : [];
       const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
@@ -365,15 +391,17 @@ export async function POST(req: NextRequest) {
           },
         });
         if (rpcError || typeof updatedCount !== 'number') {
-          logError('OCI_ACK_SKIPPED_BATCH_RPC_FAILED', { code: (rpcError as { code?: string })?.code, requested: toTransition.length, updated: updatedCount });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+          return dbUpstreamResponse(
+            'OCI_ACK_SKIPPED_BATCH_RPC_FAILED',
+            rpcError ?? new Error('skipped batch RPC'),
+            'OCI_ACK_SKIPPED_BATCH_RPC_FAILED'
+          );
         }
         totalUpdated += updatedCount;
       }
     }
 
     if (signalIds.length > 0) {
-      // Export already set these rows to PROCESSING; ack must match PROCESSING (idempotent: SENT also counts).
       const { data: allSignals, error: fetchErr } = await adminClient
         .from('marketing_signals')
         .select('id, dispatch_status')
@@ -381,36 +409,49 @@ export async function POST(req: NextRequest) {
         .eq('site_id', siteUuid);
 
       if (fetchErr) {
-        logError('OCI_ACK_SIGNALS_SQL_ERROR', { code: (fetchErr as { code?: string })?.code });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        return dbUpstreamResponse('OCI_ACK_SIGNALS_SQL_ERROR', fetchErr, 'OCI_ACK_SIGNALS_SQL_ERROR');
       }
       const signalRows = Array.isArray(allSignals) ? allSignals as Array<{ id: string; dispatch_status: string }> : [];
-      if (signalRows.length !== signalIds.length) {
-        logError('OCI_ACK_SIGNAL_ID_MISMATCH', { requested: signalIds.length, found: signalRows.length });
-        return NextResponse.json({ error: 'Signal rows not found for ACK', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
-      }
-      const alreadySentSignals = signalRows.filter(r => r.dispatch_status === 'SENT');
-      const toUpdateSignals = signalRows.filter(r => r.dispatch_status === 'PROCESSING');
+      const byIdSig = new Map(signalRows.map((r) => [r.id, r.dispatch_status]));
 
-      totalUpdated += alreadySentSignals.length;
+      const missingSig = signalIds.filter((id) => !byIdSig.has(id));
+      if (missingSig.length > 0) {
+        logError('OCI_ACK_SIGNAL_PARTIAL_MISSING', { requested: signalIds.length, found: signalRows.length, missingSig });
+        warnings.missing_signal_ids = missingSig;
+      }
+
+      const toUpdateSignals = signalRows.filter((r) => r.dispatch_status === 'PROCESSING');
+
+      for (const id of signalIds) {
+        const st = byIdSig.get(id);
+        if (st !== undefined && st === 'SENT') {
+          totalUpdated += 1;
+        }
+      }
 
       if (toUpdateSignals.length > 0) {
-        try {
-          const n = await applyMarketingSignalDispatchBatch(adminClient, {
-            siteId: siteUuid,
-            signalIds: toUpdateSignals.map((r) => r.id),
-            expectStatus: 'PROCESSING',
-            newStatus: 'SENT',
-            googleSentAt: now,
-          });
-          if (n !== toUpdateSignals.length) {
-            logError('OCI_ACK_SIGNALS_MISMATCH', { requested: toUpdateSignals.length, updated: n });
-            return NextResponse.json({ error: 'Signal rows not in PROCESSING state', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
+        const targetIds = toUpdateSignals.map((r) => r.id);
+        const recon = await reconcileSignalDispatchOutcome(adminClient, {
+          siteId: siteUuid,
+          signalIds: targetIds,
+          expectStatus: 'PROCESSING',
+          newStatus: 'SENT',
+          googleSentAt: now,
+        });
+        for (const id of targetIds) {
+          const st = recon.rowsSnapshot.get(id);
+          if (st !== undefined && st !== 'PROCESSING') {
+            totalUpdated += 1;
           }
-          totalUpdated += n;
-        } catch (e) {
-          logError('OCI_ACK_SIGNALS_UPDATE_ERROR', { error: e instanceof Error ? e.message : String(e) });
-          return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        }
+        if (recon.stuckProcessingIds.length > 0) {
+          logError('OCI_ACK_SIGNALS_STILL_PROCESSING_AFTER_ACK', {
+            ids: recon.stuckProcessingIds,
+            rpcApplied: recon.rpcApplied,
+          });
+          warnings.signals_still_processing = Array.isArray(warnings.signals_still_processing)
+            ? [...(warnings.signals_still_processing as string[]), ...recon.stuckProcessingIds]
+            : recon.stuckProcessingIds;
         }
       }
     }
@@ -424,8 +465,7 @@ export async function POST(req: NextRequest) {
         .eq('site_id', siteUuid)
         .eq('export_status', 'READY');
       if (projFetchError) {
-        logError('OCI_ACK_PROJ_FETCH_ERROR', { code: (projFetchError as { code?: string })?.code });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        return dbUpstreamResponse('OCI_ACK_PROJ_FETCH_ERROR', projFetchError, 'OCI_ACK_PROJ_FETCH_ERROR');
       }
       const targetProjIds = Array.isArray(projRows)
         ? (projRows as Array<{ call_id: string | null }>).map((r) => r.call_id).filter((v): v is string => Boolean(v))
@@ -458,8 +498,7 @@ export async function POST(req: NextRequest) {
         .eq('site_id', siteUuid)
         .eq('status', 'PROCESSING');
       if (adjFetchError) {
-        logError('OCI_ACK_ADJ_FETCH_ERROR', { code: (adjFetchError as { code?: string })?.code });
-        return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+        return dbUpstreamResponse('OCI_ACK_ADJ_FETCH_ERROR', adjFetchError, 'OCI_ACK_ADJ_FETCH_ERROR');
       }
       const targetAdjIds = Array.isArray(adjRows)
         ? (adjRows as Array<{ id: string | null }>).map((r) => r.id).filter((v): v is string => Boolean(v))
@@ -509,31 +548,57 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const payload: { ok: boolean; updated: number; warnings?: { redis_cleanup_failed: string[] } } = {
+    const payload: {
+      ok: boolean;
+      updated: number;
+      message?: string;
+      warnings?: Record<string, unknown> & { redis_cleanup_failed?: string[] };
+    } = {
       ok: true,
       updated: totalUpdated,
+      message: Object.keys(warnings).length > 0 ? 'ACK completed with warnings' : undefined,
     };
+    if (Object.keys(warnings).length > 0) {
+      payload.warnings = { ...warnings };
+    }
     if (failedRedisCleanups.length > 0) {
-      payload.warnings = { redis_cleanup_failed: failedRedisCleanups };
+      payload.warnings = { ...(payload.warnings ?? {}), redis_cleanup_failed: failedRedisCleanups };
+    }
+    if (Object.keys(payload.warnings ?? {}).length === 0) {
+      delete payload.warnings;
     }
     if (receipt.receiptId) {
-      await completeAckReceipt({
-        receiptId: receipt.receiptId,
-        resultSnapshot: payload,
-      });
-      await appendRoutingHop({
-        siteId: siteUuid,
-        lane: 'ack',
-        unitId: receipt.receiptId,
-        fromState: 'REGISTERED',
-        toState: 'APPLIED',
-        reasonCode: 'ACK_COMPUTED',
-        idempotencyKey: `ack:${receipt.receiptId}`,
-      });
+      try {
+        await completeAckReceipt({
+          receiptId: receipt.receiptId,
+          resultSnapshot: payload as Record<string, unknown>,
+        });
+        await appendRoutingHop({
+          siteId: siteUuid,
+          lane: 'ack',
+          unitId: receipt.receiptId,
+          fromState: 'REGISTERED',
+          toState: 'APPLIED',
+          reasonCode: 'ACK_COMPUTED',
+          idempotencyKey: `ack:${receipt.receiptId}`,
+        });
+      } catch (ledgerErr) {
+        logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+          receiptId: receipt.receiptId,
+          error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+        });
+        payload.warnings = { ...(payload.warnings ?? {}), receipt_persist_warning: true };
+      }
     }
     return NextResponse.json(payload);
   } catch (e: unknown) {
     logError('OCI_ACK_ERROR', { error: e instanceof Error ? e.message : String(e) });
-    return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
+    if (isInfrastructurePostgrestError(e)) {
+      return dbUpstreamResponse('OCI_ACK_UNHANDLED_INFRA', e, 'OCI_ACK_UNHANDLED');
+    }
+    return NextResponse.json(
+      { error: 'ACK request could not be processed', code: 'ACK_PROCESSING_ERROR', retryable: true },
+      { status: 503 }
+    );
   }
 }

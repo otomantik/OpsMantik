@@ -13,6 +13,8 @@ test('migration 20261223020000 defines canonical marketing signal dispatch RPCs 
   assert.ok(migration.includes('CREATE OR REPLACE FUNCTION public.apply_marketing_signal_dispatch_batch_v1'));
   assert.ok(migration.includes('CREATE OR REPLACE FUNCTION public.rescue_marketing_signals_stale_processing_v1'));
   assert.ok(migration.includes("auth.role() IS DISTINCT FROM 'service_role'"));
+  assert.ok(migration.includes('REVOKE ALL ON FUNCTION public.apply_marketing_signal_dispatch_batch_v1'));
+  assert.ok(migration.includes('FROM anon, authenticated'));
   assert.ok(migration.includes('GRANT EXECUTE ON FUNCTION public.apply_marketing_signal_dispatch_batch_v1'));
   assert.ok(migration.includes('GRANT EXECUTE ON FUNCTION public.rescue_marketing_signals_stale_processing_v1'));
 });
@@ -31,16 +33,23 @@ test('primary OCI writers route marketing_signals dispatch transitions through k
   const ack = readFileSync(join(ROOT, 'app', 'api', 'oci', 'ack', 'route.ts'), 'utf8');
   const ackFailed = readFileSync(join(ROOT, 'app', 'api', 'oci', 'ack-failed', 'route.ts'), 'utf8');
   const maint = readFileSync(join(ROOT, 'lib', 'oci', 'maintenance', 'run-maintenance.ts'), 'utf8');
+  const ackHelpers = readFileSync(join(ROOT, 'lib', 'oci', 'oci-ack-route-helpers.ts'), 'utf8');
+  assert.ok(
+    ackHelpers.includes('applyMarketingSignalDispatchBatch'),
+    'oci-ack-route-helpers must wrap marketing-signal-dispatch-kernel'
+  );
 
   for (const [name, src] of [
     ['export-mark-processing', mark],
     ['ack/route', ack],
     ['ack-failed/route', ackFailed],
   ] as const) {
-    assert.ok(
-      src.includes('applyMarketingSignalDispatchBatch'),
-      `${name} must use applyMarketingSignalDispatchBatch`
-    );
+    const usesKernel =
+      name === 'export-mark-processing'
+        ? src.includes('applyMarketingSignalDispatchBatch')
+        : src.includes('applyMarketingSignalDispatchBatch') ||
+          src.includes('reconcileSignalDispatchOutcome');
+    assert.ok(usesKernel, `${name} must route marketing_signals dispatch through the kernel`);
     assert.ok(
       !/\bupdate\s*\(\s*\{\s*dispatch_status\s*:/i.test(src),
       `${name} must not use PostgREST dispatch_status object updates`
