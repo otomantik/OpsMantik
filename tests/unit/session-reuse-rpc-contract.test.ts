@@ -21,6 +21,12 @@ const BURST_DEDUPE_CLEANUP_MIGRATION = join(
   'migrations',
   '20261118120000_burst_cross_session_dedupe_cleanup_v1.sql'
 );
+const BURST_MATCH_KEY_MIGRATION = join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260503160100_click_intent_burst_match_key_v1.sql'
+);
 
 test('find_or_reuse_session_v1 enforces advisory lock in transaction', () => {
   const src = readFileSync(MIGRATION, 'utf8');
@@ -51,5 +57,13 @@ test('burst_cross_session_dedupe_cleanup migration archives paired burst losers'
   assert.ok(src.includes('burst_cross_session_dedupe_v1'));
   assert.ok(src.includes('superseded_burst_cross_session_dedupe_v1'));
   assert.ok(src.includes('active_session_single_card_guard validation failed'));
+});
+
+test('click_intent_burst_match_key migration locks cross-format reuse + twin merge', () => {
+  const src = readFileSync(BURST_MATCH_KEY_MIGRATION, 'utf8');
+  assert.ok(src.includes('CREATE OR REPLACE FUNCTION public.click_intent_burst_match_key_v1('));
+  assert.ok(src.includes('cross_session_burst_twin_merge_v1'));
+  assert.ok(src.includes('trg_calls_merge_cross_session_burst_twin_v1'));
+  assert.ok(src.includes('click_intent_burst_match_key_v1(v_target, v_action)'));
 });
 
