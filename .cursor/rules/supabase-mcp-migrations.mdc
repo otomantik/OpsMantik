@@ -1,0 +1,11 @@
+---
+description: Supabase schema changes — MCP only
+---
+
+# Supabase migrations — MCP only
+
+- **Source of truth:** SQL files in `supabase/migrations/` (committed to git).
+- **Apply to database:** Cursor **Supabase MCP** only — `apply_migration` (name + query) for DDL; `execute_sql` for ad-hoc DML when appropriate.
+- **Do not** run `supabase db push` / `npm run db:push` for routine deploys unless `ALLOW_SUPABASE_CLI_DB_PUSH=1` is explicitly set (escape hatch). Default `scripts/supabase-db-push.mjs` exits with instructions.
+
+After adding a migration file, use MCP to apply the same SQL to the linked project so remote stays in sync with the repo.

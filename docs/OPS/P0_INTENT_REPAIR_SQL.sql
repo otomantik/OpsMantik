@@ -2,7 +2,7 @@
 --
 -- Kök neden: ON CONFLICT (site_id, intent_stamp) için UNIQUE constraint eksik.
 -- Migration 20260227150000_restore_calls_site_intent_stamp_uniq.sql bunu düzeltir.
--- Önce migration'ı uygula: supabase db push veya migration apply.
+-- Önce migration'ı uygula: Cursor Supabase MCP apply_migration (db push bu projede varsayılan değil).
 --
 -- Ardından RPC çalışacak. Manuel deneme (migration sonrası):
 -- sid: 581b9b75-ff81-432b-b829-3a3b0b8f3e2f

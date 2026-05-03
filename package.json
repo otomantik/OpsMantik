@@ -42,7 +42,7 @@
     "db:push": "node scripts/supabase-db-push.mjs --include-all",
     "db:supabase": "node scripts/supabase-with-env.mjs",
     "db:repair-remote-migration-history": "node scripts/supabase-with-env.mjs migration repair --status reverted 20260502195824 20260502204032",
-    "db:repair-and-push": "npm run db:repair-remote-migration-history && npm run db:push",
+    "db:repair-and-push": "npm run db:repair-remote-migration-history && node -e \"console.error('\\nNext: apply schema from supabase/migrations via Cursor Supabase MCP (apply_migration). db:push is disabled by default.')\"",
     "db:daily": "node scripts/db/oci-daily.mjs",
     "db:oci-dump": "node scripts/db/oci-bugun-donusum-dokum-eslamed-muratcan.mjs",
     "db:oci-aktivite": "node scripts/db/oci-eslamed-aktivite-rapor.mjs",
