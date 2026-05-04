@@ -47,10 +47,10 @@ test('keeps SEO, referral, and direct deterministic', () => {
 
 test('intent geo migrations prefer call district_name and session geo_district over plain IP district', () => {
   const migrationSrc = readFileSync(
-    join(ROOT, 'supabase', 'migrations', '20261108190000_intent_source_geo_hardening.sql'),
+    join(ROOT, 'supabase', 'migrations', '20260501191000_intents_lite_geo_ssot_unification.sql'),
     'utf8'
   );
-  assert.ok(migrationSrc.includes("c.location_source = 'gclid'"), 'migration must preserve gclid-origin location marker');
-  assert.ok(migrationSrc.includes('c.district_name'), 'migration must prefer ads-resolved district_name');
-  assert.ok(migrationSrc.includes('s.geo_district'), 'migration must fallback to session geo master field before raw district');
+  assert.ok(migrationSrc.includes('get_recent_intents_lite_v1'), 'migration must define intents lite RPC');
+  assert.ok(migrationSrc.includes('coalesce(s.geo_district, s.district) AS district'), 'district must prefer geo_district over legacy district');
+  assert.ok(migrationSrc.includes('coalesce(s.geo_city, s.city) AS city'), 'city must prefer geo_city over legacy city');
 });

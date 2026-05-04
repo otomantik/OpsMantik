@@ -20,7 +20,14 @@ function baseSnapshot(
   return {
     ok: true,
     timestamp: '2026-04-19T10:00:00.000Z',
-    outbox: { pending: 0, processing: 0, failed: 0, processed_last_24h: 0 },
+    outbox: {
+      pending: 0,
+      processing: 0,
+      failed: 0,
+      processed_last_24h: 0,
+      pending_oldest_created_at: null,
+      pending_max_age_seconds: null,
+    },
     queue: {
       queued: 0,
       retry: 0,
@@ -44,7 +51,14 @@ function baseSnapshot(
 
 test('snapshotToSentryTags flattens every metric into a string map', () => {
   const snap = baseSnapshot({
-    outbox: { pending: 7, processing: 2, failed: 1, processed_last_24h: 500 },
+    outbox: {
+      pending: 7,
+      processing: 2,
+      failed: 1,
+      processed_last_24h: 500,
+      pending_oldest_created_at: '2026-04-19T09:00:00.000Z',
+      pending_max_age_seconds: 3600,
+    },
     queue: {
       queued: 3,
       retry: 1,
@@ -67,6 +81,7 @@ test('snapshotToSentryTags flattens every metric into a string map', () => {
   assert.equal(tags['route'], '/api/admin/metrics');
   assert.equal(tags['metrics.outbox.pending'], '7');
   assert.equal(tags['metrics.outbox.failed'], '1');
+  assert.equal(tags['metrics.outbox.pending_max_age_seconds'], '3600');
   assert.equal(tags['metrics.queue.queued'], '3');
   assert.equal(tags['metrics.queue.failed'], '10');
   assert.equal(tags['metrics.queue.dead_letter_depth'], '2');

@@ -25,7 +25,8 @@ if (!url || !key) {
 
 const supabase = createClient(url, key);
 
-const MURATCAN_SITE_ID = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073';
+/** www.muratcanaku.com — public_id 178c4e31306e436b8be67d5f6134b118 */
+const MURATCAN_SITE_ID = '7eb8f5c0-4a96-4a0e-bd89-a463127b26b8';
 
 // --- Mapper mantığı (lib/providers/google_ads/mapper.ts ile uyumlu) ---
 function toConversionDateTime(isoOrUnknown) {

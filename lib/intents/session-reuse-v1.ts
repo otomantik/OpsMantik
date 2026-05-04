@@ -4,6 +4,14 @@ export const SESSION_RPC_BURST_REUSE_REASONS = [
   'reused_recent_ip_entry_burst',
 ] as const;
 
+/**
+ * App-side acceptance for burst RPC rows. Must stay ≥ DB windows in
+ * `supabase/migrations/20261225000000_intent_coalesce_window_tighten_v1.sql`
+ * (`find_or_reuse_session_v1`: 45s fingerprint, 5s IP+entry) plus small skew buffer.
+ */
+export const INTENT_FP_BURST_SLA_MS = 50_000;
+export const INTENT_IP_ENTRY_BURST_SLA_MS = 8_000;
+
 export const ACTIVE_SINGLE_CARD_STATUSES = ['intent', 'contacted', 'offered'] as const;
 export const TERMINAL_STATUSES = ['won', 'confirmed', 'junk', 'cancelled'] as const;
 export const ARCHIVAL_STATUSES = ['merged'] as const;
@@ -66,8 +74,8 @@ export function burstRpcSessionReuseAllowed(
   const msRaw = row.time_delta_ms;
   if (typeof msRaw !== 'number' || !Number.isFinite(msRaw)) return false;
   const ms = Math.max(0, Math.round(msRaw));
-  if (r === 'reused_recent_fingerprint_burst') return ms <= 5_500;
-  if (r === 'reused_recent_ip_entry_burst') return ms <= 1_200;
+  if (r === 'reused_recent_fingerprint_burst') return ms <= INTENT_FP_BURST_SLA_MS;
+  if (r === 'reused_recent_ip_entry_burst') return ms <= INTENT_IP_ENTRY_BURST_SLA_MS;
   return false;
 }
 

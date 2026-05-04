@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   burstRpcSessionReuseAllowed,
+  INTENT_FP_BURST_SLA_MS,
+  INTENT_IP_ENTRY_BURST_SLA_MS,
   shouldReuseSessionV1,
 } from '@/lib/intents/session-reuse-v1';
 
@@ -129,7 +131,7 @@ test('burstRpcSessionReuseAllowed accepts fingerprint burst within SLA', () => {
   assert.ok(
     burstRpcSessionReuseAllowed('reused_recent_fingerprint_burst', {
       matched_session_id: '8b3c52d2-1111-4aaa-8111-111111111111',
-      time_delta_ms: 3_900,
+      time_delta_ms: 45_000,
     })
   );
 });
@@ -138,7 +140,7 @@ test('burstRpcSessionReuseAllowed rejects fingerprint burst outside SLA', () => 
   assert.ok(
     !burstRpcSessionReuseAllowed('reused_recent_fingerprint_burst', {
       matched_session_id: '8b3c52d2-1111-4aaa-8111-111111111111',
-      time_delta_ms: 9_999,
+      time_delta_ms: INTENT_FP_BURST_SLA_MS + 1,
     })
   );
 });
@@ -147,7 +149,16 @@ test('burstRpcSessionReuseAllowed accepts ip-entry burst within SLA', () => {
   assert.ok(
     burstRpcSessionReuseAllowed('reused_recent_ip_entry_burst', {
       matched_session_id: '8b3c52d2-2222-4aaa-8222-222222222222',
-      time_delta_ms: 800,
+      time_delta_ms: 5_000,
+    })
+  );
+});
+
+test('burstRpcSessionReuseAllowed rejects ip-entry burst outside SLA', () => {
+  assert.ok(
+    !burstRpcSessionReuseAllowed('reused_recent_ip_entry_burst', {
+      matched_session_id: '8b3c52d2-2222-4aaa-8222-222222222222',
+      time_delta_ms: INTENT_IP_ENTRY_BURST_SLA_MS + 1,
     })
   );
 });

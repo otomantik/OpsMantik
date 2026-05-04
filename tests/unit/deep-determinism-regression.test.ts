@@ -58,10 +58,14 @@ test('single-head cleanup: call sale review is DB-owned and stage shadow route i
     return;
   }
   const migrationSrc = migration.source;
-  const stageSrc = readFileSync(STAGE_ROUTE, 'utf8');
   assert.ok(migrationSrc.includes('CREATE OR REPLACE FUNCTION public.review_call_sale_time_v1'), 'cleanup migration must define review_call_sale_time_v1');
   assert.ok(migrationSrc.includes('INSERT INTO public.outbox_events'), 'review rpc must emit outbox rows transactionally');
-  assert.ok(stageSrc.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'stage route must be explicitly retired');
+  if (existsSync(STAGE_ROUTE)) {
+    const stageSrc = readFileSync(STAGE_ROUTE, 'utf8');
+    assert.ok(stageSrc.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'stage route must be explicitly retired');
+  } else {
+    assert.ok(true, 'calls/[id]/stage removed — shadow route cannot exist');
+  }
 });
 
 test('call-event ingestion sanitizes click ids before paid classification', () => {

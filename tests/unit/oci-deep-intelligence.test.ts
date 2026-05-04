@@ -49,7 +49,18 @@ test('marketing-signals insert persists recovered click ids', () => {
     join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'insert-marketing-signal.ts'),
     'utf-8'
   );
-  assert.ok(src.includes('gclid: gclid ?? null'), 'persists gclid');
-  assert.ok(src.includes('wbraid: wbraid ?? null'), 'persists wbraid');
-  assert.ok(src.includes('gbraid: gbraid ?? null'), 'persists gbraid');
+  assert.ok(src.includes('normalizeClickSegment'), 'normalizes click segments before persist');
+  assert.ok(
+    src.includes('gclid: normalizeClickSegment(gclid ?? null)'),
+    'persists gclid via normalizeClickSegment'
+  );
+  assert.ok(
+    src.includes('wbraid: normalizeClickSegment(wbraid ?? null)'),
+    'persists wbraid via normalizeClickSegment'
+  );
+  assert.ok(
+    src.includes('gbraid: normalizeClickSegment(gbraid ?? null)'),
+    'persists gbraid via normalizeClickSegment'
+  );
+  assert.ok(src.includes('clickIds: clickNorm'), 'forwards normalized click ids to upsertMarketingSignal');
 });

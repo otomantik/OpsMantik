@@ -57,8 +57,8 @@ function makeMockClient(siteIdToSession: Record<string, string>) {
               }),
             };
           }
-          if (isSessions) {
-            const sessionResolver = async () => {
+          if (isSessions && col === 'site_id') {
+            const fallbackResolver = async () => {
               const sessionId = lastSeenSiteId ? siteIdToSession[lastSeenSiteId] : null;
               if (sessionId) {
                 return {
@@ -78,17 +78,64 @@ function makeMockClient(siteIdToSession: Record<string, string>) {
               }
               return { data: null, error: { message: 'not found' } };
             };
+            const fingerprintChain = {
+              in: () => ({
+                gte: () => ({
+                  order: () => ({
+                    limit: async () => fallbackResolver(),
+                  }),
+                }),
+              }),
+            };
             return {
               eq: (col2: string, val2: string | number) => {
-                if (col2 === 'site_id' && typeof val2 === 'string') lastSeenSiteId = val2;
-                return {
-                  eq: () => ({
-                    single: sessionResolver,
-                    maybeSingle: sessionResolver,
-                  }),
-                };
+                if (col2 === 'fingerprint') return fingerprintChain;
+                void val2;
+                return fingerprintChain;
               },
             };
+          }
+          if (isSessions && col === 'id') {
+            const resolvedId = String(value);
+            const rowForSite = () => {
+              const site = lastSeenSiteId;
+              const expected = site ? siteIdToSession[site] : null;
+              if (expected && resolvedId === expected) {
+                return {
+                  data: {
+                    id: resolvedId,
+                    created_at: new Date().toISOString(),
+                    created_month: MONTH,
+                    consent_scopes: [],
+                    consent_at: null,
+                    consent_provenance: null,
+                    gclid: null,
+                    wbraid: null,
+                    gbraid: null,
+                  },
+                  error: null,
+                };
+              }
+              return { data: null, error: { message: 'not found' } };
+            };
+            return {
+              eq: (col2: string) => {
+                if (col2 === 'site_id') {
+                  return {
+                    eq: (col3: string) => {
+                      if (col3 === 'created_month') {
+                        return { maybeSingle: async () => rowForSite() };
+                      }
+                      return { maybeSingle: async () => ({ data: null, error: { message: 'bad' } }) };
+                    },
+                  };
+                }
+                return { eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: 'bad' } }) }) };
+              },
+            };
+          }
+          if (isSessions) {
+            return { eq: () => ({ in: () => ({ gte: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }) };
           }
           if (isThirdQuery) {
             return {

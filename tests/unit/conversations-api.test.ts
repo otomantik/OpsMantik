@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getSchemaUtf8, schemaUtf8Slice } from '@/tests/helpers/schema-utf8-contract';
 
 const createPath = join(process.cwd(), 'app', 'api', 'conversations', 'route.ts');
 const detailPath = join(process.cwd(), 'app', 'api', 'conversations', '[id]', 'route.ts');
@@ -71,34 +72,45 @@ test('POST /api/conversations/resolve: requires conversation_id and status WON|L
 });
 
 test('conversation kernel: create RPC is atomic and trigger validates primary entity site match', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261105113000_conversation_create_atomic.sql');
-  const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('conversations_primary_entity_site_check'), 'migration defines primary entity site guard');
-  assert.ok(src.includes('create_conversation_with_primary_entity'), 'migration defines atomic create RPC');
-  assert.ok(src.includes("INSERT INTO public.conversations") && src.includes("INSERT INTO public.conversation_links"), 'RPC creates conversation and first link in one DB function');
+  const src = schemaUtf8Slice(
+    'CREATE OR REPLACE FUNCTION "public"."create_conversation_with_primary_entity"',
+    'CREATE OR REPLACE FUNCTION "public"."create_next_month_partitions"'
+  );
+  const full = getSchemaUtf8();
+  assert.ok(full.includes('conversations_primary_entity_site_check'), 'schema defines primary entity site guard');
+  assert.ok(src.includes('create_conversation_with_primary_entity'), 'schema defines atomic create RPC');
+  assert.ok(src.includes('INSERT INTO public.conversations') && src.includes('INSERT INTO public.conversation_links'), 'RPC creates conversation and first link in one DB function');
   assert.ok(src.includes('primary_entity_site_mismatch'), 'RPC fails closed on wrong-site primary entity');
 });
 
 test('conversation kernel: resolve RPC is atomic and validates sale linkability before commit', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261105120000_conversation_resolve_and_sales_replay_hardening.sql');
-  const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('resolve_conversation_with_sale_link'), 'migration defines atomic resolve RPC');
+  const src = schemaUtf8Slice(
+    'CREATE OR REPLACE FUNCTION "public"."resolve_conversation_with_sale_link"',
+    'CREATE OR REPLACE FUNCTION "public"."resolve_site_identifier_v1"'
+  );
+  assert.ok(src.includes('resolve_conversation_with_sale_link'), 'schema defines atomic resolve RPC');
   assert.ok(src.includes('sale_already_linked_elsewhere'), 'RPC rejects already-linked sales');
   assert.ok(src.includes('sale_site_mismatch'), 'RPC rejects wrong-site sales');
   assert.ok(src.includes('update_offline_conversion_queue_attribution'), 'RPC backfills queue attribution inside the same transaction');
 });
 
-test('conversation phase2 kernel: inbox/detail/mutation RPCs are defined in one migration', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261201010000_conversation_crm_phase2_kernel.sql');
-  const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('get_conversation_inbox_v1'), 'phase2 defines inbox RPC');
-  assert.ok(src.includes('get_conversation_detail_v1'), 'phase2 defines detail RPC');
-  assert.ok(src.includes('conversation_assign_v1'), 'phase2 defines assign RPC');
-  assert.ok(src.includes('conversation_set_follow_up_v1'), 'phase2 defines follow-up RPC');
-  assert.ok(src.includes('conversation_add_note_v1'), 'phase2 defines note RPC');
-  assert.ok(src.includes('conversation_change_stage_v1'), 'phase2 defines stage RPC');
-  assert.ok(src.includes('conversation_reopen_v1'), 'phase2 defines reopen RPC');
-  assert.ok(src.includes('conversation_link_entity_v1'), 'phase2 defines link RPC');
+test('conversation phase2 kernel: inbox/detail/mutation RPCs are wired in API routes', () => {
+  const createSrc = readFileSync(createPath, 'utf8');
+  const detailSrc = readFileSync(detailPath, 'utf8');
+  const linkSrc = readFileSync(linkPath, 'utf8');
+  const assignSrc = readFileSync(assignPath, 'utf8');
+  const followUpSrc = readFileSync(followUpPath, 'utf8');
+  const noteSrc = readFileSync(notePath, 'utf8');
+  const stageSrc = readFileSync(stagePath, 'utf8');
+  const reopenSrc = readFileSync(reopenPath, 'utf8');
+  assert.ok(createSrc.includes("rpc('get_conversation_inbox_v1'"), 'list route calls inbox RPC');
+  assert.ok(detailSrc.includes("rpc('get_conversation_detail_v1'"), 'detail route calls detail RPC');
+  assert.ok(assignSrc.includes("rpc('conversation_assign_v1'"), 'assign route uses assign RPC');
+  assert.ok(followUpSrc.includes("rpc('conversation_set_follow_up_v1'"), 'follow-up route uses follow-up RPC');
+  assert.ok(noteSrc.includes("rpc('conversation_add_note_v1'"), 'note route uses note RPC');
+  assert.ok(stageSrc.includes("rpc('conversation_change_stage_v1'"), 'stage route uses stage RPC');
+  assert.ok(reopenSrc.includes("rpc('conversation_reopen_v1'"), 'reopen route uses reopen RPC');
+  assert.ok(linkSrc.includes("rpc('conversation_link_entity_v1'"), 'link route uses link RPC');
 });
 
 test('conversation mutation routes are thin wrappers over RPCs', () => {

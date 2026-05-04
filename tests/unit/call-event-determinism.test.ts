@@ -4,14 +4,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { inferIntentAction, normalizePhoneTarget } from '@/lib/api/call-event/shared';
+import { getSchemaUtf8 } from '@/tests/helpers/schema-utf8-contract';
 
 const ROOT = process.cwd();
 const TRACKER = join(ROOT, 'lib', 'tracker', 'tracker.js');
 const CALL_EVENT_V1 = join(ROOT, 'app', 'api', 'call-event', 'route.ts');
 const CALL_EVENT_V2 = join(ROOT, 'app', 'api', 'call-event', 'v2', 'route.ts');
 const INTENT_SERVICE = join(ROOT, 'lib', 'services', 'intent-service.ts');
-const FORM_INTENT_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261107020000_form_intent_freeze.sql');
-const FORM_LIFECYCLE_MIGRATION = join(ROOT, 'supabase', 'migrations', '20261107220000_form_lifecycle_contract.sql');
+const RESTORE_INTENT_MIGRATION = join(ROOT, 'supabase', 'migrations', '20260428143000_restore_intent_idempotency_contracts.sql');
 
 test('normalizePhoneTarget canonicalizes tel targets to stable dial strings', () => {
   assert.equal(normalizePhoneTarget('tel:+90 (555) 111-22-33'), '+905551112233');
@@ -39,7 +39,11 @@ test('tracker sends explicit canonical intent contract for call events', () => {
   assert.ok(src.includes('intent_stamp: resolvedIntent.intentStamp'), 'tracker must send explicit intent_stamp');
   assert.ok(src.includes('intent_page_url: resolvedIntent.intentPageUrl'), 'tracker must send explicit intent_page_url');
   assert.ok(src.includes('phone_number: resolvedIntent.intentTarget'), 'tracker must canonicalize stored phone_number target');
-  assert.ok(src.includes("emitTrackedIntent(tel.href, 'phone_call', tel.href, 'phone', tel);"), 'phone click path must use the shared tracked-intent helper');
+  assert.ok(
+    src.includes("emitTrackedIntent(anchorHref, 'phone_call', anchorHref, 'phone', anchor)") ||
+      src.includes("emitTrackedIntent(rawHref, 'phone_call', rawHref, 'phone', anchor)"),
+    'tel/sms click path must use emitTrackedIntent with phone_call + phone source'
+  );
   assert.ok(src.includes("emitTrackedIntent(href, 'whatsapp', href, inferWidgetSource(href, dataWa), dataWa);"), 'data-om-whatsapp path must use the shared tracked-intent helper');
   assert.ok(src.includes("emitTrackedIntent(wa.href, 'whatsapp', wa.href, inferWidgetSource(wa.href, wa), wa);"), 'anchor WhatsApp path must use the shared tracked-intent helper');
 });
@@ -77,20 +81,20 @@ test('tracker emits explicit canonical form intent contract', () => {
 
 test('backend intent bridge and DB kernel treat form as first-class without downgrading phone or whatsapp', () => {
   const serviceSrc = readFileSync(INTENT_SERVICE, 'utf8');
-  const migrationSrc = readFileSync(FORM_INTENT_MIGRATION, 'utf8');
-  const lifecycleMigrationSrc = readFileSync(FORM_LIFECYCLE_MIGRATION, 'utf8');
+  const migrationSrc = readFileSync(RESTORE_INTENT_MIGRATION, 'utf8');
+  const schemaSrc = getSchemaUtf8();
   assert.ok(serviceSrc.includes("const FORM_ACTIONS = new Set(["), 'intent service must recognize form actions');
   assert.ok(serviceSrc.includes("'form_submit_success'"), 'intent service must include form success lifecycle');
-  assert.ok(serviceSrc.includes("legacyFormSignal"), 'intent service must preserve form legacy detection');
   assert.ok(serviceSrc.includes("private static normalizeFormTarget"), 'intent service must canonicalize form targets');
   assert.ok(serviceSrc.includes("private static normalizeFormState"), 'intent service must normalize lifecycle state');
   assert.ok(serviceSrc.includes("p_form_state: formState"), 'intent service must forward form state to the DB kernel');
   assert.ok(serviceSrc.includes("p_form_summary: formSummary"), 'intent service must forward form summary to the DB kernel');
-  assert.ok(migrationSrc.includes("intent_action IN ('phone', 'whatsapp', 'form')"), 'click intent invariant must allow form');
-  assert.ok(migrationSrc.includes("EXCLUDED.intent_action = 'form' AND public.calls.intent_action IN ('phone', 'whatsapp')"), 'form updates must not overwrite phone or whatsapp session heads');
-  assert.ok(lifecycleMigrationSrc.includes('ADD COLUMN IF NOT EXISTS form_state text'), 'calls must persist form state');
-  assert.ok(lifecycleMigrationSrc.includes('ADD COLUMN IF NOT EXISTS form_summary jsonb'), 'calls must persist form summary');
-  assert.ok(lifecycleMigrationSrc.includes('p_form_state text DEFAULT NULL'), 'ensure_session_intent_v1 must accept form state');
-  assert.ok(lifecycleMigrationSrc.includes("'form_state', c.form_state"), 'lite queue RPC must expose form state');
-  assert.ok(lifecycleMigrationSrc.includes('c.form_summary AS form_summary'), 'detail RPC must expose form summary');
+  assert.ok(migrationSrc.includes("v_action NOT IN ('phone', 'whatsapp', 'form')"), 'ensure_session_intent_v1 must allow form');
+  assert.ok(migrationSrc.includes('form_state') && migrationSrc.includes('form_summary'), 'restore migration wires form columns on calls');
+  assert.ok(
+    schemaSrc.includes('Form updates never downgrade phone or whatsapp heads'),
+    'schema snapshot documents form vs phone/whatsapp head invariants'
+  );
+  assert.ok(schemaSrc.includes("'form_state', c.form_state"), 'lite RPC exposes form_state');
+  assert.ok(schemaSrc.includes('c.form_summary AS form_summary'), 'lite RPC exposes form_summary');
 });

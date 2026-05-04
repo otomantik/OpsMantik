@@ -64,6 +64,8 @@ test('AdminMetricsSnapshot shape covers the launch checklist keys', () => {
     // outbox
     'outbox',
     'pending',
+    'pending_oldest_created_at',
+    'pending_max_age_seconds',
     'processed_last_24h',
     // queue
     'queue',

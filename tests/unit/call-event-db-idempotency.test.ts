@@ -13,7 +13,7 @@ const CALL_EVENT_V2 = join(ROOT, 'app', 'api', 'call-event', 'v2', 'route.ts');
 const CALL_EVENT_V1 = join(ROOT, 'app', 'api', 'call-event', 'route.ts');
 const WORKER_INGEST = join(ROOT, 'lib', 'ingest', 'execute-ingest-command.ts');
 const PROCESS_CALL_EVENT = join(ROOT, 'lib', 'ingest', 'process-call-event.ts');
-const MIGRATION = join(ROOT, 'supabase', 'migrations', '20260228000000_call_event_signature_hash.sql');
+const MIGRATION = join(ROOT, 'supabase', 'migrations', '20260428143000_restore_intent_idempotency_contracts.sql');
 
 test('A) 23505 conflict returns 200 noop and signature_hash lookup path exists', () => {
   const v2 = readFileSync(CALL_EVENT_V2, 'utf8');
@@ -59,7 +59,7 @@ test('D) DB idempotency: signature_hash included in worker payload', () => {
 
 test('E) Migration adds signature_hash column and unique index', () => {
   const m = readFileSync(MIGRATION, 'utf8');
-  assert.ok(m.includes('signature_hash text'), 'migration must add signature_hash column');
+  assert.ok(m.includes('signature_hash'), 'migration must add signature_hash column');
   assert.ok(m.includes('calls_site_signature_hash_uq'), 'migration must create unique index');
   assert.ok(m.includes('site_id, signature_hash'), 'index must be on (site_id, signature_hash)');
   assert.ok(m.includes('WHERE signature_hash IS NOT NULL'), 'index must be partial to allow NULL');

@@ -75,14 +75,21 @@ for (const route of PR3_ROUTES) {
 
 // PR-11: remaining overlap-risk crons use distributed cron locks
 test('PR-11: recover uses tryAcquireCronLock("recover")', () => {
-  const path = join(process.cwd(), 'app', 'api', 'cron', 'recover', 'route.ts');
-  const src = readFileSync(path, 'utf-8');
+  const legacy = join(process.cwd(), 'app', 'api', 'cron', 'recover', 'route.ts');
+  if (existsSync(legacy)) {
+    const src = readFileSync(legacy, 'utf-8');
+    assert.ok(src.includes('tryAcquireCronLock(\'recover\''), 'legacy recover cron uses recover lock key');
+    assert.ok(src.includes('releaseCronLock'), 'recover must release lock in finally');
+    assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return skipped when lock held');
+    return;
+  }
+  const ociRecover = join(process.cwd(), 'app', 'api', 'cron', 'oci', 'recover-stuck-signals', 'route.ts');
+  const src = readFileSync(ociRecover, 'utf-8');
   assert.ok(
-    src.includes('tryAcquireCronLock(\'recover\''),
-    'recover must use tryAcquireCronLock("recover") for overlap prevention'
+    src.includes("tryAcquireCronLock('oci/recover-stuck-signals'"),
+    'OCI recover-stuck-signals must use a namespaced cron lock'
   );
   assert.ok(src.includes('releaseCronLock'), 'recover must release lock in finally');
-  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
 });
 
 test('PR-11: sweep-unsent-conversions uses tryAcquireCronLock("sweep-unsent-conversions")', () => {

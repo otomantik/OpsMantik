@@ -6,8 +6,9 @@ Every PR that adds a writer path or retry path must update this contract.
 ## Contract Boundaries
 
 - OCI producer identity
-  - Mechanism: panel mutation must end with either `outbox_events` row or idempotent `oci_reconciliation_events` row (explicit skip reason).
-  - Owner: `enqueuePanelStageOciOutbox`.
+  - Mechanism: panel mutation must end with either `outbox_events` PENDING row or idempotent `oci_reconciliation_events` row (explicit skip reason). HTTP responses expose `oci_enqueue_ok`, `oci_outbox_inserted`, `oci_reconciliation_persisted`, and `oci_reconciliation_reason` (canonical reason when no outbox insert).
+  - Dedupe: `oci_reconciliation_events` unique on evidence hash → Postgres `23505` is treated as successful idempotent persist (no throw from `appendOciReconciliationEvent`).
+  - Owner: `enqueuePanelStageOciOutbox`; audit failures increment `panel_stage_reconciliation_persist_failed_total`.
 - Marketing signal ingest
   - Mechanism: `idempotency_key` + unique violation collapse.
   - Owner: `upsertMarketingSignal`.

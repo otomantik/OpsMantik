@@ -204,9 +204,9 @@ export async function POST(
       await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', now);
     }
 
-    const outboxOk = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall);
-    if (!outboxOk.ok) {
-      incrementRefactorMetric('intent_status_route_outbox_insert_failed_total');
+    const oci = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall, { requestId });
+    if (!oci.ok) {
+      incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
     }
     void notifyOutboxPending({ callId, siteId, source: 'panel_status_v1' });
     void triggerOutboxNowBestEffort({ callId, siteId, source: 'panel_status_v1' });
@@ -228,6 +228,13 @@ export async function POST(
     return NextResponse.json({
       success: true,
       call: callObj,
+      queued: oci.outboxInserted,
+      oci_outbox_inserted: oci.outboxInserted,
+      oci_reconciliation_persisted:
+        oci.reconciliationPersisted === undefined ? null : oci.reconciliationPersisted,
+      oci_reconciliation_reason: oci.oci_reconciliation_reason,
+      oci_enqueue_ok: oci.ok,
+      request_id: requestId,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error';

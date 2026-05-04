@@ -1,51 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readMigrationByContractHints } from '@/tests/helpers/migration-contract-resolver';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations');
 
 /**
- * Contract: privileged ACK/outbox/cron RPCs must fail closed for non-service_role callers
- * (Panoptic Phase 1 — DB auth symmetry with adminClient-only app paths).
+ * Contract: privileged ACK/outbox RPCs fail closed for non-service_role callers
+ * (baseline bodies + follow-up REVOKE tightening in migrations).
  */
-test('migration 20261223010000 adds service_role guards and explicit grants for ACK/outbox ops RPCs', () => {
-  const { source: migration } = readMigrationByContractHints([
-    'register_ack_receipt_v1',
-    'complete_ack_receipt_v1',
-    "auth.role() IS DISTINCT FROM 'service_role'",
-    'REVOKE ALL ON FUNCTION public.register_ack_receipt_v1',
-  ]);
-
-  const mustGuard = [
-    'register_ack_receipt_v1',
-    'complete_ack_receipt_v1',
-    'finalize_outbox_event_v1',
-    'ops_db_now_v1',
-    'try_acquire_cron_lock_v1',
-    'sweep_stale_ack_receipts_v1',
-  ] as const;
-
-  for (const name of mustGuard) {
-    assert.ok(
-      migration.includes(`FUNCTION public.${name}`),
-      `migration must replace ${name}`
-    );
-    const idx = migration.indexOf(`FUNCTION public.${name}`);
-    const slice = migration.slice(idx, idx + 1200);
+test('migrations: ACK + finalize_outbox RPCs are service_role-gated and locked down for anon/auth', () => {
+  const baseline = readFileSync(join(MIGRATIONS, '00000000000000_baseline_v2.sql'), 'utf8');
+  for (const name of ['register_ack_receipt_v1', 'complete_ack_receipt_v1'] as const) {
+    const idx = baseline.indexOf(`FUNCTION public.${name}`);
+    assert.ok(idx !== -1, `baseline must define ${name}`);
+    const slice = baseline.slice(idx, idx + 900);
     assert.ok(
       slice.includes("auth.role() IS DISTINCT FROM 'service_role'"),
-      `${name} must include service_role guard near definition`
+      `${name} must include service_role guard`
     );
   }
 
+  const hardening = readFileSync(join(MIGRATIONS, '20260428152000_security_function_hardening.sql'), 'utf8');
   assert.ok(
-    migration.includes('GRANT EXECUTE ON FUNCTION public.register_ack_receipt_v1'),
-    'must grant register_ack_receipt_v1 to service_role'
+    hardening.includes('REVOKE EXECUTE ON FUNCTION public.register_ack_receipt_v1(uuid, text, text) FROM PUBLIC'),
+    'hardening must revoke register_ack_receipt_v1 from PUBLIC'
   );
   assert.ok(
-    migration.includes('REVOKE ALL ON FUNCTION public.register_ack_receipt_v1'),
-    'must revoke register_ack_receipt_v1 from PUBLIC'
+    hardening.includes('REVOKE EXECUTE ON FUNCTION public.complete_ack_receipt_v1(uuid, jsonb) FROM PUBLIC'),
+    'hardening must revoke complete_ack_receipt_v1 from PUBLIC'
+  );
+
+  const outbox = readFileSync(join(MIGRATIONS, '20261113000000_outbox_events_table_claim_finalize.sql'), 'utf8');
+  const fIdx = outbox.indexOf('FUNCTION public.finalize_outbox_event_v1');
+  assert.ok(fIdx !== -1, 'outbox migration must define finalize_outbox_event_v1');
+  const fSlice = outbox.slice(fIdx, fIdx + 500);
+  assert.ok(
+    fSlice.includes("auth.role() IS DISTINCT FROM 'service_role'"),
+    'finalize_outbox_event_v1 must include service_role guard'
   );
   assert.ok(
-    migration.includes('REVOKE ALL ON FUNCTION public.complete_ack_receipt_v1(uuid, jsonb)'),
-    'complete_ack_receipt_v1 revoke must use exact (uuid, jsonb) signature'
+    outbox.includes('REVOKE ALL ON FUNCTION public.finalize_outbox_event_v1(uuid, text, text, integer) FROM PUBLIC'),
+    'must revoke finalize_outbox_event_v1 from PUBLIC'
+  );
+  assert.ok(
+    outbox.includes('GRANT EXECUTE ON FUNCTION public.finalize_outbox_event_v1(uuid, text, text, integer) TO service_role'),
+    'must grant finalize_outbox_event_v1 to service_role'
   );
 });

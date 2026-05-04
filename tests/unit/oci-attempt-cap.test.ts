@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { schemaUtf8Slice } from '@/tests/helpers/schema-utf8-contract';
 import { NextRequest } from 'next/server';
 
 test('attempt-cap route: requireCronAuth', () => {
@@ -28,13 +29,10 @@ test('attempt-cap route: without cron auth returns 403', async () => {
 });
 
 test('attempt-cap migration: RPC sets FAILED with MAX_ATTEMPTS', () => {
-  const migrationPath = join(
-    process.cwd(),
-    'supabase',
-    'migrations',
-    '20261105030000_phase23c_bypass_purge_script_and_attempt_cap.sql'
+  const src = schemaUtf8Slice(
+    'CREATE OR REPLACE FUNCTION "public"."oci_attempt_cap"',
+    'ALTER FUNCTION "public"."oci_attempt_cap"'
   );
-  const src = readFileSync(migrationPath, 'utf8');
   assert.ok(src.includes('append_worker_transition_batch'), 'delegates to worker batch RPC');
   assert.ok(src.includes("'FAILED'"), 'sets FAILED');
   assert.ok(src.includes("'MAX_ATTEMPTS'"), 'sets provider_error_code');

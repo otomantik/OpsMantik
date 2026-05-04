@@ -111,9 +111,9 @@ test('google-ads-export route: signal conversion names resolve from canonical st
 test('google-ads-export route: skips unknown signal stages instead of exporting legacy leftovers', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
   void routePath;
-  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
+  const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-signals.ts'), 'utf8');
   assert.ok(src.includes('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE'), 'route should log unknown-stage skips explicitly');
-  assert.ok(src.includes("if (!stage || stage === 'junk')"), 'route should block non-canonical signal stages before export');
+  assert.ok(src.includes('if (!stage)'), 'route should block unresolved / unknown signal stages before export');
 });
 
 test('google-ads-export route: queue export prefers optimization_value when present', () => {
@@ -125,9 +125,9 @@ test('google-ads-export route: queue export prefers optimization_value when pres
 });
 
 test('claim RPC migration: increments attempt_count', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260330000000_oci_claim_and_attempt_cap.sql');
+  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261113000000_outbox_events_table_claim_finalize.sql');
   const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('attempt_count + 1'), 'RPC increments attempt_count');
+  assert.ok(src.includes('attempt_count + 1') || src.includes('o.attempt_count + 1'), 'claim RPC increments attempt_count');
 });
 
 test('legacy OCI export routes have been deleted', () => {

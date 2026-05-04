@@ -5,10 +5,10 @@
  * RPC ailesi (`apply_call_action_v2` / `apply_call_action_with_review_v1`) tek başına
  * `outbox_events` yazmaz; bildirimin çalışması için önce enqueue şart.
  *
- * Not: Durumu hâlâ `intent` olan kartlar funnel dönüşümü oluşturmaz (SSOT: contacted /
- * offered / won / junk). Kuyruk, operatör aşama verdiğinde veya seal path tetiklenince
- * dolar — bu yüzden “raw intent listesi ≠ export kuyruğu”; export adayları için aşağıdaki
- * rotalar SSOT’dur.
+ * Not: Varsayılan olarak `intent` statüsü OCI stage map’ine girmez; isteğe bağlı
+ * `OCI_INTENT_PANEL_PRECURSOR_CONTACTED_ENABLED` ile panel-only “intent + Ads click → contacted”
+ * öncü outbox üretilir. Click eligibility `resolveOciClickAttribution` ile worker’daki
+ * `getPrimarySource` hizalıdır (session veya call satırı).
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';

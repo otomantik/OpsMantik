@@ -128,6 +128,8 @@ test('seal route enqueues IntentSealed + fires notifyOutboxPending after apply_c
     calls.length >= 2,
     `seal route must call notifyOutboxPending from both probe and bearer paths (found ${calls.length})`
   );
+  assert.ok(src.includes('oci_reconciliation_reason'), 'seal route must expose oci_reconciliation_reason');
+  assert.ok(src.includes('oci_enqueue_ok'), 'seal route must expose oci_enqueue_ok');
 });
 
 test('stage route enqueues IntentSealed + fires notifyOutboxPending after panel RPC', () => {
@@ -144,12 +146,16 @@ test('stage route enqueues IntentSealed + fires notifyOutboxPending after panel 
     /notifyOutboxPending\(/.test(src),
     'stage route must call notifyOutboxPending'
   );
+  assert.ok(src.includes('oci_reconciliation_reason'), 'stage route must expose oci_reconciliation_reason');
+  assert.ok(src.includes('oci_enqueue_ok'), 'stage route must expose oci_enqueue_ok');
 });
 
 test('intent status route enqueues IntentSealed + fires notifyOutboxPending', () => {
   const src = readFileSync(join(ROOT, 'app/api/intents/[id]/status/route.ts'), 'utf8');
   assert.ok(src.includes('enqueuePanelStageOciOutbox'), 'status route must insert outbox after RPC success');
   assert.ok(/notifyOutboxPending\(/.test(src), 'status route must notify outbox processor');
+  assert.ok(src.includes('oci_reconciliation_reason'), 'status route must expose oci_reconciliation_reason');
+  assert.ok(src.includes('oci_enqueue_ok'), 'status route must expose oci_enqueue_ok');
 });
 
 // ---------------------------------------------------------------------------

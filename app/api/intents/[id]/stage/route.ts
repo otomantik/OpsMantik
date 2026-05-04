@@ -249,9 +249,9 @@ export async function POST(
       await invalidatePendingOciArtifactsForCall(callId, siteId, 'CALL_STATUS_REVERSED:JUNK', new Date().toISOString());
     }
 
-    const outboxOk = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall);
-    if (!outboxOk.ok) {
-      incrementRefactorMetric('panel_stage_outbox_insert_failed_total');
+    const oci = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall, { requestId });
+    if (!oci.ok) {
+      incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
     }
 
     void notifyOutboxPending({ callId, siteId, source: 'panel_stage_v2' });
@@ -261,7 +261,12 @@ export async function POST(
       success: true,
       call: callObj,
       persisted_status: persistedStatus,
-      queued: true,
+      queued: oci.outboxInserted,
+      oci_outbox_inserted: oci.outboxInserted,
+      oci_reconciliation_persisted:
+        oci.reconciliationPersisted === undefined ? null : oci.reconciliationPersisted,
+      oci_reconciliation_reason: oci.oci_reconciliation_reason,
+      oci_enqueue_ok: oci.ok,
       code: 'OK',
       request_id: requestId,
     });

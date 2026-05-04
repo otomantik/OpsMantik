@@ -53,5 +53,10 @@
     "file": "lib/oci/pulse-recovery-worker.ts",
     "table": "sites",
     "reason": "Pulse recovery cron iterates all sites to recover stale PV processing keys (system-wide worker)."
+  },
+  {
+    "file": "app/api/sites/list/route.ts",
+    "table": "sites",
+    "reason": "Authenticated site directory: non-admins use RLS-scoped supabase.from('sites'); admins use service_role to list all sites for dashboard picker (same product surface as membership-backed UI)."
   }
 ]

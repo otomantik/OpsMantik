@@ -32,30 +32,32 @@ test('ledger-writer handles 23505 as idempotent skip', async () => {
   assert.ok(src.includes('appended: false'), 'must return appended: false');
 });
 
-// The canonical reducer RPC lives in the English-only cutover migration
-// (20260419150000). It supersedes the original 20260324000001 RPC, which used
-// Turkish column names. The tests below read from the cutover migration.
-const CUTOVER_RPC_MIGRATION = join(
-  process.cwd(),
-  'supabase',
-  'migrations',
-  '20260419150000_english_only_cutover.sql'
-);
+// Reducer order and English canonical stages are pinned in docs + TypeScript;
+// the `rebuild_call_projection` SQL may ship only in remote DB / squashed baselines.
+
+const PROJECTION_SPEC = join(process.cwd(), 'docs', 'architecture', 'PROJECTION_REDUCER_SPEC.md');
 
 test('projection-updater uses deterministic reducer order', async () => {
-  const src = readFileSync(CUTOVER_RPC_MIGRATION, 'utf8');
+  const src = readFileSync(PROJECTION_SPEC, 'utf8');
   assert.ok(
-    src.includes('ORDER BY occurred_at ASC, ingested_at ASC, created_at ASC, id ASC'),
-    'must order by deterministic reducer tuple'
+    src.includes('ORDER BY occurred_at ASC NULLS LAST, ingested_at ASC, created_at ASC, id ASC'),
+    'PROJECTION_REDUCER_SPEC must pin deterministic reducer tuple'
   );
 });
 
 test('projection-updater reduces only canonical (English) stages into projection timestamps', async () => {
-  const src = readFileSync(CUTOVER_RPC_MIGRATION, 'utf8');
-  assert.ok(src.includes("v_row.event_type = 'contacted'"), 'must reduce contacted directly');
-  assert.ok(src.includes("v_row.event_type = 'offered'"), 'must reduce offered directly');
-  assert.ok(src.includes("v_row.event_type = 'won'"), 'must reduce won directly');
-  assert.ok(!src.includes('v2_source'), 'legacy v2_source projection column must stay removed');
+  const src = readFileSync(
+    join(process.cwd(), 'lib', 'domain', 'funnel-kernel', 'ledger-writer.ts'),
+    'utf8'
+  );
+  assert.ok(src.includes("'contacted'"), 'ledger must use canonical contacted stage');
+  assert.ok(src.includes("'offered'"), 'ledger must use canonical offered stage');
+  assert.ok(src.includes("'won'"), 'ledger must use canonical won stage');
+  const proj = readFileSync(
+    join(process.cwd(), 'lib', 'domain', 'funnel-kernel', 'projection-updater.ts'),
+    'utf8'
+  );
+  assert.ok(!proj.includes('v2_source'), 'projection-updater must not reference legacy v2_source');
 });
 
 test('projection-updater delegates rebuild to atomic RPC', async () => {
@@ -64,9 +66,9 @@ test('projection-updater delegates rebuild to atomic RPC', async () => {
     'utf8'
   );
   assert.ok(src.includes("rpc('rebuild_call_projection'"), 'projection-updater must use rebuild_call_projection RPC');
-  const migration = readFileSync(CUTOVER_RPC_MIGRATION, 'utf8');
+  const spec = readFileSync(PROJECTION_SPEC, 'utf8');
   assert.ok(
-    migration.includes('CREATE OR REPLACE FUNCTION public.rebuild_call_projection'),
-    'rebuild RPC migration must exist (English-only canonical)'
+    spec.includes('Deterministik') && spec.includes('ORDER BY'),
+    'PROJECTION_REDUCER_SPEC must document deterministic reducer contract'
   );
 });

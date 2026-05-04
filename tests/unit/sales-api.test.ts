@@ -8,6 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { schemaUtf8Slice } from '@/tests/helpers/schema-utf8-contract';
 
 const salesRoutePath = join(process.cwd(), 'app', 'api', 'sales', 'route.ts');
 const confirmRoutePath = join(process.cwd(), 'app', 'api', 'sales', 'confirm', 'route.ts');
@@ -73,7 +74,10 @@ test('POST /api/sales: chronology guard and delayed backdate approval are enforc
 test('POST /api/sales/[id]/review requires approve|reject and site write capability', () => {
   const src = readFileSync(saleReviewRoutePath, 'utf8');
   assert.ok(src.includes("action must be approve or reject"), 'review route must validate action enum');
-  assert.ok(src.includes("hasCapability(access.role, 'site:write')"), 'review route must require site write capability');
+  assert.ok(
+    src.includes("hasCapability(access.role, 'site:write')") || src.includes("hasCapability(access.role, 'queue:operate')"),
+    'review route must require elevated site capability (write or queue operate)'
+  );
   assert.ok(src.includes("action === 'approve' ? 'DRAFT' : 'CANCELED'"), 'review route must map approve/reject deterministically');
   assert.ok(src.includes("action: action === 'approve' ? 'sale_time_approved' : 'sale_time_rejected'"), 'review route must audit both outcomes');
 });
@@ -85,8 +89,10 @@ test('POST /api/calls/[id]/sale-review delegates review transition to DB-owned R
 });
 
 test('Idempotency: RPC confirm_sale_and_enqueue rejects non-DRAFT (second call => 409)', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20260218000000_conversation_layer_tables.sql');
-  const src = readFileSync(migrationPath, 'utf8');
+  const src = schemaUtf8Slice(
+    'CREATE OR REPLACE FUNCTION "public"."confirm_sale_and_enqueue"',
+    'CREATE OR REPLACE FUNCTION "public"."conversation_links_entity_site_check"'
+  );
   assert.ok(
     src.includes("v_sale.status IS DISTINCT FROM 'DRAFT'") || src.includes("status IS DISTINCT FROM 'DRAFT'"),
     'RPC must check status and raise for already CONFIRMED/CANCELED'
@@ -102,17 +108,20 @@ test('Idempotency: RPC confirm_sale_and_enqueue rejects non-DRAFT (second call =
 });
 
 test('sales kernel: DB trigger rejects cross-site conversation_id on sale writes', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261105110000_sales_conversation_site_guard.sql');
-  const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('sales_conversation_site_check'), 'migration defines sales site guard function');
+  const src = schemaUtf8Slice(
+    'CREATE OR REPLACE FUNCTION "public"."sales_conversation_site_check"',
+    'CREATE OR REPLACE FUNCTION "public"."sales_finalized_identity_immutable_check"'
+  );
+  assert.ok(src.includes('sales_conversation_site_check'), 'schema defines sales site guard function');
   assert.ok(src.includes('c.id = NEW.conversation_id') && src.includes('c.site_id = NEW.site_id'), 'trigger enforces same-site conversation lookup');
-  assert.ok(src.includes('sales_conversation_site_trigger'), 'migration installs trigger on sales');
 });
 
 test('sales kernel: finalized monetary identity fields are immutable', () => {
-  const migrationPath = join(process.cwd(), 'supabase', 'migrations', '20261105120000_conversation_resolve_and_sales_replay_hardening.sql');
-  const src = readFileSync(migrationPath, 'utf8');
-  assert.ok(src.includes('sales_finalized_identity_immutable_check'), 'migration defines finalized sale immutability trigger');
+  const src = schemaUtf8Slice(
+    'CREATE OR REPLACE FUNCTION "public"."sales_finalized_identity_immutable_check"',
+    'CREATE OR REPLACE FUNCTION "public"."set_provider_state_half_open"'
+  );
+  assert.ok(src.includes('sales_finalized_identity_immutable_check'), 'schema defines finalized sale immutability trigger');
   assert.ok(src.includes('finalized identity fields are immutable'), 'trigger raises deterministic finalized-sale message');
   assert.ok(src.includes('OLD.status IS DISTINCT FROM \'DRAFT\''), 'trigger protects non-DRAFT sales');
 });

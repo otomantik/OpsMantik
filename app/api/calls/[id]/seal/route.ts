@@ -162,8 +162,8 @@ export async function POST(
       }
 
       const callObj = updatedCall as PanelReturnedCall;
-      const outboxOkProbe = await enqueuePanelStageOciOutbox(callObj);
-      if (!outboxOkProbe.ok) incrementRefactorMetric('seal_route_outbox_insert_failed_total');
+      const ociProbe = await enqueuePanelStageOciOutbox(callObj, { requestId });
+      if (!ociProbe.ok) incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
 
       void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
       void triggerOutboxNowBestEffort({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
@@ -172,6 +172,13 @@ export async function POST(
         success: true,
         approval_required: false,
         call: callObj,
+        queued: ociProbe.outboxInserted,
+        oci_outbox_inserted: ociProbe.outboxInserted,
+        oci_reconciliation_persisted:
+          ociProbe.reconciliationPersisted === undefined ? null : ociProbe.reconciliationPersisted,
+        oci_reconciliation_reason: ociProbe.oci_reconciliation_reason,
+        oci_enqueue_ok: ociProbe.ok,
+        request_id: requestId,
       });
     }
 
@@ -379,8 +386,8 @@ export async function POST(
     }
 
     const callObj = updatedCall as PanelReturnedCall;
-    const outboxOkSeal = await enqueuePanelStageOciOutbox(callObj);
-    if (!outboxOkSeal.ok) incrementRefactorMetric('seal_route_outbox_insert_failed_total');
+    const ociSeal = await enqueuePanelStageOciOutbox(callObj, { requestId });
+    if (!ociSeal.ok) incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
 
     void notifyOutboxPending({ callId, siteId, source: 'seal_v2' });
     void triggerOutboxNowBestEffort({ callId, siteId, source: 'seal_v2' });
@@ -401,6 +408,13 @@ export async function POST(
       success: true,
       approval_required: approvalRequired,
       call: callObj,
+      queued: ociSeal.outboxInserted,
+      oci_outbox_inserted: ociSeal.outboxInserted,
+      oci_reconciliation_persisted:
+        ociSeal.reconciliationPersisted === undefined ? null : ociSeal.reconciliationPersisted,
+      oci_reconciliation_reason: ociSeal.oci_reconciliation_reason,
+      oci_enqueue_ok: ociSeal.ok,
+      request_id: requestId,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';

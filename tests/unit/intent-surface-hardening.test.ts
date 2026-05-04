@@ -137,9 +137,10 @@ test('panel feed query uses existing calls columns (no stale schema fields)', ()
   assert.ok(panelSrc.includes("rpc('get_recent_intents_lite_v1'"), 'panel calls query must use stable RPC surface');
   assert.ok(panelSrc.includes('p_site_id: targetSiteId'), 'panel feed RPC must be scoped by site');
   assert.ok(panelSrc.includes('dedupedProcessedCalls'), 'panel bootstrap must dedupe cards by session as secondary guard');
-  assert.ok(panelFeedSrc.includes('dedupeLatestBySession'), 'panel feed must keep one visible card per session');
-  assert.ok(panelFeedSrc.includes('const withoutSession = prev.filter'), 'realtime inserts must replace existing session card');
-  assert.ok(queueControllerSrc.includes('dedupeLatestBySession(filtered)'), 'queue controller must dedupe latest card per session');
+  assert.ok(panelFeedSrc.includes('dedupeLatestByIntentKey'), 'panel feed must dedupe by canonical intent key');
+  assert.ok(panelFeedSrc.includes('intentDedupeKey'), 'panel feed must use intentDedupeKey for merge keys');
+  assert.ok(panelFeedSrc.includes('withoutSameKey'), 'realtime inserts must replace existing same-key card');
+  assert.ok(queueControllerSrc.includes('dedupeLatestByIntentKey'), 'queue controller must dedupe using intent key helper');
 });
 
 test('session timeline unifies legacy events with ledger actions', () => {

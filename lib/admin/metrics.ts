@@ -19,6 +19,10 @@ export interface AdminMetricsSnapshot {
     processing: number;
     failed: number;
     processed_last_24h: number;
+    /** Oldest PENDING row `created_at` (ISO UTC), or null when none. */
+    pending_oldest_created_at: string | null;
+    /** Seconds from oldest PENDING `created_at` to snapshot time; null when none. */
+    pending_max_age_seconds: number | null;
   };
   queue: {
     queued: number;
@@ -171,6 +175,24 @@ async function countAll(table: string): Promise<number> {
   }
 }
 
+/** Oldest `outbox_events.created_at` among PENDING rows; null when empty or on error. */
+async function oldestPendingOutboxCreatedAt(): Promise<string | null> {
+  try {
+    const { data, error } = await adminClient
+      .from('outbox_events')
+      .select('created_at')
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    const c = (data as { created_at?: string }).created_at;
+    return typeof c === 'string' && c.trim() ? c : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Build a single admin metrics snapshot. Fail-soft: any per-table failure
  * contributes 0 rather than aborting the whole response so ops always sees a
@@ -183,6 +205,7 @@ export async function buildAdminMetricsSnapshot(
 
   const [
     outboxPending,
+    outboxPendingOldestCreatedAt,
     outboxProcessing,
     outboxFailed,
     outboxProcessed24h,
@@ -202,6 +225,7 @@ export async function buildAdminMetricsSnapshot(
   ] = await Promise.all([
     // outbox_events
     countByStatus('outbox_events', 'PENDING'),
+    oldestPendingOutboxCreatedAt(),
     countByStatus('outbox_events', 'PROCESSING'),
     countByStatus('outbox_events', 'FAILED'),
     countByStatusSince('outbox_events', 'PROCESSED', 'processed_at', windowStart),
@@ -231,6 +255,11 @@ export async function buildAdminMetricsSnapshot(
     countAll('sync_dlq'),
   ]);
 
+  const pendingMaxAgeSeconds =
+    outboxPendingOldestCreatedAt != null
+      ? Math.max(0, Math.floor((now.getTime() - Date.parse(outboxPendingOldestCreatedAt)) / 1000))
+      : null;
+
   return {
     ok: true,
     timestamp: now.toISOString(),
@@ -239,6 +268,8 @@ export async function buildAdminMetricsSnapshot(
       processing: outboxProcessing,
       failed: outboxFailed,
       processed_last_24h: outboxProcessed24h,
+      pending_oldest_created_at: outboxPendingOldestCreatedAt,
+      pending_max_age_seconds: pendingMaxAgeSeconds,
     },
     queue: {
       queued: queueQueued,
@@ -280,6 +311,9 @@ export function snapshotToSentryTags(snapshot: AdminMetricsSnapshot): Record<str
     'metrics.outbox.pending': String(snapshot.outbox.pending),
     'metrics.outbox.processing': String(snapshot.outbox.processing),
     'metrics.outbox.failed': String(snapshot.outbox.failed),
+    ...(snapshot.outbox.pending_max_age_seconds != null
+      ? { 'metrics.outbox.pending_max_age_seconds': String(snapshot.outbox.pending_max_age_seconds) }
+      : {}),
     'metrics.queue.queued': String(snapshot.queue.queued),
     'metrics.queue.retry': String(snapshot.queue.retry),
     'metrics.queue.failed': String(snapshot.queue.failed),

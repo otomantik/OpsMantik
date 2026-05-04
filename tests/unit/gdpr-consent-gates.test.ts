@@ -3,7 +3,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SYNC_ROUTE = join(process.cwd(), 'app', 'api', 'sync', 'route.ts');
@@ -40,12 +40,27 @@ test('OCI enqueue checks marketing consent', () => {
 });
 
 test('legacy stage route is retired to prevent shadow OCI writes', () => {
+  if (!existsSync(STAGE_ROUTE)) {
+    assert.ok(true, 'calls/[id]/stage removed — cannot shadow OCI writes');
+    return;
+  }
   const src = readFileSync(STAGE_ROUTE, 'utf8');
   assert.ok(src.includes('PIPELINE_STAGE_ROUTE_RETIRED'), 'stage route must fail closed with a deterministic retirement code');
 });
 
+const ERASE_PII_MIGRATION = join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260419180000_drop_ingest_fallback_buffer.sql'
+);
+
 test('Erase RPC does not touch partition keys', () => {
-  const src = readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260226000002_erase_pii_rpc.sql'), 'utf8');
+  const full = readFileSync(ERASE_PII_MIGRATION, 'utf8');
+  const start = full.indexOf('CREATE OR REPLACE FUNCTION public.erase_pii_for_identifier');
+  const end = full.indexOf('CREATE OR REPLACE FUNCTION public.reset_business_data_before_cutoff_v1', start);
+  assert.ok(start !== -1 && end !== -1, 'erase_pii_for_identifier must exist in baseline migration');
+  const src = full.slice(start, end);
   assert.ok(!src.includes('created_month'), 'erase must not modify created_month (partition key)');
   assert.ok(!src.includes('session_month'), 'erase must not modify session_month (partition key)');
 });

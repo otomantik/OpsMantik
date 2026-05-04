@@ -145,6 +145,16 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     throw err;
   }
 
+  const exportRl = await RateLimitService.checkWithMode(
+    `site:${site.id}`,
+    120,
+    60_000,
+    { mode: 'fail-open', namespace: 'oci-google-ads-export' }
+  );
+  if (!exportRl.allowed) {
+    throw new ExportHttpError(429, { error: 'Too many requests', code: 'RATE_LIMITED' });
+  }
+
   return {
     site,
     siteUuid: site.id,

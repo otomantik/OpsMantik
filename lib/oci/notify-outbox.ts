@@ -21,6 +21,7 @@
 
 import { publishToQStash, resolveAppBaseUrlForIngest } from '@/lib/ingest/publish';
 import { logWarn } from '@/lib/logging/logger';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 /** Exposed so tests and ops tooling can import the canonical URL. */
 export function resolveOutboxWorkerUrl(): string {
@@ -101,6 +102,7 @@ export async function notifyOutboxPending(params: NotifyOutboxParams): Promise<v
       retries: 3,
     });
   } catch (err) {
+    incrementRefactorMetric('oci_notify_outbox_publish_failed_total');
     logWarn('OCI_NOTIFY_OUTBOX_FAILED', {
       call_id: params.callId,
       site_id: params.siteId,
