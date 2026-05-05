@@ -5,6 +5,38 @@ import path from 'path';
 // Load .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
+type SignalRow = {
+    id: string;
+    site_id: string;
+    signal_type: string | null;
+    dispatch_status: string | null;
+    conversion_value: number | null;
+    google_conversion_time: string | null;
+    created_at: string;
+    gclid: string | null;
+    google_conversion_name: string | null;
+};
+
+type SiteRow = { id: string; name: string | null };
+type TrSignalRow = { id: string; site_id: string; causal_dna: unknown };
+
+function asObject(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+}
+
+function readGeoToken(causalDna: unknown): string {
+    const dna = asObject(causalDna);
+    if (!dna) return '';
+    const metaDirect = asObject(dna.meta);
+    const dnaNested = asObject(dna.dna);
+    const metaNested = asObject(dnaNested?.meta);
+    const meta = metaDirect ?? metaNested;
+    const location = asObject(meta?.location);
+    const geo = location?.city ?? location?.country ?? location?.city_name;
+    return String(geo ?? '').toLowerCase();
+}
+
 async function runForensics() {
     console.log('🕵️  Starting OCI Forensics Protocol...');
 
@@ -21,29 +53,31 @@ async function runForensics() {
     if (sigError) {
         console.error('❌ Error fetching signals:', sigError.message);
     } else {
-        const statuses = signals.reduce((acc: any, s) => {
-            acc[s.dispatch_status] = (acc[s.dispatch_status] || 0) + 1;
+        const signalRows = (signals ?? []) as SignalRow[];
+        const statuses = signalRows.reduce<Record<string, number>>((acc, s) => {
+            const status = s.dispatch_status ?? 'UNKNOWN';
+            acc[status] = (acc[status] || 0) + 1;
             return acc;
         }, {});
         console.log('Signal Statuses (7 days):', statuses);
 
-        const zombies = signals.filter(s =>
+        const zombies = signalRows.filter(s =>
             s.dispatch_status === 'PROCESSING' &&
             new Date(s.created_at).getTime() < Date.now() - 60 * 60 * 1000
         );
         console.log(`🧟 Zombie Signals (>1h processing): ${zombies.length}`);
 
         // User specifically asked for 'pending', 'failed', 'processing'
-        const pendingCount = signals.filter(s => s.dispatch_status === 'PENDING').length;
-        const failedCount = signals.filter(s => s.dispatch_status === 'FAILED').length;
-        const processingCount = signals.filter(s => s.dispatch_status === 'PROCESSING').length;
+        const pendingCount = signalRows.filter(s => s.dispatch_status === 'PENDING').length;
+        const failedCount = signalRows.filter(s => s.dispatch_status === 'FAILED').length;
+        const processingCount = signalRows.filter(s => s.dispatch_status === 'PROCESSING').length;
         console.log(`📊 Focus Statuses -> PENDING: ${pendingCount}, FAILED: ${failedCount}, PROCESSING: ${processingCount}`);
 
         // Duplicate Check
-        const overlaps = signals.filter((s, i) => {
-            return signals.some((other, j) => {
+        const overlaps = signalRows.filter((s, i) => {
+            return signalRows.some((other, j) => {
                 if (i === j) return false;
-                if (s.gclid && s.gclid === other.gclid && s.google_conversion_name === other.google_conversion_name) {
+                if (s.gclid && s.gclid === other.gclid && s.google_conversion_name === other.google_conversion_name && s.google_conversion_time && other.google_conversion_time) {
                     const t1 = new Date(s.google_conversion_time).getTime();
                     const t2 = new Date(other.google_conversion_time).getTime();
                     return Math.abs(t1 - t2) < 5 * 60 * 1000;
@@ -57,12 +91,14 @@ async function runForensics() {
     // 2. Mathematical "Poison" Detection
     console.log('\n--- 2. Mathematical "Poison" Detection ---');
     const { data: sites } = await adminClient.from('sites').select('id, name');
-    const siteMap = new Map(sites?.map(s => [s.id, s]));
+    const siteRows = (sites ?? []) as SiteRow[];
+    const siteMap = new Map(siteRows.map(s => [s.id, s]));
 
-    const poison = signals?.filter(s => {
+    const poison = ((signals ?? []) as SignalRow[]).filter(s => {
         const val = s.conversion_value ?? 0;
         const site = siteMap.get(s.site_id);
         const threshold = 120; // canonical satis max at score 100 => 120
+        void site;
         return val === 0 || val > threshold;
     });
 
@@ -71,10 +107,10 @@ async function runForensics() {
     // 3. Geolocation & SST Failure Audit
     console.log('\n--- 3. Geolocation & SST Failure Audit ---');
     // Turkish Sites: Muratcan Akü, Yapı Özmen
-    const trSiteIds = sites?.filter(s => {
+    const trSiteIds = siteRows.filter(s => {
         const name = s.name || '';
         return name.includes('Muratcan') || name.includes('Yap');
-    })?.map(s => s.id) || [];
+    }).map(s => s.id);
 
     const { data: trSignals } = await adminClient
         .from('marketing_signals')
@@ -82,12 +118,9 @@ async function runForensics() {
         .in('site_id', trSiteIds)
         .gte('created_at', SEVEN_DAYS_AGO);
 
-    const geoFailures = trSignals?.filter(s => {
-        const dna = s.causal_dna as any;
-        const meta = dna?.meta || dna?.dna?.meta;
-        const geo = meta?.location?.city || meta?.location?.country || meta?.location?.city_name;
-        const geoStr = String(geo || '').toLowerCase();
-        return geoStr.includes('dusseldorf') || geoStr.includes('germany') || !geo || geoStr === 'unknown';
+    const geoFailures = ((trSignals ?? []) as TrSignalRow[]).filter(s => {
+        const geoStr = readGeoToken(s.causal_dna);
+        return geoStr.includes('dusseldorf') || geoStr.includes('germany') || !geoStr || geoStr === 'unknown';
     });
 
     console.log(`🌍 Geo-Location Failures (TR sites showing EU/Unknown): ${geoFailures?.length || 0}`);

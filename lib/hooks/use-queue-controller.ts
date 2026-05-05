@@ -40,10 +40,11 @@ function parseRpcTimestampMs(value: string | null | undefined): number {
 function dedupeByIdOrCanonicalKey(rows: HunterIntentLite[]): HunterIntentLite[] {
   const byPrimary = new Map<string, HunterIntentLite>();
   for (const row of rows) {
+    // Dedupe must prefer logical-intent keys first; `id` is always unique and would defeat collapse.
     const key =
-      (typeof row.id === 'string' && row.id.trim()) ||
       (typeof row.canonical_intent_key === 'string' && row.canonical_intent_key.trim()) ||
       (typeof row.dedupe_key === 'string' && row.dedupe_key.trim()) ||
+      (typeof row.id === 'string' && row.id.trim()) ||
       '';
     if (!key) continue;
     const prev = byPrimary.get(key);

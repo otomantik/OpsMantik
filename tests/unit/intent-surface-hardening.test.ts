@@ -141,6 +141,11 @@ test('panel feed query uses existing calls columns (no stale schema fields)', ()
   assert.ok(panelFeedSrc.includes('intentDedupeKey'), 'panel feed must use intentDedupeKey for merge keys');
   assert.ok(panelFeedSrc.includes('withoutSameKey'), 'realtime inserts must replace existing same-key card');
   assert.ok(queueControllerSrc.includes('dedupeLatestByIntentKey'), 'queue controller must dedupe using intent key helper');
+  assert.match(
+    queueControllerSrc,
+    /canonical_intent_key[\s\S]*dedupe_key[\s\S]*row\.id/,
+    'queue controller dedupe fallback must prioritize canonical/dedupe keys before row id'
+  );
 });
 
 test('session timeline unifies legacy events with ledger actions', () => {

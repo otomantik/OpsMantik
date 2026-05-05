@@ -1,4 +1,4 @@
-type Translator = (...args: any[]) => string;
+type Translator = (...args: unknown[]) => string;
 
 export type MutationTelemetryKind =
   | 'queue_action_denied_readonly_total'
