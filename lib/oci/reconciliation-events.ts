@@ -6,6 +6,28 @@ import { adminClient } from '@/lib/supabase/admin';
 import { buildOciEvidenceHash } from '@/lib/oci/evidence-hash';
 import type { OciReconciliationReason } from '@/lib/oci/reconciliation-reasons';
 
+const FORBIDDEN_PAYLOAD_KEYS = [
+  'phone',
+  'phone_raw',
+  'caller_phone',
+  'caller_phone_raw',
+  'ip',
+  'ip_address',
+  'url',
+  'full_url',
+  'referrer',
+];
+
+function sanitizeReconciliationPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    const key = k.trim().toLowerCase();
+    if (FORBIDDEN_PAYLOAD_KEYS.some((f) => key.includes(f))) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 export async function appendOciReconciliationEvent(params: {
   siteId: string;
   callId: string | null;
@@ -34,7 +56,7 @@ export async function appendOciReconciliationEvent(params: {
     expected_conversion_name: params.expectedConversionName ?? null,
     result: params.result ?? 'skipped',
     evidence_hash: evidenceHash,
-    payload: params.payload ?? {},
+    payload: params.payload ? sanitizeReconciliationPayload(params.payload) : {},
   });
 
   const code = (error as { code?: string } | null)?.code;

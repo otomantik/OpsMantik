@@ -24,16 +24,29 @@ function toHttpResponse(result: Awaited<ReturnType<typeof runProcessOutbox>>): N
   const headers = getBuildInfoHeaders();
   if (!result.ok) {
     return NextResponse.json(
-      { ok: false, error: result.error, code: 'PROCESS_OUTBOX_ERROR' },
+      {
+        ok: false,
+        error: result.error,
+        code: 'PROCESS_OUTBOX_ERROR',
+        progress_made: false,
+        classification: 'error',
+      },
       { status: 500, headers }
     );
   }
   if (result.message === 'no_pending_events') {
     return NextResponse.json(
-      { ok: true, processed: 0, message: 'no_pending_events' },
+      {
+        ok: true,
+        processed: 0,
+        message: 'no_pending_events',
+        progress_made: false,
+        classification: 'skipped_gate',
+      },
       { status: 200, headers }
     );
   }
+  const progress_made = result.processed > 0 || result.failed > 0;
   return NextResponse.json(
     {
       ok: true,
@@ -41,6 +54,8 @@ function toHttpResponse(result: Awaited<ReturnType<typeof runProcessOutbox>>): N
       processed: result.processed,
       failed: result.failed,
       errors: result.errors,
+      progress_made,
+      classification: progress_made ? 'processed' : 'skipped_gate',
     },
     { status: 200, headers }
   );
@@ -52,7 +67,13 @@ export async function GET(req: NextRequest) {
   const acquired = await tryAcquireCronLock(LOCK_KEY, LOCK_TTL_SEC);
   if (!acquired) {
     return NextResponse.json(
-      { ok: true, skipped: true, reason: 'lock_held' },
+      {
+        ok: true,
+        skipped: true,
+        reason: 'lock_held',
+        progress_made: false,
+        classification: 'skipped_lock',
+      },
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
@@ -72,7 +93,13 @@ export async function POST(req: NextRequest) {
   const acquired = await tryAcquireCronLock(LOCK_KEY, LOCK_TTL_SEC);
   if (!acquired) {
     return NextResponse.json(
-      { ok: true, skipped: true, reason: 'lock_held' },
+      {
+        ok: true,
+        skipped: true,
+        reason: 'lock_held',
+        progress_made: false,
+        classification: 'skipped_lock',
+      },
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }

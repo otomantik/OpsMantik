@@ -2,12 +2,12 @@
 /**
  * P0 Intent Test — selected domains sync -> events + calls (ingest worker path)
  *
- * DEPLOY GATE (KESİN EMİR): Bu test çalıştırılmadan deploy edilmeyecek.
- * Intent bizim belkemiğimiz. Aksi belirtilene kadar bu kesin bir emirdir.
+ * Ops smoke (optional): deploy blocker değildir.
+ * Çoklu-domain envanteri olmayan ortamlarda yardımcı teşhis scripti olarak kullanılır.
  * docs/OPS/DEPLOY_GATE_INTENT.md
  *
  * Env:
- *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com,sosreklam.com
+ *   P0_SITES — Domain listesi (virgülle): yapiozmendanismanlik.com
  *   SYNC_API_URL — default https://console.opsmantik.com/api/sync
  *   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
@@ -16,7 +16,7 @@
  * aynı projeyi hedeflemelidir; aksi halde 202 dönse bile sorgu boş kalır.
  *
  * Usage:
- *   P0_SITES="yapiozmendanismanlik.com,sosreklam.com" node scripts/smoke/p0_intent_multi_site.mjs
+ *   P0_SITES="yapiozmendanismanlik.com" node scripts/smoke/p0_intent_multi_site.mjs
  *   node scripts/smoke/p0_intent_multi_site.mjs  # default target site
  */
 
@@ -47,7 +47,7 @@ const APP_BASE_URL = (() => {
   }
 })();
 const ORIGIN = process.env.ORIGIN || 'https://yapiozmendanismanlik.com';
-const DEFAULT_SITES = 'yapiozmendanismanlik.com,sosreklam.com';
+const DEFAULT_SITES = 'yapiozmendanismanlik.com';
 const SITES_RAW = process.env.P0_SITES || DEFAULT_SITES;
 const SITES = SITES_RAW.split(',').map((s) => s.trim()).filter(Boolean);
 

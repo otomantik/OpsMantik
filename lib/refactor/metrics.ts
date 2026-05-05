@@ -68,6 +68,7 @@ export const REFACTOR_METRIC_NAMES = [
   'panel_stage_rpc_signature_mismatch_total',
   'panel_stage_persistence_miss_total',
   'panel_stage_outbox_insert_failed_total',
+  'panel_stage_outbox_insert_prededupe_idempotent_total',
   'oci_outbox_contract_violation_total',
   'panel_stage_outbox_skip_no_matched_session_total',
   'panel_stage_outbox_skip_no_ads_click_id_total',
@@ -80,6 +81,9 @@ export const REFACTOR_METRIC_NAMES = [
   'oci_notify_outbox_publish_failed_total',
   'oci_producer_primary_window_drift_total',
   'outbox_inline_drain_failed_total',
+  'panel_oci_partial_failure_total',
+  'panel_oci_fail_closed_total',
+  'panel_oci_reconciliation_reason_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

@@ -21,6 +21,11 @@ import {
   enqueuePanelStageOciOutbox,
   type PanelReturnedCall,
 } from '@/lib/oci/enqueue-panel-stage-outbox';
+import {
+  panelOciProducerHttpStatus,
+  panelOciResponseFields,
+  panelOciRouteSuccess,
+} from '@/lib/oci/panel-oci-response';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { buildCanonicalIntentKey } from '@/lib/intents/canonical-intent-key';
@@ -207,9 +212,15 @@ export async function POST(
     const oci = await enqueuePanelStageOciOutbox(callObj as PanelReturnedCall, { requestId });
     if (!oci.ok) {
       incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
+      incrementRefactorMetric('panel_oci_partial_failure_total');
+    } else if (!oci.outboxInserted && oci.reconciliationPersisted) {
+      incrementRefactorMetric('panel_oci_reconciliation_reason_total');
     }
-    void notifyOutboxPending({ callId, siteId, source: 'panel_status_v1' });
-    void triggerOutboxNowBestEffort({ callId, siteId, source: 'panel_status_v1' });
+
+    if (oci.outboxInserted) {
+      void notifyOutboxPending({ callId, siteId, source: 'panel_status_v1' });
+      void triggerOutboxNowBestEffort({ callId, siteId, source: 'panel_status_v1' });
+    }
 
     logInfo('intent status mutation forensics', {
       request_id: requestId,
@@ -225,17 +236,25 @@ export async function POST(
       dedupe_key: dedupeKey,
     });
 
-    return NextResponse.json({
-      success: true,
-      call: callObj,
-      queued: oci.outboxInserted,
-      oci_outbox_inserted: oci.outboxInserted,
-      oci_reconciliation_persisted:
-        oci.reconciliationPersisted === undefined ? null : oci.reconciliationPersisted,
-      oci_reconciliation_reason: oci.oci_reconciliation_reason,
-      oci_enqueue_ok: oci.ok,
-      request_id: requestId,
-    });
+    const httpStatus = panelOciProducerHttpStatus(oci);
+    if (httpStatus >= 400) {
+      incrementRefactorMetric('panel_oci_fail_closed_total');
+    }
+    return NextResponse.json(
+      {
+        success: panelOciRouteSuccess(oci),
+        call: callObj,
+        queued: oci.outboxInserted,
+        oci_outbox_inserted: oci.outboxInserted,
+        oci_reconciliation_persisted:
+          oci.reconciliationPersisted === undefined ? null : oci.reconciliationPersisted,
+        oci_reconciliation_reason: oci.oci_reconciliation_reason,
+        oci_enqueue_ok: oci.ok,
+        request_id: requestId,
+        ...panelOciResponseFields(oci),
+      },
+      { status: httpStatus }
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error';
     logError(message, { request_id: requestId, route });

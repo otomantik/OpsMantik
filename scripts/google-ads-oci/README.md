@@ -34,7 +34,7 @@ node scripts/get-oci-credentials.mjs Muratcan   # Muratcan için değerler
    | `OPSMANTIK_SITE_ID` | Eslamed public_id (OpsMantik Console'dan) |
    | `OPSMANTIK_API_KEY` | OpsMantik OCI API key |
    | `OPSMANTIK_BASE_URL` | `https://console.opsmantik.com` (opsiyonel) |
-4. **Dönüşüm adları:** Google Ads'te Offline Conversion aksiyonları oluşturun: `OpsMantik_V1_Nabiz`, `OpsMantik_V2_Ilk_Temas`, `OpsMantik_V3_Nitelikli_Gorusme`, `OpsMantik_V4_Sicak_Teklif`, `OpsMantik_V5_DEMIR_MUHUR`
+4. **Dönüşüm adları (SSOT):** Google Ads'te Offline Conversion aksiyonları oluşturun — `lib/domain/mizan-mantik/conversion-names.ts` ile birebir aynı isimler: `OpsMantik_Junk_Exclusion`, `OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`
 5. **Test:** Önce Önizleme ile çalıştırın; logda "0 records" veya "Yuklendi=X" görünür.
 6. **Zamanlama:** Tetikleyici ekleyin (örn. günde 2–4 kez).
 

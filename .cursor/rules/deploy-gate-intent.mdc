@@ -1,16 +1,21 @@
 ---
-description: Mandatory before deploy — Intent multi-site test
+description: Mandatory before deploy — OCI release gates
 alwaysApply: true
 ---
 
-# DEPLOY GATE — Intent Test (MANDATORY)
+# DEPLOY GATE — OCI Release Gates (MANDATORY)
 
-**Intent is our backbone.** Before deploy you must run:
+Before deploy, run:
 
 ```bash
-npm run smoke:intent-multi-site
+npm run test:release-gates
 ```
 
-No deploy without 2/2 site PASS. This test verifies the sync → events → calls flow (yapiozmendanismanlik.com, sosreklam.com).
+Minimum required checks are:
+- `test:tenant-boundary`
+- `test:oci-kernel`
+- `test:runtime-budget`
+- `test:chaos-core`
+- `smoke:oci-rollout-readiness:strict`
 
-Details: `docs/OPS/DEPLOY_GATE_INTENT.md`
+`smoke:intent-multi-site` is optional and no longer a deploy blocker.

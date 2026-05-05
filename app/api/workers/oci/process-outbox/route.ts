@@ -43,10 +43,17 @@ export async function processOutboxWorkerHandler(
 
     if (!result.ok) {
       return NextResponse.json(
-        { ok: false, error: result.error, code: 'PROCESS_OUTBOX_ERROR' },
+        {
+          ok: false,
+          error: result.error,
+          code: 'PROCESS_OUTBOX_ERROR',
+          progress_made: false,
+          classification: 'error',
+        },
         { status: 500, headers }
       );
     }
+    const progress_made = result.processed > 0 || result.failed > 0;
     return NextResponse.json(
       {
         ok: true,
@@ -55,6 +62,8 @@ export async function processOutboxWorkerHandler(
         failed: result.failed,
         message: result.message,
         errors: result.errors,
+        progress_made,
+        classification: progress_made ? 'processed' : 'skipped_gate',
       },
       { status: 200, headers }
     );
@@ -69,6 +78,8 @@ export async function processOutboxWorkerHandler(
         ok: false,
         error: msg.slice(0, 2000),
         code: 'PROCESS_OUTBOX_UNHANDLED_EXCEPTION',
+        progress_made: false,
+        classification: 'error',
       },
       { status: 500, headers }
     );

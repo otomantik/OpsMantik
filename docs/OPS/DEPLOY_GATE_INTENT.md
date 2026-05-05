@@ -1,57 +1,22 @@
-# DEPLOY GATE — Intent Test (KESİN EMİR)
+# DEPLOY GATE — OCI Release Gates
 
-> **Intent bizim belkemiğimiz.** Bu test çalıştırılmadan deploy edilmeyecek.
-> Aksi belirtilene kadar bu kesin bir emirdir. Unutulursa vay halimize.
+`smoke:intent-multi-site` has been removed as a hard deploy blocker because multi-domain inventory is not guaranteed in every environment.
 
-## Zorunlu Adım
+## Mandatory Gate
 
-Her deploy öncesi:
-
-```bash
-npm run smoke:intent-multi-site
-```
-
-**2/2 site PASS** olmadan deploy yapılmayacak.
-
-## Test Edilen Siteler (varsayılan)
-
-- yapiozmendanismanlik.com
-- sosreklam.com
-
-## Gate İçeriği
-
-`smoke:intent-multi-site` artık yalnız ingest varlığını değil aşağıdaki contract kontrollerini de doğrular:
-
-- `POST /api/intents/[id]/stage` route 404 olmamalı (route drift guard)
-- Varsayılan modda **non-destructive** çalışır (ingest + route drift + readback)
-- Opsiyonel destructive persistence doğrulaması için:
-  - `P0_ENABLE_PERSISTENCE_WRITE_CHECK=1 npm run smoke:intent-multi-site`
-  - Bu mod test `call` satırını `junk` statüsüne çekerek persist/queue-leak doğrulaması yapar.
-
-## Ortam
-
-- `SYNC_API_URL` = https://console.opsmantik.com/api/sync
-- `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (.env.local)
-
-## Özel Site Listesi
+Run before each deploy:
 
 ```bash
-P0_SITES="www.kocotokurtarma.com,yoursite.com" npm run smoke:intent-multi-site
+npm run test:release-gates
 ```
 
-## Lokalden test (QStash olmadan)
+This gate includes:
+- `test:tenant-boundary`
+- `test:oci-kernel`
+- `test:runtime-budget`
+- `test:chaos-core`
+- `smoke:oci-rollout-readiness:strict`
 
-Canlıya dokunmadan gate’i geçmek için testi lokale yönlendirip sync’in worker’a doğrudan HTTP atmasını sağlayabilirsin. Worker normalde QStash imzası ister; lokalde imza olmadan kabul etmesi için bypass gerekir.
+## Optional Smoke
 
-1. **.env.local** içine ekle:
-   ```env
-   OPSMANTIK_SYNC_DIRECT_WORKER=1
-   ALLOW_INSECURE_DEV_WORKER=true
-   ```
-   (`ALLOW_INSECURE_DEV_WORKER=true` olmazsa worker 403 QSTASH_SIGNATURE_MISSING döner, sync 503 olur.)
-2. Uygulamayı başlat (veya yeniden başlat): `npm run dev`
-3. Başka bir terminalde:  
-   `$env:SYNC_API_URL="http://localhost:3000/api/sync"; npm run smoke:intent-multi-site`  
-   (Windows PowerShell; macOS/Linux: `SYNC_API_URL=http://localhost:3000/api/sync npm run smoke:intent-multi-site`)
-
-Sync, QStash yerine `/api/workers/ingest`’e doğrudan istek atar; worker imza kontrolünü atlar; event/call DB’ye yazılır ve test PASS olur.
+`smoke:intent-multi-site` remains available for operational diagnostics and targeted staging checks, but it is not required for deploy pass/fail.

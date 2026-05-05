@@ -206,6 +206,12 @@ function isTransientOutboxInsertError(error: unknown): boolean {
   return ['40001', '40P01', '57014', '55P03', '08006'].includes(code);
 }
 
+/** Unique violation on outbox pre-dedupe index — row already queued for this call+stage. */
+function isOutboxPrededupeConflict(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code ?? '';
+  return code === '23505';
+}
+
 function bumpSkipMetric(metric: PanelStageOciSkipMetric): void {
   if (metric === 'merged') incrementRefactorMetric('panel_stage_outbox_skip_merged_call_total');
   else if (metric === 'no_exportable') incrementRefactorMetric('panel_stage_outbox_skip_no_exportable_oci_stage_total');
@@ -313,6 +319,19 @@ export async function enqueuePanelStageOciOutbox(
       break;
     }
     insertError = error;
+    if (isOutboxPrededupeConflict(error)) {
+      incrementRefactorMetric('panel_stage_outbox_insert_prededupe_idempotent_total');
+      logInfo('panel_stage_outbox_insert_prededupe_hit', {
+        call_id: effectiveCall.id,
+        site_id: effectiveCall.site_id,
+        stage,
+      });
+      return {
+        ok: true,
+        outboxInserted: true,
+        oci_reconciliation_reason: null,
+      };
+    }
     if (attempt === 0 && isTransientOutboxInsertError(error)) {
       logWarn('panel_stage_outbox_insert_retry', {
         call_id: effectiveCall.id,

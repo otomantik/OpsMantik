@@ -36,6 +36,7 @@ import {
   reconcileSignalDispatchOutcome,
 } from '@/lib/oci/oci-ack-route-helpers';
 import * as jose from 'jose';
+import { getDbNowIso } from '@/lib/time/db-now';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,10 +48,13 @@ export async function POST(req: NextRequest) {
     if (!lane.ok) {
       return NextResponse.json({ error: 'OCI ACK paused', code: lane.code }, { status: 503 });
     }
-    // Phase 8.2: JWS Asymmetric Signature Verification (Optional enforcement)
-    // If signature is present, we verify. If not, we fall back to API Key / Session auth.
+    // JWS verification + optional enforcement gate.
+    // If OCI_ACK_REQUIRE_SIGNATURE=true and public key is configured, signature is mandatory.
     const signature = req.headers.get('x-oci-signature');
     const publicKeyB64 = process.env.VOID_PUBLIC_KEY;
+    const requireSignature = ['1', 'true', 'yes', 'on'].includes(
+      (process.env.OCI_ACK_REQUIRE_SIGNATURE ?? '').trim().toLowerCase()
+    );
     if (publicKeyB64 && signature) {
       try {
         const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
@@ -62,6 +66,11 @@ export async function POST(req: NextRequest) {
         logError('OCI_ACK_CRYPTO_MISMATCH', { error: err instanceof Error ? err.message : String(err) });
         return NextResponse.json({ error: 'Cryptographic Mismatch', code: 'AUTH_FAILED' }, { status: 401 });
       }
+    } else if (publicKeyB64 && requireSignature) {
+      logError('OCI_ACK_SIGNATURE_REQUIRED', {
+        msg: 'Signature required by OCI_ACK_REQUIRE_SIGNATURE but x-oci-signature header is missing.',
+      });
+      return NextResponse.json({ error: 'Cryptographic Signature Required', code: 'AUTH_FAILED' }, { status: 401 });
     } else if (publicKeyB64 && !signature) {
       logInfo('OCI_ACK_SIMPLE_AUTH', { msg: 'No crypto signature; proceeding with API Key validation.' });
     }
@@ -146,7 +155,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const now = new Date().toISOString();
+    const now = await getDbNowIso();
     const requestFingerprint = [
       req.headers.get('x-request-id') ?? '',
       req.headers.get('x-vercel-id') ?? '',
@@ -473,7 +482,7 @@ export async function POST(req: NextRequest) {
       if (targetProjIds.length > 0) {
         const { data: updatedProjRows, error: projError } = await adminClient
           .from('call_funnel_projection')
-          .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: new Date().toISOString() })
+          .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: now })
           .in('call_id', targetProjIds)
           .eq('site_id', siteUuid)
           .eq('export_status', 'READY')
@@ -506,7 +515,7 @@ export async function POST(req: NextRequest) {
       if (targetAdjIds.length > 0) {
         const { data: updatedAdjRows, error: adjError } = await adminClient
           .from('conversion_adjustments')
-          .update({ status: 'COMPLETED', processed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .update({ status: 'COMPLETED', processed_at: now, updated_at: now })
           .in('id', targetAdjIds)
           .eq('site_id', siteUuid)
           .eq('status', 'PROCESSING')

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — not implemented by default.
+Implemented — partial unique index `idx_outbox_events_pending_site_call_stage_uq` (migration `20261226000000_oci_transition_grants_revoke_apply_call_action_strict.sql`); producer treats Postgres **23505** on insert as **idempotent success** (`outboxInserted: true`, metric `panel_stage_outbox_insert_prededupe_idempotent_total`).
 
 ## Context
 
@@ -20,7 +20,7 @@ If product requires hard cap on duplicate PENDING work per call:
 
 - Fewer PENDING rows; simpler ops graphs.
 - Migration + rollback plan required; wrong predicate can drop legitimate precursors.
-- Producer must treat conflict as **success** (row already queued) and still return `oci_outbox_inserted` semantics consistent with clients.
+- Producer must treat conflict as **success** (row already queued) and still return **`outboxInserted: true`** so panel `queued` / notify gating stay consistent (`enqueue-panel-stage-outbox.ts`).
 
 ## Links
 

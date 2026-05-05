@@ -17,12 +17,12 @@ function getApiKey() {
       if (k) return k;
     }
   } catch (e) { /* ignore */ }
-  return CONFIG.X_API_KEY || '';
+  return '';
 }
 const CONFIG = {
   API_URL: 'https://console.opsmantik.com',
   SITE_ID: '81d957f3c7534f53b12ff305f9f07ae7',
-  X_API_KEY: 'becaef33f722de5f08691091bbe2cbb7fba0594e56ccbfb4c8a15b3ebedd2cf1',
+  X_API_KEY: '',
   TIMEZONE: '+0300',
   CHUNK_SIZE: 50,
   MAX_EXECUTION_MS: 25 * 60 * 1000

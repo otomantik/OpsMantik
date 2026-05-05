@@ -24,6 +24,11 @@ import {
   enqueuePanelStageOciOutbox,
   type PanelReturnedCall,
 } from '@/lib/oci/enqueue-panel-stage-outbox';
+import {
+  panelOciProducerHttpStatus,
+  panelOciResponseFields,
+  panelOciRouteSuccess,
+} from '@/lib/oci/panel-oci-response';
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
@@ -163,23 +168,38 @@ export async function POST(
 
       const callObj = updatedCall as PanelReturnedCall;
       const ociProbe = await enqueuePanelStageOciOutbox(callObj, { requestId });
-      if (!ociProbe.ok) incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
+      if (!ociProbe.ok) {
+        incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
+        incrementRefactorMetric('panel_oci_partial_failure_total');
+      } else if (!ociProbe.outboxInserted && ociProbe.reconciliationPersisted) {
+        incrementRefactorMetric('panel_oci_reconciliation_reason_total');
+      }
 
-      void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
-      void triggerOutboxNowBestEffort({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
+      if (ociProbe.outboxInserted) {
+        void notifyOutboxPending({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
+        void triggerOutboxNowBestEffort({ callId, siteId: call.site_id, source: 'seal_probe_v2' });
+      }
 
-      return NextResponse.json({
-        success: true,
-        approval_required: false,
-        call: callObj,
-        queued: ociProbe.outboxInserted,
-        oci_outbox_inserted: ociProbe.outboxInserted,
-        oci_reconciliation_persisted:
-          ociProbe.reconciliationPersisted === undefined ? null : ociProbe.reconciliationPersisted,
-        oci_reconciliation_reason: ociProbe.oci_reconciliation_reason,
-        oci_enqueue_ok: ociProbe.ok,
-        request_id: requestId,
-      });
+      const probeHttp = panelOciProducerHttpStatus(ociProbe);
+      if (probeHttp >= 400) {
+        incrementRefactorMetric('panel_oci_fail_closed_total');
+      }
+      return NextResponse.json(
+        {
+          success: panelOciRouteSuccess(ociProbe),
+          approval_required: false,
+          call: callObj,
+          queued: ociProbe.outboxInserted,
+          oci_outbox_inserted: ociProbe.outboxInserted,
+          oci_reconciliation_persisted:
+            ociProbe.reconciliationPersisted === undefined ? null : ociProbe.reconciliationPersisted,
+          oci_reconciliation_reason: ociProbe.oci_reconciliation_reason,
+          oci_enqueue_ok: ociProbe.ok,
+          request_id: requestId,
+          ...panelOciResponseFields(ociProbe),
+        },
+        { status: probeHttp }
+      );
     }
 
     // ——— Bearer (dashboard) path ———
@@ -387,10 +407,17 @@ export async function POST(
 
     const callObj = updatedCall as PanelReturnedCall;
     const ociSeal = await enqueuePanelStageOciOutbox(callObj, { requestId });
-    if (!ociSeal.ok) incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
+    if (!ociSeal.ok) {
+      incrementRefactorMetric('panel_stage_oci_producer_incomplete_total');
+      incrementRefactorMetric('panel_oci_partial_failure_total');
+    } else if (!ociSeal.outboxInserted && ociSeal.reconciliationPersisted) {
+      incrementRefactorMetric('panel_oci_reconciliation_reason_total');
+    }
 
-    void notifyOutboxPending({ callId, siteId, source: 'seal_v2' });
-    void triggerOutboxNowBestEffort({ callId, siteId, source: 'seal_v2' });
+    if (ociSeal.outboxInserted) {
+      void notifyOutboxPending({ callId, siteId, source: 'seal_v2' });
+      void triggerOutboxNowBestEffort({ callId, siteId, source: 'seal_v2' });
+    }
 
     if (approvalRequired) {
       await appendAuditLog(adminClient, {
@@ -404,18 +431,26 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      approval_required: approvalRequired,
-      call: callObj,
-      queued: ociSeal.outboxInserted,
-      oci_outbox_inserted: ociSeal.outboxInserted,
-      oci_reconciliation_persisted:
-        ociSeal.reconciliationPersisted === undefined ? null : ociSeal.reconciliationPersisted,
-      oci_reconciliation_reason: ociSeal.oci_reconciliation_reason,
-      oci_enqueue_ok: ociSeal.ok,
-      request_id: requestId,
-    });
+    const sealHttp = panelOciProducerHttpStatus(ociSeal);
+    if (sealHttp >= 400) {
+      incrementRefactorMetric('panel_oci_fail_closed_total');
+    }
+    return NextResponse.json(
+      {
+        success: panelOciRouteSuccess(ociSeal),
+        approval_required: approvalRequired,
+        call: callObj,
+        queued: ociSeal.outboxInserted,
+        oci_outbox_inserted: ociSeal.outboxInserted,
+        oci_reconciliation_persisted:
+          ociSeal.reconciliationPersisted === undefined ? null : ociSeal.reconciliationPersisted,
+        oci_reconciliation_reason: ociSeal.oci_reconciliation_reason,
+        oci_enqueue_ok: ociSeal.ok,
+        request_id: requestId,
+        ...panelOciResponseFields(ociSeal),
+      },
+      { status: sealHttp }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     logError(message, { request_id: requestId, route });

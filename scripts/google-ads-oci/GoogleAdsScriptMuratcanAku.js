@@ -4,8 +4,8 @@
  * Paste into Google Ads Script Editor. Entry: `main` ( zamanlayıcı / Ön izleme ).
  *
  * — Kimlik: `sites.public_id` veya Dahili UUID (verify + export bunları çözer).
- * — INLINE anahtarlar: Script Properties kullanmasan da çalışır; değerleri aşağıdaki
- *   OPSMANTIK_INLINE_* alanlarına yaz (git’e asla gerçek key commit etmeyin).
+ * — Kimlik: Script Properties (veya local process.env) zorunlu; git’e anahtar commit etmeyin.
+ *   OPSMANTIK_INLINE_* alanları yalnızca boş bırakılmalı — değerleri Google Script Properties’e yazın.
  *
  * OPSMANTIK_RUN_MODE:
  *   • "peek"  → Sadece OCI unified export ön izleme (`markAsExported=false`).
@@ -22,10 +22,10 @@
 /** @type {string} peek | sync */
 var OPSMANTIK_RUN_MODE = 'peek';
 
-/** @type {string} sites.public_id or internal UUID */
+/** @type {string} sites.public_id or internal UUID — boş bırakın; Script Properties kullanın */
 var OPSMANTIK_INLINE_SITE_ID = '';
 
-/** @type {string} sites.oci_api_key */
+/** @type {string} sites.oci_api_key — boş bırakın; Script Properties (OPSMANTIK_API_KEY) kullanın */
 var OPSMANTIK_INLINE_API_KEY = '';
 
 /** @type {string} default https://console.opsmantik.com */
