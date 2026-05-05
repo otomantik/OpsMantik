@@ -3,6 +3,13 @@
 **Date:** 2026-02-13  
 **Status:** Draft / Frozen reference
 
+## Cross-Contract Pin (OCI Conversion Time)
+
+Revenue evidence and dispute flows must honor OCI conversion-time zero-tolerance policy:
+- `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+
+No billing/export path may treat upload/runtime timestamps as authoritative conversion time.
+
 ---
 
 ## Purpose

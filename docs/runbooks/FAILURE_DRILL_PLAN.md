@@ -3,6 +3,13 @@
 **Scope:** Backend engine only. Observability + failure injection. No business logic changes.
 **Objective:** Prove system behavior under dependency failures and race conditions.
 
+## Zero-Tolerance Addendum (Conversion Time SSOT)
+
+All drills are additionally required to preserve OCI conversion-time policy:
+- `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+
+No degraded mode or fallback path may replace conversion timestamp source with runtime `now()`.
+
 ---
 
 ## Scenario A — Redis Unavailable (Replay Cache Failure)

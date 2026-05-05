@@ -6,6 +6,13 @@ and phase-specific deploy checklists were pruned in the Phase 5 cleanup — the
 authoritative architectural contracts remain, and the pre-launch runbook set
 is now small enough to read end-to-end before a cutover.
 
+## OCI Conversion Time (Zero Tolerance)
+
+All OCI paths are required to use first intent creation timestamp as conversion time SSOT.
+
+- Policy document: [OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md](OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md)
+- This policy is fail-closed and release-blocking.
+
 ---
 
 ## Folders

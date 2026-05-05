@@ -1,5 +1,12 @@
 # Google Ads OCI Script (OpsMantik Exit Valve)
 
+## Conversion Time Policy (Zero Tolerance)
+
+Script payload time must represent the first intent creation timestamp from backend SSOT.
+
+- Mandatory contract: `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+- Script/runtime must not replace conversion time with upload-time `now()`.
+
 `scripts/google-ads-oci/GoogleAdsScript.js` bu repo içindeki tek canonical script kaynağıdır.
 `scripts/google-ads/*.js` ve `scripts/google-ads-oci/deploy/*.js` dosyaları site-specific deploy snapshot'larıdır; kaynak olarak değil, dağıtım kopyası olarak görülmelidir.
 

@@ -1,5 +1,12 @@
 # Providers upload runbook (Google Ads OCI)
 
+## Zero-Tolerance Conversion Time Rule
+
+Before any provider upload operation, enforce conversion time SSOT policy:
+- `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+
+Upload workers must format timestamps only; they must not change source semantics.
+
 - **Worker:** `POST /api/cron/process-offline-conversions` (claim → decrypt creds → upload → update status). Vercel: every 10 min (`vercel.json`). **PR6:** Claim is per (site_id, provider_key) via `list_offline_conversion_groups` + `claim_offline_conversion_jobs_v2(site_id, provider_key, limit)`; ordering `next_retry_at ASC NULLS FIRST`, `created_at ASC`. **PR7:** `list_offline_conversion_groups` returns `queued_count`, `min_next_retry_at`, `min_created_at`; CLOSED groups use **backlog-weighted fair share** (claim limit ∝ queued_count / totalQueued, min 1, cap sum ≤ limit, leftover round-robin); OPEN skipped, HALF_OPEN uses `probe_limit`.
 - **Recovery:** `POST /api/cron/providers/recover-processing` (requeue stuck PROCESSING jobs). Vercel: every 30 min (`vercel.json`). **PR7:** Recovery RPC uses `claimed_at < now() - interval` (fallback `updated_at` when `claimed_at` is null); moves to QUEUED; service_role only.
 - **Seed (staging only):** `POST /api/cron/providers/seed-credentials` — **hard-blocked in production** (`NODE_ENV === 'production'` returns 403). Use only in staging.

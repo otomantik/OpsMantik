@@ -1,3 +1,28 @@
+# OCI SSOT Troubleshooting (Faz4)
+
+## Decision Flow
+
+```mermaid
+flowchart TD
+  A[Panel/Seal RPC success] --> B{oci_outbox_inserted}
+  B -->|yes| C[notifyOutboxPending + worker path]
+  B -->|no| D{oci_reconciliation_persisted}
+  D -->|yes| E[Reconciliation-only path]
+  D -->|no| F[Fail-closed incident]
+```
+
+## PII Safety Rules
+
+- Do not store raw phone, raw IP, full URL in reconciliation payload.
+- Use hashes/truncated values for diagnostics.
+- Treat payload sanitation regressions as release blockers.
+
+## Required Response Fields
+
+- `oci_outbox_inserted`
+- `oci_reconciliation_persisted`
+- `oci_reconciliation_reason`
+- `oci_enqueue_ok`
 # OCI SSOT troubleshooting
 
 **Preflight + matematik:** [`docs/OPS/OCI_CONVERSION_MATH_AND_PREFLIGHT.md`](../OPS/OCI_CONVERSION_MATH_AND_PREFLIGHT.md) — invariant’lar, claim filtresi, backfill zaman kuralları, deploy checklist.

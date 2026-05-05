@@ -2,6 +2,13 @@
 
 Real-time tracking and multi-touch attribution platform. Track Google Ads campaign ROI, score leads, and empower your marketing team with a live dashboard.
 
+## OCI Conversion Time (Zero Tolerance)
+
+Google Ads conversion time is pinned to first intent creation time (no runtime override policy).
+
+- Mandatory policy: `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+- Any drift from this contract is treated as a release blocker.
+
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies

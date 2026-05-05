@@ -3,6 +3,12 @@
 **Role:** Principal DevOps + Next.js API engineer  
 **Goal:** Force one intentional QStash publish failure so `/api/sync` returns 200 degraded and Watchtower becomes WATCHTOWER_DEGRADED within 15 minutes.
 
+## Zero-Tolerance Conversion Time Guard
+
+Even in degraded mode, conversion timestamp source must remain first-intent SSOT.
+- Policy: `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+- Degradation does not permit timestamp source override.
+
 ---
 
 ## 1) Confirm we're hitting production + correct project

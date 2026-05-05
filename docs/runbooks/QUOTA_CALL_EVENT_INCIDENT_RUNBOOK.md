@@ -1,5 +1,12 @@
 ## Quota + Call-Event Incident Runbook
 
+## Zero-Tolerance Conversion Time Rule
+
+Incident actions must preserve OCI conversion-time SSOT:
+- `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+
+Operational mitigations must not rewrite conversion time to runtime/upload time.
+
 **Symptoms**
 - Browser console shows `POST /api/sync 429` with headers:
   - `x-opsmantik-quota-exceeded: 1`

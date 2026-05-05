@@ -1,5 +1,12 @@
 # OpsMantik Revenue OS: System Audit & Redesign Plan
 
+## Zero-Tolerance Contract (OCI Conversion Time)
+
+This implementation plan adopts the mandatory OCI conversion-time policy:
+- `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+
+All OCI-exported conversion timestamps must come from first intent creation time (`calls.created_at`), not seal/upload runtime timestamps.
+
 This document serves as the implementation plan and deep system audit to transform OpsMantik into a production-grade "Revenue Operating System." The goal is to enforce a **SIMPLE USER / COMPLEX ENGINE** architecture where the frontend asks for minimal, high-signal data (outcome, bucket) and the backend handles all attribution, valuation, and exporting complexity.
 
 > [!NOTE]
