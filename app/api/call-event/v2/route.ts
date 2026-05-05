@@ -8,7 +8,7 @@ import { buildCallEventIngestWorkerBody, publishCallEventIngestWorker } from '@/
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
-import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
+import { SITE_PUBLIC_ID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/logging/logger';
 import {
@@ -39,6 +39,7 @@ import { burstRpcSessionReuseAllowed, shouldReuseSessionV1 } from '@/lib/intents
 import { intentSessionReuseHardeningEnabled } from '@/lib/config/intent-session-reuse-hardening';
 import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
 import { getClientIp } from '@/lib/request-client-ip';
+import { verifyCallEventSignaturePolicy } from '@/lib/security/call-event-signature-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -120,55 +121,25 @@ async function callEventV2Inner(req: NextRequest) {
     // 2) Replay check  3) Rate limit  4) Session lookup  5) Analytics consent gate  6) Insert  7) OCI enqueue (seal).
     //
     // Auth boundary: verify signature before any write/ingest operation.
-    // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
-    const signingDisabled =
-      process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
-
-    let headerSiteId = '';
-    let headerSig = '';
-    if (!signingDisabled) {
-      // Signature headers (fail-closed)
-      headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
-      const headerTs = (req.headers.get('x-ops-ts') || '').trim();
-      headerSig = (req.headers.get('x-ops-signature') || '').trim();
-
-      if (
-        !headerSiteId ||
-        !(SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId)) ||
-        !/^\d{9,12}$/.test(headerTs) ||
-        !/^[0-9a-f]{64}$/i.test(headerSig)
-      ) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-      }
-
-      const tsNum = Number(headerTs);
-      const nowSec = Math.floor(Date.now() / 1000);
-      if (!Number.isFinite(tsNum) || nowSec - tsNum > 300 || tsNum - nowSec > 60) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-      }
-
-      const { data: sigOk, error: sigErr } = await adminClient.rpc('verify_call_event_signature_v1', {
-        p_site_public_id: headerSiteId,
-        p_ts: tsNum,
-        p_raw_body: rawBody,
-        p_signature: headerSig,
-      });
-      const verifySignatureFnMissing =
-        Boolean(sigErr?.message?.toLowerCase().includes('verify_call_event_signature_v1')) &&
-        Boolean(sigErr?.message?.toLowerCase().includes('does not exist'));
-      if (verifySignatureFnMissing) {
-        logWarn('call-event-v2 signature RPC missing, bypassing signature verify', {
-          request_id: requestId,
-          route: ROUTE,
-          site_id: headerSiteId,
-        });
-      } else if (sigErr || sigOk !== true) {
-        logWarn('call-event-v2 signature rejected', { request_id: requestId, route: ROUTE, site_id: headerSiteId, error: sigErr?.message });
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-      }
-    } else {
-      logWarn('call-event-v2 signing disabled (rollback mode)', { request_id: requestId, route: ROUTE });
+    const signaturePolicy = await verifyCallEventSignaturePolicy({
+      headers: req.headers,
+      rawBody,
+      requestId,
+      route: ROUTE,
+      verifySignature: ({ sitePublicId, tsNum, rawBody: body, signature }) =>
+        adminClient.rpc('verify_call_event_signature_v1', {
+          p_site_public_id: sitePublicId,
+          p_ts: tsNum,
+          p_raw_body: body,
+          p_signature: signature,
+        }),
+    });
+    if (!signaturePolicy.ok) {
+      return NextResponse.json(signaturePolicy.body, { status: signaturePolicy.status, headers: baseHeaders });
     }
+    const signingBypassed = signaturePolicy.bypassed;
+    const headerSiteId = signaturePolicy.headerSiteId;
+    const headerSig = signaturePolicy.headerSig;
 
     // JSON parse + strict validation
     let bodyJson: unknown;
@@ -204,7 +175,7 @@ async function callEventV2Inner(req: NextRequest) {
         });
       }
       if (!SITE_PUBLIC_ID_RE.test(body.site_id)) return NextResponse.json({ error: 'Invalid site_id' }, { status: 400, headers: baseHeaders });
-      if (!signingDisabled && (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== body.site_id)) {
+      if (!signingBypassed && (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== body.site_id)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
       }
       legacyPublicId = body.site_id;
@@ -213,7 +184,7 @@ async function callEventV2Inner(req: NextRequest) {
       resolvedSiteUuid = resolvedBodySiteId;
 
       // Enforce header/body binding when signing is enabled (prevents cross-site signature reuse).
-      if (!signingDisabled) {
+      if (!signingBypassed) {
         const { data: resolvedHeaderSiteId, error: resolveHeaderErr } = await adminClient.rpc('resolve_site_identifier_v1', {
           p_input: headerSiteId,
         });

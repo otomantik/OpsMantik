@@ -5,7 +5,7 @@ import { buildCallEventIngestWorkerBody, publishCallEventIngestWorker } from '@/
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { ReplayCacheService } from '@/lib/services/replay-cache-service';
 import { getIngestCorsHeaders } from '@/lib/security/cors';
-import { SITE_PUBLIC_ID_RE, SITE_UUID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
+import { SITE_PUBLIC_ID_RE, isValidSiteIdentifier } from '@/lib/security/site-identifier';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { logError, logWarn } from '@/lib/logging/logger';
 import * as Sentry from '@sentry/nextjs';
@@ -31,6 +31,7 @@ import { sanitizeClickId } from '@/lib/attribution';
 import { burstRpcSessionReuseAllowed, shouldReuseSessionV1 } from '@/lib/intents/session-reuse-v1';
 import { intentSessionReuseHardeningEnabled } from '@/lib/config/intent-session-reuse-hardening';
 import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
+import { verifyCallEventSignaturePolicy } from '@/lib/security/call-event-signature-policy';
 
 // Ensure Node.js runtime (uses process.env + supabase-js).
 export const runtime = 'nodejs';
@@ -151,52 +152,25 @@ export async function POST(req: NextRequest) {
 
         // COMPLIANCE: Route order — HMAC → Replay → Rate limit → Session lookup → Consent gate → Insert. Consent before HMAC = brute-force risk.
         // --- 1) Auth boundary: verify signature before any write/ingest operation ---
-        // Rollback switch: set CALL_EVENT_SIGNING_DISABLED=1 to temporarily accept unsigned calls.
-        const signingDisabled =
-            process.env.CALL_EVENT_SIGNING_DISABLED === '1' || process.env.CALL_EVENT_SIGNING_DISABLED === 'true';
-
-        let headerSiteId = '';
-        let headerSig = '';
-        if (!signingDisabled) {
-            headerSiteId = (req.headers.get('x-ops-site-id') || '').trim();
-            const headerTs = (req.headers.get('x-ops-ts') || '').trim();
-            headerSig = (req.headers.get('x-ops-signature') || '').trim();
-
-            // Fast validation (fail-closed)
-            if (
-                !headerSiteId ||
-                !(SITE_PUBLIC_ID_RE.test(headerSiteId) || SITE_UUID_RE.test(headerSiteId)) ||
-                !/^\d{9,12}$/.test(headerTs) ||
-                !/^[0-9a-f]{64}$/i.test(headerSig)
-            ) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-            }
-
-            const tsNum = Number(headerTs);
-            const nowSec = Math.floor(Date.now() / 1000);
-            if (!Number.isFinite(tsNum) || nowSec - tsNum > 300 || tsNum - nowSec > 60) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-            }
-
-            // Verify signature via DB (boolean only; secrets never leave DB).
-            const { data: sigOk, error: sigErr } = await adminClient.rpc('verify_call_event_signature_v1', {
-                p_site_public_id: headerSiteId,
-                p_ts: tsNum,
-                p_raw_body: rawBody,
-                p_signature: headerSig,
-            });
-            if (sigErr || sigOk !== true) {
-                logWarn('call-event signature rejected', {
-                    request_id: requestId,
-                    route: CALL_EVENT_ROUTE,
-                    site_id: headerSiteId,
-                    error: sigErr?.message,
-                });
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });
-            }
-        } else {
-            logWarn('call-event signing disabled (rollback mode)', { request_id: requestId, route: CALL_EVENT_ROUTE });
+        const signaturePolicy = await verifyCallEventSignaturePolicy({
+            headers: req.headers,
+            rawBody,
+            requestId,
+            route: CALL_EVENT_ROUTE,
+            verifySignature: ({ sitePublicId, tsNum, rawBody: body, signature }) =>
+                adminClient.rpc('verify_call_event_signature_v1', {
+                    p_site_public_id: sitePublicId,
+                    p_ts: tsNum,
+                    p_raw_body: body,
+                    p_signature: signature,
+                }),
+        });
+        if (!signaturePolicy.ok) {
+            return NextResponse.json(signaturePolicy.body, { status: signaturePolicy.status, headers: baseHeaders });
         }
+        const signingBypassed = signaturePolicy.bypassed;
+        const headerSiteId = signaturePolicy.headerSiteId;
+        const headerSig = signaturePolicy.headerSig;
 
         let bodyJson: unknown;
         try {
@@ -273,7 +247,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Enforce header/body binding when signing is enabled (prevents cross-site signature reuse).
-        if (!signingDisabled) {
+        if (!signingBypassed) {
             if (legacyPublicId) {
                 if (!SITE_PUBLIC_ID_RE.test(headerSiteId) || headerSiteId !== legacyPublicId) {
                     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: baseHeaders });

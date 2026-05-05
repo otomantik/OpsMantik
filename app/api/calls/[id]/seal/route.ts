@@ -69,7 +69,7 @@ export async function POST(
     if (isProbe) {
       const { data: call } = await adminClient
         .from('calls')
-        .select('id, site_id, version')
+        .select('id, site_id, version, created_at')
         .eq('id', callId)
         .maybeSingle();
       if (!call) {
@@ -93,6 +93,7 @@ export async function POST(
             ? Number(body.timestamp)
             : null;
       const occurredAtMeta = resolveSealOccurredAt({
+        intentCreatedAt: (call as { created_at?: string | null } | null)?.created_at ?? null,
         saleOccurredAt: timestampMs != null ? new Date(timestampMs).toISOString() : null,
         fallbackConfirmedAt: confirmedAtIso,
       });
@@ -307,6 +308,7 @@ export async function POST(
 
     const confirmedAtIso = new Date().toISOString();
     const occurredAtMeta = resolveSealOccurredAt({
+      intentCreatedAt: (call as { created_at?: string | null } | null)?.created_at ?? null,
       saleOccurredAt: saleOccurredAtRaw || null,
       fallbackConfirmedAt: confirmedAtIso,
     });

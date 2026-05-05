@@ -1,10 +1,18 @@
 /**
  * API Route: Update Intent Status
- * 
- * Updates the status of a call (intent) in the calls table.
- * 
+ *
  * POST /api/intents/[id]/status
- * Body: { status: 'confirmed' | 'qualified' | 'real' | 'junk' | 'suspicious' | 'cancelled' | 'intent' }
+ *
+ * Contract: `lib/api/intent-status-route-contract.ts`.
+ *
+ * Executable `status` (normalized): **`junk`**, **`cancelled`** → RPC stage `junk`;
+ * **`intent`** → restore reviewed queue row to **`contacted`**.
+ *
+ * Recognized but not applicable here (**`UNSUPPORTED_STATUS`**, 400): **`confirmed`**, **`qualified`**,
+ * **`real`**, **`suspicious`** — use **`/api/intents/[id]/stage`** (scored funnel) or
+ * **`/api/calls/[id]/seal`** where appropriate.
+ *
+ * Unknown values → **`INVALID_STATUS`** (400).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -29,6 +37,10 @@ import {
 import { resolveMutationVersion } from '@/lib/integrity/mutation-version';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 import { buildCanonicalIntentKey } from '@/lib/intents/canonical-intent-key';
+import {
+  classifyIntentStatusRoute,
+  normalizeIntentRouteStatus,
+} from '@/lib/api/intent-status-route-contract';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,18 +69,23 @@ export async function POST(
       bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
         ? (bodyUnknown as Record<string, unknown>)
         : {};
-    const status = typeof body.status === 'string' ? body.status : null;
+    const normalizedStatus = normalizeIntentRouteStatus(body.status);
     const lead_score = typeof body.lead_score === 'number' ? body.lead_score : null;
     const sourceSurface = typeof body.source_surface === 'string' && body.source_surface.trim()
       ? body.source_surface.trim().slice(0, 80)
       : 'dashboard.queue';
     const { id: callId } = await params;
 
-    // Validate status
-    const validStatuses = ['confirmed', 'qualified', 'real', 'junk', 'suspicious', 'cancelled', 'intent'];
-    if (status && !validStatuses.includes(status)) {
+    const statusVerdict = classifyIntentStatusRoute(normalizedStatus);
+
+    if (statusVerdict.kind === 'invalid') {
       return NextResponse.json(
-        { error: 'Invalid status' },
+        {
+          ok: false,
+          code: statusVerdict.code,
+          status: statusVerdict.normalized,
+          reason: statusVerdict.reason,
+        },
         { status: 400 }
       );
     }
@@ -105,24 +122,19 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Resolve target stage based on action
-    const actionType =
-      status === 'junk'
-        ? 'junk'
-        : status === 'cancelled'
-          ? 'cancel'
-          : status === 'intent'
-            ? 'restore'
-            : null;
-
-    if (!actionType) {
+    if (statusVerdict.kind === 'unsupported') {
       return NextResponse.json(
-        { error: 'Unsupported status for this endpoint (use /api/calls/[id]/seal for confirmations)' },
+        {
+          ok: false,
+          code: statusVerdict.code,
+          status: statusVerdict.normalized,
+          reason: statusVerdict.reason,
+        },
         { status: 400 }
       );
     }
 
-    const targetStage = actionType === 'restore' ? 'contacted' : 'junk';
+    const targetStage = statusVerdict.rpcStage;
 
     const rowVersion =
       typeof (call as { version?: unknown }).version === 'number' &&
@@ -151,7 +163,7 @@ export async function POST(
       p_actor_id: user.id,
       p_lead_score: lead_score !== undefined ? lead_score : null,
       p_version: versionResolution.version,
-      p_reviewed: actionType !== 'restore',
+      p_reviewed: statusVerdict.reviewed,
       p_metadata: {
         route,
         request_id: requestId,
@@ -230,7 +242,10 @@ export async function POST(
       call_id: callId,
       matched_session_id: (call as { matched_session_id?: string | null }).matched_session_id ?? null,
       source_surface: sourceSurface,
-      query_params_snapshot: { status, lead_score },
+      query_params_snapshot: {
+        status: normalizedStatus ?? (typeof body.status === 'string' ? body.status : null),
+        lead_score,
+      },
       status_before: (call as { status?: string | null }).status ?? null,
       reviewed_at_before: (call as { reviewed_at?: string | null }).reviewed_at ?? null,
       dedupe_key: dedupeKey,

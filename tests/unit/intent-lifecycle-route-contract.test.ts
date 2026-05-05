@@ -7,7 +7,11 @@ const ROOT = process.cwd();
 
 test('intent status mutation route applies reviewed lifecycle contract', () => {
   const src = readFileSync(join(ROOT, 'app', 'api', 'intents', '[id]', 'status', 'route.ts'), 'utf8');
-  assert.ok(src.includes("p_reviewed: actionType !== 'restore'"), 'restore must clear reviewed fields atomically');
+  assert.ok(
+    src.includes("p_reviewed: statusVerdict.reviewed") ||
+      src.includes("p_reviewed: actionType !== 'restore'"),
+    'restore must clear reviewed fields atomically (contract verdict or legacy actionType)'
+  );
   assert.ok(src.includes("apply_call_action_with_review_v1"), 'status/review must be atomic via single RPC');
   assert.ok(src.includes('source_surface'), 'route must capture source surface for forensics');
   assert.ok(src.includes('INTENT_DUPLICATE_FORENSICS') || src.includes('intent status mutation forensics'), 'route must emit forensics log');

@@ -25,7 +25,7 @@ export function buildQueueItems(
   ctx: ExportAuthContext,
   rawList: QueueRow[],
   sessionByCall: Record<string, string>,
-  confirmedByCall: Record<string, string>
+  intentCreatedByCall: Record<string, string>
 ): QueueBuildResult {
   const conversions: GoogleAdsConversionItem[] = [];
   const queueCandidates: RankedExportCandidate[] = [];
@@ -37,10 +37,14 @@ export function buildQueueItems(
 
   for (let i = 0; i < rawList.length; i++) {
     const row = rawList[i];
+    if (!row.call_id) {
+      blockedExportGateIds.push(row.id);
+      continue;
+    }
     const baseTs = pickCanonicalOccurredAt([
       row.occurred_at,
       row.conversion_time,
-      row.call_id ? confirmedByCall[row.call_id] ?? null : null,
+      intentCreatedByCall[row.call_id] ?? null,
       row.created_at,
     ]);
     const conversionTime = formatGoogleAdsTimeOrNull(baseTs, ctx.site.timezone);

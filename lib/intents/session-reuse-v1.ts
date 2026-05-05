@@ -13,7 +13,13 @@ export const INTENT_FP_BURST_SLA_MS = 50_000;
 export const INTENT_IP_ENTRY_BURST_SLA_MS = 8_000;
 
 export const ACTIVE_SINGLE_CARD_STATUSES = ['intent', 'contacted', 'offered'] as const;
+/** Blocks burst session reuse (`terminal_status`). Includes **`won`** (sealed sale — not single-card active). */
 export const TERMINAL_STATUSES = ['won', 'confirmed', 'junk', 'cancelled'] as const;
+/**
+ * Defensive lifecycle label only — **not** a `calls.status` CHECK enum today.
+ * Canonical merged archive uses **`calls.merged_into_call_id`** (see `enqueue-panel-stage-outbox`,
+ * `panel-call-merge-context`). SQL cleanup may reference `'merged'` string alongside terminal statuses.
+ */
 export const ARCHIVAL_STATUSES = ['merged'] as const;
 
 type ReuseLifecycleStatus = (typeof ACTIVE_SINGLE_CARD_STATUSES)[number] | (typeof TERMINAL_STATUSES)[number] | (typeof ARCHIVAL_STATUSES)[number] | 'unknown' | null;

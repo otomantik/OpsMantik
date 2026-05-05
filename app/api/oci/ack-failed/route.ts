@@ -29,7 +29,7 @@ import {
 } from '@/lib/oci/oci-ack-route-helpers';
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import { resolveOciScriptAuth } from '@/lib/oci/script-auth';
-import * as jose from 'jose';
+import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,20 +50,21 @@ export async function POST(req: NextRequest) {
     if (!lane.ok) {
       return NextResponse.json({ error: 'OCI ACK paused', code: lane.code }, { status: 503 });
     }
-    // Phase 8.2: JWS Asymmetric Signature Verification (Optional enforcement)
-    const signature = req.headers.get('x-oci-signature');
-    const publicKeyB64 = process.env.VOID_PUBLIC_KEY;
-    if (publicKeyB64 && signature) {
-      try {
-        const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
-        await jose.jwtVerify(signature, publicKey, {
-          issuer: 'opsmantik-oci-script',
-          audience: 'opsmantik-api',
-        });
-      } catch (err) {
-        logError('OCI_ACK_FAILED_CRYPTO_MISMATCH', { error: err instanceof Error ? err.message : String(err) });
-        return NextResponse.json({ error: 'Cryptographic Mismatch', code: 'AUTH_FAILED' }, { status: 401 });
-      }
+    const signatureDecision = await evaluateOciAckSignaturePolicy({
+      signatureHeader: req.headers.get('x-oci-signature'),
+      voidPublicKeyB64: process.env.VOID_PUBLIC_KEY,
+      requireSignatureEnv: process.env.OCI_ACK_REQUIRE_SIGNATURE,
+    });
+    if (!signatureDecision.ok) {
+      logError('OCI_ACK_FAILED_SIGNATURE_POLICY_REJECT', {
+        code: signatureDecision.code,
+        reason: signatureDecision.reason,
+        signature_required: signatureDecision.signature_required,
+      });
+      return NextResponse.json(
+        { error: signatureDecision.reason, code: signatureDecision.code },
+        { status: signatureDecision.status }
+      );
     }
 
     let bodyUnknown: unknown;

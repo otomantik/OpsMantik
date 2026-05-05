@@ -25,7 +25,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import type { PipelineStage } from './types';
 import { OPSMANTIK_CONVERSION_NAMES } from './conversion-names';
 import { logError, logInfo, logWarn } from '@/lib/logging/logger';
-import { resolveSignalOccurredAt } from '@/lib/oci/occurred-at';
+import { resolveSignalOccurredAtFromIntent } from '@/lib/oci/occurred-at';
 import type { OptimizationValueSnapshot } from '@/lib/oci/optimization-contract';
 import { computeMarketingSignalCurrentHash } from '@/lib/oci/marketing-signal-hash';
 import type { MarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
@@ -162,7 +162,21 @@ export async function upsertMarketingSignal(
     });
   }
 
-  const occurredAtMeta = resolveSignalOccurredAt(signalDate, stage);
+  let intentCreatedAt: string | null = null;
+  if (callId) {
+    const { data: callRow } = await adminClient
+      .from('calls')
+      .select('created_at')
+      .eq('id', callId)
+      .eq('site_id', siteId)
+      .maybeSingle();
+    intentCreatedAt = (callRow as { created_at?: string | null } | null)?.created_at ?? null;
+  }
+  const occurredAtMeta = resolveSignalOccurredAtFromIntent({
+    intentCreatedAt,
+    fallbackSignalDate: signalDate,
+    stage,
+  });
   const expectedValueCents = economics.expectedValueCents;
   const signalIso = signalDate.toISOString();
 

@@ -115,6 +115,7 @@ export async function fetchCallSendabilityRowsForSite(
 export type ExportCallContextRow = {
   id: string;
   matched_session_id: string | null;
+  created_at: string | null;
   confirmed_at: string | null;
   status: string | null;
   oci_status: string | null;
@@ -124,7 +125,7 @@ export async function fetchExportCallContextRows(siteId: string, callIds: string
   const unique = [...new Set(callIds.filter(Boolean))];
   if (unique.length === 0) return [];
 
-  const projection = 'id, matched_session_id, confirmed_at, status, oci_status';
+  const projection = 'id, matched_session_id, created_at, confirmed_at, status, oci_status';
   const primary = await adminClient
     .from('calls')
     .select(projection)
@@ -135,6 +136,7 @@ export async function fetchExportCallContextRows(siteId: string, callIds: string
     (rows as Array<Record<string, unknown>>).map((r) => ({
       id: String(r.id),
       matched_session_id: (r.matched_session_id as string | null) ?? null,
+      created_at: (r.created_at as string | null) ?? null,
       confirmed_at: (r.confirmed_at as string | null) ?? null,
       status: (r.status as string | null) ?? null,
       oci_status: (r.oci_status as string | null) ?? null,
@@ -151,7 +153,7 @@ export async function fetchExportCallContextRows(siteId: string, callIds: string
 
   const fallback = await adminClient
     .from('calls')
-    .select('id, matched_session_id, confirmed_at, status')
+    .select('id, matched_session_id, created_at, confirmed_at, status')
     .eq('site_id', siteId)
     .in('id', unique);
 
@@ -166,6 +168,7 @@ export async function fetchExportCallContextRows(siteId: string, callIds: string
   return (fallback.data as Array<Record<string, unknown>>).map((r) => ({
     id: String(r.id),
     matched_session_id: (r.matched_session_id as string | null) ?? null,
+    created_at: (r.created_at as string | null) ?? null,
     confirmed_at: (r.confirmed_at as string | null) ?? null,
     status: (r.status as string | null) ?? null,
     oci_status: null,

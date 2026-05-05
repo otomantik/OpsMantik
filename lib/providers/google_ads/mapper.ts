@@ -17,13 +17,11 @@ const ORDER_ID_MAX_LENGTH = 50;
 
 /** conversion_date_time format: "yyyy-mm-dd hh:mm:ss+|-hh:mm" (no milliseconds; e.g. "2024-01-15 12:30:00+00:00"). */
 function toConversionDateTime(isoOrUnknown: unknown): string {
-  const d =
-    typeof isoOrUnknown === 'string'
-      ? new Date(isoOrUnknown)
-      : new Date();
-  if (Number.isNaN(d.getTime())) {
-    return new Date().toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
+  if (typeof isoOrUnknown !== 'string') {
+    throw new Error('INVALID_CONVERSION_TIME');
   }
+  const d = new Date(isoOrUnknown);
+  if (Number.isNaN(d.getTime())) throw new Error('INVALID_CONVERSION_TIME');
   return d.toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
 }
 

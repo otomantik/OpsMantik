@@ -1,6 +1,8 @@
-
-import { POST } from '../app/api/calls/[id]/seal/route';
-import { NextRequest } from 'next/server';
+/**
+ * NON_PROD_ONLY diagnostic script.
+ * Guarded to fail-closed in production-like environments.
+ */
+import { getDbNowIso } from '../lib/time/db-now';
 
 // We need to mock the Request and the Auth
 // Since the route uses createServerClient and adminClient, it's heavily environment dependent.
@@ -8,6 +10,14 @@ import { NextRequest } from 'next/server';
 // to see if any signals were generated for the test call.
 
 async function verifySignalGeneration() {
+  const isProdLike =
+    process.env.NODE_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'production' ||
+    process.env.OCI_ENV === 'production';
+  if (isProdLike || process.env.ALLOW_DIAGNOSTIC_WRITES !== '1') {
+    throw new Error('NON_PROD_ONLY: set ALLOW_DIAGNOSTIC_WRITES=1 in non-production environments only');
+  }
+
   console.log('--- Verifying Signal Generation Logic ---');
   
   // Actually, I'll just check the DB directly to see if any marketing_signals exist for my test call
@@ -24,7 +34,7 @@ async function verifySignalGeneration() {
   
   const callId = '36713837-143f-4e19-9524-811c05d7b5bf'; // Example existing call
   const siteId = '28cf0aefaa074f5bb29e818a9d53b488';
-  const confirmedAtIso = new Date().toISOString();
+  const confirmedAtIso = await getDbNowIso();
   
   console.log('Fetching call data...');
   const { data: call } = await adminClient

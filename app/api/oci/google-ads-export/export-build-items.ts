@@ -45,20 +45,20 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   const calls =
     callIds.length > 0 ? await fetchExportCallContextRows(ctx.siteUuid, callIds) : [];
   const sessionByCall: Record<string, string> = {};
-  const confirmedByCall: Record<string, string> = {};
+  const intentCreatedByCall: Record<string, string> = {};
   const sendabilityByCall: Record<string, boolean> = {};
   for (const c of calls) {
     const id = (c as { id: string }).id;
     const sid = (c as { matched_session_id?: string | null }).matched_session_id;
     if (sid) sessionByCall[id] = sid;
-    const confirmed = (c as { confirmed_at?: string | null }).confirmed_at;
-    if (confirmed) confirmedByCall[id] = confirmed;
+    const createdAt = (c as { created_at?: string | null }).created_at;
+    if (createdAt) intentCreatedByCall[id] = createdAt;
     sendabilityByCall[id] = isCallSendableForSealExport(
       (c as { status?: string | null }).status ?? null,
       (c as { oci_status?: string | null }).oci_status ?? null
     );
   }
-  const queueBuild = buildQueueItems(ctx, rawList, sessionByCall, confirmedByCall);
+  const queueBuild = buildQueueItems(ctx, rawList, sessionByCall, intentCreatedByCall);
   const signalBuild = buildSignalItems(ctx, signalList);
 
   const blockedNotSendableQueueIds = new Set<string>();

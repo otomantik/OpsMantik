@@ -31,7 +31,10 @@ export function buildSignalItems(
     const sig = signalList[i];
     const signalId = String(sig.id ?? '');
     const callId = typeof sig.call_id === 'string' ? sig.call_id : null;
-    if (!callId) continue;
+    if (!callId) {
+      blockedSignalIds.push(signalId);
+      continue;
+    }
     const conversionTime = formatGoogleAdsTimeOrNull(
       pickCanonicalOccurredAt([
         sig.occurred_at as string | null,

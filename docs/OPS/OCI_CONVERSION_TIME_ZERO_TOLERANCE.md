@@ -35,5 +35,6 @@ If any record is exported with a timestamp not traceable to first intent creatio
 ## Verification Checklist
 
 - Unit/contract tests pin source precedence to first intent timestamp.
-- Runbook SQL proof compares source columns against call first-created time.
+- DB fail-closed guard migration is active: `supabase/migrations/20261226010000_oci_conversion_time_zero_tolerance_db_guard.sql`.
+- Runbook SQL proof compares source columns against call first-created time: `docs/OPS/OCI_REMEDIATION_DEPLOY_AND_STAGING.md`.
 - Pre-release gate includes this contract as fail-closed.

@@ -39,10 +39,40 @@ export function resolveSignalOccurredAt(signalDate: Date, stage: PipelineStage) 
   };
 }
 
+export function resolveSignalOccurredAtFromIntent(params: {
+  intentCreatedAt?: string | null;
+  fallbackSignalDate: Date;
+  stage: PipelineStage;
+}) {
+  const intentParsed = parseWithinTemporalSanityWindow(params.intentCreatedAt ?? null);
+  if (intentParsed) {
+    const iso = intentParsed.toISOString();
+    return {
+      occurredAt: iso,
+      sourceTimestamp: iso,
+      timeConfidence: 'observed' as const satisfies OciTimeConfidence,
+      occurredAtSource: 'intent' as const satisfies OciOccurredAtSource,
+    };
+  }
+  return resolveSignalOccurredAt(params.fallbackSignalDate, params.stage);
+}
+
 export function resolveSealOccurredAt(params: {
+  intentCreatedAt?: string | null;
   saleOccurredAt?: string | null;
   fallbackConfirmedAt: string;
 }) {
+  const parsedIntentCreatedAt = parseWithinTemporalSanityWindow(params.intentCreatedAt ?? null);
+  if (parsedIntentCreatedAt) {
+    const iso = parsedIntentCreatedAt.toISOString();
+    return {
+      occurredAt: iso,
+      sourceTimestamp: iso,
+      timeConfidence: 'observed' as const satisfies OciTimeConfidence,
+      occurredAtSource: 'intent' as const satisfies OciOccurredAtSource,
+    };
+  }
+
   const parsedSaleOccurredAt = parseWithinTemporalSanityWindow(params.saleOccurredAt ?? null);
   if (parsedSaleOccurredAt) {
     const iso = parsedSaleOccurredAt.toISOString();

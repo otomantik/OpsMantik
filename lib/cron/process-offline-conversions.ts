@@ -23,6 +23,7 @@ export interface QueueRow {
   provider_key: string;
   payload: Record<string, unknown>;
   conversion_time: string;
+  occurred_at?: string | null;
   value_cents: number;
   currency: string;
   gclid?: string | null;
@@ -36,11 +37,13 @@ export interface QueueRow {
 
 export function queueRowToConversionJob(row: QueueRow): ConversionJob {
   const occurredAt =
-    typeof (row.payload as { conversion_time?: string })?.conversion_time === 'string'
-      ? (row.payload as { conversion_time: string }).conversion_time
-      : typeof row.conversion_time === 'string'
-        ? row.conversion_time
-        : new Date(row.conversion_time).toISOString();
+    typeof row.conversion_time === 'string' && row.conversion_time.trim().length > 0
+      ? row.conversion_time
+      : typeof row.occurred_at === 'string' && row.occurred_at.trim().length > 0
+        ? row.occurred_at
+        : (() => {
+            throw new Error('INVALID_CONVERSION_TIME');
+          })();
 
   const clickId = (row.gclid || row.wbraid || row.gbraid || '').trim() || null;
   const orderId = buildOrderId('won', clickId, occurredAt, row.id, row.id, Number(row.value_cents) || 0);

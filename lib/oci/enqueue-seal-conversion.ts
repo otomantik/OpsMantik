@@ -142,11 +142,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     });
     return { enqueued: false, reason: 'error', error: 'OCI_SEAL_TEMPORAL_POISONING' };
   }
-  const occurredAtMeta = resolveSealOccurredAt({
-    saleOccurredAt,
-    fallbackConfirmedAt: confirmedAtTrimmed,
-  });
-
   // 1. Click ID check (with Identity Stitcher: DIRECT → PHONE_STITCH → FINGERPRINT_STITCH)
   const directSource = await getPrimarySource(siteId, { callId });
   const { data: callCtx } = await adminClient
@@ -164,6 +159,11 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     callTime,
     callerPhoneE164: (callCtx as { caller_phone_e164?: string | null } | null)?.caller_phone_e164 ?? null,
     fingerprint: (callCtx as { matched_fingerprint?: string | null } | null)?.matched_fingerprint ?? null,
+  });
+  const occurredAtMeta = resolveSealOccurredAt({
+    intentCreatedAt: (callCtx as { created_at?: string | null } | null)?.created_at ?? null,
+    saleOccurredAt,
+    fallbackConfirmedAt: confirmedAtTrimmed,
   });
 
   const gclid = discovered?.source?.gclid?.trim() || null;

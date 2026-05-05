@@ -1,8 +1,10 @@
 /**
  * Process call-event worker payload: insert call + audit.
  * Pre-condition: HMAC, replay, consent already validated in receiver.
- * HOTFIX: calls_status_check only allows ['intent','confirmed','junk','qualified','real','cancelled'] or NULL.
- * Click-origin leads must therefore enter the canonical intent ontology immediately.
+ *
+ * Allowed `calls.status` values are enforced by Postgres **`calls_status_check`**
+ * (`supabase/migrations/20260508120000_panel_oci_schema_safety_net.sql`; panel funnel + legacy ladder).
+ * Click-origin leads must enter the canonical intent ontology immediately.
  */
 
 import { createTenantClient } from '@/lib/supabase/tenant-client';
