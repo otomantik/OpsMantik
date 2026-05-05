@@ -1,4 +1,8 @@
-type Translator = (...args: unknown[]) => string;
+/** String-key translator (e.g. `tUnsafe` from I18n); avoids `TranslationKey` vs dynamic server messages. */
+export type MutationErrorTranslator = (
+  key: string,
+  params?: Record<string, string | number>
+) => string;
 
 export type MutationTelemetryKind =
   | 'queue_action_denied_readonly_total'
@@ -13,7 +17,12 @@ export type ParsedMutationError = {
   telemetry: MutationTelemetryKind | null;
 };
 
-function mapDomainMessage(status: number, code: string | null, fallback: string, t: Translator): ParsedMutationError {
+function mapDomainMessage(
+  status: number,
+  code: string | null,
+  fallback: string,
+  t: MutationErrorTranslator
+): ParsedMutationError {
   if (status === 403 && code === 'READ_ONLY_SCOPE') {
     return {
       status,
@@ -50,7 +59,10 @@ function mapDomainMessage(status: number, code: string | null, fallback: string,
   };
 }
 
-export async function parseMutationError(response: Response, t: Translator): Promise<ParsedMutationError> {
+export async function parseMutationError(
+  response: Response,
+  t: MutationErrorTranslator
+): Promise<ParsedMutationError> {
   const payloadUnknown = await response.json().catch(() => ({}));
   const payload =
     payloadUnknown && typeof payloadUnknown === 'object' && !Array.isArray(payloadUnknown)

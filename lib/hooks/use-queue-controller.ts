@@ -130,7 +130,7 @@ export type QueueControllerActions = {
 };
 
 export function useQueueController(siteId: string, readOnly = false): { state: QueueControllerState; actions: QueueControllerActions } {
-  const { t } = useTranslation();
+  const { t, tUnsafe } = useTranslation();
   const { bountyChips, currency: siteCurrency } = useSiteConfig(siteId);
   const { buildSealBody } = useQueueCommandDispatcher();
   const {
@@ -685,14 +685,14 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const parsed = await parseMutationError(res, t);
+        const parsed = await parseMutationError(res, tUnsafe);
         if (parsed.telemetry) {
           logger.warn(parsed.telemetry, { site_id: siteId, call_id: intentForSeal.id, status: parsed.status, code: parsed.code });
         }
         throw new Error(parsed.message);
       }
     },
-    [buildSealBody, intentForSeal, readOnly, siteId, t]
+    [buildSealBody, intentForSeal, readOnly, siteId, tUnsafe]
   );
 
   const onSealJunk = useCallback(async () => {

@@ -126,7 +126,7 @@ async function callEventV2Inner(req: NextRequest) {
       rawBody,
       requestId,
       route: ROUTE,
-      verifySignature: ({ sitePublicId, tsNum, rawBody: body, signature }) =>
+      verifySignature: async ({ sitePublicId, tsNum, rawBody: body, signature }) =>
         adminClient.rpc('verify_call_event_signature_v1', {
           p_site_public_id: sitePublicId,
           p_ts: tsNum,

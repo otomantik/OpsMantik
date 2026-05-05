@@ -41,7 +41,7 @@ export function useIntentQualification(
   /** Current `calls.version` for the active intent row (from queue RPC). */
   intentRowVersion?: number | null
 ) {
-  const { t } = useTranslation();
+  const { t, tUnsafe } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,7 +115,7 @@ export function useIntentQualification(
               credentials: 'include',
             });
             if (!res.ok) {
-              const parsed = await parseMutationError(res, t);
+              const parsed = await parseMutationError(res, tUnsafe);
               if (parsed.telemetry) {
                 logger.warn(parsed.telemetry, { site_id: siteId, call_id: callId, status: parsed.status, code: parsed.code });
               }
@@ -184,7 +184,7 @@ export function useIntentQualification(
         });
 
         if (!res.ok) {
-          const parsed = await parseMutationError(res, t);
+          const parsed = await parseMutationError(res, tUnsafe);
           if (parsed.telemetry) {
             logger.warn(parsed.telemetry, { site_id: siteId, call_id: intentId, status: parsed.status, code: parsed.code });
           }
@@ -208,7 +208,7 @@ export function useIntentQualification(
         setSaving(false);
       }
     },
-    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess, t, intentRowVersion]
+    [siteId, intentId, matchedSessionId, undoQualification, onUndoSuccess, t, tUnsafe, intentRowVersion]
   );
 
   const clearError = useCallback(() => {

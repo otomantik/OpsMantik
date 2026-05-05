@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
             rawBody,
             requestId,
             route: CALL_EVENT_ROUTE,
-            verifySignature: ({ sitePublicId, tsNum, rawBody: body, signature }) =>
+            verifySignature: async ({ sitePublicId, tsNum, rawBody: body, signature }) =>
                 adminClient.rpc('verify_call_event_signature_v1', {
                     p_site_public_id: sitePublicId,
                     p_ts: tsNum,
