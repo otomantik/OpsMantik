@@ -99,5 +99,8 @@ to the database only through Cursor Supabase MCP:
 
 Do not use supabase db push for this project unless ALLOW_SUPABASE_CLI_DB_PUSH=1
 is explicitly set (escape hatch; not the default workflow).
+
+Migration history drift policy:
+  docs/OPS/SUPABASE_MIGRATION_DRIFT_POLICY.md
 `.trim());
 process.exit(1);
