@@ -244,7 +244,7 @@ export async function enqueuePanelStageOciOutbox(
     (process.env.OCI_PRODUCER_PRIMARY_RECHECK ?? '').trim().toLowerCase() === '1'
   ) {
     const primary2 = await resolveOciClickAttribution(effectiveCall.site_id, { callId: effectiveCall.id });
-    if (hasAnyAdsClickId(primary) !== hasAnyAdsClickId(primary2)) {
+    if ((primary ? hasAnyAdsClickId(primary) : false) !== (primary2 ? hasAnyAdsClickId(primary2) : false)) {
       incrementRefactorMetric('oci_producer_primary_window_drift_total');
       logWarn('oci_producer_primary_window_drift', {
         call_id: effectiveCall.id,
