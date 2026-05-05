@@ -413,18 +413,3 @@ Watchtower billingReconciliationDriftLast1h:
 **Exposure:**  
 - **GET /api/metrics** — cron or admin auth; returns JSON with all counters + `billing_reconciliation_drift_sites_last1h`.  
 - **Watchtower** — GET /api/cron/watchtower response includes `billing_metrics` (same counters + drift).
-
----
-
-## PR-8: Billing observability
-
-**Sync counters (in-memory + BILLING_METRIC log):**  
-`billing_ingest_allowed_total`, `billing_ingest_duplicate_total`, `billing_ingest_rejected_quota_total`, `billing_ingest_rate_limited_total`, `billing_ingest_overage_total`, `billing_ingest_degraded_total`.
-
-**Reconciliation counters:**  
-`billing_reconciliation_runs_ok_total`, `billing_reconciliation_runs_failed_total`.  
-**Drift:** `billing_reconciliation_drift_sites_last1h` (from DB: sites with last_drift_pct > 1% in last 1h).
-
-**Exposure:**  
-- **GET /api/metrics** — cron or admin auth; returns JSON with all counters + `billing_reconciliation_drift_sites_last1h`.  
-- **Watchtower** — GET /api/cron/watchtower response includes `billing_metrics` (same counters + drift).

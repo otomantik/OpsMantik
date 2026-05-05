@@ -70,6 +70,7 @@ test('conversation create RPC rejects cross-site primary call and leaves no orph
   });
 
   if (error?.message?.includes('create_conversation_with_primary_entity') && error?.message?.includes('schema cache')) {
+    t.diagnostic(`conversation RPC schema cache miss (call case): ${error.message}`);
     t.skip(`conversation RPC not available in target schema: ${error.message}`);
     return;
   }
@@ -143,6 +144,7 @@ test('conversation create RPC rejects cross-site primary session and leaves no o
   });
 
   if (error?.message?.includes('create_conversation_with_primary_entity') && error?.message?.includes('schema cache')) {
+    t.diagnostic(`conversation RPC schema cache miss (session case): ${error.message}`);
     t.skip(`conversation RPC not available in target schema: ${error.message}`);
     return;
   }
