@@ -1,3 +1,9 @@
+# DEPRECATED (Legacy Turkish) — Sync 400 Debug Notes
+
+This runbook is retained as legacy context. For active English operational guidance, use:
+- `docs/runbooks/DEPLOY_POST_VERIFY.md`
+- `docs/runbooks/OCI_HARDENING_OPERATIONS.md`
+
 # Sync 400 — Heartbeat / event hatası nasıl çözülür
 
 Tarayıcıda "Failed to load resource: 400" görüyorsan, istek `/api/sync`'e gidiyor ve sunucu 400 dönüyor.

@@ -1,3 +1,10 @@
+# DEPRECATED (Legacy Turkish) — OCI GCLID Capture Flow
+
+This document is preserved for historical incident context and Turkish operator notes.
+Canonical English references for active behavior:
+- `docs/runbooks/OCI_HARDENING_OPERATIONS.md`
+- `docs/architecture/EXPORT_CONTRACT.md`
+
 # OCI: GCLID Nereden Geliyor, Neden Bazen Session'da Yok?
 
 ## Kısa cevap

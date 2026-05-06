@@ -1,3 +1,10 @@
+# DEPRECATED DRAFT (Legacy Turkish) — BI Export Query Draft
+
+This is a historical draft and not a canonical source for production behavior.
+Use canonical English contracts and runbooks:
+- `docs/architecture/EXPORT_CONTRACT.md`
+- `docs/runbooks/OCI_HARDENING_OPERATIONS.md`
+
 # BI Export Service — Query Taslağı (SQL & Data Logic)
 
 **Amaç:** Mühürlenmiş ledger verisini BI araçlarına (Metabase, Tableau, Looker Studio vb.) servis etmek için SQL taslakları ve veri mantığı.

@@ -1,3 +1,10 @@
+# DEPRECATED (Legacy Turkish) — Auth/Login Redirect Troubleshooting
+
+This document is retained as legacy operational context and is not the canonical active runbook.
+Use English canonical operational docs for current production workflows:
+- `docs/runbooks/OCI_HARDENING_OPERATIONS.md`
+- `docs/runbooks/DEPLOY_POST_VERIFY.md`
+
 # Auth / Login Geçiş Sorun Giderme
 
 Kullanıcı Google ile giriş yapıyor ama OAuth sonrası panele geçemiyorsa ("geçiş açılmıyor", "site açılmıyor") kontrol edilecekler:

@@ -1,3 +1,10 @@
+# DEPRECATED (Legacy Turkish) — Google Ads OCI Troubleshooting Checklist
+
+This document remains for historical Turkish troubleshooting context.
+Use canonical English runbooks for active operations:
+- `docs/runbooks/OCI_HARDENING_OPERATIONS.md`
+- `docs/architecture/EXPORT_CONTRACT.md`
+
 # Google Ads OCI — Olası Sorunlar Kontrol Listesi
 
 **Tarih:** 2026-03-04  

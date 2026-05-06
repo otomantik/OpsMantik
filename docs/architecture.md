@@ -1,3 +1,11 @@
+# DEPRECATED (Legacy Turkish) — Architecture Glossary
+
+This file is kept as a historical Turkish glossary and should not be treated as the active architecture source.
+Canonical English architecture documents:
+- `docs/architecture/MODULE_BOUNDARIES.md`
+- `docs/architecture/DETERMINISM_CONTRACT.md`
+- `docs/architecture/EXPORT_CONTRACT.md`
+
 # OpsMantik Mimari Dokümantasyonu (Architecture Glossary)
 
 Bu doküman, OpsMantik V1 altyapısında yer alan çekirdek kavramları ve akışları açıklamaktadır.
