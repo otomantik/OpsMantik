@@ -1,2 +1,0 @@
-[dotenv@17.2.3] injecting env (36) from .env.local -- tip: ???? sync secrets across teammates & machines: https://dotenvx.com/ops
-Count: 0 Data: []

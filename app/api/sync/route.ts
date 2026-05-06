@@ -8,7 +8,7 @@ import { getIngestCorsHeaders } from '@/lib/security/cors';
 import { createSyncResponse } from '@/lib/sync-utils';
 import { logError } from '@/lib/logging/logger';
 import { getClientIp } from '@/lib/request-client-ip';
-import { getFinalUrl, normalizeIp, normalizeUserAgent } from '@/lib/types/ingest';
+import { getFinalUrl, normalizeIp } from '@/lib/types/ingest';
 import { parseSignalManifest, toValidIngestPayload } from '@/lib/types/signal-manifest';
 import { computeIdempotencyKey, computeCanonicalIdempotencyKey, getServerNowMs } from '@/lib/idempotency';
 import { incrementBillingIngestRateLimited, incrementBillingIngestDegraded } from '@/lib/billing-metrics';

@@ -33,7 +33,6 @@ export function LeadActionOverlay({
   const { t } = useTranslation();
   const [step, setStep] = useState<'phone' | 'rating' | 'success'>('phone');
   const [phone, setPhone] = useState('');
-  const [score, setScore] = useState<number>(100);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -45,15 +44,10 @@ export function LeadActionOverlay({
       setIsSubmitting(false);
       setSubmitError(null);
       
-      switch (actionType) {
-        // For junk we do NOT show rating selection.
-        // Backend treats junk as a fixed negative signal (optimizationValue = 0.1).
-        // We still pass `0.1` so UI intent is explicit.
-        case 'junk': setScore(0.1); setStep('phone'); break;
-        case 'contacted': setScore(60); break;
-        case 'offered': setScore(80); break;
-        case 'won': setScore(100); break;
-      }
+      // For junk we do NOT show rating selection.
+      // Backend treats junk as a fixed negative signal (optimizationValue = 0.1).
+      // We still pass `0.1` so UI intent is explicit.
+      if (actionType === 'junk') setStep('phone');
     }
   }, [isOpen, actionType]);
 

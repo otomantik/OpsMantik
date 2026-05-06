@@ -9,7 +9,7 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, Trash2, Phone, CircleDollarSign, ChevronRight, ChevronLeft, Send } from 'lucide-react';
+import { ShieldCheck, Trash2, Phone, ChevronRight, ChevronLeft, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { useSfx } from '@/lib/hooks/use-sfx';
