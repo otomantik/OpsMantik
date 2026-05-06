@@ -73,9 +73,6 @@ export interface UpsertMarketingSignalParams {
   clickIds: ClickIds;
   /** feature_snapshot.* fields (merged with `{ source }` by this helper). */
   featureSnapshotExtras?: Record<string, unknown>;
-  /** Optional entropy/uncertainty (router path supplies them; seal/panel leave them null). */
-  entropyScore?: number | null;
-  uncertaintyBit?: boolean | null;
   /** Optional conversionName override; defaults to OPSMANTIK_CONVERSION_NAMES[stage]. */
   conversionNameOverride?: string | null;
 }
@@ -232,8 +229,6 @@ export async function upsertMarketingSignal(
     conversion_value: economics.conversionValueMajor,
     optimization_stage: snapshot.optimizationStage,
     optimization_stage_base: snapshot.stageBase,
-    system_score: snapshot.systemScore,
-    quality_factor: snapshot.qualityFactor,
     optimization_value: economics.conversionValueMajor,
     actual_revenue: snapshot.actualRevenue,
     helper_form_payload: snapshot.helperFormPayload,
@@ -242,8 +237,6 @@ export async function upsertMarketingSignal(
     model_version: snapshot.modelVersion,
     dispatch_status: 'PENDING',
     causal_dna: {},
-    entropy_score: entropyScore ?? null,
-    uncertainty_bit: uncertaintyBit ?? null,
     gclid: nClick.gclid,
     wbraid: nClick.wbraid,
     gbraid: nClick.gbraid,

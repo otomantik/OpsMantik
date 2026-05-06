@@ -39,12 +39,7 @@ export type QueueTransitionPatch = {
 };
 
 export type QueueScoreSnapshotPatch = {
-  brain_score?: number | null;
-  match_score?: number | null;
-  queue_priority?: number | null;
-  score_version?: number | null;
-  score_flags?: number | null;
-  score_explain_jsonb?: Record<string, unknown> | null;
+  // Legacy scoring fields removed (New Math Protocol)
 };
 
 export type QueueSnapshotUpdatePayload = {
@@ -124,12 +119,6 @@ export function queueSnapshotPayloadToTransition(
     new_status: payload.status,
     actor,
     created_at: payload.updated_at,
-    brain_score: payload.brain_score ?? null,
-    match_score: payload.match_score ?? null,
-    queue_priority: payload.queue_priority ?? null,
-    score_version: payload.score_version ?? null,
-    score_flags: payload.score_flags ?? null,
-    score_explain_jsonb: payload.score_explain_jsonb ?? null,
     error_payload: buildQueueTransitionErrorPayload({
       last_error: payload.last_error ?? undefined,
       provider_error_code: payload.provider_error_code ?? undefined,

@@ -255,7 +255,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       value_fallback_used: wonEconomics.fallbackUsed,
       optimization_stage: optimizationSnapshot.optimizationStage,
       optimization_stage_base: optimizationSnapshot.stageBase,
-      system_score: optimizationSnapshot.systemScore,
       quality_factor: null,
       optimization_value: optimizationSnapshot.optimizationValue,
       actual_revenue: optimizationSnapshot.actualRevenue,
@@ -280,8 +279,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       blocked_at: queueGate.status === 'BLOCKED_PRECEDING_SIGNALS' ? nowIso : null,
       source_outbox_event_id: sourceOutboxEventId ?? null,
       causal_dna: {},
-      entropy_score: 0,
-      uncertainty_bit: false,
     };
     if (entryReason?.trim()) insertPayload.entry_reason = entryReason.trim().slice(0, 500);
     if (discoveryMethod) insertPayload.discovery_method = discoveryMethod;

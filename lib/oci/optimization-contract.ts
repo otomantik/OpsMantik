@@ -57,36 +57,28 @@ export function resolveStageBase(stage: OptimizationStage): number {
 }
 
 /**
- * Universal quality multiplier.
- *
- * Test-verified formula:
- * - systemScore 0   => 0.6
- * - systemScore 50  => 0.9
- * - systemScore 100 => 1.2
+ * Universal quality multiplier - DISABLED (Now always 1.0)
  */
 export function resolveQualityFactor(
-  systemScore: number | null | undefined,
-  stage?: OptimizationStage
+  _systemScore: number | null | undefined,
+  _stage?: OptimizationStage
 ): number {
-  if (stage === 'junk') return 1.0;
-  const s = clampSystemScore(systemScore);
-  // qualityFactor = 0.6 * (1 + s/100)
-  return roundToTwo(0.6 * (1 + s / 100));
+  return 1.0;
 }
 
 /**
- * Calculates the optimization value based on stage and system score.
+ * Calculates the optimization value based on stage only (New Math).
  *
- * optimizationValue = stageBase * qualityFactor(systemScore)
+ * optimizationValue = stageBase
  */
 export function resolveOptimizationValue(params: {
   stage: OptimizationStage;
-  systemScore: number | null | undefined;
+  systemScore?: number | null | undefined;
 }): Pick<OptimizationValueSnapshot, 'stageBase' | 'systemScore' | 'qualityFactor' | 'optimizationValue'> {
   const stageBase = resolveStageBase(params.stage);
-  const systemScore = clampSystemScore(params.systemScore);
-  const qualityFactor = resolveQualityFactor(systemScore, params.stage);
-  const optimizationValue = roundToTwo(stageBase * qualityFactor);
+  const systemScore = 0; // Legacy Brain Score disabled
+  const qualityFactor = 1.0; 
+  const optimizationValue = stageBase;
 
   return {
     stageBase,

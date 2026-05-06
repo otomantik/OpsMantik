@@ -25,8 +25,6 @@ export interface InsertMarketingSignalParams {
   traceId: string | null;
   stage: PipelineStage;
   payload: SignalPayload;
-  entropyScore: number;
-  uncertaintyBit: boolean | null;
 }
 
 export async function insertMarketingSignal(params: InsertMarketingSignalParams): Promise<{
@@ -47,7 +45,7 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
 
   const snapshot = buildOptimizationSnapshot({
     stage,
-    systemScore: resolveSignalSystemScore(payload),
+    systemScore: 0,
     modelVersion: 'universal-value-v1',
   });
 
@@ -77,8 +75,6 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
     economics,
     clickIds: clickNorm,
     featureSnapshotExtras: { source_detail: 'mizan_marketing_signal_insert' },
-    entropyScore,
-    uncertaintyBit,
     conversionNameOverride: conversionName ?? OPSMANTIK_CONVERSION_NAMES[stage],
   });
 
@@ -102,15 +98,3 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   };
 }
 
-function resolveSignalSystemScore(payload: SignalPayload): number {
-  const raw = payload.systemScore ?? payload.valueCents;
-  if (
-    raw != null &&
-    Number.isFinite(raw) &&
-    raw >= 0 &&
-    raw <= 100
-  ) {
-    return Math.round(raw);
-  }
-  return 60;
-}
