@@ -65,17 +65,18 @@ ALTER FUNCTION public.validate_conversion_value_policy_v1(text, jsonb) SET searc
 -- Drop the legacy DNA ledger appending function as it is no longer used by the code
 DROP FUNCTION IF EXISTS public.append_causal_dna_ledger(uuid, text, uuid, jsonb);
 
--- Retroactive cleanup: Nullify old causal DNA to reclaim space (keeping metadata but losing bulky blobs)
--- This targets records older than 30 days to ensure performance while keeping recent forensics if needed.
+-- Retroactive Full Purge: Nullify ALL causal DNA to reclaim maximum space
 UPDATE public.marketing_signals 
 SET causal_dna = '{}'::jsonb 
-WHERE causal_dna != '{}'::jsonb 
-  AND created_at < NOW() - INTERVAL '30 days';
+WHERE causal_dna != '{}'::jsonb;
 
 UPDATE public.offline_conversion_queue 
 SET causal_dna = '{}'::jsonb 
-WHERE causal_dna != '{}'::jsonb 
-  AND created_at < NOW() - INTERVAL '30 days';
+WHERE causal_dna != '{}'::jsonb;
+
+-- 5. STORAGE: Drop the bulky legacy ledger table entirely
+DROP TABLE IF EXISTS public.causal_dna_ledger CASCADE;
+DROP TABLE IF EXISTS public.causal_dna_ledger_failures CASCADE;
 
 
 --------------------------------------------------------------------------------
