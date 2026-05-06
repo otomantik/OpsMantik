@@ -11,7 +11,7 @@ async function checkColumns() {
       SELECT table_name, column_name 
       FROM information_schema.columns 
       WHERE table_schema = 'public' 
-        AND table_name IN ('conversations', 'conversation_links', 'sales')
+        AND table_name IN ('conversations', 'conversation_links', 'sales', 'calls')
     `);
     console.log(JSON.stringify(res.rows, null, 2));
   } finally {

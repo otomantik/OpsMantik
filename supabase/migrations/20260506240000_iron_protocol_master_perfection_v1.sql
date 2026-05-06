@@ -93,9 +93,12 @@ GROUP BY dispatch_status;
 GRANT SELECT ON public.pipeline_health_watchtower TO authenticated;
 
 
---------------------------------------------------------------------------------
 -- 4. DISCIPLINE: Constraint Hardening
 --------------------------------------------------------------------------------
+
+-- Ensure calls can hold sale amounts (New Math Economics)
+ALTER TABLE public.calls ADD COLUMN IF NOT EXISTS sale_amount numeric(12,2) DEFAULT NULL;
+ALTER TABLE public.calls ADD COLUMN IF NOT EXISTS sale_currency text DEFAULT 'TRY';
 
 -- Ensure sale_amount is never negative
 ALTER TABLE public.calls ADD CONSTRAINT calls_sale_amount_positive CHECK (sale_amount IS NULL OR sale_amount >= 0);
