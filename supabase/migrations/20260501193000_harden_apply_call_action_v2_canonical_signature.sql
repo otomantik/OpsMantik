@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION public.apply_call_action_v2(
   p_stage text,
   p_actor_id uuid,
   p_lead_score integer DEFAULT NULL,
-  p_sale_metadata jsonb,
+  p_sale_metadata jsonb DEFAULT NULL,
   p_version integer DEFAULT NULL,
   p_metadata jsonb DEFAULT '{}'::jsonb,
   p_caller_phone_raw text DEFAULT NULL,

@@ -423,8 +423,10 @@ END;
 $function$
 ;
 
+DROP TRIGGER IF EXISTS protect_buckets_delete ON storage.buckets;
 CREATE TRIGGER protect_buckets_delete BEFORE DELETE ON storage.buckets FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();
 
+DROP TRIGGER IF EXISTS protect_objects_delete ON storage.objects;
 CREATE TRIGGER protect_objects_delete BEFORE DELETE ON storage.objects FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();
 
 
