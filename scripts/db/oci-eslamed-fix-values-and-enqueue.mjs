@@ -53,6 +53,14 @@ async function resolveSiteId(q) {
 
 async function run() {
   const dryRun = process.argv.includes('--dry-run');
+  const allowUnsafeWrite = process.env.ALLOW_UNSAFE_OCI_VALUE_WRITE === '1';
+
+  if (!dryRun && !allowUnsafeWrite) {
+    console.error('[SAFE-GUARD] Ad-hoc signal deger yazimi varsayilan olarak kapali.');
+    console.error('[SAFE-GUARD] SSOT policy disina cikmamak icin once --dry-run ile aday satirlari inceleyin.');
+    console.error('Gecici override gerekiyorsa ALLOW_UNSAFE_OCI_VALUE_WRITE=1 ile bilincli calistirin.');
+    process.exit(2);
+  }
 
   const siteId = await resolveSiteId('Eslamed');
   if (!siteId) {

@@ -24,8 +24,16 @@ if (!url || !key) {
 
 const supabase = createClient(url, key);
 const dryRun = process.argv.includes('--dry-run');
+const allowUnsafeWrite = process.env.ALLOW_UNSAFE_OCI_VALUE_WRITE === '1';
 
 async function run() {
+  if (!dryRun && !allowUnsafeWrite) {
+    console.error('[SAFE-GUARD] Bu script ad-hoc value_cents overwrite yaptigi icin varsayilan olarak write-kapali.');
+    console.error('[SAFE-GUARD] Once --dry-run ile drift adaylarini inceleyin; onarimi SSOT yolundan yapin.');
+    console.error('Gecici override gerekiyorsa ALLOW_UNSAFE_OCI_VALUE_WRITE=1 ile bilincli calistirin.');
+    process.exit(2);
+  }
+
   const { data: rows, error } = await supabase
     .from('offline_conversion_queue')
     .select('id, site_id, value_cents, currency')

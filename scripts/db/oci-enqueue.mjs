@@ -33,6 +33,7 @@ if (!url || !key) {
 const supabase = createClient(url, key);
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run') || args.includes('-n');
+const allowUnsafeWrite = process.env.ALLOW_UNSAFE_OCI_VALUE_WRITE === '1';
 const todayOnly = args.includes('--today') || args.includes('-t');
 const daysArg = args.find((a) => a.startsWith('--days='));
 const daysNum = daysArg ? parseInt(daysArg.split('=')[1], 10) : (args.includes('--days') ? parseInt(args[args.indexOf('--days') + 1], 10) : 0);
@@ -57,6 +58,15 @@ async function resolveSiteId(q) {
 }
 
 async function run() {
+  if (!dryRun && !allowUnsafeWrite) {
+    console.error('[SAFE-GUARD] Bu script SSOT-disi ad-hoc deger yazimi riski nedeniyle varsayilan olarak write-kapali calisir.');
+    console.error('[SAFE-GUARD] Lütfen dry-run kullanin ve onarim icin app SSOT yollarini tercih edin:');
+    console.error('  - /api/cron/sweep-unsent-conversions');
+    console.error('  - /api/cron/oci/enqueue-from-sales');
+    console.error('Gecici override gerekiyorsa ALLOW_UNSAFE_OCI_VALUE_WRITE=1 ile bilincli calistirin.');
+    process.exit(2);
+  }
+
   const siteId = await resolveSiteId(query);
   if (!siteId) {
     console.error('Site bulunamadi:', query || '(bos)');

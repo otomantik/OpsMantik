@@ -13,9 +13,16 @@ import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { toExpectedValueCents } from '@/lib/oci/marketing-signal-hash';
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
 
 /** Provenance for expected_value_cents / conversion_value at insert. */
-export type MarketingSignalValueSource = 'stage_model' | 'fixed_junk_exclusion';
+export const CONVERSION_VALUE_POLICY_VERSION = 'oci_conversion_value_policy_v1';
+
+export type MarketingSignalValueSource =
+  | 'stage_model'
+  | 'fixed_junk_exclusion'
+  | 'won_stage_model_fallback'
+  | 'won_stage_model_with_actual_revenue';
 
 export type MarketingSignalConversionTimeSource = 'ledger_stage_event';
 
@@ -23,9 +30,15 @@ export interface MarketingSignalEconomics {
   expectedValueCents: number;
   /** Major units for conversion_value / optimization_value display fields on the row. */
   conversionValueMajor: number;
+  conversionName: string;
   valueSource: MarketingSignalValueSource;
   conversionTimeSource: MarketingSignalConversionTimeSource;
   currencyCode: string;
+  policyVersion: string;
+  policyReason: string;
+  fallbackAllowed: boolean;
+  fallbackUsed: boolean;
+  actualRevenueRequired: boolean;
 }
 
 const JUNK_NOMINAL_CENTS = 10;
@@ -44,17 +57,53 @@ export function resolveMarketingSignalEconomics(params: {
     return {
       expectedValueCents: JUNK_NOMINAL_CENTS,
       conversionValueMajor: JUNK_NOMINAL_MAJOR,
+      conversionName: OPSMANTIK_CONVERSION_NAMES.junk,
       valueSource: 'fixed_junk_exclusion',
       conversionTimeSource: 'ledger_stage_event',
       currencyCode,
+      policyVersion: CONVERSION_VALUE_POLICY_VERSION,
+      policyReason: 'junk_exclusion_nominal_fixed_10c',
+      fallbackAllowed: false,
+      fallbackUsed: false,
+      actualRevenueRequired: false,
     };
   }
   return {
     expectedValueCents: toExpectedValueCents(params.snapshot.optimizationValue),
     conversionValueMajor: params.snapshot.optimizationValue,
+    conversionName: OPSMANTIK_CONVERSION_NAMES[params.stage],
     valueSource: 'stage_model',
     conversionTimeSource: 'ledger_stage_event',
     currencyCode,
+    policyVersion: CONVERSION_VALUE_POLICY_VERSION,
+    policyReason: `stage_model_${params.stage}`,
+    fallbackAllowed: false,
+    fallbackUsed: false,
+    actualRevenueRequired: false,
+  };
+}
+
+export function resolveWonConversionEconomics(params: {
+  snapshot: OptimizationValueSnapshot;
+  siteCurrency: string | null | undefined;
+}): MarketingSignalEconomics {
+  const currencyCode = normalizeCurrencyOrNeutral(params.siteCurrency);
+  const hasActualRevenue =
+    params.snapshot.actualRevenue != null &&
+    Number.isFinite(params.snapshot.actualRevenue) &&
+    params.snapshot.actualRevenue > 0;
+  return {
+    expectedValueCents: toExpectedValueCents(params.snapshot.optimizationValue),
+    conversionValueMajor: params.snapshot.optimizationValue,
+    conversionName: OPSMANTIK_CONVERSION_NAMES.won,
+    valueSource: hasActualRevenue ? 'won_stage_model_with_actual_revenue' : 'won_stage_model_fallback',
+    conversionTimeSource: 'ledger_stage_event',
+    currencyCode,
+    policyVersion: CONVERSION_VALUE_POLICY_VERSION,
+    policyReason: hasActualRevenue ? 'won_stage_model_actual_revenue_present' : 'won_stage_model_actual_revenue_missing',
+    fallbackAllowed: true,
+    fallbackUsed: !hasActualRevenue,
+    actualRevenueRequired: false,
   };
 }
 

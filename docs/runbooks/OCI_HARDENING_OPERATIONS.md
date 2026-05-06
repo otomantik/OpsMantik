@@ -81,3 +81,35 @@ Projection contract note:
 - Do not promote API mode when P0 checks are red.
 - Do not delete `offline_conversion_queue` rows during mitigation.
 - Prefer additive migrations and deterministic replay over destructive cleanup.
+
+## 4. Conversion Math SSOT and Value Drift
+
+Canonical conversion names:
+- `OpsMantik_Contacted`
+- `OpsMantik_Offered`
+- `OpsMantik_Won`
+- `OpsMantik_Junk_Exclusion`
+
+Canonical policy module:
+- `lib/oci/marketing-signal-value-ssot.ts`
+
+Policy version:
+- `oci_conversion_value_policy_v1`
+
+Run value drift checks:
+1. `scripts/sql/value_integrity_health.sql`
+2. `scripts/sql/conversion_value_policy_repair_playbook.sql` (dry-run candidates)
+
+GREEN/RED interpretation:
+- GREEN: `drifted_rows = 0` for active sites.
+- RED: any non-waived drift rows > 0.
+
+Dry-run repair flow:
+1. Run playbook dry-run and pick one site as canary.
+2. Repair through app SSOT paths when possible (enqueue/upsert flows).
+3. If emergency write is unavoidable, tag provenance fields (`value_repair_reason`, `value_policy_version`, `value_repaired_at`, `value_repaired_by`).
+4. Re-run health SQL and verify drift is cleared.
+
+Hard rules:
+- Never delete queue rows during mitigation.
+- Value policy changes must ship as one PR containing code + migration + health SQL + tests.

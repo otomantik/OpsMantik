@@ -31,6 +31,15 @@ const V3_NAME = 'OpsMantik_V3_Nitelikli_Gorusme';
 const V3_CALCULATED_VALUE_MAJOR = 100;
 
 async function run() {
+  const dryRun = process.argv.includes('--dry-run');
+  const allowUnsafeWrite = process.env.ALLOW_UNSAFE_OCI_VALUE_WRITE === '1';
+  if (!dryRun && !allowUnsafeWrite) {
+    console.error('[SAFE-GUARD] Ad-hoc conversion value UPDATE varsayilan olarak kapali.');
+    console.error('[SAFE-GUARD] Önce --dry-run kullanin; SSOT disi manuel write path risklidir.');
+    console.error('Gecici override gerekiyorsa ALLOW_UNSAFE_OCI_VALUE_WRITE=1 ile bilincli calistirin.');
+    process.exit(2);
+  }
+
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  Muratcan V3 Nitelikli Görüşme — Değer düzeltmesi (matematiğe göre)');
   console.log('═══════════════════════════════════════════════════════════════\n');
@@ -66,7 +75,6 @@ async function run() {
     console.log('  ' + (i + 1) + '. id=' + r.id?.slice(0, 8) + '... eski conversion_value=' + r.conversion_value + ' → yeni ' + V3_CALCULATED_VALUE_MAJOR + ' TRY');
   });
 
-  const dryRun = process.argv.includes('--dry-run');
   if (dryRun) {
     console.log('\n[--dry-run] UPDATE yapılmadı.');
     process.exit(0);

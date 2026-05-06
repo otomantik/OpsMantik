@@ -26,6 +26,7 @@ import {
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
 import { resolveWonQueueInitialStatus } from '@/lib/oci/preceding-signals';
+import { resolveWonConversionEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -193,9 +194,13 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     systemScore: leadScore,
     actualRevenue: saleAmount,
   });
-  const valueUnits = optimizationSnapshot.optimizationValue;
-  const valueCents = Math.max(Math.round(valueUnits * 100), 1);
-  const usedFallback = !(saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0);
+  const wonEconomics = resolveWonConversionEconomics({
+    snapshot: optimizationSnapshot,
+    siteCurrency: currencySafe,
+  });
+  const valueUnits = wonEconomics.conversionValueMajor;
+  const valueCents = wonEconomics.expectedValueCents;
+  const usedFallback = wonEconomics.fallbackUsed;
 
   if (usedFallback) {
     logInfo('enqueue_seal_missing_actual_revenue', {
@@ -253,6 +258,10 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       occurred_at_source: occurredAtMeta.occurredAtSource,
       value_cents: valueCents,
       currency: currencySafe,
+      value_source: wonEconomics.valueSource,
+      value_policy_version: wonEconomics.policyVersion,
+      value_policy_reason: wonEconomics.policyReason,
+      value_fallback_used: wonEconomics.fallbackUsed,
       optimization_stage: optimizationSnapshot.optimizationStage,
       optimization_stage_base: optimizationSnapshot.stageBase,
       system_score: optimizationSnapshot.systemScore,
@@ -261,6 +270,9 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       actual_revenue: optimizationSnapshot.actualRevenue,
       helper_form_payload: null,
       feature_snapshot: {
+        value_policy_version: wonEconomics.policyVersion,
+        value_policy_reason: wonEconomics.policyReason,
+        value_source: wonEconomics.valueSource,
         discovery_method: discoveryMethod,
         discovery_confidence: discoveryConfidence,
         has_gclid: Boolean(gclid),
