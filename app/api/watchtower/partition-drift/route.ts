@@ -25,22 +25,41 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { data, error } = await adminClient.rpc('watchtower_partition_drift_check_v1');
-    if (error) {
-      logError('watchtower partition drift rpc error', { request_id: requestId, route: ROUTE, message: error.message, code: error.code });
-      Sentry.captureException(error, { tags: { route: ROUTE, request_id: requestId } });
-      return NextResponse.json({ ok: false, error: 'Failed to run check' }, { status: 500 });
+    const [driftRes, ociRes] = await Promise.all([
+      adminClient.rpc('watchtower_partition_drift_check_v1'),
+      adminClient.rpc('watchtower_oci_health_check_v1'),
+    ]);
+
+    if (driftRes.error) {
+      logError('watchtower partition drift rpc error', { request_id: requestId, route: ROUTE, message: driftRes.error.message });
+      Sentry.captureException(driftRes.error, { tags: { route: ROUTE, request_id: requestId } });
+    }
+    if (ociRes.error) {
+      logError('watchtower oci health rpc error', { request_id: requestId, route: ROUTE, message: ociRes.error.message });
+      Sentry.captureException(ociRes.error, { tags: { route: ROUTE, request_id: requestId } });
     }
 
-    type PartitionDriftPayload = { ok?: boolean; [key: string]: unknown };
-    const payload: PartitionDriftPayload = typeof data === 'string' ? (() => { try { return JSON.parse(data) as PartitionDriftPayload; } catch { return { ok: false }; } })() : (data as PartitionDriftPayload);
-    const ok = Boolean(payload?.ok);
+    const driftPayload = (driftRes.data || { ok: false }) as Record<string, unknown>;
+    const ociPayload = (ociRes.data || { ok: false }) as Record<string, unknown>;
+
+    const ok = Boolean(driftPayload.ok) && Boolean(ociPayload.ok);
+    const result = {
+      ok,
+      drift: driftPayload,
+      oci_health: ociPayload,
+      checked_at: new Date().toISOString(),
+    };
+
     if (!ok) {
-      logWarn('watchtower partition drift check failed', { request_id: requestId, route: ROUTE, details: payload });
-      Sentry.captureMessage('watchtower_partition_drift_failed', { level: 'warning', tags: { route: ROUTE, request_id: requestId } });
+      logWarn('watchtower health check failure', { request_id: requestId, route: ROUTE, result });
+      Sentry.captureMessage('watchtower_health_check_failed', { 
+        level: 'warning', 
+        tags: { route: ROUTE, request_id: requestId },
+        extra: { result }
+      });
     }
 
-    return NextResponse.json(payload);
+    return NextResponse.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     logError('watchtower partition drift unhandled error', { request_id: requestId, route: ROUTE, message: msg });

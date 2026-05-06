@@ -10,6 +10,8 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
 import { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
@@ -28,6 +30,7 @@ import {
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { normalizeOciConversionTimeUtcZ, safeValidateOciPayload } from '@/lib/oci/validation/payload';
 import { fetchCallSendabilityContext } from '@/lib/oci/call-sendability-fetch';
+import { isWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
 
 function formatOutboxCaughtError(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -95,6 +98,8 @@ interface OutboxPayload {
   sale_entry_reason?: string | null;
   sale_amount: number | null;
   currency: string;
+  matched_fingerprint?: string | null;
+  uncertainty_bit?: boolean | null;
 }
 
 function resolveOutboxStage(score: number): SingleConversionGear | 'junk' | null {
@@ -189,11 +194,26 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
     let failed = 0;
     const errors: string[] = [];
 
-    for (const row of claimed) {
-      const id = (row as { id: string }).id;
-      const payload = (row as { payload: OutboxPayload }).payload as OutboxPayload;
-      const callId = payload?.call_id ?? (row as { call_id: string | null }).call_id;
-      const siteId = payload?.site_id ?? (row as { site_id: string }).site_id;
+    for (const row of (claimed as unknown as { id: string; payload: unknown; call_id: string | null; site_id: string; created_at: string; attempt_count: number }[])) {
+      const { id, payload: rawPayload, call_id: callIdFromRow, site_id: siteIdFromRow, created_at: createdAt } = row;
+      const payload = rawPayload as OutboxPayload | null;
+
+      // DEEP REPAIR: Temporal Sanity (Eriyen Onarımı)
+      // If the event itself or the call is older than 90 days, Google Ads will reject it.
+      // We skip these futile attempts early to save resources and avoid API noise.
+      if (!isWithinTemporalSanityWindow(createdAt)) {
+        logWarn('outbox_event_expired', { outbox_id: id, call_id: callIdFromRow, created_at: createdAt });
+        await finalizeOutboxEvent({ 
+          outboxId: id, 
+          status: 'FAILED', 
+          lastError: 'Temporal Sanity Failure: Event is older than 90 days or in the future.' 
+        });
+        processed++;
+        continue;
+      }
+
+      const callId = payload?.call_id ?? callIdFromRow;
+      const siteId = payload?.site_id ?? siteIdFromRow;
       const leadScore = payload?.lead_score ?? null;
       const explicitStage = payload?.stage ?? null; // Explicit stage from v2 RPC
       const confirmedAt = payload?.confirmed_at ?? '';
@@ -288,7 +308,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         }
 
         // --- Zod Validation Guard (Shift-Left Data Integrity) ---
-        const primary = await getPrimarySource(siteId, { callId });
+        const primary = await getPrimarySource(siteId!, { callId: callId ?? undefined });
         const validationResult = safeValidateOciPayload({
           click_id: primary?.gclid || primary?.gbraid || primary?.wbraid || 'UNKNOWN_STUB',
           conversion_value: Number(saleAmount ?? 0),
@@ -325,8 +345,8 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
         if (stage === 'won') {
           // Single-conversion mode: won suppresses lower stages for this lead.
           const result = await enqueueSealConversion({
-            callId,
-            siteId,
+            callId: callId!,
+            siteId: siteId!,
             confirmedAt: conversionTimeUtcZ,
             saleOccurredAt,
             saleAmount,
@@ -345,16 +365,16 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           const gear = stage;
           const { data: existingSignals } = await adminClient
             .from('marketing_signals')
-            .select('id, signal_type, optimization_stage')
-            .eq('site_id', siteId)
-            .eq('call_id', callId)
-            .limit(25);
+            .select('id, google_conversion_name, optimization_stage')
+            .eq('site_id', siteId!)
+            .eq('call_id', callId!)
+            .order('created_at', { ascending: false });
 
           const { data: existingSealQueue } = await adminClient
             .from('offline_conversion_queue')
             .select('id')
-            .eq('site_id', siteId)
-            .eq('call_id', callId)
+            .eq('site_id', siteId!)
+            .eq('call_id', callId!)
             .eq('provider_key', 'google_ads')
             .in('status', ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED', 'COMPLETED', 'COMPLETED_UNVERIFIED'])
             .limit(1);
@@ -379,11 +399,45 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           }
 
           const highestExistingGear = pickHighestPriorityGear(existingGears);
-          if (
+          
+          // DEEP PROFESSIONAL FIX: Junk Reversal (Restatement)
+          // If we are processing 'junk' but 'contacted' or 'offered' were already sent,
+          // we don't just skip. We need to negate the previous signals to avoid algorithm poisoning.
+          const isJunkReversal = gear === 'junk' && highestExistingGear && highestExistingGear !== 'junk';
+          
+          if (isJunkReversal) {
+            logInfo('oci_junk_reversal_triggered', { call_id: callId, site_id: siteId, previous_gear: highestExistingGear });
+            // PRO-LEVEL: Create retractions for all previously sent micro-conversions
+            // This tells Google Ads to 'ignore' the previous positive signals for this click.
+            try {
+              for (const prevGear of (existingGears as PipelineStage[])) {
+                if (prevGear === 'junk') continue;
+                const convName = OPSMANTIK_CONVERSION_NAMES[prevGear];
+                const stableOrderId = computeOfflineConversionExternalId({
+                  providerKey: 'google_ads',
+                  action: convName,
+                  callId,
+                  sessionId: null,
+                });
+                await adminClient.from('conversion_adjustments').insert({
+                  site_id: siteId!,
+                  order_id: stableOrderId!,
+                  adjustment_type: 'RETRACTION',
+                  status: 'PENDING',
+                  conversion_action_name: convName,
+                  reason: 'Lead marked as Junk after initial signal',
+                  channel: 'phone',
+                });
+                logInfo('oci_retraction_queued', { call_id: callId, gear: prevGear, order_id: stableOrderId });
+              }
+            } catch (err) {
+              logError('OCI_RETRACTION_QUEUE_FAILED', { error: (err as Error).message, call_id: callId });
+            }
+          } else if (
             gear !== 'junk' &&
             (gear === 'contacted' || gear === 'offered') &&
             highestExistingGear &&
-            getSingleConversionGearRank(highestExistingGear) > getSingleConversionGearRank(gear)
+            getSingleConversionGearRank(highestExistingGear) >= getSingleConversionGearRank(gear)
           ) {
             logInfo('outbox_signal_skip_higher_gear_exists', {
               outbox_id: id,
@@ -411,23 +465,28 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           const fallbackCreatedNorm =
             normalizeOciConversionTimeUtcZ(payload?.created_at ?? '') ?? conversionTimeUtcZ;
           const callCreatedAtDate = new Date(fallbackCreatedNorm);
-          const clickDate = await getSessionClickDate(callId, callCreatedAtDate);
+          const clickDate = await getSessionClickDate(callId!, callCreatedAtDate);
           const signalDate = new Date(conversionTimeUtcZ);
 
           const result = await evaluateAndRouteSignal(gear as PipelineStage, {
-            siteId,
-            callId,
+            siteId: siteId!,
+            callId: callId!,
             gclid: primary?.gclid ?? null,
             wbraid: primary?.wbraid ?? null,
             gbraid: primary?.gbraid ?? null,
             aov: 0,
+            systemScore: score,
             clickDate,
             signalDate,
+            fingerprint: payload?.matched_fingerprint ?? null,
+            traceId: id,
+            uncertaintyBit: !!payload?.uncertainty_bit,
+            isReversal: !!isJunkReversal,
           });
           if (result.routed) {
             await appendFunnelEvent({
-              callId,
-              siteId,
+              callId: callId!,
+              siteId: siteId!,
               eventType: gear as PipelineStage,
               eventSource: 'OUTBOX_CRON',
               idempotencyKey: `${gear}:call:${callId}:source:outbox_cron`,

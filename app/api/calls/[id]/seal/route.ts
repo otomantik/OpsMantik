@@ -219,14 +219,10 @@ export async function POST(
       versionRaw !== null && versionRaw !== undefined && Number.isFinite(versionRaw)
         ? Math.round(versionRaw)
         : null;
-    let leadScore =
+    const leadScore =
       leadScoreRaw != null && Number.isFinite(leadScoreRaw) && leadScoreRaw >= 0 && leadScoreRaw <= 100
         ? Math.round(leadScoreRaw)
         : null;
-
-    if (leadScore != null && leadScore > 0 && leadScore <= 5) {
-      leadScore = leadScore * 20;
-    }
 
     if (saleAmount != null && (Number.isNaN(saleAmount) || saleAmount < 0)) {
       return NextResponse.json({ error: 'sale_amount must be a non-negative number' }, { status: 400 });

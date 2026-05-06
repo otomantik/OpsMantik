@@ -73,8 +73,6 @@ export interface UpsertMarketingSignalParams {
   clickIds: ClickIds;
   /** feature_snapshot.* fields (merged with `{ source }` by this helper). */
   featureSnapshotExtras?: Record<string, unknown>;
-  /** causal_dna payload (the helper stamps `source` on top of this). */
-  causalDna: Record<string, unknown>;
   /** Optional entropy/uncertainty (router path supplies them; seal/panel leave them null). */
   entropyScore?: number | null;
   uncertaintyBit?: boolean | null;
@@ -112,7 +110,6 @@ export async function upsertMarketingSignal(
     economics,
     clickIds,
     featureSnapshotExtras,
-    causalDna,
     entropyScore,
     uncertaintyBit,
     conversionNameOverride,
@@ -212,14 +209,7 @@ export async function upsertMarketingSignal(
     ...(featureSnapshotExtras ?? {}),
   };
 
-  const causalDnaPayload: Record<string, unknown> = {
-    source,
-    ...causalDna,
-  };
-
-  const isJunk = stage === 'junk';
-  const stageBasePersist = isJunk ? 0.1 : snapshot.stageBase;
-  const qualityFactorPersist = isJunk ? 1 : snapshot.qualityFactor;
+  // causalDna logic removed for speed.
 
   const insertPayload: Record<string, unknown> = {
     site_id: siteId,
@@ -241,9 +231,9 @@ export async function upsertMarketingSignal(
     conversion_time_source: economics.conversionTimeSource,
     conversion_value: economics.conversionValueMajor,
     optimization_stage: snapshot.optimizationStage,
-    optimization_stage_base: stageBasePersist,
+    optimization_stage_base: snapshot.stageBase,
     system_score: snapshot.systemScore,
-    quality_factor: qualityFactorPersist,
+    quality_factor: snapshot.qualityFactor,
     optimization_value: economics.conversionValueMajor,
     actual_revenue: snapshot.actualRevenue,
     helper_form_payload: snapshot.helperFormPayload,
@@ -251,7 +241,7 @@ export async function upsertMarketingSignal(
     outcome_timestamp: occurredAtMeta.occurredAt,
     model_version: snapshot.modelVersion,
     dispatch_status: 'PENDING',
-    causal_dna: causalDnaPayload,
+    causal_dna: {},
     entropy_score: entropyScore ?? null,
     uncertainty_bit: uncertaintyBit ?? null,
     gclid: nClick.gclid,

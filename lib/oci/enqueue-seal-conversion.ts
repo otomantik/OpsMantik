@@ -15,8 +15,6 @@ import { getPrimarySourceWithDiscovery } from '@/lib/oci/identity-stitcher';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
-import { buildMinimalCausalDna } from '@/lib/domain/mizan-mantik/causal-dna';
-import { appendCausalDnaLedgerSafe } from '@/lib/domain/mizan-mantik/shared';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
 import { publishToQStash } from '@/lib/ingest/publish';
@@ -223,14 +221,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     .maybeSingle();
   sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id ?? null;
 
-  // 7. Causal DNA for Seal path (Singularity)
-  const causalDna = buildMinimalCausalDna(
-    'won',
-    ['auth', 'consent', 'idempotency', 'usage'],
-    'Seal_Conversion',
-    { saleAmount, valueUnits, usedFallback },
-    { valueCents, currency: currencySafe, fallbackApplied: usedFallback }
-  );
+  // 7. Causal DNA - DISABLED (Lean & Mean)
 
   // 8. Insert into queue. Keep legacy conversion_time populated for compatibility,
   // but canonical export should prefer occurred_at.
@@ -288,7 +279,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       block_reason: queueGate.blockReason,
       blocked_at: queueGate.status === 'BLOCKED_PRECEDING_SIGNALS' ? nowIso : null,
       source_outbox_event_id: sourceOutboxEventId ?? null,
-      causal_dna: causalDna,
+      causal_dna: {},
       entropy_score: 0,
       uncertainty_bit: false,
     };
@@ -313,7 +304,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
 
     const queueId = (inserted as { id: string } | null)?.id ?? null;
     if (queueId) {
-      appendCausalDnaLedgerSafe(siteId, 'conversion', queueId, causalDna);
       try {
         await appendFunnelEvent({
           callId,

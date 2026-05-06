@@ -15,7 +15,6 @@ import { parseExportConfig } from '@/lib/oci/site-export-config';
 export const LcvIntelligenceSchema = z.object({
   premium_districts: z.array(z.string()).default([]),
   high_intent_keywords: z.array(z.string()).default([]),
-  multipliers: z.record(z.string(), z.number()).default({}),
 });
 
 export type LcvIntelligenceConfig = z.infer<typeof LcvIntelligenceSchema>;

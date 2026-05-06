@@ -20,7 +20,10 @@ export interface SignalPayload {
   clickDate: Date;
   signalDate: Date;
   valueCents?: number | null;
+  /** Primary 0-100 quality score for SSOT math (preferred over valueCents). */
+  systemScore?: number | null;
   conversionName?: string;
+  isReversal?: boolean;
   /** Singularity: optional fingerprint (e.g. hash(IP+UA)) for entropy_score / uncertainty_bit */
   fingerprint?: string | null;
   /** Real client IP from SST headers (XFF) for geo-fencing and forensic trace */
@@ -29,6 +32,7 @@ export interface SignalPayload {
   discriminator?: string | null;
   /** OM-TRACE-UUID for forensic chain and conversion_custom_variable */
   traceId?: string | null;
+  uncertaintyBit?: boolean;
 }
 
 export interface EvaluateResult {

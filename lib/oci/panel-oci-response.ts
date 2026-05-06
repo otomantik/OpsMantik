@@ -1,22 +1,18 @@
 import type { PanelStageOciEnqueueResult } from '@/lib/oci/enqueue-panel-stage-outbox';
 
-import { logWarn } from '@/lib/logging/logger';
-
 /** 
  * When true, panel routes return non-2xx if OCI producer did not persist a durable artifact. 
  * Default: false (optional hardening).
  */
 export function isPanelOciFailClosed(): boolean {
   const v = (process.env.OCI_PANEL_OCI_FAIL_CLOSED ?? '').trim().toLowerCase();
-  const isEnabled = v === '1' || v === 'true' || v === 'yes';
   
-  if (!isEnabled && process.env.NODE_ENV === 'production') {
-    logWarn('panel_oci_fail_closed_disabled', {
-      msg: 'OCI_PANEL_OCI_FAIL_CLOSED is false in production. OCI artifact failures will not block HTTP responses.',
-    });
-  }
+  // Explicit override
+  if (v === '0' || v === 'false' || v === 'no') return false;
+  if (v === '1' || v === 'true' || v === 'yes') return true;
   
-  return isEnabled;
+  // Hardened default for production; opt-out required.
+  return process.env.NODE_ENV === 'production';
 }
 
 export type PanelOciClassification = 'processed' | 'partial_failure' | 'reconciled_skip';

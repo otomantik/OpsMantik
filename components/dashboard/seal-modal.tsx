@@ -194,6 +194,29 @@ export function SealModal({
                 />
               </div>
 
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Low', val: 60, color: 'bg-slate-100 text-slate-600' },
+                  { label: 'Med', val: 90, color: 'bg-emerald-100 text-emerald-700' },
+                  { label: 'High', val: 120, color: 'bg-emerald-600 text-white' },
+                ].map((b) => (
+                  <button
+                    key={b.label}
+                    type="button"
+                    onClick={() => setCustomAmount(String(b.val))}
+                    className={cn(
+                      "py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95",
+                      b.color
+                    )}
+                  >
+                    {b.label}
+                    <div className="text-[8px] opacity-70">
+                      {b.val} {currency}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
               {callerPhone && (
                  <div className="flex items-center justify-center gap-2 text-emerald-600 font-bold text-sm bg-emerald-50 py-3 rounded-2xl border border-emerald-100">
                     <Phone size={14} />

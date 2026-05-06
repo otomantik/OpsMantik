@@ -8,6 +8,8 @@ import { OCI_RECONCILIATION_REASONS } from '@/lib/oci/reconciliation-reasons';
 import type { OciReconciliationReason } from '@/lib/oci/reconciliation-reasons';
 import { resolveOciClickAttribution, type PrimarySource } from '@/lib/oci/oci-click-attribution';
 import { overlayPanelReturnedCallMergeContextFromDb } from '@/lib/oci/panel-call-merge-context';
+import { resolveWonConversionEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 
 async function appendReconciliationBestEffort(
   params: Parameters<typeof appendOciReconciliationEvent>[0]
@@ -74,6 +76,9 @@ export type PanelReturnedCall = {
   sale_time_confidence?: string | null;
   sale_occurred_at_source?: string | null;
   sale_entry_reason?: string | null;
+  intent_action?: string | null;
+  system_score?: number | null;
+  matched_fingerprint?: string | null;
 };
 
 export type PanelStageOciSkipMetric =
@@ -187,6 +192,14 @@ export function planPanelStageOciEnqueue(params: {
   }
 
   if (!rawClickPresent) {
+    // Self-healing window: if this is a precursor or offered stage, we allow
+    // enqueuing to the outbox even if click-ID is missing, allowing the worker
+    // to retry attribution (getPrimarySource) during its batch cycles.
+    const isWaitableStage = exportableStage === 'contacted' || exportableStage === 'offered';
+    if (isWaitableStage) {
+      return { outcome: 'insert', stage: exportableStage };
+    }
+
     const reason = !hasSession ? OCI_RECONCILIATION_REASONS.NO_MATCHED_SESSION : OCI_RECONCILIATION_REASONS.NO_ADS_CLICK_ID;
     return {
       outcome: 'reconcile',
@@ -287,6 +300,28 @@ export async function enqueuePanelStageOciOutbox(
     nowIso;
   const currency = (effectiveCall.currency ?? 'TRY').trim() || 'TRY';
 
+  let finalAmount = effectiveCall.sale_amount ?? null;
+  let isProjected = false;
+  if (wonLike && finalAmount == null) {
+    const snapshot = buildOptimizationSnapshot({
+      stage: 'won',
+      systemScore: effectiveCall.system_score ?? effectiveCall.lead_score ?? 50,
+      actualRevenue: null,
+    });
+    const economics = resolveWonConversionEconomics({
+      snapshot,
+      siteCurrency: currency,
+    });
+    finalAmount = economics.conversionValueMajor;
+    isProjected = true;
+    logInfo('panel_stage_value_projected', {
+      call_id: effectiveCall.id,
+      site_id: effectiveCall.site_id,
+      projected_amount: finalAmount,
+      policy: economics.policyVersion,
+    });
+  }
+
   const requestId = options?.requestId?.trim();
   const payload = {
     call_id: effectiveCall.id,
@@ -300,8 +335,10 @@ export async function enqueuePanelStageOciOutbox(
     sale_time_confidence: effectiveCall.sale_time_confidence ?? null,
     sale_occurred_at_source: effectiveCall.sale_occurred_at_source ?? null,
     sale_entry_reason: effectiveCall.sale_entry_reason ?? null,
-    sale_amount: effectiveCall.sale_amount ?? null,
+    sale_amount: finalAmount,
     currency,
+    is_projected_value: isProjected,
+    matched_fingerprint: effectiveCall.matched_fingerprint ?? null,
     ...(requestId ? { request_id: requestId } : {}),
   };
 

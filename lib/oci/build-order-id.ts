@@ -9,10 +9,11 @@ import crypto from 'crypto';
 const MAX_ORDER_ID_LENGTH = 128;
 
 /**
- * Deterministic hash suffix from row identity. Same inputs -> same hash.
+ * Deterministic hash suffix from row identity.
+ * If rowId is a call UUID, the ID remains stable across signal updates.
  */
-function deterministicSuffix(clickId: string, conversionTime: string, rowId: string, valueCents: number): string {
-  const input = `${clickId}|${conversionTime}|${rowId}|${valueCents}`;
+function deterministicSuffix(clickId: string, conversionTime: string, identity: string, valueCents: number): string {
+  const input = `${clickId}|${conversionTime}|${identity}|${valueCents}`;
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 8);
 }
 
@@ -20,23 +21,22 @@ function deterministicSuffix(clickId: string, conversionTime: string, rowId: str
  * Build a deterministic, collision-resistant order ID for Google Ads offline conversions.
  *
  * @param prefix - Conversion tag (e.g. 'OpsMantik_Won')
- * @param clickId - gclid/wbraid/gbraid (empty string = no click)
- * @param conversionTime - Canonical conversion time string (same format for same row across paths)
- * @param fallbackId - Used when no clickId (e.g. 'seal_<rowId>')
- * @param rowId - Queue row id for uniqueness
- * @param valueCents - Optional; included in hash for extra entropy
+ * @param clickId - gclid/wbraid/gbraid
+ * @param conversionTime - Canonical conversion time string
+ * @param fallbackId - Used when no clickId
+ * @param identity - Stable identity (typically callId for OpsMantik, or rowId for diagnostics)
+ * @param valueCents - Included in hash for extra entropy
  */
 export function buildOrderId(
   prefix: string,
   clickId: string | null,
   conversionTime: string,
   fallbackId: string,
-  rowId: string,
+  identity: string,
   valueCents: number = 0
 ): string {
-  const sanitized = conversionTime.replace(/[:.]/g, '-');
   if (!clickId) return fallbackId.slice(0, MAX_ORDER_ID_LENGTH);
-  const suffix = deterministicSuffix(clickId, conversionTime, rowId, valueCents);
-  const raw = `${clickId}_${prefix}_${sanitized}_${suffix}`;
+  const suffix = deterministicSuffix(clickId, conversionTime, identity, valueCents);
+  const raw = `${identity}_${prefix}_${suffix}`; // Simplified for maximum stability across retatements
   return raw.slice(0, MAX_ORDER_ID_LENGTH);
 }

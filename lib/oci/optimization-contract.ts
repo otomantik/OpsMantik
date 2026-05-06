@@ -64,7 +64,11 @@ export function resolveStageBase(stage: OptimizationStage): number {
  * - systemScore 50  => 0.9
  * - systemScore 100 => 1.2
  */
-export function resolveQualityFactor(systemScore: number | null | undefined): number {
+export function resolveQualityFactor(
+  systemScore: number | null | undefined,
+  stage?: OptimizationStage
+): number {
+  if (stage === 'junk') return 1.0;
   const s = clampSystemScore(systemScore);
   // qualityFactor = 0.6 * (1 + s/100)
   return roundToTwo(0.6 * (1 + s / 100));
@@ -81,7 +85,7 @@ export function resolveOptimizationValue(params: {
 }): Pick<OptimizationValueSnapshot, 'stageBase' | 'systemScore' | 'qualityFactor' | 'optimizationValue'> {
   const stageBase = resolveStageBase(params.stage);
   const systemScore = clampSystemScore(params.systemScore);
-  const qualityFactor = resolveQualityFactor(systemScore);
+  const qualityFactor = resolveQualityFactor(systemScore, params.stage);
   const optimizationValue = roundToTwo(stageBase * qualityFactor);
 
   return {

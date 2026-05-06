@@ -1,6 +1,6 @@
 import { formatGoogleAdsTimeOrNull } from '@/lib/utils/format-google-ads-time';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
-import { buildOrderId } from '@/lib/oci/build-order-id';
+import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { logWarn } from '@/lib/logging/logger';
 import { validateOciSignalConversionValue } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
@@ -67,17 +67,15 @@ export function buildSignalItems(
     }
     const clickId = String(sig.gclid || sig.wbraid || sig.gbraid || '').trim();
     if (!clickId) continue;
-    const orderId = buildOrderId(
-      String(sig.google_conversion_name || 'OpsMantik_Contacted'),
-      clickId,
-      conversionTime,
-      `signal_${signalId}`,
-      signalId,
-      Math.round(valueGuard.normalized * 100)
-    );
+    const orderId = computeOfflineConversionExternalId({
+      providerKey: 'google_ads',
+      action: String(sig.google_conversion_name || 'OpsMantik_Contacted'),
+      callId,
+      sessionId: null, // Signals use call_id as anchor
+    });
     const item: GoogleAdsConversionItem = {
       id: `signal_${signalId}`,
-      orderId: orderId || `signal_${signalId}`,
+      orderId,
       gclid: String(sig.gclid || ''),
       wbraid: String(sig.wbraid || ''),
       gbraid: String(sig.gbraid || ''),

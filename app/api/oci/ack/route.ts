@@ -48,35 +48,15 @@ export async function POST(req: NextRequest) {
     if (!lane.ok) {
       return NextResponse.json({ error: 'OCI ACK paused', code: lane.code }, { status: 503 });
     }
-    const signatureDecision = await evaluateOciAckSignaturePolicy({
-      signatureHeader: req.headers.get('x-oci-signature'),
-      voidPublicKeyB64: process.env.VOID_PUBLIC_KEY,
-      requireSignatureEnv: process.env.OCI_ACK_REQUIRE_SIGNATURE,
-    });
-    if (!signatureDecision.ok) {
-      logError('OCI_ACK_SIGNATURE_POLICY_REJECT', {
-        code: signatureDecision.code,
-        reason: signatureDecision.reason,
-        signature_required: signatureDecision.signature_required,
-      });
-      return NextResponse.json(
-        { error: signatureDecision.reason, code: signatureDecision.code },
-        { status: signatureDecision.status }
-      );
-    }
-    if (!req.headers.get('x-oci-signature')) {
-      logInfo('OCI_ACK_SIMPLE_AUTH', {
-        msg: 'No crypto signature; proceeding with API Key validation.',
-        signature_required: signatureDecision.signature_required,
-      });
-    }
 
+    const rawBody = await req.text();
     let bodyUnknown: unknown;
     try {
-      bodyUnknown = await req.json();
+      bodyUnknown = JSON.parse(rawBody);
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, { status: 400 });
     }
+
     const parsed = parseAckJsonEnvelope(bodyUnknown);
     if (!parsed.ok) {
       return NextResponse.json(
@@ -94,6 +74,33 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.response;
     const siteUuid = auth.siteUuid;
     const resolvedSite = auth.resolvedSite;
+
+    const signatureDecision = await evaluateOciAckSignaturePolicy({
+      signatureHeader: req.headers.get('x-oci-signature'),
+      payload: rawBody,
+      secret: resolvedSite.oci_api_key ?? undefined,
+      requireSignatureEnv: process.env.OCI_ACK_REQUIRE_SIGNATURE,
+    });
+
+    if (!signatureDecision.ok) {
+      logError('OCI_ACK_SIGNATURE_POLICY_REJECT', {
+        code: signatureDecision.code,
+        reason: signatureDecision.reason,
+        signature_required: signatureDecision.signature_required,
+        site_id: siteUuid,
+      });
+      return NextResponse.json(
+        { error: signatureDecision.reason, code: signatureDecision.code },
+        { status: signatureDecision.status }
+      );
+    }
+    if (!req.headers.get('x-oci-signature')) {
+      logInfo('OCI_ACK_SIMPLE_AUTH', {
+        msg: 'No crypto signature; proceeding with API Key validation.',
+        signature_required: signatureDecision.signature_required,
+        site_id: siteUuid,
+      });
+    }
     const rawResults = Array.isArray(body.results) ? body.results : [];
     const granularResults = rawResults
       .filter((r): r is { id: string; status: 'SUCCESS' | 'FAILED'; reason?: string } => {

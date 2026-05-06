@@ -6,6 +6,7 @@ export type PanelCallMergeDbRow = {
   matched_session_id?: string | null;
   updated_at?: string | null;
   version?: number | null;
+  intent_action?: string | null;
 };
 
 type PanelCallMergeOverlay = {
@@ -15,6 +16,7 @@ type PanelCallMergeOverlay = {
   matched_session_id?: string | null;
   updated_at?: string | null;
   version?: number | null;
+  intent_action?: string | null;
 };
 
 /**
@@ -50,7 +52,13 @@ export function mergePanelReturnedCallDbSnapshot<T extends PanelCallMergeOverlay
       ? row.updated_at
       : call.updated_at;
 
-  return { ...call, merged_into_call_id, matched_session_id, updated_at };
+  return { 
+    ...call, 
+    merged_into_call_id, 
+    matched_session_id, 
+    updated_at, 
+    intent_action: row.intent_action ?? call.intent_action 
+  };
 }
 
 export async function overlayPanelReturnedCallMergeContextFromDb<T extends PanelCallMergeOverlay>(
@@ -58,7 +66,7 @@ export async function overlayPanelReturnedCallMergeContextFromDb<T extends Panel
 ): Promise<T> {
   const { data, error } = await adminClient
     .from('calls')
-    .select('merged_into_call_id, matched_session_id, updated_at, version')
+    .select('merged_into_call_id, matched_session_id, updated_at, version, intent_action')
     .eq('id', call.id)
     .eq('site_id', call.site_id)
     .maybeSingle();
@@ -96,5 +104,6 @@ export async function overlayPanelReturnedCallMergeContextFromDb<T extends Panel
     merged_into_call_id: row.merged_into_call_id,
     matched_session_id: row.matched_session_id,
     updated_at: row.updated_at,
+    intent_action: row.intent_action,
   });
 }

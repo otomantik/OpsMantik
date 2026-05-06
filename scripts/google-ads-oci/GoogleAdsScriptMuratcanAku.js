@@ -240,6 +240,25 @@ MuratcanClient.prototype.verifyHandshake = function (siteId) {
   this.sessionToken = data.session_token;
 };
 
+MuratcanClient.prototype._computeHexSignature = function (payload, secret) {
+  if (!payload || !secret) return '';
+  try {
+    var signature = Utilities.computeHmacSha256Signature(payload, secret);
+    var hex = '';
+    for (var i = 0; i < signature.length; i++) {
+      var val = signature[i];
+      if (val < 0) val += 256;
+      var str = val.toString(16);
+      if (str.length === 1) str = '0' + str;
+      hex += str;
+    }
+    return hex;
+  } catch (e) {
+    Telemetry.warn('Signature calculation failed', e);
+    return '';
+  }
+};
+
 MuratcanClient.prototype._fetchWithSessionRetry = function (url, options) {
   try {
     return this._fetchWithBackoff(url, options);
@@ -250,6 +269,10 @@ MuratcanClient.prototype._fetchWithSessionRetry = function (url, options) {
     const nextHeaders = Object.assign({}, options && options.headers ? options.headers : {});
     if (nextHeaders.Authorization) {
       nextHeaders.Authorization = 'Bearer ' + this.sessionToken;
+    }
+    // Re-sign if payload exists and we have an API key
+    if (nextHeaders['x-oci-signature'] && options.payload && this.apiKey) {
+      nextHeaders['x-oci-signature'] = this._computeHexSignature(options.payload, this.apiKey);
     }
     return this._fetchWithBackoff(url, Object.assign({}, options, { headers: nextHeaders }));
   }
@@ -331,13 +354,15 @@ MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, faile
       );
   }
 
+  const payloadStr = JSON.stringify(payload);
   const response = this._fetchWithSessionRetry(url, {
     method: 'post',
     headers: {
       Authorization: 'Bearer ' + this.sessionToken,
       'Content-Type': 'application/json',
+      'x-oci-signature': this._computeHexSignature(payloadStr, this.apiKey),
     },
-    payload: JSON.stringify(payload),
+    payload: payloadStr,
   });
   try {
     return JSON.parse(response.getContentText() || '{}');
@@ -349,19 +374,21 @@ MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, faile
 MuratcanClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
   if (!queueIds || !queueIds.length) return;
   const url = this.baseUrl + '/api/oci/ack-failed';
+  const payload = JSON.stringify({
+    siteId: siteId,
+    queueIds: queueIds,
+    errorCode: errorCode || 'UNKNOWN',
+    errorMessage: errorMessage || errorCode,
+    errorCategory: errorCategory || 'TRANSIENT',
+  });
   this._fetchWithSessionRetry(url, {
     method: 'post',
     headers: {
       Authorization: 'Bearer ' + this.sessionToken,
       'Content-Type': 'application/json',
+      'x-oci-signature': this._computeHexSignature(payload, this.apiKey),
     },
-    payload: JSON.stringify({
-      siteId: siteId,
-      queueIds: queueIds,
-      errorCode: errorCode || 'UNKNOWN',
-      errorMessage: errorMessage || errorCode,
-      errorCategory: errorCategory || 'TRANSIENT',
-    }),
+    payload: payload,
   });
 };
 

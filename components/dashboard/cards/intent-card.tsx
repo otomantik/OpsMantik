@@ -221,7 +221,7 @@ export function IntentCard({
   };
 
   const handleSeal = async () => {
-    const res = await qualify({ score: 5, status: 'confirmed', version: intent.version ?? null });
+    const res = await qualify({ score: 100, status: 'confirmed', version: intent.version ?? null });
     if (res.success) {
       setFlash('sealed');
       setTimeout(() => setFlash(null), 900);

@@ -1,4 +1,5 @@
-import * as jose from 'jose';
+import { createHmac } from 'crypto';
+import { timingSafeCompare } from './timing-safe-compare';
 
 export type OciAckSignatureDecision = {
   ok: boolean;
@@ -14,19 +15,20 @@ function isTrueLike(value: string | undefined): boolean {
 
 export async function evaluateOciAckSignaturePolicy(params: {
   signatureHeader: string | null;
-  voidPublicKeyB64: string | undefined;
+  payload: string;
+  secret: string | undefined;
   requireSignatureEnv: string | undefined;
 }): Promise<OciAckSignatureDecision> {
   const signature = (params.signatureHeader ?? '').trim();
-  const publicKeyB64 = (params.voidPublicKeyB64 ?? '').trim();
+  const secret = (params.secret ?? '').trim();
   const signatureRequired = isTrueLike(params.requireSignatureEnv);
 
-  if (signatureRequired && !publicKeyB64) {
+  if (signatureRequired && !secret) {
     return {
       ok: false,
       status: 503,
       code: 'SIGNATURE_VERIFIER_UNAVAILABLE',
-      reason: 'OCI_ACK_REQUIRE_SIGNATURE is enabled but VOID_PUBLIC_KEY is not configured',
+      reason: 'OCI_ACK_REQUIRE_SIGNATURE is enabled but Site API Secret is not configured',
       signature_required: true,
     };
   }
@@ -36,12 +38,12 @@ export async function evaluateOciAckSignaturePolicy(params: {
       ok: false,
       status: 401,
       code: 'AUTH_FAILED',
-      reason: 'Cryptographic Signature Required',
+      reason: 'Cryptographic HMAC Signature Required',
       signature_required: true,
     };
   }
 
-  if (!publicKeyB64 && !signature) {
+  if (!secret && !signature) {
     return {
       ok: true,
       status: 200,
@@ -51,46 +53,35 @@ export async function evaluateOciAckSignaturePolicy(params: {
     };
   }
 
-  if (!publicKeyB64 && signature) {
-    return {
-      ok: false,
-      status: 503,
-      code: 'SIGNATURE_VERIFIER_UNAVAILABLE',
-      reason: 'Signature provided but VOID_PUBLIC_KEY is not configured',
-      signature_required: signatureRequired,
-    };
+  if (secret && signature) {
+    const expectedSignature = createHmac('sha256', secret)
+      .update(params.payload)
+      .digest('hex');
+
+    if (timingSafeCompare(expectedSignature, signature)) {
+      return {
+        ok: true,
+        status: 200,
+        code: 'OK',
+        reason: 'HMAC verified',
+        signature_required: signatureRequired,
+      };
+    } else {
+      return {
+        ok: false,
+        status: 401,
+        code: 'AUTH_FAILED',
+        reason: 'Cryptographic Mismatch (HMAC)',
+        signature_required: signatureRequired,
+      };
+    }
   }
 
-  if (publicKeyB64 && !signature) {
-    return {
-      ok: true,
-      status: 200,
-      code: 'OK',
-      reason: 'Signature absent; API key path allowed',
-      signature_required: signatureRequired,
-    };
-  }
-
-  try {
-    const publicKey = await jose.importSPKI(Buffer.from(publicKeyB64, 'base64').toString('utf8'), 'RS256');
-    await jose.jwtVerify(signature, publicKey, {
-      issuer: 'opsmantik-oci-script',
-      audience: 'opsmantik-api',
-    });
-    return {
-      ok: true,
-      status: 200,
-      code: 'OK',
-      reason: 'Signature verified',
-      signature_required: signatureRequired,
-    };
-  } catch {
-    return {
-      ok: false,
-      status: 401,
-      code: 'AUTH_FAILED',
-      reason: 'Cryptographic Mismatch',
-      signature_required: signatureRequired,
-    };
-  }
+  return {
+    ok: true,
+    status: 200,
+    code: 'OK',
+    reason: 'Signature absent; falling back to legacy auth',
+    signature_required: signatureRequired,
+  };
 }
