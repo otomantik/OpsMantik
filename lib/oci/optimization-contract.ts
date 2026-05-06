@@ -56,15 +56,6 @@ export function resolveStageBase(stage: OptimizationStage): number {
   return OPTIMIZATION_STAGE_BASES[stage];
 }
 
-/**
- * Universal quality multiplier - DISABLED (Now always 1.0)
- */
-export function resolveQualityFactor(
-  _systemScore: number | null | undefined,
-  _stage?: OptimizationStage
-): number {
-  return 1.0;
-}
 
 /**
  * Calculates the optimization value based on stage only (New Math).

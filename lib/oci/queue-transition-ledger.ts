@@ -38,9 +38,7 @@ export type QueueTransitionPatch = {
   clear_fields?: QueueTransitionClearableField[];
 };
 
-export type QueueScoreSnapshotPatch = {
-  // Legacy scoring fields removed (New Math Protocol)
-};
+export type QueueScoreSnapshotPatch = Record<string, never>;
 
 export type QueueSnapshotUpdatePayload = {
   status: QueueStatus;

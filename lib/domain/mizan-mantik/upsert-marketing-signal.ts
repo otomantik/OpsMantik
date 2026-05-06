@@ -107,8 +107,6 @@ export async function upsertMarketingSignal(
     economics,
     clickIds,
     featureSnapshotExtras,
-    entropyScore,
-    uncertaintyBit,
     conversionNameOverride,
   } = params;
 

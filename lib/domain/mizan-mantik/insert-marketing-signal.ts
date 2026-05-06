@@ -34,7 +34,7 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   causalDna: Record<string, unknown>;
   duplicate?: boolean;
 }> {
-  const { siteId, callId, traceId, stage, payload, entropyScore, uncertaintyBit } = params;
+  const { siteId, callId, traceId, stage, payload } = params;
   const { signalDate, conversionName, gclid, wbraid, gbraid } = payload;
 
   // 'won' is owned exclusively by the seal path (offline_conversion_queue).
