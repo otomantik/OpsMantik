@@ -170,7 +170,6 @@ export async function upsertMarketingSignal(
     stage,
   });
   const expectedValueCents = economics.expectedValueCents;
-  const signalIso = signalDate.toISOString();
 
   let sequence = 0;
   let previousHash: string | null = null;
@@ -212,7 +211,8 @@ export async function upsertMarketingSignal(
     trace_id: traceId,
     signal_type: snapshot.optimizationStage,
     google_conversion_name: conversionName,
-    google_conversion_time: signalIso,
+    // SSOT: always persist intent-resolved occurred_at as Google conversion time.
+    google_conversion_time: occurredAtMeta.occurredAt,
     occurred_at: occurredAtMeta.occurredAt,
     source_timestamp: occurredAtMeta.sourceTimestamp,
     time_confidence: occurredAtMeta.timeConfidence,

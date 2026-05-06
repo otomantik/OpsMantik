@@ -45,7 +45,6 @@ export function buildQueueItems(
       row.occurred_at,
       row.conversion_time,
       intentCreatedByCall[row.call_id] ?? null,
-      row.created_at,
     ]);
     const conversionTime = formatGoogleAdsTimeOrNull(baseTs, ctx.site.timezone);
     if (!conversionTime) {

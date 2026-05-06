@@ -2,8 +2,6 @@
  * NON_PROD_ONLY diagnostic script.
  * Guarded to fail-closed in production-like environments.
  */
-import { getDbNowIso } from '../lib/time/db-now';
-
 // We need to mock the Request and the Auth
 // Since the route uses createServerClient and adminClient, it's heavily environment dependent.
 // For verification, I will check the code once more and then perform a "live" check on the DB 
@@ -34,7 +32,6 @@ async function verifySignalGeneration() {
   
   const callId = '36713837-143f-4e19-9524-811c05d7b5bf'; // Example existing call
   const siteId = '28cf0aefaa074f5bb29e818a9d53b488';
-  const confirmedAtIso = await getDbNowIso();
   
   console.log('Fetching call data...');
   const { data: call } = await adminClient
@@ -48,6 +45,7 @@ async function verifySignalGeneration() {
     console.log('Test call not found. Please provide a valid call ID.');
     return;
   }
+  const occurredAtIso = typeof call.created_at === 'string' ? call.created_at : new Date().toISOString();
 
   console.log('Computing LCV (Stage contacted)...');
   const lcv = computeLcv({
@@ -80,7 +78,7 @@ async function verifySignalGeneration() {
     call_id: callId,
     signal_type: 'contacted',
     google_conversion_name: conversionName,
-    google_conversion_time: confirmedAtIso,
+    google_conversion_time: occurredAtIso,
     currency_code: economics.currencyCode,
     value_source: economics.valueSource,
     conversion_time_source: economics.conversionTimeSource,
@@ -93,7 +91,7 @@ async function verifySignalGeneration() {
     optimization_value: economics.conversionValueMajor,
     gclid: call.gclid || 'test_gclid',
     dispatch_status: 'PENDING',
-    occurred_at: confirmedAtIso,
+    occurred_at: occurredAtIso,
     adjustment_sequence: 0,
     current_hash: 'test_hash_verified',
     causal_dna: {

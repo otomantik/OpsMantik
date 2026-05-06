@@ -85,6 +85,7 @@ test('google-ads-export route: seals prefer canonical occurred_at over legacy co
   assert.ok(src.includes('pickCanonicalOccurredAt(['), 'route must use canonical timestamp picker');
   assert.ok(src.includes('row.occurred_at,'), 'queue export must inspect queue occurred_at first');
   assert.ok(src.includes('row.conversion_time,'), 'route must keep legacy conversion_time only as fallback');
+  assert.ok(!src.includes('row.created_at,'), 'queue export must not fall back to row.created_at for conversion time');
 });
 
 test('google-ads-export route: no longer performs V2 recovery before export', () => {

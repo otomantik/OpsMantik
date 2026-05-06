@@ -163,7 +163,8 @@ export async function upsertMarketingSignal(
       trace_id: traceId,
       signal_type: snapshot.optimizationStage,
       google_conversion_name: conversionName,
-      google_conversion_time: signalDate.toISOString(),
+      // SSOT: always persist intent-resolved occurred_at as Google conversion time.
+      google_conversion_time: occurredAtMeta.occurredAt,
       occurred_at: occurredAtMeta.occurredAt,
       source_timestamp: occurredAtMeta.sourceTimestamp,
       time_confidence: occurredAtMeta.timeConfidence,

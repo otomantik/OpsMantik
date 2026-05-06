@@ -66,6 +66,14 @@ export const HEALTH_PACK_CONTRACTS = [
     expected_columns: ['job_name', 'last_status', 'heartbeat_age_seconds', 'contract_status'],
     red_green_criteria: 'RED when any critical heartbeat is missing, stale, or FAIL.',
   },
+  {
+    file: 'scripts/sql/oci_time_ssot_health.sql',
+    pack_id: 'oci_time_ssot_health',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: ['surface', 'drifted_rows', 'contract_status'],
+    red_green_criteria: 'RED when call-bound OCI conversion timestamps drift from occurred_at.',
+  },
 ];
 
 export const MODE_CONFIG = {
