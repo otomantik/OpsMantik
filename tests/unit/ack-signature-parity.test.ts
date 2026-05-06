@@ -1,87 +1,75 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import * as jose from 'jose';
+import { createHmac } from 'crypto';
 import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
 
-const ROOT = process.cwd();
-
-async function makeValidSignature(): Promise<{ token: string; publicKeyB64: string }> {
-  const { publicKey, privateKey } = await jose.generateKeyPair('RS256');
-  const spki = await jose.exportSPKI(publicKey);
-  const token = await new jose.SignJWT({ sub: 'oci-script' })
-    .setProtectedHeader({ alg: 'RS256' })
-    .setIssuer('opsmantik-oci-script')
-    .setAudience('opsmantik-api')
-    .setIssuedAt()
-    .setExpirationTime('5m')
-    .sign(privateKey);
-  return {
-    token,
-    publicKeyB64: Buffer.from(spki, 'utf8').toString('base64'),
-  };
+/**
+ * Helper to generate a valid HMAC signature for testing.
+ */
+function makeValidHmac(payload: string, secret: string): string {
+  return createHmac('sha256', secret).update(payload).digest('hex');
 }
 
-test('ack and ack-failed routes both use shared signature policy helper', () => {
-  const ackSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'ack', 'route.ts'), 'utf8');
-  const ackFailedSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'ack-failed', 'route.ts'), 'utf8');
-  assert.ok(ackSrc.includes('evaluateOciAckSignaturePolicy'), 'ack route must use shared signature policy');
-  assert.ok(ackFailedSrc.includes('evaluateOciAckSignaturePolicy'), 'ack-failed route must use shared signature policy');
-});
-
-test('required mode rejects unsigned requests for both ACK and ACK_FAILED', async () => {
+test('required mode rejects unsigned requests', async () => {
   const decision = await evaluateOciAckSignaturePolicy({
     signatureHeader: null,
-    voidPublicKeyB64: 'ZHVtbXk=',
+    payload: '{}',
+    secret: 'test-secret',
     requireSignatureEnv: 'true',
   });
-  assert.equal(decision.ok, false);
-  assert.equal(decision.status, 401);
-  assert.equal(decision.signature_required, true);
+  assert.strictEqual(decision.ok, false);
+  assert.strictEqual(decision.status, 401);
+  assert.strictEqual(decision.signature_required, true);
 });
 
-test('required mode rejects bad signature for both ACK and ACK_FAILED', async () => {
+test('required mode rejects bad signature', async () => {
   const decision = await evaluateOciAckSignaturePolicy({
-    signatureHeader: 'bad.signature.token',
-    voidPublicKeyB64: 'ZHVtbXk=',
+    signatureHeader: 'bad-signature',
+    payload: '{"test":true}',
+    secret: 'test-secret',
     requireSignatureEnv: 'true',
   });
-  assert.equal(decision.ok, false);
-  assert.equal(decision.status, 401);
-  assert.equal(decision.code, 'AUTH_FAILED');
+  assert.strictEqual(decision.ok, false);
+  assert.strictEqual(decision.status, 401);
+  assert.strictEqual(decision.code, 'AUTH_FAILED');
 });
 
-test('required mode accepts valid signed requests for both ACK and ACK_FAILED', async () => {
-  const { token, publicKeyB64 } = await makeValidSignature();
+test('required mode accepts valid HMAC signatures', async () => {
+  const payload = JSON.stringify({ ok: true });
+  const secret = 'super-secret-key';
+  const signature = makeValidHmac(payload, secret);
+
   const decision = await evaluateOciAckSignaturePolicy({
-    signatureHeader: token,
-    voidPublicKeyB64: publicKeyB64,
+    signatureHeader: signature,
+    payload,
+    secret,
     requireSignatureEnv: 'true',
   });
-  assert.equal(decision.ok, true);
-  assert.equal(decision.status, 200);
-  assert.equal(decision.signature_required, true);
+  assert.strictEqual(decision.ok, true);
+  assert.strictEqual(decision.status, 200);
+  assert.strictEqual(decision.signature_required, true);
 });
 
 test('compat mode preserves unsigned API-key path', async () => {
   const decision = await evaluateOciAckSignaturePolicy({
     signatureHeader: null,
-    voidPublicKeyB64: 'ZHVtbXk=',
+    payload: '{}',
+    secret: 'test-secret',
     requireSignatureEnv: 'false',
   });
-  assert.equal(decision.ok, true);
-  assert.equal(decision.status, 200);
-  assert.equal(decision.signature_required, false);
+  assert.strictEqual(decision.ok, true);
+  assert.strictEqual(decision.status, 200);
+  assert.strictEqual(decision.signature_required, false);
 });
 
 test('compat mode still rejects bad signature when provided', async () => {
   const decision = await evaluateOciAckSignaturePolicy({
-    signatureHeader: 'bad.signature.token',
-    voidPublicKeyB64: 'ZHVtbXk=',
+    signatureHeader: 'bad-signature',
+    payload: '{}',
+    secret: 'test-secret',
     requireSignatureEnv: 'false',
   });
-  assert.equal(decision.ok, false);
-  assert.equal(decision.status, 401);
-  assert.equal(decision.signature_required, false);
+  assert.strictEqual(decision.ok, false);
+  assert.strictEqual(decision.status, 401);
+  assert.strictEqual(decision.signature_required, false);
 });

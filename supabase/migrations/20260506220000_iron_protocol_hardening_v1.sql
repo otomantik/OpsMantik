@@ -15,19 +15,26 @@ ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 -- Basic site-id isolation policies for these tables (Service Role always bypasses RLS)
 DO $$ 
 BEGIN
+    -- Conversations: Check via site_memberships
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'conversations' AND policyname = 'site_isolation_policy') THEN
         CREATE POLICY site_isolation_policy ON public.conversations
-        USING (site_id IN (SELECT auth.uid()::uuid)); -- Adjust based on your actual site-user mapping if needed
+        USING (EXISTS (SELECT 1 FROM public.site_memberships m WHERE m.site_id = conversations.site_id AND m.user_id = auth.uid()));
     END IF;
     
+    -- Conversation Links: Check via parent conversation's site
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'conversation_links' AND policyname = 'site_isolation_policy') THEN
         CREATE POLICY site_isolation_policy ON public.conversation_links
-        USING (site_id IN (SELECT auth.uid()::uuid));
+        USING (EXISTS (
+            SELECT 1 FROM public.conversations c 
+            JOIN public.site_memberships m ON m.site_id = c.site_id 
+            WHERE c.id = conversation_links.conversation_id AND m.user_id = auth.uid()
+        ));
     END IF;
     
+    -- Sales: Check via site_memberships
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sales' AND policyname = 'site_isolation_policy') THEN
         CREATE POLICY site_isolation_policy ON public.sales
-        USING (site_id IN (SELECT auth.uid()::uuid));
+        USING (EXISTS (SELECT 1 FROM public.site_memberships m WHERE m.site_id = sales.site_id AND m.user_id = auth.uid()));
     END IF;
 END $$;
 
