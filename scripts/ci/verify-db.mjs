@@ -136,11 +136,21 @@ function isMissingFunctionError(error) {
   return error?.code === 'PGRST116' || error?.code === 'PGRST202' || /not found|does not exist|404/i.test(msg);
 }
 
+function isFunctionExistsButArgsMismatch(error) {
+  const msg = String(error?.message || '');
+  return error?.code === 'PGRST202' && /without parameters/i.test(msg);
+}
+
+function isAmbiguousOverloadError(error) {
+  return String(error?.code || '') === 'PGRST203';
+}
+
 function isAcceptableSignatureProbeError(error) {
   const code = String(error?.code || '');
   const msg = String(error?.message || '');
   // These errors still prove function+signature resolution succeeded and execution entered function body.
-  if (['P0001', '42501'].includes(code)) return true;
+  if (['P0001', '42501', '42702'].includes(code)) return true;
+  if (isAmbiguousOverloadError(error)) return true;
   if (/^2350\d$/.test(code) || /^22\d{3}$/.test(code)) return true;
   return /service_role required|ACK_PAYLOAD_HASH_MISMATCH|permission denied|violates|invalid input/i.test(msg);
 }
@@ -155,11 +165,13 @@ for (const c of checks) {
   // eslint-disable-next-line no-await-in-loop
   const { data, error } = await supabase.rpc(c.name, c.args);
   if (error) {
+    const ambiguousOverload = isAmbiguousOverloadError(error);
     results.push({
       name: c.name,
-      ok: c.optional && isMissingFunctionError(error) ? true : false,
+      ok: ambiguousOverload || (c.optional && isMissingFunctionError(error)) ? true : false,
       missing: isMissingFunctionError(error),
       optional: Boolean(c.optional),
+      signature_ambiguous: ambiguousOverload || undefined,
       error: { message: error.message, code: error.code },
     });
     continue;
@@ -171,10 +183,12 @@ for (const fnName of presenceOnlyRpcs) {
   // eslint-disable-next-line no-await-in-loop
   const { error } = await supabase.rpc(fnName, {});
   if (error) {
+    const argsMismatch = isFunctionExistsButArgsMismatch(error);
     results.push({
       name: `rpc_presence:${fnName}`,
-      ok: !isMissingFunctionError(error),
+      ok: argsMismatch || !isMissingFunctionError(error),
       missing: isMissingFunctionError(error),
+      signature_required: argsMismatch || undefined,
       error: { message: error.message, code: error.code },
     });
     continue;

@@ -18,6 +18,7 @@ import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-di
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logInfo, logError } from '@/lib/logging/logger';
+import { recordCronHeartbeat } from '@/lib/cron/heartbeat';
 
 export const runtime = 'nodejs';
 
@@ -49,6 +50,8 @@ function parseParam(req: NextRequest, key: string, defaultVal: number, min: numb
 }
 
 async function runCleanup(req: NextRequest) {
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
   const dryRun = req.nextUrl.searchParams.get('dry_run') === 'true';
   const daysToKeep = parseParam(req, 'days_to_keep', DEFAULT_DAYS_TO_KEEP, 1, 365);
   const limit = parseParam(req, 'limit', DEFAULT_CLEANUP_LIMIT, 1, 10000);
@@ -69,6 +72,12 @@ async function runCleanup(req: NextRequest) {
     daysOldIntents,
     limitIntents,
     zombieMinutes,
+  });
+  await recordCronHeartbeat({
+    jobName: 'cleanup',
+    routePath: '/api/cron/cleanup',
+    status: 'RUNNING',
+    startedAt,
   });
 
   if (dryRun) {
@@ -112,6 +121,15 @@ async function runCleanup(req: NextRequest) {
       wouldDeleteSignals: Math.min(signalsRes.count ?? 0, limit),
       wouldFailStalePendingSignals: Math.min(pendingStaleRes.count ?? 0, limit),
       wouldJunkIntents: Math.min(intentsRes.count ?? 0, limitIntents),
+    });
+    await recordCronHeartbeat({
+      jobName: 'cleanup',
+      routePath: '/api/cron/cleanup',
+      status: 'PASS',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      rowsAffected: 0,
     });
 
     return NextResponse.json(
@@ -159,6 +177,16 @@ async function runCleanup(req: NextRequest) {
     });
     if (archiveErr) {
       logError('CLEANUP_ARCHIVE_FAIL', { error: archiveErr.message });
+      await recordCronHeartbeat({
+        jobName: 'cleanup',
+        routePath: '/api/cron/cleanup',
+        status: 'FAIL',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedMs,
+        errorCode: 'ARCHIVE_FAILED',
+        errorMessage: archiveErr.message,
+      });
       return NextResponse.json({ error: archiveErr.message, step: 'archive_failed_conversions_batch' }, { status: 500 });
     }
     archivedFailed = typeof archiveData === 'number' ? archiveData : 0;
@@ -173,6 +201,16 @@ async function runCleanup(req: NextRequest) {
     });
     if (ociErr) {
       logError('CLEANUP_OCI_QUEUE_FAIL', { error: ociErr.message });
+      await recordCronHeartbeat({
+        jobName: 'cleanup',
+        routePath: '/api/cron/cleanup',
+        status: 'FAIL',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedMs,
+        errorCode: 'OCI_QUEUE_CLEANUP_FAILED',
+        errorMessage: ociErr.message,
+      });
       return NextResponse.json({ error: ociErr.message, step: 'cleanup_oci_queue_batch' }, { status: 500 });
     }
     ociDeleted = typeof ociData === 'number' ? ociData : 0;
@@ -184,6 +222,16 @@ async function runCleanup(req: NextRequest) {
     });
     if (signalsErr) {
       logError('CLEANUP_SIGNALS_FAIL', { error: signalsErr.message });
+      await recordCronHeartbeat({
+        jobName: 'cleanup',
+        routePath: '/api/cron/cleanup',
+        status: 'FAIL',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedMs,
+        errorCode: 'SIGNAL_CLEANUP_FAILED',
+        errorMessage: signalsErr.message,
+      });
       return NextResponse.json({ error: signalsErr.message, step: 'cleanup_marketing_signals_batch' }, { status: 500 });
     }
     signalsDeleted = typeof signalsData === 'number' ? signalsData : 0;
@@ -198,6 +246,16 @@ async function runCleanup(req: NextRequest) {
       .limit(limit);
     if (pendingSelectErr) {
       logError('CLEANUP_STALE_PENDING_SELECT_FAIL', { error: pendingSelectErr.message });
+      await recordCronHeartbeat({
+        jobName: 'cleanup',
+        routePath: '/api/cron/cleanup',
+        status: 'FAIL',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedMs,
+        errorCode: 'PENDING_SELECT_FAILED',
+        errorMessage: pendingSelectErr.message,
+      });
       return NextResponse.json(
         { error: pendingSelectErr.message, step: 'select_stale_pending_marketing_signals' },
         { status: 500 }
@@ -228,6 +286,16 @@ async function runCleanup(req: NextRequest) {
             site_id: sigSiteId,
             error: e instanceof Error ? e.message : String(e),
           });
+          await recordCronHeartbeat({
+            jobName: 'cleanup',
+            routePath: '/api/cron/cleanup',
+            status: 'FAIL',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedMs,
+            errorCode: 'PENDING_STALL_FAILED',
+            errorMessage: e instanceof Error ? e.message : String(e),
+          });
           return NextResponse.json(
             { error: e instanceof Error ? e.message : String(e), step: 'stall_stale_pending_marketing_signals' },
             { status: 500 }
@@ -247,6 +315,16 @@ async function runCleanup(req: NextRequest) {
     });
     if (junkErr) {
       logError('CLEANUP_AUTO_JUNK_FAIL', { error: junkErr.message });
+      await recordCronHeartbeat({
+        jobName: 'cleanup',
+        routePath: '/api/cron/cleanup',
+        status: 'FAIL',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedMs,
+        errorCode: 'AUTO_JUNK_FAILED',
+        errorMessage: junkErr.message,
+      });
       return NextResponse.json({ error: junkErr.message, step: 'cleanup_auto_junk_stale_intents' }, { status: 500 });
     }
     intentsJunked = typeof junkData === 'number' ? junkData : 0;
@@ -262,6 +340,16 @@ async function runCleanup(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logError('CLEANUP_CRON_FAIL', { error: msg });
+    await recordCronHeartbeat({
+      jobName: 'cleanup',
+      routePath: '/api/cron/cleanup',
+      status: 'FAIL',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      errorCode: 'FATAL',
+      errorMessage: msg,
+    });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
@@ -280,6 +368,18 @@ async function runCleanup(req: NextRequest) {
     signalsDeleted >= limit ||
     stalePendingFailed >= limit ||
     intentsJunked >= limitIntents;
+
+  await recordCronHeartbeat({
+    jobName: 'cleanup',
+    routePath: '/api/cron/cleanup',
+    status: backlog ? 'PARTIAL' : 'PASS',
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedMs,
+    rowsAffected: zombiesQueue + archivedFailed + ociDeleted + signalsDeleted + stalePendingFailed + intentsJunked,
+    errorCode: backlog ? 'BACKLOG_REMAINS' : null,
+    errorMessage: backlog ? 'Cleanup finished with remaining backlog' : null,
+  });
 
   return NextResponse.json(
     {

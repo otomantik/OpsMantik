@@ -58,6 +58,14 @@ export const HEALTH_PACK_CONTRACTS = [
     expected_columns: ['site_id', 'malformed_phone_hash_count', 'missing_phone_hash_count_where_expected'],
     red_green_criteria: 'RED when malformed or missing hash counters are non-zero.',
   },
+  {
+    file: 'scripts/sql/scheduler_heartbeat_health.sql',
+    pack_id: 'scheduler_heartbeat_health',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: ['job_name', 'last_status', 'heartbeat_age_seconds', 'contract_status'],
+    red_green_criteria: 'RED when any critical heartbeat is missing, stale, or FAIL.',
+  },
 ];
 
 export const MODE_CONFIG = {

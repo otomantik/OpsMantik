@@ -19,6 +19,7 @@ import { runOfflineConversionRunner } from '@/lib/oci/runner';
 import { DEFAULT_LIMIT_CRON } from '@/lib/oci/constants';
 import { collectLivenessWatchdogSnapshot } from '@/lib/oci/liveness-watchdogs';
 import { logError, logWarn } from '@/lib/logging/logger';
+import { recordCronHeartbeat } from '@/lib/cron/heartbeat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,8 +30,27 @@ const CRON_LOCK_KEY = 'oci-maintenance';
 const CRON_LOCK_TTL_SEC = 540;
 
 async function handle() {
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  await recordCronHeartbeat({
+    jobName: 'oci-maintenance',
+    routePath: '/api/cron/oci-maintenance',
+    status: 'RUNNING',
+    startedAt,
+  });
+
   const acquired = await tryAcquireCronLock(CRON_LOCK_KEY, CRON_LOCK_TTL_SEC);
   if (!acquired) {
+    await recordCronHeartbeat({
+      jobName: 'oci-maintenance',
+      routePath: '/api/cron/oci-maintenance',
+      status: 'PARTIAL',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      errorCode: 'LOCK_HELD',
+      errorMessage: 'Skipped due to active lock',
+    });
     return NextResponse.json(
       { ok: true, skipped: true, reason: 'lock_held' },
       { status: 200, headers: getBuildInfoHeaders() }
@@ -53,6 +73,22 @@ async function handle() {
     }
     const ok = stats.errors.length === 0 && (runnerSummary == null || runnerSummary.ok !== false);
     const liveness = await collectLivenessWatchdogSnapshot();
+    await recordCronHeartbeat({
+      jobName: 'oci-maintenance',
+      routePath: '/api/cron/oci-maintenance',
+      status: ok ? 'PASS' : 'PARTIAL',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      rowsAffected:
+        (stats as { maintenanceOps?: { repaired?: number; promoted?: number; sweepRequeued?: number } }).maintenanceOps
+          ? (((stats as { maintenanceOps: { repaired?: number; promoted?: number; sweepRequeued?: number } }).maintenanceOps.repaired ?? 0) +
+            ((stats as { maintenanceOps: { repaired?: number; promoted?: number; sweepRequeued?: number } }).maintenanceOps.promoted ?? 0) +
+            ((stats as { maintenanceOps: { repaired?: number; promoted?: number; sweepRequeued?: number } }).maintenanceOps.sweepRequeued ?? 0))
+          : null,
+      errorCode: ok ? null : 'PARTIAL_FAILURE',
+      errorMessage: ok ? null : 'Maintenance completed with partial failures',
+    });
     return NextResponse.json(
       { ok, stats, runner: runnerSummary, liveness },
       { status: ok ? 200 : 207, headers: getBuildInfoHeaders() }
@@ -60,6 +96,16 @@ async function handle() {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logError('OCI_MAINTENANCE_FATAL', { error: msg });
+    await recordCronHeartbeat({
+      jobName: 'oci-maintenance',
+      routePath: '/api/cron/oci-maintenance',
+      status: 'FAIL',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      errorCode: 'FATAL',
+      errorMessage: msg,
+    });
     return NextResponse.json(
       { ok: false, error: msg },
       { status: 500, headers: getBuildInfoHeaders() }
