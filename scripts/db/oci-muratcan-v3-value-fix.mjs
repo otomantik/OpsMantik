@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * DEPRECATED OPERATOR SCRIPT (legacy V3 point-fix).
+ * Keep for audited historical incidents only; prefer SSOT repair flow.
+ *
  * Muratcan V3 Nitelikli Görüşme — conversion_value 1000 TL → matematiğe göre (100 TRY).
  * Neden 1000: floor (min_conversion_value_cents=100000) hesaplanan değeri 1000 TRY'ye çekiyordu.
  * Matematik: AOV × qualified(0.2) × decay(0.5) = 1000 × 0.2 × 0.5 = 100 TRY.

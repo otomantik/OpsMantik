@@ -3,6 +3,9 @@
 **Tarih:** 2026-03-04  
 **Amaç:** Intent ekranındaki butonlardan hangi dönüşümün tetiklendiği, atanan değerler, OCI pipeline (kuyruk → Script → Google Ads) ve cron/hata kontrolü.
 
+> DEPRECATION NOTE: This document describes a historical V2/V3/V4/V5 model kept for incident context.
+> For active production semantics and SSOT conversion policy, use `docs/runbooks/OCI_HARDENING_OPERATIONS.md`.
+
 ---
 
 ## 1. Intent ekranı → Dönüşüm eşlemesi

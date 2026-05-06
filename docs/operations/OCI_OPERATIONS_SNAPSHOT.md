@@ -55,14 +55,17 @@ flowchart TB
 
 ---
 
-## 1. Summary — Five Conversion Sets (V1–V5) `CURRENT`
+## 1. Summary — Five Conversion Sets (V1–V5) `HISTORICAL SNAPSHOT`
+
+> This section is preserved for migration history context. Canonical live conversion names for current OCI/script-first operations are:
+> `OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`, `OpsMantik_Junk_Exclusion`.
 
 | Set | Google Ads name | Store | Origin | In export | After ack |
 |-----|----------------|------|--------|-----------|-----------|
 | **V1** | OpsMantik_V1_Nabiz | **Redis** (pv:queue, pv:data) | POST /api/track/pv → V1PageViewGear | Redis LMOVE | pv_* → Redis DEL |
-| **V2** | OpsMantik_V2_Ilk_Temas | **marketing_signals** | process-call-event, process-sync-event | PENDING selected | signal_* → SENT |
-| **V3** | OpsMantik_V3_Nitelikli_Gorusme | **marketing_signals** | Seal lead_score=60 | PENDING | signal_* → SENT |
-| **V4** | OpsMantik_V4_Sicak_Teklif | **marketing_signals** | Seal lead_score=80 | PENDING | signal_* → SENT |
+| **V2 (legacy)** | OpsMantik_V2_Ilk_Temas | **marketing_signals** | process-call-event, process-sync-event | PENDING selected | signal_* → SENT |
+| **V3 (legacy)** | OpsMantik_V3_Nitelikli_Gorusme | **marketing_signals** | Seal lead_score=60 | PENDING | signal_* → SENT |
+| **V4 (legacy)** | OpsMantik_V4_Sicak_Teklif | **marketing_signals** | Seal lead_score=80 | PENDING | signal_* → SENT |
 | **V5** | OpsMantik_V5_DEMIR_MUHUR | **offline_conversion_queue** | Seal lead_score=100 + sale_amount | QUEUED/RETRY | seal_* → UPLOADED |
 
 Three stores: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue (V5). Export merges them into a single JSON for Script; ack updates the relevant store by prefix.

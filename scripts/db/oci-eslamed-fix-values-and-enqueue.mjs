@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * DEPRECATED OPERATOR SCRIPT (legacy V2/V3/V4 model).
+ * Keep for incident forensics only; prefer SSOT paths and repair playbooks.
+ *
  * Eslamed — GCLID kontrolü, matematik değer düzeltmesi (V2/V3/V4), hepsini kuyruğa al.
  * V3 1000 TL hatası: floor yüzünden; doğru matematik AOV × ratio × decay (örn. 1000×0.2×0.5 = 100 TRY).
  *
@@ -23,12 +26,6 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key);
-
-const NAME_TO_RATIO = {
-  OpsMantik_V2_Ilk_Temas: 0.02,
-  OpsMantik_V3_Nitelikli_Gorusme: 0.2,
-  OpsMantik_V4_Sicak_Teklif: 0.3,
-};
 
 function getDecay(days) {
   if (days <= 3) return 0.5;
