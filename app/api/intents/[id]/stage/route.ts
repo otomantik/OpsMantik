@@ -211,6 +211,29 @@ export async function POST(
       updateError = retry.error;
     }
 
+    const firstErrorCode = (updateError as { code?: string } | null)?.code;
+    if (firstErrorCode === '40900') {
+      const { data: latestCall } = await adminClient
+        .from('calls')
+        .select('version')
+        .eq('id', callId)
+        .eq('site_id', siteId)
+        .maybeSingle();
+      const latestVersion =
+        typeof (latestCall as { version?: unknown } | null)?.version === 'number' &&
+        Number.isFinite((latestCall as { version: number }).version)
+          ? Math.round((latestCall as { version: number }).version)
+          : null;
+      if (latestVersion !== null) {
+        const retryConflict = await adminClient.rpc('apply_call_action_with_review_v1', {
+          ...rpcPayloadWithCaller,
+          p_version: latestVersion,
+        });
+        updatedCall = retryConflict.data;
+        updateError = retryConflict.error;
+      }
+    }
+
     if (updateError) {
       const code = (updateError as { code?: string }).code;
       if (code === '40900') {

@@ -156,13 +156,12 @@ export async function POST(
       );
     }
 
-    const { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_with_review_v1', {
+    const rpcPayloadBase = {
       p_call_id: callId,
       p_site_id: siteId,
       p_stage: targetStage,
       p_actor_id: user.id,
       p_lead_score: lead_score !== undefined ? lead_score : null,
-      p_version: versionResolution.version,
       p_reviewed: statusVerdict.reviewed,
       p_metadata: {
         route,
@@ -172,7 +171,34 @@ export async function POST(
         source_surface: sourceSurface,
         dedupe_key: dedupeKey,
       },
+    };
+    let { data: updatedCall, error: updateError } = await adminClient.rpc('apply_call_action_with_review_v1', {
+      ...rpcPayloadBase,
+      p_version: versionResolution.version,
     });
+
+    const firstErrorCode = (updateError as { code?: string } | null)?.code;
+    if (firstErrorCode === '40900') {
+      const { data: latestCall } = await adminClient
+        .from('calls')
+        .select('version')
+        .eq('id', callId)
+        .eq('site_id', siteId)
+        .maybeSingle();
+      const latestVersion =
+        typeof (latestCall as { version?: unknown } | null)?.version === 'number' &&
+        Number.isFinite((latestCall as { version: number }).version)
+          ? Math.round((latestCall as { version: number }).version)
+          : null;
+      if (latestVersion !== null) {
+        const retry = await adminClient.rpc('apply_call_action_with_review_v1', {
+          ...rpcPayloadBase,
+          p_version: latestVersion,
+        });
+        updatedCall = retry.data;
+        updateError = retry.error;
+      }
+    }
 
     if (updateError) {
       const code = (updateError as { code?: string }).code;
