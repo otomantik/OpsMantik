@@ -185,11 +185,6 @@ export async function runPrecursorSignalBackfill(
           source_detail: 'precursor_backfill',
           backfill_time_source: plan.source,
         },
-        causalDna: {
-          branch: 'precursor_backfill',
-          call_status: status,
-          backfill_time_source: plan.source,
-        },
       });
 
       if (up.success && up.signalId && !up.duplicate) {

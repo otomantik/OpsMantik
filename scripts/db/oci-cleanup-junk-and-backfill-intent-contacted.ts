@@ -527,13 +527,6 @@ async function main() {
         source_detail: 'intent_click_backfill',
         click_attribution: row.clickSource,
       },
-      causalDna: {
-        branch: 'intent_click_backfill',
-        call_status: 'intent',
-        click_source: row.clickSource,
-      },
-      entropyScore: 0,
-      uncertaintyBit: false,
     });
 
     if (up.success && up.signalId && !up.duplicate && !up.skipped) inserted++;

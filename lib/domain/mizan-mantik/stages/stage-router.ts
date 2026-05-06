@@ -8,14 +8,12 @@ import { insertMarketingSignal } from '../insert-marketing-signal';
 
 export interface RouterContext {
   siteId: string;
-  entropyScore: number;
-  uncertaintyBit: boolean | null;
 }
 
 export async function routeStage(
   stage: PipelineStage,
   payload: SignalPayload,
-  context: RouterContext
+  _context: RouterContext
 ): Promise<EvaluateResult> {
   const { siteId, callId, traceId } = payload;
   // Pre-validation block
@@ -36,8 +34,6 @@ export async function routeStage(
     traceId: traceId ?? null,
     stage,
     payload,
-    entropyScore: context.entropyScore,
-    uncertaintyBit: context.uncertaintyBit,
   });
 
   return {
