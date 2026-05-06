@@ -1,6 +1,10 @@
+---
+status: active
+---
+
 # OCI Value Engines and SSOT (Single Source of Truth)
 
-This document describes how conversion values are produced after the universal value cutover. It complements [FUNNEL_CONTRACT.md](./FUNNEL_CONTRACT.md) with an operational, OCI-specific view.
+This document describes how conversion values are produced in current runtime SSOT. It complements [FUNNEL_CONTRACT.md](./FUNNEL_CONTRACT.md) with an operational, OCI-specific view.
 
 ## Current SSOT
 
@@ -16,19 +20,23 @@ The universal formula is:
 
 Where:
 
-- `junk = 0.1`
-- `gorusuldu = 10`
-- `teklif = 50`
-- `satis = 100`
+- `OpsMantik_Junk_Exclusion = 0.1`
+- `OpsMantik_Contacted = 10`
+- `OpsMantik_Offered = 50`
+- `OpsMantik_Won = 100`
 - `quality_factor = 0.6 + 0.6 * (system_score / 100)`
 
-`actual_revenue` is internal only and no longer drives Google export value.
+`actual_revenue` is preserved as provenance in snapshots/rows. Won economics keeps explicit fallback provenance via policy fields (`value_source`, `value_policy_version`, `value_policy_reason`, `value_fallback_used`) and must remain aligned with runtime guards.
 
 ## Site configuration
 
 - `sites.oci_config` is no longer authoritative for value math.
 - `parseExportConfig()` currently returns the universal default export contract.
-- Conversion naming is fixed to `OpsMantik_Gorusuldu`, `OpsMantik_Teklif`, `OpsMantik_Satis`, `OpsMantik_Cop_Exclusion`.
+- Conversion naming is fixed to canonical English actions:
+  - `OpsMantik_Contacted`
+  - `OpsMantik_Offered`
+  - `OpsMantik_Won`
+  - `OpsMantik_Junk_Exclusion`
 
 ## `call_funnel_projection` vs Google OCI export
 

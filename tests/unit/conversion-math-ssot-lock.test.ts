@@ -109,9 +109,22 @@ test('PR-D: unsafe db scripts require explicit override for value writes', () =>
   ];
   for (const rel of scripts) {
     const src = readFileSync(join(ROOT, rel), 'utf8');
-    assert.ok(
-      src.includes('ALLOW_UNSAFE_OCI_VALUE_WRITE'),
-      `${rel} must require explicit unsafe write override`
-    );
+    const hasLegacyGate = src.includes('ALLOW_UNSAFE_OCI_VALUE_WRITE') || src.includes('ALLOW_UNSAFE_LEGACY_OCI_REPAIR');
+    assert.ok(hasLegacyGate, `${rel} must require explicit unsafe write override`);
+  }
+});
+
+test('Workstream-B: deprecated operator writes require ticket + operator provenance', () => {
+  const scripts = [
+    'scripts/db/oci-eslamed-fix-values-and-enqueue.mjs',
+    'scripts/db/oci-muratcan-v3-value-fix.mjs',
+  ];
+  for (const rel of scripts) {
+    const src = readFileSync(join(ROOT, rel), 'utf8');
+    assert.ok(src.includes('CHANGE_TICKET'), `${rel} must require CHANGE_TICKET`);
+    assert.ok(src.includes('OPERATOR_ID'), `${rel} must require OPERATOR_ID`);
+    assert.ok(src.includes('TARGET_SITE_ID'), `${rel} must require TARGET_SITE_ID`);
+    assert.ok(src.includes('CONFIRM_LEGACY_REPAIR_RISK'), `${rel} must require explicit risk confirmation`);
+    assert.ok(src.includes('--write'), `${rel} must require --write flag for mutations`);
   }
 });

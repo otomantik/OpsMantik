@@ -1,3 +1,7 @@
+-- @pack_id: identity_integrity_health
+-- @contract_version: v1
+-- @db_required: true
+-- @red_green_criteria: RED when malformed/missing phone hash counts are non-zero.
 -- Identity integrity health (read-only)
 -- Tracks caller_phone_hash_sha256 consistency on won/sealed export candidates.
 

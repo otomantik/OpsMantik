@@ -50,18 +50,34 @@ async function resolveSiteId(q) {
 
 async function run() {
   const dryRun = process.argv.includes('--dry-run');
-  const allowUnsafeWrite = process.env.ALLOW_UNSAFE_OCI_VALUE_WRITE === '1';
+  const writeMode = process.argv.includes('--write');
+  const allowUnsafeWrite = process.env.ALLOW_UNSAFE_LEGACY_OCI_REPAIR === '1';
+  const changeTicket = (process.env.CHANGE_TICKET || '').trim();
+  const operatorId = (process.env.OPERATOR_ID || '').trim();
+  const targetSiteId = (process.env.TARGET_SITE_ID || '').trim();
+  const riskAck = (process.env.CONFIRM_LEGACY_REPAIR_RISK || '').trim();
 
-  if (!dryRun && !allowUnsafeWrite) {
-    console.error('[SAFE-GUARD] Ad-hoc signal deger yazimi varsayilan olarak kapali.');
-    console.error('[SAFE-GUARD] SSOT policy disina cikmamak icin once --dry-run ile aday satirlari inceleyin.');
-    console.error('Gecici override gerekiyorsa ALLOW_UNSAFE_OCI_VALUE_WRITE=1 ile bilincli calistirin.');
+  if (!dryRun && !writeMode) {
+    console.error('[SAFE-GUARD] Legacy script varsayilan dry-run modundadir.');
+    console.error('[SAFE-GUARD] Write icin --write zorunludur.');
     process.exit(2);
   }
+  if (writeMode) {
+    const missing = [];
+    if (!allowUnsafeWrite) missing.push('ALLOW_UNSAFE_LEGACY_OCI_REPAIR=1');
+    if (!changeTicket) missing.push('CHANGE_TICKET');
+    if (!operatorId) missing.push('OPERATOR_ID');
+    if (!targetSiteId) missing.push('TARGET_SITE_ID');
+    if (riskAck !== 'I_UNDERSTAND') missing.push('CONFIRM_LEGACY_REPAIR_RISK=I_UNDERSTAND');
+    if (missing.length > 0) {
+      console.error(`[SAFE-GUARD] Write blocked, missing: ${missing.join(', ')}`);
+      process.exit(2);
+    }
+  }
 
-  const siteId = await resolveSiteId('Eslamed');
+  const siteId = writeMode ? await resolveSiteId(targetSiteId) : await resolveSiteId('Eslamed');
   if (!siteId) {
-    console.error('Site bulunamadi: Eslamed');
+    console.error('Site bulunamadi: Eslamed/TARGET_SITE_ID');
     process.exit(1);
   }
 
@@ -90,6 +106,20 @@ async function run() {
   dayAfterTomorrow.setUTCDate(dayAfterTomorrow.getUTCDate() + 2);
   const fromIso = yesterdayStart.toISOString();
   const toIso = dayAfterTomorrow.toISOString();
+
+  console.log('[LEGACY_OPERATOR_ONLY]');
+  console.log(
+    JSON.stringify({
+      script: 'oci-eslamed-fix-values-and-enqueue.mjs',
+      deprecated: true,
+      operator_id: operatorId || 'n/a',
+      change_ticket: changeTicket || 'n/a',
+      target_site_id: siteId,
+      mode: writeMode ? 'write' : 'dry-run',
+      timestamp: new Date().toISOString(),
+      policy_warning: 'Do not use for standard operations; prefer SSOT repair flows.',
+    })
+  );
 
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  Eslamed — GCLID kontrolü, değer düzeltmesi, kuyruğa al');

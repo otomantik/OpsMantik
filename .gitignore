@@ -28,6 +28,8 @@ test_output*.txt
 # misc
 .DS_Store
 /tmp
+ci-reports/*.json
+ci-reports/*.md
 *.pem
 Untitled
 debug-error.png

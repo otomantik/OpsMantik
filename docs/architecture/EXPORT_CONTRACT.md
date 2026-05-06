@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # Export Contract (EXPORT_CONTRACT)
 
 **Canonical export item shape and ACK routing**

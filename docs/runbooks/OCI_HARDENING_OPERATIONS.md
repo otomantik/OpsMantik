@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # OCI Hardening Operations Runbook
 
 This runbook covers the operational procedures for the OCI (Offline Conversion Import) hardening phase, specifically the rollout of strict fail-closed semantics for panel mutations and the necessary observability to maintain system health.

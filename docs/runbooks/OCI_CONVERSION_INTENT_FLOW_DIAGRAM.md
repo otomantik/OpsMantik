@@ -1,10 +1,18 @@
-# Dönüşüm ↔ Intent Ekranı — Akış Şeması ve OCI Pipeline
+---
+status: historical
+---
+
+# HISTORICAL ONLY — Legacy Conversion/Intent Diagram
 
 **Tarih:** 2026-03-04  
 **Amaç:** Intent ekranındaki butonlardan hangi dönüşümün tetiklendiği, atanan değerler, OCI pipeline (kuyruk → Script → Google Ads) ve cron/hata kontrolü.
 
-> DEPRECATION NOTE: This document describes a historical V2/V3/V4/V5 model kept for incident context.
-> For active production semantics and SSOT conversion policy, use `docs/runbooks/OCI_HARDENING_OPERATIONS.md`.
+> This document is historical and must not be used as an active runbook.
+> DEPRECATION NOTE: This document describes historical V2/V3/V4/V5 behavior only and must not be used as active operational guidance.
+> Active production authority and conversion policy are documented in:
+> - `docs/runbooks/OCI_HARDENING_OPERATIONS.md`
+> - `docs/architecture/EXPORT_CONTRACT.md`
+> - `docs/architecture/OCI_VALUE_ENGINES_SSOT.md`
 
 ---
 

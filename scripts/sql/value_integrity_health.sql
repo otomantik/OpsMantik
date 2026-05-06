@@ -1,3 +1,7 @@
+-- @pack_id: value_integrity_health
+-- @contract_version: v1
+-- @db_required: true
+-- @red_green_criteria: GREEN when drifted_rows = 0 for active sites.
 -- Value integrity health (read-only)
 -- PR-D policy: oci_conversion_value_policy_v1
 --

@@ -1,3 +1,7 @@
+-- @pack_id: script_backlog_health
+-- @contract_version: v1
+-- @db_required: true
+-- @red_green_criteria: RED when queue/pending ages exceed agreed SLO.
 -- Script-mode backlog health (read-only)
 -- Focus: active queue pressure + marketing_signals pending pressure by site.
 

@@ -1,3 +1,7 @@
+-- @pack_id: rpc_contract_health
+-- @contract_version: v1
+-- @db_required: true
+-- @red_green_criteria: RED when missing_or_drifted_count > 0 or unsafe grants exist.
 -- RPC contract health pack (read-only)
 -- Purpose: detect missing/signature-drifted/insecure grants for critical OCI RPCs.
 --

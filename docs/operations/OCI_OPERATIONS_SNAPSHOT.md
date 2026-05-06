@@ -1,4 +1,11 @@
+---
+status: historical
+---
+
 # OCI Operations Snapshot
+
+> This document is historical and must not be used as an active runbook.
+> Active operational runbook: `docs/runbooks/OCI_HARDENING_OPERATIONS.md`.
 
 **Last updated:** 2026-03-09  
 **Owner:** OpsMantik Core  
@@ -72,7 +79,7 @@ Three stores: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue 
 
 **Architecture note**
 
-> This report is a summary of current live state. **Funnel Kernel is the target SSOT.** `marketing_signals` and `offline_conversion_queue` are currently live **compatibility layers.** The final export truth target is `call_funnel_projection`.
+> This report is a summary of current live state. **Current Google write authority is `offline_conversion_queue` + `marketing_signals`.** Funnel Kernel remains the target SSOT evolution track; `call_funnel_projection` is a read/projection surface and not the current Google write authority.
 
 ---
 

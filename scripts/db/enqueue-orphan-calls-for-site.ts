@@ -25,10 +25,13 @@ if (!url || !key) {
 
 const supabase = createClient(url, key);
 const args = process.argv.slice(2);
-const dryRun = args.includes('--dry-run') || args.includes('-n');
+const writeMode = args.includes('--write');
+const dryRun = !writeMode;
 const daysArg = args.find((a) => a.startsWith('--days='));
 const days = daysArg ? Math.max(1, parseInt(daysArg.split('=')[1], 10) || 14) : 30;
 const positional = args.find((a) => !a.startsWith('-'));
+const changeTicket = (process.env.CHANGE_TICKET || '').trim();
+const operatorId = (process.env.OPERATOR_ID || '').trim();
 
 async function resolveSiteId(q: string | undefined): Promise<string | null> {
   if (!q) return null;
@@ -46,6 +49,10 @@ async function resolveSiteId(q: string | undefined): Promise<string | null> {
 }
 
 async function main() {
+  if (writeMode && (!changeTicket || !operatorId)) {
+    console.error('[SAFE-GUARD] --write requires CHANGE_TICKET and OPERATOR_ID.');
+    process.exit(2);
+  }
   const siteId = await resolveSiteId(positional);
   if (!siteId) {
     console.error('Site bulunamadı. Örnek: npx tsx scripts/db/enqueue-orphan-calls-for-site.ts "Koç"');
@@ -84,7 +91,19 @@ async function main() {
   console.log(`Site: ${siteRow?.name} (${siteRow?.domain})`);
   console.log(`Lookback: ${days}d | actual_revenue fallback: disabled | currency: ${currency}`);
   console.log(`Confirmed (since): ${calls?.length ?? 0} | Zaten kuyrukta: ${queued.size} | Eksik: ${orphans.length}`);
-  if (dryRun) console.log('[DRY-RUN] enqueue çağrılmayacak.\n');
+  if (dryRun) console.log('[DRY-RUN DEFAULT] enqueue çağrılmayacak. Write icin --write verin.\n');
+  if (writeMode) {
+    console.log(
+      JSON.stringify({
+        script: 'enqueue-orphan-calls-for-site.ts',
+        operator_id: operatorId,
+        change_ticket: changeTicket,
+        target_site_id: siteId,
+        mode: 'write',
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }
 
   let enqueued = 0;
   const skipped: Record<string, number> = {};

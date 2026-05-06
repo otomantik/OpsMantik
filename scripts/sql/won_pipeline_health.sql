@@ -1,3 +1,7 @@
+-- @pack_id: won_pipeline_health
+-- @contract_version: v1
+-- @db_required: true
+-- @red_green_criteria: RED when won_missing_pipeline > 0.
 -- Won/Sealed pipeline health (read-only)
 -- Shows whether sale-terminal calls are represented in queue/sent pipeline.
 
