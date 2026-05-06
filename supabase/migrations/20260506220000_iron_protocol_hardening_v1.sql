@@ -62,7 +62,7 @@ REVOKE EXECUTE ON FUNCTION public.enforce_oci_queue_conversion_time_from_call_cr
 -- 3. INTEGRITY: Fix Mutable Search Paths (Search Path Hardening)
 --------------------------------------------------------------------------------
 
-ALTER FUNCTION public.validate_conversion_value_policy_v1(text, jsonb) SET search_path = public;
+ALTER FUNCTION public.validate_conversion_value_policy_v1() SET search_path = public;
 
 
 --------------------------------------------------------------------------------
