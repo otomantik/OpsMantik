@@ -38,9 +38,7 @@ export type QueueTransitionPatch = {
   clear_fields?: QueueTransitionClearableField[];
 };
 
-export interface QueueScoreSnapshotPatch {
-  // Legacy scoring fields removed (New Math Protocol)
-}
+
 
 export type QueueSnapshotUpdatePayload = {
   status: QueueStatus;
@@ -55,7 +53,7 @@ export type QueueSnapshotUpdatePayload = {
   claimed_at?: string | null;
   provider_request_id?: string | null;
   provider_ref?: string | null;
-} & QueueScoreSnapshotPatch;
+};
 
 export type QueueTransitionInsert = {
   queue_id: string;
@@ -63,7 +61,7 @@ export type QueueTransitionInsert = {
   error_payload: Record<string, unknown> | null;
   actor: QueueTransitionActor;
   created_at?: string;
-} & QueueScoreSnapshotPatch;
+};
 
 function pushPatchValue(payload: Record<string, unknown>, patch: QueueTransitionPatch, key: keyof QueueTransitionPatch): void {
   const value = patch[key];
