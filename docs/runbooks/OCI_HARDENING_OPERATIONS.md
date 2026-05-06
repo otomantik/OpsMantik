@@ -44,3 +44,40 @@ The following metrics must be actively monitored in production dashboards/alerts
 - **ACK Failed Rate:** Rate of failed acknowledgements from Google Ads scripts.
 - **Google Upload Failed Rate:** Tracks explicit failures reported by the Apps Script.
 - **`CONVERSION_ACTION_NOT_FOUND` Errors:** Tracks structural mismatches between the SSOT and Google Ads configuration.
+
+## 3. Script-First OCI P0 Reliability Checks
+
+Run these SQL packs during incident triage and pre-release checks:
+
+1. `scripts/sql/rpc_contract_health.sql`
+2. `scripts/sql/won_pipeline_health.sql`
+3. `scripts/sql/script_backlog_health.sql`
+4. `scripts/sql/value_integrity_health.sql`
+5. `scripts/sql/identity_integrity_health.sql`
+
+Projection contract note:
+- `call_funnel_projection` is an active Funnel Kernel read-model table (analytics/metrics/ACK compatibility).
+- `rebuild_call_projection` is expected to materialize/update one projection row per `(site_id, call_id)`.
+- If `rpc_contract_health.sql` reports `projection_exists=false`, classify as schema drift and apply missing projection-table migration before continuing.
+
+### 3.1 Incident Classification
+
+- **Drift:** `rpc_contract_health.sql` reports missing/signature-drifted RPCs or unsafe grants.
+- **Won leak:** `won_pipeline_health.sql` shows `won_missing_pipeline > 0` and non-zero `leak_rate`.
+- **Backlog:** `script_backlog_health.sql` shows growing active queue ages/retry counts.
+- **Value integrity:** `value_integrity_health.sql` shows abnormal fallback ratio or suspicious zero/null value rows.
+- **Identity integrity:** `identity_integrity_health.sql` shows malformed/missing phone hash anomalies.
+
+### 3.2 Stabilization Sequence
+
+1. Freeze risky rollout changes (no API-mode promotion while P0 checks are red).
+2. Keep script-mode active.
+3. Run `scripts/sql/orphan_won_backfill.sql` in dry-run mode and classify candidates.
+4. Repair via existing enqueue SSOT path (`enqueueSealConversion` / sweep cron).
+5. Re-run health packs until `won_missing_pipeline = 0` and leak rate is `0`.
+
+### 3.3 Rollback Principles
+
+- Do not promote API mode when P0 checks are red.
+- Do not delete `offline_conversion_queue` rows during mitigation.
+- Prefer additive migrations and deterministic replay over destructive cleanup.
