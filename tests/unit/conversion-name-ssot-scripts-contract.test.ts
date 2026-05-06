@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
 const REQUIRED = new Set(Object.values(OPSMANTIK_CONVERSION_NAMES));
 

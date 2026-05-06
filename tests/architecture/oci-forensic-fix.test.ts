@@ -1,8 +1,8 @@
 import '../mock-env';
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { evaluateAndRouteSignal } from '../../lib/domain/mizan-mantik/orchestrator';
-import type { SignalPayload } from '../../lib/domain/mizan-mantik/types';
+import { evaluateAndRouteSignal } from '../../lib/oci/signal-router';
+import type { SignalPayload } from '../../lib/oci/signal-types';
 
 /**
  * Phase 19 Forensic Fix Verification

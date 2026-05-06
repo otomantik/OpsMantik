@@ -7,13 +7,13 @@
  * **`resolveMarketingSignalEconomics`** is pure (tests + callers that already know currency).
  */
 
-import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/oci/signal-types';
 import type { OptimizationValueSnapshot } from '@/lib/oci/optimization-contract';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 import { toExpectedValueCents } from '@/lib/oci/marketing-signal-hash';
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
 /** Provenance for expected_value_cents / conversion_value at insert. */
 export const CONVERSION_VALUE_POLICY_VERSION = 'oci_conversion_value_policy_v1';

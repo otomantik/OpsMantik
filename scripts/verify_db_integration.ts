@@ -30,7 +30,7 @@ async function verifySignalGeneration() {
   const { adminClient } = await import('../lib/supabase/admin');
   const { computeLcv } = await import('../lib/oci/lcv-engine');
   const { buildOptimizationSnapshot } = await import('../lib/oci/optimization-contract');
-  const { OPSMANTIK_CONVERSION_NAMES } = await import('../lib/domain/mizan-mantik/conversion-names');
+  const { OPSMANTIK_CONVERSION_NAMES } = await import('../lib/oci/conversion-names');
   
   const callId = '36713837-143f-4e19-9524-811c05d7b5bf'; // Example existing call
   const siteId = '28cf0aefaa074f5bb29e818a9d53b488';

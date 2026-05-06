@@ -1,5 +1,5 @@
 import { z } from 'zod/v3';
-import { isOciCanonicalStage } from '@/lib/domain/mizan-mantik/conversion-names';
+import { isOciCanonicalStage } from '@/lib/oci/conversion-names';
 import { hashNormalizedEmail, hashNormalizedPhoneE164 } from './crypto';
 
 /**

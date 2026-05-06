@@ -8,7 +8,7 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
 config({ path: join(process.cwd(), '.env.local') });
 

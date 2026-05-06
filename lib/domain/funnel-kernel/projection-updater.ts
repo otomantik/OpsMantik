@@ -7,7 +7,7 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
-import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/oci/signal-types';
 
 export interface CallFunnelProjection {
   call_id: string;

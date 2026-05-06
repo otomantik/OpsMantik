@@ -1,5 +1,5 @@
 import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
-import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/oci/signal-types';
 
 export type OciTimeConfidence =
   | 'observed'

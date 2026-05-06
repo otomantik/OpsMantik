@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { computeLcv } from '../lib/oci/lcv-engine';
 import { buildOptimizationSnapshot } from '../lib/oci/optimization-contract';
-import { OPSMANTIK_CONVERSION_NAMES } from '../lib/domain/mizan-mantik/conversion-names';
+import { OPSMANTIK_CONVERSION_NAMES } from '../lib/oci/conversion-names';
 
 config({ path: '.env.local' });
 

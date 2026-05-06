@@ -3,7 +3,7 @@ import { minorToMajor } from '@/lib/i18n/currency';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
 import { buildOrderId } from '@/lib/oci/build-order-id';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { validateOciQueueValueCents } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
 import { buildSingleConversionGroupKey } from '@/lib/oci/single-conversion-highest-only';

@@ -1,10 +1,17 @@
 // File: supabase/functions/hunter-ai/index.ts
 // PHASE 2 — Hunter AI: Trigger'dan gelen high-intent call → Session + Timeline → OpenAI → sessions.ai_* güncelle.
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // @ts-expect-error: URL imports are standard in Deno/Supabase Edge Functions
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-expect-error: URL imports are standard in Deno/Supabase Edge Functions
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+declare const Deno: {
+  env: {
+    get: (key: string) => string | undefined;
+  };
+};
 
 // NOTE: Deno-specific imports above may show as errors in Node-based IDEs. 
 // These modules are correctly resolved in the Supabase Edge Runtime.

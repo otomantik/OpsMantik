@@ -3,7 +3,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
 const BLOCKING_DISPATCH = new Set([
   'PENDING',

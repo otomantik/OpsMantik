@@ -8,9 +8,9 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { evaluateAndRouteSignal } from '@/lib/domain/mizan-mantik';
-import { PipelineStage } from '@/lib/domain/mizan-mantik/types';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { evaluateAndRouteSignal } from '@/lib/oci/signal-router';
+import { PipelineStage } from '@/lib/oci/signal-types';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { getPrimarySource } from '@/lib/conversation/primary-source';

@@ -4,7 +4,7 @@ import {
   resolveOptimizationStage,
   type OptimizationStage,
 } from './optimization-contract';
-import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/oci/signal-types';
 
 export interface LcvInput {
   stage: PipelineStage;

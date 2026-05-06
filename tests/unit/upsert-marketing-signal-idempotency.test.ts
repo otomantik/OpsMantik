@@ -19,7 +19,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
+import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import { resolveMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 

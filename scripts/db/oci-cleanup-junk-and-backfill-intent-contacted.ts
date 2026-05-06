@@ -19,11 +19,11 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
+import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
-import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/oci/signal-types';
 
 config({ path: join(process.cwd(), '.env.local') });
 

@@ -6,13 +6,13 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/domain/mizan-mantik/conversion-names';
-import { upsertMarketingSignal } from '@/lib/domain/mizan-mantik/upsert-marketing-signal';
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
+import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
 import { planPrecursorBackfillStages, type BackfillTimeSource } from '@/lib/oci/precursor-backfill-plan';
-import type { PipelineStage } from '@/lib/domain/mizan-mantik/types';
+import type { PipelineStage } from '@/lib/oci/signal-types';
 
 export interface PrecursorBackfillParams {
   siteId: string;

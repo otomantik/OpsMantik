@@ -15,7 +15,7 @@ const must = [
   'OpsMantik_Junk_Exclusion',
 ];
 
-const names = readFileSync(join(root, 'lib/domain/mizan-mantik/conversion-names.ts'), 'utf8');
+const names = readFileSync(join(root, 'lib/oci/conversion-names.ts'), 'utf8');
 for (const m of must) {
   if (!names.includes(`'${m}'`)) {
     console.error(`[verify-oci-spine] conversion-names.ts missing ${m}`);
@@ -47,13 +47,13 @@ if (!/action:\s*OPSMANTIK_CONVERSION_NAMES\.won/.test(seal)) {
   process.exit(1);
 }
 
-const ssot = readFileSync(join(root, 'lib/domain/mizan-mantik/conversion-ssot.ts'), 'utf8');
+const ssot = readFileSync(join(root, 'lib/oci/conversion-ssot.ts'), 'utf8');
 if (!ssot.includes('OPSMANTIK_CONVERSION_NAMES')) {
   console.error('[verify-oci-spine] conversion-ssot.ts must derive from OPSMANTIK_CONVERSION_NAMES (single literal source)');
   process.exit(1);
 }
 
-const routerInsert = readFileSync(join(root, 'lib/domain/mizan-mantik/insert-marketing-signal.ts'), 'utf8');
+const routerInsert = readFileSync(join(root, 'lib/oci/insert-marketing-signal.ts'), 'utf8');
 if (routerInsert.includes('toExpectedValueCents')) {
   console.error('[verify-oci-spine] insert-marketing-signal must not use toExpectedValueCents — use loadMarketingSignalEconomics');
   process.exit(1);
