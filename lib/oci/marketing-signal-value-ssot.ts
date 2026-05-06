@@ -5,6 +5,11 @@
  *
  * **`loadMarketingSignalEconomics`** is the single async entry (one `sites.currency` read).
  * **`resolveMarketingSignalEconomics`** is pure (tests + callers that already know currency).
+ *
+ * CLOSED-SYSTEM SCORE CONTRACT: cents here come from `OptimizationValueSnapshot.optimizationValue`
+ * (stage economics via `buildOptimizationSnapshot` / `resolveOptimizationValue`). Do not use audit
+ * closure health or operator quality inputs as Google conversion amount — see
+ * `docs/architecture/CLOSED_SYSTEM_SCORE_CONTRACT.md`.
  */
 
 import type { PipelineStage } from '@/lib/oci/signal-types';

@@ -1,31 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveOptimizationValue } from '../../lib/oci/optimization-contract';
+import { resolveOptimizationValue } from '@/lib/oci/optimization-contract';
 
 /**
- * Phase 16: Zero Tolerance OCI Audit - Safety Net
- * Tests the "1000 TL Axiom" and "Zero Drop Routing" logic.
- * 
- * INVARIANTS PROVEN:
- * 1. Junk score 0 resolves to canonical 0.06 (must stay tiny but non-zero).
- * 2. Satis reaches canonical max value 120.
- * 3. Teklif score 50 maps to 45.
- * 4. Score routing behaves deterministically across boundaries.
+ * Phase 16: Zero Tolerance OCI Audit — aligns with `resolveOptimizationValue` (stage-only majors).
+ *
+ * INVARIANTS:
+ * 1. Junk stays tiny but non-zero (0.1 major units).
+ * 2. Won stage base is 100 majors (economic base, not lead_score).
+ * 3. Offered stage base is 50 regardless of systemScore.
+ * 4. Lead-score routing simulation stays deterministic across boundaries.
  */
 test('OCI Zero Tolerance Safety Net Tests', async (t) => {
-  await t.test('junk score 0 resolves to canonical 0.06', () => {
+  await t.test('junk resolves to canonical 0.1 majors', () => {
     const junkValue = resolveOptimizationValue({ stage: 'junk', systemScore: 0 }).optimizationValue;
-    assert.strictEqual(junkValue, 0.06, 'junk returned incorrect value');
+    assert.strictEqual(junkValue, 0.1, 'junk returned incorrect value');
   });
 
-  await t.test('satis reaches canonical max value 120', () => {
+  await t.test('won stage base is 100 majors', () => {
     const satisMax = resolveOptimizationValue({ stage: 'won', systemScore: 100 }).optimizationValue;
-    assert.strictEqual(satisMax, 120, 'satis returned incorrect value');
+    assert.strictEqual(satisMax, 100, 'won returned incorrect value');
   });
 
-  await t.test('teklif score 50 maps to 45', () => {
+  await t.test('offered stage base is 50 (systemScore ignored on value path)', () => {
     const teklifMid = resolveOptimizationValue({ stage: 'offered', systemScore: 50 }).optimizationValue;
-    assert.strictEqual(teklifMid, 45, 'teklif returned incorrect value');
+    assert.strictEqual(teklifMid, 50, 'offered returned incorrect value');
   });
 
   await t.test('Score routing mapping', () => {
@@ -42,7 +41,7 @@ test('OCI Zero Tolerance Safety Net Tests', async (t) => {
       { s: 40, expected: 'contacted' },
       { s: 60, expected: 'contacted' },
       { s: 80, expected: 'offered' },
-      { s: 100, expected: 'won' }
+      { s: 100, expected: 'won' },
     ];
 
     for (const { s, expected } of scores) {

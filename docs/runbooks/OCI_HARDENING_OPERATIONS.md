@@ -58,6 +58,11 @@ Run these SQL packs during incident triage and pre-release checks:
 3. `scripts/sql/script_backlog_health.sql`
 4. `scripts/sql/value_integrity_health.sql`
 5. `scripts/sql/identity_integrity_health.sql`
+6. `scripts/sql/queue_health.sql` — per-site operational queue invariants (`queue_health_contract_v1`); complements rollout script thresholds in [`lib/oci/queue-health-contract.ts`](../../lib/oci/queue-health-contract.ts).
+
+**Queue health vs conversion economics:** [`queue_health_score`](../../lib/oci/queue-health-contract.ts) is not `lead_score` / conversion value — see [OCI_QUEUE_HEALTH.md](../architecture/OCI_QUEUE_HEALTH.md).
+
+**Future work (separate PRs — do not mix with contract-only releases):** poison-pill / HoL isolation for bad payloads, exponential backoff + jitter on retries, DLQ “autopsy” grouped reports — behavior-changing; tracked outside the measurement contract PR.
 
 Projection contract note:
 - `call_funnel_projection` is an active Funnel Kernel read-model table (analytics/metrics/ACK compatibility).

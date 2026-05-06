@@ -165,4 +165,22 @@ export interface OciQueueStats {
   blockedPromotionScanCapped?: boolean;
   lastQueueUploadAt?: string | null;
   lastQueueCompletedAt?: string | null;
+  /** Operational queue health (contract lib/oci/queue-health-contract.ts); not lead_score / conversion value. */
+  queueHealthPolicyVersion?: string;
+  queue_health_status?: 'GREEN' | 'WARN' | 'RED';
+  queue_health_score?: number;
+  blocking_reasons?: string[];
+  queued_count?: number;
+  retry_count?: number;
+  processing_count?: number;
+  failed_count?: number;
+  dlq_count?: number;
+  stuck_processing_count?: number;
+  oldest_queued_age_minutes?: number | null;
+  oldest_retry_age_minutes?: number | null;
+  oldest_processing_age_minutes?: number | null;
+  retry_rate?: number;
+  failed_rate?: number;
+  won_missing_pipeline_count?: number;
+  queue_health_evaluation_mode?: 'operational' | 'kemik';
 }

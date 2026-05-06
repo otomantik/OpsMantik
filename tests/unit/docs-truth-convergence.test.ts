@@ -36,6 +36,17 @@ test('Workstream-C: legacy flow diagram is hard-marked historical only', () => {
   assert.ok(src.includes('OCI_HARDENING_OPERATIONS.md'));
 });
 
+test('Workstream-C: closed-system score contract is active', () => {
+  const src = readFileSync(join(ROOT, 'docs/architecture/CLOSED_SYSTEM_SCORE_CONTRACT.md'), 'utf8');
+  assert.ok(src.includes('status: active'));
+  assert.ok(src.includes('lead_score'));
+  assert.ok(src.includes('stage_base_major'));
+  assert.ok(src.includes('truth_closure_score'));
+  assert.ok(src.includes('FORBIDDEN equivalences'));
+  assert.ok(src.includes('ssot_100_choice: A'));
+  assert.ok(src.includes('Binary geçitler'));
+});
+
 test('Workstream-C: active docs avoid legacy Turkish conversion names', () => {
   const activeDocs = [
     'docs/architecture/OCI_VALUE_ENGINES_SSOT.md',

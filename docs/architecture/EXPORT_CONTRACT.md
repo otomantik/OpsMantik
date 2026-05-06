@@ -8,6 +8,8 @@ status: active
 
 Primary export surfaces are `offline_conversion_queue` and `marketing_signals`. `call_funnel_projection` is an analytics/read-model surface, not the Google Ads write authority.
 
+**Score semantics** (`lead_score` vs `stage_base_major` vs `truth_closure_score`): [CLOSED_SYSTEM_SCORE_CONTRACT.md](./CLOSED_SYSTEM_SCORE_CONTRACT.md).
+
 > **Operational view:** [docs/operations/OCI_OPERATIONS_SNAPSHOT.md](../operations/OCI_OPERATIONS_SNAPSHOT.md)
 
 ---

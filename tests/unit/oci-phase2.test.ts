@@ -9,8 +9,8 @@ import { resolveOptimizationValue } from '@/lib/oci/optimization-contract';
 test('Phase 2.3: Universal optimization math stays bounded and deterministic', () => {
     const offered = resolveOptimizationValue({ stage: 'offered', systemScore: 80 });
     assert.equal(offered.stageBase, 50);
-    assert.equal(offered.qualityFactor, 1.08);
-    assert.equal(offered.optimizationValue, 54);
+    assert.equal(offered.qualityFactor, 1.0);
+    assert.equal(offered.optimizationValue, 50);
 });
 
 test('Phase 2.1: Zombie Sweeper — Filter logic verification', async () => {

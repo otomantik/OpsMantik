@@ -66,24 +66,24 @@ test('test click id → reconcile TEST_CLICK_ID', () => {
   if (plan.outcome === 'reconcile') assert.equal(plan.reason, OCI_RECONCILIATION_REASONS.TEST_CLICK_ID);
 });
 
-test('no session and no ads click → reconcile NO_MATCHED_SESSION', () => {
+test('no session and no ads click on contacted → insert (self-healing retry window)', () => {
   const plan = planPanelStageOciEnqueue({
     call: baseCall({ status: 'contacted', matched_session_id: null }),
     primary: null,
     intentPrecursorEnabled: false,
   });
-  assert.equal(plan.outcome, 'reconcile');
-  if (plan.outcome === 'reconcile') assert.equal(plan.reason, OCI_RECONCILIATION_REASONS.NO_MATCHED_SESSION);
+  assert.equal(plan.outcome, 'insert');
+  if (plan.outcome === 'insert') assert.equal(plan.stage, 'contacted');
 });
 
-test('has session but no ads click on primary → reconcile NO_ADS_CLICK_ID', () => {
+test('has session but no ads click on primary, contacted → insert (self-healing retry window)', () => {
   const plan = planPanelStageOciEnqueue({
     call: baseCall({ status: 'contacted', matched_session_id: 'sess-xyz' }),
     primary: { gclid: '', wbraid: null, gbraid: null },
     intentPrecursorEnabled: false,
   });
-  assert.equal(plan.outcome, 'reconcile');
-  if (plan.outcome === 'reconcile') assert.equal(plan.reason, OCI_RECONCILIATION_REASONS.NO_ADS_CLICK_ID);
+  assert.equal(plan.outcome, 'insert');
+  if (plan.outcome === 'insert') assert.equal(plan.stage, 'contacted');
 });
 
 test('intent without precursor flag → NO_EXPORTABLE_OCI_STAGE even with click', () => {

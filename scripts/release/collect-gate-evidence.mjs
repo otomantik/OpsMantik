@@ -119,6 +119,7 @@ function runCommand(command) {
 }
 
 function buildMarkdown(artifact) {
+  const qh = artifact.metadata.queue_health_evidence || {};
   return [
     '# Release Gate Evidence',
     '',
@@ -131,6 +132,14 @@ function buildMarkdown(artifact) {
     `- actor: \`${artifact.metadata.actor}\``,
     `- db_checked: \`${artifact.metadata.db_checked}\``,
     `- db_claim_scope: \`${artifact.metadata.db_claim_scope}\``,
+    `- db_evidence_status: \`${artifact.metadata.db_evidence_status}\``,
+    `- static_queue_contract_green: \`${artifact.metadata.static_queue_contract_green}\``,
+    '',
+    '## Queue health / kanıt (ayrım)',
+    '',
+    `- TARGET_DB queue rows: \`${qh.target_db_claim ?? 'n/a'}\` — requires verify-db PASS for live invariant proof.`,
+    `- STATIC shape only: \`${qh.static_shape_only ?? 'n/a'}\` — does **not** prove prod queue GREEN or score 100.`,
+    `- policy_version: \`${qh.policy_version ?? 'queue_health_contract_v1'}\``,
     '',
     '## SQL Pack Hashes',
     '',
@@ -246,6 +255,14 @@ function main() {
     }
   }
 
+  const verifyDbCheck = checks.find((c) => String(c.name).includes('verify-db'));
+  let dbEvidenceStatus = 'DB_NOT_CHECKED';
+  if (verifyDbCheck?.status === 'PASS') dbEvidenceStatus = 'DB_CHECKED';
+  else if (verifyDbCheck?.status === 'FAIL') dbEvidenceStatus = 'DB_ERROR';
+
+  const packShapeCheck = checks.find((c) => String(c.name).includes('verify-health-pack-contracts'));
+  const staticQueueContractGreen = packShapeCheck?.status === 'PASS';
+
   const artifact = {
     metadata: {
       contract_version: EVIDENCE_CONTRACT_VERSION,
@@ -260,6 +277,17 @@ function main() {
       db_checked: checks.some((c) => c.name.includes('verify-db')),
       db_target: parsed.mode,
       db_claim_scope: checks.some((c) => c.name.includes('verify-db')) ? 'full' : 'none',
+      db_evidence_status: dbEvidenceStatus,
+      static_queue_contract_green: staticQueueContractGreen,
+      queue_health_evidence: {
+        policy_version: 'queue_health_contract_v1',
+        pack_id: 'queue_health',
+        static_shape_only: parsed.mode === 'static' ? 'yes — SQL pack file + column contract only' : 'partial',
+        target_db_claim:
+          dbEvidenceStatus === 'DB_CHECKED'
+            ? 'verify-db ran — includes queue_health.sql when DB reachable'
+            : 'none — do not claim TARGET_DB queue health GREEN',
+      },
       normalization_version: 'v1',
       sql_pack_hashes: sqlPackHashes,
     },

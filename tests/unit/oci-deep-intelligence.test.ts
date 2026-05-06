@@ -10,15 +10,15 @@ import { join } from 'node:path';
 test('MODULE 4: universal optimization values replace half-life shadow math', () => {
   assert.deepEqual(resolveOptimizationValue({ stage: 'contacted', systemScore: 60 }), {
     stageBase: 10,
-    systemScore: 60,
-    qualityFactor: 0.96,
-    optimizationValue: 9.6,
+    systemScore: 0,
+    qualityFactor: 1.0,
+    optimizationValue: 10,
   });
   assert.deepEqual(resolveOptimizationValue({ stage: 'won', systemScore: 100 }), {
     stageBase: 100,
-    systemScore: 100,
-    qualityFactor: 1.2,
-    optimizationValue: 120,
+    systemScore: 0,
+    qualityFactor: 1.0,
+    optimizationValue: 100,
   });
 });
 

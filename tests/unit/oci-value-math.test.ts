@@ -1,7 +1,7 @@
 /**
  * One True Math — Regression guards for OCI conversion value.
  * - Currency utilities (getMinorUnits, majorToMinor, minorToMajor)
- * - optimization-contract (stage base x quality factor)
+ * - optimization-contract (stage-base optimization value; systemScore not applied to value)
  * - Source guard: runner must not use calculateExpectedValue; job.amount_cents = row.value_cents
  * - Import ban: OCI folders must not import predictive-engine / calculateLeadValue for value
  */
@@ -19,7 +19,6 @@ import {
   clampSystemScore,
   OPTIMIZATION_STAGE_BASES,
   resolveOptimizationValue,
-  resolveQualityFactor,
 } from '@/lib/oci/optimization-contract';
 
 // --- Currency utilities ---
@@ -66,37 +65,31 @@ test('clampSystemScore bounds scores to 0..100', () => {
   assert.equal(clampSystemScore(142), 100);
 });
 
-test('resolveQualityFactor follows the universal formula', () => {
-  assert.equal(resolveQualityFactor(0), 0.6);
-  assert.equal(resolveQualityFactor(50), 0.9);
-  assert.equal(resolveQualityFactor(100), 1.2);
-});
-
 test('resolveOptimizationValue computes canonical values deterministically', () => {
   assert.deepEqual(resolveOptimizationValue({ stage: 'contacted', systemScore: 0 }), {
     stageBase: 10,
     systemScore: 0,
-    qualityFactor: 0.6,
-    optimizationValue: 6,
+    qualityFactor: 1.0,
+    optimizationValue: 10,
   });
   assert.deepEqual(resolveOptimizationValue({ stage: 'offered', systemScore: 50 }), {
     stageBase: 50,
-    systemScore: 50,
-    qualityFactor: 0.9,
-    optimizationValue: 45,
+    systemScore: 0,
+    qualityFactor: 1.0,
+    optimizationValue: 50,
   });
   assert.deepEqual(resolveOptimizationValue({ stage: 'won', systemScore: 100 }), {
     stageBase: 100,
-    systemScore: 100,
-    qualityFactor: 1.2,
-    optimizationValue: 120,
+    systemScore: 0,
+    qualityFactor: 1.0,
+    optimizationValue: 100,
   });
 });
 
 test('optimization values map cleanly to expected cents', () => {
-  assert.equal(Math.round(resolveOptimizationValue({ stage: 'junk', systemScore: 0 }).optimizationValue * 100), 6);
-  assert.equal(Math.round(resolveOptimizationValue({ stage: 'contacted', systemScore: 100 }).optimizationValue * 100), 1200);
-  assert.equal(Math.round(resolveOptimizationValue({ stage: 'won', systemScore: 100 }).optimizationValue * 100), 12000);
+  assert.equal(Math.round(resolveOptimizationValue({ stage: 'junk', systemScore: 0 }).optimizationValue * 100), 10);
+  assert.equal(Math.round(resolveOptimizationValue({ stage: 'contacted', systemScore: 100 }).optimizationValue * 100), 1000);
+  assert.equal(Math.round(resolveOptimizationValue({ stage: 'won', systemScore: 100 }).optimizationValue * 100), 10000);
 });
 
 // --- Source guard: runner must not use calculateExpectedValue ---

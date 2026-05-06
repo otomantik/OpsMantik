@@ -154,6 +154,10 @@ export function LeadActionOverlay({
                 <p className="text-slate-500 font-bold text-xs uppercase tracking-wider">{t('hunter.scoreConfirmation')}</p>
               </div>
 
+              {/*
+                25 / 60 / 100 = lead quality (stored as lead_score / cold–normal–hot). Same literals as
+                CATEGORICAL_SCORES — not the won-stage economic base (100 major units) and not truth/closure health.
+              */}
               <div className="grid grid-cols-1 gap-4">
                 <button 
                   onClick={() => handleComplete(25)}

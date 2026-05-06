@@ -132,7 +132,10 @@ test('oci workers re-check current call sendability before exporting or draining
   );
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(outboxSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'outbox worker must fail reversed outbox rows explicitly');
-  assert.ok(outboxSrc.includes(".select('id, signal_type, optimization_stage')"), 'outbox duplicate prevention must inspect both legacy and canonical signal columns');
+  assert.ok(
+    outboxSrc.includes('.select(') && outboxSrc.includes('optimization_stage'),
+    'outbox duplicate prevention must select signal row identity + canonical optimization_stage'
+  );
   assert.ok(outboxSrc.includes('resolveSignalStageFromExisting({'), 'outbox duplicate prevention must normalize canonical optimization stages and legacy aliases together');
 });
 

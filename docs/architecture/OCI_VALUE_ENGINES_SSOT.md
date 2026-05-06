@@ -14,17 +14,18 @@ This document describes how conversion values are produced in current runtime SS
 | **Sale queue** | `enqueueSealConversion` | `buildOptimizationSnapshot('satis', systemScore)` | `offline_conversion_queue.optimization_value` + `value_cents` mirror |
 | **Export** | `/api/oci/google-ads-export` | Prefers `optimization_value`, falls back to stored cents only for legacy rows | JSON for Google Ads Script |
 
-The universal formula is:
+**Production value path** — vocabulary: **`lead_score`** (quality), **`stage_base_major`** / `OPTIMIZATION_STAGE_BASES` (economics), **`truth_closure_score`** (audit only; never export value). See [CLOSED_SYSTEM_SCORE_CONTRACT.md](./CLOSED_SYSTEM_SCORE_CONTRACT.md).
 
-`optimization_value = stage_base * quality_factor`
+`resolveOptimizationValue` yields `optimization_value = stage_base` with `systemScore` held at **0** on the Google-facing path — **`lead_score` is not a production multiplier here** (intentional).
 
-Where:
+Stage bases (`OPTIMIZATION_STAGE_BASES` in `lib/oci/optimization-contract.ts`):
 
-- `OpsMantik_Junk_Exclusion = 0.1`
-- `OpsMantik_Contacted = 10`
-- `OpsMantik_Offered = 50`
-- `OpsMantik_Won = 100`
-- `quality_factor = 0.6 + 0.6 * (system_score / 100)`
+- `OpsMantik_Junk_Exclusion` → 0.1 major units
+- `OpsMantik_Contacted` → 10
+- `OpsMantik_Offered` → 50
+- `OpsMantik_Won` → 100 (**stage economic** 100 majors, not operator HOT **lead_score** 100)
+
+`resolveQualityFactor` exists for legacy/utility callers; the snapshot fed into marketing-signal economics uses **quality_factor = 1.0** and **optimization_value = stage_base** from `buildOptimizationSnapshot` / `resolveOptimizationValue`.
 
 `actual_revenue` is preserved as provenance in snapshots/rows. Won economics keeps explicit fallback provenance via policy fields (`value_source`, `value_policy_version`, `value_policy_reason`, `value_fallback_used`) and must remain aligned with runtime guards.
 

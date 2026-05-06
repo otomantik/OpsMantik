@@ -25,7 +25,7 @@ test('parseExportConfig honors tenant-supplied currency + timezone overrides', (
 test('parseOciConfig surfaces SiteExportConfig currency and strips legacy math', () => {
   const r = parseOciConfig({ currency: 'USD', legacy_math: 2000 });
   assert.equal(r.currency, 'USD');
-  assert.deepEqual(r.intelligence, { premium_districts: [], high_intent_keywords: [], multipliers: {} });
+  assert.deepEqual(r.intelligence, { premium_districts: [], high_intent_keywords: [] });
 });
 
 test('computeLcv uses universal stage base and quality factor model', () => {

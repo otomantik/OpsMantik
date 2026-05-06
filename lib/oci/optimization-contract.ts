@@ -1,4 +1,12 @@
 /**
+ * CLOSED-SYSTEM SCORE CONTRACT (read before changing numbers or names)
+ * -----------------------------------------------------------------
+ * - `CATEGORICAL_SCORES` (25 / 60 / 100): **lead quality** training / UX inputs — not Google Ads value.
+ * - `OPTIMIZATION_STAGE_BASES`: **stage economic base** in major units (won = 100 majors) — canonical conversion economics.
+ * - `resolveOptimizationValue`: production **optimizationValue = stageBase** with `systemScore` forced to 0 — **no `lead_score` multiplier** on this path (intentional).
+ * - **Truth / closure health** (audit gates) must never be written as conversion value; see `docs/architecture/CLOSED_SYSTEM_SCORE_CONTRACT.md`.
+ */
+/**
  * OptimizationStage — Canonical pipeline stage identifier.
  */
 /**
@@ -22,7 +30,7 @@ export interface OptimizationValueSnapshot {
   optimizationStage: OptimizationStage;
   stageBase: number;
   systemScore: number;
-  /** Universal multiplier derived from systemScore (0..100). */
+  /** Production path: always 1.0 (lead_score does not scale majors here). */
   qualityFactor: number;
   optimizationValue: number;
   actualRevenue: number | null;
@@ -36,9 +44,18 @@ export interface OptimizationValueSnapshot {
 
 export const OPTIMIZATION_MODEL_VERSION = 'dynamic-score-v2';
 
+/** Explicit policy gate: Google conversion cents must not multiply by `lead_score` unless this is promoted via a separate PR. Production stays false. */
+export const LEAD_SCORE_GOOGLE_VALUE_MULTIPLIER_ENABLED = false as const;
+
 /**
- * Base optimization values keyed by stage.
- * These are the maximum values for each stage (when score is 100).
+ * Faz 1 — Tek kanun (kapalı sistem): `optimizationValue` üreten yol = yalnızca `resolveStageBase(stage)`.
+ * Caller `systemScore` bu kanunda kullanılmaz (snapshotta 0 tutulur; `void` ile açık).
+ */
+export const CLOSED_SYSTEM_OPTIMIZATION_VALUE_LAW = 'stage_base_only_v1' as const;
+
+/**
+ * Base optimization values keyed by stage (major units before cent conversion).
+ * The won base **100** is **stage economic** magnitude, not the operator **lead_score** HOT=100.
  */
 export const OPTIMIZATION_STAGE_BASES: Record<OptimizationStage, number> = {
   junk: 0.1,
@@ -58,17 +75,17 @@ export function resolveStageBase(stage: OptimizationStage): number {
 
 
 /**
- * Calculates the optimization value based on stage only (New Math).
- *
- * optimizationValue = stageBase
+ * Calculates the optimization value — **Faz 1 single law**: `optimizationValue = stageBase` only.
+ * `systemScore` is ignored for this result (`CLOSED_SYSTEM_OPTIMIZATION_VALUE_LAW`).
  */
 export function resolveOptimizationValue(params: {
   stage: OptimizationStage;
   systemScore?: number | null | undefined;
 }): Pick<OptimizationValueSnapshot, 'stageBase' | 'systemScore' | 'qualityFactor' | 'optimizationValue'> {
+  void params.systemScore;
   const stageBase = resolveStageBase(params.stage);
-  const systemScore = 0; // Legacy Brain Score disabled
-  const qualityFactor = 1.0; 
+  const systemScore = 0;
+  const qualityFactor = 1.0;
   const optimizationValue = stageBase;
 
   return {

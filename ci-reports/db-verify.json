@@ -1,4 +1,264 @@
 {
-  "ok": false,
-  "error": "Missing env. Provide NEXT_PUBLIC_SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY (preferred) or NEXT_PUBLIC_SUPABASE_ANON_KEY."
+  "ok": true,
+  "url": "https://api.opsmantik.com",
+  "used_key": "service_role",
+  "missing_count": 0,
+  "failed_count": 0,
+  "local_contract_checks": [
+    {
+      "name": "local:contract_catalog",
+      "ok": true,
+      "count": 12
+    }
+  ],
+  "results": [
+    {
+      "name": "local:contract_catalog",
+      "ok": true,
+      "count": 12
+    },
+    {
+      "name": "ping",
+      "ok": true,
+      "sample": true
+    },
+    {
+      "name": "verify_partition_triggers_exist",
+      "ok": true,
+      "sample": false
+    },
+    {
+      "name": "verify_current_events_partition_exists",
+      "ok": true,
+      "missing": true,
+      "optional": true,
+      "error": {
+        "message": "Could not find the function public.verify_current_events_partition_exists without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "watchtower_partition_drift_check_v1",
+      "ok": true,
+      "sample": {
+        "ok": false,
+        "checked_at": "2026-05-06T20:34:24.815386+00:00",
+        "trigger_sessions_set_created_month": false,
+        "trigger_events_set_session_month_from_session": false
+      }
+    },
+    {
+      "name": "get_recent_intents_v1",
+      "ok": true,
+      "sample": [
+        {
+          "id": "03833f1c-5879-4e38-91cf-88c5c595dca9",
+          "version": 3,
+          "created_at": "2026-05-06T19:45:27.943744+00:00",
+          "status": "junk",
+          "matched_session_id": "93083baa-5ad2-4602-9c54-031d3eb43c72",
+          "intent_action": "phone",
+          "intent_target": "+905459605811",
+          "summary": "+905459605811",
+          "page_url": "https://www.kocotokurtarma.com/?gclid=CjwKCAjwzevPBhBaEiwAplAxvqzhfyzcwZl7hM243gT62Rd5H7_wGgMdCZSt9tdJjePc346SDEJ23RoCxN0QAvD_BwE&wbraid=Cj4KCAjwqubPBhBjEi4AQ8_pKTJOxW9gQgDA-kquC6qUNfsPNNWWd0YirKA14qFIkNmvylSCtwDryrlaGgKAlQ&gbraid=0AAAABC1UgRcP9mUoCgOkoGMSkJW1ODe0p&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=%C3%A7ekici%20%C3%A7ekici&utm_content=803499423782&utm_adgroup=195554909752&matchtype=b&device=m&devicemodel=&network=g&adposition=&targetid=kwd-303907364301&feeditemid=&loc_physical_ms=9217967&loc_interest_ms=9192434&placement=&gad_source=1&gad_campaignid=23719612036&gbraid=0AAAABC1UgRcP9mUoCgOkoGMSkJW1ODe0p",
+          "click_id": "CjwKCAjwzevPBhBaEiwAplAxvqzhfyzcwZl7hM243gT62Rd5H7_wGgMdCZSt9tdJjePc346SDEJ23RoCxN0QAvD_BwE"
+        },
+        {
+          "id": "ccfc8a09-a22c-489c-a0a6-4901ba4eb19c",
+          "version": 2,
+          "created_at": "2026-05-06T19:43:30.088827+00:00",
+          "status": "junk",
+          "matched_session_id": "83909d7d-e76a-4756-b569-9c78d7f16ff8",
+          "intent_action": "phone",
+          "intent_target": "+905459605811",
+          "summary": "+905459605811",
+          "page_url": "https://www.kocotokurtarma.com/?gclid=CjwKCAjwzevPBhBaEiwAplAxvqzhfyzcwZl7hM243gT62Rd5H7_wGgMdCZSt9tdJjePc346SDEJ23RoCxN0QAvD_BwE&wbraid=Cj4KCAjwqubPBhBjEi4AQ8_pKTJOxW9gQgDA-kquC6qUNfsPNNWWd0YirKA14qFIkNmvylSCtwDryrlaGgKAlQ&gbraid=0AAAABC1UgRcP9mUoCgOkoGMSkJW1ODe0p&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=%C3%A7ekici%20%C3%A7ekici&utm_content=803499423782&utm_adgroup=195554909752&matchtype=b&device=m&devicemodel=&network=g&adposition=&targetid=kwd-303907364301&feeditemid=&loc_physical_ms=9217967&loc_interest_ms=9192434&placement=&gad_source=1&gad_campaignid=23719612036&gbraid=0AAAABC1UgRcP9mUoCgOkoGMSkJW1ODe0p",
+          "click_id": "CjwKCAjwzevPBhBaEiwAplAxvqzhfyzcwZl7hM243gT62Rd5H7_wGgMdCZSt9tdJjePc346SDEJ23RoCxN0QAvD_BwE"
+        }
+      ]
+    },
+    {
+      "name": "get_session_details",
+      "ok": true,
+      "sample": []
+    },
+    {
+      "name": "get_session_timeline",
+      "ok": true,
+      "sample": []
+    },
+    {
+      "name": "is_ads_session",
+      "ok": true,
+      "sample": false
+    },
+    {
+      "name": "verify_call_event_signature_v1",
+      "ok": true,
+      "sample": false
+    },
+    {
+      "name": "resolve_site_identifier_v1",
+      "ok": true,
+      "sample": null
+    },
+    {
+      "name": "rotate_site_secret_v1",
+      "ok": true,
+      "sample": false
+    },
+    {
+      "name": "get_recent_intents_lite_v1",
+      "ok": true,
+      "missing": false,
+      "optional": false,
+      "signature_ambiguous": true,
+      "error": {
+        "message": "Could not choose the best candidate function between: public.get_recent_intents_lite_v1(p_site_id => uuid, p_date_from => timestamp with time zone, p_date_to => timestamp with time zone, p_limit => integer, p_ads_only => boolean), public.get_recent_intents_lite_v1(p_site_id => uuid, p_date_from => timestamp with time zone, p_date_to => timestamp with time zone, p_limit => integer, p_ads_only => boolean, p_only_unreviewed => boolean, p_include_reviewed => boolean)",
+        "code": "PGRST203"
+      }
+    },
+    {
+      "name": "increment_usage_checked",
+      "ok": true,
+      "sample": {
+        "ok": true,
+        "kind": "revenue_events",
+        "limit": 1000,
+        "current": 12
+      }
+    },
+    {
+      "name": "decrement_and_delete_idempotency",
+      "ok": true,
+      "sample": {
+        "ok": false,
+        "reason": "NOT_FOUND"
+      }
+    },
+    {
+      "name": "rpc_presence:apply_call_action_v2",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.apply_call_action_v2 without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:apply_call_action_with_review_v1",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.apply_call_action_with_review_v1 without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:finalize_outbox_event_v1",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.finalize_outbox_event_v1 without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:append_script_claim_transition_batch",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.append_script_claim_transition_batch without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:append_script_transition_batch",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.append_script_transition_batch without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:append_worker_transition_batch_v2",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.append_worker_transition_batch_v2 without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:claim_outbox_events",
+      "ok": true
+    },
+    {
+      "name": "rpc_presence:claim_offline_conversion_jobs_v3",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.claim_offline_conversion_jobs_v3 without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_presence:complete_ack_receipt_v1",
+      "ok": true,
+      "missing": true,
+      "signature_required": true,
+      "error": {
+        "message": "Could not find the function public.complete_ack_receipt_v1 without parameters in the schema cache",
+        "code": "PGRST202"
+      }
+    },
+    {
+      "name": "rpc_signature:register_ack_receipt_v1",
+      "ok": true
+    },
+    {
+      "name": "table:site_plans",
+      "ok": true
+    },
+    {
+      "name": "table:site_usage_monthly",
+      "ok": true
+    },
+    {
+      "name": "table:usage_counters",
+      "ok": true
+    },
+    {
+      "name": "table:call_funnel_ledger",
+      "ok": true
+    },
+    {
+      "name": "table:marketing_signals",
+      "ok": true
+    },
+    {
+      "name": "table:offline_conversion_queue",
+      "ok": true
+    },
+    {
+      "name": "columns:calls_clickid_geo_columns",
+      "ok": true
+    },
+    {
+      "name": "columns:sessions_geo_decision_columns",
+      "ok": true
+    },
+    {
+      "name": "columns:calls_intent_review_columns",
+      "ok": true
+    }
+  ]
 }

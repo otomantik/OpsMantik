@@ -74,6 +74,25 @@ export const HEALTH_PACK_CONTRACTS = [
     expected_columns: ['surface', 'drifted_rows', 'contract_status'],
     red_green_criteria: 'RED when call-bound OCI conversion timestamps drift from occurred_at.',
   },
+  {
+    file: 'scripts/sql/queue_health.sql',
+    pack_id: 'queue_health',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: [
+      'policy_version',
+      'site_id',
+      'contract_status',
+      'queue_health_status',
+      'blocking_reasons',
+      'retry_rate',
+      'failed_rate',
+      'stuck_processing_count',
+      'won_missing_pipeline',
+    ],
+    red_green_criteria:
+      'Operational queue invariants only (see lib/oci/queue-health-contract.ts). RED when stuck, won leak, DLQ, rates, or age SLO breached; not full SSOT compose.',
+  },
 ];
 
 export const MODE_CONFIG = {
@@ -126,6 +145,8 @@ export function buildScorecardMarkdown({ artifact, outputPath }) {
     `- environment: \`${artifact.metadata.environment}\``,
     `- overall_status: \`${artifact.overall_status}\``,
     `- db_checked: \`${artifact.metadata.db_checked}\``,
+    `- db_evidence_status: \`${artifact.metadata.db_evidence_status ?? 'unknown'}\``,
+    `- static_queue_contract_green: \`${artifact.metadata.static_queue_contract_green ?? 'unknown'}\``,
     `- db_claim_scope: \`${artifact.metadata.db_claim_scope}\``,
     `- unresolved_p0_p1: \`${artifact.summary.blocking_failures}\` blocking findings`,
     `- source_artifact: \`${outputPath}\``,

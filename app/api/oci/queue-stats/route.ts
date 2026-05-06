@@ -8,6 +8,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { requireOciControlAuth } from '@/lib/oci/control-auth';
 import { computeBlockedQueueMetrics } from '@/lib/oci/blocked-queue-metrics';
+import { STUCK_PROCESSING_MAX_AGE_MINUTES, evaluateQueueHealth } from '@/lib/oci/queue-health-contract';
+import { countWonMissingPipelineForSite } from '@/lib/oci/won-missing-pipeline-site';
+import { fetchSiteSsotFlags } from '@/lib/oci/queue-health-ssot-flags-site';
 import type {
   MarketingSignalDispatchBreakdown,
   OciQueueStats,
@@ -18,7 +21,7 @@ import { QueueStatsQuerySchema, QUEUE_STATUSES } from '@/lib/domain/oci/queue-ty
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const STUCK_PROCESSING_MINUTES = 15;
+const STUCK_PROCESSING_MINUTES = STUCK_PROCESSING_MAX_AGE_MINUTES;
 const OUTBOX_STALE_MINUTES = 15;
 const OUTBOX_FAILED_RECENT_HOURS = 24;
 
@@ -115,6 +118,51 @@ export async function GET(req: NextRequest) {
 
   const blockedMetrics = await computeBlockedQueueMetrics(siteUuid);
 
+  const [
+    { data: oldestQueuedRow },
+    { data: oldestRetryRow },
+    { data: oldestProcessingRow },
+    wonMissingPipelineCount,
+    ssotFlags,
+  ] = await Promise.all([
+    adminClient
+      .from('offline_conversion_queue')
+      .select('created_at')
+      .eq('site_id', siteUuid)
+      .eq('status', 'QUEUED')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    adminClient
+      .from('offline_conversion_queue')
+      .select('created_at')
+      .eq('site_id', siteUuid)
+      .eq('status', 'RETRY')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    adminClient
+      .from('offline_conversion_queue')
+      .select('updated_at')
+      .eq('site_id', siteUuid)
+      .eq('status', 'PROCESSING')
+      .order('updated_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    countWonMissingPipelineForSite(adminClient, siteUuid),
+    fetchSiteSsotFlags(adminClient, siteUuid),
+  ]);
+
+  const minutesSince = (iso: string | undefined | null): number | null => {
+    if (!iso) return null;
+    return (Date.now() - new Date(iso).getTime()) / 60000;
+  };
+  const oldestQueuedAgeMinutes = minutesSince((oldestQueuedRow as { created_at?: string } | null)?.created_at);
+  const oldestRetryAgeMinutes = minutesSince((oldestRetryRow as { created_at?: string } | null)?.created_at);
+  const oldestProcessingAgeMinutes = minutesSince(
+    (oldestProcessingRow as { updated_at?: string } | null)?.updated_at
+  );
+
   const { data: uploadSample } = await adminClient
     .from('offline_conversion_queue')
     .select('uploaded_at')
@@ -167,6 +215,26 @@ export async function GET(req: NextRequest) {
   const parityDenominator = Math.max(queueActive, outboxActive, 1);
   const outboxQueueParityRatio = Number((Math.min(queueActive, outboxActive) / parityDenominator).toFixed(4));
 
+  const totalQueue = Array.isArray(rows) ? rows.length : 0;
+
+  const queueHealth = evaluateQueueHealth({
+    evaluationMode: 'operational',
+    targetDbEvidenceAvailable: true,
+    siteId: siteUuid,
+    stuckProcessingCount: typeof stuckProcessing === 'number' ? stuckProcessing : 0,
+    wonMissingPipelineCount,
+    oldestQueuedAgeMinutes,
+    oldestRetryAgeMinutes,
+    oldestProcessingAgeMinutes,
+    totalQueue,
+    retryCount: totals.RETRY,
+    failedCount: totals.FAILED,
+    deadLetterQuarantineCount: totals.DEAD_LETTER_QUARANTINE,
+    timeSsotRed: ssotFlags.timeSsotRed,
+    valueIntegrityRed: ssotFlags.valueIntegrityRed,
+    identityIntegrityRed: ssotFlags.identityIntegrityRed,
+  });
+
   const body: OciQueueStats = {
     siteId: siteUuid,
     ociSyncMethod,
@@ -191,6 +259,23 @@ export async function GET(req: NextRequest) {
     blockedPromotionScanCapped: blockedMetrics.promotionScanCapped,
     lastQueueUploadAt,
     lastQueueCompletedAt,
+    queueHealthPolicyVersion: queueHealth.policy_version,
+    queue_health_status: queueHealth.queue_health_status,
+    queue_health_score: queueHealth.queue_health_score,
+    blocking_reasons: queueHealth.blocking_reasons,
+    queued_count: totals.QUEUED,
+    retry_count: totals.RETRY,
+    processing_count: totals.PROCESSING,
+    failed_count: totals.FAILED,
+    dlq_count: totals.DEAD_LETTER_QUARANTINE,
+    stuck_processing_count: typeof stuckProcessing === 'number' ? stuckProcessing : undefined,
+    oldest_queued_age_minutes: oldestQueuedAgeMinutes,
+    oldest_retry_age_minutes: oldestRetryAgeMinutes,
+    oldest_processing_age_minutes: oldestProcessingAgeMinutes,
+    retry_rate: queueHealth.retry_rate,
+    failed_rate: queueHealth.failed_rate,
+    won_missing_pipeline_count: wonMissingPipelineCount,
+    queue_health_evaluation_mode: 'operational',
   };
   return NextResponse.json(body);
 }
