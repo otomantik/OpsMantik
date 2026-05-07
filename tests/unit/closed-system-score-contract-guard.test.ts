@@ -16,7 +16,7 @@ const ROOT = process.cwd();
 const VALUE_MATH_FILES = [
   'lib/oci/marketing-signal-value-ssot.ts',
   'lib/oci/marketing-signal-hash.ts',
-  'lib/oci/insert-marketing-signal.ts',
+  'lib/oci/upsert-marketing-signal.ts',
 ] as const;
 
 function walkTsFiles(dir: string): string[] {

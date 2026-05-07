@@ -38,7 +38,7 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   const { signalDate, conversionName, gclid, wbraid, gbraid } = payload;
 
   // 'won' is owned exclusively by the seal path (offline_conversion_queue).
-  // contacted / offered / junk → marketing_signals → Google (OCI script birleşik export).
+  // contacted / offered / junk → marketing_signals (audit/hash/recovery); Google script batch = journal only.
   if (stage === 'won') {
     return { success: false, conversionValue: 0, causalDna: {}, duplicate: false };
   }

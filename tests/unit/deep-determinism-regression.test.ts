@@ -124,7 +124,7 @@ test('oci workers re-check current call sendability before exporting or draining
   const outboxSrc = readFileSync(PROCESS_OUTBOX_LIB, 'utf8');
   assert.ok(fetchSrc.includes('status, oci_status'), 'sendability helper must probe oci_status (with drift fallback)');
   assert.ok(exportSrc.includes('fetchExportCallContextRows'), 'queue export must use shared sendability fetch');
-  assert.ok(exportSrc.includes("blockedSignalIds: []"), 'journal-only export must keep signal buckets inert');
+  assert.ok(!exportSrc.includes('blockedSignalIds'), 'journal-only export must not expose legacy signal buckets');
   const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(
     markSrc.includes('Legacy `marketing_signals` is not exported here'),
@@ -140,7 +140,7 @@ test('oci workers re-check current call sendability before exporting or draining
     outboxSrc.includes('.select(') && outboxSrc.includes('optimization_stage'),
     'outbox duplicate prevention must select signal row identity + canonical optimization_stage'
   );
-  assert.ok(outboxSrc.includes('resolveSignalStageFromExisting({'), 'outbox duplicate prevention must normalize canonical optimization stages and legacy aliases together');
+  assert.ok(!outboxSrc.includes('resolveSignalStageFromExisting({'), 'queue-only outbox must not consult legacy signal normalizer');
 });
 
 test('oci recovery routes and runner delegate to DB-owned batch kernels', () => {

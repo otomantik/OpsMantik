@@ -25,9 +25,9 @@ export async function GET(req: NextRequest) {
       siteId: auth.siteUuid,
       counts: {
         queued: built.keptConversions.length,
-        signals: built.keptSignalItems.length,
+        signals: 0,
         pvs: 0,
-        suppressed: built.suppressedQueueIds.length + built.suppressedSignalIds.length,
+        suppressed: built.suppressedQueueIds.length,
         adjustments: 0,
       },
       warnings: auth.isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],

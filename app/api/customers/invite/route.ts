@@ -54,6 +54,25 @@ async function auditInvite(params: {
   }
 }
 
+function buildConsoleMagicLink(params: {
+  actionLink?: string | null;
+  hashedToken?: string | null;
+  verificationType?: string | null;
+}) {
+  const consoleBase = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
+    ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}`
+    : 'http://localhost:3000';
+  if (params.hashedToken) {
+    const type = params.verificationType || 'magiclink';
+    const url = new URL('/auth/confirm', consoleBase);
+    url.searchParams.set('token_hash', params.hashedToken);
+    url.searchParams.set('type', type);
+    url.searchParams.set('next', '/dashboard');
+    return url.toString();
+  }
+  return params.actionLink || null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Validate current user is logged in
@@ -274,12 +293,17 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      const safeLoginUrl = buildConsoleMagicLink({
+        actionLink: linkData?.properties?.action_link || null,
+        hashedToken: linkData?.properties?.hashed_token || null,
+        verificationType: linkData?.properties?.verification_type || null,
+      });
       return NextResponse.json({
         success: true,
         message: `Customer already has access. Membership updated to ${role}.`,
         customer_email: emailNorm,
         site_name: site.name,
-        login_url: linkData?.properties?.action_link || null,
+        login_url: safeLoginUrl,
         role: role,
       });
     }
@@ -358,12 +382,17 @@ export async function POST(req: NextRequest) {
       details: null,
     });
 
+    const safeLoginUrl = buildConsoleMagicLink({
+      actionLink: linkData.properties.action_link,
+      hashedToken: linkData.properties.hashed_token,
+      verificationType: linkData.properties.verification_type,
+    });
     return NextResponse.json({
       success: true,
       message: `Customer invited successfully with ${role} role.`,
       customer_email: emailNorm,
       site_name: site.name,
-      login_url: linkData.properties.action_link,
+      login_url: safeLoginUrl,
       role: role,
       note: 'Share this login URL with the customer',
     });

@@ -12,7 +12,7 @@ Script payload time must represent the first intent creation timestamp from back
 
 **Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)
 
-**Muratcan Akü (`muratcanaku.com`):** hardened script kaynağı **`GoogleAdsScriptMuratcanAku.js`** — `OPSMANTIK_RUN_MODE`: `peek` (kuyruk log’ları, yükleme yok) veya `sync` (yükleyici + ACK). Kimlikleri inline veya Script Properties.
+**Muratcan Akü (`muratcanaku.com`):** hardened script kaynağı **`GoogleAdsScriptMuratcanAku.js`** — `OPSMANTIK_RUN_MODE`: `peek` (journal kuyruk log’ları, yükleme yok) veya `sync` (yükleyici + ACK). Export GET yalnızca `offline_conversion_queue`. Kimlikleri inline veya Script Properties.
 
 **SECURITY:** Prefer Script Properties over hardcoded keys. Set `OCI_API_KEY` and `OPSMANTIK_SITE_ID` in File > Project properties > Script properties. Deploy snapshots support this; fallback to CONFIG for backward compatibility.
 

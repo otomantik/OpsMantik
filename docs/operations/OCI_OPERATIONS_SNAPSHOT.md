@@ -14,6 +14,8 @@ status: historical
 
 **Category:** Production Operations Documentation
 
+> **Errata (2026-05, authoritative for upload surface):** The Google Ads `GET /api/oci/google-ads-export` response is built **only** from `offline_conversion_queue` (journal). `marketing_signals` is not read by that route. See `docs/architecture/EXPORT_CLOSURE.md`.
+
 ---
 
 ## Architecture Summary
@@ -75,11 +77,11 @@ flowchart TB
 | **V4 (legacy)** | OpsMantik_V4_Sicak_Teklif | **marketing_signals** | Seal lead_score=80 | PENDING | signal_* → SENT |
 | **V5** | OpsMantik_V5_DEMIR_MUHUR | **offline_conversion_queue** | Seal lead_score=100 + sale_amount | QUEUED/RETRY | seal_* → UPLOADED |
 
-Three stores: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue (V5). Export merges them into a single JSON for Script; ack updates the relevant store by prefix.
+Three stores: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue (V5). **Google Ads script GET export (2026-05+):** only journal rows are serialized to Script; signal rows are not merged into that JSON. Legacy prose below describes pre-unification staging; upload SSOT for the export route is the journal.
 
 **Architecture note**
 
-> This report is a summary of current live state. **Current Google write authority is `offline_conversion_queue` + `marketing_signals`.** Funnel Kernel remains the target SSOT evolution track; `call_funnel_projection` is a read/projection surface and not the current Google write authority.
+> **Single upload surface for the Google Ads script export:** `offline_conversion_queue` only — not `marketing_signals`. Funnel Kernel remains the target SSOT evolution track; `call_funnel_projection` is a read/projection surface and is not the current Google write authority.
 
 ---
 
@@ -112,11 +114,12 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 
 ### 3.2 Legacy `TRANSITIONAL` (USE_FUNNEL_PROJECTION=false or default)
 
-- **offline_conversion_queue** (V5) + **marketing_signals** (V2–V4) + **Redis** (V1)
+- **Current `google-ads-export` route:** claims/reads **only** `offline_conversion_queue` (see errata at top). The following bullets describe the older “merged batch” mental model; do not use them as the live upload contract.
+- **Historical:** **offline_conversion_queue** (V5) + **marketing_signals** (V2–V4) + **Redis** (V1)
 - Queue: status IN (QUEUED, RETRY)
-- Signals: dispatch_status = PENDING
-- After claim: queue → PROCESSING, signals → PROCESSING
-- After ack: queue → UPLOADED, signals → SENT
+- Signals (out of script batch today): dispatch_status semantics still apply for ops/recovery
+- After claim: queue → PROCESSING (signals unchanged for export — not selected by export fetch)
+- After ack: queue → UPLOADED/COMPLETED; `marketing_signals` updates remain on ack when signal ids are posted
 
 ---
 
@@ -129,11 +132,11 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 
 | Status | Meaning | Next |
 |--------|---------|------|
-| PENDING | Awaiting export | Export selects → PROCESSING |
-| PROCESSING | Sent to Script, awaiting ack | Ack → SENT; ack-failed → FAILED |
-| SENT | Sent to Google | Terminal |
+| PENDING | Awaiting ops/ack/recovery (**not** selected by `google-ads-export` GET) | Maintenance or ack → PROCESSING / terminal |
+| PROCESSING | In-flight on legacy/parallel paths | Ack → SENT; ack-failed → FAILED |
+| SENT | Terminal success for signal row | Terminal |
 | FAILED | Error (validation/upload) | Terminal |
-| JUNK_ABORTED | Junk call, skipped during export | Terminal |
+| JUNK_ABORTED | Junk skip (terminal) | Terminal |
 | DEAD_LETTER_QUARANTINE | After fatal error | Terminal |
 
 ### offline_conversion_queue.status
@@ -170,8 +173,8 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 **Implementation:** `recover_stuck_marketing_signals(p_min_age_minutes int DEFAULT 240)` RPC; cron: `/api/cron/oci/recover-stuck-signals` (every 15 min).
 
 - Trigger: Vercel Cron `*/15 * * * *`
-- Criterion: `dispatch_status = 'PROCESSING' AND lower(sys_period) < NOW() - INTERVAL '4 hours'`
-- Action: `dispatch_status → 'PENDING'` (export can select again)
+- Criterion: `dispatch_status = 'PROCESSING' AND updated_at < now() - age` (see `recover_stuck_marketing_signals` in migrations)
+- Action: `dispatch_status → 'PENDING'` (ops recovery; Script GET export does not read this table)
 - Migration: `20261112000000_recover_stuck_marketing_signals.sql`
 
 ---

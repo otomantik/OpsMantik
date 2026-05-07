@@ -1,7 +1,7 @@
 /**
  * GET/POST /api/cron/oci/recover-stuck-signals
- * Stuck-Signal-Recoverer: Resets marketing_signals stuck in PROCESSING (4h+)
- * back to PENDING so export can re-select them. Action item from docs/operations/OCI_OPERATIONS_SNAPSHOT.md.
+ * Legacy route kept for backward compatibility.
+ * Queue-only model: rescues stuck `offline_conversion_queue` PROCESSING rows.
  * Auth: requireCronAuth. Query: min_age_minutes=240 (default).
  */
 
@@ -14,7 +14,7 @@ import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 
-const DEFAULT_MIN_AGE_MINUTES = 240; // 4 hours — long-stuck signals
+const DEFAULT_MIN_AGE_MINUTES = 240; // 4 hours — long-stuck queue rows
 const CRON_LOCK_TTL_SEC = 900; // 15 min — exceeds schedule to prevent overlap
 
 async function runRecover(req: NextRequest) {
@@ -27,7 +27,7 @@ async function runRecover(req: NextRequest) {
     )
   );
 
-  const { data, error } = await adminClient.rpc('recover_stuck_marketing_signals', {
+  const { data, error } = await adminClient.rpc('recover_stuck_offline_conversion_jobs', {
     p_min_age_minutes: minAge,
   });
 
@@ -40,7 +40,7 @@ async function runRecover(req: NextRequest) {
 
   const recovered = (data as number) ?? 0;
   if (recovered > 0) {
-    logInfo('RECOVER_STUCK_SIGNALS', { recovered, min_age_minutes: minAge });
+    logInfo('RECOVER_STUCK_QUEUE_ROWS', { recovered, min_age_minutes: minAge });
   }
   return NextResponse.json(
     { ok: true, recovered },

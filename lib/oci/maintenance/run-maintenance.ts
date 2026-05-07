@@ -9,9 +9,9 @@
  *
  * Behavioural parity with the legacy routes:
  *
- *   1. `sweep-zombies`             → outbox + queue + signals PROCESSING rescue +
- *                                    stale UPLOADED close-out.
- *   2. `recover-stuck-signals`     → re-PENDING marketing_signals stuck > 4h.
+ *   1. `sweep-zombies`             → outbox + journal queue + marketing_signals PROCESSING rescue +
+ *                                    stale UPLOADED close-out (GET export reads journal only).
+ *   2. `recover-stuck-signals`     → re-PENDING marketing_signals stuck > 4h (ops; not script GET).
  *   3. `attempt-cap`               → mark rows with attempt_count >= MAX_ATTEMPTS as FAILED.
  *   4. `sweep-unsent-conversions`  → re-enqueue sealed calls missing from OCI queue.
  *   5. `pulse-recovery`            → identity-stitcher backoff retries (MODULE 2).
@@ -24,10 +24,8 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { rescueStaleMarketingSignalsProcessing } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { logError, logInfo, logWarn } from '@/lib/logging/logger';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
-import { runPulseRecovery } from '@/lib/oci/pulse-recovery-worker';
 import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
 
@@ -37,7 +35,6 @@ const SCRIPT_ACK_TIMEOUT_MINUTES = (() => {
   return 30;
 })();
 
-const STUCK_SIGNAL_MIN_AGE_MINUTES = 240;
 const STALE_JOB_MIN_AGE_MINUTES = 15;
 const ORPHAN_LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;
@@ -45,16 +42,11 @@ const MAX_ORPHANS_PER_RUN = 500;
 export interface OciMaintenanceStats {
   outbox_rescued: number;
   queue_rescued: number;
-  signals_rescued: number;
   queue_uploaded_closed: number;
-  stuck_signals_recovered: number;
   attempt_cap_marked: number;
   orphans_found: number;
   orphans_enqueued: number;
   orphan_skipped_reasons: Record<string, number>;
-  pulse_processed: number;
-  pulse_recovered: number;
-  pulse_exhausted: number;
   stale_jobs_recovered: number;
   errors: string[];
 }
@@ -63,16 +55,11 @@ function newStats(): OciMaintenanceStats {
   return {
     outbox_rescued: 0,
     queue_rescued: 0,
-    signals_rescued: 0,
     queue_uploaded_closed: 0,
-    stuck_signals_recovered: 0,
     attempt_cap_marked: 0,
     orphans_found: 0,
     orphans_enqueued: 0,
     orphan_skipped_reasons: {},
-    pulse_processed: 0,
-    pulse_recovered: 0,
-    pulse_exhausted: 0,
     stale_jobs_recovered: 0,
     errors: [],
   };
@@ -105,27 +92,12 @@ async function step_sweepZombies(stats: OciMaintenanceStats): Promise<void> {
     });
     stats.queue_rescued = typeof queueRecovered === 'number' ? queueRecovered : 0;
 
-    const signalsRescued = await rescueStaleMarketingSignalsProcessing(adminClient, cutoff);
-    stats.signals_rescued = signalsRescued;
-
     const { data: closed } = await adminClient.rpc('close_stale_uploaded_conversions', {
       p_min_age_hours: 48,
     });
     stats.queue_uploaded_closed = typeof closed === 'number' ? closed : 0;
   } catch (err) {
     capture(stats, 'sweep_zombies', err);
-  }
-}
-
-async function step_recoverStuckSignals(stats: OciMaintenanceStats): Promise<void> {
-  try {
-    const { data, error } = await adminClient.rpc('recover_stuck_marketing_signals', {
-      p_min_age_minutes: STUCK_SIGNAL_MIN_AGE_MINUTES,
-    });
-    if (error) throw new Error(error.message);
-    stats.stuck_signals_recovered = typeof data === 'number' ? data : 0;
-  } catch (err) {
-    capture(stats, 'recover_stuck_signals', err);
   }
 }
 
@@ -187,17 +159,6 @@ async function step_sweepOrphans(stats: OciMaintenanceStats): Promise<void> {
   }
 }
 
-async function step_pulseRecovery(stats: OciMaintenanceStats): Promise<void> {
-  try {
-    const result = await runPulseRecovery();
-    stats.pulse_processed = result.processed;
-    stats.pulse_recovered = result.recovered;
-    stats.pulse_exhausted = result.exhausted;
-  } catch (err) {
-    capture(stats, 'pulse_recovery', err);
-  }
-}
-
 async function step_providerRecoverProcessing(stats: OciMaintenanceStats): Promise<void> {
   try {
     const { data, error } = await adminClient.rpc('recover_stuck_offline_conversion_jobs', {
@@ -216,28 +177,21 @@ export async function runOciMaintenance(): Promise<OciMaintenanceStats> {
 
   // Order matters: zombie rescue first (so downstream rescues see the up-to-date state),
   // attempt-cap before orphan re-enqueue (so exhausted rows don't get re-enqueued),
-  // pulse-recovery last since it is the slowest identity-stitch-heavy step.
+  // provider recover last to avoid fighting with attempt-cap in same cycle.
   await step_sweepZombies(stats);
-  await step_recoverStuckSignals(stats);
   await step_attemptCap(stats);
   await step_providerRecoverProcessing(stats);
   await step_sweepOrphans(stats);
-  await step_pulseRecovery(stats);
 
   logInfo('OCI_MAINTENANCE_COMPLETE', {
     elapsed_ms: Date.now() - startedAt,
     outbox_rescued: stats.outbox_rescued,
     queue_rescued: stats.queue_rescued,
-    signals_rescued: stats.signals_rescued,
     queue_uploaded_closed: stats.queue_uploaded_closed,
-    stuck_signals_recovered: stats.stuck_signals_recovered,
     attempt_cap_marked: stats.attempt_cap_marked,
     stale_jobs_recovered: stats.stale_jobs_recovered,
     orphans_found: stats.orphans_found,
     orphans_enqueued: stats.orphans_enqueued,
-    pulse_processed: stats.pulse_processed,
-    pulse_recovered: stats.pulse_recovered,
-    pulse_exhausted: stats.pulse_exhausted,
     errors: stats.errors.length,
   });
 

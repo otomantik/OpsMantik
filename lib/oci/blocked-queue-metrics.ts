@@ -5,10 +5,12 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
-const BLOCKING_DISPATCH = new Set([
-  'PENDING',
+const BLOCKING_QUEUE_PRECURSOR_STATUSES = new Set([
+  'QUEUED',
+  'RETRY',
   'PROCESSING',
-  'STALLED_FOR_HUMAN_AUDIT',
+  'UPLOADED',
+  'BLOCKED_PRECEDING_SIGNALS',
 ]);
 
 const PRECURSOR_NAMES = [
@@ -80,18 +82,18 @@ export async function computeBlockedQueueMetrics(siteUuid: string): Promise<Bloc
 
   let promotionReadyInSample = 0;
   if (callIds.length > 0) {
-    const { data: sigRows } = await adminClient
-      .from('marketing_signals')
-      .select('call_id, dispatch_status')
+    const { data: precursorRows } = await adminClient
+      .from('offline_conversion_queue')
+      .select('call_id, status')
       .eq('site_id', siteUuid)
       .in('call_id', callIds)
-      .in('google_conversion_name', PRECURSOR_NAMES);
+      .in('action', PRECURSOR_NAMES);
 
     const blockingByCall = new Map<string, boolean>();
-    for (const row of Array.isArray(sigRows) ? sigRows : []) {
+    for (const row of Array.isArray(precursorRows) ? precursorRows : []) {
       const cid = (row as { call_id: string }).call_id;
-      const st = String((row as { dispatch_status?: string }).dispatch_status ?? '');
-      if (BLOCKING_DISPATCH.has(st)) {
+      const st = String((row as { status?: string }).status ?? '');
+      if (BLOCKING_QUEUE_PRECURSOR_STATUSES.has(st)) {
         blockingByCall.set(cid, true);
       }
     }

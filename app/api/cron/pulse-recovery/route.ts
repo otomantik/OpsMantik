@@ -1,8 +1,8 @@
 /**
  * GET/POST /api/cron/pulse-recovery — Self-Healing Pulse (MODULE 2)
  *
- * Retries PENDING marketing_signals with Identity Stitcher.
- * Backoff: 2h → 6h → 24h. Max 3 attempts.
+ * Queue-only modelde legacy pulse katmanı emeklidir.
+ * Route, geriye dönük cron uyumluluğu için no-op sonuç döndürür.
  *
  * Auth: requireCronAuth.
  */

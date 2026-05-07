@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 
 /**
- * Monitoring endpoint for stale OCI signals.
- * Scans `marketing_signals` for `PENDING` status older than 2 hours.
+ * Monitoring endpoint (legacy name kept for compatibility).
+ * Queue-only model: scans `offline_conversion_queue` for stale `PROCESSING` rows.
  * 
  * Returns counts grouped by site_id.
  * Used for operational observability to detect processing stalls.
@@ -12,10 +12,10 @@ export async function GET() {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await adminClient
-    .from('marketing_signals')
+    .from('offline_conversion_queue')
     .select('site_id')
-    .eq('dispatch_status', 'PENDING')
-    .lt('created_at', twoHoursAgo);
+    .eq('status', 'PROCESSING')
+    .lt('updated_at', twoHoursAgo);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

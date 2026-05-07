@@ -4,7 +4,6 @@
  */
 
 import type { PipelineStage, SignalPayload, EvaluateResult } from '../types';
-import { insertMarketingSignal } from '../insert-marketing-signal';
 import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
 
 export interface RouterContext {
@@ -28,16 +27,6 @@ export async function routeStage(
     return { routed: false, conversionValue: 0, dropped: true, causalDna: {} };
   }
 
-  // contacted, offered, junk -> marketing_signals (legacy audit lane)
-  // and journal row (offline_conversion_queue) for Google upload authority.
-  const result = await insertMarketingSignal({
-    siteId,
-    callId,
-    traceId: traceId ?? null,
-    stage,
-    payload,
-  });
-
   const leadScore = Number.isFinite(payload.systemScore as number) ? Number(payload.systemScore) : 0;
   const queueParityResult = await ensureMarketingSignalQueueParity({
     siteId,
@@ -57,13 +46,11 @@ export async function routeStage(
   if (!queueParityResult.queueEnqueued && queueParityResult.reasonCode === 'PARITY_QUEUE_ERROR') {
     return {
       routed: false,
-      signalId: result.signalId,
-      conversionValue: result.conversionValue,
+      conversionValue: 0,
       dropped: true,
       causalDna: {
         queue_result: 'error',
         queue_error: 'NOT_EXPORT_ELIGIBLE',
-        signal_write_result: result.success ? 'ok' : 'failed',
         queue_parity_result: queueParityResult.reasonCode,
         parity_key: queueParityResult.parityKey,
       },
@@ -73,13 +60,11 @@ export async function routeStage(
   if (!queueParityResult.queueEnqueued && queueParityResult.reasonCode === 'PARITY_CONSENT_MISSING') {
     return {
       routed: false,
-      signalId: result.signalId,
-      conversionValue: result.conversionValue,
+      conversionValue: 0,
       dropped: true,
       causalDna: {
         queue_result: 'skipped',
         queue_reason: 'CONSENT_MISSING',
-        signal_write_result: result.success ? 'ok' : 'failed',
         queue_parity_result: queueParityResult.reasonCode,
         parity_key: queueParityResult.parityKey,
       },
@@ -87,16 +72,10 @@ export async function routeStage(
   }
 
   return {
-    routed:
-      result.success ||
-      queueParityResult.queueEnqueued ||
-      queueParityResult.reasonCode === 'PARITY_QUEUE_DUPLICATE',
-    signalId: result.signalId,
-    conversionValue: result.conversionValue,
-    dropped: !result.success && !queueParityResult.queueEnqueued,
+    routed: queueParityResult.queueEnqueued || queueParityResult.reasonCode === 'PARITY_QUEUE_DUPLICATE',
+    conversionValue: 0,
+    dropped: !queueParityResult.queueEnqueued,
     causalDna: {
-      ...(result.causalDna ?? {}),
-      signal_write_result: result.success ? 'ok' : 'failed',
       queue_parity_result: queueParityResult.reasonCode,
       parity_key: queueParityResult.parityKey,
       queue_enqueued: queueParityResult.queueEnqueued,

@@ -39,7 +39,8 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 
 ## 2. Precursor marketing signals (ordering)
 
-- **OpsMantik_Contacted** and **OpsMantik_Offered** rows in `marketing_signals` must leave blocking dispatch states (`PENDING`, `PROCESSING`, `STALLED_FOR_HUMAN_AUDIT`) before **OpsMantik_Won** is exported.
+- **OpsMantik_Won** journal rows stay **`BLOCKED_PRECEDING_SIGNALS`** until precursors are non-blocking. The gate checks **both** `marketing_signals` (`hasBlockingPrecedingMarketingSignals`) **and** journal micro-stages for contacted/offered (`hasBlockingPrecedingJournalMicroStages`) — see `lib/oci/preceding-signals.ts` (`hasBlockingPrecedingExports`).
+- **Legacy / parallel lane:** **OpsMantik_Contacted** and **OpsMantik_Offered** rows in `marketing_signals` must leave blocking dispatch states (`PENDING`, `PROCESSING`, `STALLED_FOR_HUMAN_AUDIT`) when those rows exist for the call.
 - Historically missing signals use **`planPrecursorBackfillStages`** (`lib/oci/precursor-backfill-plan.ts`): **ledger** time per stage when present; if the ledger has *some* events but not every stage required by `calls.status`, missing stages use **hybrid** (`call_snapshot_hybrid`) with `confirmed_at` / `created_at` — not job `NOW()`; if the ledger is **empty** for the call, **full fallback** (`call_snapshot_fallback`). Conversion time is never the backfill job’s wall-clock `NOW()`.
 - If precursors are still blocking, the won row stays in **`BLOCKED_PRECEDING_SIGNALS`** with `block_reason` set (for example `PRECEDING_SIGNALS_NOT_EXPORTED`).
 - Cron **`/api/cron/oci/promote-blocked-queue`** promotes blocked rows to **`QUEUED`** when precursors are ready (ledger-safe transition).
@@ -49,9 +50,9 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 - Script/API export only pulls **`offline_conversion_queue`** rows in **`QUEUED`** or **`RETRY`**.
 - **`BLOCKED_PRECEDING_SIGNALS`** is intentionally excluded until promotion.
 
-## 4. Marketing signals export path
+## 4. `marketing_signals` table (ops / audit — not the Script GET batch)
 
-- Pending signals use `marketing_signals.dispatch_status = 'PENDING'` until claimed and ACKed. Use OCI Control summary **Signals PENDING** and dispatch breakdown from **`GET /api/oci/queue-stats`**.
+- `GET /api/oci/google-ads-export` does **not** read this table. Pending rows use `marketing_signals.dispatch_status = 'PENDING'` until separate maintenance/ack paths move them. For visibility: OCI Control **Signals PENDING** and **`GET /api/oci/queue-stats`** dispatch breakdown.
 
 ## 5. ACK and terminal states
 

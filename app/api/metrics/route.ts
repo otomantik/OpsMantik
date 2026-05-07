@@ -57,9 +57,6 @@ export async function GET(req: NextRequest) {
             .from('call_funnel_projection')
             .select('*', { count: 'exact', head: true })
             .eq('export_status', 'READY');
-        const { count: msCount } = await adminClient
-            .from('marketing_signals')
-            .select('*', { count: 'exact', head: true });
         const { count: queueCount } = await adminClient
             .from('offline_conversion_queue')
             .select('*', { count: 'exact', head: true })
@@ -76,7 +73,6 @@ export async function GET(req: NextRequest) {
             ledger_count: ledgerCount ?? 0,
             projection_count: projCount ?? 0,
             projection_ready_count: projReadyCount ?? 0,
-            legacy_ms_count: msCount ?? 0,
             legacy_queue_queued_retry: queueCount ?? 0,
             open_violations: violationCount ?? 0,
             blocked_incomplete_funnel_count: blockedCount ?? 0,

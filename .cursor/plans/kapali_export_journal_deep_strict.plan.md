@@ -18,7 +18,7 @@ todos:
     content: "DB: journal için NULL external_id yasak (uygulanabilir satırlarda); çakışma kuralları"
     status: completed
   - id: wire-outbox
-    content: process-outbox — her canonical stage emit → journal satırı; marketing_signals→Google upload tekilleştir
+    content: process-outbox — her canonical stage emit → journal satırı; Google upload = journal only (marketing_signals audit/parallel)
     status: completed
   - id: worker-script-actions
     content: "Script/worker: 4 conversion name tam map; BLOCKED claim yok"

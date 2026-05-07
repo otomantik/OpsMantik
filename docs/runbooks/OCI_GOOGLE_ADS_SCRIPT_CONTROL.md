@@ -60,13 +60,13 @@ Use canonical English runbooks for active operations:
 
 **Güncel durum:** Universal cutover sonrası ilk temas / `V2_PULSE` hattı aktif export ve runtime akışından çıkarıldı. Sync ve call-event artık V2 pulse üretmez; ana optimizasyon funnel'ı sadece `gorusuldu`, `teklif`, `satis` üstünden ilerler.
 
-**Sonuç:** Google Ads script tarafında artık queue (`satis`) + canonical signal satırları (`gorusuldu` / `teklif`) beklenir. `INTENT_CAPTURED` / `V2_PULSE` artık operasyonel SSOT değildir.
+**Sonuç:** Google Ads script export yanıtı yalnızca `offline_conversion_queue` (journal) satırlarından üretilir; funnel aşamaları journal’a işlendikçe (`gorusuldu` / `teklif` / `satis` isimleri) Script tarafında tek partide görünür. `INTENT_CAPTURED` / `V2_PULSE` operasyonel SSOT değildir.
 
 ---
 
 ## 0d. Nabız (V2/V3/V4) PROCESSING'de takılı — ack PENDING arıyordu (düzeltildi)
 
-**Belirti:** `marketing_signals` satırları export'ta dönüyor, script Google'a yüklüyor, ack 200 alıyor ama satırlar hep `dispatch_status = PROCESSING` kalıyor; SENT'e geçmiyor.
+**Belirti (tarihsel / sinyal satırı ack):** Eski düzende export partisine dahil edilen `marketing_signals` satırları için: script Google'a yüklüyor, ack 200 alıyor ama satırlar `dispatch_status = PROCESSING`'de kalıyordu; SENT olmuyordu. **Güncel:** script batch journal-only; sinyal tablosu bu GET ile gönderilmez. Bu madde, hâlen ack üzerinden güncellenen eski veya paralel sinyal satırları için geçerli olabilir.
 
 **Neden:** Export, döndürdüğü sinyal satırlarını hemen **PROCESSING** yapıyor. Ack ise **PENDING** olanları SENT yapıyordu. Sonuç: Hiçbir nabız satırı ack'te güncellenmiyordu.
 
@@ -243,7 +243,7 @@ Aynı site için hem `api` hem script’i aynı anda kullanırsanız, sync_metho
 - **Telefon eşleştirme:** Export API dönüşüm satırına `hashed_phone_number` (SHA256, E.164) ekliyor; Script CSV’ye **"Phone"** kolonu ile bu değeri yazıyor. Google Ads hesabında **Gelişmiş dönüşümler (Enhanced Conversions for leads)** açıksa, GCLID decode hatası olsa bile **hashed phone** ile eşleşme yapılabilir.
 - **Kontrol:** Google Ads → Araçlar → Yüklemeler’de hata detayı; hesap ayarlarında "Gelişmiş dönüşümler" / "Enhanced Conversions" açık olmalı.
 
-**Nitelikli görüşmeler listelenmedi:** V3 (Nitelikli Görüşme) sinyalleri `marketing_signals` tablosundan gelir; export’a yalnızca **PENDING** ve uyumlu conversion_name olanlar eklenir. Listelenmeme sebepleri: zaten **SENT**, **click_id yok** (skip), veya export limiti. Kuyruk raporu: `oci-muratcan-kuyruk-rapor.mjs` / `oci-muratcan-kuyruk-donusum-tarama.mjs`.
+**Nitelikli görüşmeler listelenmedi:** Üst funnel adımları journal’a işlenmediyse veya `OpsMantik_Contacted` satırı kuyrukta/engelde değilse Script CSV’de görünmez; ayrıca **click_id** yoksa export kapısı satırı düşürür, limit sayfalama eksik bırakabilir. DB tarafında ayrıca `marketing_signals` (audit) satırları tutulabilir — **Script GET export bu tabloyu okumaz.** Kuyruk raporu: `oci-muratcan-kuyruk-rapor.mjs` / `oci-export-send-preview.mjs` / `oci-muratcan-kuyruk-donusum-tarama.mjs`.
 
 ---
 

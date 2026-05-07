@@ -6,7 +6,7 @@ status: active
 
 **Canonical export item shape and ACK routing**
 
-Primary export surfaces are `offline_conversion_queue` and `marketing_signals`. `call_funnel_projection` is an analytics/read-model surface, not the Google Ads write authority.
+**Google Ads script/API upload batch:** `offline_conversion_queue` only (`export-fetch.ts` → `export-build-queue.ts`). The `marketing_signals` table may still exist for hash/audit/recovery flows; it is **not** merged into the GET export payload. `call_funnel_projection` is an analytics/read-model surface, not the Google Ads upload row source for that route.
 
 **Score semantics** (`lead_score` vs `stage_base_major` vs `truth_closure_score`): [CLOSED_SYSTEM_SCORE_CONTRACT.md](./CLOSED_SYSTEM_SCORE_CONTRACT.md).
 
@@ -60,4 +60,4 @@ Deterministic external_id: derived from `call_id + stage + policy_version`. ACK 
 
 ## ACK Routing
 
-When ACK is received, queue/signal rows are finalized and any projection mirror is updated separately. Deterministic external_id ensures the correct row is found.
+When ACK is received, **journal** (`offline_conversion_queue`) rows are finalized. ACK may still accept legacy `signal_*` ids for older rows or separate paths. Projection mirrors update separately. Deterministic `external_id` keeps routing unambiguous.

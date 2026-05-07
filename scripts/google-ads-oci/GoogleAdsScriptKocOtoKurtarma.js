@@ -1,36 +1,32 @@
-/**
- * OpsMantik Google Ads OCI — Muratcan Akü (Tecrubeli-grade + kuyruk ön izleme)
+﻿/**
+ * OpsMantik Google Ads OCI - Koc Oto Kurtarma script.
  *
- * Paste into Google Ads Script Editor. Entry: `main` ( zamanlayıcı / Ön izleme ).
+ * Paste into Google Ads Script Editor. Entry point: `main`.
+ * Use Script Properties for credentials:
+ * - OPSMANTIK_SITE_ID
+ * - OPSMANTIK_API_KEY
+ * - OPSMANTIK_BASE_URL (optional, defaults to console.opsmantik.com)
  *
- * — Kimlik: `sites.public_id` veya Dahili UUID (verify + export bunları çözer).
- * — Kimlik: Script Properties (veya local process.env) zorunlu; git’e anahtar commit etmeyin.
- *   OPSMANTIK_INLINE_* alanları yalnızca boş bırakılmalı — değerleri Google Script Properties’e yazın.
- *
- * OPSMANTIK_RUN_MODE:
- *   • "peek"  → Journal export ön izleme (`markAsExported=false`) — GET yalnızca `offline_conversion_queue`.
- *               Log’a satır özeti düşer; Google’a yükleme yok, ACK yok.
- *   • "sync"  → Tecrubeli ile aynı: fetch → bulk upload.apply → ACK / ack-failed
- *
- * — Panel “intent kartları”: Bu script **sadece** OCI journal (Script’in çekeceği satırlar)
- *   özetini log’lar; `marketing_signals` burada yoktur. Tam panel sırası için Console.
+ * Run modes:
+ * - "peek": queue preview only, no upload/ack
+ * - "sync": upload + ack/ack-failed flow
  */
 
 'use strict';
 
 /** @type {string} peek | sync */
-var OPSMANTIK_RUN_MODE = 'peek';
+var OPSMANTIK_RUN_MODE = 'sync';
 
-/** @type {string} sites.public_id or internal UUID — boş bırakın; Script Properties kullanın */
+/** @type {string} sites.public_id or internal UUID - leave empty, use Script Properties */
 var OPSMANTIK_INLINE_SITE_ID = '';
 
-/** @type {string} sites.oci_api_key — boş bırakın; Script Properties (OPSMANTIK_API_KEY) kullanın */
+/** @type {string} sites.oci_api_key - leave empty, use Script Properties */
 var OPSMANTIK_INLINE_API_KEY = '';
 
 /** @type {string} default https://console.opsmantik.com */
 var OPSMANTIK_INLINE_BASE_URL = '';
 
-/** @type {string} empty → 200; max 1000 */
+/** @type {string} empty -> 200; max 1000 */
 var OPSMANTIK_INLINE_EXPORT_LIMIT = '';
 
 /** @type {string} optional comma allowlist queue/signal ids */
@@ -139,7 +135,7 @@ function parseAllowlistIds(raw) {
   return set.size > 0 ? set : null;
 }
 
-/** SSOT literals — lib/domain/mizan-mantik/conversion-names.ts */
+/** SSOT literals - lib/domain/mizan-mantik/conversion-names.ts */
 var CONVERSION_EVENTS = Object.freeze({
   CONTACTED: 'OpsMantik_Contacted',
   OFFERED: 'OpsMantik_Offered',
@@ -176,22 +172,26 @@ var Validator = {
   },
 
   analyze: function (row) {
-    const clickId = row.gclid || row.wbraid || row.gbraid;
-    if (!clickId) return { valid: false, reason: 'MISSING_CLICK_ID' };
+    const gclid = row.gclid ? String(row.gclid).trim() : '';
+    const hasBraid = Boolean((row.wbraid && String(row.wbraid).trim()) || (row.gbraid && String(row.gbraid).trim()));
+    if (!gclid) {
+      if (hasBraid) return { valid: false, reason: 'UNSUPPORTED_CLICK_ID_FOR_ADS_SCRIPT' };
+      return { valid: false, reason: 'MISSING_CLICK_ID' };
+    }
     if (!row.conversionTime) return { valid: false, reason: 'MISSING_TIME' };
     if (!this.isValidGoogleAdsTime(row.conversionTime)) return { valid: false, reason: 'INVALID_TIME_FORMAT' };
-    return { valid: true, clickId: clickId };
+    return { valid: true, clickId: gclid };
   },
 };
 
-function MuratcanClient(baseUrl, apiKey) {
+function KocOtoClient(baseUrl, apiKey) {
   this.baseUrl = baseUrl.replace(/\/+$/, '');
   this.apiKey = apiKey;
   this.sessionToken = null;
   this.siteId = null;
 }
 
-MuratcanClient.prototype._fetchWithBackoff = function (url, options) {
+KocOtoClient.prototype._fetchWithBackoff = function (url, options) {
   let attempt = 0;
   let delay = CONFIG.HTTP.INITIAL_DELAY_MS;
 
@@ -206,7 +206,7 @@ MuratcanClient.prototype._fetchWithBackoff = function (url, options) {
       if (code === 429 || code >= 500) {
         Telemetry.warn('Retryable HTTP', { code: code, attempt: attempt + 1, body: body.slice(0, 200) });
       } else {
-        throw new Error('Kritik HTTP Hatası ' + code + ': ' + body);
+        throw new Error('Critical HTTP Error ' + code + ': ' + body);
       }
     } catch (err) {
       if (attempt === CONFIG.HTTP.MAX_RETRIES - 1) throw err;
@@ -221,12 +221,17 @@ MuratcanClient.prototype._fetchWithBackoff = function (url, options) {
   throw new Error('Max retries exceeded: ' + url);
 };
 
-MuratcanClient.prototype._isUnauthorized = function (err) {
+KocOtoClient.prototype._isUnauthorized = function (err) {
   const msg = err && err.message ? String(err.message) : String(err || '');
-  return msg.indexOf('Kritik HTTP Hatası 401') >= 0 || msg.indexOf('Kritik HTTP Hatasi 401') >= 0;
+  return msg.indexOf('Critical HTTP Error 401') >= 0 || msg.indexOf('Critical HTTP Hatasi 401') >= 0;
 };
 
-MuratcanClient.prototype.verifyHandshake = function (siteId) {
+KocOtoClient.prototype._isQueueClaimMismatch = function (err) {
+  const msg = err && err.message ? String(err.message) : String(err || '');
+  return msg.indexOf('QUEUE_CLAIM_MISMATCH') >= 0 || (msg.indexOf('HTTP Error 409') >= 0 && msg.indexOf('claim') >= 0);
+};
+
+KocOtoClient.prototype.verifyHandshake = function (siteId) {
   this.siteId = siteId;
   const url = this.baseUrl + '/api/oci/v2/verify';
   const response = this._fetchWithBackoff(url, {
@@ -239,7 +244,7 @@ MuratcanClient.prototype.verifyHandshake = function (siteId) {
   this.sessionToken = data.session_token;
 };
 
-MuratcanClient.prototype._computeHexSignature = function (payload, secret) {
+KocOtoClient.prototype._computeHexSignature = function (payload, secret) {
   if (!payload || !secret) return '';
   try {
     var signature = Utilities.computeHmacSha256Signature(payload, secret);
@@ -258,7 +263,7 @@ MuratcanClient.prototype._computeHexSignature = function (payload, secret) {
   }
 };
 
-MuratcanClient.prototype._fetchWithSessionRetry = function (url, options) {
+KocOtoClient.prototype._fetchWithSessionRetry = function (url, options) {
   try {
     return this._fetchWithBackoff(url, options);
   } catch (err) {
@@ -278,7 +283,7 @@ MuratcanClient.prototype._fetchWithSessionRetry = function (url, options) {
 };
 
 /** @param markAsExported {boolean|undefined} default true */
-MuratcanClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
+KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
   var doMark = markAsExported !== false;
   let url =
     this.baseUrl +
@@ -290,13 +295,30 @@ MuratcanClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
     encodeURIComponent(String(CONFIG.LIMIT));
   if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
 
-  const response = this._fetchWithSessionRetry(url, {
-    method: 'get',
-    headers: {
-      Authorization: 'Bearer ' + this.sessionToken,
-      Accept: 'application/json',
-    },
-  });
+  let response;
+  try {
+    response = this._fetchWithSessionRetry(url, {
+      method: 'get',
+      headers: {
+        Authorization: 'Bearer ' + this.sessionToken,
+        Accept: 'application/json',
+      },
+    });
+  } catch (err) {
+    if (this._isQueueClaimMismatch(err)) {
+      Telemetry.warn('Queue claim mismatch, ending this run gracefully', { siteId: siteId });
+      return {
+        items: [],
+        nextCursor: null,
+        hasNextPage: false,
+        counts: null,
+        resolvedSiteUuid: siteId,
+        markAsExported: doMark,
+        warnings: ['QUEUE_CLAIM_MISMATCH'],
+      };
+    }
+    throw err;
+  }
 
   const payload = JSON.parse(response.getContentText() || '{}');
   let items = [];
@@ -328,7 +350,7 @@ MuratcanClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
   };
 };
 
-MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows) {
+KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows) {
   const q = queueIds || [];
   const s = skippedIds || [];
   const f = failedRows || [];
@@ -370,7 +392,7 @@ MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, faile
   }
 };
 
-MuratcanClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
+KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
   if (!queueIds || !queueIds.length) return;
   const url = this.baseUrl + '/api/oci/ack-failed';
   const payload = JSON.stringify({
@@ -398,7 +420,7 @@ function processPageUpload(rows, opts) {
     { moneyInMicros: false, timeZone: timezone }
   );
   upload.forOfflineConversions();
-  upload.setFileName('OpsMantik_MuratcanAku_' + new Date().toISOString() + '.csv');
+  upload.setFileName('OpsMantik_KocOtoKurtarma_' + new Date().toISOString() + '.csv');
 
   const stats = {
     uploaded: 0,
@@ -486,18 +508,18 @@ function resolveRunMode() {
   return 'sync';
 }
 
-/** OCI çıkış kuyruğunu yüklemeden gösterir (markAsExported=false). */
+/** Show OCI queue without uploading (markAsExported=false). */
 function mainPeekOciQueue() {
-  Telemetry.info('Muratcan Akü — PEEK / OCI kuyruk özeti');
+  Telemetry.info('Koc Oto Kurtarma - PEEK / OCI queue summary');
   Telemetry.info(
-    'NOT: Panel intent kartları burada yok — bu log yalnızca journal (offline_conversion_queue) üzerinden GET export bekleyen satırları özetler.'
+    'NOTE: Intent cards are not shown here; this log summarizes journal rows from offline_conversion_queue only.'
   );
 
   CONFIG = getScriptConfig();
 
   if (!CONFIG.SITE_ID || !CONFIG.API_KEY) {
     Telemetry.error(
-      'Eksik yapılandırma: INLINE OPSMANTIK_INLINE_SITE_ID ve OPSMANTIK_INLINE_API_KEY veya Script Properties.',
+      'Eksik yapÄ±landÄ±rma: INLINE OPSMANTIK_INLINE_SITE_ID ve OPSMANTIK_INLINE_API_KEY veya Script Properties.',
       null
     );
     return;
@@ -506,7 +528,7 @@ function mainPeekOciQueue() {
   const allowlist = parseAllowlistIds(CONFIG.ALLOWLIST_IDS);
 
   try {
-    const client = new MuratcanClient(CONFIG.BASE_URL, CONFIG.API_KEY);
+    const client = new KocOtoClient(CONFIG.BASE_URL, CONFIG.API_KEY);
     client.verifyHandshake(CONFIG.SITE_ID);
 
     let cursor = null;
@@ -517,7 +539,7 @@ function mainPeekOciQueue() {
       pageNo++;
       const page = client.fetchPage(CONFIG.SITE_ID, cursor, false);
 
-      Telemetry.info('PEEK export sayfası', {
+      Telemetry.info('PEEK export page', {
         sayfa: pageNo,
         cozumlendi_site_uuid: page.resolvedSiteUuid,
         counts: page.counts,
@@ -560,7 +582,7 @@ function mainPeekOciQueue() {
       }
 
       if (cap < rows.length) {
-        Telemetry.info('Peek satır özeti truncated', {
+        Telemetry.info('Peek row summary truncated', {
           yazilanBuSayfa: cap,
           toplamBuSayfa: rows.length,
         });
@@ -570,20 +592,20 @@ function mainPeekOciQueue() {
       if (!(page.hasNextPage && cursor)) break;
     }
 
-    Telemetry.info('Muratcan Akü PEEK tamam', { sayfaSayisi: pageNo, toplamExportSatiri: grandTotalRows });
+    Telemetry.info('Koc Oto Kurtarma PEEK completed', { pageCount: pageNo, totalRows: grandTotalRows });
   } catch (err) {
-    Telemetry.error('Muratcan Akü PEEK hatası', err);
+    Telemetry.error('Koc Oto Kurtarma PEEK error', err);
     throw err;
   }
 }
 
-function mainSyncMuratcan() {
-  Telemetry.info('Muratcan Akü OCI SYNC — yükleme + ACK');
+function mainSyncKocOto() {
+  Telemetry.info('Koc Oto Kurtarma OCI SYNC - upload + ACK');
 
   CONFIG = getScriptConfig();
 
   if (!CONFIG.SITE_ID || !CONFIG.API_KEY) {
-    Telemetry.error('Eksik yapılandırma: OPSMANTIK_SITE_ID ve OPSMANTIK_API_KEY (INLINE veya Script Properties).', null);
+    Telemetry.error('Eksik yapÄ±landÄ±rma: OPSMANTIK_SITE_ID ve OPSMANTIK_API_KEY (INLINE veya Script Properties).', null);
     return;
   }
 
@@ -593,7 +615,7 @@ function mainSyncMuratcan() {
   }
 
   try {
-    const client = new MuratcanClient(CONFIG.BASE_URL, CONFIG.API_KEY);
+    const client = new KocOtoClient(CONFIG.BASE_URL, CONFIG.API_KEY);
     client.verifyHandshake(CONFIG.SITE_ID);
 
     let cursor = null;
@@ -621,7 +643,7 @@ function mainSyncMuratcan() {
           });
 
           if (stats.uploadFailed) {
-            Telemetry.warn('upload.apply hata — ack-failed; ACK skip', { page: pageNo });
+            Telemetry.warn('upload.apply failed - ack-failed sent; skipping ACK for this page', { page: pageNo });
             cursor = page.nextCursor;
             if (!(page.hasNextPage && cursor)) break;
             continue;
@@ -646,7 +668,7 @@ function mainSyncMuratcan() {
             countsApi: page.counts,
           });
         } catch (err) {
-          Telemetry.error('Sayfa işleme hatası', err);
+          Telemetry.error('Page processing error', err);
           const ids = (page.items || [])
             .map(function (r) {
               return r && r.id ? String(r.id) : '';
@@ -671,9 +693,13 @@ function mainSyncMuratcan() {
       if (!(page.hasNextPage && cursor)) break;
     }
 
-    Telemetry.info('Muratcan Akü SYNC tamamlandı', { totalUploaded: totalUploaded, pages: pageNo });
+    Telemetry.info('Koc Oto Kurtarma SYNC completed', { totalUploaded: totalUploaded, pages: pageNo });
   } catch (err) {
-    Telemetry.error('Muratcan Akü SYNC durdu', err);
+    if ((err && err.message ? String(err.message) : '').indexOf('QUEUE_CLAIM_MISMATCH') >= 0) {
+      Telemetry.warn('SYNC ended due to queue claim mismatch (another worker likely holds claim).');
+      return;
+    }
+    Telemetry.error('Koc Oto Kurtarma SYNC stopped', err);
     throw err;
   }
 }
@@ -683,6 +709,7 @@ function main() {
   if (mode === 'peek') {
     mainPeekOciQueue();
   } else {
-    mainSyncMuratcan();
+    mainSyncKocOto();
   }
 }
+

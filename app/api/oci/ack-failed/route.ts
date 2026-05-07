@@ -26,7 +26,6 @@ import {
   dbUpstreamResponse,
   isInfrastructurePostgrestError,
   normalizeAckFailedBody,
-  reconcileSignalDispatchOutcome,
 } from '@/lib/oci/oci-ack-route-helpers';
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import { resolveOciScriptAuth } from '@/lib/oci/script-auth';
@@ -129,6 +128,12 @@ export async function POST(req: NextRequest) {
           code: 'ACK_UNKNOWN_PREFIX',
           unknownIds: [...unknownFailedIds, ...unknownFatalIds],
         },
+        { status: 400 }
+      );
+    }
+    if (signalFailedIds.length > 0 || signalFatalIds.length > 0) {
+      return NextResponse.json(
+        { error: 'signal_* ACK_FAILED IDs are retired in queue-only mode', code: 'ACK_FAILED_SIGNAL_IDS_RETIRED' },
         { status: 400 }
       );
     }
@@ -302,32 +307,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (signalFailedIds.length > 0) {
-      const nextStatus = category === 'TRANSIENT' ? 'PENDING' : 'FAILED';
-      const recon = await reconcileSignalDispatchOutcome(adminClient, {
-        siteId: siteUuid,
-        signalIds: signalFailedIds,
-        expectStatus: 'PROCESSING',
-        newStatus: nextStatus,
-      });
-      for (const id of signalFailedIds) {
-        const st = recon.rowsSnapshot.get(id);
-        if (st !== undefined && st !== 'PROCESSING') {
-          updatedCount += 1;
-        }
-      }
-      if (recon.missingIds.length > 0) {
-        warnings.failed_missing_signal_ids = recon.missingIds;
-      }
-      if (recon.stuckProcessingIds.length > 0) {
-        logError('OCI_ACK_FAILED_SIGNAL_STILL_PROCESSING', {
-          ids: recon.stuckProcessingIds,
-          rpcApplied: recon.rpcApplied,
-          nextStatus,
-        });
-        warnings.signals_still_processing = recon.stuckProcessingIds;
-      }
-    }
 
     const allPvIds = [...new Set([...pvFailedIds, ...pvFatalIds])];
     if (allPvIds.length > 0) {
@@ -425,58 +404,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (signalFatalIds.length > 0) {
-      const reconFatalSig = await reconcileSignalDispatchOutcome(adminClient, {
-        siteId: siteUuid,
-        signalIds: signalFatalIds,
-        expectStatus: 'PROCESSING',
-        newStatus: 'DEAD_LETTER_QUARANTINE',
-      });
-
-      for (const id of signalFatalIds) {
-        const st = reconFatalSig.rowsSnapshot.get(id);
-        if (st !== undefined && st !== 'PROCESSING') {
-          updatedCount += 1;
-        }
-      }
-      if (reconFatalSig.missingIds.length > 0) {
-        warnings.fatal_missing_signal_ids = reconFatalSig.missingIds;
-      }
-      if (reconFatalSig.stuckProcessingIds.length > 0) {
-        logError('OCI_ACK_FAILED_FATAL_SIGNAL_STILL_PROCESSING', {
-          ids: reconFatalSig.stuckProcessingIds,
-          rpcApplied: reconFatalSig.rpcApplied,
-        });
-        warnings.fatal_signals_still_processing = reconFatalSig.stuckProcessingIds;
-      }
-
-      const { data: traceRows, error: traceErr } = await adminClient
-        .from('marketing_signals')
-        .select('id, trace_id')
-        .in('id', signalFatalIds)
-        .eq('site_id', siteUuid);
-      if (traceErr) {
-        warnings.fatal_signal_trace_fetch = traceErr.message;
-        logError('OCI_ACK_FAILED_FATAL_SIGNAL_TRACE_FETCH', { code: (traceErr as { code?: string })?.code });
-      } else {
-        const updatedRows = Array.isArray(traceRows)
-          ? traceRows as Array<{ id: string; trace_id: string | null }>
-          : [];
-        deadLetterAuditEntries.push(
-          ...updatedRows.map((row) => ({
-            siteId: siteUuid,
-            resourceType: 'marketing_signal' as const,
-            resourceId: row.id,
-            traceId: row.trace_id,
-            errorCode,
-            errorMessage,
-            errorCategory: getAuditErrorCategory(category, false),
-            attemptCount: 0,
-            pipeline: 'SCRIPT' as const,
-          }))
-        );
-      }
-    }
 
     if (deadLetterAuditEntries.length > 0) {
       try {
@@ -493,7 +420,7 @@ export async function POST(req: NextRequest) {
         count: updatedCount,
         error_code: errorCode,
         error_category: category,
-        retry_count: category === 'TRANSIENT' ? sealFailedIds.length + signalFailedIds.length : 0,
+        retry_count: category === 'TRANSIENT' ? sealFailedIds.length : 0,
         fatal_count: fatalIds.length,
       });
     }

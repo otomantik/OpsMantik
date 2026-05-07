@@ -1,5 +1,5 @@
 /**
- * Single resolver for marketing_signals export economics (§0b four-conversions plan).
+ * Single resolver for `marketing_signals` row economics (four-conversions plan; not the Google GET export batch).
  * Upper-funnel rows must not rely on export-runtime NOW() for business time — see occurred-at +
  * conversion_time_source stamped at insert.
  *

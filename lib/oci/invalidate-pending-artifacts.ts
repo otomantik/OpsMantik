@@ -1,6 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { logError } from '@/lib/logging/logger';
-import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 
 export async function invalidatePendingOciArtifactsForCall(
   callId: string,
@@ -8,19 +7,7 @@ export async function invalidatePendingOciArtifactsForCall(
   reason: string,
   now: string
 ): Promise<void> {
-  const [{ data: pendingSigRows }, { data: processingSigRows }, queueResult, outboxResult] = await Promise.all([
-    adminClient
-      .from('marketing_signals')
-      .select('id')
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .eq('dispatch_status', 'PENDING'),
-    adminClient
-      .from('marketing_signals')
-      .select('id')
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .eq('dispatch_status', 'PROCESSING'),
+  const [queueResult, outboxResult] = await Promise.all([
     adminClient
       .from('offline_conversion_queue')
       .update({
@@ -52,41 +39,4 @@ export async function invalidatePendingOciArtifactsForCall(
     logError('INVALIDATE_OCI_OUTBOX_FAILED', { call_id: callId, site_id: siteId, reason, error: outboxResult.error.message });
   }
 
-  const pendingIds = (Array.isArray(pendingSigRows) ? pendingSigRows : []).map((r: { id: string }) => r.id);
-  const processingIds = (Array.isArray(processingSigRows) ? processingSigRows : []).map((r: { id: string }) => r.id);
-
-  try {
-    if (pendingIds.length > 0) {
-      await applyMarketingSignalDispatchBatch(adminClient, {
-        siteId,
-        signalIds: pendingIds,
-        expectStatus: 'PENDING',
-        newStatus: 'JUNK_ABORTED',
-      });
-    }
-  } catch (e) {
-    logError('INVALIDATE_OCI_SIGNALS_PENDING_FAILED', {
-      call_id: callId,
-      site_id: siteId,
-      reason,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
-  try {
-    if (processingIds.length > 0) {
-      await applyMarketingSignalDispatchBatch(adminClient, {
-        siteId,
-        signalIds: processingIds,
-        expectStatus: 'PROCESSING',
-        newStatus: 'FAILED',
-      });
-    }
-  } catch (e) {
-    logError('INVALIDATE_OCI_SIGNALS_PROCESSING_FAILED', {
-      call_id: callId,
-      site_id: siteId,
-      reason,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
 }

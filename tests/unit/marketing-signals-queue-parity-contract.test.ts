@@ -13,9 +13,9 @@ test('parity helper emits canonical PARITY_* reason codes', () => {
   assert.ok(src.includes('PARITY_QUEUE_ERROR'), 'must expose PARITY_QUEUE_ERROR');
 });
 
-test('router enforces two-phase signal write and queue parity metadata', () => {
+test('router enforces queue parity metadata in queue-only mode', () => {
   const src = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'stages', 'stage-router.ts'), 'utf8');
-  assert.ok(src.includes('signal_write_result'), 'router must expose signal_write_result');
+  assert.ok(!src.includes('signal_write_result'), 'router must not expose legacy signal_write_result');
   assert.ok(src.includes('queue_parity_result'), 'router must expose queue_parity_result');
   assert.ok(src.includes('parity_key'), 'router must expose parity_key');
 });

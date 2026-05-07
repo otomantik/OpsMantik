@@ -24,7 +24,8 @@ test('Workstream-C: operations snapshot states current export write authority ex
   const src = readFileSync(join(ROOT, 'docs/operations/OCI_OPERATIONS_SNAPSHOT.md'), 'utf8');
   assert.ok(src.includes('status: historical'));
   assert.ok(src.includes('This document is historical and must not be used as an active runbook.'));
-  assert.ok(src.includes('Current Google write authority is `offline_conversion_queue` + `marketing_signals`'));
+  assert.ok(src.includes('Single upload surface for the Google Ads script export:'));
+  assert.ok(src.includes('`offline_conversion_queue` only'));
   assert.ok(src.includes('not the current Google write authority'));
 });
 

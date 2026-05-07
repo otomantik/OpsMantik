@@ -19,7 +19,7 @@ This document traces `gclid` / `wbraid` / `gbraid` from ingress to persistence a
 - Sessions: `sessions.gclid`, `sessions.wbraid`, `sessions.gbraid` via `lib/services/session-service.ts`.
 - Events: `events.metadata.gclid` (and related metadata) via `lib/services/event-service.ts`.
 - Calls: `calls.click_id`, `calls.gclid`, `calls.wbraid`, `calls.gbraid` via `lib/ingest/process-call-event.ts`.
-- Export staging: `marketing_signals` and `offline_conversion_queue` via `lib/domain/mizan-mantik/upsert-marketing-signal.ts` and `lib/oci/enqueue-seal-conversion.ts`.
+- Journal (Google upload batch): `offline_conversion_queue` via seal/outbox enqueue paths (`lib/oci/enqueue-seal-conversion.ts`, outbox consumer). Domain may still write `marketing_signals` via `upsert-marketing-signal` for audit/hash; that table is **not** read by `google-ads-export`.
 
 ## 4) Hard/soft drop points
 

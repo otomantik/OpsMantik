@@ -57,7 +57,7 @@ test('google-ads export applies highest-only suppression before combining items'
   assert.ok(src.includes('selectHighestPriorityCandidates'), 'export must use shared highest-only selector');
   const markSrc = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(markSrc.includes('SUPPRESSED_BY_HIGHER_GEAR'), 'suppressed lower gears must be terminalized with explicit provenance');
-  assert.ok(src.includes('suppressedSignalIds'), 'export must track suppressed signals separately from exported signals');
+  assert.ok(!src.includes('suppressedSignalIds'), 'queue-only export must not keep legacy signal suppression buckets');
 });
 
 test('outbox worker skips lower gears when a higher conversion already exists', () => {

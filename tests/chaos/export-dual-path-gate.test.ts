@@ -11,7 +11,7 @@ const ROOT = process.cwd();
 test('chaos: export route counts include signals key for script compat (always zero)', () => {
   const routeSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'route.ts'), 'utf8');
   assert.ok(routeSrc.includes('signals:'), 'export response keeps counts.signals for older script parsers');
-  assert.ok(routeSrc.includes('keptSignalItems.length'), 'signals count derives from empty journal-only stream');
+  assert.ok(routeSrc.includes('signals: 0'), 'signals count is hard-zero in queue-only mode');
 });
 
 test('chaos: fetch never loads legacy marketing_signals into export batch', () => {
@@ -19,10 +19,10 @@ test('chaos: fetch never loads legacy marketing_signals into export batch', () =
   assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'fetch must be journal-only');
 });
 
-test('chaos: preceding gate is queue-first with optional legacy consult flag', () => {
+test('chaos: preceding gate is strict queue-only', () => {
   const src = readFileSync(join(ROOT, 'lib', 'oci', 'preceding-signals.ts'), 'utf8');
-  assert.ok(src.includes('OCI_PRECEDING_CONSULT_MARKETING_SIGNALS'), 'legacy signal consult must be explicitly gated');
-  assert.ok(src.includes('const journal = await hasBlockingPrecedingJournalMicroStages'), 'journal precedences must be evaluated first');
+  assert.ok(!src.includes('OCI_PRECEDING_CONSULT_MARKETING_SIGNALS'), 'legacy signal consult flag must be removed');
+  assert.ok(src.includes('return hasBlockingPrecedingJournalMicroStages'), 'precedence must be queue-only');
 });
 
 test('chaos: backfill writers fail-closed toward queue parity helper', () => {

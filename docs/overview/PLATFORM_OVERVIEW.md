@@ -93,10 +93,10 @@ flowchart TB
 | Layer | Purpose |
 |-------|---------|
 | Redis | V1 pageview pulse |
-| marketing_signals | V2–V4 intent signals |
-| offline_conversion_queue | V5 seal |
+| marketing_signals | Stage/audit signals (not read by `google-ads-export` GET) |
+| offline_conversion_queue | Journal — **Google Ads script upload batch source** |
 | call_funnel_ledger | append-only event log |
-| call_funnel_projection | export SSOT (target architecture) |
+| call_funnel_projection | Analytics / shadow export readiness (not the script GET row source) |
 
 ---
 
@@ -106,11 +106,11 @@ flowchart TB
 |-----------|--------|
 | Funnel Kernel Ledger | ✅ ACTIVE |
 | Projection Builder | ✅ ACTIVE |
-| Projection Export | SHADOW MODE (default path) |
-| Legacy Export | ✅ ACTIVE |
+| Projection Export | SHADOW / metrics (not `google-ads-export` batch) |
+| Journal → Google Script export | ✅ ACTIVE (`offline_conversion_queue` only) |
 | Full Kernel SSOT | IN PROGRESS |
 
-**Export:** Default `call_funnel_projection`. Legacy path fallback with `USE_FUNNEL_PROJECTION=false`.
+**Export:** `GET /api/oci/google-ads-export` reads **only** the journal (`EXPORT_CLOSURE.md`). `call_funnel_projection` remains a separate analytics / funnel-kernel track.
 
 **Message:** System stable; architecture upgrade in progress.
 

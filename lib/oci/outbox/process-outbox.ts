@@ -138,29 +138,6 @@ function resolveGearFromQueueRow(row: {
   return null;
 }
 
-function resolveSignalStageFromExisting(params: {
-  signalType?: string | null;
-  optimizationStage?: string | null;
-}): SingleConversionGear | 'junk' | null {
-  // Input is already normalized by producers to English canonical. We still
-  // lowercase + trim to defend against accidental header-case drift.
-  const optimizationStage = (params.optimizationStage ?? '').trim().toLowerCase();
-  if (
-    optimizationStage === 'contacted' ||
-    optimizationStage === 'offered' ||
-    optimizationStage === 'won' ||
-    optimizationStage === 'junk'
-  ) {
-    return optimizationStage as SingleConversionGear | 'junk';
-  }
-
-  const signalType = (params.signalType ?? '').trim().toLowerCase();
-  if (signalType === 'contacted' || signalType === 'offered' || signalType === 'won' || signalType === 'junk') {
-    return signalType as SingleConversionGear | 'junk';
-  }
-  return null;
-}
-
 /**
  * Run one batch of the outbox processor. Safe to call concurrently — the DB
  * claim RPC uses FOR UPDATE SKIP LOCKED so each instance owns its rows.
@@ -354,13 +331,6 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
           }
         } else if (stage) {
           const gear = stage;
-          const { data: existingSignals } = await adminClient
-            .from('marketing_signals')
-            .select('id, google_conversion_name, optimization_stage')
-            .eq('site_id', siteId!)
-            .eq('call_id', callId!)
-            .order('created_at', { ascending: false });
-
           const { data: existingSealQueue } = await adminClient
             .from('offline_conversion_queue')
             .select('id')
@@ -378,22 +348,7 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             .eq('provider_key', 'google_ads');
 
           const existingGears: SingleConversionGear[] = [];
-          let existingSignalForRequestedGearId: string | null = null;
           let existingQueueRowForRequestedGearId: string | null = null;
-
-          for (const signal of existingSignals ?? []) {
-            const normalized = resolveSignalStageFromExisting({
-              signalType: (signal as { signal_type?: string | null }).signal_type ?? null,
-              optimizationStage: (signal as { optimization_stage?: string | null }).optimization_stage ?? null,
-            });
-            if (!normalized) continue;
-            if (normalized !== 'junk') {
-              existingGears.push(normalized);
-            }
-            if (normalized === gear && !existingSignalForRequestedGearId) {
-              existingSignalForRequestedGearId = (signal as { id?: string | null }).id ?? null;
-            }
-          }
 
           for (const qr of existingMicroQueue ?? []) {
             const qGear = resolveGearFromQueueRow(qr as { optimization_stage?: string | null });
@@ -466,12 +421,11 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             continue;
           }
 
-          if (existingSignalForRequestedGearId || existingQueueRowForRequestedGearId) {
+          if (existingQueueRowForRequestedGearId) {
             logInfo('outbox_signal_skip_already_exists', {
               outbox_id: id,
               call_id: callId,
               gear,
-              existing_signal_id: existingSignalForRequestedGearId,
               existing_queue_id: existingQueueRowForRequestedGearId,
             });
             await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });

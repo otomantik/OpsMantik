@@ -5,16 +5,14 @@
  * 1) Zombie recovery (2h): recover_stuck_offline_conversion_jobs (fallback buffer retired 20260419180000)
  * 2) Archive FAILED conversions to tombstones (30d)
  * 3) Delete terminal OCI queue rows (90d)
- * 4) Cleanup SENT marketing_signals (60d)
- * 5) Auto-junk stale intents (7d)
+ * 4) Auto-junk stale intents (7d)
  *
  * Auth: requireCronAuth (Bearer CRON_SECRET or x-vercel-cron).
- * Query: dry_run, days_to_keep, limit, days_archive_failed, days_signals, days_old_intents, limit_intents, zombie_minutes
+ * Query: dry_run, days_to_keep, limit, days_archive_failed, days_old_intents, limit_intents, zombie_minutes
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logInfo, logError } from '@/lib/logging/logger';
@@ -25,8 +23,6 @@ export const runtime = 'nodejs';
 const DEFAULT_DAYS_TO_KEEP = 90;
 const DEFAULT_CLEANUP_LIMIT = 5000;
 const DEFAULT_DAYS_ARCHIVE_FAILED = 30;
-const DEFAULT_DAYS_SIGNALS = 60;
-const DEFAULT_DAYS_PENDING_STALE = 30;
 const DEFAULT_DAYS_OLD_INTENTS = 7;
 const DEFAULT_LIMIT_INTENTS = 5000;
 const DEFAULT_ZOMBIE_MINUTES = 120;
@@ -56,8 +52,6 @@ async function runCleanup(req: NextRequest) {
   const daysToKeep = parseParam(req, 'days_to_keep', DEFAULT_DAYS_TO_KEEP, 1, 365);
   const limit = parseParam(req, 'limit', DEFAULT_CLEANUP_LIMIT, 1, 10000);
   const daysArchiveFailed = parseParam(req, 'days_archive_failed', DEFAULT_DAYS_ARCHIVE_FAILED, 1, 365);
-  const daysSignals = parseParam(req, 'days_signals', DEFAULT_DAYS_SIGNALS, 1, 365);
-  const daysPendingStale = parseParam(req, 'days_pending_stale', DEFAULT_DAYS_PENDING_STALE, 1, 365);
   const daysOldIntents = parseParam(req, 'days_old_intents', DEFAULT_DAYS_OLD_INTENTS, 1, 365);
   const limitIntents = parseParam(req, 'limit_intents', DEFAULT_LIMIT_INTENTS, 1, 10000);
   const zombieMinutes = parseParam(req, 'zombie_minutes', DEFAULT_ZOMBIE_MINUTES, 15, 1440);
@@ -67,8 +61,6 @@ async function runCleanup(req: NextRequest) {
     daysToKeep,
     limit,
     daysArchiveFailed,
-    daysSignals,
-    daysPendingStale,
     daysOldIntents,
     limitIntents,
     zombieMinutes,
@@ -83,11 +75,9 @@ async function runCleanup(req: NextRequest) {
   if (dryRun) {
     const cutoffQueue = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000).toISOString();
     const cutoffArchive = new Date(Date.now() - daysArchiveFailed * 24 * 60 * 60 * 1000).toISOString();
-    const cutoffSignals = new Date(Date.now() - daysSignals * 24 * 60 * 60 * 1000).toISOString();
-    const cutoffPendingStale = new Date(Date.now() - daysPendingStale * 24 * 60 * 60 * 1000).toISOString();
     const cutoffIntents = new Date(Date.now() - daysOldIntents * 24 * 60 * 60 * 1000).toISOString();
 
-    const [queueRes, archiveRes, signalsRes, pendingStaleRes, intentsRes] = await Promise.all([
+    const [queueRes, archiveRes, intentsRes] = await Promise.all([
       adminClient
         .from('offline_conversion_queue')
         .select('*', { count: 'exact', head: true })
@@ -99,16 +89,6 @@ async function runCleanup(req: NextRequest) {
         .eq('status', 'FAILED')
         .lt('updated_at', cutoffArchive),
       adminClient
-        .from('marketing_signals')
-        .select('*', { count: 'exact', head: true })
-        .eq('dispatch_status', 'SENT')
-        .lt('created_at', cutoffSignals),
-      adminClient
-        .from('marketing_signals')
-        .select('*', { count: 'exact', head: true })
-        .eq('dispatch_status', 'PENDING')
-        .lt('created_at', cutoffPendingStale),
-      adminClient
         .from('calls')
         .select('*', { count: 'exact', head: true })
         .or('status.eq.intent,status.is.null')
@@ -118,8 +98,6 @@ async function runCleanup(req: NextRequest) {
     logInfo('CLEANUP_CRON_DRY_RUN', {
       wouldArchiveFailed: Math.min(archiveRes.count ?? 0, limit),
       wouldDeleteQueue: Math.min(queueRes.count ?? 0, limit),
-      wouldDeleteSignals: Math.min(signalsRes.count ?? 0, limit),
-      wouldFailStalePendingSignals: Math.min(pendingStaleRes.count ?? 0, limit),
       wouldJunkIntents: Math.min(intentsRes.count ?? 0, limitIntents),
     });
     await recordCronHeartbeat({
@@ -139,11 +117,7 @@ async function runCleanup(req: NextRequest) {
         zombie_recovery: { note: 'Would run recover_stuck_offline_conversion_jobs' },
         archive_failed: { would_archive: Math.min(archiveRes.count ?? 0, limit), days: daysArchiveFailed },
         oci_queue: { would_delete: Math.min(queueRes.count ?? 0, limit), days_to_keep: daysToKeep },
-        marketing_signals: { would_delete: Math.min(signalsRes.count ?? 0, limit), days: daysSignals },
-        marketing_signals_pending_stale: {
-          would_fail: Math.min(pendingStaleRes.count ?? 0, limit),
-          days: daysPendingStale,
-        },
+        queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
         auto_junk: { would_update: Math.min(intentsRes.count ?? 0, limitIntents), days_old: daysOldIntents },
       },
       { headers: getBuildInfoHeaders() }
@@ -153,8 +127,6 @@ async function runCleanup(req: NextRequest) {
   let zombiesQueue = 0;
   let archivedFailed = 0;
   let ociDeleted = 0;
-  let signalsDeleted = 0;
-  let stalePendingFailed = 0;
   let intentsJunked = 0;
   let merkleHeartbeat: Record<string, unknown> | undefined;
 
@@ -215,100 +187,7 @@ async function runCleanup(req: NextRequest) {
     }
     ociDeleted = typeof ociData === 'number' ? ociData : 0;
 
-    // Phase 4: Cleanup SENT marketing_signals (60d)
-    const { data: signalsData, error: signalsErr } = await adminClient.rpc('cleanup_marketing_signals_batch', {
-      p_days_old: daysSignals,
-      p_limit: limit,
-    });
-    if (signalsErr) {
-      logError('CLEANUP_SIGNALS_FAIL', { error: signalsErr.message });
-      await recordCronHeartbeat({
-        jobName: 'cleanup',
-        routePath: '/api/cron/cleanup',
-        status: 'FAIL',
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedMs,
-        errorCode: 'SIGNAL_CLEANUP_FAILED',
-        errorMessage: signalsErr.message,
-      });
-      return NextResponse.json({ error: signalsErr.message, step: 'cleanup_marketing_signals_batch' }, { status: 500 });
-    }
-    signalsDeleted = typeof signalsData === 'number' ? signalsData : 0;
-
-    // Phase 4b: Terminalize stale PENDING marketing_signals for human review (30d default)
-    const cutoffPendingStale = new Date(Date.now() - daysPendingStale * 24 * 60 * 60 * 1000).toISOString();
-    const { data: pendingRows, error: pendingSelectErr } = await adminClient
-      .from('marketing_signals')
-      .select('id, site_id')
-      .eq('dispatch_status', 'PENDING')
-      .lt('created_at', cutoffPendingStale)
-      .limit(limit);
-    if (pendingSelectErr) {
-      logError('CLEANUP_STALE_PENDING_SELECT_FAIL', { error: pendingSelectErr.message });
-      await recordCronHeartbeat({
-        jobName: 'cleanup',
-        routePath: '/api/cron/cleanup',
-        status: 'FAIL',
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedMs,
-        errorCode: 'PENDING_SELECT_FAILED',
-        errorMessage: pendingSelectErr.message,
-      });
-      return NextResponse.json(
-        { error: pendingSelectErr.message, step: 'select_stale_pending_marketing_signals' },
-        { status: 500 }
-      );
-    }
-    const rows = Array.isArray(pendingRows) ? (pendingRows as Array<{ id: string; site_id: string }>) : [];
-    const bySite = new Map<string, string[]>();
-    for (const r of rows) {
-      const list = bySite.get(r.site_id) ?? [];
-      list.push(r.id);
-      bySite.set(r.site_id, list);
-    }
-    const CHUNK = 200;
-    let stalledTotal = 0;
-    for (const [sigSiteId, ids] of bySite) {
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const chunk = ids.slice(i, i + CHUNK);
-        try {
-          const n = await applyMarketingSignalDispatchBatch(adminClient, {
-            siteId: sigSiteId,
-            signalIds: chunk,
-            expectStatus: 'PENDING',
-            newStatus: 'STALLED_FOR_HUMAN_AUDIT',
-          });
-          stalledTotal += n;
-        } catch (e) {
-          logError('CLEANUP_STALE_PENDING_KERNEL_FAIL', {
-            site_id: sigSiteId,
-            error: e instanceof Error ? e.message : String(e),
-          });
-          await recordCronHeartbeat({
-            jobName: 'cleanup',
-            routePath: '/api/cron/cleanup',
-            status: 'FAIL',
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            durationMs: Date.now() - startedMs,
-            errorCode: 'PENDING_STALL_FAILED',
-            errorMessage: e instanceof Error ? e.message : String(e),
-          });
-          return NextResponse.json(
-            { error: e instanceof Error ? e.message : String(e), step: 'stall_stale_pending_marketing_signals' },
-            { status: 500 }
-          );
-        }
-      }
-    }
-    if (stalledTotal > 0) {
-      stalePendingFailed = stalledTotal;
-      logInfo('CLEANUP_STALE_PENDING_STALLED', { count: stalePendingFailed, days: daysPendingStale });
-    }
-
-    // Phase 5: Auto-junk stale intents (7d)
+    // Phase 4: Auto-junk stale intents (7d)
     const { data: junkData, error: junkErr } = await adminClient.rpc('cleanup_auto_junk_stale_intents', {
       p_days_old: daysOldIntents,
       p_limit: limitIntents,
@@ -357,16 +236,12 @@ async function runCleanup(req: NextRequest) {
     zombiesQueue,
     archivedFailed,
     ociDeleted,
-    signalsDeleted,
-    stalePendingFailed,
     intentsJunked,
   });
 
   const backlog =
     archivedFailed >= limit ||
     ociDeleted >= limit ||
-    signalsDeleted >= limit ||
-    stalePendingFailed >= limit ||
     intentsJunked >= limitIntents;
 
   await recordCronHeartbeat({
@@ -376,7 +251,7 @@ async function runCleanup(req: NextRequest) {
     startedAt,
     finishedAt: new Date().toISOString(),
     durationMs: Date.now() - startedMs,
-    rowsAffected: zombiesQueue + archivedFailed + ociDeleted + signalsDeleted + stalePendingFailed + intentsJunked,
+    rowsAffected: zombiesQueue + archivedFailed + ociDeleted + intentsJunked,
     errorCode: backlog ? 'BACKLOG_REMAINS' : null,
     errorMessage: backlog ? 'Cleanup finished with remaining backlog' : null,
   });
@@ -388,8 +263,7 @@ async function runCleanup(req: NextRequest) {
       zombie_recovery: { offline_queue: zombiesQueue },
       archive_failed: { archived: archivedFailed, days: daysArchiveFailed },
       oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit },
-      marketing_signals: { deleted: signalsDeleted, days: daysSignals, limit },
-      marketing_signals_pending_stale: { failed: stalePendingFailed, days: daysPendingStale, limit },
+      queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
       auto_junk: { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents },
       singularity_merkle: merkleHeartbeat,
       note: backlog ? 'Backlog may remain; run again or schedule daily.' : undefined,

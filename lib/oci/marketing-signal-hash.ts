@@ -34,7 +34,7 @@ export function getVoidLedgerSalt(): string {
   const isProd = env === 'production';
   if (isProd) {
     throw new Error(
-      'VOID_LEDGER_SALT is required in production. Set the env var before booting any service that touches marketing_signals or the OCI export pipeline.'
+      'VOID_LEDGER_SALT is required in production. Set the env var before booting any service that touches marketing_signals, journal OCI enqueue, or void/hash tooling.'
     );
   }
 

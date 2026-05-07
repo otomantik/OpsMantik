@@ -70,10 +70,11 @@ export function buildQueueItems(
       continue;
     }
     const rowCurrency = row.currency || ctx.site.currency || NEUTRAL_CURRENCY;
+    // Queue export value must be DB-authoritative `value_cents`.
+    // Do not prefer `optimization_value` here; mixed historical rows can carry
+    // exploratory values (e.g. 9.6) while contractual export amount is 100.00.
     const conversionValue = ensureNumericValue(
-      typeof row.optimization_value === 'number' && Number.isFinite(row.optimization_value)
-        ? row.optimization_value
-        : minorToMajor(valueGuard.normalized, rowCurrency)
+      minorToMajor(valueGuard.normalized, rowCurrency)
     );
     if (!(conversionValue > 0)) {
       blockedExpiredIds.push(row.id);

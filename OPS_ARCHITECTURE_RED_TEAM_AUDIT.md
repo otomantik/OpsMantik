@@ -86,16 +86,13 @@ Method: read-only code/migration/test audit (no code changes in this pass).
 
 ### marketing_signals pipeline
 
-- Upper-funnel exports (Contacted/Offered/Junk) materialized via consumer branch and builder modules:
-  - `app/api/oci/google-ads-export/export-build-signals.ts`
-  - signal routing in outbox consumer.
+- `marketing_signals` remains an internal/audit lane; **Google Ads offline export reads only** `offline_conversion_queue` (see `export-fetch.ts`, `export-build-queue.ts`). No second export builder merges signals into the script batch.
 - Contract target names from SSOT:
   - `lib/domain/mizan-mantik/conversion-names.ts`.
 
 ### offline_conversion_queue pipeline
 
-- Won/sealed value-lane path:
-  - queue producers in outbox consumer and seal flow
+- Single export surface for Google Ads: all funnel stages that reach the script batch are **journal rows** (queue producers, seal, outbox consumer enqueue paths):
   - export builder `app/api/oci/google-ads-export/export-build-queue.ts`.
 - Queue transition/snapshot RPC suite migration:
   - `supabase/migrations/20261223020200_oci_queue_transitions_ledger_and_claim_rpcs.sql`.

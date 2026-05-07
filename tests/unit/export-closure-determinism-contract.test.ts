@@ -24,13 +24,10 @@ test('enqueue journal rows stamp deterministic economics path', () => {
   assert.ok(seal.includes('computeOfflineConversionExternalId'), 'seal enqueue must use deterministic external_id');
 });
 
-test('export-fetch gates legacy marketing_signals batch (W3 / S1)', () => {
+test('export-fetch is journal-only (no marketing_signals upload surface)', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  assert.ok(
-    fetchSrc.includes('OCI_EXPORT_INCLUDE_MARKETING_SIGNALS'),
-    'export must gate dual-path signal stream via env'
-  );
-  assert.ok(fetchSrc.includes('shouldIncludeMarketingSignalsInExport'), 'export must centralize include/exclude decision');
+  assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'export must not query marketing_signals');
+  assert.ok(fetchSrc.includes('offline_conversion_queue'), 'export reads only journal');
 });
 
 test('export-build-queue derives conversionName from row.action (four OpsMantik names)', () => {
@@ -54,14 +51,10 @@ test('D11: evidence contracts export a pinned version token', () => {
   assert.ok(ec.includes('EVIDENCE_CONTRACT_VERSION'), 'evidence-contracts must pin contract version');
 });
 
-test('D5: export batch uses stable ordering (updated_at, id / created_at, id)', () => {
+test('D5: export batch uses stable ordering (updated_at, id)', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
   assert.ok(
     fetchSrc.includes(".order('updated_at'") && fetchSrc.includes(".order('id'"),
-    'queue stream must have deterministic sort + tie-break'
-  );
-  assert.ok(
-    fetchSrc.includes(".order('created_at'") && fetchSrc.includes(".order('id'"),
-    'signal stream must have deterministic sort + tie-break'
+    'journal stream must have deterministic sort + tie-break'
   );
 });

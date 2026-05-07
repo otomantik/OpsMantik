@@ -26,8 +26,7 @@ async function pulse() {
     const outboxData = await outboxRes.json();
     console.log('Result:', outboxData);
 
-    // Step 2: Trigger Export (Mocking Google Ads Script)
-    // In production, we loop through known site IDs or use the unified export.
+    // Step 2: Trigger Export (mocking GAS) — GET reads journal rows only (per-site in prod).
     console.log('2. Pulsing Google Ads Export...');
     const exportRes = await fetch(`${APP_URL}/api/oci/google-ads-export?all=true`, {
         method: 'GET',

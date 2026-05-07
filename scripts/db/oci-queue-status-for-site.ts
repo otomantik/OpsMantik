@@ -1,6 +1,6 @@
 /**
- * Bir site için OCI “kuyruk” özeti: marketing_signals (Contacted/Offered/Junk/Won)
- * dispatch_status dağılımı + offline_conversion_queue sayıları.
+ * Bir site için OCI queue-only özet:
+ * offline_conversion_queue üzerinde canonical action + status dağılımı.
  *
  * Usage:
  *   npx tsx scripts/db/oci-queue-status-for-site.ts Tecrubeli
@@ -53,28 +53,18 @@ async function resolveSite(q: string | undefined): Promise<{ id: string; name: s
   process.exit(1);
 }
 
-/** DB check constraint ile uyumlu (ek migrasyonlar varsa buraya eklenir). */
-const DISPATCH = [
-  'PENDING',
+const QUEUE_STATUSES = [
+  'QUEUED',
+  'RETRY',
   'PROCESSING',
-  'SENT',
+  'UPLOADED',
+  'COMPLETED',
+  'COMPLETED_UNVERIFIED',
   'FAILED',
-  'JUNK_ABORTED',
   'DEAD_LETTER_QUARANTINE',
-  'SKIPPED_NO_CLICK_ID',
-  'STALLED_FOR_HUMAN_AUDIT',
+  'VOIDED_BY_REVERSAL',
+  'BLOCKED_PRECEDING_SIGNALS',
 ] as const;
-
-async function countMs(siteId: string, conversionName: string, dispatch: string): Promise<number> {
-  const { count, error } = await supabase
-    .from('marketing_signals')
-    .select('id', { count: 'exact', head: true })
-    .eq('site_id', siteId)
-    .eq('google_conversion_name', conversionName)
-    .eq('dispatch_status', dispatch);
-  if (error) throw new Error(error.message);
-  return count ?? 0;
-}
 
 async function main() {
   const site = await resolveSite(positional);
@@ -91,20 +81,26 @@ async function main() {
     ['Won', OPSMANTIK_CONVERSION_NAMES.won],
   ] as const;
 
-  for (const [label, conv] of names) {
+  for (const [label, action] of names) {
     const parts: string[] = [];
     let sum = 0;
-    for (const d of DISPATCH) {
-      const c = await countMs(site.id, conv, d);
-      if (c > 0) parts.push(`${d}=${c}`);
+    for (const status of QUEUE_STATUSES) {
+      const { count, error } = await supabase
+        .from('offline_conversion_queue')
+        .select('id', { count: 'exact', head: true })
+        .eq('site_id', site.id)
+        .eq('action', action)
+        .eq('status', status);
+      if (error) throw new Error(error.message);
+      const c = count ?? 0;
+      if (c > 0) parts.push(`${status}=${c}`);
       sum += c;
     }
-    console.log(`${label} (${conv}): toplam=${sum}`, parts.length ? `| ${parts.join(' ')}` : '| (satır yok)');
+    console.log(`${label} (${action}): toplam=${sum}`, parts.length ? `| ${parts.join(' ')}` : '| (satır yok)');
   }
 
-  const queueStatuses = ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED', 'COMPLETED', 'COMPLETED_UNVERIFIED', 'FAILED'] as const;
-  console.log('\noffline_conversion_queue (Won hattı):');
-  for (const st of queueStatuses) {
+  console.log('\noffline_conversion_queue (genel status):');
+  for (const st of QUEUE_STATUSES) {
     const { count } = await supabase
       .from('offline_conversion_queue')
       .select('id', { count: 'exact', head: true })
@@ -124,9 +120,7 @@ async function main() {
     .eq('site_id', site.id)
     .eq('status', 'PENDING');
   console.log('\noutbox_events PENDING (panel→OCI işlenmemiş):', obPend ?? 0);
-  console.log(
-    '\nNot: Contacted/Offered/Junk için “kuyruk” = marketing_signals (çoğunlukla PENDING→SENT); Won = offline_conversion_queue.'
-  );
+  console.log('\nNot: Queue-only model aktif; Google Script GET export = offline_conversion_queue.');
 }
 
 main().catch((e) => {

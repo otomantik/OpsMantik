@@ -53,9 +53,9 @@ if (!ssot.includes('OPSMANTIK_CONVERSION_NAMES')) {
   process.exit(1);
 }
 
-const routerInsert = readFileSync(join(root, 'lib/oci/insert-marketing-signal.ts'), 'utf8');
-if (routerInsert.includes('toExpectedValueCents')) {
-  console.error('[verify-oci-spine] insert-marketing-signal must not use toExpectedValueCents — use loadMarketingSignalEconomics');
+const upsertWriter = readFileSync(join(root, 'lib/oci/upsert-marketing-signal.ts'), 'utf8');
+if (upsertWriter.includes('toExpectedValueCents')) {
+  console.error('[verify-oci-spine] upsert-marketing-signal must not use toExpectedValueCents for SSOT cents');
   process.exit(1);
 }
 

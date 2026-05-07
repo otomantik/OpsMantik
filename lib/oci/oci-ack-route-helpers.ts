@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { logError } from '@/lib/logging/logger';
-import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 
 const MAX_SAFE_ERROR_STRING = 2048;
 
@@ -146,84 +144,4 @@ export function dbUpstreamResponse(scope: string, err: unknown, fallbackCode = '
   const msg = err instanceof Error ? err.message : safeOciErrorString(err);
   logError(scope, { error: msg, infrastructure: isInfrastructurePostgrestError(err) });
   return NextResponse.json({ error: 'Database unavailable', code: fallbackCode, retryable: true }, { status: 503 });
-}
-
-/**
- * Runs batch RPC then reconciles row states. Never throws.
- * Caller treats `stuckProcessingIds.length === 0` (and every id present or intentionally missing) as idempotent OK.
- */
-export async function reconcileSignalDispatchOutcome(
-  admin: SupabaseClient,
-  params: {
-    siteId: string;
-    signalIds: string[];
-    expectStatus: string;
-    newStatus: string;
-    googleSentAt?: string | null;
-  }
-): Promise<{
-  rpcApplied: number;
-  rowsSnapshot: Map<string, string>;
-  stuckProcessingIds: string[];
-  missingIds: string[];
-}> {
-  const { siteId, signalIds, expectStatus, newStatus, googleSentAt } = params;
-
-  if (signalIds.length === 0) {
-    return { rpcApplied: 0, rowsSnapshot: new Map(), stuckProcessingIds: [], missingIds: [] };
-  }
-
-  let rpcApplied = 0;
-  try {
-    rpcApplied = await applyMarketingSignalDispatchBatch(admin, {
-      siteId,
-      signalIds,
-      expectStatus,
-      newStatus,
-      googleSentAt: googleSentAt ?? null,
-    });
-  } catch (e) {
-    logError('OCI_SIGNAL_DISPATCH_RPC_THROW', {
-      siteId,
-      requested: signalIds.length,
-      error: e instanceof Error ? e.message : safeOciErrorString(e),
-    });
-    rpcApplied = 0;
-  }
-
-  const { data: rows, error } = await admin
-    .from('marketing_signals')
-    .select('id, dispatch_status')
-    .in('id', signalIds)
-    .eq('site_id', siteId);
-
-  if (error) {
-    logError('OCI_SIGNAL_RECONCILE_SELECT_FAILED', { message: error.message });
-    return {
-      rpcApplied,
-      rowsSnapshot: new Map(),
-      stuckProcessingIds: signalIds,
-      missingIds: [],
-    };
-  }
-
-  const rowsSnapshot = new Map<string, string>(
-    (Array.isArray(rows) ? rows : []).map((r: { id: string; dispatch_status: string }) => [r.id, r.dispatch_status])
-  );
-
-  const stuckProcessingIds: string[] = [];
-  const missingIds: string[] = [];
-
-  for (const id of signalIds) {
-    const st = rowsSnapshot.get(id);
-    if (st === undefined) {
-      missingIds.push(id);
-      continue;
-    }
-    if (st === expectStatus) {
-      stuckProcessingIds.push(id);
-    }
-  }
-
-  return { rpcApplied, rowsSnapshot, stuckProcessingIds, missingIds };
 }

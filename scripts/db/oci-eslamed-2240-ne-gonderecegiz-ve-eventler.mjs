@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Eslamed — Gece 22:40 (TRT) sonrası:
- * 1) NE GÖNDERECEĞİZ: Script çalışsaydı export'tan dönecek liste (kuyruk QUEUED/RETRY + nabız PENDING).
+ * 1) NE GÖNDERECEĞİZ: Script GET’in alacağı journal (QUEUED/RETRY) + ayrı rapor için marketing_signals PENDING (GET bunları döndürmez).
  * 2) HANGİ EVENTLER TETİKLENMİŞ: call_actions, mühürlenen call'lar, marketing_signals (zaman sırası).
  *
  *   node scripts/db/oci-eslamed-2240-ne-gonderecegiz-ve-eventler.mjs
@@ -82,7 +82,7 @@ async function main() {
     .eq('provider_key', 'google_ads')
     .in('status', ['QUEUED', 'RETRY']);
 
-  // Nabız: PENDING (export bunları da döner)
+  // Nabız: PENDING (raporda gösterilir; google-ads-export GET bunları okumaz — yalnızca journal)
   const { data: pendingSignals } = await supabase
     .from('marketing_signals')
     .select('id, call_id, conversion_name, value_cents, currency, conversion_time, created_at')

@@ -60,7 +60,6 @@ export async function GET(
     inferenceRes,
     projectionRes,
     identityRes,
-    signalsRes,
   ] = await Promise.all([
     adminClient
       .from('truth_evidence_ledger')
@@ -91,13 +90,6 @@ export async function GET(
       .eq('call_id', callId)
       .order('created_at', { ascending: false })
       .limit(25),
-    adminClient
-      .from('marketing_signals')
-      .select('id, google_conversion_name, dispatch_status, causal_dna, created_at')
-      .eq('site_id', siteId)
-      .eq('call_id', callId)
-      .order('created_at', { ascending: false })
-      .limit(5),
   ]);
 
   incrementRefactorMetric('explainability_api_probe_total');
@@ -124,9 +116,7 @@ export async function GET(
       truth_identity_graph_edges: identityRes.error
         ? { error: 'unavailable' }
         : { rows: identityRes.data ?? [] },
-      marketing_signals: signalsRes.error
-        ? { error: 'unavailable' }
-        : { rows: signalsRes.data ?? [] },
+      queue_only_mode: true,
     },
     { headers: { ...getBuildInfoHeaders(), 'Cache-Control': 'no-store' } }
   );

@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { validateOciQueueValueCents, validateOciSignalConversionValue } from '@/lib/oci/export-value-guard';
 
-const EXPORT_ROUTE = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
+const EXPORT_BUILD_QUEUE = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-queue.ts');
+const EXPORT_BUILD_ITEMS = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
 const EXPORT_MARK = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts');
 
 test('PR-OCI-4: queue export rejects null, non-finite, and non-positive values', () => {
@@ -38,17 +39,16 @@ test('PR-OCI-9A: signal export preserves valid positive conversion value', () =>
 });
 
 test('PR-OCI-4: export route uses shared fail-closed value guards and terminalizes blocked rows', () => {
-  const src = readFileSync(EXPORT_ROUTE, 'utf8');
-  assert.ok(src.includes('validateOciQueueValueCents'), 'queue export must use shared value guard');
-  assert.ok(src.includes('validateOciSignalConversionValue'), 'signal export must use shared value guard');
-  assert.ok(src.includes('blockedSignalValueIds'), 'signal zero-value rows must be tracked for terminalization');
-  const markSrc = readFileSync(EXPORT_MARK, 'utf8');
+  const queueSrc = readFileSync(EXPORT_BUILD_QUEUE, 'utf8');
+  assert.ok(queueSrc.includes('validateOciQueueValueCents'), 'queue export must use shared value guard');
   assert.ok(
-    markSrc.includes("dispatch_status: 'JUNK_ABORTED'") ||
-      markSrc.includes('dispatch_status: "JUNK_ABORTED"') ||
-      markSrc.includes("newStatus: 'JUNK_ABORTED'"),
-    'blocked signals must be terminalized via a legal signal-state transition'
+    !queueSrc.includes('validateOciSignalConversionValue'),
+    'journal export must not merge legacy marketing_signals value guards'
   );
-  assert.ok(src.includes('blockedValueZeroIds'), 'blocked queue rows must keep VALUE_ZERO provenance');
-  assert.ok(src.includes('blockedQueueTimeIds'), 'blocked queue time rows must keep INVALID_CONVERSION_TIME provenance');
+  const itemsSrc = readFileSync(EXPORT_BUILD_ITEMS, 'utf8');
+  assert.ok(itemsSrc.includes('blockedValueZeroIds: queueBuild.blockedValueZeroIds'), 'build must surface VALUE_ZERO provenance from journal');
+  assert.ok(itemsSrc.includes('blockedQueueTimeIds: queueBuild.blockedQueueTimeIds'), 'build must surface INVALID_CONVERSION_TIME provenance from journal');
+  const markSrc = readFileSync(EXPORT_MARK, 'utf8');
+  assert.ok(markSrc.includes('blockedValueZeroIds'), 'mark step must terminalize zero-value journal rows');
+  assert.ok(markSrc.includes("'VALUE_ZERO'"), 'VALUE_ZERO blocked rows must finalize to FAILED with VALUE_ZERO');
 });

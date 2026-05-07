@@ -217,10 +217,10 @@ async function run() {
     console.log('');
   }
 
-  // --- 4) Kuyruğa al: V5 için enqueue (sealed call'lar); sinyaller zaten marketing_signals'da, export ile gider
+  // --- 4) Kuyruğa al: V5 için enqueue (sealed call'lar). Üst funnel journal/outbox ile birleşik; GET export = queue only.
   console.log('--- 4) Kuyruğa alma ---');
   console.log('  V5 (Demir Mühür): node scripts/db/oci-enqueue.mjs Eslamed --days 2');
-  console.log('  V2/V3/V4: marketing_signals PENDING — Script export ile Google\'a gider (değerler yukarıda düzeltildi).');
+  console.log('  V2/V3/V4: marketing_signals ayrı audit tablosu; Google Script yalnızca offline_conversion_queue batch\'inden okur.');
   if (!dryRun) {
     const { execSync } = await import('child_process');
     try {

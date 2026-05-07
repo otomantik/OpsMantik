@@ -112,36 +112,18 @@ export interface OciQueueRow {
 }
 
 /** Queue stats response. */
-/** marketing_signals.dispatch_status bucket counts (site scope). */
-export type MarketingSignalDispatchBreakdown = Partial<
-  Record<
-    | 'PENDING'
-    | 'PROCESSING'
-    | 'SENT'
-    | 'FAILED'
-    | 'JUNK_ABORTED'
-    | 'DEAD_LETTER_QUARANTINE'
-    | 'SKIPPED_NO_CLICK_ID'
-    | 'STALLED_FOR_HUMAN_AUDIT',
-    number
-  >
->;
-
 export interface OciQueueStats {
   siteId: string;
   /** sites.oci_sync_method — script (GAS pull) vs api (worker push); avoid dual exporters per site. */
   ociSyncMethod?: 'script' | 'api' | string;
-  /**
-   * Pre-upload backlog: signals PENDING+PROCESSING plus won QUEUED+RETRY+PROCESSING (excludes UPLOADED).
-   */
+  /** Pre-upload backlog in queue-only model: QUEUED+RETRY+PROCESSING. */
   unifiedExportBacklog?: number;
-  marketingSignalsExportActive?: number;
-  /** Won rows waiting before upload completes (SCRIPT/API still to confirm). */
-  wonQueueBacklogActive?: number;
+  /** Rows waiting before upload completes (SCRIPT/API still to confirm). */
+  queueBacklogActive?: number;
   /** Won rows uploaded to Google, ACK pending — shown separately from backlog. */
-  wonQueueInFlightUploaded?: number;
-  /** Won queue: QUEUED+RETRY+PROCESSING+UPLOADED (operational totals). */
-  wonQueueExportActive?: number;
+  queueInFlightUploaded?: number;
+  /** Queue: QUEUED+RETRY+PROCESSING+UPLOADED (operational totals). */
+  queueExportActive?: number;
   totals: Record<QueueStatus, number>;
   stuckProcessing?: number;
   lastUpdatedAt?: string;
@@ -150,7 +132,6 @@ export interface OciQueueStats {
   outboxFailedRecent?: number;
   truthRepairBacklog?: number;
   outboxQueueParityRatio?: number;
-  marketingSignalsByDispatch?: MarketingSignalDispatchBreakdown;
   /** Oldest blocked_at among BLOCKED_PRECEDING_SIGNALS rows (ISO), if any. */
   blockedQueueOldestAt?: string | null;
   /** Seconds since oldest blocked_at (same row as blockedQueueOldestAt). */

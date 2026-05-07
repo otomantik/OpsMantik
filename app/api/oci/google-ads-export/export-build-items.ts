@@ -9,13 +9,8 @@ import { buildQueueItems } from './export-build-queue';
 export type BuiltExportData = {
   combined: GoogleAdsConversionItem[];
   keptConversions: GoogleAdsConversionItem[];
-  keptSignalItems: GoogleAdsConversionItem[];
   suppressedQueueIds: string[];
-  suppressedSignalIds: string[];
   blockedQueueIds: string[];
-  blockedSignalIds: string[];
-  blockedSignalTimeIds: string[];
-  blockedSignalValueIds: string[];
   blockedQueueTimeIds: string[];
   blockedValueZeroIds: string[];
   blockedExpiredIds: string[];
@@ -69,11 +64,9 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   const rankedIds = new Set(rankedCandidates.map((candidate) => candidate.id));
   const keptIds = new Set(keptCandidates.map((candidate) => candidate.id));
   const keptConversions = filteredQueueConversions.filter((item) => !rankedIds.has(item.id) || keptIds.has(item.id));
-  const keptSignalItems: GoogleAdsConversionItem[] = [];
   const suppressedQueueIds = suppressedCandidates
     .filter((candidate) => candidate.id.startsWith('seal_'))
     .map((candidate) => candidate.id.replace('seal_', ''));
-  const suppressedSignalIds: string[] = [];
 
   const combined = [...keptConversions].sort(
     (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
@@ -90,13 +83,8 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   return {
     combined,
     keptConversions,
-    keptSignalItems,
     suppressedQueueIds,
-    suppressedSignalIds,
     blockedQueueIds: [...queueBuild.blockedQueueIds, ...Array.from(blockedNotSendableQueueIds)],
-    blockedSignalIds: [],
-    blockedSignalTimeIds: [],
-    blockedSignalValueIds: [],
     blockedQueueTimeIds: queueBuild.blockedQueueTimeIds,
     blockedValueZeroIds: queueBuild.blockedValueZeroIds,
     blockedExpiredIds: queueBuild.blockedExpiredIds,

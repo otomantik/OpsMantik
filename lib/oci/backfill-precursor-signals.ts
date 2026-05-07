@@ -6,8 +6,6 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
-import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
@@ -23,9 +21,9 @@ export interface PrecursorBackfillParams {
 
 export interface PrecursorBackfillResult {
   examined: number;
-  upsertAttempts: number;
-  inserted: number;
-  duplicates: number;
+  queueAttempts: number;
+  queued: number;
+  queueDuplicates: number;
   skippedNoClick: number;
   errors: number;
   ledgerBackedAttempts: number;
@@ -85,9 +83,9 @@ export async function runPrecursorSignalBackfill(
   const limit = Math.min(200, Math.max(1, params.limit));
   const result: PrecursorBackfillResult = {
     examined: 0,
-    upsertAttempts: 0,
-    inserted: 0,
-    duplicates: 0,
+    queueAttempts: 0,
+    queued: 0,
+    queueDuplicates: 0,
     skippedNoClick: 0,
     errors: 0,
     ledgerBackedAttempts: 0,
@@ -145,21 +143,8 @@ export async function runPrecursorSignalBackfill(
     if (stages.length === 0) continue;
 
     for (const plan of stages) {
-      const convName = OPSMANTIK_CONVERSION_NAMES[plan.stage as OptimizationStage];
-      const { data: existing } = await adminClient
-        .from('marketing_signals')
-        .select('id')
-        .eq('site_id', params.siteId)
-        .eq('call_id', callId)
-        .eq('google_conversion_name', convName)
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        continue;
-      }
-
       if (params.dryRun) {
-        result.upsertAttempts++;
+        result.queueAttempts++;
         bumpSourceCounter(result, plan.source);
         continue;
       }
@@ -171,7 +156,7 @@ export async function runPrecursorSignalBackfill(
         modelVersion: 'backfill-precursor-v1',
       });
 
-      result.upsertAttempts++;
+      result.queueAttempts++;
       bumpSourceCounter(result, plan.source);
 
       const economics = await loadMarketingSignalEconomics({
@@ -180,65 +165,30 @@ export async function runPrecursorSignalBackfill(
         snapshot,
       });
 
-      const up = await upsertMarketingSignal({
-        source: 'router',
+      const parity = await ensureMarketingSignalQueueParity({
         siteId: params.siteId,
         callId,
-        traceId: null,
         stage: plan.stage as Exclude<PipelineStage, 'won'>,
-        signalDate,
-        snapshot,
-        economics,
-        clickIds: { gclid, wbraid, gbraid },
-        featureSnapshotExtras: {
-          source_detail: 'precursor_backfill',
-          backfill_time_source: plan.source,
-        },
+        occurredAt: signalDate,
+        leadScore: Number.isFinite(leadScore as number) ? Number(leadScore) : 0,
+        currency: economics.currencyCode,
+        gclid,
+        wbraid,
+        gbraid,
+        source: 'precursor_backfill_queue_only',
+        consentState: 'unknown',
+        traceId: null,
       });
-
-      if (up.success && up.signalId && !up.duplicate) {
-        result.inserted++;
-        const parity = await ensureMarketingSignalQueueParity({
-          siteId: params.siteId,
-          callId,
-          stage: plan.stage as Exclude<PipelineStage, 'won'>,
-          occurredAt: signalDate,
-          leadScore: Number.isFinite(leadScore as number) ? Number(leadScore) : 0,
-          currency: economics.currencyCode,
-          gclid,
-          wbraid,
-          gbraid,
-          source: 'precursor_backfill',
-          consentState: 'unknown',
-          traceId: null,
-        });
-        if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') result.parityQueueEnqueued++;
-        else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') result.parityQueueDuplicates++;
-        else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') result.parityQueueSkippedConsent++;
-        else result.parityQueueErrors++;
-      } else if (up.duplicate) {
-        result.duplicates++;
-        const parity = await ensureMarketingSignalQueueParity({
-          siteId: params.siteId,
-          callId,
-          stage: plan.stage as Exclude<PipelineStage, 'won'>,
-          occurredAt: signalDate,
-          leadScore: Number.isFinite(leadScore as number) ? Number(leadScore) : 0,
-          currency: economics.currencyCode,
-          gclid,
-          wbraid,
-          gbraid,
-          source: 'precursor_backfill_duplicate',
-          consentState: 'unknown',
-          traceId: null,
-        });
-        if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') result.parityQueueEnqueued++;
-        else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') result.parityQueueDuplicates++;
-        else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') result.parityQueueSkippedConsent++;
-        else result.parityQueueErrors++;
-      } else if (up.skipped) {
-        result.skippedNoClick++;
+      if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') {
+        result.queued++;
+        result.parityQueueEnqueued++;
+      } else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') {
+        result.queueDuplicates++;
+        result.parityQueueDuplicates++;
+      } else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') {
+        result.parityQueueSkippedConsent++;
       } else {
+        result.parityQueueErrors++;
         result.errors++;
       }
     }

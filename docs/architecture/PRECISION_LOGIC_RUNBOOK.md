@@ -111,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_ocq_site_status_created_covering
   INCLUDE (call_id, gclid, conversion_time, value_cents)
   WHERE status = 'COMPLETED';
 
--- marketing_signals: PENDING export
+-- marketing_signals: PENDING rows (audit/ops; not read by google-ads-export)
 CREATE INDEX IF NOT EXISTS idx_marketing_signals_site_pending_covering
   ON public.marketing_signals (site_id, created_at)
   INCLUDE (call_id, signal_type, google_conversion_name, dispatch_status)

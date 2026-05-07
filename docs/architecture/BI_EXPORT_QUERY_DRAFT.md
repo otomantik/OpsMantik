@@ -9,7 +9,7 @@ Use canonical English contracts and runbooks:
 
 **Amaç:** Mühürlenmiş ledger verisini BI araçlarına (Metabase, Tableau, Looker Studio vb.) servis etmek için SQL taslakları ve veri mantığı.
 
-**Bağımlılık:** Opsmantik sealed ledger (Pipeline A: `offline_conversion_queue`, Pipeline B: `marketing_signals`).
+**Bağımlılık:** BI için `offline_conversion_queue` + isteğe bağlı `marketing_signals` (audit). **Not:** Google Script `google-ads-export` yalnızca journal okur; BI “Pipeline B” script batch’i değildir.
 
 ---
 

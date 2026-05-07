@@ -11,10 +11,10 @@
 | No null fallbacks | conversionTime, value_cents, currency: missing → skip row + log. No `?? 0`, no `?? 'TRY'`, no silent `now()`. |
 | No best-effort in critical path | Seal V3/V4 emit, enqueue: fail loud (503/409) on error. No empty `.catch()`. Tracker: `TRACKER_FETCH_FAILED` log; sweep-zombies: `OUROBOROS_ALERT_FAILED` log. |
 | Single value SSOT | funnel-kernel value-formula (computeSealedValue, computeExportValue). oci-config delegates. |
-| Single export path | call_funnel_projection when export_status=READY; default. USE_FUNNEL_PROJECTION=false = legacy fallback during cutover. |
+| Single Google batch export path | `GET /api/oci/google-ads-export` reads **`offline_conversion_queue` only** ([EXPORT_CLOSURE.md](./EXPORT_CLOSURE.md)). `call_funnel_projection` / funnel kernel tracks are separate (analytics / shadow), not this route’s row source. |
 | Version required for seal | body.version required; 400 if omitted. Optimistic locking enforced. |
 | Env secrets | OCI_SESSION_SECRET, VOID_LEDGER_SALT: no empty fallback in production. Log when insecure fallback used. |
-| Dual-write atomicity | Ledger and marketing_signals/queue must not diverge. Target: signal + ledger in same transaction (RPC). Current: separate inserts; repair cron if ledger fails. |
+| Dual-write atomicity | Ledger, `marketing_signals` (where still written), and **journal** rows must remain reconcilable. Target: co-locate writes in RPC where possible. Current: separate inserts; repair / reconciliation cron if divergence. |
 | Atomic compensation  | When processSyncEvent fails after idempotency+usage commit: `decrement_and_delete_idempotency` RPC does decrement + delete in one transaction. No separate calls. |
 | Idempotency collision| v1: 5s bucket; v2: 10s/2s buckets. Identical (site, event_name, url, fp) in same tick may dedupe. Add `event_id` or QStash messageId to key when available (P2). |
 | Orphan calls         | `calls.matched_session_id` has no FK. Match logic enforces same-site; orphans from session delete are edge-case. Soft FK check in RPC (P2). |

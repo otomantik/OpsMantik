@@ -44,12 +44,13 @@ Stage bases (`OPTIMIZATION_STAGE_BASES` in `lib/oci/optimization-contract.ts`):
 | Artifact | Purpose |
 |----------|---------|
 | **`call_funnel_projection`** | Analytics, metrics API, ACK for `proj_*` ids, phone lookup — maintained by `funnel-projection` cron. |
-| **`offline_conversion_queue` + `marketing_signals`** | **Google Ads offline conversion upload** via `google-ads-export` + script ACK. |
+| **`offline_conversion_queue` (journal)** | **Google Ads offline conversion upload** — the only rows serialized by `GET /api/oci/google-ads-export` and uploaded by the script. |
+| **`marketing_signals`** | Stage/audit/hash/recovery plane; **not** read by `google-ads-export`. Economics may mirror here for lineage; upload authority is the journal. |
 
-OCI export does **not** read projection rows for batch export; queue + signals are the upload SSOT.
+OCI export does **not** read projection rows for batch export; **only** the journal is the script upload row source. ACK primarily finalizes journal rows; legacy `signal_*` handling may still exist for older ack payloads.
 
 ## Red lines
 
 - Do not reintroduce AOV/decay/gear-weight based export math.
-- Do not export non-canonical signal stages from `marketing_signals`.
+- Do not merge `marketing_signals` into the Google script GET batch (see [EXPORT_CLOSURE.md](./EXPORT_CLOSURE.md)).
 - Do not let `actual_revenue` leak back into Google value bidding math.

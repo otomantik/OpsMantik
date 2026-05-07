@@ -1,9 +1,8 @@
 /**
  * POST /api/oci/ack — Script yükleme sonrası: Google'a giden kayıtları onaylar.
  *
- * Tri-Pipeline: Script queueIds'leri seal_, signal_, pv_ prefix'i ile gönderir.
+ * Tri-Pipeline: Script queueIds'leri seal_, pv_ prefix'i ile gönderir.
  * - seal_* → offline_conversion_queue (status=COMPLETED or UPLOADED; see pendingConfirmation)
- * - signal_* → marketing_signals (dispatch_status=SENT, google_sent_at=NOW)
  * - pv_* → Redis: DEL pv:data:{id}, LREM pv:processing:{siteId}
  *
  * Body:
@@ -33,7 +32,6 @@ import {
   isInfrastructurePostgrestError,
   parseAckJsonEnvelope,
   promoteSingleGranularResult,
-  reconcileSignalDispatchOutcome,
 } from '@/lib/oci/oci-ack-route-helpers';
 import { getDbNowIso } from '@/lib/time/db-now';
 import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
@@ -141,19 +139,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unknown ACK id prefix', code: 'ACK_UNKNOWN_PREFIX', unknownIds }, { status: 400 });
     }
     const sealSkippedIds: string[] = [];
-    const signalSkippedIds: string[] = [];
     const pvSkippedIds: string[] = [];
     const unknownSkippedIds: string[] = [];
     for (const id of skippedIds) {
       const s = String(id);
       if (s.startsWith('seal_')) sealSkippedIds.push(s.slice(5));
-      else if (s.startsWith('signal_')) signalSkippedIds.push(s.slice(7));
       else if (s.startsWith('pv_')) pvSkippedIds.push(s.slice(3));
       else unknownSkippedIds.push(s);
     }
     if (unknownSkippedIds.length > 0) {
       return NextResponse.json(
         { error: 'Unknown ACK skipped id prefix', code: 'ACK_UNKNOWN_PREFIX', unknownIds: unknownSkippedIds },
+        { status: 400 }
+      );
+    }
+    if (signalIds.length > 0) {
+      return NextResponse.json(
+        { error: 'signal_* ACK IDs are retired in queue-only mode', code: 'ACK_SIGNAL_IDS_RETIRED' },
         { status: 400 }
       );
     }
@@ -306,6 +308,12 @@ export async function POST(req: NextRequest) {
       }
       const sealFailedIds = sealFailedIdsRaw.map((id) => id.trim()).filter(Boolean);
       const signalFailedIds = signalFailedIdsRaw.map((id) => id.trim()).filter(Boolean);
+      if (signalFailedIds.length > 0) {
+        return NextResponse.json(
+          { error: 'signal_* granular result IDs are retired in queue-only mode', code: 'ACK_SIGNAL_IDS_RETIRED' },
+          { status: 400 }
+        );
+      }
 
       if (sealFailedIds.length > 0) {
         const { data: rows, error } = await adminClient
@@ -348,30 +356,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (signalFailedIds.length > 0) {
-        const granFail = await reconcileSignalDispatchOutcome(adminClient, {
-          siteId: siteUuid,
-          signalIds: signalFailedIds,
-          expectStatus: 'PROCESSING',
-          newStatus: 'FAILED',
-        });
-        for (const id of signalFailedIds) {
-          const st = granFail.rowsSnapshot.get(id);
-          if (st !== undefined && st !== 'PROCESSING') {
-            totalUpdated += 1;
-          }
-        }
-        if (granFail.missingIds.length > 0) {
-          warnings.granular_failed_missing_signal_ids = granFail.missingIds;
-        }
-        if (granFail.stuckProcessingIds.length > 0) {
-          logError('OCI_ACK_GRANULAR_SIGNAL_STILL_PROCESSING', {
-            ids: granFail.stuckProcessingIds,
-            rpcApplied: granFail.rpcApplied,
-          });
-          warnings.signals_still_processing = granFail.stuckProcessingIds;
-        }
-      }
     }
 
     if (sealSkippedIds.length > 0) {
@@ -410,61 +394,6 @@ export async function POST(req: NextRequest) {
           );
         }
         totalUpdated += updatedCount;
-      }
-    }
-
-    if (signalIds.length > 0) {
-      const { data: allSignals, error: fetchErr } = await adminClient
-        .from('marketing_signals')
-        .select('id, dispatch_status')
-        .in('id', signalIds)
-        .eq('site_id', siteUuid);
-
-      if (fetchErr) {
-        return dbUpstreamResponse('OCI_ACK_SIGNALS_SQL_ERROR', fetchErr, 'OCI_ACK_SIGNALS_SQL_ERROR');
-      }
-      const signalRows = Array.isArray(allSignals) ? allSignals as Array<{ id: string; dispatch_status: string }> : [];
-      const byIdSig = new Map(signalRows.map((r) => [r.id, r.dispatch_status]));
-
-      const missingSig = signalIds.filter((id) => !byIdSig.has(id));
-      if (missingSig.length > 0) {
-        logError('OCI_ACK_SIGNAL_PARTIAL_MISSING', { requested: signalIds.length, found: signalRows.length, missingSig });
-        warnings.missing_signal_ids = missingSig;
-      }
-
-      const toUpdateSignals = signalRows.filter((r) => r.dispatch_status === 'PROCESSING');
-
-      for (const id of signalIds) {
-        const st = byIdSig.get(id);
-        if (st !== undefined && st === 'SENT') {
-          totalUpdated += 1;
-        }
-      }
-
-      if (toUpdateSignals.length > 0) {
-        const targetIds = toUpdateSignals.map((r) => r.id);
-        const recon = await reconcileSignalDispatchOutcome(adminClient, {
-          siteId: siteUuid,
-          signalIds: targetIds,
-          expectStatus: 'PROCESSING',
-          newStatus: 'SENT',
-          googleSentAt: now,
-        });
-        for (const id of targetIds) {
-          const st = recon.rowsSnapshot.get(id);
-          if (st !== undefined && st !== 'PROCESSING') {
-            totalUpdated += 1;
-          }
-        }
-        if (recon.stuckProcessingIds.length > 0) {
-          logError('OCI_ACK_SIGNALS_STILL_PROCESSING_AFTER_ACK', {
-            ids: recon.stuckProcessingIds,
-            rpcApplied: recon.rpcApplied,
-          });
-          warnings.signals_still_processing = Array.isArray(warnings.signals_still_processing)
-            ? [...(warnings.signals_still_processing as string[]), ...recon.stuckProcessingIds]
-            : recon.stuckProcessingIds;
-        }
       }
     }
 

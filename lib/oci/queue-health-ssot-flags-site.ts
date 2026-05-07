@@ -1,6 +1,6 @@
 /**
  * Per-site SSOT flags for queue-health (operational API path).
- * Time drift mirrors scripts/sql/oci_time_ssot_health.sql (marketing_signals + offline_conversion_queue).
+ * Time drift mirrors queue-only occurred_at/conversion_time/source_timestamp checks.
  * Identity mirrors scripts/sql/identity_integrity_health.sql (won/sealed calls).
  * Value integrity is **not** replicated here — use value_integrity_health.sql / release evidence (valueIntegrityRed stays false).
  */
@@ -8,14 +8,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const PAGE = 800;
-
-function msTimeDrifted(row: {
-  occurred_at?: string | null;
-  google_conversion_time?: string | null;
-}): boolean {
-  if (row.occurred_at == null || row.google_conversion_time == null) return true;
-  return row.google_conversion_time !== row.occurred_at;
-}
 
 function queueTimeDrifted(row: {
   occurred_at?: string | null;
@@ -25,27 +17,6 @@ function queueTimeDrifted(row: {
   if (row.occurred_at == null || row.conversion_time == null || row.source_timestamp == null) return true;
   if (row.conversion_time !== row.occurred_at) return true;
   return row.source_timestamp !== row.occurred_at;
-}
-
-async function anyMarketingSignalTimeDrift(
-  client: SupabaseClient,
-  siteId: string
-): Promise<boolean> {
-  let from = 0;
-  for (;;) {
-    const { data, error } = await client
-      .from('marketing_signals')
-      .select('occurred_at, google_conversion_time')
-      .eq('site_id', siteId)
-      .not('call_id', 'is', null)
-      .order('created_at', { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    const rows = data || [];
-    if (rows.some((r) => msTimeDrifted(r as Record<string, unknown>))) return true;
-    if (rows.length < PAGE) return false;
-    from += PAGE;
-  }
 }
 
 async function anyOfflineQueueTimeDrift(client: SupabaseClient, siteId: string): Promise<boolean> {
@@ -71,8 +42,7 @@ export async function fetchSiteSsotFlags(client: SupabaseClient, siteId: string)
   valueIntegrityRed: boolean;
   identityIntegrityRed: boolean;
 }> {
-  const timeMs = await anyMarketingSignalTimeDrift(client, siteId);
-  const timeQ = timeMs ? true : await anyOfflineQueueTimeDrift(client, siteId);
+  const timeQ = await anyOfflineQueueTimeDrift(client, siteId);
 
   const hashRe = /^[0-9a-f]{64}$/;
   let identityIntegrityRed = false;

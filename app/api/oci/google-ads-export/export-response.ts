@@ -18,9 +18,9 @@ export function buildExportResponse(
     siteId: ctx.siteUuid,
     counts: {
       queued: built.keptConversions.length,
-      signals: built.keptSignalItems.length,
+      signals: 0,
       pvs: 0,
-      suppressed: built.suppressedQueueIds.length + built.suppressedSignalIds.length,
+      suppressed: built.suppressedQueueIds.length,
       adjustments: 0,
     },
     warnings: ctx.isGhostCursor ? ['GHOST_CURSOR_FALLBACK_ACTIVE'] : [],

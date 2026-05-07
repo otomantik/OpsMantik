@@ -89,16 +89,14 @@ export function OciControlPanel({
     actions: t('ociControl.actions'),
     loading: t('ociControl.loading'),
     loadMore: t('ociControl.loadMore'),
-    signalsPending: t('ociControl.signalsPending'),
     blockedSince: t('ociControl.blockedSince'),
     lastUpload: t('ociControl.lastUpload'),
     lastCompleted: t('ociControl.lastCompleted'),
     promotionReady: t('ociControl.promotionReady'),
     blockedAgeSec: t('ociControl.blockedAgeSec'),
     unifiedExportBacklog: t('ociControl.unifiedExportBacklog'),
-    wonQueueBacklogActive: t('ociControl.wonQueueBacklogActive'),
-    wonQueueInFlightUploaded: t('ociControl.wonQueueInFlightUploaded'),
-    marketingSignalsExportActive: t('ociControl.marketingSignalsExportActive'),
+    queueBacklogActive: t('ociControl.wonQueueBacklogActive'),
+    queueInFlightUploaded: t('ociControl.wonQueueInFlightUploaded'),
     ociSyncPathScript: t('ociControl.ociSyncMethod.script'),
     ociSyncPathApi: t('ociControl.ociSyncMethod.api'),
     loadStatsError: t('ociControl.error.loadStats'),
@@ -305,31 +303,19 @@ export function OciControlPanel({
               </strong>
             </span>
             <span>
-              {labels.marketingSignalsExportActive}:{' '}
+              {labels.queueBacklogActive}:{' '}
               <strong className="text-slate-900 tabular-nums">
-                {stats.marketingSignalsExportActive ?? '—'}
+                {stats.queueBacklogActive ?? '—'}
               </strong>
             </span>
             <span>
-              {labels.wonQueueBacklogActive}:{' '}
+              {labels.queueInFlightUploaded}:{' '}
               <strong className="text-slate-900 tabular-nums">
-                {stats.wonQueueBacklogActive ?? '—'}
-              </strong>
-            </span>
-            <span>
-              {labels.wonQueueInFlightUploaded}:{' '}
-              <strong className="text-slate-900 tabular-nums">
-                {stats.wonQueueInFlightUploaded ?? '—'}
+                {stats.queueInFlightUploaded ?? '—'}
               </strong>
             </span>
             <span>
               {stats.ociSyncMethod === 'api' ? labels.ociSyncPathApi : labels.ociSyncPathScript}
-            </span>
-            <span>
-              {labels.signalsPending}:{' '}
-              <strong className="text-slate-900 tabular-nums">
-                {stats.marketingSignalsByDispatch?.PENDING ?? 0}
-              </strong>
             </span>
             <span>
               {labels.blockedSince}:{' '}

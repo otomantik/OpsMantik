@@ -38,11 +38,6 @@ export interface AdminMetricsSnapshot {
       total: number;
     };
   };
-  signals: {
-    pending: number;
-    processed_last_24h: number;
-    failed: number;
-  };
   dlq: {
     sync_dlq_depth: number;
   };
@@ -132,37 +127,6 @@ async function countQueueByErrorCodeSince(
   }
 }
 
-/** Count rows matching `dispatch_status = value`. */
-async function countByDispatchStatus(status: string): Promise<number> {
-  try {
-    const { count, error } = await adminClient
-      .from('marketing_signals')
-      .select('*', { count: 'exact', head: true })
-      .eq('dispatch_status', status);
-    return error ? 0 : count ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** Count rows matching `dispatch_status = value AND timestampColumn >= since`. */
-async function countByDispatchStatusSince(
-  status: string,
-  timestampColumn: string,
-  since: string
-): Promise<number> {
-  try {
-    const { count, error } = await adminClient
-      .from('marketing_signals')
-      .select('*', { count: 'exact', head: true })
-      .eq('dispatch_status', status)
-      .gte(timestampColumn, since);
-    return error ? 0 : count ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
 /** Total row count (no predicates). Used for sync_dlq depth. */
 async function countAll(table: string): Promise<number> {
   try {
@@ -218,9 +182,6 @@ export async function buildAdminMetricsSnapshot(
     queueDlq,
     queueUploadException24h,
     queuePageProcessingFailure24h,
-    signalsPending,
-    signalsProcessed24h,
-    signalsFailed,
     syncDlq,
   ] = await Promise.all([
     // outbox_events
@@ -245,11 +206,6 @@ export async function buildAdminMetricsSnapshot(
     countByStatus('offline_conversion_queue', 'DEAD_LETTER_QUARANTINE'),
     countQueueByErrorCodeSince('UPLOAD_EXCEPTION', windowStart),
     countQueueByErrorCodeSince('PAGE_PROCESSING_FAILURE', windowStart),
-
-    // marketing_signals — optional dispatch_status column (exists in most deploys).
-    countByDispatchStatus('PENDING'),
-    countByDispatchStatusSince('PROCESSED', 'updated_at', windowStart),
-    countByDispatchStatus('FAILED'),
 
     // sync_dlq
     countAll('sync_dlq'),
@@ -285,11 +241,6 @@ export async function buildAdminMetricsSnapshot(
         total: queueUploadException24h + queuePageProcessingFailure24h,
       },
     },
-    signals: {
-      pending: signalsPending,
-      processed_last_24h: signalsProcessed24h,
-      failed: signalsFailed,
-    },
     dlq: {
       sync_dlq_depth: syncDlq,
     },
@@ -321,8 +272,6 @@ export function snapshotToSentryTags(snapshot: AdminMetricsSnapshot): Record<str
     'metrics.queue.script_auto_failed_24h.upload_exception': String(snapshot.queue.script_auto_failed_last_24h.upload_exception),
     'metrics.queue.script_auto_failed_24h.page_processing_failure': String(snapshot.queue.script_auto_failed_last_24h.page_processing_failure),
     'metrics.queue.script_auto_failed_24h.total': String(snapshot.queue.script_auto_failed_last_24h.total),
-    'metrics.signals.pending': String(snapshot.signals.pending),
-    'metrics.signals.failed': String(snapshot.signals.failed),
     'metrics.dlq.sync_dlq_depth': String(snapshot.dlq.sync_dlq_depth),
   };
   if (snapshot.success_rate_last_24h.queue !== null) {

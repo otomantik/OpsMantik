@@ -1,7 +1,7 @@
 /**
  * GET /api/oci/export-coverage?siteId=...
- * SSOT-oriented snapshot: queue totals, marketing_signals dispatch breakdown,
- * blocked precursor backlog, reconciliation event volume (24h).
+ * SSOT-oriented snapshot: queue totals, blocked precursor backlog,
+ * reconciliation event volume (windowed).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,17 +20,6 @@ const RECONCILIATION_WINDOWS = {
   last_7d: 7 * 24 * 60 * 60 * 1000,
 } as const;
 type ReconciliationWindow = keyof typeof RECONCILIATION_WINDOWS;
-const SIGNAL_DISPATCH_STATUSES = [
-  'PENDING',
-  'PROCESSING',
-  'SENT',
-  'FAILED',
-  'JUNK_ABORTED',
-  'DEAD_LETTER_QUARANTINE',
-  'SKIPPED_NO_CLICK_ID',
-  'STALLED_FOR_HUMAN_AUDIT',
-] as const;
-
 function resolveReconciliationWindow(raw: string | null): ReconciliationWindow {
   if (!raw) return 'last_24h';
   if (raw === 'last_1h' || raw === 'last_24h' || raw === 'last_7d') return raw;
@@ -56,9 +45,6 @@ export async function GET(req: NextRequest) {
   const reconciliationWindow = resolveReconciliationWindow(searchParams.get('window'));
 
   const totals = Object.fromEntries(QUEUE_STATUSES.map((status) => [status, 0])) as Record<QueueStatus, number>;
-  const signalDispatch: Record<string, number> = Object.fromEntries(
-    SIGNAL_DISPATCH_STATUSES.map((status) => [status, 0])
-  );
 
   const queueCountJobs = QUEUE_STATUSES.map(async (status) => {
     const { count, error } = await adminClient
@@ -70,18 +56,8 @@ export async function GET(req: NextRequest) {
     totals[status] = typeof count === 'number' ? count : 0;
   });
 
-  const signalCountJobs = SIGNAL_DISPATCH_STATUSES.map(async (status) => {
-    const { count, error } = await adminClient
-      .from('marketing_signals')
-      .select('id', { count: 'exact', head: true })
-      .eq('site_id', siteUuid)
-      .eq('dispatch_status', status);
-    if (error) throw error;
-    signalDispatch[status] = typeof count === 'number' ? count : 0;
-  });
-
   try {
-    await Promise.all([...queueCountJobs, ...signalCountJobs]);
+    await Promise.all(queueCountJobs);
   } catch {
     return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
   }
@@ -113,7 +89,6 @@ export async function GET(req: NextRequest) {
     siteId: siteUuid,
     queueTotals: totals,
     exportSelectableQueue,
-    marketingSignalsByDispatch: signalDispatch,
     reconciliationWindow,
     ociReconciliationEventCount: reconciliationCount,
     ociReconciliationEventsByReason: reconciliationByReason,
@@ -122,7 +97,7 @@ export async function GET(req: NextRequest) {
     },
     notes: [
       'Export script/API only selects offline_conversion_queue rows in QUEUED or RETRY.',
-      'BLOCKED_PRECEDING_SIGNALS waits for precursor marketing_signals to leave PENDING/PROCESSING/STALLED.',
+      'BLOCKED_PRECEDING_SIGNALS waits for precursor queue rows to clear in queue-only mode.',
       `${EXPORT_COVERAGE_CLASS.ORDERING_VIOLATION_RISK}: won row present but export deferred — not EXPORT_EXPECTED_BUT_MISSING.`,
     ],
   });

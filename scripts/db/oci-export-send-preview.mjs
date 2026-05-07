@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Google Ads script'in GET export ile göreceği satırların okunabilir özeti (DB doğrudan).
- * Filtreler export-fetch ile aynı: queue QUEUED|RETRY, signals PENDING, provider_key google_ads.
+ * Google Ads script GET export ile aynı filtre: yalnızca offline_conversion_queue QUEUED|RETRY.
+ * (marketing_signals artık export partisine dahil edilmez — ayrı tablo/ops.)
  *
  *   node scripts/db/oci-export-send-preview.mjs 7eb8f5c0-...
  *   node scripts/db/oci-export-send-preview.mjs Muratcan
@@ -86,20 +86,6 @@ async function loadQueue(supabase, siteId) {
   return data || [];
 }
 
-async function loadSignals(supabase, siteId) {
-  const { data, error } = await supabase
-    .from('marketing_signals')
-    .select(
-      'id, call_id, signal_type, optimization_stage, google_conversion_name, google_conversion_time, occurred_at, conversion_value, optimization_value, gclid, wbraid, gbraid, dispatch_status, created_at'
-    )
-    .eq('site_id', siteId)
-    .eq('dispatch_status', 'PENDING')
-    .order('created_at', { ascending: true })
-    .limit(500);
-  if (error) throw error;
-  return data || [];
-}
-
 async function loadOutboxPending(supabase, siteId) {
   const { data, error } = await supabase
     .from('outbox_events')
@@ -122,40 +108,33 @@ async function main() {
   const sites = await resolveSiteIds(supabase, args.allSites, args.siteQ);
 
   console.log('='.repeat(72));
-  console.log('OCI — Gönderime aday dönüşümler (export API ile uyumlu filtre)');
+  console.log('OCI — Script export ile aynı kaynak (yalnız journal / offline_conversion_queue)');
   console.log('='.repeat(72));
   console.log('');
   console.log(
-    'Not: Tek lead için Won kuyruk + düşük huni sinyalleri aynı export turunda gelebilir; sunucuda ' +
-      '`selectHighestPriorityCandidates` yalnızca en yüksek önceliği script’e bırakır (PEEK/suppressed uyarısı).'
+    'Sunucuda `selectHighestPriorityCandidates` aynı call/session için tek yüzey seçer (PEEK/suppressed).'
   );
   console.log('');
 
   let gq = 0;
-  let gs = 0;
   let go = 0;
 
   for (const site of sites) {
     const sid = site.id;
     const label = `${site.name || sid}${site.domain ? ` (${site.domain})` : ''}`;
 
-    const [queue, signals, outboxPending] = await Promise.all([
-      loadQueue(supabase, sid),
-      loadSignals(supabase, sid),
-      loadOutboxPending(supabase, sid),
-    ]);
+    const [queue, outboxPending] = await Promise.all([loadQueue(supabase, sid), loadOutboxPending(supabase, sid)]);
 
     gq += queue.length;
-    gs += signals.length;
     go += outboxPending.rows.length;
 
-    if (queue.length + signals.length + outboxPending.rows.length === 0 && !args.allSites) {
+    if (queue.length + outboxPending.rows.length === 0 && !args.allSites) {
       console.log(`── ${label}`);
-      console.log('  (bu sitede export kuyruğunda/satırda aday yok)');
+      console.log('  (bu sitede export kuyruğunda veya bekleyen outbox’da aday yok)');
       console.log('');
       continue;
     }
-    if (queue.length + signals.length + outboxPending.rows.length === 0 && args.allSites) {
+    if (queue.length + outboxPending.rows.length === 0 && args.allSites) {
       continue;
     }
 
@@ -167,7 +146,7 @@ async function main() {
     if (outboxPending.err) {
       console.log(`  [Outbox PENDING okunamadı: ${outboxPending.err}]`);
     } else if (outboxPending.rows.length) {
-      console.log(`  Bekleyen outbox_events (işçi tüketince kuyruk/sinyal oluşur): ${outboxPending.rows.length}`);
+      console.log(`  Bekleyen outbox_events (işçi tüketince kuyruk satırı oluşur): ${outboxPending.rows.length}`);
       for (const r of outboxPending.rows) {
         const p = r.payload && typeof r.payload === 'object' ? r.payload : {};
         const cid = r.call_id || p.call_id || '—';
@@ -182,7 +161,7 @@ async function main() {
       console.log('');
     }
 
-    console.log(`  [A] offline_conversion_queue (QUEUED | RETRY) — Won / seal yolu · ${queue.length} satır`);
+    console.log(`  offline_conversion_queue (QUEUED | RETRY) — script export · ${queue.length} satır`);
     for (const r of queue) {
       const val = majors(r.value_cents, r.currency);
       console.log(
@@ -193,30 +172,11 @@ async function main() {
       );
     }
     console.log('');
-
-    console.log(`  [B] marketing_signals (PENDING) — üst huni / optimization · ${signals.length} satır`);
-    for (const r of signals) {
-      const val =
-        r.conversion_value != null
-          ? String(r.conversion_value)
-          : r.optimization_value != null
-            ? String(r.optimization_value)
-            : '—';
-      console.log(
-        `      ${r.id} | call=${r.call_id ?? '—'} | ${r.google_conversion_name ?? r.signal_type}` +
-          ` | stage=${r.optimization_stage ?? r.signal_type ?? '—'}` +
-          ` | val=${val}` +
-          ` | time=${r.google_conversion_time ?? r.occurred_at ?? '—'}` +
-          ` | click=${shortClick(r.gclid, r.wbraid, r.gbraid)}`
-      );
-    }
-    console.log('');
   }
 
   console.log('='.repeat(72));
   console.log('Özet (tüm listelenen siteler)');
   console.log(`  offline_conversion_queue export adayları: ${gq}`);
-  console.log(`  marketing_signals PENDING: ${gs}`);
   console.log(`  outbox_events PENDING (işçi bekliyor): ${go}`);
   console.log('='.repeat(72));
 }

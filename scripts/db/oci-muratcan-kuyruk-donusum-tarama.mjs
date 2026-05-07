@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Muratcan — Dönüşüm bazlı kuyruk taraması.
- * Satış değil, dönüşüm adına göre: Script'e gidecek her şey (queue + sinyaller).
+ * Satış değil, dönüşüm adına göre özet: Script GET export = journal (queue) + ops için marketing_signals ayrı bakış.
  * Kullanım: node scripts/db/oci-muratcan-kuyruk-donusum-tarama.mjs
  */
 
@@ -145,10 +145,10 @@ async function run() {
   console.log('');
   console.log('--- 5) TÜM DÖNÜŞÜMLERİ / INTENTLERİ KUYRUĞA ALMA ---');
   console.log('  Mühür (V5): node scripts/db/oci-enqueue.mjs Muratcan [--days 2]');
-  console.log('  Sinyaller (V2–V4): marketing_signals\'a zaten yazılıyor (PENDING); Script export ile gider.');
-  console.log('  Tarama: Bu script (oci-muratcan-kuyruk-donusum-tarama.mjs) dönüşüm adı bazlı özet verir.');
+  console.log('  Sinyaller (V2–V4): marketing_signals (audit/hash). Google Script batch yalnızca offline_conversion_queue.');
+  console.log('  Tarama: Bu script dönüşüm adı bazlı özet verir (queue + ayrı sinyal tablosu kolonları).');
   console.log('');
-  console.log('  Not: Kuyruk = sadece Demir Mühür (V5). Sinyaller = Nitelikli Görüşme vb. (V2–V4, satış değil).');
+  console.log('  Not: Script CSV = journal satırları. Üst funnel journal’a işlenince aynı canonical isimler partide görünür.');
 }
 
 run().catch((e) => {

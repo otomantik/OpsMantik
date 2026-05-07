@@ -12,7 +12,6 @@ import { STUCK_PROCESSING_MAX_AGE_MINUTES, evaluateQueueHealth } from '@/lib/oci
 import { countWonMissingPipelineForSite } from '@/lib/oci/won-missing-pipeline-site';
 import { fetchSiteSsotFlags } from '@/lib/oci/queue-health-ssot-flags-site';
 import type {
-  MarketingSignalDispatchBreakdown,
   OciQueueStats,
   QueueStatus,
 } from '@/lib/domain/oci/queue-types';
@@ -181,24 +180,10 @@ export async function GET(req: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  const { data: signalRows } = await adminClient
-    .from('marketing_signals')
-    .select('dispatch_status')
-    .eq('site_id', siteUuid);
-
-  const byDispatch: Record<string, number> = {};
-  for (const sr of Array.isArray(signalRows) ? signalRows : []) {
-    const d = (sr as { dispatch_status?: string }).dispatch_status ?? 'UNKNOWN';
-    byDispatch[d] = (byDispatch[d] ?? 0) + 1;
-  }
-  const marketingSignalsByDispatch = byDispatch as MarketingSignalDispatchBreakdown;
-
-  const marketingSignalsExportActive =
-    (marketingSignalsByDispatch.PENDING ?? 0) + (marketingSignalsByDispatch.PROCESSING ?? 0);
-  const wonQueueBacklogActive = totals.QUEUED + totals.RETRY + totals.PROCESSING;
-  const wonQueueInFlightUploaded = totals.UPLOADED;
-  const wonQueueExportActive = wonQueueBacklogActive + wonQueueInFlightUploaded;
-  const unifiedExportBacklog = marketingSignalsExportActive + wonQueueBacklogActive;
+  const queueBacklogActive = totals.QUEUED + totals.RETRY + totals.PROCESSING;
+  const queueInFlightUploaded = totals.UPLOADED;
+  const queueExportActive = queueBacklogActive + queueInFlightUploaded;
+  const unifiedExportBacklog = queueBacklogActive;
 
   const lastUpdatedAt = (lastRow as { updated_at?: string } | null)?.updated_at ?? undefined;
   const blockedQueueOldestAt = blockedMetrics.oldestBlockedAtIso;
@@ -239,10 +224,9 @@ export async function GET(req: NextRequest) {
     siteId: siteUuid,
     ociSyncMethod,
     unifiedExportBacklog,
-    marketingSignalsExportActive,
-    wonQueueBacklogActive,
-    wonQueueInFlightUploaded,
-    wonQueueExportActive,
+    queueBacklogActive,
+    queueInFlightUploaded,
+    queueExportActive,
     totals,
     ...(stuckProcessing !== undefined && { stuckProcessing }),
     ...(lastUpdatedAt && { lastUpdatedAt }),
@@ -251,7 +235,6 @@ export async function GET(req: NextRequest) {
     outboxFailedRecent,
     truthRepairBacklog,
     outboxQueueParityRatio,
-    marketingSignalsByDispatch,
     blockedQueueOldestAt,
     oldestBlockedAgeSeconds: blockedMetrics.oldestBlockedAgeSeconds,
     blockReasonBreakdown: blockedMetrics.blockReasonBreakdown,

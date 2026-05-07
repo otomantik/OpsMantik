@@ -56,7 +56,7 @@ Legacy V1/V2 artifacts are not part of the kernel. Canonical runtime only reason
 | Rule | Description |
 | ---- | ----------- |
 | Routes must not write to projection directly | Only ledger-writer + projection-updater write |
-| Google OCI export SSOT | Queue + `marketing_signals`; see [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md). Projection is for analytics / metrics, not primary OCI batch. |
+| Google OCI export SSOT | **`offline_conversion_queue` only** for script/API batch upload; see [OCI_VALUE_ENGINES_SSOT.md](./OCI_VALUE_ENGINES_SSOT.md) and [EXPORT_CLOSURE.md](./EXPORT_CLOSURE.md). `marketing_signals` is out of band for that route. Projection is analytics / metrics, not the journal export source. |
 | No READY without `satis` completeness | `funnel_completeness = complete` required |
 | Repair cannot replace normal flow | Exception mechanism; monitored with KPI |
 | Historical residues must not be invisible | archived/historical rows may exist but do not drive canonical export |

@@ -415,8 +415,8 @@ async function main() {
   console.log('\n──────────────────────────────────────────────────────────');
   console.log('Akış özeti');
   console.log('  Panel/RPC sonrası: outbox_events (PENDING)');
-  console.log('  İşçi (cron/QStash): PENDING→PROCESS→marketing_signals veya Won→offline_conversion_queue');
-  console.log('  Google Ads script PEEK: /api/oci/google-ads-export içinde QUEUED+sinyaller (outbox doğrudan sayılmaz)');
+  console.log('  İşçi (cron/QStash): PENDING→PROCESS→journal ve/veya marketing_signals (audit); Won→offline_conversion_queue');
+  console.log('  Google Ads script GET: /api/oci/google-ads-export yalnızca offline_conversion_queue (outbox doğrudan sayılmaz)');
   console.log('  Drain için .env.local: BASE_URL (veya NEXT_PUBLIC_APP_URL) = prod origin; CRON_SECRET gerekir.');
   console.log('  Varsayılan drain worker endpointini kullanır; cron lock yolu için --use-cron-lock ver.');
   console.log('  Tek komut (backfill+drain+rapor): npm run db:oci-pipeline-sync');
