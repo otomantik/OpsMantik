@@ -3,7 +3,8 @@
 -- @db_required: true
 -- @red_green_criteria: RED when queue upload backlog ages exceed agreed SLO; parity mismatch (eligible marketing_signals without queue match) is fail-closed signal.
 -- Script-mode backlog health (read-only)
--- Focus: queue upload pressure (authority) + parity mismatch + marketing_signals pending (legacy/audit observability).
+-- Focus: queue upload pressure (Google upload authority) + parity mismatch + marketing_signals pending (ACTIVE_RUNTIME_RESIDUE / legacy/audit observability).
+-- Note: marketing_signals_pending_count must not be interpreted as Google upload backlog.
 
 WITH queue_by_site AS (
   SELECT

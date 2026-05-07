@@ -22,7 +22,8 @@ export async function routeStage(
   }
 
   // 'won' is exclusively owned by the seal path (enqueueSealConversion → offline_conversion_queue).
-  // contacted / offered / junk → insertMarketingSignal → marketing_signals (audit); Google upload = journal only.
+  // contacted / offered / junk → insertMarketingSignal → marketing_signals (ACTIVE_RUNTIME_RESIDUE / audit-only).
+  // offline_conversion_queue is the ONLY runtime Google upload journal.
   if (stage === 'won') {
     return { routed: false, conversionValue: 0, dropped: true, causalDna: {} };
   }

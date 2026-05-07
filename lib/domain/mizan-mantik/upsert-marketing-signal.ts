@@ -1,6 +1,10 @@
 /**
  * upsertMarketingSignal — SSOT for writing rows to `marketing_signals`.
  *
+ * **PR-2 ENQUEUE CONTRACT:** This is an **ACTIVE_RUNTIME_RESIDUE**.
+ * `marketing_signals` is an audit-only path, NOT a Google upload authority.
+ * Google upload authority strictly rests with `offline_conversion_queue`.
+ * 
  * Before this helper, three parallel INSERT paths existed:
  *   1. The Mizan-Mantik stage router (via insert-marketing-signal.ts, router source).
  *   2. The seal route (app/api/calls/[id]/seal/route.ts, manual stage action source).

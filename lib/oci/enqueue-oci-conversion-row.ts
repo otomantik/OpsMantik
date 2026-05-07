@@ -87,8 +87,7 @@ export async function enqueueOciConversionRow(
 
   const hasMarketing = await hasMarketingConsentForCall(siteId, callId);
   if (!hasMarketing) {
-    logInfo('enqueue_oci_row_skip', { call_id: callId, stage, reason: 'CONSENT_MISSING' });
-    return { enqueued: false, reason: 'CONSENT_MISSING' };
+    logInfo('enqueue_oci_row_consent_skip_logged', { call_id: callId, stage, reason: 'CONSENT_MISSING' });
   }
 
   const { siteCurrency, syncMethod } = await loadSiteOciContext(siteId);
@@ -141,11 +140,20 @@ export async function enqueueOciConversionRow(
 
   const hasClick = hasAnyClickId({ gclid, wbraid, gbraid });
   const nowIso = new Date().toISOString();
-  let rowStatus: 'QUEUED' | 'BLOCKED_PRECEDING_SIGNALS' = 'QUEUED';
+  let rowStatus: string = 'QUEUED';
   let rowBlockReason: string | null = null;
-  if (!hasClick) {
+  let providerErrorCategory: string | null = null;
+  let providerErrorCode: string | null = null;
+  let rowBlockedAt: string | null = null;
+
+  if (!hasMarketing) {
+    rowStatus = 'FAILED';
+    providerErrorCategory = 'DETERMINISTIC_SKIP';
+    providerErrorCode = 'CONSENT_MISSING';
+  } else if (!hasClick) {
     rowStatus = 'BLOCKED_PRECEDING_SIGNALS';
     rowBlockReason = 'MISSING_CLICK_ID';
+    rowBlockedAt = nowIso;
   }
 
   const insertPayload: Record<string, unknown> = {
@@ -187,7 +195,9 @@ export async function enqueueOciConversionRow(
     gbraid,
     status: rowStatus,
     block_reason: rowBlockReason,
-    blocked_at: rowStatus === 'BLOCKED_PRECEDING_SIGNALS' ? nowIso : null,
+    blocked_at: rowBlockedAt,
+    provider_error_category: providerErrorCategory,
+    provider_error_code: providerErrorCode,
     source_outbox_event_id: sourceOutboxEventId ?? null,
     causal_dna: {},
   };
@@ -228,6 +238,10 @@ export async function enqueueOciConversionRow(
           error: publishErr instanceof Error ? publishErr.message : String(publishErr),
         });
       }
+    }
+
+    if (!hasMarketing) {
+      return { enqueued: false, reason: 'CONSENT_MISSING', queueId };
     }
 
     logInfo('enqueue_oci_row_ok', { call_id: callId, stage, queue_id: queueId, action: actionName });

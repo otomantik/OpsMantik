@@ -1,6 +1,8 @@
 # Export closure — formal design (implementation index)
 
-This document is the **R1 (öz)** contract for the kapalı export journal: **one** upload truth surface — [`offline_conversion_queue`](../../supabase/migrations/20260502120000_ensure_oci_queue_and_signals.sql) — plus four canonical conversion names in [`lib/oci/conversion-names.ts`](../../lib/oci/conversion-names.ts). The Google Ads **script/API export route does not read `marketing_signals`**. **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
+This document is the **R1 (öz)** contract for the kapalı export journal: **one** upload truth surface — [`offline_conversion_queue`](../../supabase/migrations/20260502120000_ensure_oci_queue_and_signals.sql) — plus four canonical conversion names in [`lib/oci/conversion-names.ts`](../../lib/oci/conversion-names.ts).
+`offline_conversion_queue` is the only runtime Google upload journal.
+The Google Ads **script/API export route does not read `marketing_signals`**. **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
 
 ## Single export surface (journal SSOT)
 
@@ -9,7 +11,7 @@ This document is the **R1 (öz)** contract for the kapalı export journal: **one
 | Script batch | [`GET .../google-ads-export`](../../app/api/oci/google-ads-export/route.ts) → [`fetchExportData`](../../app/api/oci/google-ads-export/export-fetch.ts) (**queue only**) → `buildExportItems` → highest-gear dedupe within journal |
 | API worker lane | Same journal rows uploaded by worker/kernel; fast-track via QStash when `oci_sync_method=api` |
 
-**Legacy `marketing_signals`:** may still exist for hash/audit/recovery tooling; it is **not** combined into the Google export batch. Stranded PENDING rows are an operational cleanup topic (pulse/recovery), not a second upload authority.
+**Legacy `marketing_signals`:** It is an **ACTIVE_RUNTIME_RESIDUE** that still receives writes for non-won stages, but it is **not** combined into the Google export batch. It is not an upload authority and must be treated as an audit-only shadow trail. Stranded PENDING rows are an operational cleanup topic (pulse/recovery), not a second upload authority.
 Parity hardening rule: for Google-eligible `marketing_signals` writes, a matching `offline_conversion_queue` row is required (`marketing_signals_queue_parity_gap_count` must remain `0` in health/evidence). DB trigger lane now records violations into `parity_audit_log` / `parity_violation_dlq`; enforcement mode is controlled by `app.settings.oci_marketing_signal_queue_parity_enforcement` (`observe` default, `enforce` optional).
 
 ## Four conversion matrix (lifecycle → journal)
@@ -32,14 +34,14 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 | won | seal/outbox/sweep enqueue | `offline_conversion_queue` | queue-only fetch | yes | low (won already queue authority) | `QUEUE_CANONICAL` | keep helper-only writes |
 | junk exclusion | `runProcessOutbox` micro-stage path (with optional retraction adj records) | `offline_conversion_queue` | queue-only fetch | yes | medium if old signal-only assumptions linger | `QUEUE_CANONICAL` | keep queue authority; preserve explicit blocked/skip semantics |
 
-`marketing_signals` classification in this contract: **`AUDIT_ONLY`** (legacy/hash/recovery/evidence), **not** an independent Google upload source.
+`marketing_signals` classification in this contract: **`ACTIVE_RUNTIME_RESIDUE`** / **`AUDIT_ONLY`** (legacy/hash/recovery/evidence), **not** an independent Google upload source.
 
 ## Formal invariant index (I1–I13)
 
 | ID | Scope | Rule (summary) | Pointer |
 |----|-------|----------------|---------|
 | **I1–I8** | Score / tenant / value | Closed-system gates G1–G5; tenant scope; economics SSOT | [`CLOSED_SYSTEM_SCORE_CONTRACT.md`](./CLOSED_SYSTEM_SCORE_CONTRACT.md), [`queue-health-contract.ts`](../../lib/oci/queue-health-contract.ts) |
-| **I9** | Four-fire → journal | Canonical stage emit → `offline_conversion_queue` row or explicit `BLOCKED_*` audit — **no silent skip** when stage is considered fired | [`enqueue-oci-conversion-row.ts`](../../lib/oci/enqueue-oci-conversion-row.ts), [`enqueue-seal-conversion.ts`](../../lib/oci/enqueue-seal-conversion.ts) |
+| **I9** | Four-fire → journal | Canonical stage emit → `offline_conversion_queue` row or explicit structured blocked outcome (e.g., `FAILED` + `DETERMINISTIC_SKIP` or generic `BLOCKED`) — **no silent skip** when stage is considered fired | [`enqueue-oci-conversion-row.ts`](../../lib/oci/enqueue-oci-conversion-row.ts), [`enqueue-seal-conversion.ts`](../../lib/oci/enqueue-seal-conversion.ts) |
 | **I10** | Determinism | `external_id` shape + uniqueness — drift = deploy STOP | [`external-id.ts`](../../lib/oci/external-id.ts), migration [`20260507121500_oci_queue_external_id_shape_guard.sql`](../../supabase/migrations/20260507121500_oci_queue_external_id_shape_guard.sql) |
 | **I11** | Layer closure | L1–L4 stack: identity → policy → orchestration → evidence | Sections **L × W** and **D1–D11** below |
 | **I12** | Cross-cut | Every layer respects **W1–W4** (no tenant bleed, no clock lie, no surface cheat, no economy fork) | Table below |

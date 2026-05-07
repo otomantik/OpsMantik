@@ -1,6 +1,10 @@
 /**
  * Router-side thin wrapper around `upsertMarketingSignal`.
  *
+ * **PR-2 ENQUEUE CONTRACT:** This is an **ACTIVE_RUNTIME_RESIDUE**.
+ * `marketing_signals` is an audit-only path, NOT a Google upload authority.
+ * Google upload authority strictly rests with `offline_conversion_queue`.
+ * 
  * This file used to contain the direct INSERT into `marketing_signals`; that logic now
  * lives in `upsert-marketing-signal.ts` (the SSOT helper). All routing side-effects —
  * causalDna branches, log lines, conversion value book-keeping — still happen here so
@@ -38,7 +42,7 @@ export async function insertMarketingSignal(params: InsertMarketingSignalParams)
   const { signalDate, conversionName, gclid, wbraid, gbraid } = payload;
 
   // 'won' is owned exclusively by the seal path (offline_conversion_queue).
-  // contacted / offered / junk → marketing_signals (audit/hash/recovery); Google script batch = journal only.
+  // contacted / offered / junk → marketing_signals (audit/hash/recovery only); Google script batch = offline_conversion_queue journal only.
   if (stage === 'won') {
     return { success: false, conversionValue: 0, causalDna: {}, duplicate: false };
   }
