@@ -30,7 +30,7 @@ async function runBackfill(req: NextRequest) {
 
   const result = await runPrecursorSignalBackfill({ siteId, limit, dryRun });
 
-  if (result.inserted > 0 || result.upsertAttempts > 0) {
+  if (result.queued > 0 || result.queueAttempts > 0) {
     logInfo('OCI_BACKFILL_PRECURSOR_SIGNALS', { siteId, dryRun, ...result });
   }
 

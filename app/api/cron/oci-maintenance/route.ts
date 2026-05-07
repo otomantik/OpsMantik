@@ -83,14 +83,9 @@ async function handle() {
       rowsAffected:
         stats.outbox_rescued +
         stats.queue_rescued +
-        stats.signals_rescued +
         stats.queue_uploaded_closed +
-        stats.stuck_signals_recovered +
         stats.attempt_cap_marked +
         stats.orphans_enqueued +
-        stats.pulse_processed +
-        stats.pulse_recovered +
-        stats.pulse_exhausted +
         stats.stale_jobs_recovered,
       errorCode: ok ? null : 'PARTIAL_FAILURE',
       errorMessage: ok ? null : 'Maintenance completed with partial failures',

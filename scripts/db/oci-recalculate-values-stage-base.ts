@@ -98,10 +98,9 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
     .in('action', Object.keys(TARGET_CENTS));
   if (queueErr) throw queueErr;
 
-  const queuePatches = (queueRows ?? [])
-    .map((row) => {
+  const queuePatches = (queueRows ?? []).flatMap((row) => {
       const target = TARGET_CENTS[row.action as keyof typeof TARGET_CENTS];
-      if (!target) return null;
+      if (!target) return [];
       const computedExternalId = computeExternalId({
         providerKey: row.provider_key,
         action: row.action,
@@ -113,8 +112,8 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
       const externalIdInvalid = !/^oci_[0-9a-f]{32}$/.test(String(row.external_id || ''));
       const needsUpdate =
         Number(row.value_cents) !== target || externalIdInvalid || row.external_id !== computedExternalId;
-      if (!needsUpdate) return null;
-      return {
+      if (!needsUpdate) return [];
+      return [{
         id: row.id,
         patch: {
           value_cents: target,
@@ -125,9 +124,8 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
           value_fallback_used: fallbackUsed,
           updated_at: nowIso,
         },
-      };
-    })
-    .filter((x): x is { id: string; patch: Record<string, unknown> } => Boolean(x));
+      }];
+    });
   siteResult.queueNeedsUpdate = queuePatches.length;
 
   const { data: signalRows, error: signalErr } = await supabase
@@ -137,14 +135,13 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
     .in('google_conversion_name', Object.keys(TARGET_CENTS));
   if (signalErr) throw signalErr;
 
-  const signalPatches = (signalRows ?? [])
-    .map((row) => {
+  const signalPatches = (signalRows ?? []).flatMap((row) => {
       const target = TARGET_CENTS[row.google_conversion_name as keyof typeof TARGET_CENTS];
-      if (!target) return null;
+      if (!target) return [];
       const targetMajor = target / 100;
       const needsUpdate = Number(row.expected_value_cents) !== target || Number(row.conversion_value) !== targetMajor;
-      if (!needsUpdate) return null;
-      return {
+      if (!needsUpdate) return [];
+      return [{
         id: row.id,
         patch: {
           expected_value_cents: target,
@@ -154,9 +151,8 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
           value_policy_reason: signalReason(row.google_conversion_name),
           updated_at: nowIso,
         },
-      };
-    })
-    .filter((x): x is { id: string; patch: Record<string, unknown> } => Boolean(x));
+      }];
+    });
   siteResult.signalNeedsUpdate = signalPatches.length;
 
   if (dryRun) return siteResult;

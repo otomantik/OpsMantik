@@ -46,7 +46,6 @@ export async function GET(req: NextRequest) {
     Sentry.setContext('admin_metrics', {
       outbox: snapshot.outbox,
       queue: snapshot.queue,
-      signals: snapshot.signals,
       dlq: snapshot.dlq,
       success_rate_last_24h: snapshot.success_rate_last_24h,
     });

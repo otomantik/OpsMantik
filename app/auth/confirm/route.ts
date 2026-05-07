@@ -63,10 +63,12 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login?error=no_token', consoleBase));
   }
 
-  // Prefer hashed token flow; fallback to plain token for legacy links.
-  const verification = tokenHash
-    ? await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
-    : await supabase.auth.verifyOtp({ type, token: token ?? '' });
+  // Supabase v2 verifyOtp requires token_hash flow (or token+email pair).
+  // We intentionally hard-require token_hash for console-domain magic links.
+  if (!tokenHash) {
+    return NextResponse.redirect(new URL('/login?error=token_hash_required', consoleBase));
+  }
+  const verification = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
 
   if (verification.error) {
     debugLog('[AUTH_CONFIRM] verifyOtp error:', verification.error.message);
