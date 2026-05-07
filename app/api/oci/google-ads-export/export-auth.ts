@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import crypto from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { verifySessionToken } from '@/lib/oci/session-auth';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
@@ -32,6 +33,7 @@ export type ExportAuthContext = {
   wantsJwe: boolean;
   publicKeyB64: string | undefined;
   pageLimit: number;
+  exportRunId: string;
 };
 
 export async function authorizeExportRequest(req: NextRequest): Promise<ExportAuthContext> {
@@ -148,6 +150,8 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     throw new ExportHttpError(429, { error: 'Too many requests', code: 'RATE_LIMITED' });
   }
 
+  const exportRunId = `oci_run_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+
   return {
     site,
     siteUuid: site.id,
@@ -160,5 +164,6 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     wantsJwe: req.headers.get('x-oci-jwe-accept') === 'true',
     publicKeyB64: process.env.VOID_PUBLIC_KEY,
     pageLimit,
+    exportRunId,
   };
 }

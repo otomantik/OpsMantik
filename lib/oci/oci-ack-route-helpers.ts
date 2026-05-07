@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { logError } from '@/lib/logging/logger';
+import { logError, logInfo } from '@/lib/logging/logger';
 
 const MAX_SAFE_ERROR_STRING = 2048;
 
@@ -145,3 +145,86 @@ export function dbUpstreamResponse(scope: string, err: unknown, fallbackCode = '
   logError(scope, { error: msg, infrastructure: isInfrastructurePostgrestError(err) });
   return NextResponse.json({ error: 'Database unavailable', code: fallbackCode, retryable: true }, { status: 503 });
 }
+
+export function verifyTransitionCount(params: {
+  expectedCount: number;
+  transitionedCount: number;
+  alreadyTerminalCount: number;
+  exportRunId?: string;
+  route: 'ack' | 'ack_failed';
+}): { ok: true } | { ok: false; payload: Record<string, unknown>; isReplay: boolean } {
+  const matched = params.expectedCount === params.transitionedCount;
+  const mismatchCount = Math.abs(params.expectedCount - params.transitionedCount);
+
+  if (matched) {
+    logInfo('DB_TRANSITION_MATCH', {
+      expected_count: params.expectedCount,
+      transitioned_count: params.transitionedCount,
+      mismatch_count: mismatchCount,
+      export_run_id: params.exportRunId,
+      route: params.route,
+      ids_count: params.expectedCount,
+      status: 'PASS',
+    });
+    return { ok: true };
+  }
+
+  const isFullyAlreadyTerminal = params.alreadyTerminalCount > 0 && (params.transitionedCount + params.alreadyTerminalCount) === params.expectedCount;
+
+  if (isFullyAlreadyTerminal) {
+    const replayReason = params.route === 'ack' ? 'ACK_REPLAY_ALREADY_TERMINAL' : 'ACK_FAILED_REPLAY_ALREADY_TERMINAL';
+    logInfo(replayReason, {
+      expected_count: params.expectedCount,
+      transitioned_count: params.transitionedCount,
+      mismatch_count: mismatchCount,
+      export_run_id: params.exportRunId,
+      route: params.route,
+      ids_count: params.expectedCount,
+      status: 'PASS',
+    });
+    return {
+      ok: false,
+      isReplay: true,
+      payload: {
+        status: 'PARTIAL_FAIL',
+        reason: replayReason,
+        expected_count: params.expectedCount,
+        transitioned_count: params.transitionedCount,
+        mismatch_count: mismatchCount,
+        matched: false,
+        mismatch_reason: replayReason,
+        export_run_id: params.exportRunId,
+        route: params.route,
+        ids_count: params.expectedCount,
+      }
+    };
+  }
+
+  logError('DB_TRANSITION_MISMATCH', {
+    expected_count: params.expectedCount,
+    transitioned_count: params.transitionedCount,
+    mismatch_count: mismatchCount,
+    export_run_id: params.exportRunId,
+    route: params.route,
+    ids_count: params.expectedCount,
+    status: 'FAIL',
+  });
+
+  return {
+    ok: false,
+    isReplay: false,
+    payload: {
+      status: 'PARTIAL_FAIL',
+      reason: 'DB_TRANSITION_MISMATCH',
+      expected_count: params.expectedCount,
+      transitioned_count: params.transitionedCount,
+      mismatch_count: mismatchCount,
+      matched: false,
+      mismatch_reason: 'DB_TRANSITION_MISMATCH',
+      export_run_id: params.exportRunId,
+      route: params.route,
+      ids_count: params.expectedCount,
+    }
+  };
+}
+

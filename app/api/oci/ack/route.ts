@@ -32,6 +32,7 @@ import {
   isInfrastructurePostgrestError,
   parseAckJsonEnvelope,
   promoteSingleGranularResult,
+  verifyTransitionCount,
 } from '@/lib/oci/oci-ack-route-helpers';
 import { getDbNowIso } from '@/lib/time/db-now';
 import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
@@ -64,6 +65,8 @@ export async function POST(req: NextRequest) {
     }
     const body = promoteSingleGranularResult(parsed.body);
     const siteIdFromBody = typeof body.siteId === 'string' ? body.siteId : undefined;
+    const exportRunId = typeof body.export_run_id === 'string' ? body.export_run_id : typeof body.run_id === 'string' ? body.run_id : req.headers.get('x-opsmantik-export-run-id') || undefined;
+
     const auth = await resolveOciScriptAuth({
       req,
       siteIdFromBody,
@@ -186,8 +189,16 @@ export async function POST(req: NextRequest) {
         skippedIds,
         pendingConfirmation,
         results: granularResults,
+        exportRunId,
       },
     });
+
+    if (exportRunId) {
+      logInfo('EXPORT_RUN_ACK_RECEIVED', { site_id: siteUuid, export_run_id: exportRunId, queue_ids: queueIds.length });
+    } else {
+      logInfo('EXPORT_RUN_ID_MISSING', { site_id: siteUuid });
+    }
+
     if (receipt.replayed) {
       if (receipt.resultSnapshot) {
         return NextResponse.json(receipt.resultSnapshot);
@@ -199,7 +210,8 @@ export async function POST(req: NextRequest) {
         );
       }
     }
-    let totalUpdated = 0;
+    let actualTransitionedCount = 0;
+    let alreadyTerminalCount = 0;
 
     // Idempotent ack logic: rows already in a terminal state (COMPLETED, UPLOADED) count
     // as already-acked and are returned as successes. Only rows in genuinely unexpected
@@ -249,7 +261,7 @@ export async function POST(req: NextRequest) {
       if (alreadyDone.length > 0) {
         logInfo('OCI_ACK_IDEMPOTENT_SKIP', { already_done: alreadyDone.length, requested: sealIds.length });
       }
-      totalUpdated += alreadyDone.length;
+      alreadyTerminalCount += alreadyDone.length;
 
       if (toTransition.length > 0) {
         const clearFields = ['last_error', 'provider_error_code', 'provider_error_category', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'];
@@ -266,7 +278,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_BATCH_RPC_FAILED'
           );
         }
-        totalUpdated += updatedCount;
+        actualTransitionedCount += updatedCount;
       }
       if (blockedRows.length > 0) {
         const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
@@ -287,7 +299,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_BLOCKED_BATCH_RPC_FAILED'
           );
         }
-        totalUpdated += updatedCount;
+        actualTransitionedCount += updatedCount;
         logInfo('OCI_ACK_BLOCKED_CALLS_TERMINALIZED', { site_id: siteUuid, count: blockedRows.length });
       }
     }
@@ -325,6 +337,8 @@ export async function POST(req: NextRequest) {
           return dbUpstreamResponse('OCI_ACK_GRANULAR_FAILED_SQL_ERROR', error, 'OCI_ACK_GRANULAR_FAILED_SQL_ERROR');
         }
         const processingRows = (rows ?? []).filter((row) => (row as { status?: string }).status === 'PROCESSING') as Array<{ id: string }>;
+        const alreadyDone = (rows ?? []).filter((row) => (row as { status?: string }).status !== 'PROCESSING');
+        alreadyTerminalCount += alreadyDone.length;
         if (processingRows.length > 0) {
           const payload = {
             provider_error_code: 'SCRIPT_ROW_FAILED',
@@ -345,7 +359,7 @@ export async function POST(req: NextRequest) {
               'OCI_ACK_GRANULAR_FAILED_BATCH_RPC_FAILED'
             );
           }
-          totalUpdated += updatedCount;
+          actualTransitionedCount += updatedCount;
           for (const r of processingRows) {
             const key = `seal_${r.id}`;
             const reason = failedReasonById.get(key);
@@ -372,7 +386,7 @@ export async function POST(req: NextRequest) {
       const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
       const toTransition = allRows.filter(r => r.status === 'PROCESSING');
 
-      totalUpdated += alreadyDone.length;
+      alreadyTerminalCount += alreadyDone.length;
 
       if (toTransition.length > 0) {
         const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
@@ -393,7 +407,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_SKIPPED_BATCH_RPC_FAILED'
           );
         }
-        totalUpdated += updatedCount;
+        actualTransitionedCount += updatedCount;
       }
     }
 
@@ -411,6 +425,7 @@ export async function POST(req: NextRequest) {
       const targetProjIds = Array.isArray(projRows)
         ? (projRows as Array<{ call_id: string | null }>).map((r) => r.call_id).filter((v): v is string => Boolean(v))
         : [];
+      alreadyTerminalCount += projIds.length - targetProjIds.length;
       if (targetProjIds.length > 0) {
         const { data: updatedProjRows, error: projError } = await adminClient
           .from('call_funnel_projection')
@@ -424,7 +439,7 @@ export async function POST(req: NextRequest) {
           logError('OCI_ACK_PROJ_ERROR', { code: (projError as { code?: string })?.code });
         } else {
           const updatedCount = Array.isArray(updatedProjRows) ? updatedProjRows.length : 0;
-          totalUpdated += updatedCount;
+          actualTransitionedCount += updatedCount;
           logInfo('OCI_ACK_PROJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
         }
       }
@@ -444,6 +459,7 @@ export async function POST(req: NextRequest) {
       const targetAdjIds = Array.isArray(adjRows)
         ? (adjRows as Array<{ id: string | null }>).map((r) => r.id).filter((v): v is string => Boolean(v))
         : [];
+      alreadyTerminalCount += adjIds.length - targetAdjIds.length;
       if (targetAdjIds.length > 0) {
         const { data: updatedAdjRows, error: adjError } = await adminClient
           .from('conversion_adjustments')
@@ -457,7 +473,7 @@ export async function POST(req: NextRequest) {
           logError('OCI_ACK_ADJ_ERROR', { code: (adjError as { code?: string })?.code });
         } else {
           const updatedCount = Array.isArray(updatedAdjRows) ? updatedAdjRows.length : 0;
-          totalUpdated += updatedCount;
+          actualTransitionedCount += updatedCount;
           logInfo('OCI_ACK_ADJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
         }
       }
@@ -480,7 +496,7 @@ export async function POST(req: NextRequest) {
       );
       for (let i = 0; i < results.length; i++) {
         if (results[i].status === 'fulfilled') {
-          totalUpdated += 1;
+          actualTransitionedCount += 1;
         } else {
           const err = (results[i] as PromiseRejectedResult).reason;
           logError('OCI_ACK_PV_REDIS_ERROR', { pvId: allPvIds[i], error: err instanceof Error ? err.message : String(err) });
@@ -494,10 +510,12 @@ export async function POST(req: NextRequest) {
       updated: number;
       message?: string;
       warnings?: Record<string, unknown> & { redis_cleanup_failed?: string[] };
+      export_run_id?: string;
     } = {
       ok: true,
-      updated: totalUpdated,
+      updated: actualTransitionedCount + alreadyTerminalCount,
       message: Object.keys(warnings).length > 0 ? 'ACK completed with warnings' : undefined,
+      export_run_id: exportRunId,
     };
     if (Object.keys(warnings).length > 0) {
       payload.warnings = { ...warnings };
@@ -531,6 +549,45 @@ export async function POST(req: NextRequest) {
         payload.warnings = { ...(payload.warnings ?? {}), receipt_persist_warning: true };
       }
     }
+
+    const totalExpectedCount = new Set([...queueIds, ...skippedIds, ...failedGranularIds]).size;
+    const verification = verifyTransitionCount({
+      expectedCount: totalExpectedCount,
+      transitionedCount: actualTransitionedCount,
+      alreadyTerminalCount,
+      exportRunId,
+      route: 'ack'
+    });
+
+    if (!verification.ok) {
+      if (Object.keys(warnings).length > 0) {
+        (verification.payload as Record<string, unknown>).warnings = warnings;
+      }
+      if (receipt.receiptId) {
+        try {
+          await completeAckReceipt({
+            receiptId: receipt.receiptId,
+            resultSnapshot: verification.payload as Record<string, unknown>,
+          });
+          await appendRoutingHop({
+            siteId: siteUuid,
+            lane: 'ack',
+            unitId: receipt.receiptId,
+            fromState: 'REGISTERED',
+            toState: 'APPLIED',
+            reasonCode: 'ACK_MISMATCH_COMPUTED',
+            idempotencyKey: `ack_mismatch:${receipt.receiptId}`,
+          });
+        } catch (e) {
+          logError('OCI_ACK_RECEIPT_LEDGER_MISMATCH_APPEND_FAILED', {
+            receiptId: receipt.receiptId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      return NextResponse.json(verification.payload, { status: verification.isReplay ? 200 : 409 });
+    }
+
     return NextResponse.json(payload);
   } catch (e: unknown) {
     logError('OCI_ACK_ERROR', { error: e instanceof Error ? e.message : String(e) });

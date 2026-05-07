@@ -26,6 +26,7 @@ import {
   dbUpstreamResponse,
   isInfrastructurePostgrestError,
   normalizeAckFailedBody,
+  verifyTransitionCount,
 } from '@/lib/oci/oci-ack-route-helpers';
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import { resolveOciScriptAuth } from '@/lib/oci/script-auth';
@@ -67,6 +68,8 @@ export async function POST(req: NextRequest) {
     const body = normalizeAckFailedBody(bodyUnknown);
     const coerced = coerceAckFailedFields(body);
     const siteIdFromBody = typeof body.siteId === 'string' ? body.siteId : undefined;
+    const exportRunId = typeof body.export_run_id === 'string' ? body.export_run_id : typeof body.run_id === 'string' ? body.run_id : req.headers.get('x-opsmantik-export-run-id') || undefined;
+
     const auth = await resolveOciScriptAuth({
       req,
       siteIdFromBody,
@@ -166,8 +169,16 @@ export async function POST(req: NextRequest) {
         errorCode,
         errorMessage,
         errorCategory: category,
+        exportRunId,
       },
     });
+
+    if (exportRunId) {
+      logInfo('EXPORT_RUN_ACK_FAILED_RECEIVED', { site_id: siteUuid, export_run_id: exportRunId, queue_ids: queueIds.length });
+    } else {
+      logInfo('EXPORT_RUN_ID_MISSING', { site_id: siteUuid });
+    }
+
     if (receipt.replayed) {
       if (receipt.resultSnapshot) {
         return NextResponse.json(receipt.resultSnapshot);
@@ -179,7 +190,8 @@ export async function POST(req: NextRequest) {
         );
       }
     }
-    let updatedCount = 0;
+    let actualTransitionedCount = 0;
+    let alreadyTerminalCount = 0;
     const deadLetterAuditEntries: Parameters<typeof insertDeadLetterAuditLogs>[0] = [];
 
     if (sealFailedIds.length > 0) {
@@ -206,7 +218,7 @@ export async function POST(req: NextRequest) {
       for (const id of sealFailedIds) {
         const row = bySealId.get(id);
         if (row && row.status !== 'PROCESSING') {
-          updatedCount += 1;
+          alreadyTerminalCount += 1;
         }
       }
 
@@ -246,7 +258,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_FAILED_RETRY_BATCH_RPC_FAILED'
           );
         }
-        updatedCount += batchCount;
+        actualTransitionedCount += batchCount;
       }
 
       if (failedSealIds.length > 0) {
@@ -268,7 +280,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_FAILED_TERMINAL_BATCH_RPC_FAILED'
           );
         }
-        updatedCount += batchCount;
+        actualTransitionedCount += batchCount;
       }
 
       if (deadLetterSealRows.length > 0) {
@@ -290,7 +302,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_FAILED_DEAD_LETTER_BATCH_RPC_FAILED'
           );
         }
-        updatedCount += batchCount;
+        actualTransitionedCount += batchCount;
         deadLetterAuditEntries.push(
           ...deadLetterSealRows.map((row) => ({
             siteId: siteUuid,
@@ -336,7 +348,7 @@ export async function POST(req: NextRequest) {
         });
         warnings.pv_redis_partial = failedPvIds;
       }
-      updatedCount += updatedPvCount;
+      actualTransitionedCount += updatedPvCount;
     }
 
     // Explicit poison/fatal ids always hard-transition to dead letter.
@@ -363,7 +375,7 @@ export async function POST(req: NextRequest) {
       for (const id of sealFatalIds) {
         const row = byFatalSeal.get(id);
         if (row && row.status !== 'PROCESSING') {
-          updatedCount += 1;
+          alreadyTerminalCount += 1;
         }
       }
 
@@ -387,7 +399,7 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_FAILED_FATAL_BATCH_RPC_FAILED'
           );
         }
-        updatedCount += batchCount;
+        actualTransitionedCount += batchCount;
         deadLetterAuditEntries.push(
           ...fatalRowsProcessing.map((row) => ({
             siteId: siteUuid,
@@ -414,10 +426,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (updatedCount > 0) {
+    if (actualTransitionedCount > 0) {
       logInfo('OCI_ACK_FAILED_MARKED', {
         site_id: siteUuid,
-        count: updatedCount,
+        count: actualTransitionedCount,
         error_code: errorCode,
         error_category: category,
         retry_count: category === 'TRANSIENT' ? sealFailedIds.length : 0,
@@ -430,9 +442,11 @@ export async function POST(req: NextRequest) {
       updated: number;
       message?: string;
       warnings?: Record<string, unknown>;
+      export_run_id?: string;
     } = {
       ok: true,
-      updated: updatedCount,
+      updated: actualTransitionedCount + alreadyTerminalCount,
+      export_run_id: exportRunId,
       ...(Object.keys(warnings).length > 0 ? { message: 'ACK_FAILED completed with warnings', warnings } : {}),
     };
 
@@ -459,6 +473,45 @@ export async function POST(req: NextRequest) {
         responsePayload.warnings = { ...(responsePayload.warnings ?? {}), receipt_persist_warning: true };
       }
     }
+
+    const totalExpectedCount = new Set([...queueIds, ...fatalIds]).size;
+    const verification = verifyTransitionCount({
+      expectedCount: totalExpectedCount,
+      transitionedCount: actualTransitionedCount,
+      alreadyTerminalCount,
+      exportRunId,
+      route: 'ack_failed'
+    });
+
+    if (!verification.ok) {
+      if (Object.keys(warnings).length > 0) {
+        (verification.payload as Record<string, unknown>).warnings = warnings;
+      }
+      if (receipt.receiptId) {
+        try {
+          await completeAckReceipt({
+            receiptId: receipt.receiptId,
+            resultSnapshot: verification.payload as Record<string, unknown>,
+          });
+          await appendRoutingHop({
+            siteId: siteUuid,
+            lane: 'ack_failed',
+            unitId: receipt.receiptId,
+            fromState: 'REGISTERED',
+            toState: 'APPLIED',
+            reasonCode: 'ACK_FAILED_MISMATCH_COMPUTED',
+            idempotencyKey: `ack_failed_mismatch:${receipt.receiptId}`,
+          });
+        } catch (e) {
+          logError('OCI_ACK_FAILED_RECEIPT_LEDGER_MISMATCH_APPEND_FAILED', {
+            receiptId: receipt.receiptId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      return NextResponse.json(verification.payload, { status: verification.isReplay ? 200 : 409 });
+    }
+
     return NextResponse.json(responsePayload);
   } catch (e: unknown) {
     logError('OCI_ACK_FAILED_ERROR', { error: e instanceof Error ? e.message : String(e) });
