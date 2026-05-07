@@ -4,6 +4,7 @@
 -- @red_green_criteria: GREEN when drifted_rows = 0 for active sites.
 -- Value integrity health (read-only)
 -- PR-D policy: oci_conversion_value_policy_v1
+-- Note: `marketing_signals` rows here are value/audit evidence; Google upload authority is queue journal.
 --
 -- GREEN: drifted_rows = 0 for active sites
 -- RED: any non-waived drifted_rows > 0

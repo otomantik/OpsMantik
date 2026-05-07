@@ -1,5 +1,5 @@
 /**
- * Adversarial / W3: dual-path (signals + journal) must be explicitly gated — silent duplicate surface forbidden by ops flag.
+ * Export SSOT: Google Ads script batch is driven only by offline_conversion_queue.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,16 +8,19 @@ import { join } from 'node:path';
 
 const ROOT = process.cwd();
 
-test('chaos: export route combines streams only when both sources enabled', () => {
+test('chaos: export route counts include signals key for script compat (always zero)', () => {
   const routeSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'route.ts'), 'utf8');
-  assert.ok(routeSrc.includes('keptSignalItems'), 'export response must surface signal stream separately for observability');
-  assert.ok(routeSrc.includes('keptConversions'), 'export response must surface queue stream separately');
+  assert.ok(routeSrc.includes('signals:'), 'export response keeps counts.signals for older script parsers');
+  assert.ok(routeSrc.includes('keptSignalItems.length'), 'signals count derives from empty journal-only stream');
 });
 
-test('chaos: marketing_signals fetch can be disabled without deleting route', () => {
+test('chaos: fetch never loads legacy marketing_signals into export batch', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  assert.ok(
-    /signalRows\s*=\s*\[\]|signalList:\s*\[\]/.test(fetchSrc) || fetchSrc.includes('shouldIncludeMarketingSignalsInExport'),
-    'fetch must allow empty signal stream when journal-only mode'
-  );
+  assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'fetch must be journal-only');
+});
+
+test('chaos: preceding gate is queue-first with optional legacy consult flag', () => {
+  const src = readFileSync(join(ROOT, 'lib', 'oci', 'preceding-signals.ts'), 'utf8');
+  assert.ok(src.includes('OCI_PRECEDING_CONSULT_MARKETING_SIGNALS'), 'legacy signal consult must be explicitly gated');
+  assert.ok(src.includes('const journal = await hasBlockingPrecedingJournalMicroStages'), 'journal precedences must be evaluated first');
 });

@@ -46,12 +46,6 @@ export async function GET(req: NextRequest) {
       if (e.message === 'QUEUE_CLAIM_MISMATCH') {
         return NextResponse.json({ error: 'Queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
       }
-      if (e.message === 'SIGNAL_CLAIM_MISMATCH') {
-        return NextResponse.json({ error: 'Signal claim mismatch', code: 'SIGNAL_CLAIM_MISMATCH' }, { status: 409 });
-      }
-      if (e.message === 'SIGNAL_STATE_MISMATCH') {
-        return NextResponse.json({ error: 'Signal state mismatch', code: 'SIGNAL_STATE_MISMATCH' }, { status: 409 });
-      }
       if (e.message === 'SERVER_ERROR') {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }

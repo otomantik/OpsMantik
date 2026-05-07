@@ -6,6 +6,8 @@ status: active
 
 This runbook covers the operational procedures for the OCI (Offline Conversion Import) hardening phase, specifically the rollout of strict fail-closed semantics for panel mutations and the necessary observability to maintain system health.
 
+Canonical upload authority for Google batch remains **queue-only**: `GET /api/oci/google-ads-export` reads `offline_conversion_queue` only. `marketing_signals` is legacy/audit/recovery support and not an independent upload source.
+
 ## 1. Canary-Ready Rollout Plan (`OCI_PANEL_OCI_FAIL_CLOSED`)
 
 **Current Default Risk:** Currently, `OCI_PANEL_OCI_FAIL_CLOSED` defaults to `false`. This means if the OCI producer fails to persist a durable artifact (outbox row or reconciliation log), the HTTP mutation route still returns a `200 OK`. This creates a silent failure path.
@@ -41,7 +43,7 @@ The following metrics must be actively monitored in production dashboards/alerts
 - **Panel Fail Closed Total:** Tracks `panel_oci_fail_closed_total` (number of times users saw a 503 due to producer failure).
 
 ### 2.3 Ledger & Queue Health
-- **`BLOCKED_PRECEDING_SIGNALS` Count:** Number of rows in the offline conversion queue blocked waiting for preceding marketing signals.
+- **`BLOCKED_PRECEDING_SIGNALS` Count:** Number of rows in the offline conversion queue blocked waiting for preceding conversion evidence (queue-first; legacy `marketing_signals` consult may remain for compatibility).
 - **`BLOCKED` Max Age:** Alerts should trigger if blocked rows age beyond 24 hours (indicates stuck promotion).
 
 ### 2.4 Google Ads Sync Health
@@ -73,7 +75,7 @@ Projection contract note:
 
 - **Drift:** `rpc_contract_health.sql` reports missing/signature-drifted RPCs or unsafe grants.
 - **Won leak:** `won_pipeline_health.sql` shows `won_missing_pipeline > 0` and non-zero `leak_rate`.
-- **Backlog:** `script_backlog_health.sql` shows growing active queue ages/retry counts.
+- **Backlog:** `script_backlog_health.sql` shows growing active queue ages/retry counts (Google upload truth). `marketing_signals_pending_count` is legacy/audit pressure unless explicitly promoted by separate policy.
 - **Value integrity:** `value_integrity_health.sql` shows abnormal fallback ratio or suspicious zero/null value rows.
 - **Identity integrity:** `identity_integrity_health.sql` shows malformed/missing phone hash anomalies.
 

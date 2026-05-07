@@ -1,20 +1,15 @@
 # Export closure — formal design (implementation index)
 
-This document is the **R1 (öz)** contract for the kapalı export journal: a single upload truth surface via `offline_conversion_queue`, four canonical conversion names in [`lib/oci/conversion-names.ts`](../../lib/oci/conversion-names.ts), and **S1** single-path export (see below). **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
+This document is the **R1 (öz)** contract for the kapalı export journal: **one** upload truth surface — [`offline_conversion_queue`](../../supabase/migrations/20260502120000_ensure_oci_queue_and_signals.sql) — plus four canonical conversion names in [`lib/oci/conversion-names.ts`](../../lib/oci/conversion-names.ts). The Google Ads **script/API export route does not read `marketing_signals`**. **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
 
-## S1 vs S2 (decision: **S1**)
-
-- **S1 (chosen):** Google upload is driven by **`offline_conversion_queue` + worker/script** (and API fast-track when `oci_sync_method=api`). `marketing_signals` is **not** a second upload source when `OCI_EXPORT_INCLUDE_MARKETING_SIGNALS=0` (see [`app/api/oci/google-ads-export/export-fetch.ts`](../../app/api/oci/google-ads-export/export-fetch.ts)).
-- **S2 (not chosen):** Dual path (queue + PENDING `marketing_signals` in the same Google batch) is **deprecated** for new work; it remains available for **backlog drain** with default `OCI_EXPORT_INCLUDE_MARKETING_SIGNALS=1`.
-
-### W3 surface equivalence (Path A/B)
+## Single export surface (journal SSOT)
 
 | Path | Role |
 |------|------|
-| Script batch | [`GET .../google-ads-export`](../../app/api/oci/google-ads-export/route.ts) → `buildExportItems` → highest-gear dedupe |
-| API lane | Same journal rows; fast-track via QStash when `oci_sync_method=api` |
+| Script batch | [`GET .../google-ads-export`](../../app/api/oci/google-ads-export/route.ts) → [`fetchExportData`](../../app/api/oci/google-ads-export/export-fetch.ts) (**queue only**) → `buildExportItems` → highest-gear dedupe within journal |
+| API worker lane | Same journal rows uploaded by worker/kernel; fast-track via QStash when `oci_sync_method=api` |
 
-**Dual-path detector:** `marketing_signals` still in batch when `OCI_EXPORT_INCLUDE_MARKETING_SIGNALS=1` → possible overlap with journal-backed micro stages until backlog drained; set **`0`** for strict single surface. Operational overlap probe: [`scripts/sql/export_closure_reconciliation_probe.sql`](../../scripts/sql/export_closure_reconciliation_probe.sql).
+**Legacy `marketing_signals`:** may still exist for hash/audit/recovery tooling; it is **not** combined into the Google export batch. Stranded PENDING rows are an operational cleanup topic (pulse/recovery), not a second upload authority.
 
 ## Four conversion matrix (lifecycle → journal)
 
@@ -26,6 +21,17 @@ This document is the **R1 (öz)** contract for the kapalı export journal: a sin
 | won | `OpsMantik_Won` | Outbox won branch → [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts); seal / sweep paths also | Precursor gate: [`hasBlockingPrecedingExports`](../../lib/oci/preceding-signals.ts) |
 
 **Intent-only Ads conversion:** no separate “raw intent” conversion action in the closed-system path; optional panel precursor is gated by `OCI_INTENT_PANEL_PRECURSOR_CONTACTED_ENABLED` (see [`enqueue-panel-stage-outbox.ts`](../../lib/oci/enqueue-panel-stage-outbox.ts)).
+
+## Queue-only upload path audit matrix
+
+| Conversion | Current producer | Current table | Current upload path | Should be queue? | Double-path risk | Class | Action |
+|---|---|---|---|---|---|---|---|
+| contacted | `runProcessOutbox` / stage-router fire | `offline_conversion_queue` (plus legacy `marketing_signals` audit writes) | `google-ads-export` reads queue only | yes | legacy audit write can confuse ops if treated as upload | `QUEUE_CANONICAL` + `AUDIT_ONLY` | keep queue as authority; treat `marketing_signals` as non-upload lane |
+| offered | `runProcessOutbox` / stage-router fire | `offline_conversion_queue` (plus legacy `marketing_signals`) | queue-only fetch | yes | same as contacted | `QUEUE_CANONICAL` + `AUDIT_ONLY` | same |
+| won | seal/outbox/sweep enqueue | `offline_conversion_queue` | queue-only fetch | yes | low (won already queue authority) | `QUEUE_CANONICAL` | keep helper-only writes |
+| junk exclusion | `runProcessOutbox` micro-stage path (with optional retraction adj records) | `offline_conversion_queue` | queue-only fetch | yes | medium if old signal-only assumptions linger | `QUEUE_CANONICAL` | keep queue authority; preserve explicit blocked/skip semantics |
+
+`marketing_signals` classification in this contract: **`AUDIT_ONLY`** (legacy/hash/recovery/evidence), **not** an independent Google upload source.
 
 ## Formal invariant index (I1–I13)
 
@@ -64,7 +70,6 @@ This document is the **R1 (öz)** contract for the kapalı export journal: a sin
 | `oci_time_ssot_health` RED | STOP until time SSOT repaired ([`CLOSED_SYSTEM_SCORE_CONTRACT.md`](./CLOSED_SYSTEM_SCORE_CONTRACT.md) G3) |
 | Identity/hash integrity RED | STOP — G4 / duplicate economics |
 | `export_closure_gap_audit` RED (stale active / malformed `external_id`) | STOP — journal closure broken |
-| `export_closure_reconciliation_probe` RED (dual-path overlap) | Operational W3 smell — drain backlog or set journal-only export |
 | `export_closure_stage_journal_gap` RED (heuristic) | Drill-down — `calls.status` vs journal action mismatch (may false-positive if status lags outbox) |
 
 ## L × W cross-cut matrix (informative)
@@ -74,7 +79,7 @@ Vertical **L** layers: **L1** journal identity → **L2** gates (`BLOCKED`, G1/G
 |  | **W1 Tenant** | **W2 Time** | **W3 Surface** | **W4 Economy** |
 |--|---------------|-------------|----------------|----------------|
 | **L1** | `site_id` + scoped unique on `(site_id, provider_key, external_id)` active rows | `occurred_at` / `occurred_at_source` migrations | Same row semantics script vs API | `action` ↔ Google name via one dictionary |
-| **L2** | Policy evaluates inside tenant | Chronology guards / SSOT | No upload without agreed dual-path policy | Stage bases from SSOT |
+| **L2** | Policy evaluates inside tenant | Chronology guards / SSOT | One script export surface (journal) | Stage bases from SSOT |
 | **L3** | Claims scoped by site | Retry timestamps from DB where contract says | Worker vs script both respect BLOCKED | No alternate value path in worker |
 | **L4** | Health SQL per-site | `oci_time_ssot_health` | Reconciliation + gap packs | Value integrity packs separate |
 
@@ -84,7 +89,7 @@ Vertical **L** layers: **L1** journal identity → **L2** gates (`BLOCKED`, G1/G
 |----|------|----------|
 | **R1** | Spec frozen | This document + invariant tables |
 | **R2** | Code traceability | Non-won → `enqueueOciConversionRow`; won → `enqueueSealConversion`; export claims exclude `BLOCKED_*` for upload |
-| **R3** | Evidence | `npm run test:release-gates`; health SQL packs; [`tests/unit/export-closure-determinism-contract.test.ts`](../../tests/unit/export-closure-determinism-contract.test.ts); chaos dual-path / ACK suites |
+| **R3** | Evidence | `npm run test:release-gates`; health SQL packs; [`tests/unit/export-closure-determinism-contract.test.ts`](../../tests/unit/export-closure-determinism-contract.test.ts); chaos export SSOT / ACK suites |
 
 **Single enqueue audit:** Micro stages must not bypass [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts); seal/won must go through [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) (except documented RPC-only recovery paths).
 
@@ -121,7 +126,6 @@ Implementation: [`lib/cron/process-offline-conversions.ts`](../../lib/cron/proce
 ## Reconciliation / gap audit
 
 - **Gap / staleness / shape:** [`scripts/sql/export_closure_gap_audit.sql`](../../scripts/sql/export_closure_gap_audit.sql).
-- **Dual-path overlap (policy smoke):** [`scripts/sql/export_closure_reconciliation_probe.sql`](../../scripts/sql/export_closure_reconciliation_probe.sql).
 - **Stage ↔ journal (best-effort, 30d lookback):** [`scripts/sql/export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql) — G1 lead with `calls.status` in the four-tuple vs matching `offline_conversion_queue.action` (false positives possible when status lags outbox).
 - Operational queue health: [`scripts/sql/queue_health.sql`](../../scripts/sql/queue_health.sql).
 
@@ -133,6 +137,6 @@ Release flows hash SQL packs via [`evidence-contracts.mjs`](../../scripts/releas
 
 | Variable | Meaning |
 |----------|---------|
-| `OCI_EXPORT_INCLUDE_MARKETING_SIGNALS` | `1` (default): export batch may include legacy PENDING `marketing_signals`. `0`: **journal-only** batch (S1 strict). |
 | `OCI_EXPORT_STRICT` | Strict operational mode (plan / runbooks). |
+| `OCI_EXPORT_PAUSED` | When true, export route returns 503 (global kill switch). |
 | `OCI_RETRY_JITTER_MAX_SECONDS` | Jitter band for retries (D7). |

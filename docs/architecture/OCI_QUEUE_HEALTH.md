@@ -36,11 +36,12 @@ Production handlers:
 
 Unit coverage includes `oci-script-ack-failed` and ACK parity tests under `tests/unit/`. Do not redesign semantics in the queue-health contract PR — only document and extend tests if gaps are found.
 
-## Dual-path export (legacy vs S1)
+## Google export surface (journal only)
 
-- **Default export batch** may still include PENDING `marketing_signals` until backlogs drain (`OCI_EXPORT_INCLUDE_MARKETING_SIGNALS` defaults to on in [`export-fetch.ts`](../../app/api/oci/google-ads-export/export-fetch.ts)).
-- **S1 strict (journal-only):** set `OCI_EXPORT_INCLUDE_MARKETING_SIGNALS=0` and rely on [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md) — micro stages are written by [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) from [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts).
-- **Mutabakat SQL (supplementary):** dual-path overlap [`export_closure_reconciliation_probe.sql`](../../scripts/sql/export_closure_reconciliation_probe.sql); stage vs journal gap heuristic [`export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql) — see [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md) for caveats.
+- [`export-fetch.ts`](../../app/api/oci/google-ads-export/export-fetch.ts) reads **`offline_conversion_queue` only** — see [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md). Micro stages are written by [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) from [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts).
+- **`marketing_signals`** is not merged into the script export batch; backlog/dispatch for that table is separate (recovery workers, ops). Optional gap heuristics: [`export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql).
+- Canonical Google-bound actions represented in queue journal: `OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`, `OpsMantik_Junk_Exclusion`.
+- If fired stage is ineligible (missing click / consent / export gate), reason must remain explicit (`MISSING_CLICK_ID`, `CONSENT_MISSING`, or structured non-eligible reason). Silent disappearance is a contract violation.
 
 ## SRE follow-up (backoff, ACK_FAILED, DLQ autopsy)
 

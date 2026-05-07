@@ -7,7 +7,7 @@ ssot_100_choice: A
 
 # Closed System Score Contract (OpsMantik)
 
-This document removes ambiguity around the word **“100”** and related scores in the **closed** conversion pipeline (intent → match → hash → `marketing_signals` / `offline_conversion_queue` → Google offline conversions).
+This document removes ambiguity around the word **“100”** and related scores in the **closed** conversion pipeline (intent → match → hash/audit lanes + `offline_conversion_queue` journal → Google offline conversions).
 
 ## SSOT seçimi — “100” kelimesi (A veya B, tek yürürlük)
 
@@ -24,8 +24,8 @@ This document removes ambiguity around the word **“100”** and related scores
 
 | ID | Kontrol | PASS | FAIL |
 |----|---------|------|------|
-| **G1** | Click | En az biri dolu: `gclid` \| `wbraid` \| `gbraid` | Hiçbiri yok → ilgili kuyruk/sinyal yazımı yok (mevcut boru hattı kuralları) |
-| **G2** | Rıza | `hasMarketingConsentForCall` true (seal/satış yollarında) | false → seal/ilişkili yazım yok |
+| **G1** | Click | En az biri dolu: `gclid` \| `wbraid` \| `gbraid` | Hiçbiri yok → Google upload için queue satırı `BLOCKED_PRECEDING_SIGNALS` + `MISSING_CLICK_ID` veya structured skip reason |
+| **G2** | Rıza | `hasMarketingConsentForCall` true (seal/satış yollarında) | false → queue write yok; structured reason `CONSENT_MISSING` (silent skip yasak) |
 | **G3** | Zaman SSOT | [`oci_time_ssot_health.sql`](../../scripts/sql/oci_time_ssot_health.sql) ve operasyonel süreç **GREEN** | **RED** → şema/veri düzeltmeden release yok |
 | **G4** | Hash | `marketing_signals` hash zinciri tutarlı | Kırık zincir → **STOP** + incident; deploy yok |
 | **G5** | Idempotency | Aynı `call_id` + aynı dönüşüm için çifte kuruş yok | 23505 dışı çelişki / tutarsız `value_cents` → **BUG** |

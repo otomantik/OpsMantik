@@ -48,7 +48,7 @@ export const HEALTH_PACK_CONTRACTS = [
     contract_version: 'v1',
     db_required: true,
     expected_columns: ['site_id', 'offline_conversion_queue_active_count', 'marketing_signals_pending_count'],
-    red_green_criteria: 'RED when queue/pending ages breach SLO.',
+    red_green_criteria: 'RED when queue upload backlog ages breach SLO. marketing_signals pending count is legacy/audit visibility unless separately elevated by policy.',
   },
   {
     file: 'scripts/sql/identity_integrity_health.sql',
@@ -107,15 +107,6 @@ export const HEALTH_PACK_CONTRACTS = [
     ],
     red_green_criteria:
       'RED when stale active journal rows exceed age window or external_id shape drift (see docs/architecture/EXPORT_CLOSURE.md).',
-  },
-  {
-    file: 'scripts/sql/export_closure_reconciliation_probe.sql',
-    pack_id: 'export_closure_reconciliation_probe',
-    contract_version: 'v1',
-    db_required: true,
-    expected_columns: ['site_id', 'dual_path_overlap_calls', 'contract_status', 'blocking_reasons'],
-    red_green_criteria:
-      'RED per site when PENDING marketing_signals and active journal rows share the same call_id (dual-path overlap during backlog drain).',
   },
   {
     file: 'scripts/sql/export_closure_stage_journal_gap.sql',

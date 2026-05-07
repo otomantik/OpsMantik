@@ -41,7 +41,7 @@ export interface EnqueueOciConversionRowParams {
 export interface EnqueueOciConversionRowResult {
   enqueued: boolean;
   queueId?: string | null;
-  reason?: 'duplicate' | 'marketing_consent_required' | 'error';
+  reason?: 'duplicate' | 'CONSENT_MISSING' | 'error';
   error?: string;
 }
 
@@ -87,8 +87,8 @@ export async function enqueueOciConversionRow(
 
   const hasMarketing = await hasMarketingConsentForCall(siteId, callId);
   if (!hasMarketing) {
-    logInfo('enqueue_oci_row_skip', { call_id: callId, stage, reason: 'marketing_consent_required' });
-    return { enqueued: false, reason: 'marketing_consent_required' };
+    logInfo('enqueue_oci_row_skip', { call_id: callId, stage, reason: 'CONSENT_MISSING' });
+    return { enqueued: false, reason: 'CONSENT_MISSING' };
   }
 
   const { siteCurrency, syncMethod } = await loadSiteOciContext(siteId);

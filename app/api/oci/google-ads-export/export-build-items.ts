@@ -5,7 +5,6 @@ import type { GoogleAdsConversionItem } from '@/lib/oci/google-ads-export/types'
 import type { ExportAuthContext } from './export-auth';
 import type { FetchedExportData } from './export-fetch';
 import { buildQueueItems } from './export-build-queue';
-import { buildSignalItems } from './export-build-signals';
 
 export type BuiltExportData = {
   combined: GoogleAdsConversionItem[];
@@ -24,19 +23,9 @@ export type BuiltExportData = {
   nextCursor: string | null;
 };
 
+/** Journal-only export: no legacy marketing_signals stream. */
 export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedExportData): Promise<BuiltExportData> {
-  const { rawList, signalList } = fetched;
-
-  // Source-contract guardrails for architecture tests:
-  // validateOciQueueValueCents / validateOciSignalConversionValue
-  // pickCanonicalOccurredAt([row.occurred_at, row.conversion_time, ...])
-  // typeof row.optimization_value === 'number' ? ... : minorToMajor(valueGuard.normalized, rowCurrency)
-  // row.external_id || computeOfflineConversionExternalId(...)
-  // resolveSignalStage(...); if (!stage) { logWarn('OCI_EXPORT_SIGNAL_SKIP_UNKNOWN_STAGE') }
-  // buildOrderId(...)
-  // buildSingleConversionGroupKey(...)
-  // `signal_${signalId}`
-  // q: lastRow ? ... / s: lastSig ? ...
+  const { rawList } = fetched;
 
   const callIds: string[] = [];
   for (let i = 0; i < rawList.length; i++) {
@@ -59,7 +48,6 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
     );
   }
   const queueBuild = buildQueueItems(ctx, rawList, sessionByCall, intentCreatedByCall);
-  const signalBuild = buildSignalItems(ctx, signalList);
 
   const blockedNotSendableQueueIds = new Set<string>();
   for (const row of rawList) {
@@ -76,25 +64,28 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
     (candidate) => !blockedNotSendableQueueIds.has(candidate.id.replace('seal_', ''))
   );
 
-  const rankedCandidates = [...filteredQueueCandidates, ...signalBuild.signalCandidates];
+  const rankedCandidates = [...filteredQueueCandidates];
   const { kept: keptCandidates, suppressed: suppressedCandidates } = selectHighestPriorityCandidates(rankedCandidates);
   const rankedIds = new Set(rankedCandidates.map((candidate) => candidate.id));
   const keptIds = new Set(keptCandidates.map((candidate) => candidate.id));
   const keptConversions = filteredQueueConversions.filter((item) => !rankedIds.has(item.id) || keptIds.has(item.id));
-  const keptSignalItems = signalBuild.signalItems.filter((item) => !rankedIds.has(item.id) || keptIds.has(item.id));
-  const suppressedQueueIds = suppressedCandidates.filter((candidate) => candidate.id.startsWith('seal_')).map((candidate) => candidate.id.replace('seal_', ''));
-  const suppressedSignalIds = suppressedCandidates.filter((candidate) => candidate.id.startsWith('signal_')).map((candidate) => candidate.id.replace('signal_', ''));
+  const keptSignalItems: GoogleAdsConversionItem[] = [];
+  const suppressedQueueIds = suppressedCandidates
+    .filter((candidate) => candidate.id.startsWith('seal_'))
+    .map((candidate) => candidate.id.replace('seal_', ''));
+  const suppressedSignalIds: string[] = [];
 
-  const combined = [...keptConversions, ...keptSignalItems].sort(
+  const combined = [...keptConversions].sort(
     (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
   );
   const lastRow = rawList.length > 0 ? rawList[rawList.length - 1] : null;
-  const lastSig = signalList.length > 0 ? signalList[signalList.length - 1] : null;
-  const target = {
-    q: lastRow ? { t: (lastRow as { updated_at?: string }).updated_at ?? '', i: lastRow.id } : null,
-    s: lastSig ? { t: String(lastSig.created_at || ''), i: String(lastSig.id || '') } : null,
-  };
-  const nextCursor = lastRow || lastSig ? Buffer.from(JSON.stringify(target)).toString('base64') : null;
+  const nextCursor = lastRow
+    ? Buffer.from(
+        JSON.stringify({
+          q: { t: (lastRow as { updated_at?: string }).updated_at ?? '', i: lastRow.id },
+        })
+      ).toString('base64')
+    : null;
 
   return {
     combined,
@@ -103,9 +94,9 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
     suppressedQueueIds,
     suppressedSignalIds,
     blockedQueueIds: [...queueBuild.blockedQueueIds, ...Array.from(blockedNotSendableQueueIds)],
-    blockedSignalIds: signalBuild.blockedSignalIds,
-    blockedSignalTimeIds: signalBuild.blockedSignalTimeIds,
-    blockedSignalValueIds: signalBuild.blockedSignalValueIds,
+    blockedSignalIds: [],
+    blockedSignalTimeIds: [],
+    blockedSignalValueIds: [],
     blockedQueueTimeIds: queueBuild.blockedQueueTimeIds,
     blockedValueZeroIds: queueBuild.blockedValueZeroIds,
     blockedExpiredIds: queueBuild.blockedExpiredIds,

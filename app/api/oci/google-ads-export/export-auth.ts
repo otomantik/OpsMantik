@@ -29,8 +29,6 @@ export type ExportAuthContext = {
   exportConfig: ReturnType<typeof parseExportConfig>;
   queueCursorUpdatedAt: string | null;
   queueCursorId: string | null;
-  signalCursorUpdatedAt: string | null;
-  signalCursorId: string | null;
   wantsJwe: boolean;
   publicKeyB64: string | undefined;
   pageLimit: number;
@@ -61,8 +59,6 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
 
   let queueCursorUpdatedAt: string | null = null;
   let queueCursorId: string | null = null;
-  let signalCursorUpdatedAt: string | null = null;
-  let signalCursorId: string | null = null;
   const cursorStr = searchParams.get('cursor');
   const requestedLimit = Number(searchParams.get('limit') ?? 250);
   const pageLimit = Math.min(1000, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 250));
@@ -70,11 +66,8 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     try {
       const decoded = JSON.parse(Buffer.from(cursorStr, 'base64').toString('utf8'));
       const queueCursor = readExportCursorMark(decoded?.q ?? decoded);
-      const signalCursor = readExportCursorMark(decoded?.s ?? decoded);
       queueCursorUpdatedAt = queueCursor?.t ?? null;
       queueCursorId = queueCursor?.i ?? null;
-      signalCursorUpdatedAt = signalCursor?.t ?? null;
-      signalCursorId = signalCursor?.i ?? null;
     } catch {
       // cursor invalid; fall back to first page
     }
@@ -164,8 +157,6 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     exportConfig: parseExportConfig(site.oci_config),
     queueCursorUpdatedAt,
     queueCursorId,
-    signalCursorUpdatedAt,
-    signalCursorId,
     wantsJwe: req.headers.get('x-oci-jwe-accept') === 'true',
     publicKeyB64: process.env.VOID_PUBLIC_KEY,
     pageLimit,

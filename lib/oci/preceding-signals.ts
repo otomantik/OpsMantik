@@ -1,11 +1,7 @@
 /**
- * Won-queue ordering: block offline_conversion_queue until precursor marketing_signals
- * (OpsMantik_Contacted / OpsMantik_Offered) are past blocking dispatch states.
- *
- * Product / ops (precursor-won policy): either (a) run backfill + promote so precursors
- * exist before won is accepted, or (b) add a stricter worker block that refuses won
- * queue rows until contacted/offered signals exist — that second option is a breaking
- * behavioral change and needs explicit rollout.
+ * Won-queue ordering: block `offline_conversion_queue` until precursors are non-blocking.
+ * Checks **both** legacy `marketing_signals` rows and **journal** micro-stages (contacted/offered)
+ * for the same call (`hasBlockingPrecedingExports`).
  */
 
 import { adminClient } from '@/lib/supabase/admin';
@@ -16,6 +12,11 @@ const BLOCKING_DISPATCH = new Set([
   'PROCESSING',
   'STALLED_FOR_HUMAN_AUDIT',
 ]);
+
+function shouldConsultLegacyMarketingSignals(): boolean {
+  const raw = (process.env.OCI_PRECEDING_CONSULT_MARKETING_SIGNALS ?? '1').trim().toLowerCase();
+  return raw !== '0' && raw !== 'false' && raw !== 'off';
+}
 
 export async function hasBlockingPrecedingMarketingSignals(
   siteId: string,
@@ -70,11 +71,10 @@ export async function hasBlockingPrecedingJournalMicroStages(
  * Won-row gate: precursors must be exported (legacy `marketing_signals` backlog and/or journal rows).
  */
 export async function hasBlockingPrecedingExports(siteId: string, callId: string): Promise<boolean> {
-  const [ms, journal] = await Promise.all([
-    hasBlockingPrecedingMarketingSignals(siteId, callId),
-    hasBlockingPrecedingJournalMicroStages(siteId, callId),
-  ]);
-  return ms || journal;
+  const journal = await hasBlockingPrecedingJournalMicroStages(siteId, callId);
+  if (journal) return true;
+  if (!shouldConsultLegacyMarketingSignals()) return false;
+  return hasBlockingPrecedingMarketingSignals(siteId, callId);
 }
 
 export async function resolveWonQueueInitialStatus(siteId: string, callId: string): Promise<{

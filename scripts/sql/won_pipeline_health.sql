@@ -3,7 +3,7 @@
 -- @db_required: true
 -- @red_green_criteria: RED when won_missing_pipeline > 0.
 -- Won/Sealed pipeline health (read-only)
--- Shows whether sale-terminal calls are represented in queue/sent pipeline.
+-- Upload truth for Google batch is offline_conversion_queue. This pack checks won/sealed representation there.
 
 WITH won_or_sealed AS (
   SELECT

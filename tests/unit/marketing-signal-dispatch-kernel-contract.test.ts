@@ -40,21 +40,23 @@ test('primary OCI writers route marketing_signals dispatch transitions through k
   );
 
   for (const [name, src] of [
-    ['export-mark-processing', mark],
     ['ack/route', ack],
     ['ack-failed/route', ackFailed],
   ] as const) {
     const usesKernel =
-      name === 'export-mark-processing'
-        ? src.includes('applyMarketingSignalDispatchBatch')
-        : src.includes('applyMarketingSignalDispatchBatch') ||
-          src.includes('reconcileSignalDispatchOutcome');
+      src.includes('applyMarketingSignalDispatchBatch') ||
+      src.includes('reconcileSignalDispatchOutcome');
     assert.ok(usesKernel, `${name} must route marketing_signals dispatch through the kernel`);
     assert.ok(
       !/\bupdate\s*\(\s*\{\s*dispatch_status\s*:/i.test(src),
       `${name} must not use PostgREST dispatch_status object updates`
     );
   }
+
+  assert.ok(
+    !mark.includes('applyMarketingSignalDispatchBatch'),
+    'export-mark-processing must not dispatch marketing_signals in journal-only export mode'
+  );
 
   assert.ok(
     !mark.includes(".from('marketing_signals')"),

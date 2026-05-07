@@ -85,15 +85,13 @@ export function buildQueueItems(
     const conversionName =
       (row.action ?? '').trim() || OPSMANTIK_CONVERSION_NAMES.won;
     const gear = gearFromQueueExportRow(row);
-    const externalId =
-      row.external_id ||
-      computeOfflineConversionExternalId({
-        providerKey: row.provider_key,
-        action: conversionName,
-        saleId: row.sale_id,
-        callId: row.call_id,
-        sessionId: row.session_id,
-      });
+    const externalId = row.external_id || computeOfflineConversionExternalId({
+      providerKey: row.provider_key,
+      action: conversionName,
+      saleId: row.sale_id,
+      callId: row.call_id,
+      sessionId: row.session_id,
+    });
     const orderId = buildOrderId(
       conversionName,
       row.gclid || row.wbraid || row.gbraid || null,

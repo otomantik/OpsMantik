@@ -124,11 +124,11 @@ test('oci workers re-check current call sendability before exporting or draining
   const outboxSrc = readFileSync(PROCESS_OUTBOX_LIB, 'utf8');
   assert.ok(fetchSrc.includes('status, oci_status'), 'sendability helper must probe oci_status (with drift fallback)');
   assert.ok(exportSrc.includes('fetchExportCallContextRows'), 'queue export must use shared sendability fetch');
-  assert.ok(exportSrc.includes("blockedSignalIds"), 'queue export must track blocked signals before terminalization');
+  assert.ok(exportSrc.includes("blockedSignalIds: []"), 'journal-only export must keep signal buckets inert');
   const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(
-    markSrc.includes("dispatch_status: 'JUNK_ABORTED'") || markSrc.includes("newStatus: 'JUNK_ABORTED'"),
-    'blocked pending signals must be aborted before leak'
+    markSrc.includes('Legacy `marketing_signals` is not exported here'),
+    'mark-processing must stay queue-only; marketing_signals are out of script batch'
   );
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(

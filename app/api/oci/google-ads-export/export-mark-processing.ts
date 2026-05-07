@@ -1,6 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { logError } from '@/lib/logging/logger';
-import { applyMarketingSignalDispatchBatch } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import type { ExportAuthContext } from './export-auth';
 import type { BuiltExportData } from './export-build-items';
 
@@ -34,28 +33,12 @@ async function claimAndFinalizeQueue(
   }
 }
 
-async function markSignalsDeterministicSkip(
-  siteId: string,
-  signalIds: string[],
-  code: 'INVALID_CONVERSION_TIME' | 'VALUE_ZERO' | 'UNKNOWN_STAGE'
-): Promise<void> {
-  if (signalIds.length === 0) return;
-  const updated = await applyMarketingSignalDispatchBatch(adminClient, {
-    siteId,
-    signalIds,
-    expectStatus: 'PENDING',
-    newStatus: 'FAILED',
-  });
-  if (updated !== signalIds.length) throw new Error('SIGNAL_STATE_MISMATCH');
-  logError('OCI_SIGNAL_EXPORT_GATE_FAILED', { site_id: siteId, code, count: signalIds.length });
-}
-
+/** Export marks **only** `offline_conversion_queue` (journal). Legacy `marketing_signals` is not exported here. */
 export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltExportData): Promise<void> {
   if (!ctx.markAsExported) return;
 
   const now = new Date().toISOString();
   const idsToMarkProcessing = built.keptConversions.map((item) => item.id.replace('seal_', ''));
-  const signalIdsToMarkProcessing = built.keptSignalItems.map((item) => item.id.replace('signal_', ''));
 
   if (idsToMarkProcessing.length > 0) {
     const { data: claimedCount, error: rpcError } = await adminClient.rpc(
@@ -128,28 +111,4 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
       'VALUE_ZERO'
     );
   }
-
-  if (signalIdsToMarkProcessing.length > 0) {
-    const updatedSignals = await applyMarketingSignalDispatchBatch(adminClient, {
-      siteId: ctx.siteUuid,
-      signalIds: signalIdsToMarkProcessing,
-      expectStatus: 'PENDING',
-      newStatus: 'PROCESSING',
-    });
-    if (updatedSignals !== signalIdsToMarkProcessing.length) throw new Error('SIGNAL_CLAIM_MISMATCH');
-  }
-
-  if (built.suppressedSignalIds.length > 0) {
-    const updated = await applyMarketingSignalDispatchBatch(adminClient, {
-      siteId: ctx.siteUuid,
-      signalIds: built.suppressedSignalIds,
-      expectStatus: 'PENDING',
-      newStatus: 'JUNK_ABORTED',
-    });
-    if (updated !== built.suppressedSignalIds.length) throw new Error('SIGNAL_STATE_MISMATCH');
-  }
-
-  await markSignalsDeterministicSkip(ctx.siteUuid, built.blockedSignalIds, 'UNKNOWN_STAGE');
-  await markSignalsDeterministicSkip(ctx.siteUuid, built.blockedSignalTimeIds, 'INVALID_CONVERSION_TIME');
-  await markSignalsDeterministicSkip(ctx.siteUuid, built.blockedSignalValueIds, 'VALUE_ZERO');
 }

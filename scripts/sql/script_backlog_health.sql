@@ -1,9 +1,9 @@
 -- @pack_id: script_backlog_health
 -- @contract_version: v1
 -- @db_required: true
--- @red_green_criteria: RED when queue/pending ages exceed agreed SLO.
+-- @red_green_criteria: RED when queue upload backlog ages exceed agreed SLO; marketing_signals pending is legacy/audit pressure unless separately elevated by policy.
 -- Script-mode backlog health (read-only)
--- Focus: active queue pressure + marketing_signals pending pressure by site.
+-- Focus: queue upload pressure (authority) + marketing_signals pending (legacy/audit observability).
 
 WITH queue_by_site AS (
   SELECT
