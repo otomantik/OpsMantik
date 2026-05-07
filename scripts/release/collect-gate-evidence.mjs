@@ -151,6 +151,7 @@ function buildMarkdown(artifact) {
     `- TARGET_DB queue rows: \`${qh.target_db_claim ?? 'n/a'}\` — requires verify-db PASS for live invariant proof.`,
     `- STATIC shape only: \`${qh.static_shape_only ?? 'n/a'}\` — does **not** prove prod queue GREEN or score 100.`,
     `- policy_version: \`${qh.policy_version ?? 'queue_health_contract_v1'}\``,
+    `- PR-1C taxonomy: \`${qh.pr_1c_taxonomy ?? 'n/a'}\``,
     '',
     '## SQL Pack Hashes',
     '',
@@ -295,6 +296,8 @@ function main() {
       queue_health_evidence: {
         policy_version: 'queue_health_contract_v1',
         pack_id: 'queue_health',
+        pr_1c_taxonomy:
+          'FAILED is lifecycle state; DETERMINISTIC_SKIP (e.g. SUPPRESSED_BY_HIGHER_GEAR) is observable and excluded from actionable/provider gate rates — gate metric is actionable_failed_rate / provider_failed_rate; total_failed_rate / failed_rate remain mass visibility; unknown_failed_count is RED.',
         static_shape_only: parsed.mode === 'static' ? 'yes — SQL pack file + column contract only' : 'partial',
         target_db_claim:
           dbEvidenceStatus === 'DB_CHECKED'

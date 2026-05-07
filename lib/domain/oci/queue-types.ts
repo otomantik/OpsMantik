@@ -161,7 +161,21 @@ export interface OciQueueStats {
   oldest_retry_age_minutes?: number | null;
   oldest_processing_age_minutes?: number | null;
   retry_rate?: number;
+  /** (FAILED + DLQ) / total — raw aggregate; PR-1C: use actionable_failed_rate for health gates */
   failed_rate?: number;
+  total_failed_rate?: number;
+  actionable_failed_rate?: number;
+  provider_failed_rate?: number;
+  deterministic_skip_rate?: number;
+  failure_taxonomy?: {
+    total_failed_count: number;
+    deterministic_skip_count: number;
+    suppressed_higher_gear_count: number;
+    provider_failed_count: number;
+    policy_failed_count: number;
+    unknown_failed_count: number;
+    actionable_failed_count: number;
+  };
   won_missing_pipeline_count?: number;
   queue_health_evaluation_mode?: 'operational' | 'kemik';
 }

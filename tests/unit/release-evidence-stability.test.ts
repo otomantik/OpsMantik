@@ -7,6 +7,20 @@ import { normalizeEvidenceArtifact } from '../../scripts/release/evidence-contra
 
 const ROOT = process.cwd();
 
+test('queue_health SQL pack contract lists PR-1C taxonomy columns', () => {
+  const src = readFileSync(join(ROOT, 'scripts/release/evidence-contracts.mjs'), 'utf8');
+  for (const col of [
+    'actionable_failed_rate',
+    'provider_failed_rate',
+    'deterministic_skip_count',
+    'suppressed_higher_gear_count',
+    'unknown_failed_count',
+    'total_failed_count',
+  ]) {
+    assert.ok(src.includes(`'${col}'`), `queue_health contract must require ${col}`);
+  }
+});
+
 test('release evidence contract exposes stable reason codes', () => {
   const src = readFileSync(join(ROOT, 'scripts/release/evidence-contracts.mjs'), 'utf8');
   for (const code of [

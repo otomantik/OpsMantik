@@ -51,6 +51,15 @@ The following metrics must be actively monitored in production dashboards/alerts
 - **Google Upload Failed Rate:** Tracks explicit failures reported by the Apps Script.
 - **`CONVERSION_ACTION_NOT_FOUND` Errors:** Tracks structural mismatches between the SSOT and Google Ads configuration.
 
+### 2.5 Queue lifecycle vs Queue Health 100
+- **SSOT doc:** [OCI_QUEUE_LIFECYCLE_CONTRACT.md](../architecture/OCI_QUEUE_LIFECYCLE_CONTRACT.md) — allowed/forbidden transitions, ACK vs ledger-safe writers, `UPLOADED` / `DEAD_LETTER_QUARANTINE` semantics.
+- **PR-1C taxonomy:** `FAILED` on the queue is a **state**, not always a provider outage. `DETERMINISTIC_SKIP` + `SUPPRESSED_BY_HIGHER_GEAR` is an **expected** non-upload terminal when lower gears are suppressed; it must remain **visible** in metrics but must **not** drive `provider_failed_rate` / `actionable_failed_rate` alone. Treat **unclassified** FAILED rows (`unknown_failed_count`) as dangerous until triaged.
+- **Binding to health “100”:** elevated retry rate, non-zero DLQ, **won pipeline leak**, or **stuck `PROCESSING`** must be interpreted together with lifecycle rules (illegal rewinds, missing ACK receipt idempotency, export-claim mismatch). If `queue_health_score` is GREEN but DB shows long-lived `PROCESSING` without `recover_stuck_offline_conversion_jobs` clearing them, treat as **false green** until TARGET_DB reconciles.
+- **False-green ban:** Do not assert perfect queue health from release markdown alone; require `db_evidence_status` / SQL health packs from [OCI_QUEUE_HEALTH.md](../architecture/OCI_QUEUE_HEALTH.md) when claiming production readiness.
+
+### 2.6 Historical rows (no automatic repair in PR-1C)
+Older environments may still have rows **`COMPLETED`** with `provider_error_code = SUPPRESSED_BY_HIGHER_GEAR` from before PR-1B. **This PR does not migrate or fix them.** If cleanup is required, run a **separate ops-only** repair with site scope, candidate preview, `CHANGE_TICKET`, `OPERATOR_ID`, an explicit **`--write`** guard, and **no queue row deletion** — mirror the discipline in hardening playbooks; do not ship destructive migrations for this.
+
 ## 3. Script-First OCI P0 Reliability Checks
 
 Run these SQL packs during incident triage and pre-release checks:
@@ -60,7 +69,7 @@ Run these SQL packs during incident triage and pre-release checks:
 3. `scripts/sql/script_backlog_health.sql`
 4. `scripts/sql/value_integrity_health.sql`
 5. `scripts/sql/identity_integrity_health.sql`
-6. `scripts/sql/queue_health.sql` — per-site operational queue invariants (`queue_health_contract_v1`); complements rollout script thresholds in [`lib/oci/queue-health-contract.ts`](../../lib/oci/queue-health-contract.ts).
+6. `scripts/sql/queue_health.sql` — per-site operational queue invariants (`queue_health_contract_v1`); PR-1C adds taxonomy columns (`deterministic_skip_count`, `actionable_failed_rate`, `provider_failed_rate`, `unknown_failed_count`, …) so deterministic skips are visible but gated separately from provider failures; complements rollout script thresholds in [`lib/oci/queue-health-contract.ts`](../../lib/oci/queue-health-contract.ts).
 
 **Queue health vs conversion economics:** [`queue_health_score`](../../lib/oci/queue-health-contract.ts) is not `lead_score` / conversion value — see [OCI_QUEUE_HEALTH.md](../architecture/OCI_QUEUE_HEALTH.md).
 

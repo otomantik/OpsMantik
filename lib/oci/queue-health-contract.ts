@@ -3,7 +3,11 @@
  * Not lead_score, not Google conversion value — see docs/architecture/CLOSED_SYSTEM_SCORE_CONTRACT.md
  *
  * Kemik “100” definition: docs/architecture/OCI_QUEUE_HEALTH.md (same invariants as evaluateQueueHealth).
+ * PR-1C: FAILED rows are taxonomized (deterministic skips vs provider/policy/unknown) — see queue-failure-taxonomy.ts.
  */
+
+import type { QueueFailureTaxonomyCounts } from '@/lib/oci/queue-failure-taxonomy';
+import { computeTaxonomyRates } from '@/lib/oci/queue-failure-taxonomy';
 
 export const QUEUE_HEALTH_POLICY_VERSION = 'queue_health_contract_v1' as const;
 
@@ -25,7 +29,10 @@ export const QUEUE_HEALTH_MAX_PROCESSING_AGE_FOR_FRESHNESS_MINUTES = STUCK_PROCE
 /** Same formula as scripts/oci-rollout-readiness: retry_rate = RETRY / totalQueue */
 export const QUEUE_HEALTH_MAX_RETRY_RATE = 0.3;
 
-/** failed_rate = (FAILED + DLQ) / totalQueue in rollout; dlq = DEAD_LETTER_QUARANTINE */
+/**
+ * Max aggregate (FAILED + DLQ) / totalQueue — informational / SQL compat (PR-1C).
+ * Gate metrics use actionable_failed_rate and provider_failed_rate (see evaluateQueueHealth / evaluateRolloutGate).
+ */
 export const QUEUE_HEALTH_MAX_FAILED_RATE = 0.2;
 
 export type QueueHealthStatus = 'GREEN' | 'WARN' | 'RED';
@@ -38,6 +45,8 @@ export type QueueHealthReason =
   | 'PROCESSING_BACKLOG_STALE'
   | 'RETRY_RATE_HIGH'
   | 'FAILED_RATE_HIGH'
+  | 'PROVIDER_FAILED_RATE_HIGH'
+  | 'UNKNOWN_FAILED_QUEUE'
   | 'DLQ_UNREVIEWED'
   | 'TIME_SSOT_RED'
   | 'VALUE_INTEGRITY_RED'
@@ -54,6 +63,8 @@ export const QUEUE_HEALTH_REASONS = [
   'PROCESSING_BACKLOG_STALE',
   'RETRY_RATE_HIGH',
   'FAILED_RATE_HIGH',
+  'PROVIDER_FAILED_RATE_HIGH',
+  'UNKNOWN_FAILED_QUEUE',
   'DLQ_UNREVIEWED',
   'TIME_SSOT_RED',
   'VALUE_INTEGRITY_RED',
@@ -106,6 +117,8 @@ export interface QueueHealthMetricInput extends QueueHealthEvidenceFlags, QueueH
   retryCount: number;
   failedCount: number;
   deadLetterQuarantineCount: number;
+  /** PR-1C: optional; when absent, actionable/provider rates fall back to legacy aggregate behavior */
+  failureTaxonomy?: QueueFailureTaxonomyCounts | null;
 }
 
 export interface QueueHealthEvaluation {
@@ -114,7 +127,13 @@ export interface QueueHealthEvaluation {
   queue_health_score: QueueHealthScore;
   blocking_reasons: QueueHealthReason[];
   retry_rate: number;
+  /** (FAILED + DLQ) / total — legacy / total mass; deterministic skips still count as FAILED rows */
   failed_rate: number;
+  /** (actionable FAILED + DLQ) / total — PR-1C gate rate */
+  actionable_failed_rate: number;
+  provider_failed_rate: number;
+  deterministic_skip_rate: number;
+  failure_taxonomy?: QueueFailureTaxonomyCounts;
 }
 
 export function computeRetryFailedRates(input: {
@@ -147,6 +166,25 @@ export function evaluateQueueHealth(metrics: QueueHealthMetricInput): QueueHealt
     deadLetterQuarantineCount: metrics.deadLetterQuarantineCount,
   });
 
+  const tax = metrics.failureTaxonomy ?? null;
+  const taxRates =
+    tax && metrics.totalQueue > 0
+      ? computeTaxonomyRates({
+          totalQueue: metrics.totalQueue,
+          taxonomy: tax,
+          deadLetterQuarantineCount: metrics.deadLetterQuarantineCount,
+        })
+      : {
+          total_failed_rate: failed_rate,
+          actionable_failed_rate: failed_rate,
+          provider_failed_rate: 0,
+          deterministic_skip_rate: 0,
+        };
+
+  const actionable_failed_rate = taxRates.actionable_failed_rate;
+  const provider_failed_rate = taxRates.provider_failed_rate;
+  const deterministic_skip_rate = taxRates.deterministic_skip_rate;
+
   if (mode === 'kemik' && !metrics.targetDbEvidenceAvailable) {
     reasons.push('DB_NOT_CHECKED');
   }
@@ -177,8 +215,14 @@ export function evaluateQueueHealth(metrics: QueueHealthMetricInput): QueueHealt
   if (retry_rate > QUEUE_HEALTH_MAX_RETRY_RATE) {
     reasons.push('RETRY_RATE_HIGH');
   }
-  if (failed_rate > QUEUE_HEALTH_MAX_FAILED_RATE) {
+  if (actionable_failed_rate > QUEUE_HEALTH_MAX_FAILED_RATE) {
     reasons.push('FAILED_RATE_HIGH');
+  }
+  if (provider_failed_rate > QUEUE_HEALTH_MAX_FAILED_RATE) {
+    reasons.push('PROVIDER_FAILED_RATE_HIGH');
+  }
+  if (tax && tax.unknown_failed_count > 0) {
+    reasons.push('UNKNOWN_FAILED_QUEUE');
   }
   if (metrics.deadLetterQuarantineCount > 0) {
     reasons.push('DLQ_UNREVIEWED');
@@ -207,16 +251,28 @@ export function evaluateQueueHealth(metrics: QueueHealthMetricInput): QueueHealt
     blocking_reasons: blocking,
     retry_rate,
     failed_rate,
+    actionable_failed_rate,
+    provider_failed_rate,
+    deterministic_skip_rate,
+    ...(tax ? { failure_taxonomy: tax } : {}),
   };
 }
 
 /**
  * Rollout gate only — uses profile tolerances (stuck may be >0 and still pass).
+ * PR-1C: uses actionableFailedRate (excludes DETERMINISTIC_SKIP FAILED rows from numerator with DLQ).
+ * Aligns with scripts/sql/queue_health.sql: any DLQ or won pipeline leak fails the gate (not rate-toleranced).
  */
 export function evaluateRolloutGate(input: {
   stuckProcessing: number;
   retryRate: number;
-  failedRate: number;
+  /** Legacy (FAILED+DLQ)/total — ignored for pass/fail; use for logging */
+  failedRate?: number;
+  actionableFailedRate: number;
+  providerFailedRate: number;
+  unknownFailedCount: number;
+  wonMissingPipelineCount: number;
+  deadLetterQuarantineCount: number;
   profile: RolloutProfile;
   overrides?: Partial<{ stuckMax: number; retryRateMax: number; failedRateMax: number }>;
 }): { pass: boolean; failures: string[] } {
@@ -227,6 +283,10 @@ export function evaluateRolloutGate(input: {
   const failures: string[] = [];
   if (input.stuckProcessing > stuckMax) failures.push(`stuckProcessing>${stuckMax}`);
   if (input.retryRate > retryRateMax) failures.push(`retryRate>${retryRateMax}`);
-  if (input.failedRate > failedRateMax) failures.push(`failedRate>${failedRateMax}`);
+  if (input.actionableFailedRate > failedRateMax) failures.push(`actionableFailedRate>${failedRateMax}`);
+  if (input.providerFailedRate > failedRateMax) failures.push(`providerFailedRate>${failedRateMax}`);
+  if (input.unknownFailedCount > 0) failures.push('unknownFailedCount>0');
+  if (input.wonMissingPipelineCount > 0) failures.push('wonMissingPipeline>0');
+  if (input.deadLetterQuarantineCount > 0) failures.push('deadLetterQuarantine>0');
   return { pass: failures.length === 0, failures };
 }

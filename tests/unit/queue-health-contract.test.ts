@@ -83,7 +83,12 @@ describe('queue-health-contract', () => {
     const g = evaluateRolloutGate({
       stuckProcessing: 5,
       retryRate: 0.1,
-      failedRate: 0.1,
+      failedRate: 0.99,
+      actionableFailedRate: 0.1,
+      providerFailedRate: 0,
+      unknownFailedCount: 0,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
       profile: 'prod',
     });
     assert.equal(g.pass, true);
@@ -93,10 +98,139 @@ describe('queue-health-contract', () => {
     const g = evaluateRolloutGate({
       stuckProcessing: 25,
       retryRate: 0.1,
-      failedRate: 0.1,
+      actionableFailedRate: 0,
+      providerFailedRate: 0,
+      unknownFailedCount: 0,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
       profile: 'prod',
     });
     assert.equal(g.pass, false);
     assert.ok(g.failures.some((f) => f.startsWith('stuckProcessing')));
+  });
+
+  it('PR-1C: rollout gate ignores raw failedRate when only deterministic skips inflate FAILED mass', () => {
+    const g = evaluateRolloutGate({
+      stuckProcessing: 0,
+      retryRate: 0,
+      failedRate: 0.5,
+      actionableFailedRate: 0,
+      providerFailedRate: 0,
+      unknownFailedCount: 0,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
+      profile: 'prod',
+    });
+    assert.equal(g.pass, true);
+  });
+
+  it('PR-1C: rollout gate fails on actionable failed rate', () => {
+    const g = evaluateRolloutGate({
+      stuckProcessing: 0,
+      retryRate: 0,
+      actionableFailedRate: 0.5,
+      providerFailedRate: 0,
+      unknownFailedCount: 0,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
+      profile: 'prod',
+    });
+    assert.equal(g.pass, false);
+    assert.ok(g.failures.some((f) => f.startsWith('actionableFailedRate')));
+  });
+
+  it('PR-1C: rollout gate fails on unknown FAILED taxonomy rows', () => {
+    const g = evaluateRolloutGate({
+      stuckProcessing: 0,
+      retryRate: 0,
+      actionableFailedRate: 0,
+      providerFailedRate: 0,
+      unknownFailedCount: 1,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
+      profile: 'prod',
+    });
+    assert.equal(g.pass, false);
+    assert.ok(g.failures.includes('unknownFailedCount>0'));
+  });
+
+  it('PR-1C: rollout gate fails on won pipeline leak or DLQ', () => {
+    assert.equal(
+      evaluateRolloutGate({
+        stuckProcessing: 0,
+        retryRate: 0,
+        actionableFailedRate: 0,
+        providerFailedRate: 0,
+        unknownFailedCount: 0,
+        wonMissingPipelineCount: 1,
+        deadLetterQuarantineCount: 0,
+        profile: 'prod',
+      }).pass,
+      false
+    );
+    assert.equal(
+      evaluateRolloutGate({
+        stuckProcessing: 0,
+        retryRate: 0,
+        actionableFailedRate: 0,
+        providerFailedRate: 0,
+        unknownFailedCount: 0,
+        wonMissingPipelineCount: 0,
+        deadLetterQuarantineCount: 3,
+        profile: 'prod',
+      }).pass,
+      false
+    );
+  });
+
+  it('PR-1C: rollout gate fails on provider failed rate', () => {
+    const g = evaluateRolloutGate({
+      stuckProcessing: 0,
+      retryRate: 0,
+      actionableFailedRate: 0,
+      providerFailedRate: 0.5,
+      unknownFailedCount: 0,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
+      profile: 'prod',
+    });
+    assert.equal(g.pass, false);
+    assert.ok(g.failures.some((f) => f.startsWith('providerFailedRate')));
+  });
+
+  it('PR-1C: operational health uses actionable_failed_rate for FAILED_RATE_HIGH', () => {
+    const e = evaluateQueueHealth({
+      ...baseOperational,
+      failureTaxonomy: {
+        total_failed_count: 5,
+        deterministic_skip_count: 5,
+        suppressed_higher_gear_count: 5,
+        provider_failed_count: 0,
+        policy_failed_count: 0,
+        unknown_failed_count: 0,
+        actionable_failed_count: 0,
+      },
+      failedCount: 5,
+    });
+    assert.ok(!e.blocking_reasons.includes('FAILED_RATE_HIGH'));
+    assert.equal(e.actionable_failed_rate, 0);
+    assert.ok(e.deterministic_skip_rate > 0);
+  });
+
+  it('PR-1C: unknown FAILED rows trigger UNKNOWN_FAILED_QUEUE when taxonomy present', () => {
+    const e = evaluateQueueHealth({
+      ...baseOperational,
+      failureTaxonomy: {
+        total_failed_count: 1,
+        deterministic_skip_count: 0,
+        suppressed_higher_gear_count: 0,
+        provider_failed_count: 0,
+        policy_failed_count: 0,
+        unknown_failed_count: 1,
+        actionable_failed_count: 1,
+      },
+      failedCount: 1,
+    });
+    assert.ok(e.blocking_reasons.includes('UNKNOWN_FAILED_QUEUE'));
   });
 });

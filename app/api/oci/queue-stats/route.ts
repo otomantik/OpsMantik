@@ -8,7 +8,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { requireOciControlAuth } from '@/lib/oci/control-auth';
 import { computeBlockedQueueMetrics } from '@/lib/oci/blocked-queue-metrics';
-import { STUCK_PROCESSING_MAX_AGE_MINUTES, evaluateQueueHealth } from '@/lib/oci/queue-health-contract';
+import {
+  STUCK_PROCESSING_MAX_AGE_MINUTES,
+  computeRetryFailedRates,
+  evaluateQueueHealth,
+} from '@/lib/oci/queue-health-contract';
+import { aggregateQueueFailureTaxonomy } from '@/lib/oci/queue-failure-taxonomy';
 import { countWonMissingPipelineForSite } from '@/lib/oci/won-missing-pipeline-site';
 import { fetchSiteSsotFlags } from '@/lib/oci/queue-health-ssot-flags-site';
 import type {
@@ -53,7 +58,7 @@ export async function GET(req: NextRequest) {
 
   const { data: rows, error: countError } = await adminClient
     .from('offline_conversion_queue')
-    .select('status')
+    .select('status, provider_error_category, provider_error_code')
     .eq('site_id', siteUuid);
 
   if (countError) {
@@ -63,12 +68,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  for (const r of Array.isArray(rows) ? rows : []) {
+  const rowList = Array.isArray(rows) ? rows : [];
+  for (const r of rowList) {
     const s = (r as { status?: string }).status;
     if (s && QUEUE_STATUSES.includes(s as QueueStatus)) {
       totals[s as QueueStatus]++;
     }
   }
+  const failureTaxonomy = aggregateQueueFailureTaxonomy(
+    rowList.map((r) => ({
+      status: (r as { status?: string }).status,
+      provider_error_category: (r as { provider_error_category?: string | null }).provider_error_category,
+      provider_error_code: (r as { provider_error_code?: string | null }).provider_error_code,
+    }))
+  );
 
   const cutoff = new Date(Date.now() - STUCK_PROCESSING_MINUTES * 60 * 1000).toISOString();
   const { count: stuckCount, error: stuckError } = await adminClient
@@ -215,9 +228,16 @@ export async function GET(req: NextRequest) {
     retryCount: totals.RETRY,
     failedCount: totals.FAILED,
     deadLetterQuarantineCount: totals.DEAD_LETTER_QUARANTINE,
+    failureTaxonomy,
     timeSsotRed: ssotFlags.timeSsotRed,
     valueIntegrityRed: ssotFlags.valueIntegrityRed,
     identityIntegrityRed: ssotFlags.identityIntegrityRed,
+  });
+  const legacyRates = computeRetryFailedRates({
+    totalQueue,
+    retryCount: totals.RETRY,
+    failedCount: totals.FAILED,
+    deadLetterQuarantineCount: totals.DEAD_LETTER_QUARANTINE,
   });
 
   const body: OciQueueStats = {
@@ -256,7 +276,13 @@ export async function GET(req: NextRequest) {
     oldest_retry_age_minutes: oldestRetryAgeMinutes,
     oldest_processing_age_minutes: oldestProcessingAgeMinutes,
     retry_rate: queueHealth.retry_rate,
-    failed_rate: queueHealth.failed_rate,
+    /** @deprecated Prefer total_failed_rate + actionable_failed_rate (PR-1C) */
+    failed_rate: legacyRates.failed_rate,
+    total_failed_rate: legacyRates.failed_rate,
+    actionable_failed_rate: queueHealth.actionable_failed_rate,
+    provider_failed_rate: queueHealth.provider_failed_rate,
+    deterministic_skip_rate: queueHealth.deterministic_skip_rate,
+    failure_taxonomy: queueHealth.failure_taxonomy,
     won_missing_pipeline_count: wonMissingPipelineCount,
     queue_health_evaluation_mode: 'operational',
   };

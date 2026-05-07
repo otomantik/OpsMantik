@@ -52,28 +52,14 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
   }
 
   if (built.suppressedQueueIds.length > 0) {
-    const { data: claimedCount, error: claimError } = await adminClient.rpc(
-      'append_script_claim_transition_batch',
-      { p_queue_ids: built.suppressedQueueIds, p_claimed_at: now }
+    // Not sent to Google — terminalize as FAILED + DETERMINISTIC_SKIP like other export skips
+    // (COMPLETED is reserved for ACK-success / upload evidence).
+    await claimAndFinalizeQueue(
+      built.suppressedQueueIds,
+      now,
+      'SUPPRESSED_BY_HIGHER_GEAR',
+      'SUPPRESSED_BY_HIGHER_GEAR'
     );
-    if (claimError || typeof claimedCount !== 'number' || claimedCount !== built.suppressedQueueIds.length) {
-      throw new Error('QUEUE_CLAIM_MISMATCH');
-    }
-    const { data: updatedCount, error: updateError } = await adminClient.rpc('append_script_transition_batch', {
-      p_queue_ids: built.suppressedQueueIds,
-      p_new_status: 'COMPLETED',
-      p_created_at: now,
-      p_error_payload: {
-        uploaded_at: now,
-        last_error: 'SUPPRESSED_BY_HIGHER_GEAR',
-        provider_error_code: 'SUPPRESSED_BY_HIGHER_GEAR',
-        provider_error_category: 'DETERMINISTIC_SKIP',
-        clear_fields: ['next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
-      },
-    });
-    if (updateError || typeof updatedCount !== 'number') {
-      throw new Error('SERVER_ERROR');
-    }
   }
 
   if (built.blockedQueueIds.length > 0) {

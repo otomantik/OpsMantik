@@ -52,9 +52,11 @@ test('google-ads-export: cursor is journal-only (q stream)', () => {
 
 test('google-ads-export route: deterministic skips keep provenance on terminal rows', () => {
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
-  assert.ok(src.includes("last_error: 'SUPPRESSED_BY_HIGHER_GEAR'"), 'highest-only suppression must keep human-readable reason');
-  assert.ok(src.includes("provider_error_code: 'SUPPRESSED_BY_HIGHER_GEAR'"), 'highest-only suppression must keep explicit provider_error_code');
-  assert.ok(src.includes("provider_error_category: 'DETERMINISTIC_SKIP'"), 'suppressed lower gears must stay deterministic skips');
+  assert.ok(
+    src.includes("'SUPPRESSED_BY_HIGHER_GEAR'") && src.includes('claimAndFinalizeQueue'),
+    'highest-only suppression must terminalize via shared finalizer with explicit provenance code'
+  );
+  assert.ok(src.includes('provider_error_category: \'DETERMINISTIC_SKIP\''), 'suppressed rows must stay deterministic skips');
 });
 
 test('google-ads-export route: partial queue claims fail closed before cursor advances', () => {

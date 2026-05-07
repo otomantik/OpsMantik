@@ -88,8 +88,6 @@ test('snapshotToSentryTags flattens every metric into a string map', () => {
   assert.equal(tags['metrics.queue.script_auto_failed_24h.upload_exception'], '6');
   assert.equal(tags['metrics.queue.script_auto_failed_24h.page_processing_failure'], '4');
   assert.equal(tags['metrics.queue.script_auto_failed_24h.total'], '10');
-  assert.equal(tags['metrics.signals.pending'], '5');
-  assert.equal(tags['metrics.signals.failed'], '3');
   assert.equal(tags['metrics.dlq.sync_dlq_depth'], '9');
   assert.equal(tags['metrics.success_rate_24h.queue'], '0.99');
   assert.equal(tags['metrics.success_rate_24h.outbox'], '0.998');

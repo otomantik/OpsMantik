@@ -7,6 +7,7 @@ import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { aggregateQueueFailureTaxonomy, computeTaxonomyRates } from '../lib/oci/queue-failure-taxonomy';
 import {
   QUEUE_HEALTH_POLICY_VERSION,
   ROLLOUT_PROFILE_DEFAULTS,
@@ -14,6 +15,7 @@ import {
   evaluateRolloutGate,
   type RolloutProfile,
 } from '../lib/oci/queue-health-contract';
+import { countWonMissingPipelineForSite } from '../lib/oci/won-missing-pipeline-site';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '.env.local') });
@@ -88,7 +90,10 @@ async function loadEntitlement(siteId: string) {
 
 async function loadQueueAndOutbox(siteId: string) {
   const [{ data: queueRows, error: queueErr }, { data: outboxRows, error: outboxErr }] = await Promise.all([
-    supabase.from('offline_conversion_queue').select('status, updated_at').eq('site_id', siteId),
+    supabase
+      .from('offline_conversion_queue')
+      .select('status, updated_at, provider_error_category, provider_error_code')
+      .eq('site_id', siteId),
     supabase.from('outbox_events').select('status, updated_at').eq('site_id', siteId),
   ]);
   const queueTableMissing = Boolean(queueErr?.message?.includes("Could not find the table 'public.offline_conversion_queue'"));
@@ -115,7 +120,46 @@ async function loadQueueAndOutbox(siteId: string) {
   const stuckProcessing = (queueRows || []).filter(
     (r) => r.status === 'PROCESSING' && new Date(String(r.updated_at || 0)).getTime() < stuckCutoff
   ).length;
-  return { queue, outbox, totalQueue, retryRate, failedRate, stuckProcessing, queueTableMissing, outboxTableMissing };
+
+  const failureTaxonomy = aggregateQueueFailureTaxonomy(
+    (queueRows || []).map((r) => ({
+      status: (r as { status?: string }).status,
+      provider_error_category: (r as { provider_error_category?: string | null }).provider_error_category,
+      provider_error_code: (r as { provider_error_code?: string | null }).provider_error_code,
+    }))
+  );
+  const taxRates =
+    totalQueue > 0
+      ? computeTaxonomyRates({
+          totalQueue,
+          taxonomy: failureTaxonomy,
+          deadLetterQuarantineCount: queue.DLQ,
+        })
+      : {
+          total_failed_rate: 0,
+          actionable_failed_rate: 0,
+          provider_failed_rate: 0,
+          deterministic_skip_rate: 0,
+        };
+
+  const wonMissingPipelineCount = queueTableMissing ? 0 : await countWonMissingPipelineForSite(supabase, siteId);
+
+  return {
+    queue,
+    outbox,
+    totalQueue,
+    retryRate,
+    failedRate,
+    totalFailedRate: taxRates.total_failed_rate,
+    actionableFailedRate: taxRates.actionable_failed_rate,
+    providerFailedRate: taxRates.provider_failed_rate,
+    deterministicSkipRate: taxRates.deterministic_skip_rate,
+    failureTaxonomy,
+    wonMissingPipelineCount,
+    stuckProcessing,
+    queueTableMissing,
+    outboxTableMissing,
+  };
 }
 
 export type Report = {
@@ -147,6 +191,11 @@ async function buildReports(args: ReturnType<typeof parseArgs>): Promise<Report[
       stuckProcessing: metrics.stuckProcessing,
       retryRate: metrics.retryRate,
       failedRate: metrics.failedRate,
+      actionableFailedRate: metrics.queueTableMissing ? metrics.failedRate : metrics.actionableFailedRate,
+      providerFailedRate: metrics.queueTableMissing ? 0 : metrics.providerFailedRate,
+      unknownFailedCount: metrics.queueTableMissing ? 0 : metrics.failureTaxonomy.unknown_failed_count,
+      wonMissingPipelineCount: metrics.queueTableMissing ? 0 : metrics.wonMissingPipelineCount,
+      deadLetterQuarantineCount: metrics.queue.DLQ,
       profile: args.profile,
       overrides: {
         stuckMax: args.stuckMax,
@@ -272,7 +321,10 @@ async function run() {
       queued: r.metrics.queue.QUEUED,
       processing: r.metrics.queue.PROCESSING,
       retry: r.metrics.queue.RETRY,
-      failed: r.metrics.queue.FAILED + r.metrics.queue.DLQ,
+      failedTotal: r.metrics.queue.FAILED + r.metrics.queue.DLQ,
+      actionableFailRate: r.metrics.queueTableMissing ? 'n/a' : r.metrics.actionableFailedRate.toFixed(2),
+      detSkipRate: r.metrics.queueTableMissing ? 'n/a' : r.metrics.deterministicSkipRate.toFixed(2),
+      wonMiss: r.metrics.queueTableMissing ? 'n/a' : r.metrics.wonMissingPipelineCount,
       schemaWarning: r.metrics.queueTableMissing || r.metrics.outboxTableMissing ? 'yes' : 'no',
     }))
   );
@@ -284,7 +336,9 @@ async function run() {
       pass: r.gate.pass ? 'PASS' : 'FAIL',
       stuckProcessing: r.metrics.stuckProcessing,
       retryRate: r.metrics.retryRate.toFixed(2),
-      failedRate: r.metrics.failedRate.toFixed(2),
+      totalFailedRate: r.metrics.failedRate.toFixed(2),
+      actionableRate: r.metrics.queueTableMissing ? 'n/a' : r.metrics.actionableFailedRate.toFixed(2),
+      providerRate: r.metrics.queueTableMissing ? 'n/a' : r.metrics.providerFailedRate.toFixed(2),
       reasons: r.gate.failures.join(', ') || '-',
     }))
   );
