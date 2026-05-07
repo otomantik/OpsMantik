@@ -49,12 +49,13 @@ export const HEALTH_PACK_CONTRACTS = [
     db_required: true,
     expected_columns: [
       'site_id',
+      'parity_enforcement_mode',
       'offline_conversion_queue_active_count',
       'marketing_signals_pending_count',
       'marketing_signals_queue_parity_gap_count',
     ],
     red_green_criteria:
-      'RED when queue upload backlog ages breach SLO or marketing_signals_queue_parity_gap_count > 0; pending count remains legacy/audit pressure.',
+      'RED when queue upload backlog ages breach SLO, or parity mode is enforce and marketing_signals_queue_parity_gap_count > 0; pending count remains legacy/audit pressure.',
   },
   {
     file: 'scripts/sql/identity_integrity_health.sql',

@@ -5,7 +5,6 @@ export type ParityReasonCode =
   | 'PARITY_QUEUE_ENQUEUED'
   | 'PARITY_QUEUE_DUPLICATE'
   | 'PARITY_CONSENT_MISSING'
-  | 'PARITY_NOT_EXPORT_ELIGIBLE'
   | 'PARITY_QUEUE_ERROR';
 
 export interface EnsureMarketingSignalQueueParityParams {

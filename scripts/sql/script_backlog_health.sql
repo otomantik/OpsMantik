@@ -23,6 +23,12 @@ signals_by_site AS (
   FROM public.marketing_signals ms
   GROUP BY ms.site_id
 ),
+parity_mode AS (
+  SELECT CASE lower(COALESCE(current_setting('app.settings.oci_marketing_signal_queue_parity_enforcement', true), 'observe'))
+    WHEN 'enforce' THEN 'enforce'
+    ELSE 'observe'
+  END AS parity_enforcement_mode
+),
 parity_gap_by_site AS (
   SELECT
     ms.site_id,
@@ -44,6 +50,7 @@ parity_gap_by_site AS (
 SELECT
   s.id AS site_id,
   s.name AS site_name,
+  pm.parity_enforcement_mode,
   COALESCE(q.offline_queue_active_count, 0) AS offline_conversion_queue_active_count,
   q.oldest_queued_at,
   CASE WHEN q.oldest_queued_at IS NULL THEN NULL
@@ -65,6 +72,7 @@ SELECT
     ELSE EXTRACT(EPOCH FROM (now() - sig.oldest_pending_at))::bigint
   END AS oldest_pending_age_seconds
 FROM public.sites s
+CROSS JOIN parity_mode pm
 LEFT JOIN queue_by_site q
   ON q.site_id = s.id
 LEFT JOIN signals_by_site sig
