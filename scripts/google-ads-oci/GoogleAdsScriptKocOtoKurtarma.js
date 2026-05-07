@@ -1,4 +1,4 @@
-﻿/**
+/**
  * OpsMantik Google Ads OCI - Koc Oto Kurtarma script.
  *
  * Paste into Google Ads Script Editor. Entry point: `main`.
@@ -347,6 +347,7 @@ KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
     resolvedSiteUuid: payload.siteId || null,
     markAsExported: typeof payload.markAsExported === 'boolean' ? payload.markAsExported : doMark,
     warnings: payload.warnings || null,
+    exportRunId: payload.export_run_id || null,
   };
 };
 
@@ -409,8 +410,30 @@ KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, er
       'Content-Type': 'application/json',
       'x-oci-signature': this._computeHexSignature(payload, this.apiKey),
     },
-    payload: payload,
   });
+};
+
+KocOtoClient.prototype.sendSummary = function (summaryPayload) {
+  try {
+    const url = this.baseUrl + '/api/oci/export-run-summary';
+    const payloadStr = JSON.stringify(summaryPayload);
+    const headers = {
+      Authorization: 'Bearer ' + this.sessionToken,
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey) {
+      headers['x-oci-signature'] = this._computeHexSignature(payloadStr, this.apiKey);
+    }
+    const response = this._fetchWithSessionRetry(url, {
+      method: 'post',
+      headers: headers,
+      payload: payloadStr,
+    });
+    return JSON.parse(response.getContentText() || '{}');
+  } catch (err) {
+    Telemetry.warn('sendSummary failed (optional)', err);
+    return { ok: false };
+  }
 };
 
 function processPageUpload(rows, opts) {
@@ -428,12 +451,16 @@ function processPageUpload(rows, opts) {
     skippedIds: [],
     failedRows: [],
     uploadFailed: false,
+    classified_uploadable_count: 0,
+    classified_skipped_count: 0,
+    classified_failed_count: 0,
   };
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const v = Validator.analyze(row);
     if (!v.valid) {
+      stats.classified_failed_count++;
       if (row && row.id) {
         stats.failedRows.push({
           queueId: row.id,
@@ -448,6 +475,7 @@ function processPageUpload(rows, opts) {
     const orderIdRaw = row.orderId || row.id || '';
     const orderId = String(orderIdRaw).slice(0, 64);
     if (!orderId) {
+      stats.classified_failed_count++;
       if (row && row.id) {
         stats.failedRows.push({
           queueId: row.id,
@@ -458,6 +486,8 @@ function processPageUpload(rows, opts) {
       }
       continue;
     }
+
+    stats.classified_uploadable_count++;
 
     const conversionValue = Math.max(0, parseFloat(String(row.conversionValue || 0).replace(/[^\d.-]/g, '')) || 0);
     const conversionName = (row.conversionName || '').trim() || CONVERSION_EVENTS.WON;
@@ -622,11 +652,33 @@ function mainSyncKocOto() {
     let totalUploaded = 0;
     let totalAck = 0;
     let pageNo = 0;
+    
+    let exportRunId = null;
+    let summaryStats = {
+      fetched_count: 0,
+      claimed_count: 0,
+      classified_uploadable_count: 0,
+      classified_skipped_count: 0,
+      classified_failed_count: 0,
+      upload_attempted_count: 0,
+      upload_success_count: 0,
+      upload_failed_count: 0,
+      ack_success_count: 0,
+      ack_failed_count: 0,
+      ack_skipped_count: 0
+    };
 
     while (true) {
       pageNo++;
       const page = client.fetchPage(CONFIG.SITE_ID, cursor, true);
       let rows = page.items || [];
+      
+      if (page.exportRunId && !exportRunId) {
+        exportRunId = page.exportRunId;
+      }
+      
+      summaryStats.fetched_count += rows.length;
+      summaryStats.claimed_count += rows.length;
 
       if (allowlist && rows.length > 0) {
         rows = rows.filter(function (r) {
@@ -643,11 +695,24 @@ function mainSyncKocOto() {
           });
 
           if (stats.uploadFailed) {
+            summaryStats.classified_uploadable_count += stats.classified_uploadable_count;
+            summaryStats.classified_skipped_count += stats.classified_skipped_count;
+            summaryStats.classified_failed_count += stats.classified_failed_count;
+            summaryStats.upload_attempted_count += stats.classified_uploadable_count;
+            summaryStats.upload_failed_count += stats.classified_uploadable_count;
+            summaryStats.ack_failed_count += stats.classified_uploadable_count;
+
             Telemetry.warn('upload.apply failed - ack-failed sent; skipping ACK for this page', { page: pageNo });
             cursor = page.nextCursor;
             if (!(page.hasNextPage && cursor)) break;
             continue;
           }
+
+          summaryStats.classified_uploadable_count += stats.classified_uploadable_count;
+          summaryStats.classified_skipped_count += stats.classified_skipped_count;
+          summaryStats.classified_failed_count += stats.classified_failed_count;
+          summaryStats.upload_attempted_count += stats.classified_uploadable_count;
+          summaryStats.upload_success_count += stats.uploaded;
 
           if (stats.successIds.length || stats.skippedIds.length || stats.failedRows.length) {
             const ackRes = client.sendAck(
@@ -657,6 +722,10 @@ function mainSyncKocOto() {
               stats.failedRows
             );
             if (ackRes && typeof ackRes.updated === 'number') totalAck += ackRes.updated;
+            
+            summaryStats.ack_success_count += stats.successIds.length;
+            summaryStats.ack_skipped_count += stats.skippedIds.length;
+            summaryStats.ack_failed_count += stats.failedRows.length;
           }
 
           totalUploaded += stats.uploaded;
@@ -694,6 +763,35 @@ function mainSyncKocOto() {
     }
 
     Telemetry.info('Koc Oto Kurtarma SYNC completed', { totalUploaded: totalUploaded, pages: pageNo });
+    
+    // Attempt to send run summary
+    try {
+      var summaryPayload = {
+        export_run_id: exportRunId,
+        summary_version: '1.0',
+        generated_at: new Date().toISOString(),
+        fetched_count: summaryStats.fetched_count,
+        claimed_count: summaryStats.claimed_count,
+        classified_uploadable_count: summaryStats.classified_uploadable_count,
+        classified_skipped_count: summaryStats.classified_skipped_count,
+        classified_failed_count: summaryStats.classified_failed_count,
+        upload_attempted_count: summaryStats.upload_attempted_count,
+        upload_success_count: summaryStats.upload_success_count,
+        upload_failed_count: summaryStats.upload_failed_count,
+        ack_success_count: summaryStats.ack_success_count,
+        ack_failed_count: summaryStats.ack_failed_count,
+        ack_skipped_count: summaryStats.ack_skipped_count
+      };
+      var summaryRes = client.sendSummary(summaryPayload);
+      Telemetry.info('Sent run summary', { 
+        ok: summaryRes.ok, 
+        status: summaryRes.script_summary_status,
+        mismatch_reasons: summaryRes.mismatch_reasons
+      });
+    } catch (err) {
+      Telemetry.warn('Failed to send run summary (optional feature)', err);
+    }
+    
   } catch (err) {
     if ((err && err.message ? String(err.message) : '').indexOf('QUEUE_CLAIM_MISMATCH') >= 0) {
       Telemetry.warn('SYNC ended due to queue claim mismatch (another worker likely holds claim).');

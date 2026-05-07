@@ -108,10 +108,11 @@ The export run operates under strict rules defined in [OCI_EXPORT_RUN_INTEGRITY_
 
 - **QUEUE_CLAIM_MISMATCH**: This is thrown (HTTP 409) if `fetched_count != claimed_count`. It means another instance grabbed the row, or the row status changed mid-flight. **Action:** Safe to ignore occasionally. If persistent, investigate overlapping script schedules or cron concurrency.
 - **EXPORT_RUN_INTEGRITY_UNVERIFIED**: Release evidence will show this until structured logs (`export_run_id`) perfectly connect the script payload summaries with the DB ACKs. **Action:** It means we cannot definitively prove partial run failures aren't happening, but we aren't explicitly failing either.
+- **Script Summary Validation (`SCRIPT_SUMMARY_INVALID`)**: Sent by PR-3D endpoint when a script payload does not match schema requirements.
 - **Investigating Stuck PROCESSING:** If rows are stuck in `PROCESSING` longer than script execution time, the script crashed post-claim or the ACK endpoint was unreachable. **Action:** `recover_stuck_offline_conversion_jobs` (sweep cron) will safely revert them to `RETRY`. Do NOT manually change statuses.
 - **ACK Endpoint Outage:** If the Google upload succeeds but the `opsmantik/ack` route is down, rows leak into `PROCESSING` and eventually get swept to `RETRY`. **Action:** This leads to a duplicate upload attempt to Google on the next run. This is acceptable under the **at-least-once transport + idempotent commit** model (Google Ads uses orderId deduplication).
 - **Why exactly-once isn't assumed:** Network partitions mean we can never guarantee script ↔ backend ACKs complete perfectly. We rely on deterministic IDs (`external_id`) and idempotent DB RPCs to self-heal.
-- **Correlating Lineage:** Search structured logs for `export_run_id`. It ties together `EXPORT_RUN_FETCHED`, `EXPORT_RUN_CLAIMED`, `EXPORT_RUN_RESPONSE_BUILT`, and `EXPORT_RUN_ACK_RECEIVED`. This ID is strictly for debugging lineage and has no effect on actual conversion identity.
+- **Correlating Lineage:** Search structured logs for `export_run_id`. It ties together `EXPORT_RUN_FETCHED`, `EXPORT_RUN_CLAIMED`, `EXPORT_RUN_RESPONSE_BUILT`, `EXPORT_RUN_ACK_RECEIVED`, and `SCRIPT_SUMMARY_RECEIVED`. This ID is strictly for debugging lineage and has no effect on actual conversion identity.
 
 
 ## 4. Conversion Math SSOT and Value Drift

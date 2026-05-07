@@ -39,9 +39,9 @@ This document defines the formal export run integrity contract and reconciliatio
 | Equation | Current support | Evidence | Gap | Next PR |
 |---|---|---|---|---|
 | **A. fetched_count = claimed_count** | ENFORCED | `export-mark-processing` throws `QUEUE_CLAIM_MISMATCH` | HTTP 409 thrown but lacks `run_id` structured log | PR-3B (Lineage) |
-| **B. claimed_count = script_uploadable_count + script_skipped_count + script_failed_to_classify_count** | NOT_SUPPORTED_YET | N/A | Script does not compute or send summaries back | PR-3D (Script summary) |
-| **C. script_upload_attempted_count = ack_success_count + ack_failed_count + provider_ambiguous_pending_count** | UNVERIFIED | Implicit by ACK logs | No strict run bounds tie script payload to ACKs | PR-3B (Lineage) |
-| **D. ack_success_count + ack_failed_count = db_transition_success_count + db_transition_failed_count** | PARTIALLY_ENFORCED | ACK endpoints execute DB RPC | ACK routes do not validate RPC output matches input arrays | PR-3E (Reconciliation) |
+| **B. claimed_count = script_uploadable_count + script_skipped_count + script_failed_to_classify_count** | OPTIONAL_ENFORCED | Script sends summary via `export-run-summary` | Strict summary enforcement deferred | PR-3E (Reconciliation) |
+| **C. script_upload_attempted_count = ack_success_count + ack_failed_count + provider_ambiguous_pending_count** | OPTIONAL_ENFORCED | Script sends summary via `export-run-summary` | Strict summary enforcement deferred | PR-3E (Reconciliation) |
+| **D. ack_success_count + ack_failed_count = db_transition_success_count + db_transition_failed_count** | ENFORCED | ACK endpoints throw `DB_TRANSITION_MISMATCH` | None | COMPLETED |
 | **E. terminalized_count = completed_count + failed_count + dead_letter_count + deterministic_skip_count** | PARTIALLY_ENFORCED | `queue_health.sql` pack | Exists globally per site, but not scoped to specific runs | Keep globally scoped |
 
 ## Current Flow Audit Matrix
@@ -53,8 +53,8 @@ This document defines the formal export run integrity contract and reconciliatio
 | build export items | `export-build-items.ts` | Normalizes format, identifies blocked | Memory | None | None |
 | mark processing / claim | `export-mark-processing.ts` | Throws `QUEUE_CLAIM_MISMATCH` if mismatch | HTTP 409 | No structured run log on mismatch | PR-3B logs mismatch |
 | response to script | `google-ads-export/route.ts` | Returns JSON payload | Network | Uncorrelated | Send `run_id` header |
-| script upload classification | Google Apps Script | Loops and calls API | Script logs | No summary to backend | PR-3D sends summary |
-| ACK success | `ack/route.ts` | Marks `COMPLETED` | DB transition | No run-level sum verification | PR-3E validates RPC counts |
-| ACK failed | `ack-failed/route.ts` | Marks `FAILED`/`RETRY` | DB transition | No run-level sum verification | PR-3E validates RPC counts |
+| script upload classification | Google Apps Script | Posts summary to backend | `export-run-summary` endpoint logs | Summary is currently optional | PR-3E strictly enforces |
+| ACK success | `ack/route.ts` | Marks `COMPLETED` and asserts count | `DB_TRANSITION_MISMATCH` | None | COMPLETED |
+| ACK failed | `ack-failed/route.ts` | Marks `FAILED`/`RETRY` and asserts count | `DB_TRANSITION_MISMATCH` | None | COMPLETED |
 | stale PROCESSING recovery | `sweep-zombies/route.ts` | Resets to `RETRY` if stuck > 120m | `recover_stuck_offline_conversion_jobs` | Drops lineage of original run | Expose `unreconciled_processing_count` |
 | release evidence | `collect-gate-evidence.mjs` | Proves queue taxonomy | `queue_health.sql` | Cannot verify actual run success rates | PR-3F Evidence Gate |
