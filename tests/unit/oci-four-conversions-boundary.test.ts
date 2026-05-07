@@ -47,11 +47,11 @@ test('stage-router enqueues contacted/offered/junk into queue journal', () => {
     'utf8'
   );
   assert.ok(
-    src.includes('enqueueOciConversionRow'),
+    src.includes('ensureMarketingSignalQueueParity'),
     'stage router must route fired micro stages into offline_conversion_queue journal'
   );
   assert.ok(
-    src.includes("queue_reason: 'CONSENT_MISSING'"),
+    src.includes("queue_reason: 'CONSENT_MISSING'") && src.includes('queue_parity_result'),
     'consent miss should be explicit in route result semantics'
   );
 });

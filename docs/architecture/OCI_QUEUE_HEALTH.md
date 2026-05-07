@@ -40,6 +40,7 @@ Unit coverage includes `oci-script-ack-failed` and ACK parity tests under `tests
 
 - [`export-fetch.ts`](../../app/api/oci/google-ads-export/export-fetch.ts) reads **`offline_conversion_queue` only** — see [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md). Micro stages are written by [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) from [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts).
 - **`marketing_signals`** is not merged into the script export batch; backlog/dispatch for that table is separate (recovery workers, ops). Optional gap heuristics: [`export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql).
+- Fail-closed parity check: `scripts/sql/script_backlog_health.sql` now reports `marketing_signals_queue_parity_gap_count` for Google-eligible signal rows lacking a queue match. Non-zero value is a release blocker.
 - Canonical Google-bound actions represented in queue journal: `OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`, `OpsMantik_Junk_Exclusion`.
 - If fired stage is ineligible (missing click / consent / export gate), reason must remain explicit (`MISSING_CLICK_ID`, `CONSENT_MISSING`, or structured non-eligible reason). Silent disappearance is a contract violation.
 

@@ -5,7 +5,7 @@
 
 import type { PipelineStage, SignalPayload, EvaluateResult } from '../types';
 import { insertMarketingSignal } from '../insert-marketing-signal';
-import { enqueueOciConversionRow } from '@/lib/oci/enqueue-oci-conversion-row';
+import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
 
 export interface RouterContext {
   siteId: string;
@@ -39,21 +39,22 @@ export async function routeStage(
   });
 
   const leadScore = Number.isFinite(payload.systemScore as number) ? Number(payload.systemScore) : 0;
-  const queueResult = await enqueueOciConversionRow({
+  const queueParityResult = await ensureMarketingSignalQueueParity({
     siteId,
     callId,
     stage,
-    signalDate: payload.signalDate,
-    intentCreatedAt: null,
+    occurredAt: payload.signalDate,
     leadScore,
     currency: 'TRY',
-    sourceOutboxEventId: null,
     gclid: payload.gclid ?? null,
     wbraid: payload.wbraid ?? null,
     gbraid: payload.gbraid ?? null,
+    consentState: 'unknown',
+    source: 'mizan_stage_router',
+    traceId: traceId ?? null,
   });
 
-  if (!queueResult.enqueued && queueResult.reason === 'error') {
+  if (!queueParityResult.queueEnqueued && queueParityResult.reasonCode === 'PARITY_QUEUE_ERROR') {
     return {
       routed: false,
       signalId: result.signalId,
@@ -61,12 +62,15 @@ export async function routeStage(
       dropped: true,
       causalDna: {
         queue_result: 'error',
-        queue_error: queueResult.error ?? 'NOT_EXPORT_ELIGIBLE',
+        queue_error: 'NOT_EXPORT_ELIGIBLE',
+        signal_write_result: result.success ? 'ok' : 'failed',
+        queue_parity_result: queueParityResult.reasonCode,
+        parity_key: queueParityResult.parityKey,
       },
     };
   }
 
-  if (!queueResult.enqueued && queueResult.reason === 'CONSENT_MISSING') {
+  if (!queueParityResult.queueEnqueued && queueParityResult.reasonCode === 'PARITY_CONSENT_MISSING') {
     return {
       routed: false,
       signalId: result.signalId,
@@ -75,20 +79,28 @@ export async function routeStage(
       causalDna: {
         queue_result: 'skipped',
         queue_reason: 'CONSENT_MISSING',
+        signal_write_result: result.success ? 'ok' : 'failed',
+        queue_parity_result: queueParityResult.reasonCode,
+        parity_key: queueParityResult.parityKey,
       },
     };
   }
 
   return {
-    routed: result.success || queueResult.enqueued || queueResult.reason === 'duplicate',
+    routed:
+      result.success ||
+      queueParityResult.queueEnqueued ||
+      queueParityResult.reasonCode === 'PARITY_QUEUE_DUPLICATE',
     signalId: result.signalId,
     conversionValue: result.conversionValue,
-    dropped: !result.success && !queueResult.enqueued,
+    dropped: !result.success && !queueParityResult.queueEnqueued,
     causalDna: {
       ...(result.causalDna ?? {}),
-      queue_enqueued: queueResult.enqueued,
-      queue_id: queueResult.queueId ?? null,
-      queue_reason: queueResult.reason ?? null,
+      signal_write_result: result.success ? 'ok' : 'failed',
+      queue_parity_result: queueParityResult.reasonCode,
+      parity_key: queueParityResult.parityKey,
+      queue_enqueued: queueParityResult.queueEnqueued,
+      queue_id: queueParityResult.queueId ?? null,
     },
   };
 }

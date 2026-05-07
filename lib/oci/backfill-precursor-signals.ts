@@ -13,6 +13,7 @@ import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-s
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
 import { planPrecursorBackfillStages, type BackfillTimeSource } from '@/lib/oci/precursor-backfill-plan';
 import type { PipelineStage } from '@/lib/oci/signal-types';
+import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
 
 export interface PrecursorBackfillParams {
   siteId: string;
@@ -30,6 +31,10 @@ export interface PrecursorBackfillResult {
   ledgerBackedAttempts: number;
   hybridSnapshotAttempts: number;
   fallbackSnapshotAttempts: number;
+  parityQueueEnqueued: number;
+  parityQueueDuplicates: number;
+  parityQueueSkippedConsent: number;
+  parityQueueErrors: number;
 }
 
 function parseIsoToDate(iso: string): Date {
@@ -88,6 +93,10 @@ export async function runPrecursorSignalBackfill(
     ledgerBackedAttempts: 0,
     hybridSnapshotAttempts: 0,
     fallbackSnapshotAttempts: 0,
+    parityQueueEnqueued: 0,
+    parityQueueDuplicates: 0,
+    parityQueueSkippedConsent: 0,
+    parityQueueErrors: 0,
   };
 
   const { data: calls, error } = await adminClient
@@ -189,8 +198,44 @@ export async function runPrecursorSignalBackfill(
 
       if (up.success && up.signalId && !up.duplicate) {
         result.inserted++;
+        const parity = await ensureMarketingSignalQueueParity({
+          siteId: params.siteId,
+          callId,
+          stage: plan.stage as Exclude<PipelineStage, 'won'>,
+          occurredAt: signalDate,
+          leadScore: Number.isFinite(leadScore as number) ? Number(leadScore) : 0,
+          currency: economics.currencyCode,
+          gclid,
+          wbraid,
+          gbraid,
+          source: 'precursor_backfill',
+          consentState: 'unknown',
+          traceId: null,
+        });
+        if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') result.parityQueueEnqueued++;
+        else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') result.parityQueueDuplicates++;
+        else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') result.parityQueueSkippedConsent++;
+        else result.parityQueueErrors++;
       } else if (up.duplicate) {
         result.duplicates++;
+        const parity = await ensureMarketingSignalQueueParity({
+          siteId: params.siteId,
+          callId,
+          stage: plan.stage as Exclude<PipelineStage, 'won'>,
+          occurredAt: signalDate,
+          leadScore: Number.isFinite(leadScore as number) ? Number(leadScore) : 0,
+          currency: economics.currencyCode,
+          gclid,
+          wbraid,
+          gbraid,
+          source: 'precursor_backfill_duplicate',
+          consentState: 'unknown',
+          traceId: null,
+        });
+        if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') result.parityQueueEnqueued++;
+        else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') result.parityQueueDuplicates++;
+        else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') result.parityQueueSkippedConsent++;
+        else result.parityQueueErrors++;
       } else if (up.skipped) {
         result.skippedNoClick++;
       } else {

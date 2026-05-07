@@ -24,3 +24,19 @@ test('chaos: preceding gate is queue-first with optional legacy consult flag', (
   assert.ok(src.includes('OCI_PRECEDING_CONSULT_MARKETING_SIGNALS'), 'legacy signal consult must be explicitly gated');
   assert.ok(src.includes('const journal = await hasBlockingPrecedingJournalMicroStages'), 'journal precedences must be evaluated first');
 });
+
+test('chaos: backfill writers fail-closed toward queue parity helper', () => {
+  const precursor = readFileSync(join(ROOT, 'lib', 'oci', 'backfill-precursor-signals.ts'), 'utf8');
+  const backfillScript = readFileSync(
+    join(ROOT, 'scripts', 'db', 'oci-cleanup-junk-and-backfill-intent-contacted.ts'),
+    'utf8'
+  );
+  assert.ok(
+    precursor.includes('ensureMarketingSignalQueueParity'),
+    'precursor backfill must route through queue parity helper'
+  );
+  assert.ok(
+    backfillScript.includes('parityQueueErrors'),
+    'intent backfill must surface queue parity errors explicitly'
+  );
+});

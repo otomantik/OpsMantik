@@ -10,6 +10,7 @@ This document is the **R1 (öz)** contract for the kapalı export journal: **one
 | API worker lane | Same journal rows uploaded by worker/kernel; fast-track via QStash when `oci_sync_method=api` |
 
 **Legacy `marketing_signals`:** may still exist for hash/audit/recovery tooling; it is **not** combined into the Google export batch. Stranded PENDING rows are an operational cleanup topic (pulse/recovery), not a second upload authority.
+Parity hardening rule: for Google-eligible `marketing_signals` writes, a matching `offline_conversion_queue` row is required (`marketing_signals_queue_parity_gap_count` must remain `0` in health/evidence).
 
 ## Four conversion matrix (lifecycle → journal)
 

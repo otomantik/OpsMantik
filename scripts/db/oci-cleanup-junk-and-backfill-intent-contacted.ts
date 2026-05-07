@@ -1,7 +1,7 @@
 /**
  * 1) (İsteğe bağlı) Junk / cancelled click çağrılarını ve ilişkili marketing_signals / offline_conversion_queue temizler.
  * 2) `intent` + (session veya çağrı satırında) Ads click id olan ve henüz OpsMantik_Contacted olmayan kayıtlar için
- *    `marketing_signals` (PENDING) üretir — Tecrübeli Bakıcı vb. Google Ads script birleşik export bunları çeker.
+ *    `marketing_signals` (PENDING) üretir — audit/hash lane; Google `google-ads-export` yalnızca journal okur.
  *
  * Flags:
  *   --dry-run              Silme/insert yok; contacted adaylarını listeler.
@@ -20,6 +20,7 @@ import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
+import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
@@ -486,6 +487,10 @@ async function main() {
   let duplicates = 0;
   let skipped = 0;
   let errors = 0;
+  let parityQueueEnqueued = 0;
+  let parityQueueDuplicates = 0;
+  let parityQueueConsentMissing = 0;
+  let parityQueueErrors = 0;
 
   for (const row of rows) {
     const signalDate = new Date(row.created_at);
@@ -536,11 +541,41 @@ async function main() {
       errors++;
       console.warn('upsert başarısız', row.id);
     }
+
+    if (up.success && !up.skipped) {
+      const parity = await ensureMarketingSignalQueueParity({
+        siteId: site.id,
+        callId: row.id,
+        stage: 'contacted',
+        occurredAt: signalDate,
+        leadScore: Number.isFinite(row.lead_score as number) ? Number(row.lead_score) : 0,
+        currency: economics.currencyCode,
+        gclid: row.gclid,
+        wbraid: row.wbraid,
+        gbraid: row.gbraid,
+        source: 'intent_contacted_backfill',
+        consentState: 'unknown',
+        traceId: null,
+      });
+      if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') parityQueueEnqueued++;
+      else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') parityQueueDuplicates++;
+      else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') parityQueueConsentMissing++;
+      else parityQueueErrors++;
+    }
   }
 
-  console.log('Sonuç:', { inserted, duplicates, skipped, errors });
+  console.log('Sonuç:', {
+    inserted,
+    duplicates,
+    skipped,
+    errors,
+    parityQueueEnqueued,
+    parityQueueDuplicates,
+    parityQueueConsentMissing,
+    parityQueueErrors,
+  });
   if (!dryRun) {
-    console.log('Google Ads Script / birleşik export: PENDING marketing_signals çekilebilir.');
+    console.log('marketing_signals PENDING: audit tablosu (Script GET batch değil). Journal export: oci-export-send-preview.mjs.');
   }
 }
 

@@ -47,8 +47,14 @@ export const HEALTH_PACK_CONTRACTS = [
     pack_id: 'script_backlog_health',
     contract_version: 'v1',
     db_required: true,
-    expected_columns: ['site_id', 'offline_conversion_queue_active_count', 'marketing_signals_pending_count'],
-    red_green_criteria: 'RED when queue upload backlog ages breach SLO. marketing_signals pending count is legacy/audit visibility unless separately elevated by policy.',
+    expected_columns: [
+      'site_id',
+      'offline_conversion_queue_active_count',
+      'marketing_signals_pending_count',
+      'marketing_signals_queue_parity_gap_count',
+    ],
+    red_green_criteria:
+      'RED when queue upload backlog ages breach SLO or marketing_signals_queue_parity_gap_count > 0; pending count remains legacy/audit pressure.',
   },
   {
     file: 'scripts/sql/identity_integrity_health.sql',
