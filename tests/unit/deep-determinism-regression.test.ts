@@ -131,6 +131,10 @@ test('oci workers re-check current call sendability before exporting or draining
     'blocked pending signals must be aborted before leak'
   );
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
+  assert.ok(
+    outboxSrc.includes('enqueueOciConversionRow'),
+    'outbox must write micro stages to offline_conversion_queue (single journal path)'
+  );
   assert.ok(outboxSrc.includes('CALL_NOT_SENDABLE_FOR_OCI'), 'outbox worker must fail reversed outbox rows explicitly');
   assert.ok(
     outboxSrc.includes('.select(') && outboxSrc.includes('optimization_stage'),

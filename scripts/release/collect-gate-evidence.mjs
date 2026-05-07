@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'child_process';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { config as loadEnv } from 'dotenv';
@@ -86,6 +86,16 @@ function parseArgs(argv) {
   return { ok: true, output, mode, environment: environment || mode, withDb };
 }
 
+function getLatestMigrationBasename(root) {
+  try {
+    const dir = join(root, 'supabase', 'migrations');
+    const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+    return files.length ? files[files.length - 1] : 'none';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function captureShort(command) {
   const result = spawnSync(command, {
     cwd: repoRoot,
@@ -129,6 +139,7 @@ function buildMarkdown(artifact) {
     `- evidence_contract: \`${artifact.metadata.contract_version}\``,
     `- generated_at: \`${artifact.metadata.generated_at}\``,
     `- git_commit: \`${artifact.metadata.git_commit}\``,
+    `- migration_head: \`${artifact.metadata.migration_head}\``,
     `- actor: \`${artifact.metadata.actor}\``,
     `- db_checked: \`${artifact.metadata.db_checked}\``,
     `- db_claim_scope: \`${artifact.metadata.db_claim_scope}\``,
@@ -180,6 +191,7 @@ function main() {
   const parsed = parseArgs(process.argv.slice(2));
   const generatedAt = new Date().toISOString();
   const commit = captureShort('git rev-parse --short HEAD');
+  const migrationHead = getLatestMigrationBasename(repoRoot);
   const branch = captureShort('git branch --show-current');
   const nodeVersion = captureShort('node --version');
   const actor = process.env.GITHUB_ACTOR || process.env.OPERATOR_ID || process.env.USERNAME || 'unknown';
@@ -270,6 +282,7 @@ function main() {
       environment: parsed.environment,
       generated_at: generatedAt,
       git_commit: commit,
+      migration_head: migrationHead,
       git_branch: branch,
       node_version: nodeVersion,
       actor,

@@ -36,6 +36,15 @@ Production handlers:
 
 Unit coverage includes `oci-script-ack-failed` and ACK parity tests under `tests/unit/`. Do not redesign semantics in the queue-health contract PR — only document and extend tests if gaps are found.
 
-## Future work (separate PRs — behavior change)
+## Dual-path export (legacy vs S1)
 
-Poison-pill isolation, exponential backoff + jitter for retries, DLQ autopsy reporting — **not** part of the contract measurement PR; implement as follow-up PRs only.
+- **Default export batch** may still include PENDING `marketing_signals` until backlogs drain (`OCI_EXPORT_INCLUDE_MARKETING_SIGNALS` defaults to on in [`export-fetch.ts`](../../app/api/oci/google-ads-export/export-fetch.ts)).
+- **S1 strict (journal-only):** set `OCI_EXPORT_INCLUDE_MARKETING_SIGNALS=0` and rely on [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md) — micro stages are written by [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) from [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts).
+- **Mutabakat SQL (supplementary):** dual-path overlap [`export_closure_reconciliation_probe.sql`](../../scripts/sql/export_closure_reconciliation_probe.sql); stage vs journal gap heuristic [`export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql) — see [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md) for caveats.
+
+## SRE follow-up (backoff, ACK_FAILED, DLQ autopsy)
+
+- **Poison pill:** malformed rows are isolated in **`DEAD_LETTER_QUARANTINE`** by the conversion batch kernel ([process-conversion-batch-kernel.ts](../../lib/oci/runner/process-conversion-batch-kernel.ts)); see kernel tests for behavior.
+- **Backoff + jitter:** `next_retry_at` uses `nextRetryDelaySecondsWithJitter` in the worker and kernel. Env **`OCI_RETRY_JITTER_MAX_SECONDS`** (default `60`, `0` disables, max `600`). Shared ACK_FAILED TRANSIENT retry time uses the **max** `attempt_count` among retryable seal rows with the same jitter helper ([ack-failed/route.ts](../../app/api/oci/ack-failed/route.ts)).
+- **DLQ autopsy:** `npm run oci:dlq-autopsy` (optional `--json`, `--site=<uuid|public_id|fragment>`) — read-only summary by `provider_error_code` for `FAILED` / `DEAD_LETTER_QUARANTINE`. Runbook: [OCI_SRE_QUEUE_FOLLOWUP.md](../runbooks/OCI_SRE_QUEUE_FOLLOWUP.md).
+- **Per-site puan (TARGET_DB):** `npm run oci:queue-health-snapshot` — `queue-stats` ile aynı girdiler; `queue_health_score` (100 veya 0), `blocking_reasons`; `--json`.

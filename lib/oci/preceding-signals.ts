@@ -38,11 +38,50 @@ export async function hasBlockingPrecedingMarketingSignals(
   );
 }
 
+/** In-flight precursor rows on the journal (S1) — same semantics as PENDING/PROCESSING marketing_signals. */
+const BLOCKING_QUEUE_STATUSES = new Set([
+  'QUEUED',
+  'RETRY',
+  'PROCESSING',
+  'UPLOADED',
+  'BLOCKED_PRECEDING_SIGNALS',
+]);
+
+export async function hasBlockingPrecedingJournalMicroStages(
+  siteId: string,
+  callId: string
+): Promise<boolean> {
+  const actions = [OPSMANTIK_CONVERSION_NAMES.contacted, OPSMANTIK_CONVERSION_NAMES.offered];
+  const { data, error } = await adminClient
+    .from('offline_conversion_queue')
+    .select('id')
+    .eq('site_id', siteId)
+    .eq('call_id', callId)
+    .in('action', actions)
+    .in('status', [...BLOCKING_QUEUE_STATUSES]);
+
+  if (error || !data?.length) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Won-row gate: precursors must be exported (legacy `marketing_signals` backlog and/or journal rows).
+ */
+export async function hasBlockingPrecedingExports(siteId: string, callId: string): Promise<boolean> {
+  const [ms, journal] = await Promise.all([
+    hasBlockingPrecedingMarketingSignals(siteId, callId),
+    hasBlockingPrecedingJournalMicroStages(siteId, callId),
+  ]);
+  return ms || journal;
+}
+
 export async function resolveWonQueueInitialStatus(siteId: string, callId: string): Promise<{
   status: 'QUEUED' | 'BLOCKED_PRECEDING_SIGNALS';
   blockReason: string | null;
 }> {
-  const blocking = await hasBlockingPrecedingMarketingSignals(siteId, callId);
+  const blocking = await hasBlockingPrecedingExports(siteId, callId);
   if (blocking) {
     return {
       status: 'BLOCKED_PRECEDING_SIGNALS',

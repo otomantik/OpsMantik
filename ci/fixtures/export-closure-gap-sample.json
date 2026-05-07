@@ -1,0 +1,19 @@
+{
+  "_comment": "L4/D11 shape-only fixture — documents expected columns from export_closure_gap_audit.sql for offline review (not executed by CI).",
+  "pack_id": "export_closure_gap_audit",
+  "contract_version": "v1",
+  "example_red_shape": {
+    "site_id": "550e8400-e29b-41d4-a716-446655440000",
+    "stale_active_journal_rows": "3",
+    "malformed_external_id_rows": "0",
+    "contract_status": "RED",
+    "blocking_reasons": ["STALE_ACTIVE_JOURNAL"]
+  },
+  "example_green_shape": {
+    "site_id": "550e8400-e29b-41d4-a716-446655440001",
+    "stale_active_journal_rows": "0",
+    "malformed_external_id_rows": "0",
+    "contract_status": "GREEN",
+    "blocking_reasons": []
+  }
+}

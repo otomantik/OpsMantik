@@ -171,9 +171,12 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const discoveryMethod = discovered?.discoveryMethod ?? null;
   const discoveryConfidence = discovered?.discoveryConfidence ?? null;
 
-  if (!hasAnyClickId({ gclid, wbraid, gbraid })) {
-    logInfo('enqueue_seal_skip', { call_id: callId, reason: 'no_click_id' });
-    return { enqueued: false, reason: 'no_click_id' };
+  const hasClick = hasAnyClickId({ gclid, wbraid, gbraid });
+  if (!hasClick) {
+    logInfo('enqueue_seal_blocked_missing_attribution', {
+      call_id: callId,
+      detail: 'BLOCKED_PRECEDING_SIGNALS + MISSING_CLICK_ID per queue SSOT',
+    });
   }
 
   // 2. Marketing consent check
@@ -229,6 +232,14 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     const queueGate = await resolveWonQueueInitialStatus(siteId, callId);
     const nowIso = new Date().toISOString();
 
+    /** No click: still persist a queue row (export blocked) so WON_MISSING_PIPELINE and ops truth stay aligned. */
+    let rowStatus: 'QUEUED' | 'BLOCKED_PRECEDING_SIGNALS' = queueGate.status;
+    let rowBlockReason: string | null = queueGate.blockReason;
+    if (!hasClick) {
+      rowStatus = 'BLOCKED_PRECEDING_SIGNALS';
+      rowBlockReason = 'MISSING_CLICK_ID';
+    }
+
     const insertPayload: Record<string, unknown> = {
       site_id: siteId,
       call_id: callId,
@@ -274,9 +285,9 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       gclid,
       wbraid,
       gbraid,
-      status: queueGate.status,
-      block_reason: queueGate.blockReason,
-      blocked_at: queueGate.status === 'BLOCKED_PRECEDING_SIGNALS' ? nowIso : null,
+      status: rowStatus,
+      block_reason: rowBlockReason,
+      blocked_at: rowStatus === 'BLOCKED_PRECEDING_SIGNALS' ? nowIso : null,
       source_outbox_event_id: sourceOutboxEventId ?? null,
       causal_dna: {},
     };
@@ -327,7 +338,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     // 9. Fast-Track: Trigger immediate Value-Lane synchronization
     // Only trigger if site is in 'api' mode. 'script' sites must wait for polling.
     // Rows blocked on precursor signals must not fast-track until promoted to QUEUED.
-    if (syncMethod === 'api' && queueGate.status === 'QUEUED') {
+    if (syncMethod === 'api' && rowStatus === 'QUEUED') {
         try {
             await publishToQStash({
                 lane: 'conversion',

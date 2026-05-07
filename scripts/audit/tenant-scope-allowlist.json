@@ -58,5 +58,10 @@
     "file": "app/api/sites/list/route.ts",
     "table": "sites",
     "reason": "Authenticated site directory: non-admins use RLS-scoped supabase.from('sites'); admins use service_role to list all sites for dashboard picker (same product surface as membership-backed UI)."
+  },
+  {
+    "file": "scripts/oci/repair-enqueue-won-calls.ts",
+    "table": "sites",
+    "reason": "CLI repair script resolves a site by UUID/public_id/name fragment using PostgREST .or() (not a bare global sites scan)."
   }
 ]

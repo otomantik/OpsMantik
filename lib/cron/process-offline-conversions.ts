@@ -6,12 +6,39 @@
 import { buildOrderId } from '@/lib/oci/build-order-id';
 import type { ConversionJob } from '@/lib/providers/types';
 
-/** Backoff: min(5m * 2^retry_count, 24h). Returns seconds. */
+/** Upper bound for random jitter (seconds). Set `OCI_RETRY_JITTER_MAX_SECONDS=0` to disable. Default 60. */
+export function getRetryJitterMaxSeconds(): number {
+  const raw = process.env.OCI_RETRY_JITTER_MAX_SECONDS;
+  if (raw === '0') return 0;
+  const def = 60;
+  if (raw == null || raw === '') return def;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return def;
+  return Math.min(n, 600);
+}
+
+/** Backoff base: min(5m * 2^retry_count, 24h). Returns seconds (no jitter). */
 export function nextRetryDelaySeconds(retryCount: number): number {
+  return retryBackoffBaseSeconds(retryCount);
+}
+
+function retryBackoffBaseSeconds(retryCount: number): number {
   const fiveMin = 5 * 60;
   const twentyFourHours = 24 * 60 * 60;
   const delay = Math.min(fiveMin * Math.pow(2, retryCount), twentyFourHours);
   return Math.max(0, Math.floor(delay));
+}
+
+/**
+ * Same exponential backoff as {@link nextRetryDelaySeconds} plus optional full jitter 0..N seconds
+ * (N = getRetryJitterMaxSeconds()) to reduce thundering herds after 429 / TRANSIENT.
+ */
+export function nextRetryDelaySecondsWithJitter(retryCount: number): number {
+  const base = retryBackoffBaseSeconds(retryCount);
+  const jitterMax = getRetryJitterMaxSeconds();
+  const jitter = jitterMax > 0 ? Math.floor(Math.random() * (jitterMax + 1)) : 0;
+  const cap = 24 * 60 * 60;
+  return Math.min(base + jitter, cap);
 }
 
 /** Queue row shape (from DB). action_key is legacy column name. */

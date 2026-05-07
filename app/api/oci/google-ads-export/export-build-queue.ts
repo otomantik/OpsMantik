@@ -6,10 +6,23 @@ import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { validateOciQueueValueCents } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
+import type { SingleConversionGear } from '@/lib/oci/single-conversion-highest-only';
 import { buildSingleConversionGroupKey } from '@/lib/oci/single-conversion-highest-only';
 import { ensureCurrencyCode, ensureNumericValue } from '@/lib/oci/google-ads-export/sanitize';
 import type { GoogleAdsConversionItem, QueueRow, RankedExportCandidate } from '@/lib/oci/google-ads-export/types';
 import type { ExportAuthContext } from './export-auth';
+
+function gearFromQueueExportRow(row: QueueRow): SingleConversionGear {
+  const st = (row.optimization_stage ?? '').trim().toLowerCase();
+  if (st === 'contacted' || st === 'offered' || st === 'junk' || st === 'won') {
+    return st as SingleConversionGear;
+  }
+  const action = (row.action ?? '').trim();
+  if (action === OPSMANTIK_CONVERSION_NAMES.junk) return 'junk';
+  if (action === OPSMANTIK_CONVERSION_NAMES.contacted) return 'contacted';
+  if (action === OPSMANTIK_CONVERSION_NAMES.offered) return 'offered';
+  return 'won';
+}
 
 export type QueueBuildResult = {
   conversions: GoogleAdsConversionItem[];
@@ -69,17 +82,20 @@ export function buildQueueItems(
 
     const conversionCurrency = ensureCurrencyCode(rowCurrency);
     const fallbackOrderId = `seal_${row.id}`;
+    const conversionName =
+      (row.action ?? '').trim() || OPSMANTIK_CONVERSION_NAMES.won;
+    const gear = gearFromQueueExportRow(row);
     const externalId =
       row.external_id ||
       computeOfflineConversionExternalId({
         providerKey: row.provider_key,
-        action: row.action,
+        action: conversionName,
         saleId: row.sale_id,
         callId: row.call_id,
         sessionId: row.session_id,
       });
     const orderId = buildOrderId(
-      OPSMANTIK_CONVERSION_NAMES.won,
+      conversionName,
       row.gclid || row.wbraid || row.gbraid || null,
       conversionTime,
       fallbackOrderId,
@@ -93,7 +109,7 @@ export function buildQueueItems(
       gclid: (row.gclid || '').trim(),
       wbraid: (row.wbraid || '').trim(),
       gbraid: (row.gbraid || '').trim(),
-      conversionName: OPSMANTIK_CONVERSION_NAMES.won,
+      conversionName,
       conversionTime,
       conversionValue,
       conversionCurrency,
@@ -106,7 +122,7 @@ export function buildQueueItems(
         row.call_id ?? null,
         row.id
       ),
-      gear: 'won',
+      gear,
       sortKey: item.conversionTime,
       value: item,
     });

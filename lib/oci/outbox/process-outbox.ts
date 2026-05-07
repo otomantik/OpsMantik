@@ -8,11 +8,11 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
-import { evaluateAndRouteSignal } from '@/lib/oci/signal-router';
 import { PipelineStage } from '@/lib/oci/signal-types';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
+import { enqueueOciConversionRow } from '@/lib/oci/enqueue-oci-conversion-row';
 import { getPrimarySource } from '@/lib/conversation/primary-source';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { incrementRefactorMetric } from '@/lib/refactor/metrics';
@@ -113,6 +113,31 @@ function resolveOutboxStage(score: number): SingleConversionGear | 'junk' | null
   return null;
 }
 
+const ACTIVE_QUEUE_DUP_STATUSES = new Set([
+  'QUEUED',
+  'RETRY',
+  'PROCESSING',
+  'UPLOADED',
+  'BLOCKED_PRECEDING_SIGNALS',
+]);
+
+function resolveGearFromQueueRow(row: {
+  optimization_stage?: string | null;
+}): SingleConversionGear | 'junk' | null {
+  const optimizationStage = (row.optimization_stage ?? '').trim().toLowerCase();
+  if (
+    optimizationStage === 'contacted' ||
+    optimizationStage === 'offered' ||
+    optimizationStage === 'won'
+  ) {
+    return optimizationStage as SingleConversionGear;
+  }
+  if (optimizationStage === 'junk') {
+    return 'junk';
+  }
+  return null;
+}
+
 function resolveSignalStageFromExisting(params: {
   signalType?: string | null;
   optimizationStage?: string | null;
@@ -134,40 +159,6 @@ function resolveSignalStageFromExisting(params: {
     return signalType as SingleConversionGear | 'junk';
   }
   return null;
-}
-
-/**
- * Resolve the true click date for a call. Uses session.created_at (when the
- * visitor first landed with a click ID). Falls back to call.created_at if
- * session is not available. call.created_at is when the phone rang, not when
- * the user clicked the ad — using it inflates decay days and produces
- * incorrect conversion values.
- */
-async function getSessionClickDate(callId: string, fallbackDate: Date): Promise<Date> {
-  try {
-    const { data: callRow } = await adminClient
-      .from('calls')
-      .select('matched_session_id')
-      .eq('id', callId)
-      .maybeSingle();
-
-    const sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id;
-    if (!sessionId) return fallbackDate;
-
-    const { data: sessionRow } = await adminClient
-      .from('sessions')
-      .select('created_at')
-      .eq('id', sessionId)
-      .maybeSingle();
-
-    const sessionCreatedAt = (sessionRow as { created_at?: string | null } | null)?.created_at;
-    if (!sessionCreatedAt) return fallbackDate;
-
-    const parsed = new Date(sessionCreatedAt);
-    return isNaN(parsed.getTime()) ? fallbackDate : parsed;
-  } catch {
-    return fallbackDate;
-  }
 }
 
 /**
@@ -379,8 +370,17 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             .in('status', ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED', 'COMPLETED', 'COMPLETED_UNVERIFIED'])
             .limit(1);
 
+          const { data: existingMicroQueue } = await adminClient
+            .from('offline_conversion_queue')
+            .select('id, optimization_stage, status')
+            .eq('site_id', siteId!)
+            .eq('call_id', callId!)
+            .eq('provider_key', 'google_ads');
+
           const existingGears: SingleConversionGear[] = [];
           let existingSignalForRequestedGearId: string | null = null;
+          let existingQueueRowForRequestedGearId: string | null = null;
+
           for (const signal of existingSignals ?? []) {
             const normalized = resolveSignalStageFromExisting({
               signalType: (signal as { signal_type?: string | null }).signal_type ?? null,
@@ -394,6 +394,22 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
               existingSignalForRequestedGearId = (signal as { id?: string | null }).id ?? null;
             }
           }
+
+          for (const qr of existingMicroQueue ?? []) {
+            const qGear = resolveGearFromQueueRow(qr as { optimization_stage?: string | null });
+            const st = String((qr as { status?: string | null }).status ?? '');
+            if (qGear && qGear !== 'junk') {
+              existingGears.push(qGear);
+            }
+            if (
+              qGear === gear &&
+              ACTIVE_QUEUE_DUP_STATUSES.has(st) &&
+              !existingQueueRowForRequestedGearId
+            ) {
+              existingQueueRowForRequestedGearId = (qr as { id?: string | null }).id ?? null;
+            }
+          }
+
           if ((existingSealQueue ?? []).length > 0) {
             existingGears.push('won');
           }
@@ -450,40 +466,40 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
             continue;
           }
 
-          if (existingSignalForRequestedGearId) {
+          if (existingSignalForRequestedGearId || existingQueueRowForRequestedGearId) {
             logInfo('outbox_signal_skip_already_exists', {
               outbox_id: id,
               call_id: callId,
               gear,
               existing_signal_id: existingSignalForRequestedGearId,
+              existing_queue_id: existingQueueRowForRequestedGearId,
             });
             await finalizeOutboxEvent({ outboxId: id, status: 'PROCESSED' });
             processed++;
             continue;
           }
 
-          const fallbackCreatedNorm =
-            normalizeOciConversionTimeUtcZ(payload?.created_at ?? '') ?? conversionTimeUtcZ;
-          const callCreatedAtDate = new Date(fallbackCreatedNorm);
-          const clickDate = await getSessionClickDate(callId!, callCreatedAtDate);
           const signalDate = new Date(conversionTimeUtcZ);
 
-          const result = await evaluateAndRouteSignal(gear as PipelineStage, {
+          const journalResult = await enqueueOciConversionRow({
             siteId: siteId!,
             callId: callId!,
+            stage: gear as 'contacted' | 'offered' | 'junk',
+            signalDate,
+            intentCreatedAt: payload?.created_at ?? null,
+            leadScore: score,
+            currency,
+            sourceOutboxEventId: id,
             gclid: primary?.gclid ?? null,
             wbraid: primary?.wbraid ?? null,
             gbraid: primary?.gbraid ?? null,
-            aov: 0,
-            systemScore: score,
-            clickDate,
-            signalDate,
-            fingerprint: payload?.matched_fingerprint ?? null,
-            traceId: id,
-            uncertaintyBit: !!payload?.uncertainty_bit,
-            isReversal: !!isJunkReversal,
           });
-          if (result.routed) {
+
+          if (!journalResult.enqueued && journalResult.reason === 'error') {
+            throw new Error(journalResult.error ? `ENQUEUE_OCI_ROW_FAILED:${journalResult.error}` : 'ENQUEUE_OCI_ROW_FAILED');
+          }
+
+          if (journalResult.enqueued) {
             await appendFunnelEvent({
               callId: callId!,
               siteId: siteId!,
@@ -494,7 +510,13 @@ export async function runProcessOutbox(): Promise<ProcessOutboxResult> {
               payload: {},
               causationId: id,
             });
-            logInfo('outbox_signal_emitted', { outbox_id: id, call_id: callId, gear, score });
+            logInfo('outbox_journal_emitted', {
+              outbox_id: id,
+              call_id: callId,
+              gear,
+              score,
+              queue_id: journalResult.queueId,
+            });
           }
         } else {
           logInfo('outbox_score_too_low', { outbox_id: id, score, message: 'Ignoring junk or low-interest click' });

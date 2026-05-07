@@ -7,10 +7,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const ACTIVE = new Set(['QUEUED', 'RETRY', 'PROCESSING', 'BLOCKED_PRECEDING_SIGNALS']);
 const COMPLETED = new Set(['COMPLETED', 'UPLOADED', 'COMPLETED_UNVERIFIED']);
 
-export async function countWonMissingPipelineForSite(
+async function collectMissingWonPipelineCallIds(
   client: SupabaseClient,
   siteId: string
-): Promise<number> {
+): Promise<string[]> {
   const { data: qrows, error: qErr } = await client
     .from('offline_conversion_queue')
     .select('call_id, status')
@@ -36,10 +36,26 @@ export async function countWonMissingPipelineForSite(
 
   if (cErr) throw cErr;
 
-  let missing = 0;
+  const missingIds: string[] = [];
   for (const row of calls || []) {
     const id = (row as { id?: string }).id;
-    if (id && !protectedIds.has(id)) missing += 1;
+    if (id && !protectedIds.has(id)) missingIds.push(id);
   }
-  return missing;
+  return missingIds;
+}
+
+/** Ids of won/sealed calls with no protective queue row (same predicate as count). */
+export async function listMissingWonPipelineCallIds(
+  client: SupabaseClient,
+  siteId: string
+): Promise<string[]> {
+  return collectMissingWonPipelineCallIds(client, siteId);
+}
+
+export async function countWonMissingPipelineForSite(
+  client: SupabaseClient,
+  siteId: string
+): Promise<number> {
+  const ids = await collectMissingWonPipelineCallIds(client, siteId);
+  return ids.length;
 }

@@ -15,6 +15,7 @@ import { insertDeadLetterAuditLogs } from '@/lib/oci/dead-letter-audit';
 import { redis } from '@/lib/upstash';
 import { getPvDataKey, getPvProcessingKeysForCleanup, getPvQueueKey } from '@/lib/oci/pv-redis';
 import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/lib/oci/ack-receipt';
+import { nextRetryDelaySecondsWithJitter } from '@/lib/cron/process-offline-conversions';
 import { addSecondsIso, getDbNowIso } from '@/lib/time/db-now';
 import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
 import { appendRoutingHop } from '@/lib/oci/routing-ledger';
@@ -173,7 +174,6 @@ export async function POST(req: NextRequest) {
         );
       }
     }
-    const nextRetryAt = addSecondsIso(now, 30);
     let updatedCount = 0;
     const deadLetterAuditEntries: Parameters<typeof insertDeadLetterAuditLogs>[0] = [];
 
@@ -207,9 +207,15 @@ export async function POST(req: NextRequest) {
 
       const sealRowsProcessing = sealRowsList.filter((r) => r.status === 'PROCESSING');
 
-      const retryableSealIds = sealRowsProcessing
-        .filter((row) => category === 'TRANSIENT' && (row.attempt_count ?? 0) < MAX_ATTEMPTS)
-        .map((row) => row.id);
+      const retryableSealRows = sealRowsProcessing.filter(
+        (row) => category === 'TRANSIENT' && (row.attempt_count ?? 0) < MAX_ATTEMPTS
+      );
+      const retryableSealIds = retryableSealRows.map((row) => row.id);
+      const maxAttemptForBackoff =
+        retryableSealRows.length > 0
+          ? Math.max(...retryableSealRows.map((row) => row.attempt_count ?? 0))
+          : 0;
+      const nextRetryAt = addSecondsIso(now, nextRetryDelaySecondsWithJitter(maxAttemptForBackoff));
       const failedSealIds = sealRowsProcessing
         .filter((row) => category !== 'TRANSIENT' && (row.attempt_count ?? 0) < MAX_ATTEMPTS)
         .map((row) => row.id);

@@ -93,6 +93,39 @@ export const HEALTH_PACK_CONTRACTS = [
     red_green_criteria:
       'Operational queue invariants only (see lib/oci/queue-health-contract.ts). RED when stuck, won leak, DLQ, rates, or age SLO breached; not full SSOT compose.',
   },
+  {
+    file: 'scripts/sql/export_closure_gap_audit.sql',
+    pack_id: 'export_closure_gap_audit',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: [
+      'site_id',
+      'stale_active_journal_rows',
+      'malformed_external_id_rows',
+      'contract_status',
+      'blocking_reasons',
+    ],
+    red_green_criteria:
+      'RED when stale active journal rows exceed age window or external_id shape drift (see docs/architecture/EXPORT_CLOSURE.md).',
+  },
+  {
+    file: 'scripts/sql/export_closure_reconciliation_probe.sql',
+    pack_id: 'export_closure_reconciliation_probe',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: ['site_id', 'dual_path_overlap_calls', 'contract_status', 'blocking_reasons'],
+    red_green_criteria:
+      'RED per site when PENDING marketing_signals and active journal rows share the same call_id (dual-path overlap during backlog drain).',
+  },
+  {
+    file: 'scripts/sql/export_closure_stage_journal_gap.sql',
+    pack_id: 'export_closure_stage_journal_gap',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: ['site_id', 'stage_journal_gap_calls', 'contract_status', 'blocking_reasons'],
+    red_green_criteria:
+      'RED when G1 calls in lookback lack a journal row with matching canonical action (heuristic; see SQL header).',
+  },
 ];
 
 export const MODE_CONFIG = {

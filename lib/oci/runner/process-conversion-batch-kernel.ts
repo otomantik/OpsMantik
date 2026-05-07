@@ -2,7 +2,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { getProvider } from '@/lib/providers/registry';
 import type { UploadResult } from '@/lib/providers/types';
 import {
-  nextRetryDelaySeconds,
+  nextRetryDelaySecondsWithJitter,
   queueRowToConversionJob,
   type QueueRow,
 } from '@/lib/cron/process-offline-conversions';
@@ -182,7 +182,7 @@ export async function processConversionBatchKernel(input: ProcessBatchInput): Pr
       (row): QueueSnapshotUpdatePayload => {
         const count = (row.retry_count ?? 0) + 1;
         const isFinal = count >= MAX_RETRY_ATTEMPTS;
-        const delaySec = nextRetryDelaySeconds(row.retry_count ?? 0);
+        const delaySec = nextRetryDelaySecondsWithJitter(row.retry_count ?? 0);
         const lastErrorFinal = isFinal ? `Max retries reached: ${msg}`.slice(0, 1000) : msg.slice(0, 1000);
         return isFinal
           ? {
@@ -269,7 +269,7 @@ export async function processConversionBatchKernel(input: ProcessBatchInput): Pr
       const count = (row.retry_count ?? 0) + 1;
       const maxAttemptsHit = count >= MAX_RETRY_ATTEMPTS;
       const isFatal = maxAttemptsHit || result.provider_error_category === 'VALIDATION' || result.provider_error_category === 'AUTH';
-      const delaySec = nextRetryDelaySeconds(count);
+      const delaySec = nextRetryDelaySecondsWithJitter(count);
       const errorMsg = result.error_message ?? 'Unknown error';
       const lastErrorFinal = isFatal ? `FINAL: ${errorMsg}`.slice(0, 1000) : errorMsg.slice(0, 1000);
       return isFatal
