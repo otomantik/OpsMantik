@@ -15,11 +15,12 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(url, key);
 
-const siteFilter = process.argv.find((a) => a.startsWith('--site='))?.slice('--site='.length)?.trim();
-if (!siteFilter) {
+const siteFilterArg = process.argv.find((a) => a.startsWith('--site='))?.slice('--site='.length)?.trim();
+if (!siteFilterArg) {
   console.error('Usage: npx tsx scripts/oci/list-queue-site.ts --site=<uuid|public_id|fragment>');
   process.exit(1);
 }
+const siteFilter: string = siteFilterArg;
 
 async function main() {
   const orFilter = UUID_RE.test(siteFilter)

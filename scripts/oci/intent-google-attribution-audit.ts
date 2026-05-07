@@ -69,6 +69,19 @@ function isTestSite(s: SiteMeta): boolean {
   return false;
 }
 
+type SessionClickRow = { gclid: string | null; wbraid: string | null; gbraid: string | null };
+
+function normalizeSessionClickRow(
+  row: { gclid?: string | null; wbraid?: string | null; gbraid?: string | null } | null
+): SessionClickRow | null {
+  if (!row) return null;
+  return {
+    gclid: row.gclid ?? null,
+    wbraid: row.wbraid ?? null,
+    gbraid: row.gbraid ?? null,
+  };
+}
+
 type IntentRow = {
   id: string;
   site_id: string;
@@ -97,8 +110,8 @@ const SESSION_FETCH_CONCURRENCY = 40;
 async function fetchSessionClicks(
   client: SupabaseClient,
   keys: Array<{ site_id: string; session_id: string; month: string }>
-): Promise<Map<string, { gclid: string | null; wbraid: string | null; gbraid: string | null }>> {
-  const out = new Map<string, { gclid: string | null; wbraid: string | null; gbraid: string | null }>();
+): Promise<Map<string, SessionClickRow>> {
+  const out = new Map<string, SessionClickRow>();
   if (keys.length === 0) return out;
 
   for (let i = 0; i < keys.length; i += SESSION_FETCH_CONCURRENCY) {
@@ -113,8 +126,13 @@ async function fetchSessionClicks(
           .eq('created_month', k.month)
           .maybeSingle();
         const key = `${k.site_id}:${k.session_id}:${k.month}`;
-        if (error) return { key, row: null as { gclid?: string | null; wbraid?: string | null; gbraid?: string | null } | null };
-        return { key, row: data as { gclid?: string | null; wbraid?: string | null; gbraid?: string | null } | null };
+        if (error) return { key, row: null };
+        return {
+          key,
+          row: normalizeSessionClickRow(
+            data as { gclid?: string | null; wbraid?: string | null; gbraid?: string | null } | null
+          ),
+        };
       })
     );
     for (const s of settled) {

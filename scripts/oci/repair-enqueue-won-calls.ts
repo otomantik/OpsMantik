@@ -89,7 +89,7 @@ async function main() {
   for (const callId of targets) {
     const { data: call, error } = await adminClient
       .from('calls')
-      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, lead_score')
+      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')
       .eq('id', callId)
       .eq('site_id', siteId)
       .maybeSingle();
