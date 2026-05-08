@@ -134,6 +134,7 @@ Implementation: [`lib/cron/process-offline-conversions.ts`](../../lib/cron/proce
 - Operational queue health: [`scripts/sql/queue_health.sql`](../../scripts/sql/queue_health.sql).
 - Queue-only compatibility rule: export-closure health packs must not depend on `public.marketing_signals` existence and must never crash when legacy audit residue tables are absent.
 - Orphan won repair rule: discovery is read-only first (`scripts/sql/orphan_won_backfill.sql`), repair is site-scoped only and must flow through canonical enqueue (`enqueueSealConversion`), not ad-hoc SQL inserts/updates.
+- Sweep lock rule: `sweep-unsent-conversions` lock scope is global by default, but `site_id` requests use `sweep-unsent-conversions:site:<site_id>` so site-scoped manual repairs do not wait on unrelated global sweep overlaps.
 
 ## L4 evidence pin (D11)
 

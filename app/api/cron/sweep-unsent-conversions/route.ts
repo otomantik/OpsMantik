@@ -29,17 +29,56 @@ export const runtime = 'nodejs';
 const LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;
 const CRON_LOCK_TTL_SEC = 300; // 5 min — exceeds 15-min schedule
+const SWEEP_LOCK_GLOBAL_PATH = 'sweep-unsent-conversions';
+const UUID_V4_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function parseFlag(value: string | null): boolean {
   const normalized = String(value ?? '').trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+function normalizeSiteId(value: string | null): string | null {
+  const siteId = value?.trim() || null;
+  if (!siteId) return null;
+  return UUID_V4_LIKE.test(siteId) ? siteId : null;
+}
+
+function hasRepairIntent(req: NextRequest): boolean {
+  const q = req.nextUrl.searchParams;
+  return (
+    q.has('change_ticket') ||
+    q.has('operator_id') ||
+    q.has('confirm') ||
+    req.headers.has('x-opsmantik-change-ticket') ||
+    req.headers.has('x-opsmantik-operator-id') ||
+    req.headers.has('x-opsmantik-repair-confirm')
+  );
+}
+
+function deriveSweepLockPath(siteId?: string | null): string {
+  return siteId ? `${SWEEP_LOCK_GLOBAL_PATH}:site:${siteId}` : SWEEP_LOCK_GLOBAL_PATH;
+}
+
 async function runSweep(req: NextRequest) {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400 * 1000);
   const sinceIso = since.toISOString();
-  const targetSiteId = req.nextUrl.searchParams.get('site_id')?.trim() || null;
+  const targetSiteIdRaw = req.nextUrl.searchParams.get('site_id');
+  const targetSiteId = normalizeSiteId(targetSiteIdRaw);
+  const hasSiteIdParam = Boolean(targetSiteIdRaw?.trim());
   const dryRun = parseFlag(req.nextUrl.searchParams.get('dry_run'));
+
+  if (hasSiteIdParam && !targetSiteId) {
+    return NextResponse.json(
+      { ok: false, error: 'invalid_site_id', code: 'INVALID_SITE_ID' },
+      { status: 400, headers: getBuildInfoHeaders() }
+    );
+  }
+  if (hasRepairIntent(req) && !targetSiteId) {
+    return NextResponse.json(
+      { ok: false, error: 'site_id_required_for_repair', code: 'SITE_ID_REQUIRED' },
+      { status: 400, headers: getBuildInfoHeaders() }
+    );
+  }
 
   try {
     // P0-1.1: Cap to prevent memory exhaustion at scale
@@ -140,17 +179,19 @@ async function runSweep(req: NextRequest) {
 }
 
 async function handlerWithLock(req: NextRequest) {
-  const acquired = await tryAcquireCronLock('sweep-unsent-conversions', CRON_LOCK_TTL_SEC);
+  const targetSiteId = normalizeSiteId(req.nextUrl.searchParams.get('site_id'));
+  const lockPath = deriveSweepLockPath(targetSiteId);
+  const acquired = await tryAcquireCronLock(lockPath, CRON_LOCK_TTL_SEC);
   if (!acquired) {
     return NextResponse.json(
-      { ok: true, skipped: true, reason: 'lock_held' },
+      { ok: true, skipped: true, reason: 'lock_held', lock_path: lockPath, lock_ttl_sec: CRON_LOCK_TTL_SEC },
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }
   try {
     return await runSweep(req);
   } finally {
-    await releaseCronLock('sweep-unsent-conversions');
+    await releaseCronLock(lockPath);
   }
 }
 

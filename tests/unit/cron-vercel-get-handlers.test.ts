@@ -92,12 +92,12 @@ test('PR-11: recover uses tryAcquireCronLock("recover")', () => {
   assert.ok(src.includes('releaseCronLock'), 'recover must release lock in finally');
 });
 
-test('PR-11: sweep-unsent-conversions uses tryAcquireCronLock("sweep-unsent-conversions")', () => {
+test('PR-11: sweep-unsent-conversions derives lock path and uses tryAcquireCronLock', () => {
   const path = join(process.cwd(), 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts');
   const src = readFileSync(path, 'utf-8');
   assert.ok(
-    src.includes('tryAcquireCronLock(\'sweep-unsent-conversions\''),
-    'sweep-unsent-conversions must use tryAcquireCronLock("sweep-unsent-conversions") for overlap prevention'
+    src.includes('deriveSweepLockPath') && src.includes('tryAcquireCronLock(lockPath'),
+    'sweep-unsent-conversions must derive lock path and call tryAcquireCronLock(lockPath, ttl)'
   );
   assert.ok(src.includes('releaseCronLock'), 'sweep-unsent-conversions must release lock in finally');
   assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');

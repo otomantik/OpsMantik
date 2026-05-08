@@ -34,7 +34,7 @@ test('PR-7C repair script uses canonical enqueue path via sweep-unsent endpoint'
   const route = readFileSync(join(ROOT, 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts'), 'utf8');
   assert.ok(src.includes("/api/cron/sweep-unsent-conversions"));
   assert.ok(route.includes('enqueueSealConversion'));
-  assert.ok(route.includes("const targetSiteId = req.nextUrl.searchParams.get('site_id')?.trim() || null"));
+  assert.ok(route.includes("const targetSiteId = normalizeSiteId(targetSiteIdRaw)"));
   assert.ok(route.includes("const dryRun = parseFlag(req.nextUrl.searchParams.get('dry_run'))"));
 });
 
