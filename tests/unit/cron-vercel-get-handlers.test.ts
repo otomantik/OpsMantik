@@ -96,11 +96,12 @@ test('PR-11: sweep-unsent-conversions derives lock path and uses tryAcquireCronL
   const path = join(process.cwd(), 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts');
   const src = readFileSync(path, 'utf-8');
   assert.ok(
-    src.includes('deriveSweepLockPath') && src.includes('tryAcquireCronLock(lockPath'),
-    'sweep-unsent-conversions must derive lock path and call tryAcquireCronLock(lockPath, ttl)'
+    src.includes('deriveSweepLockPath') && src.includes('tryAcquireCronLockDetailed(lockPath'),
+    'sweep-unsent-conversions must derive lock path and call tryAcquireCronLockDetailed(lockPath, ttl)'
   );
   assert.ok(src.includes('releaseCronLock'), 'sweep-unsent-conversions must release lock in finally');
-  assert.ok(src.includes('skipped: true') && src.includes('reason: \'lock_held\''), 'must return { ok: true, skipped: true, reason: "lock_held" } when lock held');
+  assert.ok(src.includes('skipped: true') && src.includes('reason: acquire.reason'), 'must return structured lock reason from acquire result');
+  assert.ok(src.includes('lock_backend') && src.includes('lock_mode') && src.includes('lock_error_code'), 'lock failure response must include backend diagnostics');
 });
 
 test('PR-11: reconcile-usage uses tryAcquireCronLock("reconcile-usage")', () => {

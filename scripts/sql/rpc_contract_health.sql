@@ -18,6 +18,11 @@ WITH required AS (
       ('append_script_claim_transition_batch', 'uuid[], timestamp with time zone', true),
       ('recover_stuck_offline_conversion_jobs', 'integer', true),
       ('recover_safe_processing_queue_rows_v1', 'uuid[], integer, text, text', true),
+      ('acquire_cron_lease_v1', 'text, text, integer', true),
+      ('steal_expired_cron_lease_v1', 'text, text, integer, integer', true),
+      ('heartbeat_cron_lease_v1', 'text, text, integer', true),
+      ('release_cron_lease_v1', 'text, text', true),
+      ('try_acquire_cron_lock_v1', 'text', true),
       ('rebuild_call_projection', 'uuid, uuid', true)
   ) AS t(proname, args, require_service_role)
 ),
@@ -67,6 +72,11 @@ FROM (
           ('append_script_claim_transition_batch', 'uuid[], timestamp with time zone'),
           ('recover_stuck_offline_conversion_jobs', 'integer'),
           ('recover_safe_processing_queue_rows_v1', 'uuid[], integer, text, text'),
+          ('acquire_cron_lease_v1', 'text, text, integer'),
+          ('steal_expired_cron_lease_v1', 'text, text, integer, integer'),
+          ('heartbeat_cron_lease_v1', 'text, text, integer'),
+          ('release_cron_lease_v1', 'text, text'),
+          ('try_acquire_cron_lock_v1', 'text'),
           ('rebuild_call_projection', 'uuid, uuid')
       ) AS t(proname, args)
     )
@@ -104,6 +114,11 @@ WHERE n.nspname = 'public'
     'append_script_claim_transition_batch',
     'recover_stuck_offline_conversion_jobs',
     'recover_safe_processing_queue_rows_v1',
+    'acquire_cron_lease_v1',
+    'steal_expired_cron_lease_v1',
+    'heartbeat_cron_lease_v1',
+    'release_cron_lease_v1',
+    'try_acquire_cron_lock_v1',
     'rebuild_call_projection'
   )
 ORDER BY p.proname, rp.grantee;
@@ -118,7 +133,12 @@ WHERE rp.routine_schema = 'public'
   AND rp.routine_name IN (
     'get_call_session_for_oci',
     'recover_stuck_offline_conversion_jobs',
-    'recover_safe_processing_queue_rows_v1'
+    'recover_safe_processing_queue_rows_v1',
+    'acquire_cron_lease_v1',
+    'steal_expired_cron_lease_v1',
+    'heartbeat_cron_lease_v1',
+    'release_cron_lease_v1',
+    'try_acquire_cron_lock_v1'
   )
   AND rp.grantee IN ('anon', 'authenticated', 'PUBLIC');
 

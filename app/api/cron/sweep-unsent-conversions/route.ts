@@ -14,7 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
-import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { tryAcquireCronLockDetailed, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import { getRefactorFlags } from '@/lib/refactor/flags';
 import { adminClient } from '@/lib/supabase/admin';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
@@ -181,10 +182,19 @@ async function runSweep(req: NextRequest) {
 async function handlerWithLock(req: NextRequest) {
   const targetSiteId = normalizeSiteId(req.nextUrl.searchParams.get('site_id'));
   const lockPath = deriveSweepLockPath(targetSiteId);
-  const acquired = await tryAcquireCronLock(lockPath, CRON_LOCK_TTL_SEC);
-  if (!acquired) {
+  const acquire = await tryAcquireCronLockDetailed(lockPath, CRON_LOCK_TTL_SEC);
+  if (!acquire.acquired) {
     return NextResponse.json(
-      { ok: true, skipped: true, reason: 'lock_held', lock_path: lockPath, lock_ttl_sec: CRON_LOCK_TTL_SEC },
+      {
+        ok: true,
+        skipped: true,
+        reason: acquire.reason,
+        lock_path: lockPath,
+        lock_ttl_sec: CRON_LOCK_TTL_SEC,
+        lock_mode: getRefactorFlags().lease_lock_mode,
+        lock_backend: acquire.backend,
+        lock_error_code: acquire.error_code,
+      },
       { status: 200, headers: getBuildInfoHeaders() }
     );
   }

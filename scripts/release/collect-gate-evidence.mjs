@@ -30,6 +30,11 @@ const REQUIRED_RPCS = [
   { name: 'rebuild_call_projection', args: 'uuid, uuid' },
   { name: 'recover_stuck_offline_conversion_jobs', args: 'integer' },
   { name: 'recover_safe_processing_queue_rows_v1', args: 'uuid[], integer, text, text' },
+  { name: 'acquire_cron_lease_v1', args: 'text, text, integer' },
+  { name: 'steal_expired_cron_lease_v1', args: 'text, text, integer, integer' },
+  { name: 'heartbeat_cron_lease_v1', args: 'text, text, integer' },
+  { name: 'release_cron_lease_v1', args: 'text, text' },
+  { name: 'try_acquire_cron_lock_v1', args: 'text' },
 ];
 const OPTIONAL_LEGACY_RPCS = [
   { name: 'apply_marketing_signal_dispatch_batch_v1', args: 'uuid, uuid[], text, text, timestamp with time zone' },
@@ -44,6 +49,7 @@ const CRITICAL_MIGRATIONS = [
   '20261226020000_create_append_worker_transition_batch_v2.sql',
   '20261226023000_recover_safe_processing_queue_rows_v1.sql',
   '20261226024000_restrict_recover_stuck_offline_conversion_jobs_grants.sql',
+  '20261226030000_restore_cron_lease_lock_backend.sql',
 ];
 const EXTRA_DB_SQL_PACKS = [
   {

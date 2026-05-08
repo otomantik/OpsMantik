@@ -22,6 +22,7 @@ Queue health scores measure **export pipeline reliability** (queue, retry, DLQ, 
 - PR-6 adds target DB contract status vocabulary: `TARGET_DB_NOT_CHECKED`, `TARGET_DB_UNVERIFIED`, `TARGET_DB_PARTIAL`, `TARGET_DB_RED`, `TARGET_DB_GREEN`.
 - PR-7 extends queue-only vocabulary for optional legacy residue: `LEGACY_RESIDUE_ABSENT`, `AUDIT_TABLE_NOT_PRESENT`, `OPTIONAL_LEGACY_CHECK_SKIPPED`.
 - In strict target mode, `DB_ENV_MISSING`, `DB_RPC_MISSING`, `DB_RPC_SIGNATURE_DRIFT`, `DB_UNSAFE_GRANT`, and smoke failures are blocking.
+- PR-7E adds cron lock backend contract checks (`acquire_cron_lease_v1`, `steal_expired_cron_lease_v1`, `heartbeat_cron_lease_v1`, `release_cron_lease_v1`, `try_acquire_cron_lock_v1`) so lease backend drift is surfaced as target DB contract failure instead of ambiguous operational `lock_held`.
 - `marketing_signals` absence alone is not a queue upload-health failure in queue-only environments; SQL packs must degrade with explicit residue status, not `DB_QUERY_FAILED`.
 
 ## API (`queue-stats`)

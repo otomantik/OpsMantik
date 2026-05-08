@@ -145,6 +145,11 @@ test('rpc contract list keeps queue/recovery canonical set', () => {
   assert.ok(src.includes("append_script_claim_transition_batch', args: 'uuid[], timestamp with time zone'"));
   assert.ok(src.includes("const OPTIONAL_LEGACY_RPCS = ["));
   assert.ok(src.includes("apply_marketing_signal_dispatch_batch_v1"));
+  assert.ok(src.includes("acquire_cron_lease_v1', args: 'text, text, integer'"));
+  assert.ok(src.includes("steal_expired_cron_lease_v1', args: 'text, text, integer, integer'"));
+  assert.ok(src.includes("heartbeat_cron_lease_v1', args: 'text, text, integer'"));
+  assert.ok(src.includes("release_cron_lease_v1', args: 'text, text'"));
+  assert.ok(src.includes("try_acquire_cron_lock_v1', args: 'text'"));
 });
 
 test('release evidence reports UNKNOWN_MODE deterministically', () => {
