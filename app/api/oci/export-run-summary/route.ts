@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (!validShape || !summary) {
       logError('SCRIPT_SUMMARY_INVALID', { error });
       return NextResponse.json(
-        { ok: false, error: 'SCRIPT_SUMMARY_INVALID', details: { message: error } },
+        { ok: false, export_run_integrity: 'EXPORT_RUN_INTEGRITY_RED', error: 'SCRIPT_SUMMARY_INVALID', details: { message: error } },
         { status: 400 }
       );
     }

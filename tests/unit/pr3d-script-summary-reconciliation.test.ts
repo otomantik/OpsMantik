@@ -45,6 +45,9 @@ test('PR-3D Script Summary: valid summary returns SCRIPT_SUMMARY_RECEIVED (with 
   assert.strictEqual(evaluation.reconciliation_status, 'INSUFFICIENT_EVIDENCE');
   assert.strictEqual(evaluation.script_summary_status, 'SCRIPT_SUMMARY_RECEIVED');
   assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_UNVERIFIED');
+  assert.ok(evaluation.missing_equations.includes('B'));
+  assert.ok(evaluation.missing_equations.includes('C'));
+  assert.strictEqual(evaluation.checked_equations.length, 0);
 });
 
 test('PR-3D Script Summary: missing optional export_run_id does not hard fail', () => {
@@ -73,6 +76,9 @@ test('PR-3D Script Summary: Eq B reconciles when claimed_count equals classified
   // ACK counts are missing, so it's INSUFFICIENT_EVIDENCE, but Eq B is reconciled
   assert.strictEqual(evaluation.ok, true);
   assert.ok(!evaluation.mismatch_reasons?.includes('SCRIPT_CLASSIFICATION_MISMATCH'));
+  assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_PARTIAL');
+  assert.ok(evaluation.checked_equations.includes('B'));
+  assert.ok(evaluation.missing_equations.includes('C'));
 });
 
 test('PR-3D Script Summary: Eq B mismatches when totals differ', () => {
@@ -87,7 +93,9 @@ test('PR-3D Script Summary: Eq B mismatches when totals differ', () => {
   const evaluation = evaluateReconciliation(payload);
   assert.strictEqual(evaluation.ok, false);
   assert.strictEqual(evaluation.reconciliation_status, 'MISMATCH');
+  assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_RED');
   assert.ok(evaluation.mismatch_reasons?.includes('SCRIPT_CLASSIFICATION_MISMATCH'));
+  assert.ok(evaluation.checked_equations.includes('B'));
 });
 
 test('PR-3D Script Summary: Eq C reconciles when upload_attempted equals ACK totals + ambiguous pending', () => {
@@ -105,7 +113,10 @@ test('PR-3D Script Summary: Eq C reconciles when upload_attempted equals ACK tot
   const evaluation = evaluateReconciliation(payload);
   assert.strictEqual(evaluation.ok, true);
   assert.strictEqual(evaluation.reconciliation_status, 'RECONCILED');
+  assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_PARTIAL');
   assert.ok(!evaluation.mismatch_reasons?.includes('ACK_TOTAL_MISMATCH'));
+  assert.ok(evaluation.checked_equations.includes('C'));
+  assert.ok(evaluation.checked_equations.includes('B'));
 });
 
 test('PR-3D Script Summary: Eq C returns INSUFFICIENT_EVIDENCE when ACK counts are missing', () => {
@@ -121,7 +132,10 @@ test('PR-3D Script Summary: Eq C returns INSUFFICIENT_EVIDENCE when ACK counts a
   const evaluation = evaluateReconciliation(payload);
   assert.strictEqual(evaluation.ok, true);
   assert.strictEqual(evaluation.reconciliation_status, 'INSUFFICIENT_EVIDENCE');
+  assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_PARTIAL');
   assert.ok(evaluation.mismatch_reasons?.includes('ACK_COUNTS_MISSING'));
+  assert.ok(evaluation.checked_equations.includes('B'));
+  assert.ok(evaluation.missing_equations.includes('C'));
 });
 
 test('PR-3D Script Summary: release evidence reports EXPORT_RUN_INTEGRITY_UNVERIFIED', () => {
@@ -136,5 +150,7 @@ test('PR-3D Script Summary: release evidence reports EXPORT_RUN_INTEGRITY_UNVERI
     ack_failed_count: 1,
   };
   const evaluation = evaluateReconciliation(payload);
-  assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_UNVERIFIED');
+  assert.strictEqual(evaluation.export_run_integrity, 'EXPORT_RUN_INTEGRITY_PARTIAL');
+  assert.ok(evaluation.checked_equations.includes('B'));
+  assert.ok(evaluation.checked_equations.includes('C'));
 });
