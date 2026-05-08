@@ -68,6 +68,12 @@ test('PR-9H.4F.1: dossier records runtime parity diagnosis + cache/allowlist fix
   assert.match(md, /allowlist_contract|applied_to_fetch/i);
 });
 
+test('PR-9H.4F.1-VERIFY: dossier records post-deploy HOSTED_ALLOWLIST_DRY_RUN_READY', () => {
+  const md = readFileSync(dossierPath, 'utf8');
+  assert.match(md, /PR-9H\.4F\.1-VERIFY/i);
+  assert.match(md, /HOSTED_ALLOWLIST_DRY_RUN_READY/);
+});
+
 test('PR-9H.4F: dossier documents no live export / no upload / no ACK in this PR scope', () => {
   const md = readFileSync(dossierPath, 'utf8');
   const idx = md.indexOf('## PR-9H.4F');

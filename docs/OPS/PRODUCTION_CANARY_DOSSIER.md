@@ -887,3 +887,55 @@ Re-run **`PR-9H.4F-VERIFY`** dry-run only. Until this revision is **live** on **
 ### Non-goals (PR-9H.4F.1)
 
 No **`--live`**, no **`markAsExported=true`**, no claim, no Google upload, no ACK, no production DB mutation, no localhost live canary.
+
+## PR-9H.4F.1-VERIFY — Post-deploy hosted allowlist parity (dry-run only)
+
+- **PR-9C** remains **invalid and separate**.
+- **Non-goals:** no **`--live`**, no **`markAsExported=true`**, no claim, no Google upload, no ACK / ACK_FAILED, no production DB mutation, no localhost, no secrets in logs.
+
+### Step 1 — Production evidence
+
+- `RELEASE_EVIDENCE_MODE=production`, `TARGET_DB_EVIDENCE_STRICT=1`, `npm run release:evidence:production` → **`overall_status=PASS`**, **`TARGET_DB_GREEN`**, **`blocking_failures=[]`**.
+
+### Step 2 — Hosted deploy revision
+
+| Check | Value |
+|---|---|
+| **hosted `git_sha`** (`GET /api/health`) | **`cbba830b738c5e14145b963f35636ba3000c5936`** |
+| **local `git rev-parse HEAD`** | **`cbba830b738c5e14145b963f35636ba3000c5936`** |
+| **match?** | **yes** |
+
+### Step 3 — Hosted dry-run only (`oci-canary-live-export.mjs --dry-run`)
+
+**Environment:** `APP_BASE_URL=https://console.opsmantik.com`, `OPSMANTIK_ALLOWLIST_IDS=0b298a99-673a-4cd1-a2c1-94a3b192e47c`, `CANARY_EXPECTED_QUEUE_ID` / `CANARY_SITE_ID` / `CANARY_MAX_BATCH_SIZE=1` as specified; remaining canary metadata from operator `.env.local`.
+
+```json
+{
+  "ok": true,
+  "code": "CANARY_DRY_RUN_OK",
+  "markAsExported": false,
+  "claim": "NOT_EXECUTED",
+  "preview_queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "preview_item_count": 1,
+  "conversion_name": "OpsMantik_Won",
+  "preview_allowlist_contract": {
+    "parsed_allowlist_count": 1,
+    "allowlist_query_seen": true,
+    "allowlist_header_seen": true,
+    "applied_to_fetch": true,
+    "expected_queue_id_suffix": "b192e47c",
+    "first_fetched_queue_id_suffix": "b192e47c"
+  }
+}
+```
+
+- **`PREVIEW_UNEXPECTED_SINGLETON_ROW`:** not observed.
+- **Broad row / multi-claim:** not in scope of dry-run (single allowlisted page, `pages_followed=1`).
+
+### Final decision (PR-9H.4F.1-VERIFY)
+
+- **`HOSTED_ALLOWLIST_DRY_RUN_READY`** — hosted export serves **PR-9H.4F.1** allowlist diagnostics and **`applied_to_fetch=true`**; Muratcan **`CANARY_*`** + allowlist dry-run gate is **green** for **`console.opsmantik.com`**.
+
+### PR-9H.4G gate (live allowlisted upload)
+
+- **Unblocked on hosted parity only:** operator may proceed to **PR-9H.4G** live path **only** under separate **`CANARY_UPLOAD_APPROVAL`**, **`OPSMANTIK_ALLOWLIST_IDS`**, hosted **`APP_BASE_URL`** (never localhost for **`--live`**), and normal Apps Script / ACK discipline — **not executed in this verify step**.
