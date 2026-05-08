@@ -239,6 +239,33 @@ Every production rollback/freeze drill record must include:
 - verification command output reference,
 - post-rollback evidence result.
 
+### 3.11 Production Canary Preview Gate (PR-9)
+
+- A zero-item preview (`markAsExported=false`) is a hard blocker for first live canary export.
+- PR-9C may proceed only after a site-scoped preview demonstrates `item_count > 0` with `markAsExported=false`.
+- First canary should prefer positive exportable rows (`OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`) unless `OpsMantik_Junk_Exclusion` handling is explicitly verified for the selected script/account.
+- For first canary stage-gate, treat the current export path as effectively seal/won-gated until `OpsMantik_Offered` and `OpsMantik_Contacted` are explicitly proven buildable in preview.
+- `OpsMantik_Junk_Exclusion` is not an acceptable first-canary payload unless buildable preview evidence is captured and operator-approved.
+- Before PR-9C, preview output must expose skip/drop diagnostics (`fetched_count`, `buildable_count`, `returned_count`, `skipped_count`, `skip_reason_counts`) so row loss can be classified without mutating production.
+- During PR-9B diagnostics, never switch to `markAsExported=true`, never claim rows, and never perform live upload attempts.
+- PR-9E hardening: canary live export must run through guarded canary wrapper (`scripts/db/oci-canary-live-export.mjs`) and must fail-closed before any live claim when required metadata is missing.
+- PR-9H.4A: wrapper pre-live gate mirrors `scripts/db/pr9h-preview.mjs` / `scripts/db/lib/oci-canary-preview-walk.mjs`: bounded **`next_cursor`** preview (`markAsExported=false`, exact `CANARY_EXPECTED_QUEUE_ID`) before **`--live`**. Use **`--dry-run`** for non-mutating parity proof (`markAsExported` remains false).
+- PR-9H.4D: canary live claim requires explicit single-row allowlist in canary mode (`x-opsmantik-allowlist-ids` / `allowlistIds`), and the allowlist id must equal `CANARY_EXPECTED_QUEUE_ID`.
+- PR-9H.4D: for canary mode, server fetch must be row-scoped by allowlist id (`offline_conversion_queue.id in allowlist`) before claim.
+- PR-9H.4D: operator-driven Google sync must require `CANARY_UPLOAD_APPROVAL=I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD` and must not continue to broad pagination after the allowlisted row is processed.
+- Required canary metadata for live call: `CHANGE_TICKET`, `OPERATOR_ID`, `CANARY_APPROVAL=I_APPROVE_PRODUCTION_CANARY`, `CANARY_SITE_ID`, `CANARY_MAX_BATCH_SIZE=1`, `CANARY_EXPECTED_QUEUE_ID`.
+- If `stuck_processing` increased after preflight baseline, live canary additionally requires `CANARY_REAPPROVAL=I_REAPPROVE_WITH_STUCK_PROCESSING_INCREASE`.
+- Canary live call uses opt-in headers (`x-opsmantik-canary-*`) so non-canary exports remain unaffected.
+- Canary live claim must fail-closed when claimed queue id is not exactly `CANARY_EXPECTED_QUEUE_ID`.
+
+### PR-9H.4F — Hosted parity, localhost ban, recovery
+
+- **No localhost for production canary claims:** `oci-canary-live-export.mjs --live` **must not** use `APP_BASE_URL=http://localhost:*` — the wrapper fails closed with `LOCALHOST_LIVE_CANARY_FORBIDDEN`.
+- **Hosted `APP_BASE_URL` for live:** set `APP_BASE_URL=https://console.opsmantik.com` for any operator **mutating** canary export (`--live`); `--dry-run` may still be used against local dev when debugging route code only.
+- **Hosted allowlist dry-run gate:** before any future **live** allowlisted upload (PR-9H.4G), run **`--dry-run`** with **`OPSMANTIK_ALLOWLIST_IDS`**, allowlist header/query, and **`CANARY_*` metadata** against the **hosted** origin. If the preview gates emit **`PREVIEW_UNEXPECTED_SINGLETON_ROW`**, classify **`HOSTED_ALLOWLIST_PARITY_FAILED`** and **do not** proceed to live claim — deploy the allowlist journal filter revision first.
+- **Claimed-not-uploaded recovery:** use **`scripts/db/pr9h4c-recover-claimed-not-uploaded.mjs`** only with **`CANARY_INCIDENT_RECOVERY_APPROVAL=I_APPROVE_ROW_SCOPED_RECOVERY_AFTER_CLAIMED_NOT_UPLOADED`**, fixed Muratcan **`RECOVERY_TARGET_*`**. **`RECOVERY_MIN_AGE_MINUTES`** must be a **positive** integer (RPC stale gate uses **at least 1 minute**); `0` falls back to the script default (**15**). Use **`1`** when the row is stale enough for RPC but younger than 15 minutes.
+- **PR-9H.4F non-goals:** no `markAsExported=true` outside the guarded wrapper, no broad recovery, no manual `COMPLETED`, no queue delete, no fake ACK — PR-9C remains invalid and separate.
+
 
 ## 4. Conversion Math SSOT and Value Drift
 

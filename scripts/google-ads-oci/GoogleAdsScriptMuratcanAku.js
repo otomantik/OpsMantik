@@ -113,6 +113,12 @@ function getScriptConfig() {
     API_KEY: getFirst(['OPSMANTIK_API_KEY', 'OCI_API_KEY'], '') || (isLocal ? 'mock-key' : ''),
     BASE_URL: getFirst(['OPSMANTIK_BASE_URL', 'OCI_BASE_URL'], '') || 'https://console.opsmantik.com',
     ALLOWLIST_IDS: getFirst(['OPSMANTIK_ALLOWLIST_IDS'], ''),
+    CANARY_EXPECTED_QUEUE_ID: getFirst(['CANARY_EXPECTED_QUEUE_ID'], ''),
+    CANARY_UPLOAD_APPROVAL: getFirst(['CANARY_UPLOAD_APPROVAL'], ''),
+    CANARY_EXPORT_RUN_ID: getFirst(['CANARY_EXPORT_RUN_ID'], ''),
+    CHANGE_TICKET: getFirst(['CHANGE_TICKET'], ''),
+    OPERATOR_ID: getFirst(['OPERATOR_ID'], ''),
+    CANARY_SITE_ID: getFirst(['CANARY_SITE_ID'], ''),
     LIMIT: limit,
     HTTP: Object.freeze({
       MAX_RETRIES: 5,
@@ -289,12 +295,27 @@ MuratcanClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
     '&limit=' +
     encodeURIComponent(String(CONFIG.LIMIT));
   if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
+  const allowlist = parseAllowlistIds(CONFIG.ALLOWLIST_IDS);
+  if (allowlist && allowlist.size > 0) {
+    const csv = Array.from(allowlist).join(',');
+    url += '&allowlistIds=' + encodeURIComponent(csv);
+    url += '&allowlist_ids=' + encodeURIComponent(csv);
+  }
 
   const response = this._fetchWithSessionRetry(url, {
     method: 'get',
     headers: {
       Authorization: 'Bearer ' + this.sessionToken,
       Accept: 'application/json',
+      'x-opsmantik-canary-mode': allowlist && allowlist.size > 0 ? 'true' : 'false',
+      'x-opsmantik-allowlist-ids': allowlist && allowlist.size > 0 ? Array.from(allowlist).join(',') : '',
+      'x-opsmantik-canary-expected-queue-id': CONFIG.CANARY_EXPECTED_QUEUE_ID || '',
+      'x-opsmantik-change-ticket': CONFIG.CHANGE_TICKET || '',
+      'x-opsmantik-operator-id': CONFIG.OPERATOR_ID || '',
+      'x-opsmantik-canary-site-id': CONFIG.CANARY_SITE_ID || siteId,
+      'x-opsmantik-canary-max-batch-size': allowlist && allowlist.size > 0 ? '1' : String(CONFIG.LIMIT),
+      'x-opsmantik-canary-approval': allowlist && allowlist.size > 0 ? 'I_APPROVE_PRODUCTION_CANARY' : '',
+      'x-opsmantik-canary-risk-ack': allowlist && allowlist.size > 0 ? 'I_ACKNOWLEDGE_CANARY_SITE_RISK' : '',
     },
   });
 
@@ -325,6 +346,7 @@ MuratcanClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
     resolvedSiteUuid: payload.siteId || null,
     markAsExported: typeof payload.markAsExported === 'boolean' ? payload.markAsExported : doMark,
     warnings: payload.warnings || null,
+    exportRunId: payload.export_run_id || null,
   };
 };
 
@@ -389,6 +411,29 @@ MuratcanClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, 
     },
     payload: payload,
   });
+};
+
+MuratcanClient.prototype.sendSummary = function (summaryPayload) {
+  try {
+    const url = this.baseUrl + '/api/oci/export-run-summary';
+    const payloadStr = JSON.stringify(summaryPayload);
+    const headers = {
+      Authorization: 'Bearer ' + this.sessionToken,
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey) {
+      headers['x-oci-signature'] = this._computeHexSignature(payloadStr, this.apiKey);
+    }
+    const response = this._fetchWithSessionRetry(url, {
+      method: 'post',
+      headers: headers,
+      payload: payloadStr,
+    });
+    return JSON.parse(response.getContentText() || '{}');
+  } catch (err) {
+    Telemetry.warn('sendSummary failed (optional)', err);
+    return { ok: false };
+  }
 };
 
 function processPageUpload(rows, opts) {
@@ -588,6 +633,15 @@ function mainSyncMuratcan() {
   }
 
   const allowlist = parseAllowlistIds(CONFIG.ALLOWLIST_IDS);
+  if (!allowlist || allowlist.size !== 1) {
+    throw new Error('ALLOWLIST_REQUIRED_EXACTLY_ONE_ID');
+  }
+  if (!CONFIG.CANARY_EXPECTED_QUEUE_ID || !allowlist.has(CONFIG.CANARY_EXPECTED_QUEUE_ID)) {
+    throw new Error('ALLOWLIST_MUST_MATCH_CANARY_EXPECTED_QUEUE_ID');
+  }
+  if (CONFIG.CANARY_UPLOAD_APPROVAL !== 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD') {
+    throw new Error('CANARY_UPLOAD_APPROVAL_MISSING');
+  }
   if (allowlist) {
     Telemetry.warn('ALLOWLIST aktif', { count: allowlist.size });
   }
@@ -600,16 +654,38 @@ function mainSyncMuratcan() {
     let totalUploaded = 0;
     let totalAck = 0;
     let pageNo = 0;
+    let exportRunId = CONFIG.CANARY_EXPORT_RUN_ID || null;
+    let summaryStats = {
+      fetched_count: 0,
+      claimed_count: 0,
+      classified_uploadable_count: 0,
+      classified_skipped_count: 0,
+      classified_failed_count: 0,
+      upload_attempted_count: 0,
+      upload_success_count: 0,
+      upload_failed_count: 0,
+      provider_ambiguous_pending_count: 0,
+      ack_success_count: 0,
+      ack_failed_count: 0,
+      ack_skipped_count: 0,
+    };
+    let allowlistProcessed = false;
 
     while (true) {
       pageNo++;
       const page = client.fetchPage(CONFIG.SITE_ID, cursor, true);
       let rows = page.items || [];
+      if (page.exportRunId && !exportRunId) exportRunId = page.exportRunId;
+      summaryStats.fetched_count += rows.length;
+      summaryStats.claimed_count += rows.length;
 
       if (allowlist && rows.length > 0) {
         rows = rows.filter(function (r) {
           return r && r.id && allowlist.has(String(r.id));
         });
+      }
+      if (rows.some(function (r) { return !r || !r.id || !allowlist.has(String(r.id)); })) {
+        throw new Error('ALLOWLIST_PAYLOAD_MISMATCH');
       }
 
       if (rows.length > 0) {
@@ -621,11 +697,22 @@ function mainSyncMuratcan() {
           });
 
           if (stats.uploadFailed) {
+            summaryStats.classified_uploadable_count += stats.classified_uploadable_count;
+            summaryStats.classified_skipped_count += stats.classified_skipped_count;
+            summaryStats.classified_failed_count += stats.classified_failed_count;
+            summaryStats.upload_attempted_count += stats.classified_uploadable_count;
+            summaryStats.upload_failed_count += stats.classified_uploadable_count;
+            summaryStats.ack_failed_count += stats.classified_uploadable_count;
             Telemetry.warn('upload.apply hata — ack-failed; ACK skip', { page: pageNo });
             cursor = page.nextCursor;
             if (!(page.hasNextPage && cursor)) break;
             continue;
           }
+          summaryStats.classified_uploadable_count += stats.classified_uploadable_count;
+          summaryStats.classified_skipped_count += stats.classified_skipped_count;
+          summaryStats.classified_failed_count += stats.classified_failed_count;
+          summaryStats.upload_attempted_count += stats.classified_uploadable_count;
+          summaryStats.upload_success_count += stats.uploaded;
 
           if (stats.successIds.length || stats.skippedIds.length || stats.failedRows.length) {
             const ackRes = client.sendAck(
@@ -635,6 +722,9 @@ function mainSyncMuratcan() {
               stats.failedRows
             );
             if (ackRes && typeof ackRes.updated === 'number') totalAck += ackRes.updated;
+            summaryStats.ack_success_count += stats.successIds.length;
+            summaryStats.ack_skipped_count += stats.skippedIds.length;
+            summaryStats.ack_failed_count += stats.failedRows.length;
           }
 
           totalUploaded += stats.uploaded;
@@ -662,16 +752,46 @@ function mainSyncMuratcan() {
               String(err && err.message ? err.message : err).slice(0, 500),
               'TRANSIENT'
             );
+            summaryStats.ack_failed_count += ids.length;
           }
           throw err;
         }
+        allowlistProcessed = true;
       }
 
       cursor = page.nextCursor;
+      if (allowlistProcessed) break;
       if (!(page.hasNextPage && cursor)) break;
     }
 
     Telemetry.info('Muratcan Akü SYNC tamamlandı', { totalUploaded: totalUploaded, pages: pageNo });
+    try {
+      var summaryPayload = {
+        export_run_id: exportRunId,
+        summary_version: '1.0',
+        generated_at: new Date().toISOString(),
+        fetched_count: summaryStats.fetched_count,
+        claimed_count: summaryStats.claimed_count,
+        classified_uploadable_count: summaryStats.classified_uploadable_count,
+        classified_skipped_count: summaryStats.classified_skipped_count,
+        classified_failed_count: summaryStats.classified_failed_count,
+        upload_attempted_count: summaryStats.upload_attempted_count,
+        upload_success_count: summaryStats.upload_success_count,
+        upload_failed_count: summaryStats.upload_failed_count,
+        provider_ambiguous_pending_count: summaryStats.provider_ambiguous_pending_count,
+        ack_success_count: summaryStats.ack_success_count,
+        ack_failed_count: summaryStats.ack_failed_count,
+        ack_skipped_count: summaryStats.ack_skipped_count,
+      };
+      var summaryRes = client.sendSummary(summaryPayload);
+      Telemetry.info('Sent run summary', {
+        ok: summaryRes.ok,
+        status: summaryRes.script_summary_status,
+        mismatch_reasons: summaryRes.mismatch_reasons,
+      });
+    } catch (err) {
+      Telemetry.warn('Failed to send run summary (optional feature)', err);
+    }
   } catch (err) {
     Telemetry.error('Muratcan Akü SYNC durdu', err);
     throw err;

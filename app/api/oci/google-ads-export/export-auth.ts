@@ -34,7 +34,33 @@ export type ExportAuthContext = {
   publicKeyB64: string | undefined;
   pageLimit: number;
   exportRunId: string;
+  canaryMode: boolean;
+  canaryExpectedQueueId: string | null;
+  canaryAllowlistIds: string[];
+  /** PR-9H.4F.1: whether raw request carried allowlist in query / header (preview diagnostics only). */
+  canaryAllowlistQuerySeen: boolean;
+  canaryAllowlistHeaderSeen: boolean;
 };
+
+function readCanaryHeader(req: NextRequest, name: string): string {
+  return (req.headers.get(name) || '').trim();
+}
+
+function parseBooleanFlag(value: string | null): boolean {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function parseAllowlistIds(value: string): string[] {
+  if (!value.trim()) return [];
+  const seen = new Set<string>();
+  for (const part of value.split(',')) {
+    const id = part.trim();
+    if (!id) continue;
+    seen.add(id);
+  }
+  return [...seen];
+}
 
 export async function authorizeExportRequest(req: NextRequest): Promise<ExportAuthContext> {
   const bearer = (req.headers.get('authorization') || '').trim();
@@ -64,6 +90,23 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
   const cursorStr = searchParams.get('cursor');
   const requestedLimit = Number(searchParams.get('limit') ?? 250);
   const pageLimit = Math.min(1000, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 250));
+  const markAsExported = searchParams.get('markAsExported') === 'true';
+  const canaryMode =
+    parseBooleanFlag(searchParams.get('canaryMode')) ||
+    parseBooleanFlag(readCanaryHeader(req, 'x-opsmantik-canary-mode'));
+  const canaryExpectedQueueIdHeader = readCanaryHeader(req, 'x-opsmantik-canary-expected-queue-id');
+  const canaryExpectedQueueIdQuery = String(searchParams.get('canaryExpectedQueueId') || '').trim();
+  const canaryExpectedQueueId = canaryExpectedQueueIdHeader || canaryExpectedQueueIdQuery || null;
+  const canaryAllowlistRawHeader = readCanaryHeader(req, 'x-opsmantik-allowlist-ids');
+  const canaryAllowlistRawQuery = String(searchParams.get('allowlistIds') || '').trim();
+  /** Alternate query keys — some proxies normalize/drop camelCase; Apps Script may emit snake_case. */
+  const canaryAllowlistRawQuerySnake = String(searchParams.get('allowlist_ids') || '').trim();
+  const canaryAllowlistQuerySeen =
+    canaryAllowlistRawQuery.length > 0 || canaryAllowlistRawQuerySnake.length > 0;
+  const canaryAllowlistHeaderSeen = canaryAllowlistRawHeader.length > 0;
+  const canaryAllowlistIds = parseAllowlistIds(
+    [canaryAllowlistRawHeader, canaryAllowlistRawQuery, canaryAllowlistRawQuerySnake].filter(Boolean).join(',')
+  );
   if (cursorStr) {
     try {
       const decoded = JSON.parse(Buffer.from(cursorStr, 'base64').toString('utf8'));
@@ -152,10 +195,63 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
 
   const exportRunId = `oci_run_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
+  if (canaryMode && markAsExported) {
+    const changeTicket = readCanaryHeader(req, 'x-opsmantik-change-ticket');
+    const operatorId = readCanaryHeader(req, 'x-opsmantik-operator-id');
+    const canaryApproval = readCanaryHeader(req, 'x-opsmantik-canary-approval');
+    const canarySiteId = readCanaryHeader(req, 'x-opsmantik-canary-site-id');
+    const canaryMaxBatchSize = readCanaryHeader(req, 'x-opsmantik-canary-max-batch-size');
+    const missing: string[] = [];
+    if (!changeTicket) missing.push('x-opsmantik-change-ticket');
+    if (!operatorId) missing.push('x-opsmantik-operator-id');
+    if (!canaryApproval) missing.push('x-opsmantik-canary-approval');
+    if (!canarySiteId) missing.push('x-opsmantik-canary-site-id');
+    if (!canaryMaxBatchSize) missing.push('x-opsmantik-canary-max-batch-size');
+    if (!canaryExpectedQueueId) missing.push('x-opsmantik-canary-expected-queue-id');
+    if (canaryAllowlistIds.length === 0) missing.push('x-opsmantik-allowlist-ids');
+    if (missing.length > 0) {
+      throw new ExportHttpError(409, {
+        error: 'Canary export blocked: missing required canary metadata',
+        code: 'CANARY_EXPORT_BLOCKED',
+        missing,
+      });
+    }
+    if (canaryApproval !== 'I_APPROVE_PRODUCTION_CANARY') {
+      throw new ExportHttpError(409, {
+        error: 'Canary export blocked: invalid canary approval token',
+        code: 'CANARY_EXPORT_BLOCKED',
+      });
+    }
+    if (canarySiteId !== site.id && canarySiteId !== site.public_id) {
+      throw new ExportHttpError(409, {
+        error: 'Canary export blocked: canary site mismatch',
+        code: 'CANARY_EXPORT_BLOCKED',
+      });
+    }
+    if (canaryMaxBatchSize !== '1' || pageLimit !== 1) {
+      throw new ExportHttpError(409, {
+        error: 'Canary export blocked: canary max batch size must be 1',
+        code: 'CANARY_EXPORT_BLOCKED',
+      });
+    }
+    if (canaryAllowlistIds.length !== 1) {
+      throw new ExportHttpError(409, {
+        error: 'Canary export blocked: allowlist must contain exactly one queue id',
+        code: 'CANARY_EXPORT_BLOCKED',
+      });
+    }
+    if (canaryAllowlistIds[0] !== canaryExpectedQueueId) {
+      throw new ExportHttpError(409, {
+        error: 'Canary export blocked: allowlist id must equal expected queue id',
+        code: 'CANARY_EXPORT_BLOCKED',
+      });
+    }
+  }
+
   return {
     site,
     siteUuid: site.id,
-    markAsExported: searchParams.get('markAsExported') === 'true',
+    markAsExported,
     providerFilter: searchParams.get('providerKey') ?? 'google_ads',
     isGhostCursor,
     exportConfig: parseExportConfig(site.oci_config),
@@ -165,5 +261,10 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     publicKeyB64: process.env.VOID_PUBLIC_KEY,
     pageLimit,
     exportRunId,
+    canaryMode,
+    canaryExpectedQueueId,
+    canaryAllowlistIds,
+    canaryAllowlistQuerySeen,
+    canaryAllowlistHeaderSeen,
   };
 }

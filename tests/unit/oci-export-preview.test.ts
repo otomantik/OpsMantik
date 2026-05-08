@@ -22,6 +22,9 @@ test('google-ads-export route: markAsExported false returns structured preview',
   assert.ok(src.includes('items: built.combined'), 'preview has items');
   assert.ok(src.includes('counts:'), 'preview has counts');
   assert.ok(src.includes('warnings:'), 'preview has warnings');
+  assert.ok(src.includes('if (!auth.markAsExported)'), 'preview diagnostics must only be emitted for read-only preview mode');
+  assert.ok(src.includes('preview_diagnostics'), 'preview response must expose diagnostics payload');
+  assert.ok(src.includes('fetched_count') && src.includes('skip_reason_counts'), 'preview diagnostics should include stage and reason counters');
 });
 
 test('google-ads-export route: claim uses RPC not direct update', () => {
@@ -31,6 +34,25 @@ test('google-ads-export route: claim uses RPC not direct update', () => {
   const markPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts');
   const markSrc = readFileSync(markPath, 'utf8');
   assert.ok(markSrc.includes('append_script_claim_transition_batch'), 'uses actor-owned batch claim RPC');
+  assert.ok(markSrc.includes('if (!ctx.markAsExported) return;'), 'preview mode must not claim queue rows');
+});
+
+test('google-ads-export: skip reasons are surfaced for preview investigations', () => {
+  const routePath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'route.ts');
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('call_not_sendable'), 'preview diagnostics should count call sendability drops');
+  assert.ok(src.includes('invalid_conversion_time'), 'preview diagnostics should count invalid time drops');
+  assert.ok(src.includes('invalid_value'), 'preview diagnostics should count invalid value drops');
+  assert.ok(src.includes('suppressed_by_higher_gear'), 'preview diagnostics should count higher-gear suppressions');
+});
+
+test('junk exclusion stays canonical and intentionally export-path visible', () => {
+  const namesPath = join(process.cwd(), 'lib', 'oci', 'conversion-names.ts');
+  const queueBuildPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-queue.ts');
+  const namesSrc = readFileSync(namesPath, 'utf8');
+  const queueBuildSrc = readFileSync(queueBuildPath, 'utf8');
+  assert.ok(namesSrc.includes("junk: 'OpsMantik_Junk_Exclusion'"), 'junk exclusion must remain in canonical conversion names');
+  assert.ok(queueBuildSrc.includes('conversionName =') && queueBuildSrc.includes('row.action'), 'build path should carry queue action as conversionName');
 });
 
 test('google-ads-export: fetch has no marketing_signals batch', () => {
@@ -65,6 +87,16 @@ test('google-ads-export route: partial queue claims fail closed before cursor ad
   assert.ok(src.includes("code: 'QUEUE_CLAIM_MISMATCH'"), 'queue claim mismatches must fail closed');
   const markSrc = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(markSrc.includes('append_script_transition_batch'), 'script terminalization must use DB-owned atomic batch RPC');
+});
+
+test('google-ads-export auth: canary mode enforces metadata before live claim', () => {
+  const authPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-auth.ts');
+  const src = readFileSync(authPath, 'utf8');
+  assert.ok(src.includes('x-opsmantik-change-ticket'), 'canary mode must require change ticket header');
+  assert.ok(src.includes('x-opsmantik-operator-id'), 'canary mode must require operator header');
+  assert.ok(src.includes('x-opsmantik-canary-approval'), 'canary mode must require canary approval header');
+  assert.ok(src.includes('x-opsmantik-canary-expected-queue-id'), 'canary mode must carry expected queue id');
+  assert.ok(src.includes('CANARY_EXPORT_BLOCKED'), 'missing canary metadata must block live claim');
 });
 
 test('google-ads-export: queue export uses collision-resistant orderId / external_id', () => {

@@ -10,6 +10,13 @@ import { buildExportResponseAsync } from './export-response';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+/** Non-sensitive tail for diagnostics (PR-9H.4F.1 hosted parity). */
+function uuidTail(id: string | null | undefined): string | null {
+  if (!id) return null;
+  const compact = String(id).replace(/-/g, '');
+  return compact.length >= 8 ? compact.slice(-8) : compact || null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await authorizeExportRequest(req);
@@ -30,6 +37,14 @@ export async function GET(req: NextRequest) {
     });
 
     const built = await buildExportItems(auth, fetched);
+    const skipReasonCounts = {
+      call_not_sendable: built.blockedQueueIds.length,
+      export_gate_call_id_required: built.blockedExportGateIds.length,
+      invalid_conversion_time: built.blockedQueueTimeIds.length,
+      invalid_value: built.blockedValueZeroIds.length + built.blockedExpiredIds.length,
+      suppressed_by_higher_gear: built.suppressedQueueIds.length,
+    };
+    const skippedCount = Object.values(skipReasonCounts).reduce((acc, n) => acc + n, 0);
     
     try {
       await markExportProcessing(auth, built);
@@ -74,6 +89,41 @@ export async function GET(req: NextRequest) {
       markAsExported: auth.markAsExported,
       export_run_id: auth.exportRunId,
     };
+    if (!auth.markAsExported) {
+      Object.assign(responseData, {
+        preview_diagnostics: {
+          fetched_count: fetched.rawList.length,
+          buildable_count: built.keptConversions.length + built.suppressedQueueIds.length,
+          returned_count: built.combined.length,
+          skipped_count: skippedCount,
+          skip_reason_counts: skipReasonCounts,
+          provider_key_filter: auth.providerFilter,
+          site_id_filter_suffix: uuidTail(auth.siteUuid),
+          status_filter: ['QUEUED', 'RETRY'],
+          cursor_received: Boolean(auth.queueCursorUpdatedAt && auth.queueCursorId),
+          next_cursor_present: Boolean(built.nextCursor),
+          allowlist_contract: {
+            parsed_allowlist_count: auth.canaryAllowlistIds.length,
+            allowlist_query_seen: auth.canaryAllowlistQuerySeen,
+            allowlist_header_seen: auth.canaryAllowlistHeaderSeen,
+            applied_to_fetch: auth.canaryMode && auth.canaryAllowlistIds.length > 0,
+            expected_queue_id_suffix: uuidTail(auth.canaryExpectedQueueId),
+            first_fetched_queue_id_suffix:
+              fetched.rawList[0]?.id != null ? uuidTail(String(fetched.rawList[0].id)) : null,
+          },
+        },
+      });
+    } else {
+      Object.assign(responseData, {
+        live_diagnostics: {
+          fetched_count: fetched.rawList.length,
+          claimed_count: built.keptConversions.length,
+          returned_item_count: built.combined.length,
+          skipped_count: skippedCount,
+          skip_reason_counts: skipReasonCounts,
+        },
+      });
+    }
 
     if (built.combined.length === 0) {
       logInfo('EXPORT_RUN_NO_ITEMS', {
@@ -89,12 +139,19 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return await buildExportResponseAsync(auth, responseData);
+    const res = await buildExportResponseAsync(auth, responseData);
+    res.headers.set('Cache-Control', 'private, no-store, must-revalidate');
+    res.headers.set('CDN-Cache-Control', 'no-store');
+    res.headers.set('Vary', 'x-api-key, Authorization, x-opsmantik-allowlist-ids');
+    return res;
   } catch (e: unknown) {
     if (e instanceof ExportHttpError) {
       return NextResponse.json(e.body, { status: e.status });
     }
     if (e instanceof Error) {
+      if (e.message === 'CANARY_EXPORT_BLOCKED') {
+        return NextResponse.json({ error: 'Canary export blocked', code: 'CANARY_EXPORT_BLOCKED' }, { status: 409 });
+      }
       if (e.message === 'QUEUE_CLAIM_MISMATCH') {
         return NextResponse.json({ error: 'Queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
       }

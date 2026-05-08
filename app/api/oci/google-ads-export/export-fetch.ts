@@ -24,6 +24,9 @@ export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedEx
     .eq('site_id', ctx.siteUuid)
     .in('status', ['QUEUED', 'RETRY'])
     .eq('provider_key', ctx.providerFilter);
+  if (ctx.canaryMode && ctx.canaryAllowlistIds.length > 0) {
+    queueQuery = queueQuery.in('id', ctx.canaryAllowlistIds);
+  }
   if (ctx.queueCursorUpdatedAt && ctx.queueCursorId) {
     queueQuery = queueQuery.or(`updated_at.gt.${ctx.queueCursorUpdatedAt},and(updated_at.eq.${ctx.queueCursorUpdatedAt},id.gt.${ctx.queueCursorId})`);
   }

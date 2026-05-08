@@ -40,6 +40,18 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
   const now = new Date().toISOString();
   const idsToMarkProcessing = built.keptConversions.map((item) => item.id.replace('seal_', ''));
 
+  if (ctx.canaryMode) {
+    if (idsToMarkProcessing.length !== 1) {
+      throw new Error('CANARY_EXPORT_BLOCKED');
+    }
+    if (!ctx.canaryExpectedQueueId || idsToMarkProcessing[0] !== ctx.canaryExpectedQueueId) {
+      throw new Error('CANARY_EXPORT_BLOCKED');
+    }
+    if (ctx.canaryAllowlistIds.length !== 1 || ctx.canaryAllowlistIds[0] !== idsToMarkProcessing[0]) {
+      throw new Error('CANARY_EXPORT_BLOCKED');
+    }
+  }
+
   if (idsToMarkProcessing.length > 0) {
     const { data: claimedCount, error: rpcError } = await adminClient.rpc(
       'append_script_claim_transition_batch',
