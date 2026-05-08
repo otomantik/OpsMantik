@@ -47,11 +47,11 @@ test('recover-processing: without cron auth returns 403', async () => {
   assert.equal(res.status, 403);
 });
 
-test('recover-stuck-signals route: requireCronAuth and calls recover_stuck_marketing_signals RPC', () => {
+test('recover-stuck-signals route: requireCronAuth and calls queue recovery RPC', () => {
   const routePath = join(process.cwd(), 'app', 'api', 'cron', 'oci', 'recover-stuck-signals', 'route.ts');
   const src = readFileSync(routePath, 'utf8');
   assert.ok(src.includes('requireCronAuth'), 'cron auth');
-  assert.ok(src.includes('recover_stuck_marketing_signals'), 'calls recovery RPC');
+  assert.ok(src.includes('recover_stuck_offline_conversion_jobs'), 'calls queue recovery RPC');
 });
 
 test('recover-stuck-signals: without cron auth returns 403', async () => {

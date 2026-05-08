@@ -74,6 +74,7 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 | Identity/hash integrity RED | STOP — G4 / duplicate economics |
 | `export_closure_gap_audit` RED (stale active / malformed `external_id`) | STOP — journal closure broken |
 | `export_closure_stage_journal_gap` RED (heuristic) | Drill-down — `calls.status` vs journal action mismatch (may false-positive if status lags outbox) |
+| `wonMissingPipeline > 0` in rollout readiness | STOP — won/sealed call missing queue journal coverage; run site-scoped dry-run backfill first |
 
 ## L × W cross-cut matrix (informative)
 
@@ -131,6 +132,8 @@ Implementation: [`lib/cron/process-offline-conversions.ts`](../../lib/cron/proce
 - **Gap / staleness / shape:** [`scripts/sql/export_closure_gap_audit.sql`](../../scripts/sql/export_closure_gap_audit.sql).
 - **Stage ↔ journal (best-effort, 30d lookback):** [`scripts/sql/export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql) — G1 lead with `calls.status` in the four-tuple vs matching `offline_conversion_queue.action` (false positives possible when status lags outbox).
 - Operational queue health: [`scripts/sql/queue_health.sql`](../../scripts/sql/queue_health.sql).
+- Queue-only compatibility rule: export-closure health packs must not depend on `public.marketing_signals` existence and must never crash when legacy audit residue tables are absent.
+- Orphan won repair rule: discovery is read-only first (`scripts/sql/orphan_won_backfill.sql`), repair is site-scoped only and must flow through canonical enqueue (`enqueueSealConversion`), not ad-hoc SQL inserts/updates.
 
 ## L4 evidence pin (D11)
 

@@ -19,6 +19,10 @@ Queue health scores measure **export pipeline reliability** (queue, retry, DLQ, 
 - **STATIC** `release:evidence` proves SQL pack **shape** and repo tests — **not** live row counts.
 - **TARGET_DB** requires `verify-db` / DB-connected evidence modes — never claim prod queue GREEN from STATIC-only artifacts.
 - Release markdown includes `db_evidence_status`, `static_queue_contract_green`, and queue-health kanıt notes from [collect-gate-evidence.mjs](../../scripts/release/collect-gate-evidence.mjs).
+- PR-6 adds target DB contract status vocabulary: `TARGET_DB_NOT_CHECKED`, `TARGET_DB_UNVERIFIED`, `TARGET_DB_PARTIAL`, `TARGET_DB_RED`, `TARGET_DB_GREEN`.
+- PR-7 extends queue-only vocabulary for optional legacy residue: `LEGACY_RESIDUE_ABSENT`, `AUDIT_TABLE_NOT_PRESENT`, `OPTIONAL_LEGACY_CHECK_SKIPPED`.
+- In strict target mode, `DB_ENV_MISSING`, `DB_RPC_MISSING`, `DB_RPC_SIGNATURE_DRIFT`, `DB_UNSAFE_GRANT`, and smoke failures are blocking.
+- `marketing_signals` absence alone is not a queue upload-health failure in queue-only environments; SQL packs must degrade with explicit residue status, not `DB_QUERY_FAILED`.
 
 ## API (`queue-stats`)
 
@@ -62,6 +66,7 @@ PR-4D runtime adoption is now guarded by `OCI_PROCESSING_RECOVERY_CLASSIFIER_MOD
 Rollback path is trivial: set `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE=off`.
 
 PR-4D.1 adds additive row-scoped RPC support (`recover_safe_processing_queue_rows_v1`). When present, enforce/strict modes can recover only classifier-approved `SAFE_TO_RETRY` rows without broad stale-batch retries. Legacy broad RPC remains as compatibility path for off/shadow.
+PR-7B keeps `recover_stuck_offline_conversion_jobs(integer)` as a required target-DB compatibility contract: service-role-only, stale `PROCESSING` scope only, and no queue-row deletion.
 PR-4F hardens grant posture: legacy and row-scoped recovery mutation RPCs are service-role execution only; unsafe anon/authenticated/PUBLIC execute grants are treated as contract violations in `rpc_contract_health.sql`.
 
 PR-4E adds a strict recovery-integrity promotion gate. Static CI may remain `RECOVERY_INTEGRITY_UNVERIFIED` (contract-only), but strict staging/production promotion is blocked when ambiguous/unknown/review-required rows exist, when enforcement is bypassed, or when row-scoped RPC support is missing in enforce/strict classifier modes.

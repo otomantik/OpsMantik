@@ -31,3 +31,10 @@ Rows mapping to `FAILED` + `DETERMINISTIC_SKIP` are explicitly excluded from `ac
 
 ## 4. Immutable History
 Queue rows are never deleted to fix errors. They progress through the status machine. Errors must be transitioned to terminal states (`FAILED`, `VOIDED_BY_REVERSAL`, etc.).
+
+## 5. Won Pipeline Orphan Repair Contract (PR-7C)
+- `wonMissingPipeline > 0` means at least one won/sealed call has no queue journal coverage and is a promotion blocker in strict readiness.
+- Repair must start with dry-run evidence (`scripts/sql/orphan_won_backfill.sql`).
+- Write mode must be site-scoped and operator-approved (change ticket + operator ID + explicit confirmation).
+- Write path must use canonical enqueue logic (`enqueueSealConversion`), preserving deterministic `external_id` / value SSOT and idempotency behavior.
+- Forbidden during repair: queue deletion, direct SQL value math writes, ad-hoc COMPLETED marking.

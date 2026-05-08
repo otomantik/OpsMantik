@@ -117,6 +117,10 @@ The export run operates under strict rules defined in [OCI_EXPORT_RUN_INTEGRITY_
 - **PR-4D Mode Flag:** `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE` controls runtime adoption (`off`, `shadow`, `enforce_safe_retry`, `strict`). Default is non-breaking. Rollback is flag disable (`off`).
 - **PR-4D.1 Row-Scoped Recovery RPC:** `recover_safe_processing_queue_rows_v1` is additive and service_role-only. Enforce/strict mode should pass only classifier `SAFE_TO_RETRY` IDs. Legacy broad recovery RPC remains for compatibility in off/shadow mode.
 - **PR-4F Grant Hardening:** legacy compatibility RPC `recover_stuck_offline_conversion_jobs` is also service_role-only at grant level (in addition to in-body role guard). `rpc_contract_health.sql` must show no unsafe grants for either recovery mutation RPC.
+- **PR-7B Compatibility Contract:** `recover_stuck_offline_conversion_jobs(integer)` is required in target DB evidence. If missing, classify as target DB contract drift (`TARGET_DB_RED`) even when row-scoped recovery smoke is green.
+- **PR-7C Won Leak Gate:** `wonMissingPipeline > 0` is a strict promotion blocker. Do not relax thresholds to hide this.
+- **PR-7C Repair Protocol:** run dry-run first (`scripts/sql/orphan_won_backfill.sql` / `scripts/db/repair-orphan-won-queue.mjs` without `--write`), then only site-scoped canonical enqueue repair (`enqueueSealConversion` path) with change ticket + operator provenance.
+- **PR-7C Safety Rules:** no queue deletion, no direct SQL value writes, no ad-hoc COMPLETED marking, no broad multi-site blind repair.
 - **PR-4E Strict Gate:** `OCI_RECOVERY_INTEGRITY_STRICT=1` treats recovery integrity as a promotion blocker: ambiguous/unknown/review-required outcomes, enforcement bypass, or missing row-scoped RPC support (in enforce/strict runtime modes) block release unless policy-allowed waiver is explicitly valid.
 - **ACK Endpoint Outage:** If Google upload succeeds but `opsmantik/ack` is down, DB can remain `PROCESSING` while provider state is ambiguous. Classify as `ACK_ENDPOINT_UNAVAILABLE_AFTER_UPLOAD` or `UNKNOWN_PROVIDER_OUTCOME`, surface in health/evidence, and require operator review before requeue.
 - **Why exactly-once isn't assumed:** Network partitions mean we can never guarantee script ↔ backend ACKs complete perfectly. We rely on deterministic IDs (`external_id`) and idempotent DB RPCs to self-heal.
@@ -146,6 +150,26 @@ PR-4D follow-up: adopt classifier output in recovery cron/RPC transitions with r
 
 Implementation note: if row-scoped recovery RPC is missing/unavailable, enforce/strict mode must report `RECOVERY_ROW_SCOPED_RPC_MISSING` and must not falsely claim enforcement.
 Rollback path for recovery strict gate: set `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE=off` and/or set `OCI_RECOVERY_INTEGRITY_STRICT=0`.
+
+### 3.7 PR-6 Target DB Evidence (No False Green)
+
+1. Run `npm run release:evidence` for static contract proof (`TARGET_DB_NOT_CHECKED` is expected in static mode).
+2. For staging/production promotion, run DB-connected evidence mode with target DB env (`SUPABASE_DB_URL` or `DATABASE_URL`).
+3. Treat `DB_ENV_MISSING`, `DB_QUERY_FAILED`, `DB_RPC_MISSING`, `DB_RPC_SIGNATURE_DRIFT`, and `DB_UNSAFE_GRANT` as blockers in strict target mode.
+4. Verify row-scoped recovery smoke (`recover_safe_processing_queue_rows_v1` empty-array call) is `TARGET_DB_GREEN` or explicitly `SMOKE_UNVERIFIED` with reason.
+5. Read `tmp/db-evidence-latest.json` and `tmp/release-gates-latest.json` together; static green alone is not promotion green.
+6. Placeholder/invalid DB URLs are rejected (`DB_URL_INVALID`) before connection attempts (`<...>`, `BURAYA`, redacted/example placeholders).
+7. DB evidence failures still write fresh artifacts (`is_fresh_artifact: true`) to avoid stale snapshot confusion.
+8. Failure meanings:
+   - `DB_ENV_MISSING`: DB URL not provided.
+   - `DB_URL_INVALID`: malformed or placeholder URL.
+   - `DB_CONNECTION_FAILED`: connection setup failed.
+   - `DB_QUERY_FAILED`: DB connected but pack/query execution failed.
+9. `target_db_checked` is the canonical PR-6 proof flag. Do not infer target DB proof from legacy preflight checks.
+10. `legacy_verify_db_checked` (if present) only indicates legacy `verify-db` command execution; it is separate from target DB SQL-pack/RPC proof.
+11. Queue-only deployments may not have `public.marketing_signals`; this must be classified as `LEGACY_RESIDUE_ABSENT` / `AUDIT_TABLE_NOT_PRESENT` and must not crash SQL packs.
+12. Required queue/recovery RPC drift is still a hard blocker; only legacy marketing-signal RPCs can be treated as optional residue checks.
+13. Every evidence run must overwrite both mode-specific and latest artifacts (`release-gates-<mode>.md/json` and `release-gates-latest.md/json`) with matching `generated_at` and `mode`.
 
 
 ## 4. Conversion Math SSOT and Value Drift

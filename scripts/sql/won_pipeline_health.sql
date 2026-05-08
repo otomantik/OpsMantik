@@ -46,7 +46,9 @@ SELECT
   s.name AS site_name,
   COALESCE((SELECT COUNT(*) FROM won_only w WHERE w.site_id = s.id), 0)::int AS won_total,
   COALESCE((SELECT COUNT(*) FROM won_or_sealed ws WHERE ws.site_id = s.id), 0)::int AS won_or_sealed_total,
+  COALESCE((SELECT COUNT(*) FROM won_or_sealed ws JOIN active_queue aq ON aq.site_id = ws.site_id AND aq.call_id = ws.call_id WHERE ws.site_id = s.id), 0)::int AS won_in_queue,
   COALESCE((SELECT COUNT(*) FROM won_or_sealed ws JOIN active_queue aq ON aq.site_id = ws.site_id AND aq.call_id = ws.call_id WHERE ws.site_id = s.id), 0)::int AS won_in_active_queue,
+  COALESCE((SELECT COUNT(*) FROM won_or_sealed ws JOIN completed_queue cq ON cq.site_id = ws.site_id AND cq.call_id = ws.call_id WHERE ws.site_id = s.id), 0)::int AS won_completed,
   COALESCE((SELECT COUNT(*) FROM won_or_sealed ws JOIN completed_queue cq ON cq.site_id = ws.site_id AND cq.call_id = ws.call_id WHERE ws.site_id = s.id), 0)::int AS won_completed_or_uploaded,
   COALESCE((SELECT COUNT(*) FROM missing m WHERE m.site_id = s.id), 0)::int AS won_missing_pipeline,
   (
@@ -54,6 +56,11 @@ SELECT
     FROM missing m
     WHERE m.site_id = s.id
   )::bigint AS oldest_missing_won_age_seconds,
+  (
+    SELECT MIN(m.confirmed_at)
+    FROM missing m
+    WHERE m.site_id = s.id
+  ) AS oldest_missing_confirmed_at,
   COALESCE(
     ROUND(
       (

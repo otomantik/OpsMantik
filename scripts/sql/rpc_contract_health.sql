@@ -14,8 +14,8 @@ WITH required AS (
     VALUES
       ('get_call_session_for_oci', 'uuid, uuid', true),
       ('append_worker_transition_batch_v2', 'uuid[], text, timestamp with time zone, jsonb', true),
-      ('apply_marketing_signal_dispatch_batch_v1', 'uuid, uuid[], text, text, timestamp with time zone', true),
-      ('rescue_marketing_signals_stale_processing_v1', 'timestamp with time zone', true),
+      ('append_script_transition_batch', 'uuid[], text, timestamp with time zone, jsonb', true),
+      ('append_script_claim_transition_batch', 'uuid[], timestamp with time zone', true),
       ('recover_stuck_offline_conversion_jobs', 'integer', true),
       ('recover_safe_processing_queue_rows_v1', 'uuid[], integer, text, text', true),
       ('rebuild_call_projection', 'uuid, uuid', true)
@@ -63,8 +63,8 @@ FROM (
         VALUES
           ('get_call_session_for_oci', 'uuid, uuid'),
           ('append_worker_transition_batch_v2', 'uuid[], text, timestamp with time zone, jsonb'),
-          ('apply_marketing_signal_dispatch_batch_v1', 'uuid, uuid[], text, text, timestamp with time zone'),
-          ('rescue_marketing_signals_stale_processing_v1', 'timestamp with time zone'),
+          ('append_script_transition_batch', 'uuid[], text, timestamp with time zone, jsonb'),
+          ('append_script_claim_transition_batch', 'uuid[], timestamp with time zone'),
           ('recover_stuck_offline_conversion_jobs', 'integer'),
           ('recover_safe_processing_queue_rows_v1', 'uuid[], integer, text, text'),
           ('rebuild_call_projection', 'uuid, uuid')
@@ -100,8 +100,8 @@ WHERE n.nspname = 'public'
   AND p.proname IN (
     'get_call_session_for_oci',
     'append_worker_transition_batch_v2',
-    'apply_marketing_signal_dispatch_batch_v1',
-    'rescue_marketing_signals_stale_processing_v1',
+    'append_script_transition_batch',
+    'append_script_claim_transition_batch',
     'recover_stuck_offline_conversion_jobs',
     'recover_safe_processing_queue_rows_v1',
     'rebuild_call_projection'

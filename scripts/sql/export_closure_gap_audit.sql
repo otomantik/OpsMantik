@@ -43,4 +43,7 @@ SELECT
     WHEN COALESCE(s.stale_active_journal_rows, 0) > 0 THEN ARRAY['STALE_ACTIVE_JOURNAL']::text[]
     WHEN COALESCE(sh.malformed_external_id_rows, 0) > 0 THEN ARRAY['EXTERNAL_ID_SHAPE_DRIFT']::text[]
     ELSE ARRAY[]::text[]
-  END AS blocking_reasons;
+  END AS blocking_reasons
+FROM stale s
+FULL OUTER JOIN shape sh
+  ON sh.site_id = s.site_id;

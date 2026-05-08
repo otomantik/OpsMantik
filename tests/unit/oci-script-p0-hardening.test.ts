@@ -91,8 +91,10 @@ test('P0 RPC contract health pack pins required RPCs and grants', () => {
   const required = [
     'get_call_session_for_oci',
     'append_worker_transition_batch_v2',
-    'apply_marketing_signal_dispatch_batch_v1',
-    'rescue_marketing_signals_stale_processing_v1',
+    'append_script_transition_batch',
+    'append_script_claim_transition_batch',
+    'recover_stuck_offline_conversion_jobs',
+    'recover_safe_processing_queue_rows_v1',
     'rebuild_call_projection',
   ];
   for (const fn of required) {

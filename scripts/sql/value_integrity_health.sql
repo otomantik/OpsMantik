@@ -9,7 +9,10 @@
 -- GREEN: drifted_rows = 0 for active sites
 -- RED: any non-waived drifted_rows > 0
 
-WITH policy AS (
+WITH table_presence AS (
+  SELECT to_regclass('public.marketing_signals') IS NOT NULL AS marketing_signals_exists
+),
+policy AS (
   SELECT * FROM (
     VALUES
       ('offline_conversion_queue'::text, 'OpsMantik_Won'::text, 6000::bigint, 12000::bigint, NULL::bigint),
@@ -35,31 +38,8 @@ queue_rows AS (
   FROM public.offline_conversion_queue q
   WHERE q.action = 'OpsMantik_Won'
 ),
-signal_rows AS (
-  SELECT
-    'marketing_signals'::text AS source_table,
-    ms.site_id,
-    ms.id::text AS row_id,
-    ms.google_conversion_name AS conversion_name,
-    ms.expected_value_cents AS value_cents,
-    ms.entry_reason,
-    ms.value_source,
-    ms.value_policy_version AS policy_version,
-    ms.created_at,
-    ms.updated_at,
-    ms.dispatch_status AS lifecycle_status
-  FROM public.marketing_signals ms
-  WHERE ms.google_conversion_name IN (
-    'OpsMantik_Contacted',
-    'OpsMantik_Offered',
-    'OpsMantik_Junk_Exclusion',
-    'OpsMantik_Won'
-  )
-),
 rows_union AS (
   SELECT * FROM queue_rows
-  UNION ALL
-  SELECT * FROM signal_rows
 ),
 evaluated AS (
   SELECT
@@ -99,7 +79,10 @@ agg AS (
 )
 SELECT
   a.policy_version,
-  CASE WHEN a.drifted_rows = 0 THEN 'GREEN' ELSE 'RED' END AS contract_status,
+  CASE
+    WHEN a.drifted_rows = 0 THEN 'GREEN'
+    ELSE 'RED'
+  END AS contract_status,
   a.source_table,
   a.site_id,
   s.name AS site_name,
@@ -117,7 +100,67 @@ LEFT JOIN public.sites s
   ON s.id = a.site_id
 ORDER BY a.drifted_rows DESC, a.conversion_name, a.site_id;
 
+-- Queue-only doctrine: marketing_signals can be absent in target DB.
+WITH table_presence AS (
+  SELECT to_regclass('public.marketing_signals') IS NOT NULL AS marketing_signals_exists
+)
+SELECT
+  'queue_health_contract_v1'::text AS policy_version,
+  CASE
+    WHEN tp.marketing_signals_exists THEN 'OPTIONAL_LEGACY_CHECK_SKIPPED'
+    ELSE 'LEGACY_RESIDUE_ABSENT'
+  END AS contract_status,
+  'marketing_signals'::text AS source_table,
+  NULL::uuid AS site_id,
+  NULL::text AS site_name,
+  'legacy_audit_surface'::text AS conversion_name,
+  0::int AS total_rows,
+  0::int AS drifted_rows,
+  0::numeric AS drift_ratio,
+  NULL::timestamptz AS oldest_drift_at,
+  NULL::bigint AS oldest_drift_age_seconds
+FROM table_presence tp;
+
 -- Sample offending rows (actionable triage)
+WITH policy AS (
+  SELECT * FROM (
+    VALUES
+      ('offline_conversion_queue'::text, 'OpsMantik_Won'::text, 6000::bigint, 12000::bigint, NULL::bigint)
+  ) AS t(source_table, conversion_name, min_cents, max_cents, fixed_cents)
+),
+queue_rows AS (
+  SELECT
+    'offline_conversion_queue'::text AS source_table,
+    q.site_id,
+    q.id::text AS row_id,
+    q.action AS conversion_name,
+    q.value_cents AS value_cents,
+    q.entry_reason,
+    q.value_source,
+    q.value_policy_version AS policy_version,
+    q.created_at,
+    q.updated_at,
+    q.status AS lifecycle_status
+  FROM public.offline_conversion_queue q
+  WHERE q.action = 'OpsMantik_Won'
+),
+evaluated AS (
+  SELECT
+    r.*,
+    CASE
+      WHEN p.conversion_name IS NULL THEN 'missing_policy_row'
+      WHEN r.value_cents IS NULL OR r.value_cents <= 0 THEN 'invalid_non_positive'
+      WHEN p.fixed_cents IS NOT NULL AND r.value_cents <> p.fixed_cents THEN 'fixed_value_mismatch'
+      WHEN p.fixed_cents IS NULL AND (r.value_cents < p.min_cents OR r.value_cents > p.max_cents) THEN 'range_mismatch'
+      WHEN COALESCE(r.policy_version, '') = '' THEN 'missing_policy_version'
+      WHEN COALESCE(r.value_source, '') = '' THEN 'missing_value_source'
+      ELSE 'ok'
+    END AS contract_status
+  FROM queue_rows r
+  LEFT JOIN policy p
+    ON p.source_table = r.source_table
+   AND p.conversion_name = r.conversion_name
+)
 SELECT
   e.source_table,
   e.site_id,

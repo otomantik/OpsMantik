@@ -19,13 +19,15 @@ test('migration 20261223020000 defines canonical marketing signal dispatch RPCs 
   assert.ok(migration.includes('GRANT EXECUTE ON FUNCTION public.rescue_marketing_signals_stale_processing_v1'));
 });
 
-test('kernel module wraps apply_marketing_signal_dispatch_batch_v1 RPC', () => {
+test('kernel module is queue-only retirement shim (no legacy dispatch RPC mutation)', () => {
   const kernel = readFileSync(join(ROOT, 'lib', 'oci', 'marketing-signal-dispatch-kernel.ts'), 'utf8');
-  assert.ok(kernel.includes("rpc('apply_marketing_signal_dispatch_batch_v1'"));
-  assert.ok(kernel.includes("rpc('rescue_marketing_signals_stale_processing_v1'"));
+  assert.ok(kernel.includes('Queue-only retirement shim'));
+  assert.ok(kernel.includes('return 0;'));
+  assert.ok(!kernel.includes("rpc('apply_marketing_signal_dispatch_batch_v1'"));
+  assert.ok(!kernel.includes("rpc('rescue_marketing_signals_stale_processing_v1'"));
 });
 
-test('primary OCI writers route marketing_signals dispatch transitions through kernel', () => {
+test('primary OCI writers do not mutate marketing_signals in queue-only mode', () => {
   const mark = readFileSync(
     join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'),
     'utf8'
@@ -34,22 +36,15 @@ test('primary OCI writers route marketing_signals dispatch transitions through k
   const ackFailed = readFileSync(join(ROOT, 'app', 'api', 'oci', 'ack-failed', 'route.ts'), 'utf8');
   const maint = readFileSync(join(ROOT, 'lib', 'oci', 'maintenance', 'run-maintenance.ts'), 'utf8');
   const ackHelpers = readFileSync(join(ROOT, 'lib', 'oci', 'oci-ack-route-helpers.ts'), 'utf8');
-  assert.ok(
-    ackHelpers.includes('applyMarketingSignalDispatchBatch'),
-    'oci-ack-route-helpers must wrap marketing-signal-dispatch-kernel'
-  );
+  assert.ok(ackHelpers.includes('safeOciErrorString'), 'ack helper file exists and remains active');
 
   for (const [name, src] of [
     ['ack/route', ack],
     ['ack-failed/route', ackFailed],
   ] as const) {
-    const usesKernel =
-      src.includes('applyMarketingSignalDispatchBatch') ||
-      src.includes('reconcileSignalDispatchOutcome');
-    assert.ok(usesKernel, `${name} must route marketing_signals dispatch through the kernel`);
     assert.ok(
-      !/\bupdate\s*\(\s*\{\s*dispatch_status\s*:/i.test(src),
-      `${name} must not use PostgREST dispatch_status object updates`
+      !src.includes(".from('marketing_signals')"),
+      `${name} must not mutate marketing_signals in queue-only mode`
     );
   }
 
@@ -64,16 +59,12 @@ test('primary OCI writers route marketing_signals dispatch transitions through k
   );
 
   assert.ok(
-    maint.includes('rescueStaleMarketingSignalsProcessing'),
-    'maintenance must rescue stale PROCESSING signals via kernel'
-  );
-  assert.ok(
     !maint.includes(".from('marketing_signals')"),
-    'maintenance must not use direct marketing_signals client updates for zombie rescue'
+    'maintenance must not use direct marketing_signals client updates in queue-only mode'
   );
 });
 
-test('sweep cleanup invalidate pulse vacuum use kernel for dispatch_status (no direct marketing_signals update)', () => {
+test('sweep cleanup invalidate pulse vacuum keep marketing_signals retired/no direct updates', () => {
   const paths = [
     ['invalidate-pending-artifacts', join(ROOT, 'lib', 'oci', 'invalidate-pending-artifacts.ts')],
     ['cron/cleanup', join(ROOT, 'app', 'api', 'cron', 'cleanup', 'route.ts')],
@@ -85,12 +76,8 @@ test('sweep cleanup invalidate pulse vacuum use kernel for dispatch_status (no d
   for (const [name, p] of paths) {
     const src = readFileSync(p, 'utf8');
     assert.ok(
-      src.includes('applyMarketingSignalDispatchBatch') || src.includes('rescueStaleMarketingSignalsProcessing'),
-      `${name} must import marketing signal dispatch kernel`
-    );
-    assert.ok(
-      !/\bupdate\s*\(\s*\{\s*dispatch_status\s*:/i.test(src),
-      `${name} must not use PostgREST dispatch_status object updates`
+      !src.includes(".from('marketing_signals')"),
+      `${name} must not directly mutate marketing_signals`
     );
   }
 });

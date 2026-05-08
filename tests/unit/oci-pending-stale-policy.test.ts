@@ -10,27 +10,12 @@ import { join } from 'node:path';
 
 const CLEANUP_ROUTE = join(process.cwd(), 'app', 'api', 'cron', 'cleanup', 'route.ts');
 
-test('PR-OCI-5: cleanup cron implements stale PENDING -> STALLED_FOR_HUMAN_AUDIT policy (default 30d)', () => {
+test('PR-OCI-5: cleanup cron keeps marketing_signals retired (queue-only mode)', () => {
   const src = readFileSync(CLEANUP_ROUTE, 'utf-8');
 
-  assert.ok(
-    src.includes("DEFAULT_DAYS_PENDING_STALE = 30") || /DEFAULT_DAYS_PENDING_STALE\s*=\s*30/.test(src),
-    'Expected default stale-pending window to be 30 days'
-  );
-
-  assert.ok(
-    src.includes("'dispatch_status', 'PENDING'") || src.includes('"dispatch_status", "PENDING"') || src.includes(".eq('dispatch_status', 'PENDING')"),
-    'Expected cleanup cron to select PENDING marketing_signals'
-  );
-
-  assert.ok(
-    src.includes("dispatch_status: 'STALLED_FOR_HUMAN_AUDIT'") ||
-      src.includes('dispatch_status: "STALLED_FOR_HUMAN_AUDIT"') ||
-      src.includes("newStatus: 'STALLED_FOR_HUMAN_AUDIT'"),
-    'Expected cleanup cron to terminalize stale PENDING rows to STALLED_FOR_HUMAN_AUDIT (kernel or direct update)'
-  );
-  assert.ok(
-    src.includes('applyMarketingSignalDispatchBatch'),
-    'Expected cleanup cron to route dispatch transition through marketing-signal kernel'
-  );
+  assert.ok(src.includes('queue_only_mode'));
+  assert.ok(src.includes("legacy_marketing_signals_cleanup: 'retired'"));
+  assert.ok(!src.includes(".from('marketing_signals')"));
+  assert.ok(!src.includes('STALLED_FOR_HUMAN_AUDIT'));
+  assert.ok(!src.includes('applyMarketingSignalDispatchBatch'));
 });

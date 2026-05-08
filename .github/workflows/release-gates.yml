@@ -64,6 +64,9 @@ jobs:
           OCI_PROCESSING_RECOVERY_WAIVER_REASON: ${{ vars.OCI_PROCESSING_RECOVERY_WAIVER_REASON || '' }}
           OCI_PROCESSING_RECOVERY_WAIVER_EXPIRY: ${{ vars.OCI_PROCESSING_RECOVERY_WAIVER_EXPIRY || '' }}
           OCI_PROCESSING_RECOVERY_WAIVER_BLAST_RADIUS: ${{ vars.OCI_PROCESSING_RECOVERY_WAIVER_BLAST_RADIUS || '' }}
+          TARGET_DB_EVIDENCE_STRICT: ${{ vars.TARGET_DB_EVIDENCE_STRICT || '1' }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || '' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || '' }}
         run: npm run release:evidence:production
 
       - name: Upload PR release gate evidence
@@ -80,4 +83,17 @@ jobs:
         with:
           name: release-gate-evidence
           path: tmp/release-gates-latest.md
+          retention-days: 14
+
+      - name: Upload target DB evidence artifacts
+        if: ${{ always() && hashFiles('tmp/db-evidence-latest.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-db-evidence
+          path: |
+            tmp/db-evidence-latest.json
+            tmp/db-evidence-latest.md
+            tmp/db-evidence-normalized.json
+            tmp/release-gates-latest.json
+            tmp/release-gates-normalized.json
           retention-days: 14

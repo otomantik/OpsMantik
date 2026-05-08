@@ -55,6 +55,31 @@ LEFT JOIN agg a
 ORDER BY malformed_phone_hash_count DESC, missing_phone_hash_count_where_expected DESC, s.name ASC;
 
 -- Sample rows for deterministic verification / repair queue triage.
+WITH candidates AS (
+  SELECT
+    c.site_id,
+    c.id AS call_id,
+    c.caller_phone_e164,
+    c.caller_phone_hash_sha256,
+    c.status,
+    c.oci_status,
+    c.confirmed_at
+  FROM public.calls c
+  WHERE (c.status = 'won' OR c.oci_status = 'sealed')
+),
+samples AS (
+  SELECT
+    c.site_id,
+    c.call_id,
+    c.caller_phone_e164,
+    c.caller_phone_hash_sha256,
+    c.confirmed_at
+  FROM candidates c
+  WHERE (c.caller_phone_hash_sha256 IS NOT NULL AND c.caller_phone_hash_sha256 !~ '^[0-9a-f]{64}$')
+     OR (c.caller_phone_e164 IS NOT NULL AND c.caller_phone_hash_sha256 IS NULL)
+  ORDER BY c.confirmed_at DESC NULLS LAST
+  LIMIT 50
+)
 SELECT
   site_id,
   call_id,

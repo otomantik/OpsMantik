@@ -21,6 +21,37 @@ loadEnv({ path: join(repoRoot, '.env.local') });
 
 const DEFAULT_OUTPUT = join(repoRoot, 'tmp', 'release-gates-latest.md');
 const MODE_ALIASES = { pr: 'static', full: 'production' };
+const DB_EVIDENCE_MODES = new Set(['staging', 'production']);
+const REQUIRED_RPCS = [
+  { name: 'get_call_session_for_oci', args: 'uuid, uuid' },
+  { name: 'append_worker_transition_batch_v2', args: 'uuid[], text, timestamp with time zone, jsonb' },
+  { name: 'append_script_transition_batch', args: 'uuid[], text, timestamp with time zone, jsonb' },
+  { name: 'append_script_claim_transition_batch', args: 'uuid[], timestamp with time zone' },
+  { name: 'rebuild_call_projection', args: 'uuid, uuid' },
+  { name: 'recover_stuck_offline_conversion_jobs', args: 'integer' },
+  { name: 'recover_safe_processing_queue_rows_v1', args: 'uuid[], integer, text, text' },
+];
+const OPTIONAL_LEGACY_RPCS = [
+  { name: 'apply_marketing_signal_dispatch_batch_v1', args: 'uuid, uuid[], text, text, timestamp with time zone' },
+  { name: 'rescue_marketing_signals_stale_processing_v1', args: 'timestamp with time zone' },
+];
+const CRITICAL_MIGRATIONS = [
+  '20260506111400_restore_get_call_session_for_oci_rpc.sql',
+  '20260506123500_create_rebuild_call_projection_rpc.sql',
+  '20260506125500_create_call_funnel_projection_table.sql',
+  '20260506244000_harden_security_definer_exec_and_search_path.sql',
+  '20261223020200_oci_queue_transitions_ledger_and_claim_rpcs.sql',
+  '20261226020000_create_append_worker_transition_batch_v2.sql',
+  '20261226023000_recover_safe_processing_queue_rows_v1.sql',
+  '20261226024000_restrict_recover_stuck_offline_conversion_jobs_grants.sql',
+];
+const EXTRA_DB_SQL_PACKS = [
+  {
+    pack_id: 'rebuild_call_projection_smoke',
+    file: 'scripts/sql/rebuild_call_projection_smoke.sql',
+    contract_version: 'v1',
+  },
+];
 
 const MODE_COMMANDS = {
   static: ['node scripts/release/verify-health-pack-contracts.mjs', 'npm run test:tenant-boundary', 'npm run test:oci-kernel'],
@@ -128,6 +159,426 @@ function runCommand(command) {
   };
 }
 
+function redactDbTarget(input) {
+  if (!input) return 'none';
+  try {
+    const u = new URL(input);
+    const host = u.hostname || 'unknown-host';
+    return `${u.protocol}//${host}`;
+  } catch {
+    return 'redacted';
+  }
+}
+
+function isLikelyPlaceholderValue(raw) {
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return false;
+  return (
+    v.includes('<') ||
+    v.includes('>') ||
+    v.includes('buraya') ||
+    v.includes('staging_supabase_db_url') ||
+    v.includes('redacted') ||
+    v.includes('example')
+  );
+}
+
+function validateTargetDbUrl(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) {
+    return {
+      ok: false,
+      status: 'DB_ENV_MISSING',
+      reason_code: REASON_CODES.DB_ENV_MISSING,
+      reason: 'Target DB URL env is missing or empty',
+    };
+  }
+  if (isLikelyPlaceholderValue(value)) {
+    return {
+      ok: false,
+      status: 'DB_URL_INVALID',
+      reason_code: REASON_CODES.DB_URL_INVALID,
+      reason: 'Target DB URL appears to be placeholder/redacted',
+    };
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return {
+      ok: false,
+      status: 'DB_URL_INVALID',
+      reason_code: REASON_CODES.DB_URL_INVALID,
+      reason: 'Target DB URL is not a valid URL',
+    };
+  }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+    return {
+      ok: false,
+      status: 'DB_URL_INVALID',
+      reason_code: REASON_CODES.DB_URL_INVALID,
+      reason: `Unsupported DB URL protocol: ${parsed.protocol}`,
+    };
+  }
+  if (!parsed.hostname || parsed.hostname === 'base') {
+    return {
+      ok: false,
+      status: 'DB_URL_INVALID',
+      reason_code: REASON_CODES.DB_URL_INVALID,
+      reason: 'Target DB URL hostname is invalid',
+    };
+  }
+  return { ok: true };
+}
+
+async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) {
+  const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || '';
+  const dbShouldRun = DB_EVIDENCE_MODES.has(mode) || withDb === true;
+  const emptyPackResults = sqlPackHashes.map((p) => ({
+    pack_id: p.pack_id,
+    file: p.file ?? null,
+    status: 'DB_NOT_CHECKED',
+    row_count: 0,
+    contract_status: 'DB_NOT_CHECKED',
+    reason: 'TARGET_DB_NOT_CHECKED',
+  }));
+
+  if (!dbShouldRun) {
+    return {
+      db_checked: false,
+      db_target_redacted: redactDbTarget(dbUrl),
+      target_db_contract_status: 'TARGET_DB_NOT_CHECKED',
+      failure_classification: null,
+      failure_reason: null,
+      target_db_attempted: false,
+      target_db_checked: false,
+      is_fresh_artifact: true,
+      sql_pack_results: emptyPackResults,
+      rpc_contract_summary: {
+        status: 'TARGET_DB_NOT_CHECKED',
+        missing_count: 0,
+        signature_drift_count: 0,
+        unsafe_grant_count: 0,
+      },
+      migration_evidence_summary: {
+        status: 'TARGET_DB_NOT_CHECKED',
+        rows: CRITICAL_MIGRATIONS.map((name) => ({
+          migration: name,
+          present_in_repo: true,
+          applied_in_target_db: 'APPLIED_STATUS_UNVERIFIED',
+          evidence: 'TARGET_DB_NOT_CHECKED',
+          status: 'TARGET_DB_UNVERIFIED',
+        })),
+      },
+      row_scoped_smoke: {
+        status: 'SMOKE_UNVERIFIED',
+        reason: 'TARGET_DB_NOT_CHECKED',
+      },
+      blocking_failures: [],
+      warnings: ['TARGET_DB_NOT_CHECKED', 'STALE_ARTIFACT_PREVENTED'],
+    };
+  }
+
+  const urlValidation = validateTargetDbUrl(dbUrl);
+  if (!urlValidation.ok) {
+    const blocker = {
+      reason_code: urlValidation.reason_code,
+      message: urlValidation.reason,
+    };
+    return {
+      db_checked: false,
+      db_target_redacted: redactDbTarget(dbUrl),
+      target_db_contract_status: strict ? urlValidation.status : 'TARGET_DB_NOT_CHECKED',
+      failure_classification: urlValidation.status,
+      failure_reason: urlValidation.reason,
+      target_db_attempted: true,
+      target_db_checked: false,
+      is_fresh_artifact: true,
+      sql_pack_results: emptyPackResults.map((p) => ({ ...p, status: urlValidation.status, reason: urlValidation.status })),
+      rpc_contract_summary: {
+        status: urlValidation.status,
+        missing_count: 0,
+        signature_drift_count: 0,
+        unsafe_grant_count: 0,
+      },
+      migration_evidence_summary: {
+        status: 'TARGET_DB_UNVERIFIED',
+        rows: CRITICAL_MIGRATIONS.map((name) => ({
+          migration: name,
+          present_in_repo: true,
+          applied_in_target_db: 'APPLIED_STATUS_UNVERIFIED',
+          evidence: urlValidation.status,
+          status: 'TARGET_DB_UNVERIFIED',
+        })),
+      },
+      row_scoped_smoke: {
+        status: 'SMOKE_UNVERIFIED',
+        reason: urlValidation.status,
+      },
+      blocking_failures: strict ? [blocker] : [],
+      warnings: strict ? ['STALE_ARTIFACT_PREVENTED'] : [urlValidation.status, 'STALE_ARTIFACT_PREVENTED'],
+    };
+  }
+
+  const { Client } = await import('pg');
+  const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+  const blocking_failures = [];
+  const warnings = [];
+  const sql_pack_results = [];
+  let rpc_contract_summary = {
+    status: 'TARGET_DB_UNVERIFIED',
+    missing_count: 0,
+    signature_drift_count: 0,
+    unsafe_grant_count: 0,
+  };
+  let migration_evidence_summary = {
+    status: 'TARGET_DB_UNVERIFIED',
+    rows: [],
+  };
+  let row_scoped_smoke = { status: 'SMOKE_UNVERIFIED', reason: 'NOT_ATTEMPTED' };
+
+  try {
+    try {
+      await client.connect();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const blocker = {
+        reason_code: REASON_CODES.DB_CONNECTION_FAILED,
+        message: `Target DB connect failed: ${msg}`,
+      };
+      return {
+        db_checked: false,
+        db_target_redacted: redactDbTarget(dbUrl),
+        target_db_contract_status: strict ? 'DB_CONNECTION_FAILED' : 'TARGET_DB_UNVERIFIED',
+        failure_classification: 'DB_CONNECTION_FAILED',
+        failure_reason: msg,
+        target_db_attempted: true,
+        target_db_checked: false,
+        is_fresh_artifact: true,
+        sql_pack_results: emptyPackResults.map((p) => ({
+          ...p,
+          status: 'DB_CONNECTION_FAILED',
+          contract_status: 'DB_NOT_CHECKED',
+          reason: 'DB_CONNECTION_FAILED',
+        })),
+        rpc_contract_summary: {
+          status: 'DB_CONNECTION_FAILED',
+          missing_count: 0,
+          signature_drift_count: 0,
+          unsafe_grant_count: 0,
+        },
+        migration_evidence_summary: {
+          status: 'TARGET_DB_UNVERIFIED',
+          rows: CRITICAL_MIGRATIONS.map((name) => ({
+            migration: name,
+            present_in_repo: true,
+            applied_in_target_db: 'APPLIED_STATUS_UNVERIFIED',
+            evidence: 'DB_CONNECTION_FAILED',
+            status: 'TARGET_DB_UNVERIFIED',
+          })),
+        },
+        row_scoped_smoke: {
+          status: 'SMOKE_UNVERIFIED',
+          reason: 'DB_CONNECTION_FAILED',
+        },
+        blocking_failures: strict ? [blocker] : [],
+        warnings: strict ? ['STALE_ARTIFACT_PREVENTED'] : ['DB_CONNECTION_FAILED', 'STALE_ARTIFACT_PREVENTED'],
+      };
+    }
+
+    const dbPacks = [
+      ...resolveSqlPackAbsPaths(repoRoot),
+      ...EXTRA_DB_SQL_PACKS.map((p) => ({ ...p, absPath: join(repoRoot, p.file) })),
+    ];
+    for (const pack of dbPacks) {
+      const src = readFileSync(pack.absPath, 'utf8');
+      try {
+        const result = await client.query(src);
+        sql_pack_results.push({
+          pack_id: pack.pack_id,
+          file: pack.file,
+          status: 'TARGET_DB_CHECKED',
+          row_count: Array.isArray(result?.rows) ? result.rows.length : 0,
+          contract_status: 'TARGET_DB_CHECKED',
+          reason: null,
+        });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        sql_pack_results.push({
+          pack_id: pack.pack_id,
+          file: pack.file,
+          status: 'DB_QUERY_FAILED',
+          row_count: 0,
+          contract_status: 'DB_QUERY_FAILED',
+          reason: msg,
+        });
+        if (strict) {
+          blocking_failures.push({
+            reason_code: REASON_CODES.DB_QUERY_FAILED,
+            message: `SQL pack failed: ${pack.pack_id}`,
+          });
+        } else {
+          warnings.push(`SQL pack failed: ${pack.pack_id}`);
+        }
+      }
+    }
+
+    try {
+      const rpcRows = await client.query(`
+        select p.proname, oidvectortypes(p.proargtypes) as args, p.prosecdef, coalesce(p.proconfig, '{}'::text[]) as proconfig
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.proname = any($1::text[]);
+      `, [REQUIRED_RPCS.concat(OPTIONAL_LEGACY_RPCS).map((r) => r.name)]);
+      const grantRows = await client.query(`
+        select routine_name, grantee, privilege_type
+        from information_schema.routine_privileges
+        where routine_schema = 'public'
+          and routine_name = any($1::text[]);
+      `, [REQUIRED_RPCS.concat(OPTIONAL_LEGACY_RPCS).map((r) => r.name)]);
+      const found = new Map(rpcRows.rows.map((r) => [r.proname, r]));
+      let missing_count = 0;
+      let signature_drift_count = 0;
+      let unsafe_grant_count = 0;
+      for (const required of REQUIRED_RPCS) {
+        const row = found.get(required.name);
+        if (!row) {
+          missing_count += 1;
+          continue;
+        }
+        if (String(row.args) !== required.args) signature_drift_count += 1;
+      }
+      for (const g of grantRows.rows) {
+        if (['anon', 'authenticated', 'PUBLIC'].includes(String(g.grantee))) unsafe_grant_count += 1;
+      }
+      rpc_contract_summary = {
+        status:
+          missing_count > 0 || signature_drift_count > 0 || unsafe_grant_count > 0
+            ? 'TARGET_DB_RED'
+            : 'TARGET_DB_GREEN',
+        missing_count,
+        signature_drift_count,
+        unsafe_grant_count,
+      };
+      if (strict && rpc_contract_summary.status === 'TARGET_DB_RED') {
+        if (missing_count > 0) {
+          blocking_failures.push({ reason_code: REASON_CODES.DB_RPC_MISSING, message: `Missing required RPCs: ${missing_count}` });
+        }
+        if (signature_drift_count > 0) {
+          blocking_failures.push({ reason_code: REASON_CODES.DB_RPC_SIGNATURE_DRIFT, message: `RPC signature drift count: ${signature_drift_count}` });
+        }
+        if (unsafe_grant_count > 0) {
+          blocking_failures.push({ reason_code: REASON_CODES.DB_UNSAFE_GRANT, message: `Unsafe RPC grants detected: ${unsafe_grant_count}` });
+        }
+      }
+    } catch (error) {
+      rpc_contract_summary = {
+        status: 'TARGET_DB_UNVERIFIED',
+        missing_count: 0,
+        signature_drift_count: 0,
+        unsafe_grant_count: 0,
+      };
+      warnings.push(`RPC summary query failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      const migrationRows = [];
+      let appliedVersions = [];
+      try {
+        const r = await client.query('select version from supabase_migrations.schema_migrations');
+        appliedVersions = (r.rows || []).map((x) => String(x.version || ''));
+      } catch {
+        appliedVersions = [];
+      }
+      for (const name of CRITICAL_MIGRATIONS) {
+        const version = name.split('_')[0];
+        const applied = appliedVersions.includes(version);
+        migrationRows.push({
+          migration: name,
+          present_in_repo: true,
+          applied_in_target_db: applied ? true : (appliedVersions.length === 0 ? 'APPLIED_STATUS_UNVERIFIED' : false),
+          evidence: applied ? 'schema_migrations' : (appliedVersions.length === 0 ? 'schema_migrations_unavailable' : 'not_applied'),
+          status: applied ? 'TARGET_DB_GREEN' : (appliedVersions.length === 0 ? 'TARGET_DB_UNVERIFIED' : 'TARGET_DB_RED'),
+        });
+      }
+      migration_evidence_summary = {
+        status: migrationRows.some((r) => r.status === 'TARGET_DB_RED')
+          ? 'TARGET_DB_RED'
+          : migrationRows.some((r) => r.status === 'TARGET_DB_UNVERIFIED')
+            ? 'TARGET_DB_UNVERIFIED'
+            : 'TARGET_DB_GREEN',
+        rows: migrationRows,
+      };
+      if (strict && migration_evidence_summary.status === 'TARGET_DB_RED') {
+        blocking_failures.push({
+          reason_code: REASON_CODES.DB_SCHEMA_DRIFT,
+          message: 'Critical migration missing in target DB',
+        });
+      }
+    } catch (error) {
+      warnings.push(`Migration evidence query failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      const smoke = await client.query(
+        "select * from public.recover_safe_processing_queue_rows_v1(ARRAY[]::uuid[], 120, 'SAFE_TO_RETRY_CLASSIFIED', 'processing_recovery_classifier')"
+      );
+      const row = smoke.rows?.[0] || {};
+      const requested = Number(row.requested_count ?? 0);
+      const recovered = Number(row.recovered_count ?? 0);
+      row_scoped_smoke =
+        requested === 0 && recovered === 0
+          ? { status: 'TARGET_DB_GREEN', reason: 'empty-array non-mutating smoke passed' }
+          : { status: 'DB_SMOKE_FAILED', reason: 'unexpected non-zero smoke counters' };
+      if (strict && row_scoped_smoke.status === 'DB_SMOKE_FAILED') {
+        blocking_failures.push({
+          reason_code: REASON_CODES.DB_SMOKE_FAILED,
+          message: 'Row-scoped recovery smoke check failed',
+        });
+      }
+    } catch (error) {
+      const smokeError = error instanceof Error ? error.message : String(error);
+      row_scoped_smoke = {
+        status: smokeError.includes('may only be called by service_role') ? 'TARGET_DB_GREEN' : 'SMOKE_UNVERIFIED',
+        reason: smokeError,
+      };
+      if (row_scoped_smoke.status === 'SMOKE_UNVERIFIED') {
+        warnings.push('Row-scoped recovery smoke check skipped/unverified');
+      }
+    }
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+
+  const anyPackFail = sql_pack_results.some((p) => p.status === 'DB_QUERY_FAILED');
+  const target_db_contract_status =
+    blocking_failures.length > 0
+      ? 'TARGET_DB_RED'
+      : anyPackFail
+        ? 'TARGET_DB_PARTIAL'
+        : warnings.length > 0
+          ? 'TARGET_DB_UNVERIFIED'
+          : 'TARGET_DB_GREEN';
+
+  return {
+    db_checked: true,
+    db_target_redacted: redactDbTarget(dbUrl),
+    target_db_contract_status,
+    failure_classification: null,
+    failure_reason: null,
+    target_db_attempted: true,
+    target_db_checked: true,
+    is_fresh_artifact: true,
+    sql_pack_results,
+    rpc_contract_summary,
+    migration_evidence_summary,
+    row_scoped_smoke,
+    blocking_failures,
+    warnings,
+  };
+}
+
 function buildMarkdown(artifact) {
   const qh = artifact.metadata.queue_health_evidence || {};
   return [
@@ -141,9 +592,12 @@ function buildMarkdown(artifact) {
     `- git_commit: \`${artifact.metadata.git_commit}\``,
     `- migration_head: \`${artifact.metadata.migration_head}\``,
     `- actor: \`${artifact.metadata.actor}\``,
-    `- db_checked: \`${artifact.metadata.db_checked}\``,
+    `- target_db_checked: \`${artifact.metadata.target_db_checked ?? false}\``,
+    `- legacy_verify_db_checked: \`${artifact.metadata.legacy_verify_db_checked ?? false}\``,
     `- db_claim_scope: \`${artifact.metadata.db_claim_scope}\``,
     `- db_evidence_status: \`${artifact.metadata.db_evidence_status}\``,
+    `- target_db_contract_status: \`${artifact.metadata.target_db_contract_status ?? 'TARGET_DB_NOT_CHECKED'}\``,
+    `- db_target_redacted: \`${artifact.metadata.db_target_redacted ?? 'none'}\``,
     `- static_queue_contract_green: \`${artifact.metadata.static_queue_contract_green}\``,
     `- export_run_integrity: \`${artifact.metadata.export_run_integrity}\``,
     `- export_run_integrity_gate_status: \`${artifact.metadata.export_run_integrity_gate?.status}\``,
@@ -191,6 +645,13 @@ function buildMarkdown(artifact) {
       (p) => `- ${p.pack_id}: \`${p.sha256.slice(0, 12)}...\` (\`${p.contract_version}\`)`
     ),
     '',
+    '## Target DB Pack Results',
+    '',
+    ...(artifact.metadata.sql_pack_results || []).map(
+      (p) =>
+        `- ${p.pack_id}: \`${p.status}\` rows=\`${p.row_count}\` contract=\`${p.contract_status}\`${p.reason ? ` reason=\`${p.reason}\`` : ''}`
+    ),
+    '',
     '## Summary',
     '',
     `- total_checks: ${artifact.summary.total_checks}`,
@@ -214,6 +675,14 @@ function buildMarkdown(artifact) {
     '```',
     '',
   ].join('\n');
+}
+
+function deriveModeSpecificJsonPath(outputPath) {
+  const normalized = String(outputPath || '').replace(/\\/g, '/');
+  if (normalized.toLowerCase().endsWith('.md')) {
+    return outputPath.slice(0, -3) + '.json';
+  }
+  return `${outputPath}.json`;
 }
 
 function dbEnvAvailable() {
@@ -361,7 +830,7 @@ function evaluateProcessingRecoveryGate(input) {
   };
 }
 
-function main() {
+async function main() {
   const parsed = parseArgs(process.argv.slice(2));
   const generatedAt = new Date().toISOString();
   const commit = captureShort('git rev-parse --short HEAD');
@@ -370,10 +839,14 @@ function main() {
   const nodeVersion = captureShort('node --version');
   const actor = process.env.GITHUB_ACTOR || process.env.OPERATOR_ID || process.env.USERNAME || 'unknown';
 
-  const packs = resolveSqlPackAbsPaths(repoRoot);
+  const packs = [
+    ...resolveSqlPackAbsPaths(repoRoot),
+    ...EXTRA_DB_SQL_PACKS.map((p) => ({ ...p, absPath: join(repoRoot, p.file) })),
+  ];
   const sqlPackHashes = packs.map((p) => ({
     pack_id: p.pack_id,
     contract_version: p.contract_version,
+    file: p.file,
     sha256: hashFile(p.absPath),
   }));
 
@@ -612,6 +1085,42 @@ function main() {
     });
   }
 
+  const targetDbStrict = process.env.TARGET_DB_EVIDENCE_STRICT === '1';
+  let targetDbEvidence;
+  try {
+    targetDbEvidence = await collectTargetDbEvidence({
+      mode: parsed.mode,
+      strict: targetDbStrict,
+      withDb: parsed.withDb,
+      sqlPackHashes,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    targetDbEvidence = {
+      db_checked: false,
+      db_target_redacted: 'redacted',
+      target_db_contract_status: 'DB_QUERY_FAILED',
+      failure_classification: 'DB_QUERY_FAILED',
+      failure_reason: msg,
+      target_db_attempted: true,
+      target_db_checked: false,
+      is_fresh_artifact: true,
+      sql_pack_results: [],
+      rpc_contract_summary: {
+        status: 'DB_QUERY_FAILED',
+        missing_count: 0,
+        signature_drift_count: 0,
+        unsafe_grant_count: 0,
+      },
+      migration_evidence_summary: { status: 'TARGET_DB_UNVERIFIED', rows: [] },
+      row_scoped_smoke: { status: 'SMOKE_UNVERIFIED', reason: 'DB_QUERY_FAILED' },
+      blocking_failures: [{ reason_code: REASON_CODES.DB_QUERY_FAILED, message: `Unhandled DB evidence error: ${msg}` }],
+      warnings: ['STALE_ARTIFACT_PREVENTED'],
+    };
+  }
+  for (const b of targetDbEvidence.blocking_failures ?? []) blockingFailures.push(b);
+  for (const w of targetDbEvidence.warnings ?? []) warnings.push(w);
+
   const artifact = {
     metadata: {
       contract_version: EVIDENCE_CONTRACT_VERSION,
@@ -624,10 +1133,19 @@ function main() {
       node_version: nodeVersion,
       actor,
       command_invoked: `node scripts/release/collect-gate-evidence.mjs --mode=${parsed.mode}${parsed.withDb ? ' --with-db' : ''}`,
-      db_checked: checks.some((c) => c.name.includes('verify-db')),
+      db_checked: targetDbEvidence.target_db_checked === true,
+      legacy_verify_db_checked: checks.some((c) => c.name.includes('verify-db')),
       db_target: parsed.mode,
       db_claim_scope: checks.some((c) => c.name.includes('verify-db')) ? 'full' : 'none',
       db_evidence_status: dbEvidenceStatus,
+      target_db_contract_status: targetDbEvidence.target_db_contract_status,
+      db_target_redacted: targetDbEvidence.db_target_redacted,
+      target_db_attempted: targetDbEvidence.target_db_attempted === true,
+      target_db_checked: targetDbEvidence.target_db_checked === true,
+      failure_classification: targetDbEvidence.failure_classification,
+      target_db_failure_classification: targetDbEvidence.failure_classification,
+      failure_reason: targetDbEvidence.failure_reason,
+      is_fresh_artifact: targetDbEvidence.is_fresh_artifact === true,
       static_queue_contract_green: staticQueueContractGreen,
       export_run_integrity: export_run_integrity,
       export_run_integrity_gate: exportRunIntegrityGate,
@@ -669,6 +1187,10 @@ function main() {
       },
       normalization_version: 'v1',
       sql_pack_hashes: sqlPackHashes,
+      sql_pack_results: targetDbEvidence.sql_pack_results,
+      rpc_contract_summary: targetDbEvidence.rpc_contract_summary,
+      migration_evidence_summary: targetDbEvidence.migration_evidence_summary,
+      row_scoped_recovery_smoke: targetDbEvidence.row_scoped_smoke,
     },
     checks,
     summary: {
@@ -685,9 +1207,77 @@ function main() {
   };
 
   const markdown = buildMarkdown(artifact);
-  mkdirSync(dirname(parsed.output ?? DEFAULT_OUTPUT), { recursive: true });
-  writeFileSync(parsed.output ?? DEFAULT_OUTPUT, markdown, 'utf8');
+  const modeSpecificOutput = parsed.output ?? DEFAULT_OUTPUT;
+  const modeSpecificJsonOutput = deriveModeSpecificJsonPath(modeSpecificOutput);
+  mkdirSync(dirname(modeSpecificOutput), { recursive: true });
+  writeFileSync(modeSpecificOutput, markdown, 'utf8');
+  writeFileSync(join(repoRoot, 'tmp', 'release-gates-latest.md'), markdown, 'utf8');
+  writeFileSync(modeSpecificJsonOutput, JSON.stringify(artifact, null, 2), 'utf8');
+  writeFileSync(join(repoRoot, 'tmp', 'release-gates-latest.json'), JSON.stringify(artifact, null, 2), 'utf8');
   writeFileSync(join(repoRoot, 'tmp', 'release-gates-normalized.json'), normalizeEvidenceArtifact(artifact), 'utf8');
+  writeFileSync(join(repoRoot, 'tmp', 'db-evidence-latest.json'), JSON.stringify({
+    generated_at: generatedAt,
+    command_invoked: `node scripts/release/collect-gate-evidence.mjs --mode=${parsed.mode}${parsed.withDb ? ' --with-db' : ''}`,
+    mode: parsed.mode,
+    target_db_contract_status: targetDbEvidence.target_db_contract_status,
+    target_db_attempted: targetDbEvidence.target_db_attempted === true,
+    target_db_checked: targetDbEvidence.target_db_checked === true,
+    failure_classification: targetDbEvidence.failure_classification,
+    target_db_failure_classification: targetDbEvidence.failure_classification,
+    failure_reason: targetDbEvidence.failure_reason,
+    is_fresh_artifact: targetDbEvidence.is_fresh_artifact === true,
+    db_target_redacted: targetDbEvidence.db_target_redacted,
+    sql_pack_hashes: sqlPackHashes,
+    sql_pack_results: targetDbEvidence.sql_pack_results,
+    rpc_contract_summary: targetDbEvidence.rpc_contract_summary,
+    migration_evidence_summary: targetDbEvidence.migration_evidence_summary,
+    row_scoped_recovery_smoke: targetDbEvidence.row_scoped_smoke,
+    blocking_failures: targetDbEvidence.blocking_failures,
+    warnings: targetDbEvidence.warnings,
+  }, null, 2), 'utf8');
+  writeFileSync(
+    join(repoRoot, 'tmp', 'db-evidence-normalized.json'),
+    JSON.stringify({
+      mode: parsed.mode,
+      target_db_contract_status: targetDbEvidence.target_db_contract_status,
+      target_db_attempted: targetDbEvidence.target_db_attempted === true,
+      target_db_checked: targetDbEvidence.target_db_checked === true,
+      failure_classification: targetDbEvidence.failure_classification,
+      target_db_failure_classification: targetDbEvidence.failure_classification,
+      failure_reason: targetDbEvidence.failure_reason ? '__normalized__' : null,
+      is_fresh_artifact: targetDbEvidence.is_fresh_artifact === true,
+      db_target_redacted: '__normalized__',
+      sql_pack_hashes: sqlPackHashes,
+      sql_pack_results: targetDbEvidence.sql_pack_results.map((r) => ({ ...r, reason: r.reason ? '__normalized__' : null })),
+      rpc_contract_summary: targetDbEvidence.rpc_contract_summary,
+      migration_evidence_summary: targetDbEvidence.migration_evidence_summary,
+      row_scoped_recovery_smoke: targetDbEvidence.row_scoped_smoke,
+      blocking_failures: targetDbEvidence.blocking_failures,
+      warnings: targetDbEvidence.warnings,
+    }, null, 2),
+    'utf8'
+  );
+  writeFileSync(
+    join(repoRoot, 'tmp', 'db-evidence-latest.md'),
+    [
+      '# Target DB Evidence',
+      '',
+      `- mode: \`${parsed.mode}\``,
+      `- target_db_contract_status: \`${targetDbEvidence.target_db_contract_status}\``,
+      `- db_target_redacted: \`${targetDbEvidence.db_target_redacted}\``,
+      `- generated_at: \`${generatedAt}\``,
+      `- sql_pack_results: \`${targetDbEvidence.sql_pack_results.length}\` packs`,
+      `- rpc_contract_status: \`${targetDbEvidence.rpc_contract_summary.status}\``,
+      `- migration_status: \`${targetDbEvidence.migration_evidence_summary.status}\``,
+      `- row_scoped_recovery_smoke: \`${targetDbEvidence.row_scoped_smoke.status}\``,
+      `- target_db_attempted: \`${targetDbEvidence.target_db_attempted === true}\``,
+      `- target_db_checked: \`${targetDbEvidence.target_db_checked === true}\``,
+      `- failure_classification: \`${targetDbEvidence.failure_classification || 'none'}\``,
+      `- is_fresh_artifact: \`${targetDbEvidence.is_fresh_artifact === true}\``,
+      '',
+    ].join('\n'),
+    'utf8'
+  );
   writeFileSync(
     join(repoRoot, 'tmp', 'release-evidence-scorecard.md'),
     buildScorecardMarkdown({ artifact, outputPath: relative(repoRoot, parsed.output ?? DEFAULT_OUTPUT) || parsed.output }),
@@ -698,4 +1288,4 @@ function main() {
   if (artifact.overall_status === 'FAIL') process.exit(1);
 }
 
-main();
+await main();

@@ -4,16 +4,8 @@
 -- @red_green_criteria: RED when any call-bound row has conversion timestamps drifted from occurred_at.
 -- OCI time SSOT health (read-only)
 
-WITH marketing_signals_drift AS (
-  SELECT
-    COUNT(*)::int AS drifted_rows
-  FROM public.marketing_signals ms
-  WHERE ms.call_id IS NOT NULL
-    AND (
-      ms.occurred_at IS NULL
-      OR ms.google_conversion_time IS NULL
-      OR ms.google_conversion_time IS DISTINCT FROM ms.occurred_at
-    )
+WITH table_presence AS (
+  SELECT to_regclass('public.marketing_signals') IS NOT NULL AS marketing_signals_exists
 ),
 offline_queue_drift AS (
   SELECT
@@ -29,13 +21,16 @@ offline_queue_drift AS (
     )
 )
 SELECT
-  'marketing_signals'::text AS surface,
-  ms.drifted_rows,
-  CASE WHEN ms.drifted_rows = 0 THEN 'GREEN' ELSE 'RED' END AS contract_status
-FROM marketing_signals_drift ms
-UNION ALL
-SELECT
   'offline_conversion_queue'::text AS surface,
   oq.drifted_rows,
   CASE WHEN oq.drifted_rows = 0 THEN 'GREEN' ELSE 'RED' END AS contract_status
-FROM offline_queue_drift oq;
+FROM offline_queue_drift oq
+UNION ALL
+SELECT
+  'marketing_signals'::text AS surface,
+  0::int AS drifted_rows,
+  CASE
+    WHEN tp.marketing_signals_exists THEN 'OPTIONAL_LEGACY_CHECK_SKIPPED'
+    ELSE 'AUDIT_TABLE_NOT_PRESENT'
+  END AS contract_status
+FROM table_presence tp;

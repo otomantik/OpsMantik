@@ -15,6 +15,26 @@ export const REASON_CODES = {
   PARSER_ERROR: 'PARSER_ERROR',
   UNKNOWN_MODE: 'UNKNOWN_MODE',
   PASS_WITH_WARNINGS: 'PASS_WITH_WARNINGS',
+  DB_ENV_MISSING: 'DB_ENV_MISSING',
+  DB_SCHEMA_DRIFT: 'DB_SCHEMA_DRIFT',
+  DB_GRANT_DRIFT: 'DB_GRANT_DRIFT',
+  DB_RPC_MISSING: 'DB_RPC_MISSING',
+  DB_RPC_SIGNATURE_DRIFT: 'DB_RPC_SIGNATURE_DRIFT',
+  DB_UNSAFE_GRANT: 'DB_UNSAFE_GRANT',
+  DB_SMOKE_FAILED: 'DB_SMOKE_FAILED',
+  DB_URL_INVALID: 'DB_URL_INVALID',
+  DB_CONNECTION_FAILED: 'DB_CONNECTION_FAILED',
+  STALE_ARTIFACT_PREVENTED: 'STALE_ARTIFACT_PREVENTED',
+};
+
+export const TARGET_DB_STATUSES = {
+  TARGET_DB_GREEN: 'TARGET_DB_GREEN',
+  TARGET_DB_RED: 'TARGET_DB_RED',
+  TARGET_DB_PARTIAL: 'TARGET_DB_PARTIAL',
+  TARGET_DB_UNVERIFIED: 'TARGET_DB_UNVERIFIED',
+  LEGACY_RESIDUE_ABSENT: 'LEGACY_RESIDUE_ABSENT',
+  AUDIT_TABLE_NOT_PRESENT: 'AUDIT_TABLE_NOT_PRESENT',
+  OPTIONAL_LEGACY_CHECK_SKIPPED: 'OPTIONAL_LEGACY_CHECK_SKIPPED',
 };
 
 export const HEALTH_PACK_CONTRACTS = [
@@ -195,8 +215,10 @@ export function buildScorecardMarkdown({ artifact, outputPath }) {
     `- mode: \`${artifact.metadata.mode}\``,
     `- environment: \`${artifact.metadata.environment}\``,
     `- overall_status: \`${artifact.overall_status}\``,
-    `- db_checked: \`${artifact.metadata.db_checked}\``,
+    `- target_db_checked: \`${artifact.metadata.target_db_checked ?? false}\``,
+    `- legacy_verify_db_checked: \`${artifact.metadata.legacy_verify_db_checked ?? false}\``,
     `- db_evidence_status: \`${artifact.metadata.db_evidence_status ?? 'unknown'}\``,
+    `- target_db_contract_status: \`${artifact.metadata.target_db_contract_status ?? 'TARGET_DB_NOT_CHECKED'}\``,
     `- static_queue_contract_green: \`${artifact.metadata.static_queue_contract_green ?? 'unknown'}\``,
     `- export_run_integrity: \`${artifact.metadata.export_run_integrity ?? 'unknown'}\``,
     `- export_run_lineage: \`${artifact.metadata.export_run_lineage ?? 'unknown'}\``,

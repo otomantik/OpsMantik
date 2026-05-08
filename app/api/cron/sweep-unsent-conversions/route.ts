@@ -30,24 +30,38 @@ const LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;
 const CRON_LOCK_TTL_SEC = 300; // 5 min — exceeds 15-min schedule
 
-async function runSweep() {
+function parseFlag(value: string | null): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+async function runSweep(req: NextRequest) {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400 * 1000);
   const sinceIso = since.toISOString();
+  const targetSiteId = req.nextUrl.searchParams.get('site_id')?.trim() || null;
+  const dryRun = parseFlag(req.nextUrl.searchParams.get('dry_run'));
 
   try {
     // P0-1.1: Cap to prevent memory exhaustion at scale
     const QUEUE_SCAN_LIMIT = 5000;
-    const [{ data: queueRows }, { data: sealedCalls, error: callsError }] = await Promise.all([
-      adminClient.from('offline_conversion_queue').select('call_id').not('call_id', 'is', null).limit(QUEUE_SCAN_LIMIT),
-      adminClient
-        .from('calls')
-        .select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')
-        .or('oci_status.eq.sealed,status.eq.won')
-        .gte('confirmed_at', sinceIso)
-        .not('confirmed_at', 'is', null)
-        .order('confirmed_at', { ascending: false })
-        .limit(MAX_ORPHANS_PER_RUN * 2),
-    ]);
+    const queueQuery = adminClient
+      .from('offline_conversion_queue')
+      .select('call_id')
+      .not('call_id', 'is', null)
+      .limit(QUEUE_SCAN_LIMIT);
+    if (targetSiteId) queueQuery.eq('site_id', targetSiteId);
+
+    const callsQuery = adminClient
+      .from('calls')
+      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')
+      .or('oci_status.eq.sealed,status.eq.won')
+      .gte('confirmed_at', sinceIso)
+      .not('confirmed_at', 'is', null)
+      .order('confirmed_at', { ascending: false })
+      .limit(MAX_ORPHANS_PER_RUN * 2);
+    if (targetSiteId) callsQuery.eq('site_id', targetSiteId);
+
+    const [{ data: queueRows }, { data: sealedCalls, error: callsError }] = await Promise.all([queueQuery, callsQuery]);
 
     if (callsError) {
       return NextResponse.json(
@@ -78,6 +92,7 @@ async function runSweep() {
         skipped.unknown = (skipped.unknown ?? 0) + 1;
         continue;
       }
+      if (dryRun) continue;
       const result = await enqueueSealConversion({
         callId: call.id,
         siteId: call.site_id,
@@ -101,6 +116,8 @@ async function runSweep() {
     return NextResponse.json(
       {
         ok: true,
+        mode: dryRun ? 'dry-run' : 'write',
+        target_site_id: targetSiteId,
         discovered_won: workset.discoveredWon,
         discovered_sealed: workset.discoveredSealed,
         orphaned: orphans.length,
@@ -122,7 +139,7 @@ async function runSweep() {
   }
 }
 
-async function handlerWithLock() {
+async function handlerWithLock(req: NextRequest) {
   const acquired = await tryAcquireCronLock('sweep-unsent-conversions', CRON_LOCK_TTL_SEC);
   if (!acquired) {
     return NextResponse.json(
@@ -131,7 +148,7 @@ async function handlerWithLock() {
     );
   }
   try {
-    return await runSweep();
+    return await runSweep(req);
   } finally {
     await releaseCronLock('sweep-unsent-conversions');
   }
@@ -140,11 +157,11 @@ async function handlerWithLock() {
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return handlerWithLock();
+  return handlerWithLock(req);
 }
 
 export async function POST(req: NextRequest) {
   const forbidden = requireCronAuth(req);
   if (forbidden) return forbidden;
-  return handlerWithLock();
+  return handlerWithLock(req);
 }

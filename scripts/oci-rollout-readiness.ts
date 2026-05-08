@@ -15,7 +15,7 @@ import {
   evaluateRolloutGate,
   type RolloutProfile,
 } from '../lib/oci/queue-health-contract';
-import { countWonMissingPipelineForSite } from '../lib/oci/won-missing-pipeline-site';
+import { collectWonPipelineSiteStats } from '../lib/oci/won-missing-pipeline-site';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '.env.local') });
@@ -142,7 +142,15 @@ async function loadQueueAndOutbox(siteId: string) {
           deterministic_skip_rate: 0,
         };
 
-  const wonMissingPipelineCount = queueTableMissing ? 0 : await countWonMissingPipelineForSite(supabase, siteId);
+  const wonPipeline = queueTableMissing
+    ? {
+        wonTotal: 0,
+        wonInQueue: 0,
+        wonCompleted: 0,
+        wonMissingPipeline: 0,
+        oldestMissingAgeSeconds: null,
+      }
+    : await collectWonPipelineSiteStats(supabase, siteId);
 
   return {
     queue,
@@ -155,7 +163,8 @@ async function loadQueueAndOutbox(siteId: string) {
     providerFailedRate: taxRates.provider_failed_rate,
     deterministicSkipRate: taxRates.deterministic_skip_rate,
     failureTaxonomy,
-    wonMissingPipelineCount,
+    wonMissingPipelineCount: wonPipeline.wonMissingPipeline,
+    wonPipeline,
     stuckProcessing,
     queueTableMissing,
     outboxTableMissing,

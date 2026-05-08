@@ -1,9 +1,9 @@
 {
-  "ok": false,
-  "url": "https://example.supabase.co",
+  "ok": true,
+  "url": "https://api.opsmantik.com",
   "used_key": "service_role",
   "missing_count": 0,
-  "failed_count": 24,
+  "failed_count": 0,
   "local_contract_checks": [
     {
       "name": "local:contract_catalog",
@@ -19,313 +19,258 @@
     },
     {
       "name": "ping",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": true
     },
     {
       "name": "verify_partition_triggers_exist",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": false
     },
     {
       "name": "verify_current_events_partition_exists",
-      "ok": false,
-      "missing": false,
+      "ok": true,
+      "missing": true,
       "optional": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.verify_current_events_partition_exists without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "watchtower_partition_drift_check_v1",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+      "ok": true,
+      "sample": {
+        "ok": false,
+        "checked_at": "2026-05-08T13:20:20.045301+00:00",
+        "trigger_sessions_set_created_month": false,
+        "trigger_events_set_session_month_from_session": false
       }
     },
     {
       "name": "get_recent_intents_v1",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": [
+        {
+          "id": "7493fd2e-ad95-44e3-8954-1887b67e66e8",
+          "version": 2,
+          "created_at": "2026-05-08T13:01:51.400428+00:00",
+          "status": "offered",
+          "matched_session_id": "0d038f8c-a8d7-488b-aba3-3eaadab190ac",
+          "intent_action": "phone",
+          "intent_target": "+905459605811",
+          "summary": "+905459605811",
+          "page_url": "https://www.kocotokurtarma.com/?gclid=EAIaIQobChMIjsL3_N-plAMVeaNoCR316Q6nEAAYASAAEgIlmPD_BwE&wbraid=Cj8KCQjw8PDPBhCwARIuABiwi1gOmFledh171FwNqgx9pi2AXwVOXpfUXqaEL-hDwkbloQ607oGwNKgjAhoCZJE&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=%C3%A7ekici%20yol%20yard%C4%B1m&utm_content=803499423779&utm_adgroup=195554909752&matchtype=p&device=m&devicemodel=&network=g&adposition=&targetid=kwd-307989163648&feeditemid=&loc_physical_ms=1012782&loc_interest_ms=9192434&placement=&gad_source=1&gad_campaignid=23719612036&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H",
+          "click_id": "EAIaIQobChMIjsL3_N-plAMVeaNoCR316Q6nEAAYASAAEgIlmPD_BwE"
+        },
+        {
+          "id": "a74d449f-f061-4f2d-af7a-c76806dd15c4",
+          "version": 2,
+          "created_at": "2026-05-08T12:34:32.241359+00:00",
+          "status": "cancelled",
+          "matched_session_id": "2f5f2cd9-ac81-47ef-8b34-b9c63daaad8e",
+          "intent_action": "phone",
+          "intent_target": "+905459605811",
+          "summary": "+905459605811",
+          "page_url": "https://www.kocotokurtarma.com/?gclid=Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB&wbraid=Cj8KCQjw8PDPBhCwARIuABiwi1gOmFledh171FwNqgx9pi2AXwVOXpfUXqaEL-hDwkbloQ607oGwNKgjAhoCZJE&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=acil%20yol%20yard%C4%B1m&utm_content=803499423779&utm_adgroup=195554909752&matchtype=p&device=m&devicemodel=&network=g&adposition=&targetid=kwd-301027151504&feeditemid=&loc_physical_ms=9197731&loc_interest_ms=9192494&placement=&gad_source=1&gad_campaignid=23719612036",
+          "click_id": "Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB"
+        },
+        {
+          "id": "c44dba5b-7c4a-416e-8215-d471513d328a",
+          "version": 2,
+          "created_at": "2026-05-08T12:34:32.141509+00:00",
+          "status": "won",
+          "matched_session_id": "07bd6210-089d-4c92-9366-ee9f68bc9ab5",
+          "intent_action": "phone",
+          "intent_target": "+905459605811",
+          "summary": "+905459605811",
+          "page_url": "https://www.kocotokurtarma.com/?gclid=Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB&wbraid=Cj8KCQjw8PDPBhCwARIuABiwi1gOmFledh171FwNqgx9pi2AXwVOXpfUXqaEL-hDwkbloQ607oGwNKgjAhoCZJE&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=acil%20yol%20yard%C4%B1m&utm_content=803499423779&utm_adgroup=195554909752&matchtype=p&device=m&devicemodel=&network=g&adposition=&targetid=kwd-301027151504&feeditemid=&loc_physical_ms=9197731&loc_interest_ms=9192494&placement=&gad_source=1&gad_campaignid=23719612036",
+          "click_id": "Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB"
+        }
+      ]
     },
     {
       "name": "get_session_details",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": []
     },
     {
       "name": "get_session_timeline",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": []
     },
     {
       "name": "is_ads_session",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": false
     },
     {
       "name": "verify_call_event_signature_v1",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": false
     },
     {
       "name": "resolve_site_identifier_v1",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": null
     },
     {
       "name": "rotate_site_secret_v1",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true,
+      "sample": false
     },
     {
       "name": "get_recent_intents_lite_v1",
-      "ok": false,
+      "ok": true,
       "missing": false,
       "optional": false,
+      "signature_ambiguous": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not choose the best candidate function between: public.get_recent_intents_lite_v1(p_site_id => uuid, p_date_from => timestamp with time zone, p_date_to => timestamp with time zone, p_limit => integer, p_ads_only => boolean), public.get_recent_intents_lite_v1(p_site_id => uuid, p_date_from => timestamp with time zone, p_date_to => timestamp with time zone, p_limit => integer, p_ads_only => boolean, p_only_unreviewed => boolean, p_include_reviewed => boolean)",
+        "code": "PGRST203"
       }
     },
     {
       "name": "increment_usage_checked",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+      "ok": true,
+      "sample": {
+        "ok": true,
+        "kind": "revenue_events",
+        "limit": 1000,
+        "current": 65
       }
     },
     {
       "name": "decrement_and_delete_idempotency",
-      "ok": false,
-      "missing": false,
-      "optional": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+      "ok": true,
+      "sample": {
+        "ok": false,
+        "reason": "NOT_FOUND"
       }
     },
     {
       "name": "rpc_presence:apply_call_action_v2",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.apply_call_action_v2 without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:apply_call_action_with_review_v1",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.apply_call_action_with_review_v1 without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:finalize_outbox_event_v1",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.finalize_outbox_event_v1 without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:append_script_claim_transition_batch",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.append_script_claim_transition_batch without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:append_script_transition_batch",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.append_script_transition_batch without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:append_worker_transition_batch_v2",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.append_worker_transition_batch_v2 without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:claim_outbox_events",
-      "ok": true,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "rpc_presence:claim_offline_conversion_jobs_v3",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.claim_offline_conversion_jobs_v3 without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_presence:complete_ack_receipt_v1",
       "ok": true,
-      "missing": false,
+      "missing": true,
+      "signature_required": true,
       "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
+        "message": "Could not find the function public.complete_ack_receipt_v1 without parameters in the schema cache",
+        "code": "PGRST202"
       }
     },
     {
       "name": "rpc_signature:register_ack_receipt_v1",
-      "ok": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "table:site_plans",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "table:site_usage_monthly",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "table:usage_counters",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "table:call_funnel_ledger",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "table:marketing_signals",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "table:offline_conversion_queue",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "columns:calls_clickid_geo_columns",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "columns:sessions_geo_decision_columns",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     },
     {
       "name": "columns:calls_intent_review_columns",
-      "ok": false,
-      "missing": false,
-      "error": {
-        "message": "TypeError: fetch failed",
-        "code": ""
-      }
+      "ok": true
     }
   ]
 }

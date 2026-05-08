@@ -22,14 +22,12 @@ test('MODULE 4: universal optimization values replace half-life shadow math', ()
   });
 });
 
-test('MODULE 2: pulse-recovery backoff 2h → 6h → 24h without V2 backfill', () => {
+test('MODULE 2: pulse-recovery is queue-only retirement shim (no V2 backfill loop)', () => {
   const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'pulse-recovery-worker.ts'), 'utf-8');
-  assert.ok(src.includes('2'), 'has 2h');
-  assert.ok(src.includes('6'), 'has 6h');
-  assert.ok(src.includes('24'), 'has 24h');
-  assert.ok(src.includes('BACKOFF_HOURS'), 'exponential backoff');
-  assert.ok(src.includes('recovery_attempt_count'), 'recovery attempt count');
-  assert.ok(src.includes('last_recovery_attempt_at'), 'last recovery timestamp');
+  assert.ok(src.includes('return {'));
+  assert.ok(src.includes('processed: 0'));
+  assert.ok(src.includes('recovered: 0'));
+  assert.ok(src.includes('attempted: 0'));
   assert.ok(!src.includes('recoverMissingV2Signals'), 'must not keep legacy V2 backfill logic');
   assert.ok(!src.includes("signal_type', 'INTENT_CAPTURED'"), 'must not scan for legacy INTENT_CAPTURED rows');
   assert.ok(!src.includes("evaluateAndRouteSignal('V2_PULSE'"), 'must not re-emit removed V2 pulses');
