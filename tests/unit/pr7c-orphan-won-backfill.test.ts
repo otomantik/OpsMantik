@@ -36,6 +36,7 @@ test('PR-7C repair script uses canonical enqueue path via sweep-unsent endpoint'
   assert.ok(route.includes('enqueueSealConversion'));
   assert.ok(route.includes("const targetSiteId = normalizeSiteId(targetSiteIdRaw)"));
   assert.ok(route.includes("const dryRun = parseFlag(req.nextUrl.searchParams.get('dry_run'))"));
+  assert.ok(!route.includes('sale_amount, currency, lead_score'));
 });
 
 test('PR-7C no queue deletion or direct hardcoded value math introduced', () => {

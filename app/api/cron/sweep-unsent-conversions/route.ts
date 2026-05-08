@@ -93,7 +93,7 @@ async function runSweep(req: NextRequest) {
 
     const callsQuery = adminClient
       .from('calls')
-      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')
+      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, lead_score')
       .or('oci_status.eq.sealed,status.eq.won')
       .gte('confirmed_at', sinceIso)
       .not('confirmed_at', 'is', null)
@@ -138,7 +138,9 @@ async function runSweep(req: NextRequest) {
         siteId: call.site_id,
         confirmedAt: call.confirmed_at,
         saleAmount: call.sale_amount ?? null,
-        currency: normalizeCurrencyOrNeutral(call.currency),
+        // Schema-compat fallback: calls.currency may be absent in some target DBs.
+        // Passing empty string keeps value policy SSOT on site-level currency fallback.
+        currency: normalizeCurrencyOrNeutral(''),
         leadScore: call.lead_score ?? null,
         entryReason: 'sweep_unsent_conversions',
       });
