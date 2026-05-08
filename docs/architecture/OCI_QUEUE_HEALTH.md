@@ -32,6 +32,40 @@ Queue health scores measure **export pipeline reliability** (queue, retry, DLQ, 
 
 Do **not** DELETE queue rows; use terminalize / repair / manual actions documented in [OCI_HARDENING_OPERATIONS.md](../runbooks/OCI_HARDENING_OPERATIONS.md).
 
+PR-4C hardening: this release adds a **pure recovery classifier** only (no runtime transition flip yet). Stuck `PROCESSING` handling must be provider-outcome aware, not only age-based. Blindly sending stale `PROCESSING` rows to `RETRY` can create duplicate upload risk when Google upload may have happened but ACK/ACK_FAILED was unavailable.
+
+Recommended recovery buckets for stuck `PROCESSING` rows:
+
+- `SAFE_TO_RETRY`
+- `HOLD_FOR_PROVIDER_RECONCILIATION`
+- `NEEDS_OPERATOR_REVIEW`
+- `DEAD_LETTER_QUARANTINE`
+- `UNKNOWN_STUCK_PROCESSING`
+
+Operational visibility fields expected in queue health evidence:
+
+- `stuck_processing_count`
+- `oldest_processing_age_minutes`
+- `ambiguous_processing_count`
+- `unknown_provider_outcome_count`
+- `processing_with_provider_request_id_count`
+- `processing_without_run_summary_count` (placeholder if not computable yet)
+- `processing_safe_retry_candidate_count`
+- `processing_requires_review_count`
+
+PR-4D runtime adoption is now guarded by `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE`:
+
+- `off`: backward-compatible legacy recovery behavior.
+- `shadow`: classifier runs for preview counters/logs only; recovery mutation unchanged.
+- `enforce_safe_retry` / `strict`: intent is to auto-retry only `SAFE_TO_RETRY`, but current DB RPC is not row-scoped; enforcement is reported as partial/bypass until row-filterable RPC support lands.
+
+Rollback path is trivial: set `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE=off`.
+
+PR-4D.1 adds additive row-scoped RPC support (`recover_safe_processing_queue_rows_v1`). When present, enforce/strict modes can recover only classifier-approved `SAFE_TO_RETRY` rows without broad stale-batch retries. Legacy broad RPC remains as compatibility path for off/shadow.
+PR-4F hardens grant posture: legacy and row-scoped recovery mutation RPCs are service-role execution only; unsafe anon/authenticated/PUBLIC execute grants are treated as contract violations in `rpc_contract_health.sql`.
+
+PR-4E adds a strict recovery-integrity promotion gate. Static CI may remain `RECOVERY_INTEGRITY_UNVERIFIED` (contract-only), but strict staging/production promotion is blocked when ambiguous/unknown/review-required rows exist, when enforcement is bypassed, or when row-scoped RPC support is missing in enforce/strict classifier modes.
+
 ## ACK / ACK_FAILED (replay-safe semantics)
 
 Production handlers:

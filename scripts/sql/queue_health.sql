@@ -3,6 +3,7 @@
 -- @policy_version: queue_health_contract_v1
 -- @db_required: true
 -- @red_green_criteria: RED when stuck>0 OR won_missing_pipeline>0 OR dlq>0 OR retry_rate>0.3 OR actionable_failed_rate>0.2 OR provider_failed_rate>0.2 OR unknown_failed_count>0 OR queued/retry age > 7d. Deterministic skips visible but excluded from actionable/provider rate numerators (PR-1C).
+-- PR-4: Adds stuck PROCESSING recovery risk visibility fields. Values are advisory unless strict recovery policy consumes them.
 -- Composed operational queue health per site (read-only). SSOT time/value packs are separate; merge in evidence.
 -- Stuck window = STUCK_PROCESSING_MAX_AGE_MINUTES (15) aligned with lib/oci/queue-health-contract.ts
 
@@ -23,6 +24,42 @@ queue_counts AS (
     COUNT(*) FILTER (WHERE q.status = 'PROCESSING')::int AS processing_count,
     COUNT(*) FILTER (WHERE q.status = 'FAILED')::int AS failed_count,
     COUNT(*) FILTER (WHERE q.status = 'DEAD_LETTER_QUARANTINE')::int AS dlq_count
+  FROM public.offline_conversion_queue q
+  GROUP BY q.site_id
+),
+processing_evidence AS (
+  SELECT
+    q.site_id,
+    COUNT(*) FILTER (
+      WHERE q.status = 'PROCESSING'
+        AND q.provider_request_id IS NOT NULL
+        AND NULLIF(BTRIM(q.provider_request_id), '') IS NOT NULL
+    )::int AS processing_with_provider_request_id_count,
+    COUNT(*) FILTER (
+      WHERE q.status = 'PROCESSING'
+        AND (
+          q.provider_error_category = 'PROVIDER_AMBIGUOUS'
+          OR q.provider_error_code IN (
+            'PROVIDER_AMBIGUOUS',
+            'ACK_ENDPOINT_UNAVAILABLE_AFTER_UPLOAD',
+            'SCRIPT_CRASHED_AFTER_UPLOAD',
+            'UNKNOWN_PROVIDER_OUTCOME',
+            'SCRIPT_SUMMARY_MISSING'
+          )
+        )
+    )::int AS ambiguous_processing_count,
+    COUNT(*) FILTER (
+      WHERE q.status = 'PROCESSING'
+        AND (
+          q.provider_error_code = 'UNKNOWN_PROVIDER_OUTCOME'
+          OR q.provider_error_code = 'SCRIPT_SUMMARY_MISSING'
+        )
+    )::int AS unknown_provider_outcome_count,
+    COUNT(*) FILTER (
+      WHERE q.status = 'PROCESSING'
+        AND (q.provider_request_id IS NULL OR NULLIF(BTRIM(q.provider_request_id), '') IS NULL)
+        AND q.updated_at < (now() - interval '15 minutes')
+    )::int AS processing_safe_retry_candidate_count
   FROM public.offline_conversion_queue q
   GROUP BY q.site_id
 ),
@@ -132,6 +169,16 @@ calc AS (
       COALESCE(ft.total_failed_count, 0) - COALESCE(ft.deterministic_skip_count, 0)
     )::int AS actionable_failed_count,
     COALESCE(st.stuck_processing_count, 0) AS stuck_processing_count,
+    COALESCE(pe.processing_with_provider_request_id_count, 0) AS processing_with_provider_request_id_count,
+    COALESCE(pe.ambiguous_processing_count, 0) AS ambiguous_processing_count,
+    COALESCE(pe.unknown_provider_outcome_count, 0) AS unknown_provider_outcome_count,
+    COALESCE(pe.processing_safe_retry_candidate_count, 0) AS processing_safe_retry_candidate_count,
+    (
+      COALESCE(pe.processing_with_provider_request_id_count, 0)
+      + COALESCE(pe.ambiguous_processing_count, 0)
+      + COALESCE(pe.unknown_provider_outcome_count, 0)
+    )::int AS processing_requires_review_count,
+    NULL::int AS processing_without_run_summary_count,
     COALESCE(mw.won_missing_pipeline, 0) AS won_missing_pipeline,
     a.oldest_queued_age_minutes,
     a.oldest_retry_age_minutes,
@@ -157,6 +204,7 @@ calc AS (
   LEFT JOIN failed_taxonomy ft ON ft.site_id = s.id
   LEFT JOIN stuck st ON st.site_id = s.id
   LEFT JOIN missing_won mw ON mw.site_id = s.id
+  LEFT JOIN processing_evidence pe ON pe.site_id = s.id
   LEFT JOIN ages a ON a.site_id = s.id
 )
 SELECT
@@ -178,6 +226,12 @@ SELECT
   c.actionable_failed_count,
   c.dlq_count AS dead_letter_count,
   c.stuck_processing_count,
+  c.processing_with_provider_request_id_count,
+  c.ambiguous_processing_count,
+  c.unknown_provider_outcome_count,
+  c.processing_safe_retry_candidate_count,
+  c.processing_requires_review_count,
+  c.processing_without_run_summary_count,
   c.won_missing_pipeline,
   c.oldest_queued_age_minutes,
   c.oldest_retry_age_minutes,

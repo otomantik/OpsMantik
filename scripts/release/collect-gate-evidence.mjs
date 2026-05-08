@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'child_process';
-import { mkdirSync, readdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { config as loadEnv } from 'dotenv';
@@ -147,8 +147,28 @@ function buildMarkdown(artifact) {
     `- static_queue_contract_green: \`${artifact.metadata.static_queue_contract_green}\``,
     `- export_run_integrity: \`${artifact.metadata.export_run_integrity}\``,
     `- export_run_integrity_gate_status: \`${artifact.metadata.export_run_integrity_gate?.status}\``,
+    `- recovery_integrity: \`${artifact.metadata.recovery_integrity}\``,
+    `- recovery_integrity_gate: \`${artifact.metadata.recovery_integrity_gate?.pass ? 'PASS' : 'FAIL'}\``,
+    `- processing_recovery_mode: \`${artifact.metadata.processing_recovery_mode}\``,
+    `- classifier_present: \`${artifact.metadata.classifier_present}\``,
+    `- processing_classifier_enforcement_supported: \`${artifact.metadata.processing_classifier_enforcement_supported}\``,
+    `- row_scoped_recovery_rpc_present: \`${artifact.metadata.row_scoped_recovery_rpc_present}\``,
+    `- processing_safe_retry_candidate_count: \`${artifact.metadata.recovery_signals?.processing_safe_retry_candidate_count ?? 0}\``,
+    `- processing_provider_ambiguous_count: \`${artifact.metadata.recovery_signals?.processing_provider_ambiguous_count ?? 0}\``,
+    `- processing_requires_review_count: \`${artifact.metadata.recovery_signals?.processing_requires_review_count ?? 0}\``,
+    `- processing_unknown_provider_outcome_count: \`${artifact.metadata.recovery_signals?.processing_unknown_provider_outcome_count ?? 0}\``,
+    `- processing_classifier_bypass_count: \`${artifact.metadata.recovery_signals?.processing_classifier_bypass_count ?? 0}\``,
+    `- recovery_blocking_reasons: \`${(artifact.metadata.recovery_integrity_gate?.blocking_reasons || []).join(',') || 'none'}\``,
+    `- recovery_warnings: \`${(artifact.metadata.recovery_integrity_gate?.warnings || []).join(',') || 'none'}\``,
+    `- recovery_classifier_shadow: \`${artifact.metadata.recovery_classifier_shadow_present}\``,
+    `- recovery_classifier_enforcement: \`${artifact.metadata.recovery_classifier_enforcement_present}\``,
+    `- stuck_processing_signal: \`${artifact.metadata.stuck_processing_present}\``,
+    `- processing_recovery_policy: \`${artifact.metadata.processing_recovery_policy}\``,
+    `- provider_ambiguous_policy: \`${artifact.metadata.provider_ambiguous_review_required}\``,
+    `- duplicate_upload_risk: \`${artifact.metadata.duplicate_upload_risk_visible}\``,
     `- strict_mode: \`${artifact.metadata.strict_mode}\``,
     `- waiver_status: \`${artifact.metadata.waiver_status}\``,
+    `- recovery_waiver_status: \`${artifact.metadata.recovery_waiver_status}\``,
     `- export_run_lineage: \`${artifact.metadata.export_run_lineage}\``,
     `- ack_db_transition_count_check: \`${artifact.metadata.ack_db_transition_count_check}\``,
     `- script_summary_contract: \`${artifact.metadata.script_summary_contract}\``,
@@ -198,6 +218,147 @@ function buildMarkdown(artifact) {
 
 function dbEnvAvailable() {
   return Boolean((process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function envInt(name, fallback = 0) {
+  const raw = process.env[name];
+  const parsed = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, parsed);
+}
+
+function envBool(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === '1' || raw === 'true' || raw === 'yes') return true;
+  if (raw === '0' || raw === 'false' || raw === 'no') return false;
+  return fallback;
+}
+
+function detectRowScopedRecoveryRpcFromMigrations(root) {
+  try {
+    const dir = join(root, 'supabase', 'migrations');
+    const files = readdirSync(dir).filter((f) => f.endsWith('.sql'));
+    for (const file of files) {
+      const src = readFileSync(join(dir, file), 'utf8');
+      if (src.includes('recover_safe_processing_queue_rows_v1')) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function evaluateProcessingRecoveryGate(input) {
+  const blocking_reasons = [];
+  const warnings = [];
+  const strict_mode = input.strict === true;
+  const ambiguous = Math.max(0, Number.parseInt(String(input.providerAmbiguousCount ?? 0), 10) || 0);
+  const requiresReview = Math.max(0, Number.parseInt(String(input.requiresReviewCount ?? 0), 10) || 0);
+  const unknown = Math.max(0, Number.parseInt(String(input.unknownProviderOutcomeCount ?? 0), 10) || 0);
+  const bypass = Math.max(0, Number.parseInt(String(input.enforcementBypassCount ?? 0), 10) || 0);
+  const enforcementMode = input.recoveryMode === 'enforce_safe_retry' || input.recoveryMode === 'strict';
+  const waiver = input.waiver || {};
+  const waiverComplete = Boolean(waiver.owner && waiver.reason && waiver.expiry && waiver.blastRadius);
+  const waiverExpiry = waiver.expiry ? new Date(waiver.expiry) : null;
+  const waiverValid = waiverComplete && waiverExpiry && !Number.isNaN(waiverExpiry.getTime()) && waiverExpiry.getTime() >= Date.now();
+
+  if (!input.classifierPresent) blocking_reasons.push('RECOVERY_CLASSIFIER_MISSING');
+  if (enforcementMode && !input.rowScopedRpcPresent) blocking_reasons.push('RECOVERY_ROW_SCOPED_RPC_MISSING');
+  if (enforcementMode && bypass > 0) blocking_reasons.push('RECOVERY_ENFORCEMENT_BYPASSED');
+  if (ambiguous > 0) blocking_reasons.push('PROVIDER_AMBIGUOUS_REVIEW_REQUIRED');
+  if (unknown > 0) blocking_reasons.push('UNKNOWN_PROVIDER_OUTCOME_PRESENT');
+  if (requiresReview > 0) blocking_reasons.push('PROCESSING_REQUIRES_REVIEW_PRESENT');
+
+  let recovery_integrity = 'RECOVERY_INTEGRITY_UNVERIFIED';
+  if (input.mode === 'static' || input.mode === 'local') {
+    recovery_integrity = input.classifierPresent ? 'RECOVERY_INTEGRITY_UNVERIFIED' : 'RECOVERY_INTEGRITY_UNVERIFIED';
+    if (blocking_reasons.length > 0) {
+      warnings.push(`Recovery blockers observed in non-strict/static mode: ${blocking_reasons.join(', ')}`);
+    }
+    return {
+      pass: true,
+      recovery_integrity,
+      blocking_reasons,
+      warnings,
+      waiver_required: false,
+      waiver_accepted: false,
+      strict_mode,
+    };
+  }
+
+  const hardRed = blocking_reasons.filter((x) =>
+    ['RECOVERY_CLASSIFIER_MISSING', 'PROVIDER_AMBIGUOUS_REVIEW_REQUIRED', 'UNKNOWN_PROVIDER_OUTCOME_PRESENT'].includes(x)
+  );
+  if (hardRed.length > 0) {
+    return {
+      pass: false,
+      recovery_integrity: 'RECOVERY_INTEGRITY_RED',
+      blocking_reasons,
+      warnings,
+      waiver_required: false,
+      waiver_accepted: false,
+      strict_mode,
+    };
+  }
+
+  const softReasons = blocking_reasons.filter((x) =>
+    ['RECOVERY_ROW_SCOPED_RPC_MISSING', 'RECOVERY_ENFORCEMENT_BYPASSED', 'PROCESSING_REQUIRES_REVIEW_PRESENT'].includes(x)
+  );
+  if (!strict_mode) {
+    return {
+      pass: true,
+      recovery_integrity: softReasons.length > 0 ? 'RECOVERY_INTEGRITY_PARTIAL' : 'RECOVERY_INTEGRITY_GREEN',
+      blocking_reasons,
+      warnings,
+      waiver_required: false,
+      waiver_accepted: false,
+      strict_mode,
+    };
+  }
+  if (softReasons.length > 0) {
+    if (!waiverComplete) {
+      return {
+        pass: false,
+        recovery_integrity: 'RECOVERY_INTEGRITY_PARTIAL',
+        blocking_reasons,
+        warnings: [...warnings, 'Strict mode requires complete waiver metadata for partial recovery integrity'],
+        waiver_required: true,
+        waiver_accepted: false,
+        strict_mode,
+      };
+    }
+    if (!waiverValid) {
+      return {
+        pass: false,
+        recovery_integrity: 'RECOVERY_INTEGRITY_PARTIAL',
+        blocking_reasons,
+        warnings: [...warnings, 'Recovery waiver is expired or invalid'],
+        waiver_required: true,
+        waiver_accepted: false,
+        strict_mode,
+      };
+    }
+    return {
+      pass: true,
+      recovery_integrity: 'RECOVERY_INTEGRITY_PARTIAL',
+      blocking_reasons,
+      warnings: [...warnings, `Recovery waiver accepted for: ${softReasons.join(', ')}`],
+      waiver_required: true,
+      waiver_accepted: true,
+      strict_mode,
+    };
+  }
+
+  return {
+    pass: true,
+    recovery_integrity: 'RECOVERY_INTEGRITY_GREEN',
+    blocking_reasons,
+    warnings,
+    waiver_required: false,
+    waiver_accepted: false,
+    strict_mode,
+  };
 }
 
 function main() {
@@ -296,6 +457,103 @@ function main() {
   const waiverBlastRadius = process.env.OCI_EXPORT_RUN_WAIVER_BLAST_RADIUS;
 
   const export_run_integrity = parsed.mode === 'static' ? (staticQueueContractGreen ? 'STATIC_EXPORT_CONTRACT_GREEN' : 'DB_NOT_CHECKED') : 'EXPORT_RUN_INTEGRITY_UNVERIFIED';
+  const recoverySignals = {
+    stuck_processing_count: envInt('OCI_RECOVERY_STUCK_PROCESSING_COUNT', 0),
+    unknown_provider_outcome_count: envInt('OCI_RECOVERY_UNKNOWN_PROVIDER_OUTCOME_COUNT', 0),
+    ambiguous_processing_count: envInt('OCI_RECOVERY_AMBIGUOUS_PROCESSING_COUNT', 0),
+    processing_safe_retry_candidate_count: envInt('OCI_RECOVERY_PROCESSING_SAFE_RETRY_CANDIDATE_COUNT', 0),
+    processing_provider_ambiguous_count: envInt('OCI_RECOVERY_PROCESSING_PROVIDER_AMBIGUOUS_COUNT', 0),
+    processing_requires_review_count: envInt('OCI_RECOVERY_PROCESSING_REQUIRES_REVIEW_COUNT', 0),
+    processing_unknown_provider_outcome_count: envInt(
+      'OCI_RECOVERY_PROCESSING_UNKNOWN_PROVIDER_OUTCOME_COUNT',
+      0
+    ),
+    processing_classifier_bypass_count: envInt('OCI_RECOVERY_PROCESSING_CLASSIFIER_BYPASS_COUNT', 0),
+    processing_classifier_shadow_count: envInt('OCI_RECOVERY_PROCESSING_CLASSIFIER_SHADOW_COUNT', 0),
+    processing_classifier_enforced_count: envInt('OCI_RECOVERY_PROCESSING_CLASSIFIER_ENFORCED_COUNT', 0),
+  };
+  const processingRecoveryMode = String(
+    process.env.OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE || 'off'
+  ).toLowerCase();
+  const rowScopedRecoveryRpcPresent =
+    envBool('OCI_ROW_SCOPED_RECOVERY_RPC_PRESENT', false) ||
+    detectRowScopedRecoveryRpcFromMigrations(repoRoot);
+  const processingClassifierEnforcementSupported =
+    envBool('OCI_PROCESSING_CLASSIFIER_ENFORCEMENT_SUPPORTED', false);
+  const classifierPresent = existsSync(join(repoRoot, 'lib', 'oci', 'processing-recovery-classifier.ts'));
+  const recoveryWaiver = {
+    owner: process.env.OCI_PROCESSING_RECOVERY_WAIVER_OWNER || '',
+    reason: process.env.OCI_PROCESSING_RECOVERY_WAIVER_REASON || '',
+    expiry: process.env.OCI_PROCESSING_RECOVERY_WAIVER_EXPIRY || '',
+    blastRadius: process.env.OCI_PROCESSING_RECOVERY_WAIVER_BLAST_RADIUS || '',
+  };
+  const recoveryPolicyPresent = process.env.OCI_PROCESSING_RECOVERY_POLICY_PRESENT !== '0';
+  const strictRecovery = process.env.OCI_RECOVERY_INTEGRITY_STRICT === '1';
+  const recoveryVocabulary = {
+    stuck_processing_present: recoverySignals.stuck_processing_count > 0 ? 'STUCK_PROCESSING_PRESENT' : 'STUCK_PROCESSING_NONE',
+    processing_recovery_policy: recoveryPolicyPresent ? 'PROCESSING_RECOVERY_POLICY_PRESENT' : 'PROCESSING_RECOVERY_POLICY_MISSING',
+    provider_ambiguous_review_required:
+      recoverySignals.ambiguous_processing_count > 0
+        ? 'PROVIDER_AMBIGUOUS_REVIEW_REQUIRED'
+        : 'PROVIDER_AMBIGUOUS_NONE',
+    duplicate_upload_risk_visible:
+      recoverySignals.ambiguous_processing_count > 0 || recoverySignals.stuck_processing_count > 0
+        ? 'DUPLICATE_UPLOAD_RISK_VISIBLE'
+        : 'DUPLICATE_UPLOAD_RISK_NONE',
+    recovery_classifier_shadow_present:
+      processingRecoveryMode === 'shadow' ||
+      processingRecoveryMode === 'enforce_safe_retry' ||
+      processingRecoveryMode === 'strict'
+        ? 'RECOVERY_CLASSIFIER_SHADOW_PRESENT'
+        : 'RECOVERY_CLASSIFIER_SHADOW_MISSING',
+    recovery_classifier_enforcement_present:
+      processingRecoveryMode === 'enforce_safe_retry' || processingRecoveryMode === 'strict'
+        ? 'RECOVERY_CLASSIFIER_ENFORCEMENT_PRESENT'
+        : 'RECOVERY_CLASSIFIER_ENFORCEMENT_MISSING',
+    recovery_classifier_present: classifierPresent
+      ? 'RECOVERY_CLASSIFIER_PRESENT'
+      : 'RECOVERY_CLASSIFIER_MISSING',
+    recovery_row_scoped_rpc_present: rowScopedRecoveryRpcPresent
+      ? 'RECOVERY_ROW_SCOPED_RPC_PRESENT'
+      : 'RECOVERY_ROW_SCOPED_RPC_MISSING',
+    row_scoped_recovery_rpc_present: rowScopedRecoveryRpcPresent
+      ? 'ROW_SCOPED_RECOVERY_RPC_PRESENT'
+      : 'ROW_SCOPED_RECOVERY_RPC_MISSING',
+    recovery_enforcement_bypassed:
+      (processingRecoveryMode === 'enforce_safe_retry' || processingRecoveryMode === 'strict') &&
+      recoverySignals.processing_classifier_bypass_count > 0
+        ? 'RECOVERY_ENFORCEMENT_BYPASSED'
+        : 'RECOVERY_ENFORCEMENT_NOT_BYPASSED',
+    unknown_provider_outcome_present:
+      recoverySignals.processing_unknown_provider_outcome_count > 0
+        ? 'UNKNOWN_PROVIDER_OUTCOME_PRESENT'
+        : 'UNKNOWN_PROVIDER_OUTCOME_NONE',
+    processing_requires_review_present:
+      recoverySignals.processing_requires_review_count > 0
+        ? 'PROCESSING_REQUIRES_REVIEW_PRESENT'
+        : 'PROCESSING_REQUIRES_REVIEW_NONE',
+  };
+  if (!recoveryPolicyPresent) warnings.push('PROCESSING_RECOVERY_POLICY_MISSING');
+
+  const recoveryGate = evaluateProcessingRecoveryGate({
+    mode: parsed.mode,
+    strict: strictRecovery,
+    recoveryMode: processingRecoveryMode,
+    classifierPresent,
+    rowScopedRpcPresent: rowScopedRecoveryRpcPresent,
+    safeRetryCandidateCount: recoverySignals.processing_safe_retry_candidate_count,
+    providerAmbiguousCount: Math.max(
+      recoverySignals.processing_provider_ambiguous_count,
+      recoverySignals.ambiguous_processing_count
+    ),
+    requiresReviewCount: recoverySignals.processing_requires_review_count,
+    unknownProviderOutcomeCount: recoverySignals.processing_unknown_provider_outcome_count,
+    enforcementBypassCount: recoverySignals.processing_classifier_bypass_count,
+    classifierShadowCount: recoverySignals.processing_classifier_shadow_count,
+    classifierEnforcedCount: recoverySignals.processing_classifier_enforced_count,
+    waiver: recoveryWaiver,
+  });
+  const recovery_integrity = recoveryGate.recovery_integrity;
 
   let exportRunIntegrityGate = {
     pass: true,
@@ -347,6 +605,12 @@ function main() {
        message: `Export run integrity policy failed: ${exportRunIntegrityGate.status}`
     });
   }
+  if (!recoveryGate.pass) {
+    blockingFailures.push({
+      reason_code: REASON_CODES.RED_METRIC,
+      message: `Recovery integrity policy failed: ${recoveryGate.blocking_reasons.join(', ')}`,
+    });
+  }
 
   const artifact = {
     metadata: {
@@ -369,6 +633,11 @@ function main() {
       export_run_integrity_gate: exportRunIntegrityGate,
       strict_mode: isStrict,
       waiver_status: exportRunIntegrityGate.waiver_accepted ? 'ACCEPTED' : (exportRunIntegrityGate.waiver_required ? 'REQUIRED' : 'NONE'),
+      recovery_waiver_status: recoveryGate.waiver_accepted
+        ? 'ACCEPTED'
+        : recoveryGate.waiver_required
+          ? 'REQUIRED'
+          : 'NONE',
       export_run_lineage: 'EXPORT_RUN_LINEAGE_PRESENT',
       ack_db_transition_count_check: 'ACK_DB_TRANSITION_COUNT_CHECK_PRESENT',
       script_summary_contract: 'SCRIPT_SUMMARY_CONTRACT_PRESENT',
@@ -377,6 +646,16 @@ function main() {
       checked_equations: parsed.mode === 'static' ? 'STATIC_VALIDATION_ONLY' : 'NONE',
       missing_equations: parsed.mode === 'static' ? 'ALL_RUNTIME_EQUATIONS' : 'ALL_RUNTIME_EQUATIONS',
       mismatch_reasons: 'NONE',
+      processing_recovery_mode: processingRecoveryMode,
+      classifier_present: classifierPresent,
+      processing_classifier_enforcement_supported: processingClassifierEnforcementSupported,
+      row_scoped_recovery_rpc_present: rowScopedRecoveryRpcPresent,
+      recovery_integrity,
+      recovery_integrity_gate: recoveryGate,
+      recovery_blocking_reasons: recoveryGate.blocking_reasons,
+      recovery_warnings: recoveryGate.warnings,
+      recovery_signals: recoverySignals,
+      ...recoveryVocabulary,
       queue_health_evidence: {
         policy_version: 'queue_health_contract_v1',
         pack_id: 'queue_health',

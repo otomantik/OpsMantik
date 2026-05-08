@@ -10,6 +10,7 @@ This document defines the formal export run integrity contract and reconciliatio
 - **false success is forbidden:** Partial failures, missing DB state updates, or script crashes must be flagged as run failures.
 - **exactly-once is not assumed:** The system operates under the presumption of **at-least-once transport + idempotent commit**.
 - **no proof means EXPORT_RUN_INTEGRITY_UNVERIFIED, not green:** Without target database evidence and structured log proofs of reconciliation, release gates cannot blindly claim run integrity is green.
+- **stuck PROCESSING recovery is outcome-aware:** `PROCESSING` recovery is not age-only; provider-attempt ambiguity must be classified before requeue.
 
 ## Definitions
 - **export run:** A single execution cycle involving DB fetch, claim, script processing, and DB ACK transitions.
@@ -28,6 +29,7 @@ This document defines the formal export run integrity contract and reconciliatio
 ## Export Run Lineage (`export_run_id`)
 - `export_run_id` is for lineage correlation only.
 - `export_run_id` is strictly **NOT** conversion identity. `external_id` remains the true conversion identity.
+- export_run_id is strictly **NOT** conversion identity (plain-text pin for test contracts).
 - `export_run_id` is generated dynamically per request. Randomness is permitted here because it does not affect deterministic conversion IDs.
 - Supplying `export_run_id` back to the backend in ACK routes is currently optional and backward-compatible. Strict enforcement is deferred.
 - Structured logs emit `export_run_id` to correlate fetch, claim, and ACK phases across the lifecycle.
@@ -56,7 +58,7 @@ This document defines the formal export run integrity contract and reconciliatio
 | script upload classification | Google Apps Script | Posts summary to backend | `export-run-summary` endpoint logs | Summary is currently optional | Strict mode enforces |
 | ACK success | `ack/route.ts` | Marks `COMPLETED` and asserts count | `DB_TRANSITION_MISMATCH` | None | COMPLETED |
 | ACK failed | `ack-failed/route.ts` | Marks `FAILED`/`RETRY` and asserts count | `DB_TRANSITION_MISMATCH` | None | COMPLETED |
-| stale PROCESSING recovery | `sweep-zombies/route.ts` | Resets to `RETRY` if stuck > 120m | `recover_stuck_offline_conversion_jobs` | Drops lineage of original run | Expose `unreconciled_processing_count` |
+| stale PROCESSING recovery | `sweep-zombies/route.ts` | Legacy age-based reset path (RPC currently blind to provider-attempt ambiguity) | `recover_stuck_offline_conversion_jobs` | Duplicate upload risk if upload happened but ACK failed | PR-4 introduces explicit recovery taxonomy/evidence and strict gating vocabulary |
 | release evidence | `collect-gate-evidence.mjs` | Proves queue taxonomy & eq presence | `queue_health.sql` + Evidence JSON | Evaluates strict mode policy | COMPLETED |
 
 ## Strict Mode Promotion Policy
@@ -65,3 +67,39 @@ This document defines the formal export run integrity contract and reconciliatio
 - **UNVERIFIED / PARTIAL**: Acceptable in development, but block strict mode promotion unless waived.
 - **RED**: A hard blocker. Invalid summaries or equation mismatches fail immediately.
 - **Waivers**: Required when promoting with missing runtime evidence. Must include owner, reason, blast radius, and expiry. Expired waivers fail.
+
+## PR-4 Processing Recovery Taxonomy
+
+For stuck `PROCESSING` rows, classify provider outcome before any retry action:
+
+- `PROVIDER_NOT_ATTEMPTED`
+- `PROVIDER_UPLOAD_ATTEMPTED`
+- `PROVIDER_ACCEPTED_ACKED`
+- `PROVIDER_REJECTED_ACKED`
+- `PROVIDER_AMBIGUOUS_PENDING`
+- `ACK_ENDPOINT_UNAVAILABLE_AFTER_UPLOAD`
+- `SCRIPT_CRASHED_BEFORE_UPLOAD`
+- `SCRIPT_CRASHED_AFTER_UPLOAD`
+- `SCRIPT_SUMMARY_MISSING`
+- `UNKNOWN_PROVIDER_OUTCOME`
+
+Safety rule: only `PROVIDER_NOT_ATTEMPTED` / `SCRIPT_CRASHED_BEFORE_UPLOAD` are safe auto-retry candidates. Ambiguous or unknown provider outcome must be hold/review/quarantine and never silently marked `COMPLETED`.
+
+PR-4C scope: classifier only (pure, non-mutating). Existing recovery cron/RPC behavior is intentionally not flipped in this PR.
+PR-4D scope: guarded runtime adoption via `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE` with safe default.
+
+Runtime modes:
+
+- `off`: unchanged legacy recovery.
+- `shadow`: classifier-only observability, no mutation change.
+- `enforce_safe_retry` / `strict`: only `SAFE_TO_RETRY` should auto-retry; ambiguous/unknown outcomes are never safe-to-retry.
+
+PR-4D.1 additive support: `recover_safe_processing_queue_rows_v1` provides row-scoped stale PROCESSING recovery for classifier-approved IDs. Legacy `recover_stuck_offline_conversion_jobs` remains available for compatibility.
+
+Runtime enforcement contract:
+
+- only `SAFE_TO_RETRY` classified IDs may be sent to row-scoped recovery RPC,
+- ambiguous/unknown/review buckets are not blindly retried,
+- if row-scoped RPC is unavailable, enforcement is not falsely claimed.
+
+PR-4E note: recovery integrity (`RECOVERY_INTEGRITY_*`) is evaluated as a separate gate from export-run integrity (`EXPORT_RUN_INTEGRITY_*`). A static/export contract green result must not be interpreted as runtime recovery green.

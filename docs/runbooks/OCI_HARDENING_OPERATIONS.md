@@ -112,7 +112,13 @@ The export run operates under strict rules defined in [OCI_EXPORT_RUN_INTEGRITY_
 - **EXPORT_RUN_INTEGRITY_RED**: A definitive failure in script summary validation (e.g. `SCRIPT_SUMMARY_INVALID`) or an equation mismatch (e.g. `SCRIPT_CLASSIFICATION_MISMATCH`, `ACK_TOTAL_MISMATCH`). **Action:** This indicates a pipeline bug or an external intervention modifying counts mid-flight. **Hard Blocker** for strict mode promotion.
 - **Script Summary Validation (`SCRIPT_SUMMARY_INVALID`)**: Sent by PR-3D endpoint when a script payload does not match schema requirements. Maps to `RED` integrity.
 - **Investigating Stuck PROCESSING:** If rows are stuck in `PROCESSING` longer than script execution time, the script crashed post-claim or the ACK endpoint was unreachable. **Action:** `recover_stuck_offline_conversion_jobs` (sweep cron) will safely revert them to `RETRY`. Do NOT manually change statuses.
-- **ACK Endpoint Outage:** If the Google upload succeeds but the `opsmantik/ack` route is down, rows leak into `PROCESSING` and eventually get swept to `RETRY`. **Action:** This leads to a duplicate upload attempt to Google on the next run. This is acceptable under the **at-least-once transport + idempotent commit** model (Google Ads uses orderId deduplication).
+- **PR-4 Guardrail:** Do **not** blindly move stale `PROCESSING` rows to `RETRY` when provider upload may have happened. Classify first (safe retry vs ambiguous/review).
+- **PR-4C Scope:** classifier is available for deterministic decisioning and reporting only; recovery runtime behavior remains unchanged in this phase.
+- **PR-4D Mode Flag:** `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE` controls runtime adoption (`off`, `shadow`, `enforce_safe_retry`, `strict`). Default is non-breaking. Rollback is flag disable (`off`).
+- **PR-4D.1 Row-Scoped Recovery RPC:** `recover_safe_processing_queue_rows_v1` is additive and service_role-only. Enforce/strict mode should pass only classifier `SAFE_TO_RETRY` IDs. Legacy broad recovery RPC remains for compatibility in off/shadow mode.
+- **PR-4F Grant Hardening:** legacy compatibility RPC `recover_stuck_offline_conversion_jobs` is also service_role-only at grant level (in addition to in-body role guard). `rpc_contract_health.sql` must show no unsafe grants for either recovery mutation RPC.
+- **PR-4E Strict Gate:** `OCI_RECOVERY_INTEGRITY_STRICT=1` treats recovery integrity as a promotion blocker: ambiguous/unknown/review-required outcomes, enforcement bypass, or missing row-scoped RPC support (in enforce/strict runtime modes) block release unless policy-allowed waiver is explicitly valid.
+- **ACK Endpoint Outage:** If Google upload succeeds but `opsmantik/ack` is down, DB can remain `PROCESSING` while provider state is ambiguous. Classify as `ACK_ENDPOINT_UNAVAILABLE_AFTER_UPLOAD` or `UNKNOWN_PROVIDER_OUTCOME`, surface in health/evidence, and require operator review before requeue.
 - **Why exactly-once isn't assumed:** Network partitions mean we can never guarantee script ↔ backend ACKs complete perfectly. We rely on deterministic IDs (`external_id`) and idempotent DB RPCs to self-heal.
 - **Correlating Lineage:** Search structured logs for `export_run_id`. It ties together `EXPORT_RUN_FETCHED`, `EXPORT_RUN_CLAIMED`, `EXPORT_RUN_RESPONSE_BUILT`, `EXPORT_RUN_ACK_RECEIVED`, and `SCRIPT_SUMMARY_RECEIVED`. This ID is strictly for debugging lineage and has no effect on actual conversion identity.
 
@@ -126,6 +132,20 @@ When promoting to staging or production under strict mode (`OCI_EXPORT_RUN_INTEG
    - `OCI_EXPORT_RUN_WAIVER_EXPIRY` (ISO string, future date)
    - `OCI_EXPORT_RUN_WAIVER_BLAST_RADIUS`
 4. If the integrity is `RED` (equation mismatch or invalid summary), the release is **blocked** and cannot be waived. Rollback or freeze the release immediately until the pipeline bug is addressed.
+
+### 3.6 First 5 Minutes: Stuck PROCESSING Incident Protocol
+
+1. Check queue health for `stuck_processing_count` and `oldest_processing_age_minutes`.
+2. Inspect `export_run_id` evidence/log lineage for affected rows.
+3. Confirm script summary presence (`SCRIPT_SUMMARY_MISSING` is never green in strict mode).
+4. Correlate ACK / ACK_FAILED logs and receipts for the same run.
+5. Classify each row: `SAFE_TO_RETRY` vs ambiguous/review buckets.
+6. Never blindly update `PROCESSING` to `RETRY` if provider upload may have occurred.
+
+PR-4D follow-up: adopt classifier output in recovery cron/RPC transitions with rollout guards.
+
+Implementation note: if row-scoped recovery RPC is missing/unavailable, enforce/strict mode must report `RECOVERY_ROW_SCOPED_RPC_MISSING` and must not falsely claim enforcement.
+Rollback path for recovery strict gate: set `OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE=off` and/or set `OCI_RECOVERY_INTEGRITY_STRICT=0`.
 
 
 ## 4. Conversion Math SSOT and Value Drift

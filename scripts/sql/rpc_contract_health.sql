@@ -16,6 +16,8 @@ WITH required AS (
       ('append_worker_transition_batch_v2', 'uuid[], text, timestamp with time zone, jsonb', true),
       ('apply_marketing_signal_dispatch_batch_v1', 'uuid, uuid[], text, text, timestamp with time zone', true),
       ('rescue_marketing_signals_stale_processing_v1', 'timestamp with time zone', true),
+      ('recover_stuck_offline_conversion_jobs', 'integer', true),
+      ('recover_safe_processing_queue_rows_v1', 'uuid[], integer, text, text', true),
       ('rebuild_call_projection', 'uuid, uuid', true)
   ) AS t(proname, args, require_service_role)
 ),
@@ -63,6 +65,8 @@ FROM (
           ('append_worker_transition_batch_v2', 'uuid[], text, timestamp with time zone, jsonb'),
           ('apply_marketing_signal_dispatch_batch_v1', 'uuid, uuid[], text, text, timestamp with time zone'),
           ('rescue_marketing_signals_stale_processing_v1', 'timestamp with time zone'),
+          ('recover_stuck_offline_conversion_jobs', 'integer'),
+          ('recover_safe_processing_queue_rows_v1', 'uuid[], integer, text, text'),
           ('rebuild_call_projection', 'uuid, uuid')
       ) AS t(proname, args)
     )
@@ -84,6 +88,7 @@ SELECT
   p.proname,
   oidvectortypes(p.proargtypes) AS args,
   p.prosecdef AS security_definer,
+  p.proconfig AS function_config,
   rp.grantee,
   rp.privilege_type
 FROM pg_proc p
@@ -97,6 +102,8 @@ WHERE n.nspname = 'public'
     'append_worker_transition_batch_v2',
     'apply_marketing_signal_dispatch_batch_v1',
     'rescue_marketing_signals_stale_processing_v1',
+    'recover_stuck_offline_conversion_jobs',
+    'recover_safe_processing_queue_rows_v1',
     'rebuild_call_projection'
   )
 ORDER BY p.proname, rp.grantee;
@@ -108,7 +115,11 @@ SELECT
   rp.privilege_type
 FROM information_schema.routine_privileges rp
 WHERE rp.routine_schema = 'public'
-  AND rp.routine_name = 'get_call_session_for_oci'
+  AND rp.routine_name IN (
+    'get_call_session_for_oci',
+    'recover_stuck_offline_conversion_jobs',
+    'recover_safe_processing_queue_rows_v1'
+  )
   AND rp.grantee IN ('anon', 'authenticated', 'PUBLIC');
 
 -- Projection schema drift detector (should return projection_exists=true)

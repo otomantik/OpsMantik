@@ -28,6 +28,20 @@ import { logError, logInfo, logWarn } from '@/lib/logging/logger';
 import { enqueueSealConversion } from '@/lib/oci/enqueue-seal-conversion';
 import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
+import {
+  classifyProcessingRecoveryRows,
+  pickSafeRetryRowIds,
+  resolveProcessingRecoveryClassifierMode,
+  summarizeProcessingRecoveryDecisions,
+} from '@/lib/oci/processing-recovery-runtime';
+
+function recoverCountFromRowScopedRpcData(data: unknown): number {
+  if (Array.isArray(data)) {
+    const first = data[0] as { recovered_count?: number } | undefined;
+    return Number(first?.recovered_count ?? 0);
+  }
+  return Number((data as { recovered_count?: number } | null)?.recovered_count ?? 0);
+}
 
 const SCRIPT_ACK_TIMEOUT_MINUTES = (() => {
   const v = parseInt(process.env.SWEEP_ACK_TIMEOUT_MINUTES ?? '', 10);
@@ -48,6 +62,15 @@ export interface OciMaintenanceStats {
   orphans_enqueued: number;
   orphan_skipped_reasons: Record<string, number>;
   stale_jobs_recovered: number;
+  processing_recovery_mode?: string;
+  processing_classifier_shadow_count?: number;
+  processing_safe_retry_candidate_count?: number;
+  processing_provider_ambiguous_count?: number;
+  processing_requires_review_count?: number;
+  processing_unknown_provider_outcome_count?: number;
+  processing_classifier_enforced_count?: number;
+  processing_classifier_bypass_count?: number;
+  processing_recovery_enforcement_supported?: boolean;
   errors: string[];
 }
 
@@ -61,6 +84,15 @@ function newStats(): OciMaintenanceStats {
     orphans_enqueued: 0,
     orphan_skipped_reasons: {},
     stale_jobs_recovered: 0,
+    processing_recovery_mode: 'off',
+    processing_classifier_shadow_count: 0,
+    processing_safe_retry_candidate_count: 0,
+    processing_provider_ambiguous_count: 0,
+    processing_requires_review_count: 0,
+    processing_unknown_provider_outcome_count: 0,
+    processing_classifier_enforced_count: 0,
+    processing_classifier_bypass_count: 0,
+    processing_recovery_enforcement_supported: false,
     errors: [],
   };
 }
@@ -161,11 +193,116 @@ async function step_sweepOrphans(stats: OciMaintenanceStats): Promise<void> {
 
 async function step_providerRecoverProcessing(stats: OciMaintenanceStats): Promise<void> {
   try {
-    const { data, error } = await adminClient.rpc('recover_stuck_offline_conversion_jobs', {
-      p_min_age_minutes: STALE_JOB_MIN_AGE_MINUTES,
-    });
-    if (error) throw new Error(error.message);
-    stats.stale_jobs_recovered = typeof data === 'number' ? data : 0;
+    const classifierMode = resolveProcessingRecoveryClassifierMode(
+      process.env.OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE
+    );
+    stats.processing_recovery_mode = classifierMode;
+
+    const { data: candidates, error: candidatesError } = await adminClient
+      .from('offline_conversion_queue')
+      .select('id,status,claimed_at,updated_at,provider_request_id,provider_error_code,provider_error_category,retry_count')
+      .eq('status', 'PROCESSING')
+      .limit(5000);
+
+    if (candidatesError) {
+      logWarn('OCI_MAINTENANCE_PROCESSING_CLASSIFIER_CANDIDATE_FETCH_FAILED', {
+        error: candidatesError.message,
+        classifier_mode: classifierMode,
+      });
+    } else {
+      const classified = classifyProcessingRecoveryRows({
+        rows: (candidates ?? []) as Array<{
+          id: string;
+          status: string;
+          claimed_at?: string | null;
+          updated_at?: string | null;
+          provider_request_id?: string | null;
+          provider_error_code?: string | null;
+          provider_error_category?: string | null;
+          retry_count?: number | null;
+        }>,
+        nowIso: new Date().toISOString(),
+        stuckThresholdMinutes: STALE_JOB_MIN_AGE_MINUTES,
+      });
+      const enforcementRequested = classifierMode === 'enforce_safe_retry' || classifierMode === 'strict';
+      const safeRetryIds = pickSafeRetryRowIds(classified);
+      let enforcementSupported = false;
+      let recoveryError: string | null = null;
+      let recoveredCount = 0;
+
+      const summary = summarizeProcessingRecoveryDecisions(classified, classifierMode, {
+        enforcementSupported,
+      });
+      stats.processing_classifier_shadow_count = summary.processing_classifier_shadow_count;
+      stats.processing_safe_retry_candidate_count = summary.processing_safe_retry_candidate_count;
+      stats.processing_provider_ambiguous_count = summary.processing_provider_ambiguous_count;
+      stats.processing_requires_review_count = summary.processing_requires_review_count;
+      stats.processing_unknown_provider_outcome_count = summary.processing_unknown_provider_outcome_count;
+      stats.processing_classifier_enforced_count = summary.processing_classifier_enforced_count;
+      stats.processing_classifier_bypass_count = summary.processing_classifier_bypass_count;
+      stats.processing_recovery_enforcement_supported = enforcementSupported;
+
+      logInfo('OCI_MAINTENANCE_PROCESSING_CLASSIFIER_PREVIEW', {
+        classifier_mode: classifierMode,
+        ...summary,
+      });
+      if (enforcementRequested) {
+        if (safeRetryIds.length > 0) {
+          const { data, error } = await adminClient.rpc('recover_safe_processing_queue_rows_v1', {
+            p_queue_ids: safeRetryIds,
+            p_min_age_minutes: STALE_JOB_MIN_AGE_MINUTES,
+            p_recovery_reason: 'SAFE_TO_RETRY_CLASSIFIED',
+            p_actor: 'processing_recovery_classifier',
+          });
+          if (error) {
+            const msg = String(error.message || '');
+            const rpcMissing =
+              msg.includes('recover_safe_processing_queue_rows_v1') &&
+              (msg.includes('function') || msg.includes('does not exist'));
+            if (rpcMissing) {
+              recoveryError = 'RECOVERY_ROW_SCOPED_RPC_MISSING';
+              enforcementSupported = false;
+            } else {
+              throw new Error(error.message);
+            }
+          } else {
+            enforcementSupported = true;
+            recoveredCount = recoverCountFromRowScopedRpcData(data);
+          }
+        } else {
+          enforcementSupported = true;
+          recoveredCount = 0;
+        }
+      } else {
+        const { data, error } = await adminClient.rpc('recover_stuck_offline_conversion_jobs', {
+          p_min_age_minutes: STALE_JOB_MIN_AGE_MINUTES,
+        });
+        if (error) throw new Error(error.message);
+        recoveredCount = typeof data === 'number' ? data : 0;
+        enforcementSupported = false;
+      }
+
+      const summaryFinal = summarizeProcessingRecoveryDecisions(classified, classifierMode, {
+        enforcementSupported,
+      });
+      stats.processing_classifier_shadow_count = summaryFinal.processing_classifier_shadow_count;
+      stats.processing_safe_retry_candidate_count = summaryFinal.processing_safe_retry_candidate_count;
+      stats.processing_provider_ambiguous_count = summaryFinal.processing_provider_ambiguous_count;
+      stats.processing_requires_review_count = summaryFinal.processing_requires_review_count;
+      stats.processing_unknown_provider_outcome_count = summaryFinal.processing_unknown_provider_outcome_count;
+      stats.processing_classifier_enforced_count = summaryFinal.processing_classifier_enforced_count;
+      stats.processing_classifier_bypass_count = summaryFinal.processing_classifier_bypass_count;
+      stats.processing_recovery_enforcement_supported = enforcementSupported;
+      stats.stale_jobs_recovered = recoveredCount;
+
+      if (enforcementRequested && !enforcementSupported) {
+        logWarn('OCI_MAINTENANCE_PROCESSING_CLASSIFIER_ENFORCEMENT_BYPASSED', {
+          classifier_mode: classifierMode,
+          reason: recoveryError ?? 'ROW_SCOPED_RECOVERY_RPC_NOT_AVAILABLE',
+          bypassed_rows: summaryFinal.total_candidates,
+        });
+      }
+    }
   } catch (err) {
     capture(stats, 'provider_recover_processing', err);
   }

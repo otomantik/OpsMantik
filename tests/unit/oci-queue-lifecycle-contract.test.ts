@@ -110,6 +110,32 @@ test('PR-1C: hardening runbook notes historical COMPLETED + suppression mismatch
   assert.ok(md.includes('SUPPRESSED_BY_HIGHER_GEAR') && md.includes('--write'));
 });
 
+test('PR-4: docs ban blind retry for provider-ambiguous PROCESSING', () => {
+  const runbook = readFileSync(join(process.cwd(), 'docs', 'runbooks', 'OCI_HARDENING_OPERATIONS.md'), 'utf8');
+  const healthDoc = readFileSync(join(process.cwd(), 'docs', 'architecture', 'OCI_QUEUE_HEALTH.md'), 'utf8');
+  assert.ok(runbook.includes('Do **not** blindly move stale `PROCESSING` rows to `RETRY`'));
+  assert.ok(runbook.includes('ACK_ENDPOINT_UNAVAILABLE_AFTER_UPLOAD'));
+  assert.ok(healthDoc.includes('provider-outcome aware'));
+  assert.ok(healthDoc.includes('duplicate upload risk'));
+});
+
+test('PR-4D: docs mention classifier mode flag and rollback by disable', () => {
+  const runbook = readFileSync(join(process.cwd(), 'docs', 'runbooks', 'OCI_HARDENING_OPERATIONS.md'), 'utf8');
+  assert.ok(runbook.includes('OCI_PROCESSING_RECOVERY_CLASSIFIER_MODE'));
+  assert.ok(runbook.includes('Rollback is flag disable'));
+  assert.ok(runbook.includes('OCI_RECOVERY_INTEGRITY_STRICT=0'));
+});
+
+test('PR-4: no queue row deletion introduced in recovery paths', () => {
+  const recoverRoute = readFileSync(
+    join(process.cwd(), 'app', 'api', 'cron', 'providers', 'recover-processing', 'route.ts'),
+    'utf8'
+  );
+  const maintenance = readFileSync(join(process.cwd(), 'lib', 'oci', 'maintenance', 'run-maintenance.ts'), 'utf8');
+  assert.ok(!/delete\s+from\s+offline_conversion_queue/i.test(recoverRoute));
+  assert.ok(!/delete\s+from\s+offline_conversion_queue/i.test(maintenance));
+});
+
 test('PR-1B: queue health failed_rate treats FAILED (+DLQ) as unreliable — not conflated with COMPLETED', () => {
   const healthSrc = readFileSync(join(process.cwd(), 'lib', 'oci', 'queue-health-contract.ts'), 'utf8');
   assert.ok(
