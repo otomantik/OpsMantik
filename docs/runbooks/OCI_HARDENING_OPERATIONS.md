@@ -107,14 +107,25 @@ Projection contract note:
 The export run operates under strict rules defined in [OCI_EXPORT_RUN_INTEGRITY_CONTRACT.md](../architecture/OCI_EXPORT_RUN_INTEGRITY_CONTRACT.md).
 
 - **QUEUE_CLAIM_MISMATCH**: This is thrown (HTTP 409) if `fetched_count != claimed_count`. It means another instance grabbed the row, or the row status changed mid-flight. **Action:** Safe to ignore occasionally. If persistent, investigate overlapping script schedules or cron concurrency.
-- **EXPORT_RUN_INTEGRITY_UNVERIFIED**: Release evidence will show this until structured logs (`export_run_id`) perfectly connect the script payload summaries with the DB ACKs. **Action:** It means we cannot definitively prove partial run failures aren't happening, but we aren't explicitly failing either.
-- **EXPORT_RUN_INTEGRITY_PARTIAL**: Script summary provided evidence for some equations (e.g. Eq B or C) but missing data prevents full run reconciliation. **Action:** Investigate script summary drops.
-- **EXPORT_RUN_INTEGRITY_RED**: A definitive failure in script summary validation (e.g. `SCRIPT_SUMMARY_INVALID`) or an equation mismatch (e.g. `SCRIPT_CLASSIFICATION_MISMATCH`, `ACK_TOTAL_MISMATCH`). **Action:** This indicates a pipeline bug or an external intervention modifying counts mid-flight.
+- **EXPORT_RUN_INTEGRITY_UNVERIFIED**: Release evidence will show this until structured logs (`export_run_id`) perfectly connect the script payload summaries with the DB ACKs. **Action:** It means we cannot definitively prove partial run failures aren't happening, but we aren't explicitly failing either. Blocks strict mode promotion without a valid waiver.
+- **EXPORT_RUN_INTEGRITY_PARTIAL**: Script summary provided evidence for some equations (e.g. Eq B or C) but missing data prevents full run reconciliation. **Action:** Investigate script summary drops. Blocks strict mode promotion without a valid waiver.
+- **EXPORT_RUN_INTEGRITY_RED**: A definitive failure in script summary validation (e.g. `SCRIPT_SUMMARY_INVALID`) or an equation mismatch (e.g. `SCRIPT_CLASSIFICATION_MISMATCH`, `ACK_TOTAL_MISMATCH`). **Action:** This indicates a pipeline bug or an external intervention modifying counts mid-flight. **Hard Blocker** for strict mode promotion.
 - **Script Summary Validation (`SCRIPT_SUMMARY_INVALID`)**: Sent by PR-3D endpoint when a script payload does not match schema requirements. Maps to `RED` integrity.
 - **Investigating Stuck PROCESSING:** If rows are stuck in `PROCESSING` longer than script execution time, the script crashed post-claim or the ACK endpoint was unreachable. **Action:** `recover_stuck_offline_conversion_jobs` (sweep cron) will safely revert them to `RETRY`. Do NOT manually change statuses.
 - **ACK Endpoint Outage:** If the Google upload succeeds but the `opsmantik/ack` route is down, rows leak into `PROCESSING` and eventually get swept to `RETRY`. **Action:** This leads to a duplicate upload attempt to Google on the next run. This is acceptable under the **at-least-once transport + idempotent commit** model (Google Ads uses orderId deduplication).
 - **Why exactly-once isn't assumed:** Network partitions mean we can never guarantee script ↔ backend ACKs complete perfectly. We rely on deterministic IDs (`external_id`) and idempotent DB RPCs to self-heal.
 - **Correlating Lineage:** Search structured logs for `export_run_id`. It ties together `EXPORT_RUN_FETCHED`, `EXPORT_RUN_CLAIMED`, `EXPORT_RUN_RESPONSE_BUILT`, `EXPORT_RUN_ACK_RECEIVED`, and `SCRIPT_SUMMARY_RECEIVED`. This ID is strictly for debugging lineage and has no effect on actual conversion identity.
+
+### 3.5 Strict Mode Promotion & Waivers
+When promoting to staging or production under strict mode (`OCI_EXPORT_RUN_INTEGRITY_STRICT=1`):
+1. The pipeline must report `EXPORT_RUN_INTEGRITY_GREEN` to pass automatically.
+2. If the pipeline reports `UNVERIFIED` or `PARTIAL` (e.g., summary drops or partial tracking), you MUST provide a valid waiver.
+3. **Waiver Format**: Export the following variables:
+   - `OCI_EXPORT_RUN_WAIVER_OWNER`
+   - `OCI_EXPORT_RUN_WAIVER_REASON`
+   - `OCI_EXPORT_RUN_WAIVER_EXPIRY` (ISO string, future date)
+   - `OCI_EXPORT_RUN_WAIVER_BLAST_RADIUS`
+4. If the integrity is `RED` (equation mismatch or invalid summary), the release is **blocked** and cannot be waived. Rollback or freeze the release immediately until the pipeline bug is addressed.
 
 
 ## 4. Conversion Math SSOT and Value Drift

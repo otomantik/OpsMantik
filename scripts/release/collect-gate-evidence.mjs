@@ -146,6 +146,9 @@ function buildMarkdown(artifact) {
     `- db_evidence_status: \`${artifact.metadata.db_evidence_status}\``,
     `- static_queue_contract_green: \`${artifact.metadata.static_queue_contract_green}\``,
     `- export_run_integrity: \`${artifact.metadata.export_run_integrity}\``,
+    `- export_run_integrity_gate_status: \`${artifact.metadata.export_run_integrity_gate?.status}\``,
+    `- strict_mode: \`${artifact.metadata.strict_mode}\``,
+    `- waiver_status: \`${artifact.metadata.waiver_status}\``,
     `- export_run_lineage: \`${artifact.metadata.export_run_lineage}\``,
     `- ack_db_transition_count_check: \`${artifact.metadata.ack_db_transition_count_check}\``,
     `- script_summary_contract: \`${artifact.metadata.script_summary_contract}\``,
@@ -285,6 +288,66 @@ function main() {
   const packShapeCheck = checks.find((c) => String(c.name).includes('verify-health-pack-contracts'));
   const staticQueueContractGreen = packShapeCheck?.status === 'PASS';
 
+  // Export run integrity baseline
+  const isStrict = process.env.OCI_EXPORT_RUN_INTEGRITY_STRICT === '1';
+  const waiverOwner = process.env.OCI_EXPORT_RUN_WAIVER_OWNER;
+  const waiverReason = process.env.OCI_EXPORT_RUN_WAIVER_REASON;
+  const waiverExpiry = process.env.OCI_EXPORT_RUN_WAIVER_EXPIRY;
+  const waiverBlastRadius = process.env.OCI_EXPORT_RUN_WAIVER_BLAST_RADIUS;
+
+  const export_run_integrity = parsed.mode === 'static' ? (staticQueueContractGreen ? 'STATIC_EXPORT_CONTRACT_GREEN' : 'DB_NOT_CHECKED') : 'EXPORT_RUN_INTEGRITY_UNVERIFIED';
+
+  let exportRunIntegrityGate = {
+    pass: true,
+    status: 'POLICY_PASSED',
+    blocking_reasons: [],
+    warnings: [],
+    waiver_required: false,
+    waiver_accepted: false
+  };
+
+  // Minimal inline policy evaluation
+  if (parsed.mode === 'static') {
+    if (export_run_integrity !== 'STATIC_EXPORT_CONTRACT_GREEN') {
+      exportRunIntegrityGate.warnings.push(`Static mode defaults to pass, but integrity is ${export_run_integrity}`);
+    }
+  } else if (isStrict) {
+    if (export_run_integrity === 'EXPORT_RUN_INTEGRITY_RED') {
+      exportRunIntegrityGate.pass = false;
+      exportRunIntegrityGate.status = 'POLICY_FAILED';
+      exportRunIntegrityGate.blocking_reasons.push('EXPORT_RUN_INTEGRITY_RED is a hard blocker and cannot be waived');
+    } else if (export_run_integrity === 'EXPORT_RUN_INTEGRITY_UNVERIFIED' || export_run_integrity === 'EXPORT_RUN_INTEGRITY_PARTIAL') {
+      exportRunIntegrityGate.waiver_required = true;
+      if (waiverOwner && waiverReason && waiverExpiry && waiverBlastRadius) {
+        const expiryDate = new Date(waiverExpiry);
+        if (isNaN(expiryDate.getTime()) || expiryDate.getTime() < Date.now()) {
+          exportRunIntegrityGate.pass = false;
+          exportRunIntegrityGate.status = 'POLICY_FAILED_EXPIRED_WAIVER';
+          exportRunIntegrityGate.blocking_reasons.push('Waiver is expired or has invalid expiry date');
+        } else {
+          exportRunIntegrityGate.waiver_accepted = true;
+          exportRunIntegrityGate.status = 'POLICY_PASSED_WITH_WAIVER';
+          exportRunIntegrityGate.warnings.push(`Promotion waived by ${waiverOwner}. Reason: ${waiverReason}`);
+        }
+      } else {
+        exportRunIntegrityGate.pass = false;
+        exportRunIntegrityGate.status = 'POLICY_FAILED_MISSING_WAIVER';
+        exportRunIntegrityGate.blocking_reasons.push(`Strict promotion requires GREEN or a valid waiver. Current state: ${export_run_integrity}`);
+      }
+    }
+  } else {
+    if (export_run_integrity === 'EXPORT_RUN_INTEGRITY_RED') {
+      exportRunIntegrityGate.warnings.push('RED integrity ignored due to non-strict mode');
+    }
+  }
+
+  if (!exportRunIntegrityGate.pass) {
+    blockingFailures.push({
+       reason_code: REASON_CODES.RED_METRIC,
+       message: `Export run integrity policy failed: ${exportRunIntegrityGate.status}`
+    });
+  }
+
   const artifact = {
     metadata: {
       contract_version: EVIDENCE_CONTRACT_VERSION,
@@ -302,7 +365,10 @@ function main() {
       db_claim_scope: checks.some((c) => c.name.includes('verify-db')) ? 'full' : 'none',
       db_evidence_status: dbEvidenceStatus,
       static_queue_contract_green: staticQueueContractGreen,
-      export_run_integrity: parsed.mode === 'static' ? (staticQueueContractGreen ? 'STATIC_EXPORT_CONTRACT_GREEN' : 'DB_NOT_CHECKED') : 'EXPORT_RUN_INTEGRITY_UNVERIFIED',
+      export_run_integrity: export_run_integrity,
+      export_run_integrity_gate: exportRunIntegrityGate,
+      strict_mode: isStrict,
+      waiver_status: exportRunIntegrityGate.waiver_accepted ? 'ACCEPTED' : (exportRunIntegrityGate.waiver_required ? 'REQUIRED' : 'NONE'),
       export_run_lineage: 'EXPORT_RUN_LINEAGE_PRESENT',
       ack_db_transition_count_check: 'ACK_DB_TRANSITION_COUNT_CHECK_PRESENT',
       script_summary_contract: 'SCRIPT_SUMMARY_CONTRACT_PRESENT',

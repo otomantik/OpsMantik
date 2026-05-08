@@ -51,6 +51,11 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SYNC_API_URL: ${{ secrets.SYNC_API_URL || 'https://console.opsmantik.com/api/sync' }}
           P0_SITES: ${{ secrets.P0_SITES || 'yapiozmendanismanlik.com,sosreklam.com' }}
+          OCI_EXPORT_RUN_INTEGRITY_STRICT: ${{ vars.OCI_EXPORT_RUN_INTEGRITY_STRICT || '0' }}
+          OCI_EXPORT_RUN_WAIVER_OWNER: ${{ vars.OCI_EXPORT_RUN_WAIVER_OWNER || '' }}
+          OCI_EXPORT_RUN_WAIVER_REASON: ${{ vars.OCI_EXPORT_RUN_WAIVER_REASON || '' }}
+          OCI_EXPORT_RUN_WAIVER_EXPIRY: ${{ vars.OCI_EXPORT_RUN_WAIVER_EXPIRY || '' }}
+          OCI_EXPORT_RUN_WAIVER_BLAST_RADIUS: ${{ vars.OCI_EXPORT_RUN_WAIVER_BLAST_RADIUS || '' }}
         run: npm run release:evidence:production
 
       - name: Upload PR release gate evidence
