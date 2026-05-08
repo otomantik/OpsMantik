@@ -83,7 +83,9 @@ Projection contract note:
 ### 3.1 Incident Classification
 
 - **Drift:** `rpc_contract_health.sql` reports missing/signature-drifted RPCs or unsafe grants.
-- **Won leak:** `won_pipeline_health.sql` shows `won_missing_pipeline > 0` and non-zero `leak_rate`.
+- **Critical migration drift:** target DB evidence marks `DB_SCHEMA_DRIFT` when required migration history/object proof is missing; this is a promotion blocker.
+- **Won leak (unrepresented):** `won_pipeline_health.sql` shows `won_missing_unrepresented_count > 0` (alias: `won_missing_pipeline_count`) and non-zero `leak_rate`.
+- **Won represented terminal failed:** `won_represented_failed_terminal_count > 0` means row(s) are represented in queue journal but ended in terminal failure taxonomy; this is not an orphan queue-representation leak.
 - **Backlog:** `script_backlog_health.sql` shows growing active queue ages/retry counts (Google upload truth). `marketing_signals_pending_count` is legacy/audit pressure unless explicitly promoted by separate policy.
 - **Value integrity:** `value_integrity_health.sql` shows abnormal fallback ratio or suspicious zero/null value rows.
 - **Identity integrity:** `identity_integrity_health.sql` shows malformed/missing phone hash anomalies.
@@ -94,7 +96,7 @@ Projection contract note:
 2. Keep script-mode active.
 3. Run `scripts/sql/orphan_won_backfill.sql` in dry-run mode and classify candidates.
 4. Repair via existing enqueue SSOT path (`enqueueSealConversion` / sweep cron).
-5. Re-run health packs until `won_missing_pipeline = 0` and leak rate is `0`.
+5. Re-run health packs until `won_missing_unrepresented_count = 0` (`won_missing_pipeline_count` alias) and leak rate is `0`.
 
 ### 3.3 Rollback Principles
 
@@ -118,11 +120,14 @@ The export run operates under strict rules defined in [OCI_EXPORT_RUN_INTEGRITY_
 - **PR-4D.1 Row-Scoped Recovery RPC:** `recover_safe_processing_queue_rows_v1` is additive and service_role-only. Enforce/strict mode should pass only classifier `SAFE_TO_RETRY` IDs. Legacy broad recovery RPC remains for compatibility in off/shadow mode.
 - **PR-4F Grant Hardening:** legacy compatibility RPC `recover_stuck_offline_conversion_jobs` is also service_role-only at grant level (in addition to in-body role guard). `rpc_contract_health.sql` must show no unsafe grants for either recovery mutation RPC.
 - **PR-7B Compatibility Contract:** `recover_stuck_offline_conversion_jobs(integer)` is required in target DB evidence. If missing, classify as target DB contract drift (`TARGET_DB_RED`) even when row-scoped recovery smoke is green.
-- **PR-7C Won Leak Gate:** `wonMissingPipeline > 0` is a strict promotion blocker. Do not relax thresholds to hide this.
+- **PR-7C/7G Won Leak Gate:** `wonMissingPipeline` now means only `won_missing_unrepresented_count` (`no queue representation at all`). Keep it strict; do not relax thresholds to hide true leaks.
+- **PR-7G Representation Semantics:** terminal failed won rows (`FAILED`, `DEAD_LETTER_QUARANTINE`, etc.) are represented rows and must stay visible under `won_represented_failed_terminal_count`; do not re-enqueue them as orphan repair.
 - **PR-7C Repair Protocol:** run dry-run first (`scripts/sql/orphan_won_backfill.sql` / `scripts/db/repair-orphan-won-queue.mjs` without `--write`), then only site-scoped canonical enqueue repair (`enqueueSealConversion` path) with change ticket + operator provenance.
 - **PR-7C Safety Rules:** no queue deletion, no direct SQL value writes, no ad-hoc COMPLETED marking, no broad multi-site blind repair.
 - **PR-7D Lock Scope:** `/api/cron/sweep-unsent-conversions` keeps global lock path `sweep-unsent-conversions` for normal runs, but when `site_id` is provided it uses `sweep-unsent-conversions:site:<site_id>`. Manual site repair must include a valid UUID `site_id`; invalid/missing repair `site_id` fails closed (400).
 - **PR-7E Lock Diagnostics:** lock skip responses now distinguish backend failures from true contention (`lock_held`, `lock_backend_unavailable`, `lock_rpc_missing`, `lock_acquire_error`) and include `lock_mode`, `lock_backend`, `lock_error_code`, `lock_path`, `lock_ttl_sec`.
+- **Migration-history vs object drift:** missing history row and missing runtime object are different failure modes. Equivalent-name resolution is allowed only with explicit object proof; otherwise keep `DB_SCHEMA_DRIFT` red.
+- **No manual bypass:** do not manually override `DB_SCHEMA_DRIFT` or drop required migrations from evidence policy to force green.
 - **PR-7F Schema Compatibility:** orphan-won sweep/repair does not require `calls.currency`. Missing optional call metadata must not block canonical queue repair; currency fallback stays in app SSOT (`enqueueSealConversion` + site/value policy), with no conversion math fork.
 - **PR-4E Strict Gate:** `OCI_RECOVERY_INTEGRITY_STRICT=1` treats recovery integrity as a promotion blocker: ambiguous/unknown/review-required outcomes, enforcement bypass, or missing row-scoped RPC support (in enforce/strict runtime modes) block release unless policy-allowed waiver is explicitly valid.
 - **ACK Endpoint Outage:** If Google upload succeeds but `opsmantik/ack` is down, DB can remain `PROCESSING` while provider state is ambiguous. Classify as `ACK_ENDPOINT_UNAVAILABLE_AFTER_UPLOAD` or `UNKNOWN_PROVIDER_OUTCOME`, surface in health/evidence, and require operator review before requeue.
@@ -173,6 +178,66 @@ Rollback path for recovery strict gate: set `OCI_PROCESSING_RECOVERY_CLASSIFIER_
 11. Queue-only deployments may not have `public.marketing_signals`; this must be classified as `LEGACY_RESIDUE_ABSENT` / `AUDIT_TABLE_NOT_PRESENT` and must not crash SQL packs.
 12. Required queue/recovery RPC drift is still a hard blocker; only legacy marketing-signal RPCs can be treated as optional residue checks.
 13. Every evidence run must overwrite both mode-specific and latest artifacts (`release-gates-<mode>.md/json` and `release-gates-latest.md/json`) with matching `generated_at` and `mode`.
+
+### 3.8 Production Export Freeze (No Live Export Drill)
+
+Purpose: stop new provider upload attempts while keeping ACK/ACK_FAILED idempotent reconciliation path available.
+
+Freeze steps:
+1. Announce freeze owner + timestamp + deploy SHA.
+2. Stop new claim/upload schedulers for export surfaces (no new Google export attempts).
+3. Keep ACK/ACK_FAILED endpoints available; ACK replay remains idempotent and authorized-only.
+4. Capture queue snapshot (`PROCESSING`, `RETRY`, `FAILED`, `DLQ`) and export-run lineage evidence.
+5. Run read-only production evidence and archive artifacts before unfreeze.
+
+Unfreeze prerequisites:
+1. `target_db_checked=true` and `target_db_contract_status=TARGET_DB_GREEN`.
+2. No active P0/P1 blockers in release evidence.
+3. Stuck `PROCESSING` rows are classified (`SAFE_TO_RETRY` vs ambiguous/review).
+4. Freeze checklist record is complete and signed by release owner.
+
+Allowed actions during freeze:
+- freeze export claims/uploads,
+- read-only evidence collection,
+- ACK replay via idempotent authorized endpoint flow,
+- row-scoped safe recovery using `recover_safe_processing_queue_rows_v1` for classifier `SAFE_TO_RETRY`,
+- operator review for ambiguous/unknown outcomes.
+
+Forbidden actions during freeze:
+- no queue row delete,
+- no manual COMPLETED,
+- no direct status SQL update,
+- no direct value rewrite,
+- no force unlock without stale-lock evidence,
+- no blind `PROCESSING -> RETRY`.
+
+### 3.9 Rollback Scenario Matrix
+
+Evaluate at minimum:
+- bad deploy before export claim,
+- bad deploy after claim before provider upload,
+- bad deploy after provider upload before ACK,
+- ACK endpoint unavailable,
+- provider ambiguous response,
+- row-scoped classifier blocks retry,
+- production evidence turns red post-deploy,
+- stuck `PROCESSING` after script/runtime crash.
+
+For each scenario record: trigger, scope, freeze decision, rollback action, verification command, post-rollback evidence artifact.
+
+### 3.10 Production Rollback Checklist Record
+
+Every production rollback/freeze drill record must include:
+- owner,
+- timestamp,
+- deploy commit,
+- target DB evidence artifact paths (`tmp/release-gates-production.*`, `tmp/db-evidence-latest.*`),
+- queue snapshot reference,
+- export run IDs (if present),
+- affected site/provider scope,
+- rollback action executed,
+- verification command output reference,
+- post-rollback evidence result.
 
 
 ## 4. Conversion Math SSOT and Value Drift

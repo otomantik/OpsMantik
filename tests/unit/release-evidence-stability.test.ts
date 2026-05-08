@@ -27,6 +27,21 @@ test('queue_health SQL pack contract lists PR-1C taxonomy columns', () => {
   }
 });
 
+test('won pipeline health contract uses unrepresented leak semantics', () => {
+  const src = readFileSync(join(ROOT, 'scripts/release/evidence-contracts.mjs'), 'utf8');
+  for (const col of [
+    'won_represented_active_count',
+    'won_represented_completed_count',
+    'won_represented_failed_terminal_count',
+    'won_pipeline_represented_total',
+    'won_missing_unrepresented_count',
+    'won_missing_pipeline_count',
+  ]) {
+    assert.ok(src.includes(`'${col}'`), `won pipeline contract must require ${col}`);
+  }
+  assert.ok(src.includes('RED when won_missing_unrepresented_count > 0.'));
+});
+
 test('release evidence includes PR-4 recovery integrity vocabulary', () => {
   const src = readFileSync(join(ROOT, 'scripts/release/collect-gate-evidence.mjs'), 'utf8');
   for (const token of [
@@ -150,6 +165,23 @@ test('rpc contract list keeps queue/recovery canonical set', () => {
   assert.ok(src.includes("heartbeat_cron_lease_v1', args: 'text, text, integer'"));
   assert.ok(src.includes("release_cron_lease_v1', args: 'text, text'"));
   assert.ok(src.includes("try_acquire_cron_lock_v1', args: 'text'"));
+});
+
+test('migration evidence supports equivalent-name resolution with object proof', () => {
+  const src = readFileSync(join(ROOT, 'scripts/release/collect-gate-evidence.mjs'), 'utf8');
+  for (const token of [
+    'CRITICAL_MIGRATION_EQUIVALENTS',
+    '20261226030000_restore_cron_lease_lock_backend.sql',
+    '20260508140142',
+    'restore_cron_lease_lock_backend',
+    'schema_migrations_equivalent+object_proof',
+    'equivalent_migration_detected',
+    'equivalent_object_proof',
+    "to_regclass('public.cron_leases')",
+    "to_regprocedure('public.acquire_cron_lease_v1(text,text,integer)')",
+  ]) {
+    assert.ok(src.includes(token), `equivalent migration token ${token} must exist`);
+  }
 });
 
 test('release evidence reports UNKNOWN_MODE deterministically', () => {
@@ -310,6 +342,75 @@ test('staging mode updates mode-specific and latest artifact aliases together', 
   assert.equal(staging.metadata.mode, 'staging');
   assert.equal(latest.metadata.mode, 'staging');
   assert.equal(staging.metadata.generated_at, latest.metadata.generated_at);
+});
+
+test('production script exists in package.json', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  assert.equal(
+    pkg.scripts?.['release:evidence:production'],
+    'node scripts/release/collect-gate-evidence.mjs --mode=production --output tmp/release-gates-production.md'
+  );
+});
+
+test('production mode updates production artifact and latest alias together', () => {
+  const run = spawnSync(
+    'node scripts/release/collect-gate-evidence.mjs --output tmp/release-gates-production.md',
+    {
+      cwd: ROOT,
+      shell: true,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        EVIDENCE_TEST_FAST: '1',
+        RELEASE_EVIDENCE_MODE: 'production',
+        TARGET_DB_EVIDENCE_STRICT: '1',
+        SUPABASE_DB_URL: 'not-a-url',
+      },
+    }
+  );
+  assert.notEqual(run.status, 0);
+  assert.equal(existsSync(join(ROOT, 'tmp/release-gates-production.json')), true);
+  const prod = JSON.parse(readFileSync(join(ROOT, 'tmp/release-gates-production.json'), 'utf8'));
+  const latest = JSON.parse(readFileSync(join(ROOT, 'tmp/release-gates-latest.json'), 'utf8'));
+  assert.equal(prod.metadata.mode, 'production');
+  assert.equal(latest.metadata.mode, 'production');
+  assert.equal(prod.metadata.generated_at, latest.metadata.generated_at);
+  assert.equal(prod.metadata.target_db_checked, false);
+  assert.equal(prod.metadata.target_db_contract_status, 'DB_URL_INVALID');
+});
+
+test('production evidence does not leak DB URL secrets', () => {
+  const run = spawnSync(
+    'node scripts/release/collect-gate-evidence.mjs --mode=production --output tmp/evidence-prod-secret-redaction.md',
+    {
+      cwd: ROOT,
+      shell: true,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        EVIDENCE_TEST_FAST: '1',
+        TARGET_DB_EVIDENCE_STRICT: '1',
+        SUPABASE_DB_URL: 'postgresql://user:supersecret@/postgres',
+      },
+    }
+  );
+  assert.notEqual(run.status, 0);
+  const db = readFileSync(join(ROOT, 'tmp/db-evidence-latest.json'), 'utf8');
+  const gates = readFileSync(join(ROOT, 'tmp/release-gates-latest.json'), 'utf8');
+  assert.ok(!db.includes('supersecret'));
+  assert.ok(!gates.includes('supersecret'));
+});
+
+test('release evidence exports production drill and dossier metadata fields', () => {
+  const src = readFileSync(join(ROOT, 'scripts/release/collect-gate-evidence.mjs'), 'utf8');
+  for (const token of [
+    'production_rollback_drill_documented',
+    'export_freeze_runbook_present',
+    'production_promotion_dossier_present',
+    'production_go_decision',
+  ]) {
+    assert.ok(src.includes(token), `production metadata token ${token} must exist`);
+  }
 });
 
 test('normalized evidence artifact is replay-stable', () => {

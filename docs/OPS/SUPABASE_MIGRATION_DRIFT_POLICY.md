@@ -16,6 +16,7 @@ Runtime can still be healthy (objects exist), but version/name drift can confuse
 | `20261224000000_intent_coalesce_window_professional_v1.sql` | `intent_coalesce_window_professional_v1_20261224` |
 | `20261225000000_intent_coalesce_window_tighten_v1.sql` | `intent_coalesce_window_tighten_v1_20261225` |
 | `20261226000000_oci_transition_grants_revoke_apply_call_action_strict.sql` | `oci_transition_grants_revoke_apply_call_action_strict` |
+| `20261226030000_restore_cron_lease_lock_backend.sql` | `restore_cron_lease_lock_backend` (version `20260508140142`) |
 
 ## Operational rule
 
@@ -25,6 +26,8 @@ Instead:
 1. Verify runtime objects/indexes/grants directly with MCP `execute_sql`.
 2. Keep this mapping up to date when equivalent migrations are intentionally applied under different version prefixes.
 3. If production parity tooling requires exact version sync, run a dedicated migration-history repair change with explicit review (separate task).
+
+Equivalent-name acceptance is allowed only when object proof passes for the targeted contract objects. For cron lease backend, proof must include `cron_leases` plus all lease RPCs (`acquire`, `steal`, `heartbeat`, `release`, `try_acquire`).
 
 ## Minimum MCP proof commands
 

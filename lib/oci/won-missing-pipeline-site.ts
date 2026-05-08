@@ -7,11 +7,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const ACTIVE = new Set(['QUEUED', 'RETRY', 'PROCESSING', 'BLOCKED_PRECEDING_SIGNALS']);
 const COMPLETED = new Set(['COMPLETED', 'UPLOADED', 'COMPLETED_UNVERIFIED']);
 const TERMINAL = new Set(['FAILED', 'DEAD_LETTER_QUARANTINE', 'VOIDED_BY_REVERSAL']);
+const WON_ACTION = 'OpsMantik_Won';
 
 export type WonPipelineSiteStats = {
   wonTotal: number;
   wonInQueue: number;
   wonCompleted: number;
+  wonRepresentedFailedTerminal: number;
+  wonPipelineRepresentedTotal: number;
   wonMissingPipeline: number;
   oldestMissingAgeSeconds: number | null;
 };
@@ -22,7 +25,7 @@ async function collectMissingWonPipelineCallIds(
 ): Promise<string[]> {
   const { data: qrows, error: qErr } = await client
     .from('offline_conversion_queue')
-    .select('call_id, status')
+    .select('call_id, status, action')
     .eq('site_id', siteId)
     .not('call_id', 'is', null);
 
@@ -30,6 +33,8 @@ async function collectMissingWonPipelineCallIds(
 
   const protectedIds = new Set<string>();
   for (const r of qrows || []) {
+    const action = (r as { action?: string | null }).action ?? '';
+    if (action !== WON_ACTION) continue;
     const st = (r as { status?: string }).status ?? '';
     const cid = (r as { call_id?: string }).call_id;
     if (!cid) continue;
@@ -75,7 +80,7 @@ export async function collectWonPipelineSiteStats(
 ): Promise<WonPipelineSiteStats> {
   const { data: qrows, error: qErr } = await client
     .from('offline_conversion_queue')
-    .select('call_id, status')
+    .select('call_id, status, action')
     .eq('site_id', siteId)
     .not('call_id', 'is', null);
   if (qErr) throw qErr;
@@ -90,18 +95,25 @@ export async function collectWonPipelineSiteStats(
 
   const inQueue = new Set<string>();
   const completed = new Set<string>();
+  const failedTerminal = new Set<string>();
+  const represented = new Set<string>();
   for (const row of qrows || []) {
     const callId = (row as { call_id?: string | null }).call_id;
     const status = (row as { status?: string | null }).status || '';
+    const action = (row as { action?: string | null }).action || '';
     if (!callId) continue;
+    if (action !== WON_ACTION) continue;
+    represented.add(callId);
     if (ACTIVE.has(status)) inQueue.add(callId);
     if (COMPLETED.has(status)) completed.add(callId);
-    if (TERMINAL.has(status)) continue;
+    if (TERMINAL.has(status)) failedTerminal.add(callId);
   }
 
   let wonTotal = 0;
   let wonInQueue = 0;
   let wonCompleted = 0;
+  let wonRepresentedFailedTerminal = 0;
+  let wonPipelineRepresentedTotal = 0;
   let wonMissingPipeline = 0;
   let oldestMissingTs: number | null = null;
   for (const row of calls || []) {
@@ -111,7 +123,9 @@ export async function collectWonPipelineSiteStats(
     wonTotal += 1;
     if (inQueue.has(id)) wonInQueue += 1;
     if (completed.has(id)) wonCompleted += 1;
-    if (!inQueue.has(id) && !completed.has(id)) {
+    if (failedTerminal.has(id)) wonRepresentedFailedTerminal += 1;
+    if (represented.has(id)) wonPipelineRepresentedTotal += 1;
+    if (!represented.has(id)) {
       wonMissingPipeline += 1;
       if (confirmedAt) {
         const ts = new Date(confirmedAt).getTime();
@@ -126,6 +140,8 @@ export async function collectWonPipelineSiteStats(
     wonTotal,
     wonInQueue,
     wonCompleted,
+    wonRepresentedFailedTerminal,
+    wonPipelineRepresentedTotal,
     wonMissingPipeline,
     oldestMissingAgeSeconds,
   };

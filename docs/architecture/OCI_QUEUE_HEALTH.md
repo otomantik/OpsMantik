@@ -11,12 +11,13 @@ Queue health scores measure **export pipeline reliability** (queue, retry, DLQ, 
 
 ## “100” vs rollout gate
 
-- **Queue Health 100 / GREEN (kemik):** all invariants in the contract at once: no stuck processing (by `STUCK_PROCESSING_MAX_AGE_MINUTES`), no won pipeline leak (`won_missing_pipeline`), DLQ = 0, retry rate within max, **`actionable_failed_rate` and `provider_failed_rate`** within max (PR-1C — not raw `total_failed_rate` alone), age SLOs, no SSOT RED when `evaluationMode: 'kemik'`, and TARGET_DB evidence when asserting release claims. **Do not declare operational “100” from STATIC evidence alone** — see §Evidence; lifecycle contradictions (e.g. backlog green while `PROCESSING` zombies persist) are failures against [OCI_QUEUE_LIFECYCLE_CONTRACT.md](./OCI_QUEUE_LIFECYCLE_CONTRACT.md).
-- **Rollout readiness gate** ([scripts/oci-rollout-readiness.ts](../../scripts/oci-rollout-readiness.ts)) uses **tolerant** `stuckMax` per profile (e.g. prod 20) and the same PR-1C **actionable / provider** failure rates; deterministic skips must **not** sole-fail the gate. **Any** non-zero `won_missing_pipeline` or DLQ count still fails the gate (aligned with `queue_health.sql`). That answers “can we ship observability”, **not** “perfect queue health”. Do not equate `stuck < 20` with score 100.
+- **Queue Health 100 / GREEN (kemik):** all invariants in the contract at once: no stuck processing (by `STUCK_PROCESSING_MAX_AGE_MINUTES`), no won pipeline leak (`won_missing_unrepresented_count`; alias `won_missing_pipeline_count`), DLQ = 0, retry rate within max, **`actionable_failed_rate` and `provider_failed_rate`** within max (PR-1C — not raw `total_failed_rate` alone), age SLOs, no SSOT RED when `evaluationMode: 'kemik'`, and TARGET_DB evidence when asserting release claims. **Do not declare operational “100” from STATIC evidence alone** — see §Evidence; lifecycle contradictions (e.g. backlog green while `PROCESSING` zombies persist) are failures against [OCI_QUEUE_LIFECYCLE_CONTRACT.md](./OCI_QUEUE_LIFECYCLE_CONTRACT.md).
+- **Rollout readiness gate** ([scripts/oci-rollout-readiness.ts](../../scripts/oci-rollout-readiness.ts)) uses **tolerant** `stuckMax` per profile (e.g. prod 20) and the same PR-1C **actionable / provider** failure rates; deterministic skips must **not** sole-fail the gate. **Any** non-zero `won_missing_unrepresented_count` (via `wonMissingPipeline`) or DLQ count still fails the gate. `won_represented_failed_terminal_count` is surfaced separately as represented-but-failed, not missing coverage. That answers “can we ship observability”, **not** “perfect queue health”. Do not equate `stuck < 20` with score 100.
 
 ## Evidence (STATIC vs TARGET_DB)
 
 - **STATIC** `release:evidence` proves SQL pack **shape** and repo tests — **not** live row counts.
+- Production promotion requires `release:evidence:production` with target DB checked; static/local green cannot authorize production.
 - **TARGET_DB** requires `verify-db` / DB-connected evidence modes — never claim prod queue GREEN from STATIC-only artifacts.
 - Release markdown includes `db_evidence_status`, `static_queue_contract_green`, and queue-health kanıt notes from [collect-gate-evidence.mjs](../../scripts/release/collect-gate-evidence.mjs).
 - PR-6 adds target DB contract status vocabulary: `TARGET_DB_NOT_CHECKED`, `TARGET_DB_UNVERIFIED`, `TARGET_DB_PARTIAL`, `TARGET_DB_RED`, `TARGET_DB_GREEN`.
@@ -32,6 +33,8 @@ Queue health scores measure **export pipeline reliability** (queue, retry, DLQ, 
 **PR-1C — `FAILED` is not always a provider failure:** `status = FAILED` is a **lifecycle** terminal bucket. `provider_error_category = DETERMINISTIC_SKIP` marks **expected non-upload** outcomes (e.g. `SUPPRESSED_BY_HIGHER_GEAR`). Those rows stay **visible** in `failure_taxonomy` and in legacy **`failed_rate` / `total_failed_rate`** (FAILED + DLQ mass), but **`queue_health_score` / rollout gates** use **`actionable_failed_rate`** and **`provider_failed_rate`** so deterministic skips do not masquerade as Google/provider breakage. **`COMPLETED`** still means ACK-success / upload evidence only — see [OCI_QUEUE_LIFECYCLE_CONTRACT.md](./OCI_QUEUE_LIFECYCLE_CONTRACT.md) §5.
 
 **Unknown failures:** `unknown_failed_count > 0` is **RED** when taxonomy is present (unclassified FAILED rows must not be ignored).
+
+**PR-7G won semantics split:** A won/sealed row is considered missing only when it has no `OpsMantik_Won` queue representation at all. If representation exists but status is terminal (`FAILED`, `DEAD_LETTER_QUARANTINE`, etc.), it must remain visible under `won_represented_failed_terminal_count` and be remediated through queue/provider failure handling, not orphan repair re-enqueue.
 
 ## Recovery (no deletes)
 

@@ -147,6 +147,8 @@ async function loadQueueAndOutbox(siteId: string) {
         wonTotal: 0,
         wonInQueue: 0,
         wonCompleted: 0,
+        wonRepresentedFailedTerminal: 0,
+        wonPipelineRepresentedTotal: 0,
         wonMissingPipeline: 0,
         oldestMissingAgeSeconds: null,
       }
@@ -164,6 +166,8 @@ async function loadQueueAndOutbox(siteId: string) {
     deterministicSkipRate: taxRates.deterministic_skip_rate,
     failureTaxonomy,
     wonMissingPipelineCount: wonPipeline.wonMissingPipeline,
+    wonRepresentedFailedTerminalCount: wonPipeline.wonRepresentedFailedTerminal,
+    wonPipelineRepresentedTotalCount: wonPipeline.wonPipelineRepresentedTotal,
     wonPipeline,
     stuckProcessing,
     queueTableMissing,

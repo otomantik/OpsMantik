@@ -109,4 +109,5 @@ PR-4E note: recovery integrity (`RECOVERY_INTEGRITY_*`) is evaluated as a separa
 - `STATIC_CONTRACT_GREEN` means repo contracts/tests are present; it is not target DB proof.
 - Promotion-safe claims require target DB evidence status (`TARGET_DB_GREEN` / `TARGET_DB_RED` / `TARGET_DB_UNVERIFIED`) from release artifacts.
 - `TARGET_DB_NOT_CHECKED` and `DB_ENV_MISSING` are never treated as runtime green in strict staging/production.
+- For production sign-off, archive production artifacts (`release-gates-production.*`, `release-gates-latest.*`, `db-evidence-latest.*`) with matching `generated_at`.
 - RPC/signature/grant drift in target DB are release blockers even when static evidence is green.

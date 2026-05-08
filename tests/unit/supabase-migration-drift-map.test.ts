@@ -14,6 +14,7 @@ test('migration drift policy documents known local<->remote equivalent versions'
     '20261224000000_intent_coalesce_window_professional_v1.sql',
     '20261225000000_intent_coalesce_window_tighten_v1.sql',
     '20261226000000_oci_transition_grants_revoke_apply_call_action_strict.sql',
+    '20261226030000_restore_cron_lease_lock_backend.sql',
   ];
 
   for (const file of requiredLocal) {

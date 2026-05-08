@@ -51,6 +51,12 @@ const CRITICAL_MIGRATIONS = [
   '20261226024000_restrict_recover_stuck_offline_conversion_jobs_grants.sql',
   '20261226030000_restore_cron_lease_lock_backend.sql',
 ];
+const CRITICAL_MIGRATION_EQUIVALENTS = {
+  '20261226030000_restore_cron_lease_lock_backend.sql': {
+    equivalent_version: '20260508140142',
+    equivalent_name: 'restore_cron_lease_lock_backend',
+  },
+};
 const EXTRA_DB_SQL_PACKS = [
   {
     pack_id: 'rebuild_call_projection_smoke',
@@ -91,7 +97,7 @@ function getModeCommands(mode) {
 
 function parseArgs(argv) {
   let output = DEFAULT_OUTPUT;
-  let mode = 'static';
+  let mode = (process.env.RELEASE_EVIDENCE_MODE || 'static').trim() || 'static';
   let environment = process.env.EVIDENCE_ENVIRONMENT || '';
   let withDb = false;
   for (let i = 0; i < argv.length; i++) {
@@ -491,21 +497,102 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
     try {
       const migrationRows = [];
       let appliedVersions = [];
+      let appliedMigrationRows = [];
       try {
-        const r = await client.query('select version from supabase_migrations.schema_migrations');
-        appliedVersions = (r.rows || []).map((x) => String(x.version || ''));
+        const r = await client.query('select version, name from supabase_migrations.schema_migrations');
+        appliedMigrationRows = (r.rows || []).map((x) => ({
+          version: String(x.version || ''),
+          name: String(x.name || ''),
+        }));
+        appliedVersions = appliedMigrationRows.map((x) => x.version);
       } catch {
         appliedVersions = [];
+        appliedMigrationRows = [];
       }
+
+      async function checkEquivalentObjectProof(migrationName) {
+        if (migrationName !== '20261226030000_restore_cron_lease_lock_backend.sql') {
+          return { passed: null, reason: 'no_object_proof_required' };
+        }
+        try {
+          const proof = await client.query(`
+            select
+              to_regclass('public.cron_leases') is not null as has_cron_leases,
+              to_regprocedure('public.acquire_cron_lease_v1(text,text,integer)') is not null as has_acquire,
+              to_regprocedure('public.steal_expired_cron_lease_v1(text,text,integer,integer)') is not null as has_steal,
+              to_regprocedure('public.heartbeat_cron_lease_v1(text,text,integer)') is not null as has_heartbeat,
+              to_regprocedure('public.release_cron_lease_v1(text,text)') is not null as has_release,
+              to_regprocedure('public.try_acquire_cron_lock_v1(text)') is not null as has_try_acquire;
+          `);
+          const row = proof.rows?.[0] || {};
+          const passed = Boolean(
+            row.has_cron_leases &&
+            row.has_acquire &&
+            row.has_steal &&
+            row.has_heartbeat &&
+            row.has_release &&
+            row.has_try_acquire
+          );
+          return {
+            passed,
+            reason: passed ? 'cron_lease_backend_objects_present' : 'cron_lease_backend_objects_missing',
+          };
+        } catch (error) {
+          return {
+            passed: null,
+            reason: `object_proof_query_failed: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      }
+
       for (const name of CRITICAL_MIGRATIONS) {
         const version = name.split('_')[0];
         const applied = appliedVersions.includes(version);
+        const eq = CRITICAL_MIGRATION_EQUIVALENTS[name];
+        const hasEquivalentHistory =
+          !applied &&
+          Boolean(eq) &&
+          appliedMigrationRows.some(
+            (row) =>
+              (eq.equivalent_version && row.version === eq.equivalent_version) ||
+              (eq.equivalent_name && row.name === eq.equivalent_name)
+          );
+        const proof = hasEquivalentHistory ? await checkEquivalentObjectProof(name) : { passed: null, reason: 'not_applicable' };
+        const equivalentAccepted = hasEquivalentHistory && proof.passed === true;
+        const equivalentUnverified = hasEquivalentHistory && proof.passed === null;
+
+        const appliedInTarget =
+          applied
+            ? true
+            : equivalentAccepted
+              ? true
+              : equivalentUnverified
+                ? 'APPLIED_STATUS_UNVERIFIED'
+                : (appliedVersions.length === 0 ? 'APPLIED_STATUS_UNVERIFIED' : false);
+        const evidence =
+          applied
+            ? 'schema_migrations'
+            : equivalentAccepted
+              ? `schema_migrations_equivalent+object_proof:${proof.reason}`
+              : equivalentUnverified
+                ? `equivalent_migration_unverified:${proof.reason}`
+                : (appliedVersions.length === 0 ? 'schema_migrations_unavailable' : 'not_applied');
+        const status =
+          applied || equivalentAccepted
+            ? 'TARGET_DB_GREEN'
+            : equivalentUnverified || appliedVersions.length === 0
+              ? 'TARGET_DB_UNVERIFIED'
+              : 'TARGET_DB_RED';
         migrationRows.push({
           migration: name,
           present_in_repo: true,
-          applied_in_target_db: applied ? true : (appliedVersions.length === 0 ? 'APPLIED_STATUS_UNVERIFIED' : false),
-          evidence: applied ? 'schema_migrations' : (appliedVersions.length === 0 ? 'schema_migrations_unavailable' : 'not_applied'),
-          status: applied ? 'TARGET_DB_GREEN' : (appliedVersions.length === 0 ? 'TARGET_DB_UNVERIFIED' : 'TARGET_DB_RED'),
+          applied_in_target_db: appliedInTarget,
+          evidence,
+          status,
+          equivalent_migration_detected: hasEquivalentHistory,
+          equivalent_migration_version: hasEquivalentHistory ? eq.equivalent_version : null,
+          equivalent_migration_name: hasEquivalentHistory ? eq.equivalent_name : null,
+          equivalent_object_proof: hasEquivalentHistory ? proof.reason : null,
         });
       }
       migration_evidence_summary = {
@@ -637,6 +724,10 @@ function buildMarkdown(artifact) {
     `- checked_equations: \`${artifact.metadata.checked_equations}\``,
     `- missing_equations: \`${artifact.metadata.missing_equations}\``,
     `- mismatch_reasons: \`${artifact.metadata.mismatch_reasons}\``,
+    `- export_freeze_runbook_present: \`${artifact.metadata.export_freeze_runbook_present}\``,
+    `- production_rollback_drill_documented: \`${artifact.metadata.production_rollback_drill_documented}\``,
+    `- production_promotion_dossier_present: \`${artifact.metadata.production_promotion_dossier_present}\``,
+    `- production_go_decision: \`${artifact.metadata.production_go_decision}\``,
     '',
     '## Queue health / kanıt (ayrım)',
     '',
@@ -859,6 +950,12 @@ async function main() {
   const checks = [];
   const blockingFailures = [];
   const warnings = [];
+  const exportFreezeRunbookPresent = existsSync(
+    join(repoRoot, 'docs', 'runbooks', 'OCI_HARDENING_OPERATIONS.md')
+  );
+  const productionPromotionDossierPresent = existsSync(
+    join(repoRoot, 'docs', 'OPS', 'PRODUCTION_PROMOTION_DOSSIER.md')
+  );
 
   if (!parsed.ok) {
     blockingFailures.push({ reason_code: parsed.error_code, message: `Unsupported mode ${parsed.mode}` });
@@ -1191,6 +1288,21 @@ async function main() {
             ? 'verify-db ran — includes queue_health.sql when DB reachable'
             : 'none — do not claim TARGET_DB queue health GREEN',
       },
+      export_freeze_runbook_present: exportFreezeRunbookPresent,
+      production_rollback_drill_documented: exportFreezeRunbookPresent,
+      production_promotion_dossier_present: productionPromotionDossierPresent,
+      production_go_decision:
+        targetDbEvidence.target_db_checked === true &&
+        targetDbEvidence.target_db_contract_status === 'TARGET_DB_GREEN' &&
+        (targetDbEvidence.blocking_failures || []).length === 0 &&
+        targetDbEvidence.rpc_contract_summary?.unsafe_grant_count === 0 &&
+        targetDbEvidence.rpc_contract_summary?.status === 'TARGET_DB_GREEN' &&
+        targetDbEvidence.migration_evidence_summary?.status === 'TARGET_DB_GREEN' &&
+        targetDbEvidence.row_scoped_smoke?.status === 'TARGET_DB_GREEN' &&
+        exportFreezeRunbookPresent &&
+        productionPromotionDossierPresent
+          ? 'GO'
+          : 'NO_GO',
       normalization_version: 'v1',
       sql_pack_hashes: sqlPackHashes,
       sql_pack_results: targetDbEvidence.sql_pack_results,

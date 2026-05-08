@@ -74,7 +74,7 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 | Identity/hash integrity RED | STOP — G4 / duplicate economics |
 | `export_closure_gap_audit` RED (stale active / malformed `external_id`) | STOP — journal closure broken |
 | `export_closure_stage_journal_gap` RED (heuristic) | Drill-down — `calls.status` vs journal action mismatch (may false-positive if status lags outbox) |
-| `wonMissingPipeline > 0` in rollout readiness | STOP — won/sealed call missing queue journal coverage; run site-scoped dry-run backfill first |
+| `wonMissingPipeline > 0` in rollout readiness | STOP — won/sealed call is unrepresented in queue journal (`won_missing_unrepresented_count`); run site-scoped dry-run backfill first |
 
 ## L × W cross-cut matrix (informative)
 
@@ -96,6 +96,8 @@ Vertical **L** layers: **L1** journal identity → **L2** gates (`BLOCKED`, G1/G
 | **R3** | Evidence | `npm run test:release-gates`; health SQL packs; [`tests/unit/export-closure-determinism-contract.test.ts`](../../tests/unit/export-closure-determinism-contract.test.ts); chaos export SSOT / ACK suites |
 
 **Single enqueue audit:** Micro stages must not bypass [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts); seal/won must go through [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) (except documented RPC-only recovery paths).
+
+**PR-7G represented-failed split:** `OpsMantik_Won` rows in terminal failed statuses are represented pipeline rows, not missing coverage. They remain actionable through queue failure taxonomy/provider remediation and should not be repeatedly re-enqueued as orphan pipeline repair.
 
 ## DB enforcement (journal)
 
