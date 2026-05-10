@@ -5,6 +5,7 @@ export type TerminalCallRow = {
   oci_status?: string | null;
   confirmed_at?: string | null;
   sale_amount?: number | null;
+  sale_currency?: string | null;
   currency?: string | null;
   lead_score?: number | null;
 };

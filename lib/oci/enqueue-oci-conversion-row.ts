@@ -5,7 +5,6 @@
  * See docs/architecture/EXPORT_CLOSURE.md (S1: journal-only upload surface).
  */
 
-import { adminClient } from '@/lib/supabase/admin';
 import { createTenantClient } from '@/lib/supabase/tenant-client';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
@@ -15,9 +14,10 @@ import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-s
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
-import { publishToQStash } from '@/lib/ingest/publish';
-import { hasAnyClickId } from '@/lib/oci/enqueue-seal-conversion';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
+import { adminClient } from '@/lib/supabase/admin';
+import { optimizationStageToIntentStage } from '@/lib/oci/intent-conversion-journal-contract';
+import { enqueueIntentConversionJournalRow } from '@/lib/oci/enqueue-intent-conversion-journal-row';
 
 export type EnqueueOciMicroStage = Exclude<PipelineStage, 'won'>;
 
@@ -36,6 +36,8 @@ export interface EnqueueOciConversionRowParams {
   gbraid: string | null;
   discoveryMethod?: string | null;
   discoveryConfidence?: number | null;
+  /** Optional journal provenance (defaults to `enqueue_oci_conversion_row`). */
+  journalSourceType?: string | null;
 }
 
 export interface EnqueueOciConversionRowResult {
@@ -83,6 +85,7 @@ export async function enqueueOciConversionRow(
     gbraid,
     discoveryMethod,
     discoveryConfidence,
+    journalSourceType,
   } = params;
 
   const hasMarketing = await hasMarketingConsentForCall(siteId, callId);
@@ -105,12 +108,14 @@ export async function enqueueOciConversionRow(
   const tenantClient = createTenantClient(siteId);
   const { data: callRow } = await tenantClient
     .from('calls')
-    .select('matched_session_id, created_at')
+    .select('matched_session_id, created_at, caller_phone_hash_sha256')
     .eq('id', callId)
     .maybeSingle();
 
   const sessionId = (callRow as { matched_session_id?: string | null } | null)?.matched_session_id ?? null;
   const callCreatedAt = (callRow as { created_at?: string | null } | null)?.created_at ?? null;
+  const callerPhoneHashSha256 =
+    (callRow as { caller_phone_hash_sha256?: string | null } | null)?.caller_phone_hash_sha256 ?? null;
 
   const intentCandidate = intentCreatedAt ?? callCreatedAt ?? null;
   const intentParsed = parseWithinTemporalSanityWindow(intentCandidate);
@@ -138,117 +143,58 @@ export async function enqueueOciConversionRow(
     sessionId,
   });
 
-  const hasClick = hasAnyClickId({ gclid, wbraid, gbraid });
-  const nowIso = new Date().toISOString();
-  let rowStatus: string = 'QUEUED';
-  let rowBlockReason: string | null = null;
-  let providerErrorCategory: string | null = null;
-  let providerErrorCode: string | null = null;
-  let rowBlockedAt: string | null = null;
+  const intentStage = optimizationStageToIntentStage(stage);
 
-  if (!hasMarketing) {
-    rowStatus = 'FAILED';
-    providerErrorCategory = 'DETERMINISTIC_SKIP';
-    providerErrorCode = 'CONSENT_MISSING';
-  } else if (!hasClick) {
-    rowStatus = 'BLOCKED_PRECEDING_SIGNALS';
-    rowBlockReason = 'MISSING_CLICK_ID';
-    rowBlockedAt = nowIso;
-  }
-
-  const insertPayload: Record<string, unknown> = {
-    site_id: siteId,
-    call_id: callId,
-    sale_id: null,
-    session_id: sessionId,
-    provider_key: 'google_ads',
-    external_id: externalId,
-    action: actionName,
-    conversion_time: occurredAt,
-    occurred_at: occurredAt,
-    source_timestamp: sourceTimestamp,
-    time_confidence: timeConfidence,
-    occurred_at_source: occurredAtSource,
-    value_cents: valueCents,
+  const journalResult = await enqueueIntentConversionJournalRow({
+    siteId,
+    providerKey: 'google_ads',
+    callId,
+    sessionId,
+    saleId: null,
+    stage: intentStage,
+    conversionName: actionName,
+    externalId,
+    conversionTime: occurredAt,
+    occurredAt,
+    sourceTimestamp,
+    timeConfidence,
+    occurredAtSource,
+    valueCents,
     currency: currencySafe,
-    value_source: economics.valueSource,
-    value_policy_version: economics.policyVersion,
-    value_policy_reason: economics.policyReason,
-    value_fallback_used: economics.fallbackUsed,
-    optimization_stage: snapshot.optimizationStage,
-    optimization_stage_base: snapshot.stageBase,
-    quality_factor: null,
-    optimization_value: snapshot.optimizationValue,
-    actual_revenue: snapshot.actualRevenue,
-    helper_form_payload: null,
-    feature_snapshot: {
-      value_policy_version: economics.policyVersion,
-      value_policy_reason: economics.policyReason,
-      value_source: economics.valueSource,
-      enqueue_source: 'enqueue_oci_conversion_row',
-      stage,
-    },
-    outcome_timestamp: occurredAt,
-    model_version: snapshot.modelVersion,
+    valueSource: economics.valueSource,
+    valuePolicyVersion: economics.policyVersion,
+    valuePolicyReason: economics.policyReason,
+    valueFallbackUsed: economics.fallbackUsed,
+    optimizationStage: snapshot.optimizationStage,
+    optimizationStageBase: snapshot.stageBase,
+    optimizationValue: snapshot.optimizationValue,
+    actualRevenue: snapshot.actualRevenue,
+    modelVersion: snapshot.modelVersion,
     gclid,
     wbraid,
     gbraid,
-    status: rowStatus,
-    block_reason: rowBlockReason,
-    blocked_at: rowBlockedAt,
-    provider_error_category: providerErrorCategory,
-    provider_error_code: providerErrorCode,
-    source_outbox_event_id: sourceOutboxEventId ?? null,
-    causal_dna: {},
+    consentMarketing: hasMarketing,
+    consentUserIdentifiers: hasMarketing,
+    sendabilityOk: true,
+    ociSyncMethod: syncMethod,
+    sourceOutboxEventId,
+    sourceType: journalSourceType ?? 'enqueue_oci_conversion_row',
+    sourceIdempotencyKey: externalId,
+    discoveryMethod,
+    discoveryConfidence,
+    callCallerPhoneHashSha256: callerPhoneHashSha256,
+    featureSnapshot: {
+      value_policy_version: economics.policyVersion,
+      value_policy_reason: economics.policyReason,
+      value_source: economics.valueSource,
+      stage,
+    },
+  });
+
+  return {
+    enqueued: journalResult.enqueued,
+    queueId: journalResult.queueId,
+    reason: journalResult.reason,
+    error: journalResult.error,
   };
-
-  if (discoveryMethod) insertPayload.discovery_method = discoveryMethod;
-  if (discoveryConfidence != null) insertPayload.discovery_confidence = discoveryConfidence;
-
-  try {
-    const { data: inserted, error } = await adminClient
-      .from('offline_conversion_queue')
-      .insert(insertPayload)
-      .select('id')
-      .single();
-
-    if (error) {
-      if ((error as { code?: string }).code === '23505') {
-        logInfo('enqueue_oci_row_duplicate', { call_id: callId, stage });
-        return { enqueued: false, reason: 'duplicate' };
-      }
-      logWarn('enqueue_oci_row_failed', { call_id: callId, stage, error: error.message });
-      return { enqueued: false, reason: 'error', error: error.message };
-    }
-
-    const queueId = (inserted as { id: string } | null)?.id ?? null;
-
-    if (syncMethod === 'api' && rowStatus === 'QUEUED' && queueId) {
-      try {
-        await publishToQStash({
-          lane: 'conversion',
-          body: { kind: 'oci_export', queue_id: queueId, site_id: siteId },
-          deduplicationId: `oci-micro-fasttrack-${queueId}`,
-          retries: 3,
-        });
-      } catch (publishErr) {
-        logWarn('OCI_FASTTRACK_MICRO_FAILED', {
-          call_id: callId,
-          queue_id: queueId,
-          error: publishErr instanceof Error ? publishErr.message : String(publishErr),
-        });
-      }
-    }
-
-    if (!hasMarketing) {
-      return { enqueued: false, reason: 'CONSENT_MISSING', queueId };
-    }
-
-    logInfo('enqueue_oci_row_ok', { call_id: callId, stage, queue_id: queueId, action: actionName });
-    return { enqueued: true, queueId };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logWarn('enqueue_oci_row_failed', { call_id: callId, stage, error: message });
-    return { enqueued: false, reason: 'error', error: message };
-  }
 }

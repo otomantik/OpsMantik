@@ -271,6 +271,7 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
         missing_count: 0,
         signature_drift_count: 0,
         unsafe_grant_count: 0,
+        dependency_drift_count: 0,
       },
       migration_evidence_summary: {
         status: 'TARGET_DB_NOT_CHECKED',
@@ -312,6 +313,7 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
         missing_count: 0,
         signature_drift_count: 0,
         unsafe_grant_count: 0,
+        dependency_drift_count: 0,
       },
       migration_evidence_summary: {
         status: 'TARGET_DB_UNVERIFIED',
@@ -342,6 +344,7 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
     missing_count: 0,
     signature_drift_count: 0,
     unsafe_grant_count: 0,
+    dependency_drift_count: 0,
   };
   let migration_evidence_summary = {
     status: 'TARGET_DB_UNVERIFIED',
@@ -378,6 +381,7 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
           missing_count: 0,
           signature_drift_count: 0,
           unsafe_grant_count: 0,
+          dependency_drift_count: 0,
         },
         migration_evidence_summary: {
           status: 'TARGET_DB_UNVERIFIED',
@@ -453,6 +457,7 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
       let missing_count = 0;
       let signature_drift_count = 0;
       let unsafe_grant_count = 0;
+      let dependency_drift_count = 0;
       for (const required of REQUIRED_RPCS) {
         const row = found.get(required.name);
         if (!row) {
@@ -464,14 +469,34 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
       for (const g of grantRows.rows) {
         if (['anon', 'authenticated', 'PUBLIC'].includes(String(g.grantee))) unsafe_grant_count += 1;
       }
+      try {
+        const depRows = await client.query(`
+          select
+            to_regprocedure('public.recover_safe_processing_queue_rows_v1(uuid[],integer,text,text)') as recovery_proc,
+            to_regprocedure('public.append_worker_transition_batch_v2(uuid[],text,timestamptz,jsonb)') as helper_proc,
+            case
+              when to_regprocedure('public.recover_safe_processing_queue_rows_v1(uuid[],integer,text,text)') is null then false
+              when to_regprocedure('public.append_worker_transition_batch_v2(uuid[],text,timestamptz,jsonb)') is null then false
+              else position(
+                'public.append_worker_transition_batch_v2'
+                in pg_get_functiondef(to_regprocedure('public.recover_safe_processing_queue_rows_v1(uuid[],integer,text,text)'))
+              ) > 0
+            end as dependency_ok
+        `);
+        const dep = depRows.rows?.[0] || {};
+        if (dep.dependency_ok !== true) dependency_drift_count = 1;
+      } catch {
+        dependency_drift_count = 1;
+      }
       rpc_contract_summary = {
         status:
-          missing_count > 0 || signature_drift_count > 0 || unsafe_grant_count > 0
+          missing_count > 0 || signature_drift_count > 0 || unsafe_grant_count > 0 || dependency_drift_count > 0
             ? 'TARGET_DB_RED'
             : 'TARGET_DB_GREEN',
         missing_count,
         signature_drift_count,
         unsafe_grant_count,
+        dependency_drift_count,
       };
       if (strict && rpc_contract_summary.status === 'TARGET_DB_RED') {
         if (missing_count > 0) {
@@ -483,6 +508,12 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
         if (unsafe_grant_count > 0) {
           blocking_failures.push({ reason_code: REASON_CODES.DB_UNSAFE_GRANT, message: `Unsafe RPC grants detected: ${unsafe_grant_count}` });
         }
+        if (dependency_drift_count > 0) {
+          blocking_failures.push({
+            reason_code: REASON_CODES.DB_RPC_SIGNATURE_DRIFT,
+            message: 'Row-scoped recovery dependency drift detected',
+          });
+        }
       }
     } catch (error) {
       rpc_contract_summary = {
@@ -490,6 +521,7 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
         missing_count: 0,
         signature_drift_count: 0,
         unsafe_grant_count: 0,
+        dependency_drift_count: 0,
       };
       warnings.push(`RPC summary query failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1214,6 +1246,7 @@ async function main() {
         missing_count: 0,
         signature_drift_count: 0,
         unsafe_grant_count: 0,
+        dependency_drift_count: 0,
       },
       migration_evidence_summary: { status: 'TARGET_DB_UNVERIFIED', rows: [] },
       row_scoped_smoke: { status: 'SMOKE_UNVERIFIED', reason: 'DB_QUERY_FAILED' },

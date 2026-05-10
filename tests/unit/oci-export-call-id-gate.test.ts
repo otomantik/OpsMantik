@@ -32,4 +32,5 @@ test('buildQueueItems blocks queue rows without call_id via export gate', () => 
 
   assert.equal(built.conversions.length, 0);
   assert.deepEqual(built.blockedExportGateIds, ['q1']);
+  assert.deepEqual(built.blockedMissingConversionActionIds, []);
 });

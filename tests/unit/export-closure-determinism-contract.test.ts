@@ -38,7 +38,11 @@ test('export-build-queue derives conversionName from row.action (four OpsMantik 
 
 test('D4: micro enqueue treats duplicate journal insert as idempotent (23505)', () => {
   const micro = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
-  assert.ok(micro.includes('23505'), 'enqueue must handle unique violation as replay/idempotency');
+  const journal = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-intent-conversion-journal-row.ts'), 'utf8');
+  assert.ok(
+    micro.includes('enqueueIntentConversionJournalRow') && journal.includes('23505'),
+    'micro path must delegate; journal must collapse unique violation as idempotent replay'
+  );
 });
 
 test('D7: retry jitter module does not touch external_id identity path', () => {

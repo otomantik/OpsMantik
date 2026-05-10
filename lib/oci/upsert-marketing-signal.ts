@@ -8,6 +8,8 @@ import { computeMarketingSignalCurrentHash } from '@/lib/oci/marketing-signal-ha
 import type { MarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
 import { appendOciReconciliationEvent } from '@/lib/oci/reconciliation-events';
 import { OCI_RECONCILIATION_REASONS } from '@/lib/oci/reconciliation-reasons';
+import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import type { EnqueueOciMicroStage } from '@/lib/oci/enqueue-oci-conversion-row';
 
 export type UpsertMarketingSignalSource = 'router' | 'seal' | 'panel_stage';
 
@@ -45,6 +47,42 @@ export interface UpsertMarketingSignalResult {
   expectedValueCents: number;
   currentHash: string;
   adjustmentSequence: number;
+}
+
+async function bestEffortQueueParityAfterMarketingSignalWrite(params: {
+  siteId: string;
+  callId: string | null;
+  traceId: string | null;
+  stage: Exclude<PipelineStage, 'won'>;
+  signalDate: Date;
+  snapshot: OptimizationValueSnapshot;
+  economics: MarketingSignalEconomics;
+  nClick: ClickIds;
+}): Promise<void> {
+  if (!params.callId) return;
+  try {
+    await ensureMarketingSignalQueueParity({
+      siteId: params.siteId,
+      callId: params.callId,
+      stage: params.stage as EnqueueOciMicroStage,
+      occurredAt: params.signalDate,
+      leadScore: Number.isFinite(params.snapshot.systemScore) ? params.snapshot.systemScore : 0,
+      currency: params.economics.currencyCode,
+      gclid: params.nClick.gclid,
+      wbraid: params.nClick.wbraid,
+      gbraid: params.nClick.gbraid,
+      consentState: 'unknown',
+      source: 'lib_oci_upsert_marketing_signal',
+      traceId: params.traceId,
+    });
+  } catch (err) {
+    logWarn('MARKETING_SIGNAL_QUEUE_PARITY_FAILED', {
+      site_id: params.siteId,
+      call_id: params.callId,
+      stage: params.stage,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export async function upsertMarketingSignal(
@@ -201,6 +239,16 @@ export async function upsertMarketingSignal(
     const code = (error as { code?: string })?.code;
     if (code === '23505') {
       logInfo('marketing_signals_duplicate_ignored', { source, call_id: callId, sequence, current_hash: currentHash });
+      await bestEffortQueueParityAfterMarketingSignalWrite({
+        siteId,
+        callId,
+        traceId,
+        stage,
+        signalDate,
+        snapshot,
+        economics,
+        nClick,
+      });
       return { success: true, duplicate: true, expectedValueCents, currentHash, adjustmentSequence: sequence };
     }
     logError('MARKETING_SIGNALS_UPSERT_FAILED', { source, error: error.message, code, call_id: callId });
@@ -208,5 +256,15 @@ export async function upsertMarketingSignal(
   }
 
   const signalId = (data as { id: string } | null)?.id ?? null;
+  await bestEffortQueueParityAfterMarketingSignalWrite({
+    siteId,
+    callId,
+    traceId,
+    stage,
+    signalDate,
+    snapshot,
+    economics,
+    nClick,
+  });
   return { success: true, signalId, expectedValueCents, currentHash, adjustmentSequence: sequence };
 }

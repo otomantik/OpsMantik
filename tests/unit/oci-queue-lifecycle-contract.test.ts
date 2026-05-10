@@ -71,6 +71,7 @@ test('export mark-processing uses claim + script transition batch', () => {
   );
   assert.ok(src.includes('append_script_claim_transition_batch'), 'export claim must use script claim RPC');
   assert.ok(src.includes('append_script_transition_batch'), 'export finalize must use script batch RPC');
+  assert.ok(src.includes('MISSING_CONVERSION_ACTION'), 'PR-9H.6: missing journal action must terminalize deterministically');
 });
 
 test('PR-1B: SUPPRESSED_BY_HIGHER_GEAR terminalizes as FAILED (not COMPLETED / no fake Google success)', () => {

@@ -42,6 +42,10 @@ test('computeLcv uses universal stage base and quality factor model', () => {
 
 test('enqueueSealConversion persists optimization snapshot on legacy queue payload', () => {
   const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
-  assert.ok(src.includes('optimization_stage: optimizationSnapshot.optimizationStage'));
-  assert.ok(src.includes('optimization_value: optimizationSnapshot.optimizationValue'));
+  assert.ok(
+    src.includes('enqueueIntentConversionJournalRow') &&
+      src.includes('optimizationStage: optimizationSnapshot.optimizationStage') &&
+      src.includes('optimizationValue: optimizationSnapshot.optimizationValue'),
+    'won path forwards optimization snapshot fields into unified journal enqueue'
+  );
 });

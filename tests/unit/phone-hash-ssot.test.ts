@@ -14,7 +14,7 @@
  *   4) Country-ISO sensitivity — same local number + different country →
  *      different hash (because the E.164 country code changes).
  *   5) Fail-soft  — empty / non-numeric inputs never throw.
- *   6) Salt participation — rotating OCI_PHONE_HASH_SALT changes the hash.
+ *   6) PR-9H.7A unsalted EC contract — SHA-256 of normalized `+E.164` only; `salt` / `OCI_PHONE_HASH_SALT` do not rotate the stored hash.
  */
 
 import test from 'node:test';
@@ -81,20 +81,20 @@ test('buildPhoneIdentity uses the country iso to disambiguate local numbers', ()
   }
 });
 
-test('buildPhoneIdentity hash rotates when the salt changes', () => {
+test('buildPhoneIdentity hash is stable when salt parameter changes (PR-9H.7A unsalted)', () => {
   const a = buildPhoneIdentity({ rawPhone: '+905321234567', countryIso: 'TR', salt: 'salt-A' });
   const b = buildPhoneIdentity({ rawPhone: '+905321234567', countryIso: 'TR', salt: 'salt-B' });
-  assert.notEqual(a.hash, b.hash, 'salt rotation must break the hash (by design)');
+  assert.equal(a.hash, b.hash, 'salt must not participate in caller_phone_hash_sha256');
 });
 
-test('buildPhoneIdentity uses OCI_PHONE_HASH_SALT from env when salt override is absent', () => {
+test('buildPhoneIdentity ignores OCI_PHONE_HASH_SALT env for stored hash (PR-9H.7A)', () => {
   const prev = process.env.OCI_PHONE_HASH_SALT;
   try {
     process.env.OCI_PHONE_HASH_SALT = 'env-salt-1';
     const a = buildPhoneIdentity({ rawPhone: '+905321234567', countryIso: 'TR' });
     process.env.OCI_PHONE_HASH_SALT = 'env-salt-2';
     const b = buildPhoneIdentity({ rawPhone: '+905321234567', countryIso: 'TR' });
-    assert.notEqual(a.hash, b.hash, 'env salt rotation must reach the hash path');
+    assert.equal(a.hash, b.hash);
   } finally {
     if (prev === undefined) delete process.env.OCI_PHONE_HASH_SALT;
     else process.env.OCI_PHONE_HASH_SALT = prev;

@@ -42,7 +42,7 @@
       "ok": true,
       "sample": {
         "ok": false,
-        "checked_at": "2026-05-08T13:20:20.045301+00:00",
+        "checked_at": "2026-05-10T22:02:27.520233+00:00",
         "trigger_sessions_set_created_month": false,
         "trigger_events_set_session_month_from_session": false
       }
@@ -50,44 +50,7 @@
     {
       "name": "get_recent_intents_v1",
       "ok": true,
-      "sample": [
-        {
-          "id": "7493fd2e-ad95-44e3-8954-1887b67e66e8",
-          "version": 2,
-          "created_at": "2026-05-08T13:01:51.400428+00:00",
-          "status": "offered",
-          "matched_session_id": "0d038f8c-a8d7-488b-aba3-3eaadab190ac",
-          "intent_action": "phone",
-          "intent_target": "+905459605811",
-          "summary": "+905459605811",
-          "page_url": "https://www.kocotokurtarma.com/?gclid=EAIaIQobChMIjsL3_N-plAMVeaNoCR316Q6nEAAYASAAEgIlmPD_BwE&wbraid=Cj8KCQjw8PDPBhCwARIuABiwi1gOmFledh171FwNqgx9pi2AXwVOXpfUXqaEL-hDwkbloQ607oGwNKgjAhoCZJE&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=%C3%A7ekici%20yol%20yard%C4%B1m&utm_content=803499423779&utm_adgroup=195554909752&matchtype=p&device=m&devicemodel=&network=g&adposition=&targetid=kwd-307989163648&feeditemid=&loc_physical_ms=1012782&loc_interest_ms=9192434&placement=&gad_source=1&gad_campaignid=23719612036&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H",
-          "click_id": "EAIaIQobChMIjsL3_N-plAMVeaNoCR316Q6nEAAYASAAEgIlmPD_BwE"
-        },
-        {
-          "id": "a74d449f-f061-4f2d-af7a-c76806dd15c4",
-          "version": 2,
-          "created_at": "2026-05-08T12:34:32.241359+00:00",
-          "status": "cancelled",
-          "matched_session_id": "2f5f2cd9-ac81-47ef-8b34-b9c63daaad8e",
-          "intent_action": "phone",
-          "intent_target": "+905459605811",
-          "summary": "+905459605811",
-          "page_url": "https://www.kocotokurtarma.com/?gclid=Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB&wbraid=Cj8KCQjw8PDPBhCwARIuABiwi1gOmFledh171FwNqgx9pi2AXwVOXpfUXqaEL-hDwkbloQ607oGwNKgjAhoCZJE&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=acil%20yol%20yard%C4%B1m&utm_content=803499423779&utm_adgroup=195554909752&matchtype=p&device=m&devicemodel=&network=g&adposition=&targetid=kwd-301027151504&feeditemid=&loc_physical_ms=9197731&loc_interest_ms=9192494&placement=&gad_source=1&gad_campaignid=23719612036",
-          "click_id": "Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB"
-        },
-        {
-          "id": "c44dba5b-7c4a-416e-8215-d471513d328a",
-          "version": 2,
-          "created_at": "2026-05-08T12:34:32.141509+00:00",
-          "status": "won",
-          "matched_session_id": "07bd6210-089d-4c92-9366-ee9f68bc9ab5",
-          "intent_action": "phone",
-          "intent_target": "+905459605811",
-          "summary": "+905459605811",
-          "page_url": "https://www.kocotokurtarma.com/?gclid=Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB&wbraid=Cj8KCQjw8PDPBhCwARIuABiwi1gOmFledh171FwNqgx9pi2AXwVOXpfUXqaEL-hDwkbloQ607oGwNKgjAhoCZJE&gbraid=0AAAABC1UgRcUNbKe3Edf2MVr2dFTMed7H&utm_source=google&utm_medium=cpc&utm_campaign=23719612036&utm_term=acil%20yol%20yard%C4%B1m&utm_content=803499423779&utm_adgroup=195554909752&matchtype=p&device=m&devicemodel=&network=g&adposition=&targetid=kwd-301027151504&feeditemid=&loc_physical_ms=9197731&loc_interest_ms=9192494&placement=&gad_source=1&gad_campaignid=23719612036",
-          "click_id": "Cj0KCQjwk_bPBhDXARIsACiq8R0zKnNAtLExbtaFcoSh9gzABJh59s-pZtC_Aq0CSwN8c_meu9ZDdKAaAqo_EALw_wcB"
-        }
-      ]
+      "sample": []
     },
     {
       "name": "get_session_details",
@@ -137,7 +100,7 @@
         "ok": true,
         "kind": "revenue_events",
         "limit": 1000,
-        "current": 65
+        "current": 404
       }
     },
     {

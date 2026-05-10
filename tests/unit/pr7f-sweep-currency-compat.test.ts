@@ -8,8 +8,8 @@ const ROOT = process.cwd();
 test('PR-7F sweep route is schema-compatible when calls.currency is absent', () => {
   const route = readFileSync(join(ROOT, 'app', 'api', 'cron', 'sweep-unsent-conversions', 'route.ts'), 'utf8');
   assert.ok(!route.includes("select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')"));
-  assert.ok(!route.includes('sale_amount, currency, lead_score'));
-  assert.ok(route.includes("currency: normalizeCurrencyOrNeutral('')"));
+  assert.ok(route.includes("select('id, site_id, status, oci_status, confirmed_at, sale_amount, sale_currency, lead_score')"));
+  assert.ok(route.includes('currency: normalizeCurrencyOrNeutral(call.sale_currency ?? null)'));
 });
 
 test('PR-7F canonical enqueue path remains unchanged (name + external_id)', () => {

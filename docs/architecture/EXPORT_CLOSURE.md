@@ -4,6 +4,74 @@ This document is the **R1 (öz)** contract for the kapalı export journal: **one
 `offline_conversion_queue` is the only runtime Google upload journal.
 The Google Ads **script/API export route does not read `marketing_signals`**. **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
 
+## PR-9H.6 — Unified intent → queue journal + full Google signal readiness
+
+- **Contract:** [`lib/oci/intent-conversion-journal-contract.ts`](../../lib/oci/intent-conversion-journal-contract.ts) — canonical stages (`contacted` / `offered` / `won` / `junk_exclusion`), conversion names, provider paths (`google_ads_script_v1`, `google_ads_api_click_conversion`, `google_ads_api_enhanced_conversions_leads`), and deterministic disposition for consent / sendability / click vs enhanced signals.
+- **Enqueue:** [`lib/oci/enqueue-intent-conversion-journal-row.ts`](../../lib/oci/enqueue-intent-conversion-journal-row.ts) — micro-stages delegate from [`enqueue-oci-conversion-row.ts`](../../lib/oci/enqueue-oci-conversion-row.ts); seal path stamps `provider_path`, `source_type`, `source_idempotency_key`.
+- **User identifiers:** [`lib/oci/google-ads-user-identifier-normalization.ts`](../../lib/oci/google-ads-user-identifier-normalization.ts) — SHA-256 after normalization; **never** store raw phone/email on `user_identifiers` JSONB; consent gates required before hashing.
+- **Script v1 vs API:** Production [`GoogleAdsScriptProduction.js`](../../scripts/google-ads-oci/GoogleAdsScriptProduction.js) remains **GCLID-first** for bulk CSV; wbraid/gbraid-only rows stay journalized but may be `BLOCKED_PRECEDING_SIGNALS` with `PROVIDER_PATH_SCRIPT_V1_REQUIRES_GCLID` until the API adapter is enabled. Stub: [`lib/providers/google-ads-api/conversion-upload-adapter.ts`](../../lib/providers/google-ads-api/conversion-upload-adapter.ts).
+- **Diagnostics:** PEEK `preview_diagnostics` includes `signal_availability_counts`, `script_v1_supported_counts`, `api_supported_counts`, `skip_by_provider_path` — **no raw click ids or PII**.
+- **Read-only audit:** `node scripts/db/pr9h6-intent-signal-readiness-audit.mjs` (resolve `public_id` → `sites.id` first).
+
+## PR-9H.7A — Script-first enhanced conversions phone hash (courier-only)
+
+- **Raw phone never reaches the Google Ads Script.** The script is a **transport-only** carrier for values the backend has already normalized and hashed.
+- **Backend SSOT:** [`lib/oci/validation/crypto.ts`](../../lib/oci/validation/crypto.ts) — `normalizePhoneToE164` (default `+90` / TR) → **UTF-8** `crypto.createHash('sha256').update(normalizedE164WithPlus).digest('hex')` (lowercase 64-char). Ingestion also funnels through [`lib/dic/phone-hash.ts`](../../lib/dic/phone-hash.ts) for `calls.caller_phone_hash_sha256`.
+- **Queue:** `offline_conversion_queue.user_identifiers` may include `hashed_phone`, `normalization_version` (`e164_sha256_v1`), and `source` (e.g. `caller_phone_hash_sha256`) — **never** raw phone in this JSON ([`enqueue-intent-conversion-journal-row.ts`](../../lib/oci/enqueue-intent-conversion-journal-row.ts)).
+- **Export JSON** ([`export-build-queue.ts`](../../app/api/oci/google-ads-export/export-build-queue.ts)): each item may include **`hashedPhoneNumber`** (valid hex only), **`hashed_phone_number`** (same value, legacy key), and **`userIdentifiers`** with `{ type: 'hashed_phone', value }`. Resolution order: queue `hashed_phone` / `hashedPhoneNumber` → `calls.caller_phone_hash_sha256`. Invalid hex increments diagnostics only (`hashed_phone_invalid_count`); nothing sensitive in logs.
+- **Preview diagnostics** ([`route.ts`](../../app/api/oci/google-ads-export/route.ts)): `hashed_phone_available_count`, `hashed_phone_invalid_count`, `enhanced_signal_available_count` — counts only (no hashes).
+- **Production script:** [`GoogleAdsScriptProduction.js`](../../scripts/google-ads-oci/GoogleAdsScriptProduction.js) reads `hashedPhoneNumber` / `userIdentifiers` (never hashes, never uploads raw phone). PEEK logs **`hasHashedPhoneNumber`** boolean only. **CSV hashed-phone column is off by default** until canary verifies the exact Google Bulk Upload header: set `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD=true` **and** `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` (or inline `HASHED_PHONE_UPLOAD_COLUMN`); omitting the column while the flag is on fails closed (`HASHED_PHONE_COLUMN_NOT_CONFIGURED`). Until then, hashed values still flow in the JSON payload for observability/courier parity while **GCLID-first** CSV behavior stays unchanged.
+
+## PR-9H.7C — Hashed phone export closure + canary candidate selector
+
+### HASHED_PHONE_EXPORT_MISSING (remediation)
+
+**Symptom:** Hosted `GET /api/oci/google-ads-export` (`markAsExported=false` PEEK) returns conversion rows **without** `hashedPhoneNumber`, `hashed_phone_number`, or `userIdentifiers`, even though `calls.caller_phone_hash_sha256` is populated (64-char lowercase hex) for the row’s `call_id`.
+
+**Actual build path (hosted = repo route):**
+
+`app/api/oci/google-ads-export/route.ts` → `fetchExportData` (`export-fetch.ts`) → `buildExportItems` (`export-build-items.ts`) → `fetchExportCallContextRows` + `fetchCallerPhoneHashesForCallIds` (`lib/oci/call-sendability-fetch.ts`) → `buildQueueItems` (`export-build-queue.ts`). Final JSON shape is produced in **`export-build-queue.ts`** (`GoogleAdsConversionItem`).
+
+**Root causes addressed in PR-9H.7C:**
+
+1. **Call-context SELECT brittleness** — If the wide `calls` projection failed for anything other than the legacy `oci_status` drift case, the exporter previously returned **no call rows**, dropping sendability context and **never attaching** `caller_phone_hash_sha256`. The fetch layer now **progressively narrows** the `calls` projection on schema drift and **always** runs a dedicated `select id, caller_phone_hash_sha256` merge for export.
+2. **`offline_conversion_queue.user_identifiers` drift** — Older DBs may omit the column; queue fetch **retries without** `user_identifiers` when PostgREST reports an unknown column, relying on the **call hash fallback** for hashed phone.
+
+**Never emitted:** raw phone / normalized E.164 / any non–SHA-256-hex phone fields — only `/^[a-f0-9]{64}$/` passes through.
+
+**Canary candidate selection (read-only):** `node scripts/db/pr9h7c-select-hashed-phone-canary-row.mjs` with `TARGET_SITE_ID` / `OPSMANTIK_SITE_ID` resolved via `scripts/db/lib/resolve-site-identity.mjs`. Filters **QUEUED/RETRY**, **google_ads**, **currency == site currency** (or `EXPECTED_CURRENCY`), **non-empty gclid** (Script v1), **positive `value_cents`** (optional zero junk via `ALLOW_ZERO_JUNK_VALUE=1`), **conversion_time**, **valid hash** from queue JSON **or** `calls.caller_phone_hash_sha256`. Output is **metadata-only** (queue UUID tail-safe full UUID allowed — operator uses id for allowlist; script never prints gclid/hash).
+
+**Currency anomaly (legacy sweep row):** Example queue id `c84eec78-e041-4922-b088-697dabdde161` carried **`currency=USD`** while **`calls.sale_currency`** and **`sites.currency`** were **TRY**, due to **`entry_reason=sweep_unsent_conversions`** enqueue normalizing an empty currency string. Sweep/maintenance paths now prefer **`calls.sale_currency`**. That row remains **unsuitable for hashed-phone CSV canary** until currency matches site (**TRY** for Koç). Optional dry-run reporter: `node scripts/db/pr9h7c-currency-anomaly-repair.mjs`.
+
+## PR-9H.7B — Hashed phone CSV canary (script + server allowlist)
+
+- **Sync with hashed phone CSV** requires **`OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE=true`**, **`OPSMANTIK_EXPORT_LIMIT=1`**, a **single** `offline_conversion_queue.id` in `OPSMANTIK_EXPORT_ALLOWLIST_IDS` matching `OPSMANTIK_CANARY_EXPECTED_QUEUE_ID`, and approval header token `I_APPROVE_PRODUCTION_CANARY` — same contract as [`export-auth.ts`](../../app/api/oci/google-ads-export/export-auth.ts) canary guards when **`markAsExported=true`**. Missing any piece fails closed (`HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE`).
+- Operational narrative: [`docs/runbooks/OCI_HARDENING_OPERATIONS.md`](../../docs/runbooks/OCI_HARDENING_OPERATIONS.md) **Hashed phone CSV canary (PR-9H.7B)**.
+
+## Currency provenance (queue → export)
+
+- Queue row currency is authoritative for export payload (`offline_conversion_queue.currency` → `conversionCurrency`).
+- Export no longer silently falls back to neutral `USD` when both queue and site currency are absent; such rows are blocked and counted in diagnostics.
+- Count-only preview diagnostics include `currency_missing_count`, `currency_unexpected_count`, `currency_defaulted_count`.
+- Repair/sweeper enqueue paths should pass `calls.sale_currency` where available and rely on site currency fallback inside enqueue SSOT instead of empty-string neutralization.
+
+## PR-9H.6.1 — Producer wiring completion + parity guard
+
+- **Won / seal** now shares the same SSOT insert as micro-stages: [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) delegates to [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts) with a **precomputed disposition** (precursor gate, consent, Script v1 vs wbraid/gbraid) plus legacy **fast-track** dedupe (`oci-v5-fasttrack-${queue_id}`) when `oci_sync_method=api` and status is `QUEUED`.
+- **`marketing_signals`** remains **audit-only**. Any live write through [`lib/oci/upsert-marketing-signal.ts`](../../lib/oci/upsert-marketing-signal.ts) / domain twin **best-effort invokes** [`ensureMarketingSignalQueueParity`](../../lib/oci/marketing-signal-queue-parity.ts) so every hash/audit row gets a matching journal attempt (idempotent on `source_idempotency_key`).
+- **Parity diagnostics (read-only):** [`lib/oci/intent-queue-parity-guard.ts`](../../lib/oci/intent-queue-parity-guard.ts) — `QUEUE_ROW_*` outcomes for audits/tests; **no DB writes**.
+- **Exact-site backfill (APPLY):** `node scripts/db/pr9h6-backfill-intents-to-oci-queue.mjs` delegates to [`scripts/db/pr9h6-backfill-queue-apply.ts`](../../scripts/db/pr9h6-backfill-queue-apply.ts) when `APPLY=1` + **`STAGE_ALLOWLIST`** + **`MAX_ROWS`** + approval token match. Tags rows with `source_type=pr9h6_backfill_queue_apply` (no upload / no ACK from the tool).
+
+### Producer map (first-class intent → journal)
+
+| Source | Stage(s) | Queue path | Notes |
+|--------|-----------|------------|--------|
+| [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts) | contacted / offered / junk | `enqueueOciConversionRow` → journal | Outbox is primary panel/cron fan-in |
+| [`stage-router.ts`](../../lib/domain/mizan-mantik/stages/stage-router.ts) | contacted / offered / junk (sync) | `ensureMarketingSignalQueueParity` | Won **dropped here** by design (seal-owned) |
+| [`enqueue-seal-conversion.ts`](../../lib/oci/enqueue-seal-conversion.ts) | won | Seal → **journal** (`OpsMantik_Won`) | Fast-track only on API + `QUEUED` |
+| [`sweep-unsent-conversions`](../../app/api/cron/sweep-unsent-conversions/route.ts) | won | `enqueueSealConversion` | Repair / orphan fill |
+| [`lib/oci/upsert-marketing-signal.ts`](../../lib/oci/upsert-marketing-signal.ts) + domain twin | non-won audit | `marketing_signals` INSERT + **parity enqueue** | Audit residue, not export authority |
+
 ## Single export surface (journal SSOT)
 
 | Path | Role |
@@ -18,10 +86,10 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 
 | Stage | `action` / Google name | Emit path | Notes |
 |-------|------------------------|-----------|--------|
-| junk | `OpsMantik_Junk_Exclusion` | IntentSealed `outbox_events` → [`runProcessOutbox`](../../lib/oci/outbox/process-outbox.ts) → [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) | Junk reversal may enqueue [`conversion_adjustments`](../../lib/oci/outbox/process-outbox.ts) retractions |
+| junk | `OpsMantik_Junk_Exclusion` | IntentSealed `outbox_events` → [`runProcessOutbox`](../../lib/oci/outbox/process-outbox.ts) → [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) → [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts) | Junk reversal may enqueue [`conversion_adjustments`](../../lib/oci/outbox/process-outbox.ts) retractions |
 | contacted | `OpsMantik_Contacted` | same | Single-conversion gear rank suppresses lower stages when higher exists |
 | offered | `OpsMantik_Offered` | same | |
-| won | `OpsMantik_Won` | Outbox won branch → [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts); seal / sweep paths also | Precursor gate: [`hasBlockingPrecedingExports`](../../lib/oci/preceding-signals.ts) |
+| won | `OpsMantik_Won` | Outbox won branch → [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) → [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts); seal / sweep paths also | Precursor + consent + Script v1 gating; `provider_path`, `source_type`, `source_idempotency_key` (PR-9H.6 / 6.1) |
 
 **Intent-only Ads conversion:** no separate “raw intent” conversion action in the closed-system path; optional panel precursor is gated by `OCI_INTENT_PANEL_PRECURSOR_CONTACTED_ENABLED` (see [`enqueue-panel-stage-outbox.ts`](../../lib/oci/enqueue-panel-stage-outbox.ts)).
 
@@ -56,7 +124,7 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 | **D1** | Identity path pure | `computeOfflineConversionExternalId` — no random/time in tuple hash ([`external-id.ts`](../../lib/oci/external-id.ts)) |
 | **D2** | Economics SSOT | [`marketing-signal-value-ssot.ts`](../../lib/oci/marketing-signal-value-ssot.ts) |
 | **D3** | Transition timestamps | ACK routes use [`getDbNowIso`](../../lib/time/db-now.ts); drift → [`oci_time_ssot_health.sql`](../../scripts/sql/oci_time_ssot_health.sql) |
-| **D4** | Replay / idempotency | Unique-active index + `23505` treated as success path in [`enqueue-oci-conversion-row.ts`](../../lib/oci/enqueue-oci-conversion-row.ts), [`enqueue-seal-conversion.ts`](../../lib/oci/enqueue-seal-conversion.ts) |
+| **D4** | Replay / idempotency | Partial unique on `(site_id, provider_key, source_idempotency_key)` + `23505` collapsed in [`enqueue-intent-conversion-journal-row.ts`](../../lib/oci/enqueue-intent-conversion-journal-row.ts); seal/micro routes delegate there |
 | **D5** | Stable ordering | Export + worker queries use explicit `ORDER BY` + tie-break columns |
 | **D6** | Stable serialization | Hash / JSON paths avoid nondeterministic key order where contract-bound |
 | **D7** | Jitter boundaries | **Only** retry delay band — see **Jitter boundary** |

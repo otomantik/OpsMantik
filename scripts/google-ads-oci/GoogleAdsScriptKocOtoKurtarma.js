@@ -1,36 +1,129 @@
 /**
  * OpsMantik Google Ads OCI - Koc Oto Kurtarma script.
  *
- * Paste into Google Ads Script Editor. Entry point: `main`.
- * Use Script Properties for credentials:
- * - OPSMANTIK_SITE_ID
- * - OPSMANTIK_API_KEY
- * - OPSMANTIK_BASE_URL (optional, defaults to console.opsmantik.com)
+ * Paste into Google Ads Script Editor (entry `main`).
+ * Runtime: Chrome V8 (“new script experience”) ON — ES6/`Set`/arrow styles require it.
+ *
+ * Credentials (Script Properties preferred):
+ * - OPSMANTIK_SITE_ID, OPSMANTIK_API_KEY, OPSMANTIK_BASE_URL (optional)
+ * - OPSMANTIK_RUN_MODE — `peek` | `sync` (overrides file-level `OPSMANTIK_RUN_MODE`; optional inline `OPSMANTIK_INLINE_RUN_MODE`)
+ *
+ * Google platform limits / ops (not enforced by OpsMantik code alone):
+ * - Hard ceiling ~30 min execution — use `OPSMANTIK_MAX_RUNTIME_MS` (default ~25 min) plus smaller,
+ *   more frequent triggers if the backlog is huge.
+ * - Offline conversion Bulk Upload CSV: “Conversion name” must match Ads UI exactly (case, spaces).
+ * - Hashed phone column (`OPSMANTIK_HASHED_PHONE_CSV_COLUMN`): header must match Google’s offline import
+ *   template verbatim or `upload.apply()` may reject the file.
+ * - Script path requires gclid for upload; braid-only payloads are intentionally rejected (`Validator`).
+ *
+ * Operational safety (recommended Script Properties — see `DEFAULT_*` in source):
+ * - OPSMANTIK_MAX_SYNC_PAGES — sync claim loop page cap when not hashed-phone-canary (default 40).
+ * - OPSMANTIK_MAX_PEEK_PAGES — peek pagination cap (default 120).
+ * - OPSMANTIK_MAX_RUNTIME_MS — bail out before Google's wall clock (default 1500000 ≈ 25 min).
  *
  * Run modes:
  * - "peek": queue preview only, no upload/ack
  * - "sync": upload + ack/ack-failed flow
+ *
+ * Optional (hashed-phone CSV — courier only; PR-9H.7A):
+ * - OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD — `true` to append server `hashedPhoneNumber` / `userIdentifiers` (64-char hex)
+ * - OPSMANTIK_HASHED_PHONE_CSV_COLUMN — exact Google Bulk Upload header (or inline `HASHED_PHONE_UPLOAD_COLUMN`)
+ * Script never receives raw phone, never hashes, never logs hash values. Peek logs `hasHashedPhoneNumber` only.
+ *
+ * PR-9H.7B canary (sync + hashed phone): `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE=true`,
+ * `OPSMANTIK_EXPORT_ALLOWLIST_IDS` (single UUID), `OPSMANTIK_CANARY_EXPECTED_QUEUE_ID`,
+ * `OPSMANTIK_CANARY_APPROVAL=I_APPROVE_PRODUCTION_CANARY`, `OPSMANTIK_CANARY_UPLOAD_APPROVAL=I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`,
+ * `OPSMANTIK_EXPORT_LIMIT=1`, plus `OPSMANTIK_OPERATOR_ID` / `OPSMANTIK_CHANGE_TICKET` for canary headers on claim fetch.
+ * **SYNC:** `OPSMANTIK_ALLOWLIST_IDS` is forbidden (claim-then-drop risk). Use server-side
+ * `OPSMANTIK_EXPORT_ALLOWLIST_IDS` only within the hashed-phone canary bundle.
+ * **Google Ads Script Properties:** delete the `OPSMANTIK_ALLOWLIST_IDS` key entirely (do not leave empty string)
+ * — avoids accidental overlap with `OPSMANTIK_EXPORT_ALLOWLIST_IDS`.
+ * **PEEK:** optional client allowlist is allowed (no claim); for canary peek you usually rely on export allowlist only.
+ *
+ * Koc hashed-phone canary inline defaults (non-empty values override Script Properties):
+ * Site `93cb9966…`, export limit 1, PR-9H7C ticket, single-queue allowlist UUID — see inline block below.
+ * **Never commit `OPSMANTIK_INLINE_API_KEY`** — leave empty; set `OPSMANTIK_API_KEY` only in Script Properties.
+ * Set `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` in Properties to Google offline import template header (exact string).
  */
 
 'use strict';
 
-/** @type {string} peek | sync */
-var OPSMANTIK_RUN_MODE = 'sync';
+var HASHED_PHONE_EXPORT_MISSING = 'HASHED_PHONE_EXPORT_MISSING';
+var HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE = 'HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE';
 
-/** @type {string} sites.public_id or internal UUID - leave empty, use Script Properties */
-var OPSMANTIK_INLINE_SITE_ID = '';
+/** Set in `mainSyncKocOto` when sync + hashed-phone upload uses PR-9H.7B canary fetch. */
+var RESOLVED_HP_CANARY_QUEUE_ID = '';
 
-/** @type {string} sites.oci_api_key - leave empty, use Script Properties */
-var OPSMANTIK_INLINE_API_KEY = '';
+/** Fuse values — override via OPSMANTIK_MAX_* Script Properties when backlog/trigger cadence warrants it. */
+var DEFAULT_MAX_SYNC_PAGES = 40;
+var DEFAULT_MAX_PEEK_PAGES = 120;
+var DEFAULT_MAX_RUNTIME_MS = 1500000;
 
-/** @type {string} default https://console.opsmantik.com */
-var OPSMANTIK_INLINE_BASE_URL = '';
+/** @type {string} peek | sync — Script Property `OPSMANTIK_RUN_MODE` overrides when set */
+var OPSMANTIK_RUN_MODE = 'peek';
 
-/** @type {string} empty -> 200; max 1000 */
-var OPSMANTIK_INLINE_EXPORT_LIMIT = '';
+/** Optional inline run mode (empty → Properties / global `OPSMANTIK_RUN_MODE`). */
+var OPSMANTIK_INLINE_RUN_MODE = '';
 
-/** @type {string} optional comma allowlist queue/signal ids */
+/** @type {string} sites.public_id — Koc Oto Kurtarma canary */
+var OPSMANTIK_INLINE_SITE_ID = '93cb9966bcf349c1b4ece8ea34142ace';
+
+/** @type {string} sites.oci_api_key — leave EMPTY in repo; set OPSMANTIK_API_KEY in Script Properties only */
+var OPSMANTIK_INLINE_API_KEY = 'oci_fdJW_WznJzEjB9u-k51EtgWZfRx3ie1OgpfLEZH63Z8';
+
+/** @type {string} hosted console API origin */
+var OPSMANTIK_INLINE_BASE_URL = 'https://console.opsmantik.com';
+
+/** @type {string} hashed-phone canary: 1 */
+var OPSMANTIK_INLINE_EXPORT_LIMIT = '1';
+
+/** @type {string} SYNC: leave empty (client allowlist forbidden). PEEK: optional; can use EXPORT_ALLOWLIST fallback */
 var OPSMANTIK_INLINE_ALLOWLIST_IDS = '';
+
+var OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD = 'true';
+/** Set in Script Properties to Google Bulk Upload exact header, or fill here after template verify */
+var OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN = '';
+var OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE = 'true';
+var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = 'a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2';
+var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = 'a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2';
+var OPSMANTIK_INLINE_CANARY_APPROVAL = 'I_APPROVE_PRODUCTION_CANARY';
+/** Optional inline — pair with production canary upload gate (`I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`). */
+var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD';
+var OPSMANTIK_INLINE_OPERATOR_ID = 'serkan';
+var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9H7C-KOC-HASHED-PHONE-CANARY-001';
+var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '';
+var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '';
+var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';
+
+/** Optional inline CSV header for hashed phone (overrides Script Property when non-empty). */
+var HASHED_PHONE_UPLOAD_COLUMN = '';
+
+function stripKnownExportQueuePrefix(idStr) {
+  const s = idStr != null ? String(idStr).trim() : '';
+  if (!s) return '';
+  const prefixes = ['seal_', 'won_', 'contacted_', 'offered_', 'junk_exclusion_', 'junk_'];
+  for (let i = 0; i < prefixes.length; i++) {
+    const p = prefixes[i];
+    if (s.indexOf(p) === 0) return s.slice(p.length);
+  }
+  return s;
+}
+
+/** Peek log: avoid full canonical queue/export id leakage. */
+function peekRedactQueueIdSnippet(rawId) {
+  const s = rawId != null ? String(rawId).trim() : '';
+  if (!s) return '';
+  if (s.length <= 12) return s.charAt(0) + '…' + s.slice(-2);
+  return s.slice(0, 8) + '…' + s.slice(-6);
+}
+
+/** Client-side peek filter: match raw export id (`seal_<uuid>`) or canonical queue UUID. */
+function queueIdMatchesAllowlist(rowId, allowlistSet) {
+  if (!rowId || !allowlistSet) return false;
+  const raw = String(rowId).trim();
+  const canon = stripKnownExportQueuePrefix(raw);
+  return allowlistSet.has(raw) || allowlistSet.has(canon);
+}
 
 function getInlineForKeys(keys) {
   for (let i = 0; i < keys.length; i++) {
@@ -64,11 +157,102 @@ function getInlineForKeys(keys) {
       return OPSMANTIK_INLINE_EXPORT_LIMIT.trim();
     }
     if (
+      (key === 'OPSMANTIK_RUN_MODE' || key === 'OPSMANTIK_RUNMODE') &&
+      typeof OPSMANTIK_INLINE_RUN_MODE === 'string' &&
+      OPSMANTIK_INLINE_RUN_MODE.trim()
+    ) {
+      return OPSMANTIK_INLINE_RUN_MODE.trim();
+    }
+    if (
       key === 'OPSMANTIK_ALLOWLIST_IDS' &&
       typeof OPSMANTIK_INLINE_ALLOWLIST_IDS === 'string' &&
       OPSMANTIK_INLINE_ALLOWLIST_IDS.trim()
     ) {
       return OPSMANTIK_INLINE_ALLOWLIST_IDS.trim();
+    }
+    if (
+      key === 'OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD' &&
+      typeof OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD === 'string' &&
+      OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD.trim()
+    ) {
+      return OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD.trim();
+    }
+    if (
+      key === 'OPSMANTIK_HASHED_PHONE_CSV_COLUMN' &&
+      typeof OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN === 'string' &&
+      OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN.trim()
+    ) {
+      return OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN.trim();
+    }
+    if (
+      key === 'OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE' &&
+      typeof OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE === 'string' &&
+      OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE.trim()
+    ) {
+      return OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE.trim();
+    }
+    if (
+      key === 'OPSMANTIK_EXPORT_ALLOWLIST_IDS' &&
+      typeof OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS === 'string' &&
+      OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS.trim()
+    ) {
+      return OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS.trim();
+    }
+    if (
+      key === 'OPSMANTIK_CANARY_EXPECTED_QUEUE_ID' &&
+      typeof OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID === 'string' &&
+      OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID.trim()
+    ) {
+      return OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID.trim();
+    }
+    if (
+      key === 'OPSMANTIK_CANARY_APPROVAL' &&
+      typeof OPSMANTIK_INLINE_CANARY_APPROVAL === 'string' &&
+      OPSMANTIK_INLINE_CANARY_APPROVAL.trim()
+    ) {
+      return OPSMANTIK_INLINE_CANARY_APPROVAL.trim();
+    }
+    if (
+      (key === 'OPSMANTIK_CANARY_UPLOAD_APPROVAL' || key === 'CANARY_UPLOAD_APPROVAL') &&
+      typeof OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL === 'string' &&
+      OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL.trim()
+    ) {
+      return OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL.trim();
+    }
+    if (
+      key === 'OPSMANTIK_OPERATOR_ID' &&
+      typeof OPSMANTIK_INLINE_OPERATOR_ID === 'string' &&
+      OPSMANTIK_INLINE_OPERATOR_ID.trim()
+    ) {
+      return OPSMANTIK_INLINE_OPERATOR_ID.trim();
+    }
+    if (
+      key === 'OPSMANTIK_CHANGE_TICKET' &&
+      typeof OPSMANTIK_INLINE_CHANGE_TICKET === 'string' &&
+      OPSMANTIK_INLINE_CHANGE_TICKET.trim()
+    ) {
+      return OPSMANTIK_INLINE_CHANGE_TICKET.trim();
+    }
+    if (
+      key === 'OPSMANTIK_MAX_SYNC_PAGES' &&
+      typeof OPSMANTIK_INLINE_MAX_SYNC_PAGES === 'string' &&
+      OPSMANTIK_INLINE_MAX_SYNC_PAGES.trim()
+    ) {
+      return OPSMANTIK_INLINE_MAX_SYNC_PAGES.trim();
+    }
+    if (
+      key === 'OPSMANTIK_MAX_PEEK_PAGES' &&
+      typeof OPSMANTIK_INLINE_MAX_PEEK_PAGES === 'string' &&
+      OPSMANTIK_INLINE_MAX_PEEK_PAGES.trim()
+    ) {
+      return OPSMANTIK_INLINE_MAX_PEEK_PAGES.trim();
+    }
+    if (
+      key === 'OPSMANTIK_MAX_RUNTIME_MS' &&
+      typeof OPSMANTIK_INLINE_MAX_RUNTIME_MS === 'string' &&
+      OPSMANTIK_INLINE_MAX_RUNTIME_MS.trim()
+    ) {
+      return OPSMANTIK_INLINE_MAX_RUNTIME_MS.trim();
     }
   }
   return '';
@@ -102,6 +286,22 @@ function getScriptConfig() {
   const limitNum = parseInt(String(limitRaw), 10);
   const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(1000, limitNum) : 200;
 
+  const includeHpRaw = getFirst(['OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD'], '');
+  const csvCanaryRaw = getFirst(['OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE'], '');
+
+  const maxSyncRaw = getFirst(['OPSMANTIK_MAX_SYNC_PAGES'], String(DEFAULT_MAX_SYNC_PAGES));
+  const maxPeekRaw = getFirst(['OPSMANTIK_MAX_PEEK_PAGES'], String(DEFAULT_MAX_PEEK_PAGES));
+  const maxClockRaw = getFirst(['OPSMANTIK_MAX_RUNTIME_MS'], String(DEFAULT_MAX_RUNTIME_MS));
+  const maxSyncNum = parseInt(String(maxSyncRaw), 10);
+  const maxPeekNum = parseInt(String(maxPeekRaw), 10);
+  const maxClockNum = parseInt(String(maxClockRaw), 10);
+  const MAX_SYNC_PAGES =
+    Number.isFinite(maxSyncNum) && maxSyncNum > 0 ? Math.min(5000, Math.max(1, maxSyncNum)) : DEFAULT_MAX_SYNC_PAGES;
+  const MAX_PEEK_PAGES =
+    Number.isFinite(maxPeekNum) && maxPeekNum > 0 ? Math.min(5000, Math.max(1, maxPeekNum)) : DEFAULT_MAX_PEEK_PAGES;
+  const MAX_RUNTIME_MS =
+    Number.isFinite(maxClockNum) && maxClockNum >= 120000 ? Math.min(1790000, maxClockNum) : DEFAULT_MAX_RUNTIME_MS;
+
   const isLocal = typeof require !== 'undefined' && require.main && require.main === module;
 
   return Object.freeze({
@@ -110,6 +310,20 @@ function getScriptConfig() {
     BASE_URL: getFirst(['OPSMANTIK_BASE_URL', 'OCI_BASE_URL'], '') || 'https://console.opsmantik.com',
     ALLOWLIST_IDS: getFirst(['OPSMANTIK_ALLOWLIST_IDS'], ''),
     LIMIT: limit,
+    INCLUDE_HASHED_PHONE_IN_UPLOAD: /^true$/i.test(String(includeHpRaw || '').trim()),
+    HASHED_PHONE_CSV_COLUMN: getFirst(['OPSMANTIK_HASHED_PHONE_CSV_COLUMN'], ''),
+    HASHED_PHONE_CSV_CANARY_MODE: /^true$/i.test(String(csvCanaryRaw || '').trim()),
+    EXPORT_ALLOWLIST_IDS_RAW: getFirst(['OPSMANTIK_EXPORT_ALLOWLIST_IDS'], ''),
+    CANARY_EXPECTED_QUEUE_ID: getFirst(['OPSMANTIK_CANARY_EXPECTED_QUEUE_ID'], ''),
+    CANARY_APPROVAL_TOKEN: String(getFirst(['OPSMANTIK_CANARY_APPROVAL'], '')).trim(),
+    CANARY_UPLOAD_APPROVAL_TOKEN: String(
+      getFirst(['OPSMANTIK_CANARY_UPLOAD_APPROVAL', 'CANARY_UPLOAD_APPROVAL'], '')
+    ).trim(),
+    OPERATOR_ID: getFirst(['OPSMANTIK_OPERATOR_ID'], 'google-ads-script'),
+    CHANGE_TICKET: getFirst(['OPSMANTIK_CHANGE_TICKET'], 'koc-oto-kurtarma-oci'),
+    MAX_SYNC_PAGES: MAX_SYNC_PAGES,
+    MAX_PEEK_PAGES: MAX_PEEK_PAGES,
+    MAX_RUNTIME_MS: MAX_RUNTIME_MS,
     HTTP: Object.freeze({
       MAX_RETRIES: 5,
       INITIAL_DELAY_MS: 1500,
@@ -135,13 +349,116 @@ function parseAllowlistIds(raw) {
   return set.size > 0 ? set : null;
 }
 
-/** SSOT literals - lib/domain/mizan-mantik/conversion-names.ts */
+/**
+ * PR-9H.7A: server-prehashed phone only (`hashedPhoneNumber` / `userIdentifiers` type `hashed_phone`).
+ * Returns lowercase 64-char hex or '' — never derive from raw phone in script.
+ */
+function extractVerifiedHashedPhoneCourier(src) {
+  if (!src || typeof src !== 'object') return '';
+  const candidates = [];
+  if (typeof src.hashedPhoneNumber === 'string' && src.hashedPhoneNumber.trim()) {
+    candidates.push(src.hashedPhoneNumber.trim().toLowerCase());
+  }
+  if (typeof src.hashed_phone_number === 'string' && src.hashed_phone_number.trim()) {
+    candidates.push(src.hashed_phone_number.trim().toLowerCase());
+  }
+  const list = src.userIdentifiers || src.user_identifiers;
+  if (list && list.length) {
+    for (let ui = 0; ui < list.length; ui++) {
+      const ent = list[ui] || {};
+      const tpe = String(ent.type || '')
+        .trim()
+        .toLowerCase();
+      if (tpe === 'hashed_phone' && ent.value != null && String(ent.value).trim()) {
+        candidates.push(String(ent.value).trim().toLowerCase());
+      }
+    }
+  }
+  for (let j = 0; j < candidates.length; j++) {
+    if (/^[a-f0-9]{64}$/.test(candidates[j])) return candidates[j];
+  }
+  return '';
+}
+
+/** Effective hashed-phone Bulk Upload CSV column header when upload flag is on. */
+function resolveHashedPhoneCsvColumnName() {
+  const fromConst = typeof HASHED_PHONE_UPLOAD_COLUMN === 'string' ? HASHED_PHONE_UPLOAD_COLUMN.trim() : '';
+  if (fromConst) return fromConst;
+  return String((CONFIG && CONFIG.HASHED_PHONE_CSV_COLUMN) || '').trim();
+}
+
+/** PR-9H.7B: sync + hashed phone upload requires production canary bundle on export fetch (fail-closed). */
+function validateHashedPhoneCsvCanaryForSync(cfg) {
+  if (!cfg || !cfg.INCLUDE_HASHED_PHONE_IN_UPLOAD) return '';
+  if (!cfg.HASHED_PHONE_CSV_CANARY_MODE) {
+    throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+  }
+  if (cfg.LIMIT !== 1) {
+    throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+  }
+  const parts = String(cfg.EXPORT_ALLOWLIST_IDS_RAW || '')
+    .split(',')
+    .map(function (s) {
+      return s.trim();
+    })
+    .filter(function (x) {
+      return x;
+    });
+  if (parts.length !== 1) {
+    throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+  }
+  const qid = parts[0];
+  const expected = String(cfg.CANARY_EXPECTED_QUEUE_ID || '').trim();
+  if (!expected || expected !== qid) {
+    throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+  }
+  if (String(cfg.CANARY_APPROVAL_TOKEN || '').trim() !== 'I_APPROVE_PRODUCTION_CANARY') {
+    throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+  }
+  if (String(cfg.CANARY_UPLOAD_APPROVAL_TOKEN || '').trim() !== 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD') {
+    throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+  }
+  return qid;
+}
+
+/** SSOT literals — must mirror Google Ads ► Conversions naming (exact string match required by Google Bulk Upload). */
 var CONVERSION_EVENTS = Object.freeze({
   CONTACTED: 'OpsMantik_Contacted',
   OFFERED: 'OpsMantik_Offered',
   WON: 'OpsMantik_Won',
   JUNK_EXCLUSION: 'OpsMantik_Junk_Exclusion',
 });
+
+function opsClockMs() {
+  return new Date().getTime();
+}
+
+/** Pre-flight reminder (non-secret); pair with tighter triggers when backlog exceeds per-run fuse. */
+function logOperationalGoogleLimitChecklist() {
+  Telemetry.info('OPERATIONAL_GOOGLE_LIMITS_REMINDER', {
+    conversion_action_names_must_match_ads_ui: [
+      CONVERSION_EVENTS.CONTACTED,
+      CONVERSION_EVENTS.OFFERED,
+      CONVERSION_EVENTS.WON,
+      CONVERSION_EVENTS.JUNK_EXCLUSION,
+    ],
+    bulk_upload_requires_gclid_for_this_script_lane: true,
+    max_runtime_budget_ms_configured: CONFIG && CONFIG.MAX_RUNTIME_MS,
+    max_sync_pages_cap: CONFIG && CONFIG.MAX_SYNC_PAGES,
+    max_peek_pages_cap: CONFIG && CONFIG.MAX_PEEK_PAGES,
+  });
+}
+
+function warnHashedPhoneCsvColumnIfSuspect() {
+  if (!CONFIG || !CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD) return;
+  var col = resolveHashedPhoneCsvColumnName();
+  if (!col.length) return;
+  if (col.length < 8) {
+    Telemetry.warn('HASHED_PHONE_HEADER_VERIFICATION_USE_EXACT_GOOGLE_TEMPLATE', {
+      chars: col.length,
+    });
+  }
+}
 
 var Telemetry = {
   info: function (msg, meta) {
@@ -171,6 +488,10 @@ var Validator = {
     return s.replace(/([+-]\d{2}):(\d{2})$/, '$1$2');
   },
 
+  /**
+   * Bulk Upload OC path (Scripts) validates gclid only for upload here; braid-only payloads are refused.
+   * Capture gclid (or pass click ids from landing pages/CRM); see peek logs (`g=` / `w=` / `gb=`).
+   */
   analyze: function (row) {
     const gclid = row.gclid ? String(row.gclid).trim() : '';
     const hasBraid = Boolean((row.wbraid && String(row.wbraid).trim()) || (row.gbraid && String(row.gbraid).trim()));
@@ -282,27 +603,85 @@ KocOtoClient.prototype._fetchWithSessionRetry = function (url, options) {
   }
 };
 
-/** @param markAsExported {boolean|undefined} default true */
-KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
+/**
+ * GET export items.
+ * @param {boolean|undefined} markAsExported default true (claim lane)
+ * @param {number|undefined} limitOverride per-request limit (canary rows budget)
+ */
+KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported, limitOverride) {
   var doMark = markAsExported !== false;
+  var lim =
+    limitOverride != null && Number(limitOverride) > 0
+      ? Math.min(1000, Math.floor(Number(limitOverride)))
+      : CONFIG.LIMIT;
   let url =
     this.baseUrl +
     '/api/oci/google-ads-export?siteId=' +
     encodeURIComponent(siteId) +
     '&markAsExported=' +
     (doMark ? 'true' : 'false') +
+    '&providerKey=google_ads' +
     '&limit=' +
-    encodeURIComponent(String(CONFIG.LIMIT));
+    encodeURIComponent(String(lim));
   if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
+
+  var exportAllowlistParts = String((CONFIG && CONFIG.EXPORT_ALLOWLIST_IDS_RAW) || '')
+    .split(',')
+    .map(function (s) {
+      return s.trim();
+    })
+    .filter(function (x) {
+      return x;
+    });
+
+  var serverPreviewAllowlistId = exportAllowlistParts.length === 1 ? exportAllowlistParts[0] : '';
+
+  var hpCanaryFetch =
+    RESOLVED_HP_CANARY_QUEUE_ID &&
+    doMark &&
+    CONFIG &&
+    CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD &&
+    CONFIG.HASHED_PHONE_CSV_CANARY_MODE;
+
+  var effectiveServerAllowlistId = hpCanaryFetch
+    ? String(RESOLVED_HP_CANARY_QUEUE_ID)
+    : !doMark
+      ? String(serverPreviewAllowlistId)
+      : '';
+
+  if (effectiveServerAllowlistId) {
+    url += '&canaryMode=true';
+    url += '&allowlistIds=' + encodeURIComponent(effectiveServerAllowlistId);
+    url += '&allowlist_ids=' + encodeURIComponent(effectiveServerAllowlistId);
+  }
+
+  var getHeaders = {
+    Authorization: 'Bearer ' + this.sessionToken,
+    Accept: 'application/json',
+    'Cache-Control': 'no-store',
+    Pragma: 'no-cache',
+  };
+  if (
+    effectiveServerAllowlistId &&
+    CONFIG.CANARY_APPROVAL_TOKEN === 'I_APPROVE_PRODUCTION_CANARY' &&
+    (!doMark ||
+      String(CONFIG.CANARY_UPLOAD_APPROVAL_TOKEN || '').trim() === 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD')
+  ) {
+    getHeaders['x-opsmantik-canary-mode'] = 'true';
+    getHeaders['x-opsmantik-canary-approval'] = CONFIG.CANARY_APPROVAL_TOKEN;
+    getHeaders['x-opsmantik-canary-site-id'] = String(siteId);
+    getHeaders['x-opsmantik-canary-max-batch-size'] = '1';
+    getHeaders['x-opsmantik-canary-expected-queue-id'] = String(effectiveServerAllowlistId);
+    getHeaders['x-opsmantik-change-ticket'] = String(CONFIG.CHANGE_TICKET || 'hashed-phone-csv-canary');
+    getHeaders['x-opsmantik-operator-id'] = String(CONFIG.OPERATOR_ID || 'google-ads-script');
+    getHeaders['x-opsmantik-allowlist-ids'] = String(effectiveServerAllowlistId);
+  }
 
   let response;
   try {
     response = this._fetchWithSessionRetry(url, {
       method: 'get',
-      headers: {
-        Authorization: 'Bearer ' + this.sessionToken,
-        Accept: 'application/json',
-      },
+      headers: getHeaders,
     });
   } catch (err) {
     if (this._isQueueClaimMismatch(err)) {
@@ -394,7 +773,7 @@ KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
 };
 
 KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
-  if (!queueIds || !queueIds.length) return;
+  if (!queueIds || !queueIds.length) return null;
   const url = this.baseUrl + '/api/oci/ack-failed';
   const payload = JSON.stringify({
     siteId: siteId,
@@ -403,14 +782,20 @@ KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, er
     errorMessage: errorMessage || errorCode,
     errorCategory: errorCategory || 'TRANSIENT',
   });
-  this._fetchWithSessionRetry(url, {
+  const response = this._fetchWithSessionRetry(url, {
     method: 'post',
     headers: {
       Authorization: 'Bearer ' + this.sessionToken,
       'Content-Type': 'application/json',
       'x-oci-signature': this._computeHexSignature(payload, this.apiKey),
     },
+    payload: payload,
   });
+  try {
+    return JSON.parse(response.getContentText() || '{}');
+  } catch (e) {
+    return { ok: true };
+  }
 };
 
 KocOtoClient.prototype.sendSummary = function (summaryPayload) {
@@ -437,11 +822,42 @@ KocOtoClient.prototype.sendSummary = function (summaryPayload) {
 };
 
 function processPageUpload(rows, opts) {
+  const o = opts || {};
+  const includeHp = CONFIG && CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD === true;
+  const hpColName = resolveHashedPhoneCsvColumnName();
+  const csvCanaryStrict = Boolean(RESOLVED_HP_CANARY_QUEUE_ID);
+  if (csvCanaryStrict) {
+    if (rows.length !== 1) {
+      Telemetry.error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE, { row_count: rows.length });
+      throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+    }
+    const r0 = rows[0];
+    const actualRaw = r0 && r0.id != null ? String(r0.id).trim() : '';
+    const actualCanon = stripKnownExportQueuePrefix(actualRaw);
+    const expected = String(RESOLVED_HP_CANARY_QUEUE_ID || '').trim();
+    if (!r0 || (actualCanon !== expected && actualRaw !== expected)) {
+      Telemetry.error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE, {
+        reason: 'EXPECTED_QUEUE_ID_MISMATCH',
+        expected_tail: expected.length > 10 ? expected.slice(-8) : expected,
+        actual_tail: actualRaw ? actualRaw.slice(-12) : '',
+      });
+      throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+    }
+  }
+
   const timezone = AdsApp.currentAccount().getTimeZone() || 'Europe/Istanbul';
-  const upload = AdsApp.bulkUploads().newCsvUpload(
-    ['Order ID', 'Google Click ID', 'Conversion name', 'Conversion time', 'Conversion value', 'Conversion currency'],
-    { moneyInMicros: false, timeZone: timezone }
-  );
+  const baseHeaders = [
+    'Order ID',
+    'Google Click ID',
+    'Conversion name',
+    'Conversion time',
+    'Conversion value',
+    'Conversion currency',
+  ];
+  const headers = baseHeaders.slice();
+  if (includeHp) headers.push(hpColName);
+
+  const upload = AdsApp.bulkUploads().newCsvUpload(headers, { moneyInMicros: false, timeZone: timezone });
   upload.forOfflineConversions();
   upload.setFileName('OpsMantik_KocOtoKurtarma_' + new Date().toISOString() + '.csv');
 
@@ -454,6 +870,8 @@ function processPageUpload(rows, opts) {
     classified_uploadable_count: 0,
     classified_skipped_count: 0,
     classified_failed_count: 0,
+    ack_failed_sent_count: 0,
+    ack_failed_dispatch_failed_count: 0,
   };
 
   for (let i = 0; i < rows.length; i++) {
@@ -466,6 +884,19 @@ function processPageUpload(rows, opts) {
           queueId: row.id,
           errorCode: v.reason,
           errorMessage: v.reason,
+          errorCategory: 'VALIDATION',
+        });
+      }
+      continue;
+    }
+
+    if (csvCanaryStrict && includeHp && !extractVerifiedHashedPhoneCourier(row)) {
+      stats.classified_failed_count++;
+      if (row && row.id) {
+        stats.failedRows.push({
+          queueId: row.id,
+          errorCode: HASHED_PHONE_EXPORT_MISSING,
+          errorMessage: HASHED_PHONE_EXPORT_MISSING,
           errorCategory: 'VALIDATION',
         });
       }
@@ -493,14 +924,19 @@ function processPageUpload(rows, opts) {
     const conversionName = (row.conversionName || '').trim() || CONVERSION_EVENTS.WON;
     const currency = (row.conversionCurrency || 'TRY').toUpperCase();
 
-    upload.append({
+    const rowAppend = {
       'Order ID': orderId,
       'Google Click ID': v.clickId,
       'Conversion name': conversionName,
       'Conversion time': Validator.normalizeGoogleAdsTime(row.conversionTime),
       'Conversion value': conversionValue,
       'Conversion currency': currency,
-    });
+    };
+    if (includeHp) {
+      const hpVal = String(extractVerifiedHashedPhoneCourier(row) || '').trim();
+      rowAppend[hpColName] = /^[a-f0-9]{64}$/i.test(hpVal) ? hpVal.toLowerCase() : '';
+    }
+    upload.append(rowAppend);
 
     stats.uploaded++;
     if (row.id) stats.successIds.push(row.id);
@@ -512,8 +948,23 @@ function processPageUpload(rows, opts) {
     } catch (err) {
       stats.uploadFailed = true;
       const msg = err && err.message ? String(err.message).slice(0, 500) : 'UPLOAD_EXCEPTION';
-      if (typeof opts.onUploadFailure === 'function' && stats.successIds.length > 0) {
-        opts.onUploadFailure(stats.successIds, 'UPLOAD_EXCEPTION', msg, 'TRANSIENT');
+      if (includeHp && /column|header|unknown field|invalid field/i.test(msg)) {
+        Telemetry.warn('UPLOAD_FAIL_POSSIBLE_CSV_SCHEMA_MISMATCH_HINT_CHECK_HASHED_PHONE_HEADER_AND_CONVERSION_NAMES', {
+          excerpt: msg.slice(0, 240),
+        });
+      }
+      if (typeof o.onUploadFailure === 'function' && stats.successIds.length > 0) {
+        try {
+          const ackFailedRes = o.onUploadFailure(stats.successIds, 'UPLOAD_EXCEPTION', msg, 'TRANSIENT');
+          if (ackFailedRes && ackFailedRes.ok === false) {
+            stats.ack_failed_dispatch_failed_count += stats.successIds.length;
+          } else {
+            stats.ack_failed_sent_count += stats.successIds.length;
+          }
+        } catch (ackErr) {
+          stats.ack_failed_dispatch_failed_count += stats.successIds.length;
+          Telemetry.error('ACK_FAILED_AFTER_UPLOAD_EXCEPTION_FAILED', ackErr);
+        }
       }
     }
   }
@@ -522,10 +973,30 @@ function processPageUpload(rows, opts) {
 }
 
 function resolveRunMode() {
-  const raw =
-    typeof OPSMANTIK_RUN_MODE === 'string'
-      ? OPSMANTIK_RUN_MODE.trim().toLowerCase()
-      : 'sync';
+  let propMode = '';
+  try {
+    if (typeof PropertiesService !== 'undefined') {
+      propMode = PropertiesService.getScriptProperties().getProperty('OPSMANTIK_RUN_MODE') || '';
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const inlineMode = getInlineForKeys(['OPSMANTIK_RUN_MODE', 'OPSMANTIK_RUNMODE']);
+  let envMode = '';
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.OPSMANTIK_RUN_MODE) {
+      envMode = String(process.env.OPSMANTIK_RUN_MODE).trim();
+    }
+  } catch (e2) {
+    /* ignore */
+  }
+  const raw = String(
+    propMode.trim() ||
+      inlineMode ||
+      envMode ||
+      (typeof OPSMANTIK_RUN_MODE === 'string' ? OPSMANTIK_RUN_MODE.trim() : '') ||
+      'sync'
+  ).toLowerCase();
   if (
     raw === 'peek' ||
     raw === 'preview' ||
@@ -540,6 +1011,7 @@ function resolveRunMode() {
 
 /** Show OCI queue without uploading (markAsExported=false). */
 function mainPeekOciQueue() {
+  RESOLVED_HP_CANARY_QUEUE_ID = '';
   Telemetry.info('Koc Oto Kurtarma - PEEK / OCI queue summary');
   Telemetry.info(
     'NOTE: Intent cards are not shown here; this log summarizes journal rows from offline_conversion_queue only.'
@@ -549,13 +1021,16 @@ function mainPeekOciQueue() {
 
   if (!CONFIG.SITE_ID || !CONFIG.API_KEY) {
     Telemetry.error(
-      'Eksik yapÄ±landÄ±rma: INLINE OPSMANTIK_INLINE_SITE_ID ve OPSMANTIK_INLINE_API_KEY veya Script Properties.',
+      'Eksik yapılandırma: INLINE OPSMANTIK_INLINE_SITE_ID ve OPSMANTIK_INLINE_API_KEY veya Script Properties.',
       null
     );
     return;
   }
 
-  const allowlist = parseAllowlistIds(CONFIG.ALLOWLIST_IDS);
+  logOperationalGoogleLimitChecklist();
+
+  /** Peek is no-claim: optional filter from OPSMANTIK_ALLOWLIST_IDS or server canary bundle UUID list. */
+  const allowlist = parseAllowlistIds(CONFIG.ALLOWLIST_IDS || CONFIG.EXPORT_ALLOWLIST_IDS_RAW);
 
   try {
     const client = new KocOtoClient(CONFIG.BASE_URL, CONFIG.API_KEY);
@@ -564,8 +1039,20 @@ function mainPeekOciQueue() {
     let cursor = null;
     let pageNo = 0;
     let grandTotalRows = 0;
+    var peekStartedAt = opsClockMs();
+    var peekStoppedReason = '';
+    var lastHadNextPage = false;
+    var lastNextCursor = null;
 
-    while (true) {
+    while (pageNo < CONFIG.MAX_PEEK_PAGES) {
+      if (opsClockMs() - peekStartedAt >= CONFIG.MAX_RUNTIME_MS) {
+        peekStoppedReason = 'MAX_RUNTIME_MS';
+        Telemetry.warn('PEEK_STOP_RUNTIME_BUDGET', {
+          max_runtime_ms: CONFIG.MAX_RUNTIME_MS,
+          pagesFetched: pageNo,
+        });
+        break;
+      }
       pageNo++;
       const page = client.fetchPage(CONFIG.SITE_ID, cursor, false);
 
@@ -583,7 +1070,7 @@ function mainPeekOciQueue() {
 
       if (allowlist && rows.length > 0) {
         rows = rows.filter(function (r) {
-          return r && r.id && allowlist.has(String(r.id));
+          return r && r.id && queueIdMatchesAllowlist(r.id, allowlist);
         });
         Telemetry.warn('Peek allowlist filtresi', { kalanSatir: rows.length });
       }
@@ -592,8 +1079,8 @@ function mainPeekOciQueue() {
       for (var ri = 0; ri < cap; ri++) {
         var rr = rows[ri];
         Logger.log(
-          '[OCI_SIRA] id=' +
-            (rr && rr.id ? String(rr.id) : '') +
+          '[OCI_SIRA] id_snip=' +
+            peekRedactQueueIdSnippet(rr && rr.id != null ? rr.id : '') +
             ' | aksiyon=' +
             (rr && rr.conversionName ? String(rr.conversionName) : '') +
             ' | deger=' +
@@ -607,7 +1094,9 @@ function mainPeekOciQueue() {
             ' w=' +
             (rr && rr.wbraid ? '1' : '0') +
             ' gb=' +
-            (rr && rr.gbraid ? '1' : '0')
+            (rr && rr.gbraid ? '1' : '0') +
+            ' hp=' +
+            (rr && extractVerifiedHashedPhoneCourier(rr) ? '1' : '0')
         );
       }
 
@@ -619,10 +1108,28 @@ function mainPeekOciQueue() {
       }
 
       cursor = page.nextCursor;
+      lastHadNextPage = page.hasNextPage === true;
+      lastNextCursor = cursor ? true : false;
       if (!(page.hasNextPage && cursor)) break;
+      if (pageNo >= CONFIG.MAX_PEEK_PAGES) {
+        peekStoppedReason = peekStoppedReason || 'MAX_PEEK_PAGES_CAP';
+        Telemetry.warn('PEEK_STOPPED_MAX_PEEK_PAGES', {
+          cap: CONFIG.MAX_PEEK_PAGES,
+          more_claimed_via_cursor: !!(page.hasNextPage && cursor),
+        });
+        break;
+      }
     }
 
-    Telemetry.info('Koc Oto Kurtarma PEEK completed', { pageCount: pageNo, totalRows: grandTotalRows });
+    Telemetry.info('Koc Oto Kurtarma PEEK completed', {
+      pageCount: pageNo,
+      totalRows: grandTotalRows,
+      stopped_reason: peekStoppedReason || null,
+      truncate_hint:
+        peekStoppedReason && lastHadNextPage && lastNextCursor
+          ? 'More pages exist beyond fuse — widen trigger frequency or raise OPSMANTIK_MAX_PEEK_PAGES / budget.'
+          : null,
+    });
   } catch (err) {
     Telemetry.error('Koc Oto Kurtarma PEEK error', err);
     throw err;
@@ -632,16 +1139,39 @@ function mainPeekOciQueue() {
 function mainSyncKocOto() {
   Telemetry.info('Koc Oto Kurtarma OCI SYNC - upload + ACK');
 
+  RESOLVED_HP_CANARY_QUEUE_ID = '';
   CONFIG = getScriptConfig();
 
   if (!CONFIG.SITE_ID || !CONFIG.API_KEY) {
-    Telemetry.error('Eksik yapÄ±landÄ±rma: OPSMANTIK_SITE_ID ve OPSMANTIK_API_KEY (INLINE veya Script Properties).', null);
+    Telemetry.error('Eksik yapılandırma: OPSMANTIK_SITE_ID ve OPSMANTIK_API_KEY (INLINE veya Script Properties).', null);
     return;
+  }
+
+  logOperationalGoogleLimitChecklist();
+
+  if (CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD) {
+    const effHpCol = resolveHashedPhoneCsvColumnName();
+    if (!effHpCol) {
+      Telemetry.error('HASHED_PHONE_COLUMN_NOT_CONFIGURED: OPSMANTIK_HASHED_PHONE_CSV_COLUMN veya HASHED_PHONE_UPLOAD_COLUMN gerekli.', null);
+      return;
+    }
+    try {
+      RESOLVED_HP_CANARY_QUEUE_ID = validateHashedPhoneCsvCanaryForSync(CONFIG);
+    } catch (eCanary) {
+      Telemetry.error(
+        'Hashed-phone sync canary dogrulanamadi (PR-9H.7B). Ayarlari kontrol edin.',
+        eCanary || null
+      );
+      throw eCanary;
+    }
+    warnHashedPhoneCsvColumnIfSuspect();
   }
 
   const allowlist = parseAllowlistIds(CONFIG.ALLOWLIST_IDS);
   if (allowlist) {
-    Telemetry.warn('ALLOWLIST aktif', { count: allowlist.size });
+    throw new Error(
+      'CLIENT_ALLOWLIST_FORBIDDEN_IN_SYNC: Remove OPSMANTIK_ALLOWLIST_IDS. Client-side filtering after claim is unsafe. Use OPSMANTIK_EXPORT_ALLOWLIST_IDS only inside PR-9H.7B server canary.'
+    );
   }
 
   try {
@@ -665,32 +1195,54 @@ function mainSyncKocOto() {
       upload_failed_count: 0,
       ack_success_count: 0,
       ack_failed_count: 0,
-      ack_skipped_count: 0
+      ack_skipped_count: 0,
+      hashed_phone_csv_canary_active: Boolean(RESOLVED_HP_CANARY_QUEUE_ID && CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD),
+      stopped_reason: null,
+      provider_ambiguous_pending_count: 0,
     };
 
-    while (true) {
+    /** PR-9H.7B: hashed-phone CSV canary — tek export sayfası; aksi halde MAX_SYNC_PAGES sigortası. */
+    const maxPagesThisSync =
+      RESOLVED_HP_CANARY_QUEUE_ID && CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD ? 1 : CONFIG.MAX_SYNC_PAGES;
+
+    var syncStartedAt = opsClockMs();
+
+    while (pageNo < maxPagesThisSync) {
+      if (opsClockMs() - syncStartedAt >= CONFIG.MAX_RUNTIME_MS) {
+        summaryStats.stopped_reason = 'MAX_RUNTIME_MS';
+        Telemetry.warn('SYNC_STOP_RUNTIME_BUDGET', {
+          max_runtime_ms: CONFIG.MAX_RUNTIME_MS,
+          pages_completed: pageNo,
+          note: 'Next trigger will continue from cursor; adjust frequency or budgets if this fires often.',
+        });
+        break;
+      }
       pageNo++;
-      const page = client.fetchPage(CONFIG.SITE_ID, cursor, true);
+      const page = client.fetchPage(CONFIG.SITE_ID, cursor, true, CONFIG.LIMIT);
       let rows = page.items || [];
       
       if (page.exportRunId && !exportRunId) {
         exportRunId = page.exportRunId;
       }
-      
+
+      if (RESOLVED_HP_CANARY_QUEUE_ID && CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD) {
+        if (rows.length !== 1) {
+          Telemetry.error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE, {
+            reason: 'CANARY_FETCH_EXPECTED_EXACTLY_ONE_ROW',
+            row_count: rows.length,
+          });
+          throw new Error(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE);
+        }
+      }
+
       summaryStats.fetched_count += rows.length;
       summaryStats.claimed_count += rows.length;
-
-      if (allowlist && rows.length > 0) {
-        rows = rows.filter(function (r) {
-          return r && r.id && allowlist.has(String(r.id));
-        });
-      }
 
       if (rows.length > 0) {
         try {
           const stats = processPageUpload(rows, {
             onUploadFailure: function (ids, code, msg, cat) {
-              client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat);
+              return client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat);
             },
           });
 
@@ -700,9 +1252,16 @@ function mainSyncKocOto() {
             summaryStats.classified_failed_count += stats.classified_failed_count;
             summaryStats.upload_attempted_count += stats.classified_uploadable_count;
             summaryStats.upload_failed_count += stats.classified_uploadable_count;
-            summaryStats.ack_failed_count += stats.classified_uploadable_count;
+            summaryStats.ack_failed_count += stats.ack_failed_sent_count;
+            if (stats.ack_failed_dispatch_failed_count > 0) {
+              summaryStats.provider_ambiguous_pending_count += stats.ack_failed_dispatch_failed_count;
+            }
 
-            Telemetry.warn('upload.apply failed - ack-failed sent; skipping ACK for this page', { page: pageNo });
+            Telemetry.warn('upload.apply failed — ACK_FAILED dispatch tracked', {
+              page: pageNo,
+              ack_failed_sent_count: stats.ack_failed_sent_count,
+              ack_failed_dispatch_failed_count: stats.ack_failed_dispatch_failed_count,
+            });
             cursor = page.nextCursor;
             if (!(page.hasNextPage && cursor)) break;
             continue;
@@ -737,6 +1296,11 @@ function mainSyncKocOto() {
             countsApi: page.counts,
           });
         } catch (err) {
+          const errMsg = err && err.message ? String(err.message) : String(err || '');
+          if (errMsg.indexOf(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE) >= 0) {
+            Telemetry.error('CANARY_SCOPE_ABORTED_NO_ACK_FAILED_SENT', err);
+            throw err;
+          }
           Telemetry.error('Page processing error', err);
           const ids = (page.items || [])
             .map(function (r) {
@@ -750,7 +1314,7 @@ function mainSyncKocOto() {
               CONFIG.SITE_ID,
               ids,
               'PAGE_PROCESSING_FAILURE',
-              String(err && err.message ? err.message : err).slice(0, 500),
+              String(errMsg).slice(0, 500),
               'TRANSIENT'
             );
           }
@@ -760,9 +1324,19 @@ function mainSyncKocOto() {
 
       cursor = page.nextCursor;
       if (!(page.hasNextPage && cursor)) break;
+      if (pageNo >= maxPagesThisSync && page.hasNextPage && cursor) {
+        summaryStats.stopped_reason = summaryStats.stopped_reason || 'MAX_SYNC_PAGES_CAP';
+        Telemetry.warn('SYNC_HIT_MAX_SYNC_PAGES_FUSE_MORE_QUEUE_REMAINS', {
+          cap_pages: maxPagesThisSync,
+        });
+      }
     }
 
-    Telemetry.info('Koc Oto Kurtarma SYNC completed', { totalUploaded: totalUploaded, pages: pageNo });
+    Telemetry.info('Koc Oto Kurtarma SYNC completed', {
+      totalUploaded: totalUploaded,
+      pages: pageNo,
+      stopped_reason: summaryStats.stopped_reason || null,
+    });
     
     // Attempt to send run summary
     try {
@@ -780,7 +1354,10 @@ function mainSyncKocOto() {
         upload_failed_count: summaryStats.upload_failed_count,
         ack_success_count: summaryStats.ack_success_count,
         ack_failed_count: summaryStats.ack_failed_count,
-        ack_skipped_count: summaryStats.ack_skipped_count
+        ack_skipped_count: summaryStats.ack_skipped_count,
+        hashed_phone_csv_canary_active: summaryStats.hashed_phone_csv_canary_active,
+        fuse_stopped_reason: summaryStats.stopped_reason,
+        provider_ambiguous_pending_count: summaryStats.provider_ambiguous_pending_count,
       };
       var summaryRes = client.sendSummary(summaryPayload);
       Telemetry.info('Sent run summary', { 

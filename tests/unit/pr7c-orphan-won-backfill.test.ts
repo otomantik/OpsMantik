@@ -47,10 +47,13 @@ test('PR-7C no queue deletion or direct hardcoded value math introduced', () => 
   assert.ok(!/value_cents\s*=/i.test(script));
 });
 
-test('PR-7C idempotency path still relies on enqueueSealConversion duplicate guard (23505)', () => {
-  const enqueue = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
-  assert.ok(enqueue.includes("if (error.code === '23505')"));
-  assert.ok(enqueue.includes("reason: 'duplicate'"));
+test('PR-7C idempotency path still relies on seal → journal duplicate collapse (23505)', () => {
+  const seal = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
+  const journal = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-intent-conversion-journal-row.ts'), 'utf8');
+  assert.ok(
+    seal.includes("journalRes.reason === 'duplicate'") && journal.includes("'23505'"),
+    'seal delegates to journal; postgres unique violation must map to duplicate semantics'
+  );
 });
 
 test('PR-7C wonMissingPipeline remains strict gate blocker', () => {

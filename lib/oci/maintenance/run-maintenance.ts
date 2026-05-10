@@ -156,7 +156,7 @@ async function step_sweepOrphans(stats: OciMaintenanceStats): Promise<void> {
       adminClient.from('offline_conversion_queue').select('call_id').not('call_id', 'is', null).limit(5000),
       adminClient
         .from('calls')
-        .select('id, site_id, confirmed_at, sale_amount, currency, lead_score')
+        .select('id, site_id, confirmed_at, sale_amount, sale_currency, lead_score')
         .eq('oci_status', 'sealed')
         .gte('confirmed_at', sinceIso)
         .not('confirmed_at', 'is', null)
@@ -170,13 +170,13 @@ async function step_sweepOrphans(stats: OciMaintenanceStats): Promise<void> {
     stats.orphans_found = orphans.length;
 
     for (const call of orphans.slice(0, MAX_ORPHANS_PER_RUN)) {
-      const c = call as { id: string; site_id: string; confirmed_at: string; sale_amount: number | null; currency: string | null; lead_score: number | null };
+      const c = call as { id: string; site_id: string; confirmed_at: string; sale_amount: number | null; sale_currency: string | null; lead_score: number | null };
       const result = await enqueueSealConversion({
         callId: c.id,
         siteId: c.site_id,
         confirmedAt: c.confirmed_at,
         saleAmount: c.sale_amount ?? null,
-        currency: normalizeCurrencyOrNeutral(c.currency),
+        currency: normalizeCurrencyOrNeutral(c.sale_currency),
         leadScore: c.lead_score ?? null,
       });
       if (result.enqueued) {

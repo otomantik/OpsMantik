@@ -29,8 +29,16 @@ export interface GoogleAdsConversionItem {
   conversionValue: number;
   /** ISO-4217 currency code. */
   conversionCurrency: string;
-  /** Optional: SHA-256 hex (64 char) for Enhanced Conversions. */
+  /** PR-9H.7A: courier field for pre-hashed phone (64-char lowercase hex) — same value as `hashed_phone_number`. */
+  hashedPhoneNumber?: string | null;
+  /** Optional: SHA-256 hex (64 char) for Enhanced Conversions (legacy script key). */
   hashed_phone_number?: string | null;
+  /** Optional: SHA-256 hex for Enhanced Conversions for Leads (API path; Script v1 may ignore). */
+  hashed_email?: string | null;
+  /** Script-first enhanced signal transport (no raw PII). */
+  userIdentifiers?: Array<{ type: 'hashed_phone' | 'hashed_email'; value: string }>;
+  /** Optional snake_case mirror for legacy script readers (same entries as `userIdentifiers`). */
+  user_identifiers?: Array<{ type: 'hashed_phone' | 'hashed_email'; value: string }>;
   /** Phase 20: OM-TRACE-UUID for conversion_custom_variable (forensic chain) */
   om_trace_uuid?: string | null;
   /** Modül 2: primary/secondary role for ROAS inflation logging */
@@ -68,12 +76,17 @@ export type ExportCursorState = {
 
 export type QueueRow = {
   id: string;
+  /** QUEUED | RETRY | … — included when export fetch selects status (preview diagnostics). */
+  status?: string | null;
   sale_id?: string | null;
   call_id?: string | null;
   session_id?: string | null;
   gclid?: string | null;
   wbraid?: string | null;
   gbraid?: string | null;
+  /** Hashed EC identifiers only — never log raw fields from this blob in diagnostics. */
+  user_identifiers?: unknown;
+  provider_path?: string | null;
   conversion_time: string;
   occurred_at?: string | null;
   created_at?: string | null;

@@ -17,7 +17,6 @@ import { logInfo, logWarn } from '@/lib/logging/logger';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { resolveSealOccurredAt } from '@/lib/oci/occurred-at';
 import { appendFunnelEvent } from '@/lib/domain/funnel-kernel/ledger-writer';
-import { publishToQStash } from '@/lib/ingest/publish';
 import {
   buildOptimizationSnapshot,
 } from '@/lib/oci/optimization-contract';
@@ -25,6 +24,11 @@ import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
 import { resolveWonQueueInitialStatus } from '@/lib/oci/preceding-signals';
 import { resolveWonConversionEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import {
+  defaultProviderPathFromSyncMethod,
+  type IntentJournalClassification,
+} from '@/lib/oci/intent-conversion-journal-contract';
+import { enqueueIntentConversionJournalRow } from '@/lib/oci/enqueue-intent-conversion-journal-row';
 
 export interface EnqueueSealParams {
   callId: string;
@@ -36,6 +40,8 @@ export interface EnqueueSealParams {
   leadScore: number | null;
   entryReason?: string | null;
   sourceOutboxEventId?: string | null;
+  /** Override `offline_conversion_queue.source_type` (default `seal_route`). */
+  journalSourceType?: string | null;
 }
 
 export interface EnqueueSealResult {
@@ -68,6 +74,30 @@ export function hasAnyClickId(params: {
 // ---------------------------------------------------------------------------
 // Site OCI config loader
 // ---------------------------------------------------------------------------
+
+function classifySealWonJournalIntent(input: {
+  hasMarketing: boolean;
+  hasClick: boolean;
+  rowStatus: string;
+  providerErrorCode: string | null;
+  blockReason: string | null;
+}): IntentJournalClassification {
+  if (!input.hasMarketing || input.providerErrorCode === 'CONSENT_MISSING') {
+    return 'INTENT_BLOCKED_BY_CONSENT';
+  }
+  if (!input.hasClick) return 'INTENT_BLOCKED_BY_CLICK_ID';
+  const br = (input.blockReason ?? '').trim();
+  if (br === 'PROVIDER_PATH_SCRIPT_V1_REQUIRES_GCLID') {
+    return 'WBRAID_GBRAID_AVAILABLE_BUT_SCRIPT_UNSUPPORTED';
+  }
+  if (input.rowStatus === 'BLOCKED_PRECEDING_SIGNALS') {
+    return 'INTENT_JOURNALIZED_NOT_EXPORT_ELIGIBLE';
+  }
+  if (input.rowStatus === 'QUEUED' || input.rowStatus === 'RETRY') {
+    return 'INTENT_JOURNALIZED_READY';
+  }
+  return 'UNKNOWN_GAP';
+}
 
 async function loadSiteOciContext(siteId: string) {
   const { data, error } = await adminClient
@@ -107,6 +137,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
     leadScore,
     entryReason,
     sourceOutboxEventId,
+    journalSourceType,
   } = params;
 
   // 0. Null safety: Seal requires confirmed_at — never send broken payload to Google
@@ -145,7 +176,7 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const directSource = await getPrimarySource(siteId, { callId });
   const { data: callCtx } = await adminClient
     .from('calls')
-    .select('caller_phone_e164, matched_fingerprint, confirmed_at, created_at')
+    .select('caller_phone_e164, caller_phone_hash_sha256, matched_fingerprint, confirmed_at, created_at')
     .eq('id', callId)
     .eq('site_id', siteId)
     .maybeSingle();
@@ -153,6 +184,8 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
   const callTime = (callCtx as { confirmed_at?: string; created_at?: string } | null)?.confirmed_at
     ?? (callCtx as { created_at?: string } | null)?.created_at
     ?? confirmedAtTrimmed;
+  const callerPhoneHashSha256 =
+    (callCtx as { caller_phone_hash_sha256?: string | null } | null)?.caller_phone_hash_sha256 ?? null;
   const discovered = await getPrimarySourceWithDiscovery(siteId, directSource, {
     callId,
     callTime,
@@ -248,37 +281,86 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       rowBlockedAt = nowIso;
     }
 
-    const insertPayload: Record<string, unknown> = {
-      site_id: siteId,
-      call_id: callId,
-      sale_id: null,
-      session_id: sessionId,
-      provider_key: 'google_ads',
-      external_id: computeOfflineConversionExternalId({
-        providerKey: 'google_ads',
-        action: OPSMANTIK_CONVERSION_NAMES.won,
-        callId,
-        sessionId,
-      }),
+    const scriptPath = defaultProviderPathFromSyncMethod(syncMethod);
+    if (
+      hasMarketing &&
+      hasClick &&
+      rowStatus === 'QUEUED' &&
+      scriptPath === 'google_ads_script_v1' &&
+      !(gclid ?? '').trim() &&
+      (((wbraid ?? '').trim()) || ((gbraid ?? '').trim()))
+    ) {
+      rowStatus = 'BLOCKED_PRECEDING_SIGNALS';
+      rowBlockReason = 'PROVIDER_PATH_SCRIPT_V1_REQUIRES_GCLID';
+      rowBlockedAt = nowIso;
+    }
+
+    const wonExternalId = computeOfflineConversionExternalId({
+      providerKey: 'google_ads',
       action: OPSMANTIK_CONVERSION_NAMES.won,
-      conversion_time: occurredAtMeta.occurredAt,
-      occurred_at: occurredAtMeta.occurredAt,
-      source_timestamp: occurredAtMeta.sourceTimestamp,
-      time_confidence: occurredAtMeta.timeConfidence,
-      occurred_at_source: occurredAtMeta.occurredAtSource,
-      value_cents: valueCents,
+      callId,
+      sessionId,
+    });
+
+    const classification = classifySealWonJournalIntent({
+      hasMarketing,
+      hasClick,
+      rowStatus,
+      providerErrorCode,
+      blockReason: rowBlockReason,
+    });
+
+    const journalRes = await enqueueIntentConversionJournalRow({
+      siteId,
+      providerKey: 'google_ads',
+      callId,
+      sessionId,
+      saleId: null,
+      stage: 'won',
+      conversionName: OPSMANTIK_CONVERSION_NAMES.won,
+      externalId: wonExternalId,
+      conversionTime: occurredAtMeta.occurredAt,
+      occurredAt: occurredAtMeta.occurredAt,
+      sourceTimestamp: occurredAtMeta.sourceTimestamp,
+      timeConfidence: occurredAtMeta.timeConfidence,
+      occurredAtSource: occurredAtMeta.occurredAtSource,
+      valueCents,
       currency: currencySafe,
-      value_source: wonEconomics.valueSource,
-      value_policy_version: wonEconomics.policyVersion,
-      value_policy_reason: wonEconomics.policyReason,
-      value_fallback_used: wonEconomics.fallbackUsed,
-      optimization_stage: optimizationSnapshot.optimizationStage,
-      optimization_stage_base: optimizationSnapshot.stageBase,
-      quality_factor: null,
-      optimization_value: optimizationSnapshot.optimizationValue,
-      actual_revenue: optimizationSnapshot.actualRevenue,
-      helper_form_payload: null,
-      feature_snapshot: {
+      valueSource: wonEconomics.valueSource,
+      valuePolicyVersion: wonEconomics.policyVersion,
+      valuePolicyReason: wonEconomics.policyReason,
+      valueFallbackUsed: wonEconomics.fallbackUsed,
+      optimizationStage: optimizationSnapshot.optimizationStage,
+      optimizationStageBase: optimizationSnapshot.stageBase,
+      optimizationValue: optimizationSnapshot.optimizationValue,
+      actualRevenue: optimizationSnapshot.actualRevenue,
+      modelVersion: optimizationSnapshot.modelVersion,
+      gclid,
+      wbraid,
+      gbraid,
+      consentMarketing: hasMarketing,
+      consentUserIdentifiers: hasMarketing,
+      sendabilityOk: true,
+      ociSyncMethod: syncMethod,
+      providerPathOverride: scriptPath,
+      sourceOutboxEventId: sourceOutboxEventId ?? null,
+      sourceType: journalSourceType ?? 'seal_route',
+      sourceIdempotencyKey: wonExternalId,
+      discoveryMethod,
+      discoveryConfidence,
+      entryReason: entryReason ?? null,
+      precomputedDisposition: {
+        status: rowStatus,
+        blockReason: rowBlockReason,
+        blockedAt: rowBlockedAt,
+        providerErrorCategory,
+        providerErrorCode,
+        classification,
+      },
+      userIdentifiersExplicit: null,
+      fastTrackDedupeLabel: 'seal_fasttrack',
+      callCallerPhoneHashSha256: callerPhoneHashSha256,
+      featureSnapshot: {
         value_policy_version: wonEconomics.policyVersion,
         value_policy_reason: wonEconomics.policyReason,
         value_source: wonEconomics.valueSource,
@@ -288,39 +370,18 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
         has_wbraid: Boolean(wbraid),
         has_gbraid: Boolean(gbraid),
       },
-      outcome_timestamp: occurredAtMeta.occurredAt,
-      model_version: optimizationSnapshot.modelVersion,
-      gclid,
-      wbraid,
-      gbraid,
-      status: rowStatus,
-      block_reason: rowBlockReason,
-      blocked_at: rowBlockedAt,
-      provider_error_category: providerErrorCategory,
-      provider_error_code: providerErrorCode,
-      source_outbox_event_id: sourceOutboxEventId ?? null,
-      causal_dna: {},
-    };
-    if (entryReason?.trim()) insertPayload.entry_reason = entryReason.trim().slice(0, 500);
-    if (discoveryMethod) insertPayload.discovery_method = discoveryMethod;
-    if (discoveryConfidence != null) insertPayload.discovery_confidence = discoveryConfidence;
+    });
 
-    const { data: inserted, error } = await adminClient
-      .from('offline_conversion_queue')
-      .insert(insertPayload)
-      .select('id')
-      .single();
-
-    if (error) {
-      if (error.code === '23505') {
-        logInfo('enqueue_seal_skip', { call_id: callId, reason: 'duplicate' });
-        return { enqueued: false, reason: 'duplicate', usedFallback };
-      }
-      logWarn('enqueue_seal_failed', { call_id: callId, error: error.message });
-      return { enqueued: false, reason: 'error', error: error.message, usedFallback };
+    if (journalRes.reason === 'duplicate') {
+      logInfo('enqueue_seal_skip', { call_id: callId, reason: 'duplicate' });
+      return { enqueued: false, reason: 'duplicate', usedFallback };
+    }
+    if (journalRes.reason === 'error') {
+      logWarn('enqueue_seal_failed', { call_id: callId, error: journalRes.error });
+      return { enqueued: false, reason: 'error', error: journalRes.error, usedFallback };
     }
 
-    const queueId = (inserted as { id: string } | null)?.id ?? null;
+    const queueId = journalRes.queueId ?? null;
     if (queueId) {
       try {
         await appendFunnelEvent({
@@ -344,26 +405,6 @@ export async function enqueueSealConversion(params: EnqueueSealParams): Promise<
       value_cents: valueCents,
       used_fallback: usedFallback,
     });
-
-    // 9. Fast-Track: Trigger immediate Value-Lane synchronization
-    // Only trigger if site is in 'api' mode. 'script' sites must wait for polling.
-    // Rows blocked on precursor signals must not fast-track until promoted to QUEUED.
-    if (syncMethod === 'api' && rowStatus === 'QUEUED') {
-        try {
-            await publishToQStash({
-                lane: 'conversion',
-                body: { kind: 'oci_export', queue_id: queueId, site_id: siteId },
-                deduplicationId: `oci-v5-fasttrack-${queueId}`,
-                retries: 3,
-            });
-        } catch (publishErr) {
-            logWarn('OCI_FASTTRACK_TRIGGER_FAILED', {
-                call_id: callId,
-                queue_id: queueId,
-                error: (publishErr as Error)?.message ?? String(publishErr)
-            });
-        }
-    }
 
     if (!hasMarketing) {
       return { enqueued: false, reason: 'marketing_consent_required', usedFallback, queueId };

@@ -36,8 +36,16 @@ test('enqueueOciConversionRow maps micro stages to canonical queue actions', () 
     'micro-stage queue writer must derive action from canonical conversion names'
   );
   assert.ok(
-    src.includes('BLOCKED_PRECEDING_SIGNALS') && src.includes('MISSING_CLICK_ID'),
-    'missing click must stay explicit via blocked queue semantics'
+    src.includes('enqueueIntentConversionJournalRow'),
+    'micro stages must unify on intent journal enqueue (queue SSOT)'
+  );
+  const contract = readFileSync(
+    join(process.cwd(), 'lib', 'oci', 'intent-conversion-journal-contract.ts'),
+    'utf8'
+  );
+  assert.ok(
+    contract.includes('BLOCKED_PRECEDING_SIGNALS') && contract.includes('MISSING_CLICK_ID'),
+    'missing click must remain explicit via journal disposition planner'
   );
 });
 

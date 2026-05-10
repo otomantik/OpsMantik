@@ -93,7 +93,7 @@ async function runSweep(req: NextRequest) {
 
     const callsQuery = adminClient
       .from('calls')
-      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, lead_score')
+      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, sale_currency, lead_score')
       .or('oci_status.eq.sealed,status.eq.won')
       .gte('confirmed_at', sinceIso)
       .not('confirmed_at', 'is', null)
@@ -118,6 +118,7 @@ async function runSweep(req: NextRequest) {
         status?: string | null;
         oci_status?: string | null;
         confirmed_at?: string | null;
+        sale_currency?: string | null;
       }>,
       queuedCallIds
     );
@@ -138,9 +139,8 @@ async function runSweep(req: NextRequest) {
         siteId: call.site_id,
         confirmedAt: call.confirmed_at,
         saleAmount: call.sale_amount ?? null,
-        // Schema-compat fallback: calls.currency may be absent in some target DBs.
-        // Passing empty string keeps value policy SSOT on site-level currency fallback.
-        currency: normalizeCurrencyOrNeutral(''),
+        // Prefer call sale currency when present; fallback to site currency happens inside enqueueSealConversion.
+        currency: normalizeCurrencyOrNeutral(call.sale_currency ?? null),
         leadScore: call.lead_score ?? null,
         entryReason: 'sweep_unsent_conversions',
       });

@@ -4,6 +4,7 @@ import { logError, logInfo } from '@/lib/logging/logger';
 import { authorizeExportRequest, ExportHttpError } from './export-auth';
 import { fetchExportData } from './export-fetch';
 import { buildExportItems } from './export-build-items';
+import { buildPreviewDiagnosticsExtension } from './export-preview-diagnostics';
 import { markExportProcessing } from './export-mark-processing';
 import { buildExportResponseAsync } from './export-response';
 
@@ -38,13 +39,34 @@ export async function GET(req: NextRequest) {
 
     const built = await buildExportItems(auth, fetched);
     const skipReasonCounts = {
-      call_not_sendable: built.blockedQueueIds.length,
+      call_not_sendable: built.callNotSendableQueueIds.length,
       export_gate_call_id_required: built.blockedExportGateIds.length,
+      missing_currency: built.blockedCurrencyIds.length,
+      missing_conversion_action: built.blockedMissingConversionActionIds.length,
       invalid_conversion_time: built.blockedQueueTimeIds.length,
       invalid_value: built.blockedValueZeroIds.length + built.blockedExpiredIds.length,
       suppressed_by_higher_gear: built.suppressedQueueIds.length,
     };
     const skippedCount = Object.values(skipReasonCounts).reduce((acc, n) => acc + n, 0);
+
+    const previewExtension = auth.markAsExported
+      ? null
+      : buildPreviewDiagnosticsExtension(
+          fetched.rawList,
+          {
+            suppressedQueueIds: built.suppressedQueueIds,
+            blockedQueueTimeIds: built.blockedQueueTimeIds,
+            blockedValueZeroIds: built.blockedValueZeroIds,
+            blockedExpiredIds: built.blockedExpiredIds,
+            blockedExportGateIds: built.blockedExportGateIds,
+            blockedMissingConversionActionIds: built.blockedMissingConversionActionIds,
+            combined: built.combined,
+          },
+          built.pipelineStats,
+          built.callNotSendableQueueIds,
+          built.hashedPhoneDiagnostics,
+          built.currencyDiagnostics
+        );
     
     try {
       await markExportProcessing(auth, built);
@@ -54,7 +76,13 @@ export async function GET(req: NextRequest) {
           site_id: auth.siteUuid,
           claimed_count: built.keptConversions.length,
           suppressed_count: built.suppressedQueueIds.length,
-          blocked_count: built.blockedQueueIds.length + built.blockedExportGateIds.length + built.blockedQueueTimeIds.length + built.blockedValueZeroIds.length + built.blockedExpiredIds.length,
+          blocked_count:
+            built.blockedQueueIds.length +
+            built.blockedExportGateIds.length +
+            built.blockedMissingConversionActionIds.length +
+            built.blockedQueueTimeIds.length +
+            built.blockedValueZeroIds.length +
+            built.blockedExpiredIds.length,
         });
       }
     } catch (e: unknown) {
@@ -89,15 +117,37 @@ export async function GET(req: NextRequest) {
       markAsExported: auth.markAsExported,
       export_run_id: auth.exportRunId,
     };
-    if (!auth.markAsExported) {
+    if (!auth.markAsExported && previewExtension) {
       Object.assign(responseData, {
         preview_diagnostics: {
           fetched_count: fetched.rawList.length,
+          built_count: previewExtension.built_count,
           buildable_count: built.keptConversions.length + built.suppressedQueueIds.length,
           returned_count: built.combined.length,
           skipped_count: skippedCount,
           skip_reason_counts: skipReasonCounts,
+          pipeline_stats: previewExtension.pipeline_stats,
+          skip_by_action: previewExtension.skip_by_action,
+          skip_by_status: previewExtension.skip_by_status,
+          skip_by_click_id_availability: previewExtension.skip_by_click_id_availability,
+          skip_by_reason_detail: previewExtension.skip_by_reason_detail,
+          skip_by_provider_path: previewExtension.skip_by_provider_path,
+          signal_availability_counts: previewExtension.signal_availability_counts,
+          script_v1_supported_counts: previewExtension.script_v1_supported_counts,
+          api_supported_counts: previewExtension.api_supported_counts,
+          returned_action_counts: previewExtension.returned_action_counts,
+          hashed_phone_available_count: previewExtension.hashed_phone_available_count,
+          hashed_phone_invalid_count: previewExtension.hashed_phone_invalid_count,
+          hashed_phone_candidate_count: previewExtension.hashed_phone_candidate_count,
+          hashed_phone_exported_count: previewExtension.hashed_phone_exported_count,
+          hashed_phone_missing_count: previewExtension.hashed_phone_missing_count,
+          hashed_phone_source_counts: previewExtension.hashed_phone_source_counts,
+          enhanced_signal_available_count: previewExtension.enhanced_signal_available_count,
+          currency_missing_count: previewExtension.currency_missing_count,
+          currency_unexpected_count: previewExtension.currency_unexpected_count,
+          currency_defaulted_count: previewExtension.currency_defaulted_count,
           provider_key_filter: auth.providerFilter,
+          page_limit: auth.pageLimit,
           site_id_filter_suffix: uuidTail(auth.siteUuid),
           status_filter: ['QUEUED', 'RETRY'],
           cursor_received: Boolean(auth.queueCursorUpdatedAt && auth.queueCursorId),
@@ -121,6 +171,11 @@ export async function GET(req: NextRequest) {
           returned_item_count: built.combined.length,
           skipped_count: skippedCount,
           skip_reason_counts: skipReasonCounts,
+          hashed_phone_candidate_count: built.hashedPhoneDiagnostics.hashed_phone_candidate_count,
+          hashed_phone_exported_count: built.hashedPhoneDiagnostics.hashed_phone_exported_count,
+          hashed_phone_missing_count: built.hashedPhoneDiagnostics.hashed_phone_missing_count,
+          hashed_phone_invalid_count: built.hashedPhoneDiagnostics.hashed_phone_invalid_count,
+          hashed_phone_source_counts: built.hashedPhoneDiagnostics.hashed_phone_source_counts,
         },
       });
     }

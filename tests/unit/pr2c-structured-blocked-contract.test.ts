@@ -5,13 +5,17 @@ import { join } from 'node:path';
 
 const ROOT = process.cwd();
 
-test('PR-2C: enqueueOciConversionRow inserts structured FAILED row on missing consent', () => {
+test('PR-2C: enqueueOciConversionRow delegates consent/disposition SSOT to intent journal enqueue', () => {
   const src = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
-  assert.ok(src.includes("rowStatus = 'FAILED'"), 'must map to FAILED');
-  assert.ok(src.includes("providerErrorCategory = 'DETERMINISTIC_SKIP'"), 'must set DETERMINISTIC_SKIP category');
-  assert.ok(src.includes("providerErrorCode = 'CONSENT_MISSING'"), 'must set CONSENT_MISSING code');
-  assert.ok(src.includes('provider_error_category: providerErrorCategory'), 'must insert category');
-  assert.ok(src.includes('provider_error_code: providerErrorCode'), 'must insert code');
+  assert.ok(
+    src.includes('enqueueIntentConversionJournalRow'),
+    'micro-stage path must unify on intent journal enqueue'
+  );
+  const journal = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-intent-conversion-journal-row.ts'), 'utf8');
+  assert.ok(
+    journal.includes('CONSENT_MISSING') && journal.includes('resolveQueueJournalDisposition'),
+    'journal helper must materialize consent/missing-signal dispositions into queue columns'
+  );
 });
 
 test('PR-2C: enqueueSealConversion inserts structured FAILED row on missing consent', () => {
@@ -24,17 +28,14 @@ test('PR-2C: enqueueSealConversion inserts structured FAILED row on missing cons
 test('PR-2C: idempotency is maintained for structured blocked rows', () => {
   const ociSrc = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
   const sealSrc = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
-  
-  // They compute external_id BEFORE branching on hasMarketing, ensuring idempotency
+
   const extIdIdxOci = ociSrc.indexOf('computeOfflineConversionExternalId');
-  const insertIdxOci = ociSrc.indexOf(".insert(insertPayload)");
-  const consentIdxOci = ociSrc.indexOf("rowStatus = 'FAILED'");
-  
-  assert.ok(extIdIdxOci < insertIdxOci, 'external_id must be computed before insert');
-  
-  // Both files still handle 23505 (unique violation)
-  assert.ok(ociSrc.includes("code === '23505'"), 'oci enqueue handles duplicate');
-  assert.ok(sealSrc.includes("error.code === '23505'"), 'seal enqueue handles duplicate');
+  const journalCallOci = ociSrc.indexOf('enqueueIntentConversionJournalRow');
+  assert.ok(extIdIdxOci >= 0 && journalCallOci >= 0 && extIdIdxOci < journalCallOci, 'external_id before journal call');
+
+  const journal = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-intent-conversion-journal-row.ts'), 'utf8');
+  assert.ok(journal.includes("code === '23505'"), 'intent journal collapse duplicates at DB boundary');
+  assert.ok(sealSrc.includes("'duplicate'"), 'seal must treat journal duplicate parity as skipped enqueue');
 });
 
 test('PR-2C: export-fetch excludes FAILED + DETERMINISTIC_SKIP rows', () => {

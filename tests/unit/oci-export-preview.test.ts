@@ -22,7 +22,10 @@ test('google-ads-export route: markAsExported false returns structured preview',
   assert.ok(src.includes('items: built.combined'), 'preview has items');
   assert.ok(src.includes('counts:'), 'preview has counts');
   assert.ok(src.includes('warnings:'), 'preview has warnings');
-  assert.ok(src.includes('if (!auth.markAsExported)'), 'preview diagnostics must only be emitted for read-only preview mode');
+  assert.ok(
+    src.includes('if (!auth.markAsExported && previewExtension)'),
+    'preview diagnostics must only be emitted for read-only preview mode'
+  );
   assert.ok(src.includes('preview_diagnostics'), 'preview response must expose diagnostics payload');
   assert.ok(src.includes('fetched_count') && src.includes('skip_reason_counts'), 'preview diagnostics should include stage and reason counters');
 });
@@ -137,7 +140,7 @@ test('signal-normalizers: canonical stage aliases for non-export consumers', () 
 test('google-ads-export: queue export is DB-cents authoritative', () => {
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-queue.ts'), 'utf8');
   assert.ok(!src.includes("typeof row.optimization_value === 'number'"), 'queue export must not prioritize optimization_value');
-  assert.ok(src.includes('minorToMajor(valueGuard.normalized, rowCurrency)'), 'queue export should derive major value directly from value_cents');
+  assert.ok(src.includes('minorToMajor(valueGuard.normalized, resolvedCurrency)'), 'queue export should derive major value directly from value_cents');
 });
 
 test('claim RPC migration: increments attempt_count', () => {

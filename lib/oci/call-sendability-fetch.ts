@@ -4,6 +4,7 @@
  */
 
 import { adminClient } from '@/lib/supabase/admin';
+import { formatSupabaseClientError, isMissingColumnProjectionError } from '@/lib/oci/format-supabase-error';
 import { logWarn } from '@/lib/logging/logger';
 
 function isMissingOciStatusColumnError(err: { code?: string; message?: string } | null | undefined): boolean {
@@ -119,58 +120,94 @@ export type ExportCallContextRow = {
   confirmed_at: string | null;
   status: string | null;
   oci_status: string | null;
+  caller_phone_hash_sha256: string | null;
 };
 
-export async function fetchExportCallContextRows(siteId: string, callIds: string[]): Promise<ExportCallContextRow[]> {
-  const unique = [...new Set(callIds.filter(Boolean))];
-  if (unique.length === 0) return [];
+const EXPORT_CALL_CONTEXT_PROJECTIONS: readonly string[] = [
+  'id, matched_session_id, created_at, confirmed_at, status, oci_status, caller_phone_hash_sha256',
+  'id, matched_session_id, created_at, confirmed_at, status, caller_phone_hash_sha256',
+  'id, matched_session_id, created_at, confirmed_at, status, oci_status',
+  'id, matched_session_id, created_at, confirmed_at, status',
+  'id, status, matched_session_id, created_at, confirmed_at',
+  'id, status',
+];
 
-  const projection = 'id, matched_session_id, created_at, confirmed_at, status, oci_status';
-  const primary = await adminClient
-    .from('calls')
-    .select(projection)
-    .eq('site_id', siteId)
-    .in('id', unique);
-
-  const toRows = (rows: unknown[]): ExportCallContextRow[] =>
-    (rows as Array<Record<string, unknown>>).map((r) => ({
-      id: String(r.id),
-      matched_session_id: (r.matched_session_id as string | null) ?? null,
-      created_at: (r.created_at as string | null) ?? null,
-      confirmed_at: (r.confirmed_at as string | null) ?? null,
-      status: (r.status as string | null) ?? null,
-      oci_status: (r.oci_status as string | null) ?? null,
-    }));
-
-  if (!primary.error && primary.data) {
-    return toRows(primary.data);
-  }
-
-  if (!isMissingOciStatusColumnError(primary.error as { code?: string; message?: string })) {
-    logWarn('export_call_context_fetch_failed', { site_id: siteId, error: (primary.error as { message?: string })?.message });
-    return [];
-  }
-
-  const fallback = await adminClient
-    .from('calls')
-    .select('id, matched_session_id, created_at, confirmed_at, status')
-    .eq('site_id', siteId)
-    .in('id', unique);
-
-  if (fallback.error || !fallback.data) {
-    logWarn('export_call_context_fetch_failed', {
-      site_id: siteId,
-      error: fallback.error?.message ?? 'no_rows',
-    });
-    return [];
-  }
-
-  return (fallback.data as Array<Record<string, unknown>>).map((r) => ({
+function normalizeExportCallContextRow(r: Record<string, unknown>): ExportCallContextRow {
+  return {
     id: String(r.id),
     matched_session_id: (r.matched_session_id as string | null) ?? null,
     created_at: (r.created_at as string | null) ?? null,
     confirmed_at: (r.confirmed_at as string | null) ?? null,
     status: (r.status as string | null) ?? null,
-    oci_status: null,
-  }));
+    oci_status: (r.oci_status as string | null) ?? null,
+    caller_phone_hash_sha256: (r.caller_phone_hash_sha256 as string | null) ?? null,
+  };
+}
+
+/**
+ * Narrow fetch for `calls.caller_phone_hash_sha256` only (PR-9H.7C).
+ * Supplements wide projections when PostgREST omits a column or wide SELECT fails partway.
+ */
+export async function fetchCallerPhoneHashesForCallIds(
+  siteId: string,
+  callIds: string[]
+): Promise<Record<string, string>> {
+  const unique = [...new Set(callIds.filter(Boolean))];
+  if (unique.length === 0) return {};
+  const out: Record<string, string> = {};
+  const { data, error } = await adminClient
+    .from('calls')
+    .select('id, caller_phone_hash_sha256')
+    .eq('site_id', siteId)
+    .in('id', unique);
+  if (error) {
+    if (isMissingColumnProjectionError(error)) {
+      logWarn('export_caller_phone_hash_column_missing', { site_id: siteId });
+    } else {
+      logWarn('export_caller_phone_hash_fetch_failed', { site_id: siteId, error: formatSupabaseClientError(error) });
+    }
+    return out;
+  }
+  if (!data) return out;
+  for (const row of data as Array<{ id?: string; caller_phone_hash_sha256?: string | null }>) {
+    const id = row.id != null ? String(row.id) : '';
+    const h = typeof row.caller_phone_hash_sha256 === 'string' ? row.caller_phone_hash_sha256.trim() : '';
+    if (id && h) out[id] = h;
+  }
+  return out;
+}
+
+export async function fetchExportCallContextRows(siteId: string, callIds: string[]): Promise<ExportCallContextRow[]> {
+  const unique = [...new Set(callIds.filter(Boolean))];
+  if (unique.length === 0) return [];
+
+  let rawRows: Array<Record<string, unknown>> | null = null;
+  for (const projection of EXPORT_CALL_CONTEXT_PROJECTIONS) {
+    const res = await adminClient.from('calls').select(projection).eq('site_id', siteId).in('id', unique);
+    if (!res.error && res.data != null) {
+      rawRows = res.data as unknown as Array<Record<string, unknown>>;
+      break;
+    }
+    const err = res.error as { code?: string; message?: string } | undefined;
+    const recoverable =
+      isMissingOciStatusColumnError(err) ||
+      isMissingColumnProjectionError(err);
+    if (!recoverable) {
+      logWarn('export_call_context_fetch_failed', { site_id: siteId, error: formatSupabaseClientError(res.error) });
+      rawRows = [];
+      break;
+    }
+  }
+  if (rawRows === null) rawRows = [];
+
+  const rows: ExportCallContextRow[] = rawRows.map((r) => normalizeExportCallContextRow(r));
+  const hashMap = await fetchCallerPhoneHashesForCallIds(siteId, unique);
+  for (const row of rows) {
+    const extra = hashMap[row.id];
+    if (!extra) continue;
+    const cur = row.caller_phone_hash_sha256 != null ? String(row.caller_phone_hash_sha256).trim() : '';
+    if (!cur) row.caller_phone_hash_sha256 = extra;
+  }
+
+  return rows;
 }

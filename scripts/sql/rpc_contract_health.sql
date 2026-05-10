@@ -146,3 +146,12 @@ WHERE rp.routine_schema = 'public'
 SELECT
   CASE WHEN to_regclass('public.call_funnel_projection') IS NOT NULL THEN true ELSE false END AS projection_exists,
   CASE WHEN to_regclass('public.call_funnel_ledger') IS NOT NULL THEN true ELSE false END AS ledger_exists;
+
+-- Row-scoped recovery dependency contract (should return dependency_status=ok)
+SELECT
+  CASE
+    WHEN to_regprocedure('public.recover_safe_processing_queue_rows_v1(uuid[],integer,text,text)') IS NULL THEN 'RECOVERY_RPC_MISSING'
+    WHEN to_regprocedure('public.append_worker_transition_batch_v2(uuid[],text,timestamptz,jsonb)') IS NULL THEN 'RECOVERY_DEPENDENCY_MISSING'
+    WHEN position('public.append_worker_transition_batch_v2' IN pg_get_functiondef(to_regprocedure('public.recover_safe_processing_queue_rows_v1(uuid[],integer,text,text)'))) = 0 THEN 'RECOVERY_DEPENDENCY_DRIFT'
+    ELSE 'ok'
+  END AS dependency_status;

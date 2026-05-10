@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
 import {
+  isMissingColumnProjectionError,
   isMissingOciRelationError,
   supabaseErrorToError,
 } from '@/lib/oci/format-supabase-error';
@@ -7,6 +8,12 @@ import type { QueueRow } from '@/lib/oci/google-ads-export/types';
 import { ExportHttpError, type ExportAuthContext } from './export-auth';
 
 const EXPORT_QUEUE_LIMIT = 1000;
+
+const QUEUE_SELECT_WITH_USER_IDENTIFIERS =
+  'id, status, sale_id, call_id, gclid, wbraid, gbraid, user_identifiers, provider_path, conversion_time, occurred_at, created_at, updated_at, value_cents, optimization_stage, optimization_value, currency, action, external_id, session_id, provider_key';
+
+const QUEUE_SELECT_WITHOUT_USER_IDENTIFIERS =
+  'id, status, sale_id, call_id, gclid, wbraid, gbraid, provider_path, conversion_time, occurred_at, created_at, updated_at, value_cents, optimization_stage, optimization_value, currency, action, external_id, session_id, provider_key';
 
 /**
  * Google Ads offline export reads **only** `offline_conversion_queue` (journal SSOT).
@@ -18,22 +25,29 @@ export type FetchedExportData = {
 
 export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedExportData> {
   const queueLimit = Math.min(EXPORT_QUEUE_LIMIT, Math.max(1, ctx.pageLimit));
-  let queueQuery = adminClient
-    .from('offline_conversion_queue')
-    .select('id, sale_id, call_id, gclid, wbraid, gbraid, conversion_time, occurred_at, created_at, updated_at, value_cents, optimization_stage, optimization_value, currency, action, external_id, session_id, provider_key')
-    .eq('site_id', ctx.siteUuid)
-    .in('status', ['QUEUED', 'RETRY'])
-    .eq('provider_key', ctx.providerFilter);
-  if (ctx.canaryMode && ctx.canaryAllowlistIds.length > 0) {
-    queueQuery = queueQuery.in('id', ctx.canaryAllowlistIds);
+
+  async function runQueueSelect(selectList: string) {
+    let queueQuery = adminClient
+      .from('offline_conversion_queue')
+      .select(selectList)
+      .eq('site_id', ctx.siteUuid)
+      .in('status', ['QUEUED', 'RETRY'])
+      .eq('provider_key', ctx.providerFilter);
+    if (ctx.canaryMode && ctx.canaryAllowlistIds.length > 0) {
+      queueQuery = queueQuery.in('id', ctx.canaryAllowlistIds);
+    }
+    if (ctx.queueCursorUpdatedAt && ctx.queueCursorId) {
+      queueQuery = queueQuery.or(
+        `updated_at.gt.${ctx.queueCursorUpdatedAt},and(updated_at.eq.${ctx.queueCursorUpdatedAt},id.gt.${ctx.queueCursorId})`
+      );
+    }
+    return queueQuery.order('updated_at', { ascending: true }).order('id', { ascending: true }).limit(queueLimit);
   }
-  if (ctx.queueCursorUpdatedAt && ctx.queueCursorId) {
-    queueQuery = queueQuery.or(`updated_at.gt.${ctx.queueCursorUpdatedAt},and(updated_at.eq.${ctx.queueCursorUpdatedAt},id.gt.${ctx.queueCursorId})`);
+
+  let { data: queueRows, error: queueError } = await runQueueSelect(QUEUE_SELECT_WITH_USER_IDENTIFIERS);
+  if (queueError && isMissingColumnProjectionError(queueError)) {
+    ({ data: queueRows, error: queueError } = await runQueueSelect(QUEUE_SELECT_WITHOUT_USER_IDENTIFIERS));
   }
-  const { data: queueRows, error: queueError } = await queueQuery
-    .order('updated_at', { ascending: true })
-    .order('id', { ascending: true })
-    .limit(queueLimit);
   if (queueError) {
     if (isMissingOciRelationError(queueError)) {
       throw new ExportHttpError(503, {
@@ -46,6 +60,6 @@ export async function fetchExportData(ctx: ExportAuthContext): Promise<FetchedEx
   }
 
   return {
-    rawList: Array.isArray(queueRows) ? (queueRows as QueueRow[]) : [],
+    rawList: Array.isArray(queueRows) ? (queueRows as unknown as QueueRow[]) : [],
   };
 }

@@ -25,6 +25,16 @@ export function supabaseErrorToError(context: string, err: unknown): Error {
 }
 
 /** Missing relation / PostgREST schema cache — typical when OCI tables were never migrated to remote. */
+/** PostgREST/PG “unknown column” / schema drift — caller may retry with a narrower SELECT. */
+export function isMissingColumnProjectionError(err: unknown): boolean {
+  if (!err) return false;
+  const code = err && typeof err === 'object' ? String((err as { code?: string }).code ?? '') : '';
+  if (code === '42703' || code === 'PGRST204') return true;
+  const s = formatSupabaseClientError(err).toLowerCase();
+  if (s.includes('does not exist') && (s.includes('column') || s.includes('schema cache'))) return true;
+  return false;
+}
+
 export function isMissingOciRelationError(err: unknown): boolean {
   const s = formatSupabaseClientError(err).toLowerCase();
   const code = err && typeof err === 'object' ? (err as { code?: string }).code : '';

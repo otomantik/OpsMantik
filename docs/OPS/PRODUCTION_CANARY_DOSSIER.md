@@ -939,3 +939,366 @@ No **`--live`**, no **`markAsExported=true`**, no claim, no Google upload, no AC
 ### PR-9H.4G gate (live allowlisted upload)
 
 - **Unblocked on hosted parity only:** operator may proceed to **PR-9H.4G** live path **only** under separate **`CANARY_UPLOAD_APPROVAL`**, **`OPSMANTIK_ALLOWLIST_IDS`**, hosted **`APP_BASE_URL`** (never localhost for **`--live`**), and normal Apps Script / ACK discipline — **not executed in this verify step**.
+
+## PR-9H.4G — Controlled Live Canary Upload + ACK Verification
+
+- **PR-9C** remains **invalid and separate** — **PR-9H.4G does not validate or execute PR-9C**.
+- **`offline_conversion_queue`** remains the **canonical upload authority**; **`marketing_signals`** was **not** used as upload authority in this chain.
+
+### Final decision (`final_decision`)
+
+- **`LIVE_CANARY_HTTP_EXPORT_COMPLETE_PROVIDER_SCRIPT_PENDING`** — **preflight passed**, hosted **`--dry-run`** matched identity (**exactly one** allowlisted row), hosted **`--live`** **`CANARY_EXPORT_EXECUTED`** for **only** **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** (**no broad export**, **`CANARY_MAX_BATCH_SIZE=1`**, explicit **`OPSMANTIK_ALLOWLIST_IDS`**). **Google Ads upload** and **`/api/oci` ACK** did **not** run inside this automation session (Muratcan Apps Script lane **not invoked here**); row readback immediately after HTTP export showed **`PROCESSING`**, **`uploaded_at=null`**, **`provider_request_id=null`**, classifier **`PROVIDER_NOT_ATTEMPTED`**. **Operator next:** run Muratcan **`GoogleAdsScriptMuratcanAku.js`** against **only** this payload / queue id, then **ACK only** that **`queue_id`** — until then, **`LIVE_CANARY_ACK_GREEN`** is **not** claimed.
+
+The terminal outcomes **`LIVE_CANARY_ACK_GREEN`**, **`LIVE_CANARY_UPLOAD_FAILED_PROVIDER_CLASSIFIED`**, **`LIVE_CANARY_ABORTED_PREFLIGHT`**, and **`LIVE_CANARY_ABORTED_IDENTITY_MISMATCH`** apply when the full lane (including provider upload classification or gated aborts) is evaluated end-to-end; this execution snapshot stops at **HTTP export claim + honest provider-not-attempted readback** (**`LIVE_CANARY_HTTP_EXPORT_COMPLETE_PROVIDER_SCRIPT_PENDING`**).
+
+### Scope guardrails (explicit)
+
+| Rule | This run |
+|---|---|
+| Broad live export (no allowlist / batch > 1) | **Not run** |
+| Queue rows touched | **Only** allowlisted id **`…b192e47c`** |
+| **`--live`** | **Yes** — **`APP_BASE_URL=https://console.opsmantik.com`** (**never localhost**) |
+| **`markAsExported=true`** | **Yes** — applied **only** via allowlisted **`GET /api/oci/google-ads-export`** (`limit=1`, canary headers, duplicate **`allowlist_ids`** query); claim confined to that row |
+| Google Ads upload attempted **from this automation** | **No** (HTTP response returns payload only; script/worker upload **out of band**) |
+| ACK attempted **from this automation** | **No** |
+
+### Step 0 — Preflight evidence
+
+- **`RELEASE_EVIDENCE_MODE=production`**, **`TARGET_DB_EVIDENCE_STRICT=1`**, **`npm run release:evidence:production`** → **`overall_status=PASS`**, **`target_db_contract_status=TARGET_DB_GREEN`**, **`blocking_failures=[]`** (artifact: **`tmp/release-gates-production.md`** / **`tmp/release-gates-production.json`**).
+- **Hosted vs local SHA**
+
+| Check | Value |
+|---|---|
+| **`GET https://console.opsmantik.com/api/health` → `git_sha`** | **`bd40cf8355e1d304d019b51277c2b5291f1fb393`** |
+| **Local `git rev-parse HEAD`** | **`bd40cf8355e1d304d019b51277c2b5291f1fb393`** |
+| **Match** | **yes** — **preflight continues** |
+
+- **Hosted dry-run (parity + identity before mutating export)** — `APP_BASE_URL=https://console.opsmantik.com`, **`OPSMANTIK_ALLOWLIST_IDS=0b298a99-673a-4cd1-a2c1-94a3b192e47c`**, **`node scripts/db/oci-canary-live-export.mjs --dry-run`** (Muratcan **`CANARY_*`** from operator **`.env.local`**):
+
+```json
+{
+  "ok": true,
+  "code": "CANARY_DRY_RUN_OK",
+  "markAsExported": false,
+  "claim": "NOT_EXECUTED",
+  "preview_queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "preview_item_count": 1,
+  "conversion_name": "OpsMantik_Won",
+  "preview_allowlist_contract": {
+    "parsed_allowlist_count": 1,
+    "allowlist_query_seen": true,
+    "allowlist_header_seen": true,
+    "applied_to_fetch": true,
+    "expected_queue_id_suffix": "b192e47c",
+    "first_fetched_queue_id_suffix": "b192e47c"
+  }
+}
+```
+
+- **`PREVIEW_UNEXPECTED_SINGLETON_ROW`:** not observed.
+
+### Step 1 — Identity lock (suffix-safe / non-sensitive)
+
+| Field | Value |
+|---|---|
+| **`queue_id` (full)** | **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** |
+| **`queue_id` suffix** | **`b192e47c`** |
+| **`site_id` suffix** | **`a463127b26b8`** |
+| **`conversion_name`** | **`OpsMantik_Won`** |
+| **Click id** | **`gclid` present** on export item (raw id **not** logged) |
+| **Conversion value / currency** | **`100` `TRY`** (from HTTP export redacted snapshot) |
+| **`external_id` suffix (post-claim readback)** | **`…d3e8c6a`** |
+
+### Step 2 — Live claim (hosted `--live` only)
+
+- **Command:** `CANARY_UPLOAD_APPROVAL=I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`, **`OPSMANTIK_ALLOWLIST_IDS`** as above, **`APP_BASE_URL=https://console.opsmantik.com`**, **`node scripts/db/oci-canary-live-export.mjs --live`**.
+
+```json
+{
+  "ok": true,
+  "code": "CANARY_EXPORT_EXECUTED",
+  "export_run_id": "oci_run_1778280943710_60985e0b",
+  "queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "live_diagnostics": {
+    "fetched_count": 1,
+    "claimed_count": 1,
+    "returned_item_count": 1,
+    "skipped_count": 0
+  },
+  "item_snapshot_redacted": {
+    "conversion_name": "OpsMantik_Won",
+    "click_id_type": "gclid",
+    "conversion_value": 100,
+    "conversion_currency": "TRY"
+  }
+}
+```
+
+- **Provider request id (Google):** **none** from HTTP export path (**expected** until Apps Script upload).
+
+### Step 3 — ACK control
+
+- **ACK:** **not executed** in this automation session (**operator Apps Script** performs upload + ACK **only** for the uploaded **`queue_id`**).
+
+### Step 4 — Post-run evidence + readback
+
+- **`npm run release:evidence:production`** (strict) → **`overall_status=PASS`**, **`TARGET_DB_GREEN`** (post-claim refresh).
+- **`RECOVERY_TARGET_QUEUE_ID=0b298a99-673a-4cd1-a2c1-94a3b192e47c`**, **`RECOVERY_TARGET_SITE_ID=7eb8f5c0-4a96-4a0e-bd89-a463127b26b8`**, **`node scripts/db/pr9g-read-row-state.mjs`** → **`status=PROCESSING`**, **`uploaded_at=null`**, **`provider_request_id=null`**, **`classifier_provider_outcome=PROVIDER_NOT_ATTEMPTED`**, **`ack_found=false`**.
+
+### Collateral / blast radius
+
+- **Single-queue discipline:** preview + live targeted **only** **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** via allowlist + **`canaryExpectedQueueId`**.
+- **No extra rows claimed** beyond that id on this path (**`live_diagnostics.claimed_count=1`**, **`returned_item_count=1`**).
+
+## PR-9H.4G.1 — Provider upload + ACK closure (operator lane)
+
+- **PR-9C** remains **invalid and separate**.
+- **`offline_conversion_queue`** remains the **canonical upload authority**; **`marketing_signals`** was **not** used as upload authority.
+- **No broad live export** and **no second hosted `--live`** export run in this closure step (HTTP claim already completed in **PR-9H.4G**).
+
+### Final decision (`final_decision`)
+
+- **`LIVE_CANARY_HTTP_EXPORT_COMPLETE_PROVIDER_SCRIPT_PENDING`** — **Step 0** pre-provider readback matched expected **PROCESSING** / **null** upload fields / **`ack_found=false`**. **Google Ads provider upload** (`GoogleAdsScriptMuratcanAku.js`) was **not executed** inside this Cursor automation session (Apps Script runs **only** in the Google Ads Scripts runtime after operator paste/deploy + manual run). **ACK** and **ACK_FAILED** were **not** called — per safety rules, **no ACK** without a real upload attempt. **Operator:** run Muratcan script **for queue id `0b298a99-673a-4cd1-a2c1-94a3b192e47c` only**, using payload aligned with **PR-9H.4G** export (**`export_run_id`:** **`oci_run_1778280943710_60985e0b`**); on **success** ACK that id + run id + **`provider_request_id`**; on **classified failure** use **ACK_FAILED** for **that id only** if your lane supports it — then append a follow-up dossier revision with **`LIVE_CANARY_ACK_GREEN`** or **`LIVE_CANARY_UPLOAD_FAILED_PROVIDER_CLASSIFIED`**.
+
+### Queue scope (exact)
+
+| Field | Value |
+|---|---|
+| **`queue_id`** | **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** (**only** id in scope) |
+| **`export_run_id` (PR-9H.4G HTTP live)** | **`oci_run_1778280943710_60985e0b`** |
+
+### Step 0 — Pre-provider readback
+
+**Command:** `RECOVERY_TARGET_QUEUE_ID=0b298a99-673a-4cd1-a2c1-94a3b192e47c`, `RECOVERY_TARGET_SITE_ID=7eb8f5c0-4a96-4a0e-bd89-a463127b26b8`, `node scripts/db/pr9g-read-row-state.mjs`
+
+**Result (PR-9H.4G.1 automation run):**
+
+```json
+{
+  "ok": true,
+  "queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "status": "PROCESSING",
+  "uploaded_at": null,
+  "provider_request_id": null,
+  "ack_found": false,
+  "classifier_provider_outcome": "PROVIDER_NOT_ATTEMPTED",
+  "conversion_name": "OpsMantik_Won"
+}
+```
+
+- **Abort gates:** row **present**; **`status=PROCESSING`**; **`provider_request_id` null**; **`ack_found=false`** — **proceed to operator provider step** (not automated here).
+
+### Step 1 — Provider upload (out-of-band)
+
+- **Executed in this automation:** **no** — **Google Ads Script** is **not** invocable from repo CI / Cursor shell.
+- **Expected operator capture:** Google upload result, **`provider_request_id`** (if returned), partial failure payload, **`conversion_name`**, **`queue_id`**, timestamp, accept/reject.
+
+### Step 2 — ACK / ACK_FAILED
+
+| Path | This automation |
+|---|---|
+| **ACK (success)** | **Not run** (no upload in this session) |
+| **ACK_FAILED** | **Not run** (no upload attempt in this session) |
+
+### Step 3 — Post-run evidence + readback
+
+- **`TARGET_DB_EVIDENCE_STRICT=1`**, **`npm run release:evidence:production`** → **`overall_status=PASS`**, **`TARGET_DB_GREEN`** (run after dossier edit in same closure batch).
+- **Readback:** same **`pr9g-read-row-state.mjs`** — expect unchanged **PROCESSING** / **null** provider until operator completes Apps Script lane.
+
+### Invariants verified (this batch)
+
+- **Only** allowlisted **`queue_id`** read / documented — **no** other queue id in scope.
+- **No** broad live export; **no** hosted **`oci-canary-live-export.mjs --live`** re-run.
+- **PR-9C** invalid and separate; queue SSOT **`offline_conversion_queue`.
+
+## PR-9H.4G.2 — Google Ads Script blocked (`CANARY_EXPORT_BLOCKED` / HTTP 409)
+
+- **PR-9C** remains **invalid and separate**.
+- **`offline_conversion_queue`** remains upload authority; **`marketing_signals`** not used as upload authority.
+- **No broad live export.** **No `upload.apply`**, **no ACK**, **no ACK_FAILED** for this blocked attempt (provider lane never started — **do not** record **`ACK_FAILED`** as a Google upload failure).
+
+### Final decision (`final_decision`) — operator Apps Script attempt
+
+- **`LIVE_CANARY_PROVIDER_LANE_BLOCKED_BY_EXISTING_PROCESSING_CLAIM`** — Muratcan **`sync`** called **`GET /api/oci/google-ads-export`** with **`markAsExported=true`** while the allowlisted row was still **`PROCESSING`** from **PR-9H.4G** hosted **`--live`**. Journal **`GET`** only selects **`QUEUED`** / **`RETRY`** (see `export-fetch.ts` **`status`** filter); a **`PROCESSING`** row is **not fetched**, so the export build returns **zero** claimable items and canary **`markExportProcessing`** throws **`CANARY_EXPORT_BLOCKED`** → **HTTP 409** `{"error":"Canary export blocked","code":"CANARY_EXPORT_BLOCKED"}`. **Not** a duplicate-header typo alone — empty fetch under canary **`markAsExported`** violates the single-row claim invariant.
+
+### Observed operator logs (summary)
+
+| Field | Value |
+|---|---|
+| Guard | **`CANARY SYNC`** active |
+| **`allowlistCount`** | **`1`** |
+| **`expectedQueueId`** | **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** |
+| **`exportLimit`** | **`1`** |
+| **`exportRunId`** (script metadata) | **`oci_run_1778280943710_60985e0b`** |
+| **HTTP** | **409** — **`CANARY_EXPORT_BLOCKED`** |
+| **`upload.apply`** | **not started** |
+| **ACK / ACK_FAILED** | **not run** |
+
+### Step 1 — Readback after blocked attempt (before recovery)
+
+**Command:** `RECOVERY_TARGET_QUEUE_ID=0b298a99-673a-4cd1-a2c1-94a3b192e47c`, `RECOVERY_TARGET_SITE_ID=7eb8f5c0-4a96-4a0e-bd89-a463127b26b8`, `node scripts/db/pr9g-read-row-state.mjs`
+
+```json
+{
+  "ok": true,
+  "queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "status": "PROCESSING",
+  "uploaded_at": null,
+  "provider_request_id": null,
+  "ack_found": false,
+  "classifier_provider_outcome": "SCRIPT_CRASHED_BEFORE_UPLOAD",
+  "conversion_name": "OpsMantik_Won"
+}
+```
+
+- **Expected gates satisfied:** row exists; **`PROCESSING`**; **`uploaded_at` null**; **`provider_request_id` null**; **`ack_found=false`** — **`LIVE_CANARY_ABORTED_ROW_STATE_CHANGED`** **not** used.
+
+### Step 2 — Exact-id recovery (`PROCESSING` → `RETRY`)
+
+**Path:** existing **`node scripts/db/pr9h4c-recover-claimed-not-uploaded.mjs`** (pinned **`ALLOWED_QUEUE_ID`** / **`ALLOWED_SITE_ID`**, RPC **`recover_safe_processing_queue_rows_v1`** only).
+
+**Approval env (example keys, values redacted):** **`CANARY_INCIDENT_RECOVERY_APPROVAL=I_APPROVE_ROW_SCOPED_RECOVERY_AFTER_CLAIMED_NOT_UPLOADED`**, **`INCIDENT_TICKET`**, **`OPERATOR_ID`**, **`INCIDENT_OWNER`**, **`CANARY_EXPORT_RUN_ID=oci_run_1778280943710_60985e0b`** (audit tag in RPC reason), **`RECOVERY_MIN_AGE_MINUTES=1`**.
+
+**Automation result:**
+
+```json
+{
+  "ok": true,
+  "decision": "PR9H4C_RECOVERED_TO_RETRY",
+  "counters": {
+    "requested_count": 1,
+    "eligible_count": 1,
+    "recovered_count": 1,
+    "skipped_count": 0
+  },
+  "row": {
+    "queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+    "before_status": "PROCESSING",
+    "after_status": "RETRY"
+  }
+}
+```
+
+### Step 3 — Next operator action (single Muratcan **`sync`**)
+
+Run **`GoogleAdsScriptMuratcanAku.js`** **`sync`** **once** with **`OPSMANTIK_EXPORT_LIMIT=1`**, allowlist + **`CANARY_*`** as before. After recovery the row is **`RETRY`** and **will** appear in journal fetch — **`markAsExported=true`** can claim **one** row and return payload for **`upload.apply`**. **`CANARY_EXPORT_RUN_ID`:** use the **`export_run_id`** returned by the **new** successful export response (or leave script default to pick **`page.exportRunId`**) — **do not** assume **`oci_run_1778280943710_60985e0b`** for the next successful export.
+
+### Post-recovery readback (evidence)
+
+```json
+{
+  "ok": true,
+  "queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "status": "RETRY",
+  "uploaded_at": null,
+  "provider_request_id": null,
+  "ack_found": false
+}
+```
+
+### Recovery / next decision summary
+
+| Label | Meaning |
+|---|---|
+| **`LIVE_CANARY_PROVIDER_LANE_BLOCKED_BY_EXISTING_PROCESSING_CLAIM`** | Apps Script **`sync`** hit **409** because journal export could not claim the row while it stayed **`PROCESSING`** / invisible to **`QUEUED`/`RETRY`** fetch. |
+| **`PR9H4C_RECOVERED_TO_RETRY`** | Exact-id RPC recovery succeeded; row **`RETRY`** and ready for **one** Muratcan **`sync`** pass. |
+
+## PR-9H.4G.3 — Google Ads Script upload + ACK closure
+
+- **PR-9C** remains **invalid and separate**.
+- **`offline_conversion_queue`** remains the **single upload authority**; **`marketing_signals`** was **not** used as upload authority.
+- **No broad live export.** **Do not** re-run Muratcan **`sync`** after successful upload. **Do not** run hosted **`oci-canary-live-export.mjs --live`** again for this canary. **Do not** upload the same conversion again.
+
+### Final decision (`final_decision`)
+
+- **`LIVE_CANARY_ACK_GREEN`** — Google Ads **`upload.apply`** completed (**`uploadedRows: 1`**). **`POST /api/oci/ack`** succeeded on **ACK-only repair** with **`seal_`**-prefixed id (**`ok: true`**, **`updated: 1`**, **`export_run_id: oci_run_1778283754599_53b8ee1a`**). **`receipt_persist_warning: true`** on the ACK JSON is a **non-blocking** receipt persistence hint (documented below); it is **not** an ACK failure and does **not** require re-upload or duplicate ACK unless readback later proves ACK was not applied.
+
+### Queue scope (exact)
+
+| Field | Value |
+|---|---|
+| **Canonical `queue_id`** | **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** (**only** row in this chain) |
+| **Raw export / ACK id (prefixed)** | **`seal_0b298a99-673a-4cd1-a2c1-94a3b192e47c`** |
+| **`export_run_id` (successful SYNC)** | **`oci_run_1778283754599_53b8ee1a`** |
+
+### Step A — PEEK (operator)
+
+- **`PEEK_GREEN_SINGLE_ALLOWLIST_ROW_FOUND`**
+- **`allowlistMatch: true`**
+- **`conversion_name`:** **`OpsMantik_Won`**
+- **Value / currency:** **`100` `TRY`**
+- **`conversion_time`:** **`2026-05-08 13:57:58+0300`**
+- **Click ids:** **`gclid`**, **`wbraid`**, **`gbraid`** present (operator-confirmed).
+
+### Step B — SYNC (single page)
+
+- **`export_run_id`:** **`oci_run_1778283754599_53b8ee1a`**
+- **`markAsExportedServer: true`**
+- **`rowsThisPage: 1`**
+- **`allowlistMatch: true`**
+- **Google Ads:** **`upload.apply`** started and completed; **`uploadedRows: 1`**.
+
+### Step C — ACK path
+
+1. **First ACK** with canonical UUID **`0b298a99-673a-4cd1-a2c1-94a3b192e47c`** → **`ACK_UNKNOWN_PREFIX`** (this lane expects **`seal_`**-prefixed export id for queue id resolution).
+2. **ACK-only repair:** id **`seal_0b298a99-673a-4cd1-a2c1-94a3b192e47c`**, **`export_run_id: oci_run_1778283754599_53b8ee1a`**.
+
+**ACK response (repair):**
+
+```json
+{
+  "ok": true,
+  "updated": 1,
+  "export_run_id": "oci_run_1778283754599_53b8ee1a",
+  "warnings": {
+    "receipt_persist_warning": true
+  }
+}
+```
+
+- **`receipt_persist_warning: true`:** treat as **receipt / auxiliary persistence warning** only — **not** **`updated=0`**, **not** a reason to re-run **`sync`** or re-upload without operator evidence that ACK did not persist.
+
+### Step D — Final readback (`pr9g-read-row-state.mjs`)
+
+**Command:** `RECOVERY_TARGET_QUEUE_ID=0b298a99-673a-4cd1-a2c1-94a3b192e47c`, `RECOVERY_TARGET_SITE_ID=7eb8f5c0-4a96-4a0e-bd89-a463127b26b8`, `node scripts/db/pr9g-read-row-state.mjs`
+
+```json
+{
+  "ok": true,
+  "queue_id": "0b298a99-673a-4cd1-a2c1-94a3b192e47c",
+  "status": "COMPLETED",
+  "uploaded_at": "2026-05-08T23:44:26.547Z",
+  "provider_request_id": null,
+  "conversion_name": "OpsMantik_Won",
+  "ack_found": false
+}
+```
+
+- **Row contract:** **`COMPLETED`** + **`uploaded_at` populated** confirms terminal success for **`offline_conversion_queue`**. **`provider_request_id`** may remain **`null`** (Google Ads Scripts bulk upload often does not surface a REST-style request id). **`ack_found`** in this script is **heuristic** (transition payload substring scan); **`false`** here does **not** override **`POST /ack`** **`updated: 1`** + terminal row state — **`LIVE_CANARY_ACK_GREEN`** stands on **HTTP ACK + row terminalization**.
+
+### Allowed `final_decision` labels (this subsection, for future edits)
+
+- **`LIVE_CANARY_ACK_GREEN`**, **`LIVE_CANARY_UPLOAD_COMPLETE_ACK_STILL_PENDING`**, **`LIVE_CANARY_UPLOAD_COMPLETE_ACK_PREFIX_MISMATCH`**, **`LIVE_CANARY_ABORTED_PEEK_ALLOWLIST_MISMATCH`**, **`LIVE_CANARY_PROVIDER_LANE_BLOCKED_BY_EXISTING_PROCESSING_CLAIM`**
+
+---
+
+## PR-9H.7D — Hashed phone export payload surfacing (Koç Oto Kurtarma canary)
+
+| Field | Value |
+|--------|--------|
+| change_ticket | `PR-9H.7D` |
+| site `public_id` | `93cb9966bcf349c1b4ece8ea34142ace` |
+| site internal `id` | `3276893e-0433-4e35-95f2-4e80cf863f4c` |
+| target `offline_conversion_queue.id` | `a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2` |
+| conversion (action) | `OpsMantik_Won` |
+| provider_key | `google_ads` |
+
+**Problem:** The canary row was allowlist-visible in PEEK, but the script logged **`hp=0`** because the API response did not include **server-prehashed** phone courier fields (`hashedPhoneNumber` / `userIdentifiers[type=hashed_phone]`), so the run hit **`HASHED_PHONE_EXPORT_MISSING`**.
+
+**Goal (payload only):** Surface a **verified** 64-char lowercase SHA-256 hex from existing server sources (queue `user_identifiers` shapes and/or `calls.caller_phone_hash_sha256`) in the export item. **Never** export raw phone; the Google Ads Script stays **courier-only** (no normalization or hashing of raw phone in script).
+
+**Read-only proof path:** `markAsExported=false`, allowlist = target queue id, `providerKey=google_ads` — **no** claim, **no** upload, **no** ACK, **no** `markAsExported=true` in this change record.
+
+**Expected after deploy (preview only):** PEEK can show **`hp=1`** for the allowlisted row when a valid hash is present in DB paths; `preview_diagnostics` may show non-sensitive phone-hash **counts** and `hashed_phone_source_counts` (enum keys only). **Sync** and production canary **success** are **out of scope** for PR-9H.7D and require operator approval in a **later** change.
+
+**`final_decision` (this PR, implementation / preview readiness):** **`HASHED_PHONE_CANARY_PEEK_READY`** — means the server **can** surface courier fields in preview; it does **not** certify end-to-end Google upload.

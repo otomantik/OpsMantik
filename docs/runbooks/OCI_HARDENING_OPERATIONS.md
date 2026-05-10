@@ -8,6 +8,239 @@ This runbook covers the operational procedures for the OCI (Offline Conversion I
 
 Canonical upload authority for Google batch remains **queue-only**: `GET /api/oci/google-ads-export` reads `offline_conversion_queue` only. `marketing_signals` is legacy/audit/recovery support and not an independent upload source.
 
+## Site identity: `public_id` vs `sites.id` (PR-9H.5B.0A)
+
+- **Google Ads Script Properties** (`OPSMANTIK_SITE_ID`) usually store **`sites.public_id`** (32-character hex string).
+- **`offline_conversion_queue.site_id`** (and most site-scoped FKs) reference **`sites.id`** — the internal UUID.
+
+If you filter `offline_conversion_queue` with **`public_id`** directly on **`site_id`**, you get **zero rows** even when data exists.
+
+**Audit scripts:** `scripts/db/pr9h5b-queue-coverage-audit.mjs` accepts either identifier via **`TARGET_SITE_ID`** / **`OPSMANTIK_SITE_ID`**, resolves through **`sites`**, and only then queries the queue. Shared helper: **`scripts/db/lib/resolve-site-identity.mjs`**.
+
+**Manual SQL (Supabase):** resolve once in a CTE, then scope all queue queries to **`resolved_site_uuid`**:
+
+```sql
+WITH resolved_site AS (
+  SELECT id AS site_uuid, public_id
+  FROM sites
+  WHERE id::text = :operator_input
+     OR public_id = :operator_input
+  LIMIT 2
+)
+SELECT rs.site_uuid, rs.public_id, q.status, COUNT(*) AS cnt
+FROM resolved_site rs
+JOIN offline_conversion_queue q ON q.site_id = rs.site_uuid AND q.provider_key = 'google_ads'
+GROUP BY rs.site_uuid, rs.public_id, q.status;
+```
+
+If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, resolve ambiguity before continuing.
+
+**Example — Koç Oto Kurtarma**
+
+| Field | Value |
+|--------|--------|
+| `sites.public_id` | `93cb9966bcf349c1b4ece8ea34142ace` |
+| `sites.id` (queue FK) | `3276893e-0433-4e35-95f2-4e80cf863f4c` |
+
+### Why QUEUED rows do not appear in Google Ads upload log
+
+- **`QUEUED` / `RETRY` in `offline_conversion_queue`** = local **candidates** for the export API. They are **not** Google-side facts until a provider upload succeeds.
+- **Google Ads “upload log”** (bulk offline conversions history in the Google Ads UI) lists rows **submitted to Google** via **`upload.apply()`** (Scripts) or the equivalent API upload — **not** OpsMantik DB state by itself.
+- **Required path** (journal-only architecture): `offline_conversion_queue` (QUEUED/RETRY) → **`GET /api/oci/google-ads-export`** (`buildExportItems`: sendability, value/time gates, single-conversion / highest-gear policy) → returned payload → **Google Ads Script / runner** validation → **`upload.apply()`** → **then** a line can appear in Google’s upload history → **`POST /api/oci/ack`** reconciles queue state (ACK does **not** create a Google upload log row).
+
+**Why operators see fewer PEEK rows than QUEUED DB rows (same site):**
+
+1. **Export page size** — One HTTP GET returns at most **`limit`** rows (default up to 250/1000); cursor pagination applies.
+2. **Build skips** — Preview diagnostics include **`skip_reason_counts`**, **`skip_by_reason_detail`**, **`skip_by_action`**, **`skip_by_click_id_availability`**: e.g. missing **`call_id`**, invalid time/value, **call not sendable** for OCI, **suppressed_by_higher_gear** (dedupe within a session/call).
+3. **Script v1 gclid-only** — Rows with only **wbraid/gbraid** may be **validation-classified** in the production script and never reach **`upload.apply()`** → no Google log line.
+4. **`PROCESSING` stuck** — Claimed but not completed rows are **not** in the QUEUED/RETRY export fetch; they will not appear in PEEK until status moves.
+
+**Read-only tools:**
+
+- `node scripts/db/pr9h5b-google-log-visibility-audit.mjs` — queue vs Google log **semantics** + field readiness (booleans only for click ids).
+- `node scripts/db/pr9h5b-queue-coverage-audit.mjs` — coverage-style counts after **resolving** `public_id` → `sites.id`.
+- `node scripts/db/pr9h6-intent-signal-readiness-audit.mjs` — PR-9H.6 read-only: queue rows by stage/status/action, signal booleans (no raw click ids), provider-path readiness vs **Script v1 (GCLID)** vs future API/EC.
+- `node scripts/db/pr9h6-backfill-intents-to-oci-queue.mjs` — **dry-run by default** (calls vs any queue row per `call_id`). **`APPLY=1`** requires **`I_APPROVE_INTENT_TO_OCI_QUEUE_BACKFILL=I_APPROVE_INTENT_TO_OCI_QUEUE_BACKFILL`**, **`TARGET_SITE_ID`** (resolvable), **`STAGE_ALLOWLIST`** (e.g. `contacted,offered,won,junk_exclusion`), and **`MAX_ROWS`** (attempt cap). Apply runs `npx tsx scripts/db/pr9h6-backfill-queue-apply.ts` — **no ACK / no upload**; rows tagged `source_type=pr9h6_backfill_queue_apply`.
+
+### Unified intent → OCI queue (PR-9H.6 + PR-9H.6.1)
+
+- Every operator stage must land in **`offline_conversion_queue`** (or explicit `FAILED` / `BLOCKED_*` with reason) — see [`lib/oci/intent-conversion-journal-contract.ts`](../../lib/oci/intent-conversion-journal-contract.ts).
+- **PR-9H.6.1:** Won/seal uses the **same** journal helper as micro-stages ([`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) → [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts)).
+- **`marketing_signals`** stays audit-only — not upload authority. After an audit insert, [`ensureMarketingSignalQueueParity`](../../lib/oci/marketing-signal-queue-parity.ts) runs **best-effort** from the upsert helpers so the journal is not left behind.
+- **Parity read-only checks:** [`lib/oci/intent-queue-parity-guard.ts`](../../lib/oci/intent-queue-parity-guard.ts).
+- **Enhanced Conversions** identifiers are stored **hashed only** under `user_identifiers` with consent; normalization: `google_ads_sha256_v1`.
+- **Rollout:** keep **sync** on **GCLID-ready** rows through Script v1; journalize wbraid/gbraid-only as blocked until API upload adapter is enabled (separate PR).
+
+**Rollback (backfill apply):** rows created by the tool are identifiable via `source_type=pr9h6_backfill_queue_apply` and the same idempotency keys as product enqueue; rollback is **manual** (do not delete ACK’d / COMPLETED history in production without an incident plan). Prefer **`markAsExported=false` PEEK** plus operator review before relying on apply.
+
+**Koç Oto audit site resolution (example):** `TARGET_SITE_ID=93cb9966bcf349c1b4ece8ea34142ace` **or** UUID `3276893e-0433-4e35-95f2-4e80cf863f4c` after resolving `sites.id` (see **Site identity** above).
+
+### PR-9H.7C — Hashed phone export closure + canary row picker
+
+**HASHED_PHONE_EXPORT_MISSING:** If PEEK returns items with click ids but **no** `hashedPhoneNumber` / `userIdentifiers` while `calls.caller_phone_hash_sha256` exists, verify deploy includes **`fetchExportCallContextRows` progressive projections + dedicated hash merge** (`lib/oci/call-sendability-fetch.ts`) and **`export-fetch` retry without `user_identifiers`** when the column is absent. Final courier fields are attached in **`export-build-queue.ts`** only for valid 64-char lowercase SHA-256 hex.
+
+**Required canary row (Koç / Script v1 hashed-phone CSV):**
+
+- **Currency:** **TRY** (must match `sites.currency`; exclude unexpected-currency rows such as legacy sweep USD drift — see `EXPORT_CLOSURE.md` PR-9H.7C note / row `c84eec78-…`).
+- **`status`:** `QUEUED` or `RETRY`.
+- **`gclid`:** present (Script v1 path).
+- **Hashed phone:** valid queue `user_identifiers` **or** `calls.caller_phone_hash_sha256`.
+
+**Read-only selector:**
+
+```bash
+TARGET_SITE_ID=93cb9966bcf349c1b4ece8ea34142ace LIMIT=10 node scripts/db/pr9h7c-select-hashed-phone-canary-row.mjs
+```
+
+**Currency anomaly dry-run (sweep USD vs TRY):** `node scripts/db/pr9h7c-currency-anomaly-repair.mjs` — default report-only; apply requires `APPLY=1`, `APPROVAL_TOKEN=I_APPROVE_OCI_CURRENCY_REPAIR`, `TARGET_SITE_ID`, `MAX_ROWS`.
+
+**When to run production `sync`:** only after PEEK/`preview_diagnostics` show **expected** returned rows and stable ACK policy; do not expect the Google upload log to list all **QUEUED** rows.
+
+### PR-9H.7D — Hashed phone export **payload surfacing** (preview courier only)
+
+**Problem:** A canary `offline_conversion_queue` row can be **allowlist-visible** in PEEK while the Google Ads Script still logs **`hp=0`** because the export JSON did not include a **verified** server-side SHA-256 hex in `hashedPhoneNumber` / `userIdentifiers` (courier fields).
+
+**Goal (this PR):** When a valid 64-character hex hash already exists on the journal or on `calls.caller_phone_hash_sha256`, the export item must **surface** `hashedPhoneNumber`, `userIdentifiers` (and optional `user_identifiers` / `hashed_phone_number` mirrors) — **no raw phone**, **no script-side hashing**, **no change** to claim/ACK semantics except richer item JSON.
+
+**Privacy posture:** Raw phone is **never** in `GET /api/oci/google-ads-export` responses. Operators and logs see only **booleans**, **lengths**, **prefix/suffix redaction**, or **safe source enums** in `preview_diagnostics` / `live_diagnostics` — **never** full hash values.
+
+**Expected canary (Koç Oto Kurtarma, read-only PEEK):**
+
+- `sites.public_id`: `93cb9966bcf349c1b4ece8ea34142ace`
+- Target `offline_conversion_queue.id`: `a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2`
+- `provider_key`: `google_ads`, `markAsExported=false`, allowlist on that queue id, **no** live claim, **no** upload, **no** ACK
+- After deploy: script PEEK should be able to show **`hp=1`** (boolean only) when the response includes courier fields; **sync** remains **blocked** until an operator explicitly approves a follow-up canary (separate from this PR).
+- `preview_diagnostics` may include **aggregates** such as `hashed_phone_exported_count`, `hashed_phone_missing_count`, `hashed_phone_invalid_count`, `hashed_phone_source_counts` (enum keys only — no hash literals).
+
+**This PR does not** run live export, does not send ACK success, and does not declare production canary completion.
+
+## Scheduled Google Ads Script Production Sync
+
+**Per-account installation:** one Google Ads Script project (or one MCC-linked script scoped per account) maps to **one** OpsMantik site. Store **`OPSMANTIK_API_KEY`** and **`OPSMANTIK_SITE_ID`** in **Script Properties** (`PropertiesService.getScriptProperties()`); never rely on inline secrets in source. Source file: `scripts/google-ads-oci/GoogleAdsScriptProduction.js` — paste into the Google Ads Script editor and bind **`main`** to a **time-driven** trigger.
+
+### Script-first enhanced conversions phone hash (PR-9H.7A)
+
+- **never** exposes raw caller phone through `GET .../google-ads-export`; response may include **`hashedPhoneNumber`** (64-char lowercase SHA-256 hex) and **`userIdentifiers`** `{ type: 'hashed_phone', value }` when the journal or `calls.caller_phone_hash_sha256` has a verified hash.
+- **Peek** logs **`hasHashedPhoneNumber`** (boolean); **never** logs the hash literal.
+- **Bulk offline CSV hashed-phone column** stays **disabled by default.** Enable only after a controlled canary confirms the exact **Google Ads Scripts** CSV header Google accepts:
+
+| Property | Required | Notes |
+|---|---|---|
+| `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD` | no | Must be literal `true` to append hashed phone column; absent/false keeps legacy 6-column GCLID CSV |
+| `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` | when upload flag is true | Exact column header string (or use inline `HASHED_PHONE_UPLOAD_COLUMN` in the pasted script). If flag is true and both are empty, sync **`throws`** `HASHED_PHONE_COLUMN_NOT_CONFIGURED` |
+
+- **Operational fallback:** hashed phone can remain stored on **`offline_conversion_queue.user_identifiers`** / `calls` even while the script column stays off — courier JSON still carries hashes for parity and future API/upload paths.
+
+### Hashed phone CSV canary (PR-9H.7B — production script)
+
+Purpose: **prove one** Google Ads Scripts `upload.apply()` succeeds with the **exact** optional hashed-phone Bulk Upload column name, using **pre-hashed** payloads from `GET /api/oci/google-ads-export` only — never raw phone and never script-side hashing.
+
+**Phase 1 — PEEK (`OPSMANTIK_RUN_MODE=peek`, `markAsExported=false` implicitly):** confirm a **small** observable set (prefer **one** row via server tools or natural page). `PEEK_ROW` must show `hasGclid: true`, **`hasHashedPhoneNumber: true`**, expected `conversionName` / `conversionTime` / value / currency booleans. Do **not** expect raw phone or hash literals in logs. If `hasHashedPhoneNumber` is false, stop and debug the export chain (`calls.caller_phone_hash_sha256`, `offline_conversion_queue.user_identifiers`, export build, payload shape).
+
+**Phase 2 — Column contract:** set `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` to a **Google-verified** Scripts offline-conversion CSV header. If the exact header is unknown, **do not** run live sync upload. Document the chosen string and evidence in your change record.
+
+**Phase 3 — Controlled sync (single row, server allowlist):** set **all** of the following in Script Properties (never use `OPSMANTIK_DEBUG_ALLOWLIST_IDS` in sync — it remains **forbidden**):
+
+| Property | Required for canary |
+|---|---|
+| `OPSMANTIK_RUN_MODE` | `sync` |
+| `OPSMANTIK_EXPORT_LIMIT` | **`1`** |
+| `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD` | `true` |
+| `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE` | `true` |
+| `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` | verified Google CSV header string |
+| `OPSMANTIK_EXPORT_ALLOWLIST_IDS` | **exactly one** canonical `offline_conversion_queue.id` |
+| `OPSMANTIK_CANARY_EXPECTED_QUEUE_ID` | **must equal** that same UUID |
+| `OPSMANTIK_CANARY_APPROVAL` | literal `I_APPROVE_PRODUCTION_CANARY` |
+| `OPSMANTIK_CHANGE_TICKET` / `OPSMANTIK_OPERATOR_ID` | set per your change policy (sent as canary headers) |
+
+The script attaches the same **server-side** bundle the API expects (`canaryMode=true`, `allowlist_ids`, approval headers) on the **claim** fetch. It processes **at most one** export page in this mode and aborts if **≠1** returned row.
+
+**Phase 4 — Outcome labels** (see `SYNC_DONE` / `export-run-summary` operational final):
+
+| Label | Meaning |
+|---|---|
+| `HASHED_PHONE_CSV_CANARY_GREEN` | `upload.apply` + ACK `ok` with `updated >= 1` in hashed-phone CSV canary mode |
+| `HASHED_PHONE_CSV_COLUMN_REJECTED` | Google rejected header/value / column contract |
+| `HASHED_PHONE_EXPORT_MISSING` | Strict canary: row lacked verified `hashedPhoneNumber` after export |
+| `HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE` | Canary bundle invalid or row scope unsafe (e.g. limit≠1, allowlist mismatch, missing approval) |
+| `HASHED_PHONE_UPLOAD_SUCCEEDED_ACK_PENDING` | Upload succeeded; ACK did not complete green (same policy as production — do not ACK_FAILED + do not re-upload blindly) |
+| `HASHED_PHONE_CANARY_PROVIDER_ERROR` | Upload failed in canary mode for non-column reasons |
+
+**Rollback:** set `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD=false` (and clear `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE`) → script returns to **legacy six-column GCLID** CSV behavior.
+
+**Broad rollout:** **not** implied by canary success alone — promote only after product approval, stable Google upload logs, and ACK accounting.
+
+### Currency provenance contract (PR-9H.7B follow-up)
+
+- `offline_conversion_queue.currency` is the primary export currency source; export maps this to `conversionCurrency`.
+- `conversionCurrency` must **not** silently fallback to hardcoded `USD` for Turkey sites.
+- Sweeper/maintenance enqueue paths must prefer call sale currency (`calls.sale_currency`) and then site currency resolution in enqueue SSOT; do not pass empty currency probes that normalize to neutral USD.
+- Export diagnostics now include count-only currency anomaly fields:
+  - `currency_missing_count`
+  - `currency_unexpected_count`
+  - `currency_defaulted_count`
+- Canary row selection for Koç (`site_id=3276893e-0433-4e35-95f2-4e80cf863f4c`) should require `currency='TRY'` unless an explicit operator approval exists.
+
+### Script Properties
+
+| Property | Required | Default / notes |
+|---|---|---|
+| `OPSMANTIK_SITE_ID` | yes | `sites.public_id` or internal site UUID |
+| `OPSMANTIK_API_KEY` | yes | OCI API key — set **only** in Script Properties (inline placeholder in repo script is empty) |
+| `OPSMANTIK_BASE_URL` | no | `https://console.opsmantik.com` |
+| `OPSMANTIK_EXPORT_LIMIT` | no | `50` (capped at 1000 server-side) |
+| `OPSMANTIK_RUN_MODE` | no | `peek` \| `sync` \| `ack-repair` |
+| `OPSMANTIK_OPERATOR_ID` | no | `google-ads-script` |
+| `OPSMANTIK_CHANGE_TICKET` | no | `scheduled-production` |
+| `OPSMANTIK_DEBUG_ALLOWLIST_IDS` | no | **Peek only** — client-side filter after a **non-claiming** export. **Forbidden in `sync`:** the script **throws** if this property is set while `OPSMANTIK_RUN_MODE=sync` (prevents claim-then-drop `PROCESSING` rows). |
+| `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE` | no | **PR-9H.7B:** must be `true` when enabling hashed phone CSV in **sync** (with allowlist + approval); see canary section above |
+| `OPSMANTIK_EXPORT_ALLOWLIST_IDS` | canary only | **Single** `offline_conversion_queue.id` (comma list with one UUID) |
+| `OPSMANTIK_CANARY_EXPECTED_QUEUE_ID` | canary only | Must match `OPSMANTIK_EXPORT_ALLOWLIST_IDS` exactly |
+| `OPSMANTIK_CANARY_APPROVAL` | canary only | Literal `I_APPROVE_PRODUCTION_CANARY` |
+
+### First run: PEEK
+
+- Before any upload, set **`OPSMANTIK_RUN_MODE=peek`** and run manually or on a loose schedule. Confirms handshake, export shape, and logs **without** `markAsExported=true` (no queue claim, no Google upload).
+
+### Pilot `sync` (low-risk account)
+
+- Use **one** low-traffic Ads account / site first.
+- Set **`OPSMANTIK_EXPORT_LIMIT=10`** for the pilot until logs show stable **SYNC_GREEN** and ACK behavior.
+- Then raise the limit toward steady-state.
+
+### Schedule recommendation
+
+- **Production `sync`:** **hourly** per site for pilots and moderate volume (reduces overlap risk vs aggressive schedules). Increase frequency only after stable greens and capacity review — overlapping triggers can cause export contention (`QUEUE_CLAIM_MISMATCH`).
+- **`peek`:** ad hoc or hourly for health checks (no claim, no upload).
+- **`ack-repair`:** **No-op in the shipped script** until a **server-side** endpoint exists to list ACK-pending rows for scripted repair. Until then, use operator **`POST /api/oci/ack`** / console flows — do not expect `ack-repair` mode to mutate queue state.
+
+### Run labels (operational)
+
+| Label | Meaning |
+|---|---|
+| **SYNC_GREEN** | Export + upload + ACK completed for the processed rows with **`ok: true`** and **`updated >= 1`** (check logs for `receipt_persist_warning` — non-blocking). **`ok: true`** with **`updated: 0`** is **not** green (script maps to **UPLOAD_SUCCEEDED_ACK_PENDING**). |
+| **UPLOAD_SUCCEEDED_ACK_PENDING** | `upload.apply` succeeded but ACK did not complete safely: HTTP/envelope failure, **`ACK_UNKNOWN_PREFIX`**, **`ok: true` / `updated: 0`**, unrecognized ACK body, or a **thrown** error during ACK. **Do not** call **`/api/oci/ack-failed`** for uploaded rows and **do not** re-upload. Use operator ACK with **raw** prefixed ids and the page **`export_run_id`** when **`ack-repair`** is not wired. |
+| **CLAIMED_ROW_WITHOUT_ACKABLE_ID** | Claimed page included validation failures with **no** raw export id to ACK-fail — operator/data fix required; not plain green. |
+| **UPLOAD_FAILED_PROVIDER_CLASSIFIED** | Google `upload.apply` threw or classified provider failure; script may call **`/api/oci/ack-failed`** for attempted raw ids. |
+| **VALIDATION_FAILED_ACK_FAILED** | Row failed pre-upload validation; **`ack-failed`** with `VALIDATION` where raw ids exist. |
+| **AUTH_FAILED** | HTTP **401/403** on export or ACK path — fix credentials / handshake. |
+| **RATE_LIMITED** | HTTP **429** — backoff and reduce schedule frequency. |
+
+### Upload succeeded + ACK pending (policy)
+
+- If **`upload.apply`** succeeded and **`POST /api/oci/ack`** did not durably confirm (`UPLOAD_SUCCEEDED_ACK_PENDING`), **do not** run **`sync`** again hoping to “fix” ACK — risk of **duplicate offline conversions**. Disable the schedule, reconcile via operator ACK / future repair endpoint.
+
+### Rollback
+
+1. **Disable** the Google Ads Script time-driven trigger for that account.
+2. **Do not** re-run **`sync`** for rows where **Google upload already succeeded** but ACK is pending — duplicate offline conversions risk.
+3. Until **`ack-repair`** is implemented server-side, use operator **`POST /api/oci/ack`** with **`export_run_id`** and **raw** prefixed queue ids (`seal_*`, etc.).
+
+### Id discipline (PR-9H.4G.3 lessons)
+
+- Export `row.id` may be **`seal_<uuid>`** (or other known prefixes). **`POST /api/oci/ack`** expects those **raw** ids, not the bare UUID.
+- **`Order ID`** in the Google bulk CSV must match the **raw** export id used for ACK reconciliation.
+
 ## 1. Canary-Ready Rollout Plan (`OCI_PANEL_OCI_FAIL_CLOSED`)
 
 **Current Default Risk:** Currently, `OCI_PANEL_OCI_FAIL_CLOSED` defaults to `false`. This means if the OCI producer fails to persist a durable artifact (outbox row or reconciliation log), the HTTP mutation route still returns a `200 OK`. This creates a silent failure path.

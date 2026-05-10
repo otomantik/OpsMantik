@@ -92,6 +92,15 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
     );
   }
 
+  if (built.blockedMissingConversionActionIds.length > 0) {
+    await claimAndFinalizeQueue(
+      built.blockedMissingConversionActionIds,
+      now,
+      'MISSING_CONVERSION_ACTION',
+      'MISSING_CONVERSION_ACTION'
+    );
+  }
+
   if (built.blockedQueueTimeIds.length > 0) {
     await claimAndFinalizeQueue(
       built.blockedQueueTimeIds,
