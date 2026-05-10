@@ -114,6 +114,21 @@ TARGET_SITE_ID=93cb9966bcf349c1b4ece8ea34142ace LIMIT=10 node scripts/db/pr9h7c-
 
 **This PR does not** run live export, does not send ACK success, and does not declare production canary completion.
 
+### PR-9H.7E — Hashed-phone canary **closeout** (terminal success, no rerun)
+
+Use this rule after a controlled Koç / Script-lane hashed-phone sync completes.
+
+| Rule | Detail |
+|------|--------|
+| **Terminal success** | For this script lane, **`offline_conversion_queue.status = COMPLETED`** with **`uploaded_at IS NOT NULL`** is the **terminal success** signal. **An `UPLOADED` ledger row is optional** — many installs go **`PROCESSING` → `COMPLETED`** without an intermediate `UPLOADED` **`new_status`**. |
+| **`provider_request_id`** | May remain **`null`** for **Google Ads Script** bulk offline import — Google often does **not** return a REST-style request id. **Do not** treat **`null`** alone as upload failure when **`uploaded_at`** is set and provider error fields are clear. |
+| **After terminal success** | **Do not** re-run sync on the **same allowlisted `queue_id`** for “verification” — the row is already **`COMPLETED`**. Further runs require a **new ticket** and typically a **new queue row**. |
+| **Recovery** | **Do not** run row-scoped recovery on a **`COMPLETED`** canary target unless product/incident process explicitly requires it. |
+| **Evidence package** | Row + ledger prove terminal outcome; **export-run-summary** counts are **not** replayable from SQL until **PR-9H.7F** (persist summaries). Release **`TARGET_DB_GREEN`** may still fail if local DB connectivity to target is broken — track under **PR-9H.7F**. |
+| **Promotion language** | **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS`** is **row-scoped**. Do **not** issue an org-wide **production canary success** verdict unless the **full** release/evidence package (including persisted summaries when applicable) passes policy. |
+
+**PR-9C** remains a **separate, invalid** historical canary record — do not conflate with Koç PR-9H.7D/E outcomes.
+
 ## Scheduled Google Ads Script Production Sync
 
 **Per-account installation:** one Google Ads Script project (or one MCC-linked script scoped per account) maps to **one** OpsMantik site. Store **`OPSMANTIK_API_KEY`** and **`OPSMANTIK_SITE_ID`** in **Script Properties** (`PropertiesService.getScriptProperties()`); never rely on inline secrets in source. Source file: `scripts/google-ads-oci/GoogleAdsScriptProduction.js` — paste into the Google Ads Script editor and bind **`main`** to a **time-driven** trigger.

@@ -1302,3 +1302,75 @@ Run **`GoogleAdsScriptMuratcanAku.js`** **`sync`** **once** with **`OPSMANTIK_EX
 **Expected after deploy (preview only):** PEEK can show **`hp=1`** for the allowlisted row when a valid hash is present in DB paths; `preview_diagnostics` may show non-sensitive phone-hash **counts** and `hashed_phone_source_counts` (enum keys only). **Sync** and production canary **success** are **out of scope** for PR-9H.7D and require operator approval in a **later** change.
 
 **`final_decision` (this PR, implementation / preview readiness):** **`HASHED_PHONE_CANARY_PEEK_READY`** — means the server **can** surface courier fields in preview; it does **not** certify end-to-end Google upload.
+
+---
+
+## PR-9H.7E — Koç Oto hashed-phone canary closeout (terminal success)
+
+**Scope:** Read-only closeout record after PR-9H.7D payload surfacing + controlled Script sync. **No Google Ads Script rerun**, **no live export**, **no ACK/ACK_FAILED manual calls**, **no queue recovery** on the target row — the row is already terminal.
+
+**`final_decision`:** **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS`**
+
+This label means the **hashed-phone Script lane** reached an operator-acceptable terminal state for the **target queue row**: journal **`COMPLETED`** with **`uploaded_at` populated**, ledger shows **SCRIPT claim (`PROCESSING`)** then **terminal `COMPLETED`**. It does **not** substitute for repo **`npm run release:evidence:production`** **`TARGET_DB_GREEN`** when DB evidence is unavailable (`EVIDENCE_PACKAGE_INCOMPLETE` — see below). An **organization-wide “production canary success”** verdict must **not** be issued unless the **full evidence package** (release gates + persisted summary parity) also passes — this closeout is **row-scoped** only.
+
+**PR-9C separation:** **PR-9C** (Muratcan Aku / prior production canary audit) remains **invalid / separate** — do **not** merge this Koç terminal outcome into PR-9C reconciliation.
+
+### Target row (`offline_conversion_queue`)
+
+| Field | Value |
+|--------|--------|
+| `site_id` | `3276893e-0433-4e35-95f2-4e80cf863f4c` |
+| `sites.public_id` | `93cb9966bcf349c1b4ece8ea34142ace` |
+| `queue_id` | `a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2` |
+| `action` / conversion | `OpsMantik_Won` |
+| `status` | `COMPLETED` |
+| `uploaded_at` | `2026-05-10 22:19:48.738+00` |
+| `provider_error_category` | `null` |
+| `provider_error_code` | `null` |
+| `provider_request_id` | `null` *(allowed for Google Ads Script bulk upload lane — not a failure signal)* |
+| `external_id` | `oci_0ed22fd9175de8a2b003a486ea77208f` |
+| `updated_at` | `2026-05-10 22:19:49.386923+00` |
+
+### Ledger (`oci_queue_transitions`)
+
+| created_at (UTC) | `new_status` | `actor` | Notes |
+|------------------|--------------|---------|--------|
+| `2026-05-10 22:19:44.299+00` | `PROCESSING` | `SCRIPT` | Claim / export-run alignment |
+| `2026-05-10 22:19:48.738+00` | `COMPLETED` | `SCRIPT` | Terminal success (+ `uploaded_at` on row). **No `UPLOADED` intermediate** — this lane treats **`COMPLETED`** as terminal. |
+
+### Script log evidence (operator-reported)
+
+- **PEEK:** `hp=1` for the target row (hashed phone courier present).
+- **SYNC:** `fetched=1`, `uploaded=1`, `failed=0`.
+- **Export-run summary HTTP:** response indicated **`SCRIPT_SUMMARY_RECEIVED`** (reconciliation handler accepted payload).
+
+### Evidence gaps (`EVIDENCE_PACKAGE_INCOMPLETE`)
+
+- **`export-run-summary`** is **not persisted** in Postgres — **fetched / claimed / upload / ack counts cannot be reconstructed from SQL alone.**
+- Local **`release:evidence:production`** may return **`DB_CONNECTION_FAILED`** even when ad-hoc DB reads succeed — fix tracked under **PR-9H.7F**.
+- Release bundle may still show **`script_summary_status: SCRIPT_SUMMARY_MISSING`** until summaries are stored and evidence scripts read them.
+
+### Operator posture
+
+- **No rerun** of the same allowlisted **`queue_id`** after this terminal outcome unless a **new change ticket** requires it.
+- **No recovery** on **`a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2`** — row is **`COMPLETED`** with upload timestamp.
+
+---
+
+### Backlog — PR-9H.7F (follow-up; not part of 7E closeout)
+
+**Persist export-run-summary evidence + repair production release DB connectivity.**
+
+| Requirement | Detail |
+|-------------|--------|
+| Persist summaries | Store script summaries keyed by **`export_run_id`** (and site scope). |
+| Fields | At minimum **`fetched_count`**, **`claimed_count`**, **`upload_success_count`**, **`ack_success_count`** (plus existing reconciliation shape). |
+| Release evidence | Extend **`npm run release:evidence:production`** / collectors to **read** persisted summaries so equations are checkable offline. |
+| Connectivity | Eliminate **`DB_CONNECTION_FAILED`** for local/CI production evidence runs where **`TARGET_DB_EVIDENCE_STRICT=1`** applies — align env / pool / secrets with reachable target DB. |
+
+---
+
+### Allowed `final_decision` labels (PR-9H.7E subsection)
+
+- **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS`** — row-level Script lane terminal outcome as documented above.
+- Supporting audit states: **`EVIDENCE_PACKAGE_INCOMPLETE`** when DB/release equation parity is still missing (does **not** revoke row terminal success).
