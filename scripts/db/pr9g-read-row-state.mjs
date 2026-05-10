@@ -1,19 +1,60 @@
 #!/usr/bin/env node
+/**
+ * Read queue row + recent oci_queue_transitions for PR-9G / canary closure.
+ *
+ * Usage:
+ *   node scripts/db/pr9g-read-row-state.mjs --site-id <uuid> --queue-id <uuid>
+ * Or env: RECOVERY_TARGET_SITE_ID, RECOVERY_TARGET_QUEUE_ID
+ */
 import { config } from 'dotenv';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { classifyProcessingRecovery } from '../../lib/oci/processing-recovery-classifier.ts';
+import { resolveTargetDbConnectionString } from '../release/resolve-target-db-url.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '..', '.env.local') });
 
-const queueId = process.env.RECOVERY_TARGET_QUEUE_ID || '6c1537a7-98ca-47eb-8bd9-67c35965cf9d';
-const siteId = process.env.RECOVERY_TARGET_SITE_ID || '7eb8f5c0-4a96-4a0e-bd89-a463127b26b8';
+function parseCliSiteQueue(argv) {
+  let siteId = String(process.env.RECOVERY_TARGET_SITE_ID || '').trim();
+  let queueId = String(process.env.RECOVERY_TARGET_QUEUE_ID || '').trim();
+  const a = argv.slice(2);
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === '--site-id' && a[i + 1]) {
+      siteId = String(a[++i]).trim();
+    } else if (a[i] === '--queue-id' && a[i + 1]) {
+      queueId = String(a[++i]).trim();
+    }
+  }
+  if (!siteId) siteId = '7eb8f5c0-4a96-4a0e-bd89-a463127b26b8';
+  if (!queueId) queueId = '6c1537a7-98ca-47eb-8bd9-67c35965cf9d';
+  return { siteId, queueId };
+}
+
+const { siteId: parsedSite, queueId: parsedQueue } = parseCliSiteQueue(process.argv);
+const queueId = parsedQueue;
+const siteId = parsedSite;
 
 async function main() {
+  const dbUrl = resolveTargetDbConnectionString();
+  if (!dbUrl) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: false,
+          error: 'DB_URL_MISSING',
+          hint: 'Set SUPABASE_DB_POOLER_URL or SUPABASE_DB_URL (or DATABASE_URL) in .env.local',
+        },
+        null,
+        2
+      )
+    );
+    process.exit(1);
+  }
+
   const client = new pg.Client({
-    connectionString: process.env.SUPABASE_DB_URL,
+    connectionString: dbUrl,
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();

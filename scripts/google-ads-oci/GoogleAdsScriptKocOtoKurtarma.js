@@ -41,7 +41,7 @@
  * **PEEK:** optional client allowlist is allowed (no claim); for canary peek you usually rely on export allowlist only.
  *
  * Koc hashed-phone canary inline defaults (non-empty values override Script Properties):
- * Site `93cb9966…`, export limit 1, PR-9H.7D ticket, single-queue allowlist UUID — see inline block below.
+ * Site `93cb9966…`, export limit 1, PR-9H7G ticket, single-queue allowlist UUID — see inline block below.
  * **Never commit `OPSMANTIK_INLINE_API_KEY`** — leave empty; set `OPSMANTIK_API_KEY` only in Script Properties.
  * Set `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` in Properties to Google offline import template header (exact string).
  */
@@ -60,7 +60,7 @@ var DEFAULT_MAX_PEEK_PAGES = 120;
 var DEFAULT_MAX_RUNTIME_MS = 1500000;
 
 /** @type {string} peek | sync — Script Property `OPSMANTIK_RUN_MODE` overrides when set */
-var OPSMANTIK_RUN_MODE = 'sync';
+var OPSMANTIK_RUN_MODE = 'peek';
 
 /** Optional inline run mode (empty → Properties / global `OPSMANTIK_RUN_MODE`). */
 var OPSMANTIK_INLINE_RUN_MODE = '';
@@ -84,13 +84,13 @@ var OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD = 'true';
 /** Set in Script Properties to Google Bulk Upload exact header, or fill here after template verify */
 var OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN = 'Hashed Phone Number';
 var OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE = 'true';
-var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = 'a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2';
-var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = 'a81bec67-3b24-4c27-aa1a-40c7c4ecd0b2';
+var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = '8dc2ffb7-737c-406c-8e27-13e1e8d0f4ac';
+var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = '8dc2ffb7-737c-406c-8e27-13e1e8d0f4ac';
 var OPSMANTIK_INLINE_CANARY_APPROVAL = 'I_APPROVE_PRODUCTION_CANARY';
 /** Optional inline — pair with production canary upload gate (`I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`). */
 var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD';
 var OPSMANTIK_INLINE_OPERATOR_ID = 'serkan';
-var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9H.7D-KOC-HASHED-PHONE-CANARY-001';
+var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9H7G-KOC-PERSISTED-HASHED-PHONE-CANARY-001';
 var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '';
 var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '';
 var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';

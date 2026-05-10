@@ -39,6 +39,18 @@ function readRequiredEnv(name) {
   return value;
 }
 
+/** Same key as hosted preview (`pr9h7g-hosted-preview-check`): Koç operators often set `OCI_API_KEY` only. */
+function readCanaryApiKey() {
+  const value = String(process.env.CANARY_API_KEY || process.env.OCI_API_KEY || '').trim();
+  if (!value) {
+    failBlocked('MISSING_REQUIRED_ENV', {
+      missing: 'CANARY_API_KEY or OCI_API_KEY',
+      classifier: 'CANARY_METADATA_MISSING',
+    });
+  }
+  return value;
+}
+
 function parseJsonSafe(path) {
   try {
     return JSON.parse(readFileSync(path, 'utf8'));
@@ -224,7 +236,7 @@ async function main() {
     canaryApproval: readRequiredEnv('CANARY_APPROVAL'),
     canarySiteId: readRequiredEnv('CANARY_SITE_ID'),
     canaryExpectedQueueId: readRequiredEnv('CANARY_EXPECTED_QUEUE_ID'),
-    apiKey: readRequiredEnv('CANARY_API_KEY'),
+    apiKey: readCanaryApiKey(),
   };
 
   if (meta.canaryApproval !== REQUIRED_APPROVAL) {
@@ -326,6 +338,7 @@ async function main() {
           scope_decision: walk.scopeDecision,
           matched_incoming_cursor_present: Boolean(walk.matchedIncomingCursor),
           preview_allowlist_contract: walk.last?.body?.preview_diagnostics?.allowlist_contract ?? null,
+          preview_diagnostics: walk.last?.body?.preview_diagnostics ?? null,
         },
         null,
         2
