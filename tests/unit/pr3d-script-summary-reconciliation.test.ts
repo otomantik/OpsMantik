@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { validateScriptSummaryShape, evaluateReconciliation, ScriptSummaryPayload } from '@/lib/oci/export-run-reconciliation';
 
-test('PR-3D Script Summary: validates non-negative integer counts', () => {
+test('PR-3D Script Summary: rejects non-finite optional counts', () => {
   const payload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_neg_ack',
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
     classified_failed_count: 1,
     upload_attempted_count: 5,
-    ack_success_count: -1 // invalid
+    ack_success_count: Number.NaN,
   };
   const result = validateScriptSummaryShape(payload);
   assert.strictEqual(result.ok, false);
@@ -19,6 +20,7 @@ test('PR-3D Script Summary: validates non-negative integer counts', () => {
 test('PR-3D Script Summary: malformed summary returns SCRIPT_SUMMARY_INVALID', () => {
   const payload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_missing_upload',
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
     classified_failed_count: 1,
@@ -32,6 +34,7 @@ test('PR-3D Script Summary: malformed summary returns SCRIPT_SUMMARY_INVALID', (
 test('PR-3D Script Summary: valid summary returns SCRIPT_SUMMARY_RECEIVED (with incomplete proof)', () => {
   const payload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_basic',
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
     classified_failed_count: 1,
@@ -50,22 +53,22 @@ test('PR-3D Script Summary: valid summary returns SCRIPT_SUMMARY_RECEIVED (with 
   assert.strictEqual(evaluation.checked_equations.length, 0);
 });
 
-test('PR-3D Script Summary: missing optional export_run_id does not hard fail', () => {
+test('PR-3D Script Summary: missing export_run_id fails validation', () => {
   const payload = {
     summary_version: '1.0',
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
     classified_failed_count: 1,
     upload_attempted_count: 5,
-    // no export_run_id
   };
   const validation = validateScriptSummaryShape(payload);
-  assert.strictEqual(validation.ok, true);
+  assert.strictEqual(validation.ok, false);
 });
 
 test('PR-3D Script Summary: Eq B reconciles when claimed_count equals classified totals', () => {
   const payload: ScriptSummaryPayload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_eq_b_ok',
     claimed_count: 8,
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
@@ -84,6 +87,7 @@ test('PR-3D Script Summary: Eq B reconciles when claimed_count equals classified
 test('PR-3D Script Summary: Eq B mismatches when totals differ', () => {
   const payload: ScriptSummaryPayload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_eq_b_bad',
     claimed_count: 10,
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
@@ -101,6 +105,7 @@ test('PR-3D Script Summary: Eq B mismatches when totals differ', () => {
 test('PR-3D Script Summary: Eq C reconciles when upload_attempted equals ACK totals + ambiguous pending', () => {
   const payload: ScriptSummaryPayload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_eq_c_ack',
     claimed_count: 8,
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
@@ -122,6 +127,7 @@ test('PR-3D Script Summary: Eq C reconciles when upload_attempted equals ACK tot
 test('PR-3D Script Summary: Eq C returns INSUFFICIENT_EVIDENCE when ACK counts are missing', () => {
   const payload: ScriptSummaryPayload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_eq_c_missing_ack',
     claimed_count: 8,
     classified_uploadable_count: 5,
     classified_skipped_count: 2,
@@ -141,6 +147,7 @@ test('PR-3D Script Summary: Eq C returns INSUFFICIENT_EVIDENCE when ACK counts a
 test('PR-3D Script Summary: release evidence reports EXPORT_RUN_INTEGRITY_UNVERIFIED', () => {
   const payload: ScriptSummaryPayload = {
     summary_version: '1.0',
+    export_run_id: 'oci_run_partial',
     claimed_count: 8,
     classified_uploadable_count: 5,
     classified_skipped_count: 2,

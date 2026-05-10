@@ -1346,9 +1346,9 @@ This label means the **hashed-phone Script lane** reached an operator-acceptable
 
 ### Evidence gaps (`EVIDENCE_PACKAGE_INCOMPLETE`)
 
-- **`export-run-summary`** is **not persisted** in Postgres — **fetched / claimed / upload / ack counts cannot be reconstructed from SQL alone.**
-- Local **`release:evidence:production`** may return **`DB_CONNECTION_FAILED`** even when ad-hoc DB reads succeed — fix tracked under **PR-9H.7F**.
-- Release bundle may still show **`script_summary_status: SCRIPT_SUMMARY_MISSING`** until summaries are stored and evidence scripts read them.
+- **Historical Koç run (`PR-9H.7E`):** the **`POST /api/oci/export-run-summary`** payload for that Script run was **not persisted** at the time — **Eq A–E cannot be fully reconstructed from SQL today** unless the **original HTTP summary payload** is recovered elsewhere. **PR-9H.7F** adds **`public.oci_export_run_summaries`** for **future** runs; it does **not** invent historical payloads.
+- **Going forward:** **`export-run-summary`** must **persist** (counts/metadata only; see **PR-9H.7F**) so release evidence can close equations from DB **together with** queue + ledger proof.
+- Local **`release:evidence:production`** historically returned **`DB_CONNECTION_FAILED`** when the wrong Postgres host was selected — **PR-9H.7F** prefers **pooler / pooled DSN** env ordering (`scripts/release/resolve-target-db-url.mjs`).
 
 ### Operator posture
 
@@ -1357,20 +1357,61 @@ This label means the **hashed-phone Script lane** reached an operator-acceptable
 
 ---
 
-### Backlog — PR-9H.7F (follow-up; not part of 7E closeout)
+## PR-9H.7F — Persisted script summaries + evidence collector repair
 
-**Persist export-run-summary evidence + repair production release DB connectivity.**
+**Scope:** Production-grade closure for **export-run-summary** **counts/metadata** (no PII), **`scripts/sql/export_run_summary_health.sql`**, **`npm run release:evidence:production`** integration (including **`OCI_EVIDENCE_EXPORT_RUN_ID`** / **`OCI_EVIDENCE_SITE_ID`** / **`OCI_EVIDENCE_PROVIDER_KEY`** targeted strict blocking **`SCRIPT_SUMMARY_TARGET_MISSING`**), and **pooler-first** DB URL resolution for local evidence.
 
-| Requirement | Detail |
-|-------------|--------|
-| Persist summaries | Store script summaries keyed by **`export_run_id`** (and site scope). |
-| Fields | At minimum **`fetched_count`**, **`claimed_count`**, **`upload_success_count`**, **`ack_success_count`** (plus existing reconciliation shape). |
-| Release evidence | Extend **`npm run release:evidence:production`** / collectors to **read** persisted summaries so equations are checkable offline. |
-| Connectivity | Eliminate **`DB_CONNECTION_FAILED`** for local/CI production evidence runs where **`TARGET_DB_EVIDENCE_STRICT=1`** applies — align env / pool / secrets with reachable target DB. |
+**PR-9H.7E terminal success remains valid:** Koç **`COMPLETED`** + ledger **`SCRIPT` terminal** is unchanged — **PR-9C** stays **invalid / separate**.
+
+**Historical Koç summary:** Full Eq A–E from **SQL alone** for that **past** run remains **impossible** unless the **exact original summary HTTP body** exists — **do not backfill** guessed payloads.
+
+**Future full closure classification:** **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS_WITH_PERSISTED_SUMMARY`** — requires **queue terminal proof** + **ledger proof** + **`oci_export_run_summaries`** row for the run + **`npm run release:evidence:production`** green (including DB packs / metadata when applicable). Use when operators need **equation parity from DB**, not logs alone.
+
+**Strict DB evidence:** When **`TARGET_DB_EVIDENCE_STRICT=1`**, artifact **`metadata.strict_mode`** is **true** and DB connectivity / targeted summary failures are **blocking** (no silent downgrade).
 
 ---
 
 ### Allowed `final_decision` labels (PR-9H.7E subsection)
 
 - **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS`** — row-level Script lane terminal outcome as documented above.
+- **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS_WITH_PERSISTED_SUMMARY`** — **PR-9H.7F** future closure: terminal row + persisted **`oci_export_run_summaries`** + release evidence green (equations checkable from DB).
 - Supporting audit states: **`EVIDENCE_PACKAGE_INCOMPLETE`** when DB/release equation parity is still missing (does **not** revoke row terminal success).
+
+---
+
+## PR-9H.7G — Fresh persisted hashed-phone canary closure (Koç Oto Kurtarma)
+
+**Intent:** Run a **new** **`QUEUED` / `RETRY`** row (do **not** reuse **`…ecd0b2`**, the legacy PR-9H.7E **`COMPLETED`** canary) through **PEEK → SYNC** with persisted **`oci_export_run_summaries`**, then prove closure with strict **`npm run release:evidence:production`** targeting **`OCI_EVIDENCE_QUEUE_ID`**, **`OCI_EVIDENCE_EXPORT_RUN_ID`**, **`OCI_EVIDENCE_SITE_ID`**, **`OCI_EVIDENCE_SITE_PUBLIC_ID`**, and **`OCI_EVIDENCE_REQUIRE_SCRIPT_SUMMARY=1`**.
+
+**Site anchors (fixed):**
+
+- **site_id:** `3276893e-0433-4e35-95f2-4e80cf863f4c`
+- **site public_id:** `93cb9966bcf349c1b4ece8ea34142ace`
+
+**Automation (repo):**
+
+- Candidate picker (safe fields only): `node scripts/db/pr9h7g-fresh-hashed-phone-canary.mjs`
+- Hosted preview gate: `node scripts/db/pr9h7g-hosted-preview-check.mjs` (defaults **`APP_BASE_URL=https://console.opsmantik.com`**; requires **`OCI_API_KEY`** / **`CANARY_API_KEY`**)
+
+**Evidence collector additions:**
+
+- **`OCI_EVIDENCE_REQUIRE_SCRIPT_SUMMARY=1`** → strict failure if **`OCI_EVIDENCE_EXPORT_RUN_ID`** / **`OCI_EVIDENCE_SITE_ID`** missing or summary row absent.
+- **`OCI_EVIDENCE_REQUIRE_QUEUE_TERMINAL=1`** (optional) → strict failure unless queue row is **`COMPLETED`** with **`uploaded_at`** set for **`OCI_EVIDENCE_QUEUE_ID`** + **`OCI_EVIDENCE_SITE_ID`**.
+- Artifact echoes **`checked_equations` / `missing_equations` / `mismatch_reasons`** from persisted summary equation evaluation (Eq A–D); **`oci_evidence_queue_evidence`** summarizes terminal check without logging secrets.
+
+### Operator checklist (fill evidence below after run)
+
+| Step | Status | Notes |
+|---|---|---|
+| Fresh **`queue_id`** selected (not **`…ecd0b2`**) | `PENDING` | Use picker script; record **tail-safe id** only in tickets if needed |
+| Hosted preview **`markAsExported=false`**, allowlist **`applied_to_fetch=true`**, **`hashed_phone_exported_count=1`** | `PENDING` | |
+| Script **PEEK** **`hp=1`** | `PENDING` | No literal click IDs / hashes / phones in logs |
+| Script **SYNC** batch **1**, **`OPSMANTIK_ALLOWLIST_IDS` empty** | `PENDING` | |
+| Queue **`COMPLETED`**, **`uploaded_at`**, clean **`provider_error_*`** | `PENDING` | |
+| Ledger **`SCRIPT PROCESSING`** → **`SCRIPT COMPLETED`** | `PENDING` | |
+| **`oci_export_run_summaries`** row for **`export_run_id`**, **`persisted=true`**, **`mismatch_count=0`**, canary flag **`hashed_phone_csv_canary_active=true`** | `PENDING` | |
+| **`npm run release:evidence:production`** strict PASS | `PENDING` | Set **`TARGET_DB_EVIDENCE_STRICT=1`**, **`OCI_EXPORT_RUN_INTEGRITY_STRICT=1`**, target env bundle |
+
+### Final decision (PR-9H.7G)
+
+- **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS_WITH_PERSISTED_SUMMARY`** — set only after **all** rows above are **`DONE`** and release evidence is **`PASS`** with **`script_summary_reconciliation`** green / equivalent and **`missing_equations=NONE`**.

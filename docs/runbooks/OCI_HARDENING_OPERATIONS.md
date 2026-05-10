@@ -124,10 +124,17 @@ Use this rule after a controlled Koç / Script-lane hashed-phone sync completes.
 | **`provider_request_id`** | May remain **`null`** for **Google Ads Script** bulk offline import — Google often does **not** return a REST-style request id. **Do not** treat **`null`** alone as upload failure when **`uploaded_at`** is set and provider error fields are clear. |
 | **After terminal success** | **Do not** re-run sync on the **same allowlisted `queue_id`** for “verification” — the row is already **`COMPLETED`**. Further runs require a **new ticket** and typically a **new queue row**. |
 | **Recovery** | **Do not** run row-scoped recovery on a **`COMPLETED`** canary target unless product/incident process explicitly requires it. |
-| **Evidence package** | Row + ledger prove terminal outcome; **export-run-summary** counts are **not** replayable from SQL until **PR-9H.7F** (persist summaries). Release **`TARGET_DB_GREEN`** may still fail if local DB connectivity to target is broken — track under **PR-9H.7F**. |
+| **Evidence package** | Row + ledger prove terminal outcome. **PR-9H.7F** persists **`POST /api/oci/export-run-summary`** into **`public.oci_export_run_summaries`** (counts/metadata only). **`npm run release:evidence:production`** reads **`scripts/sql/export_run_summary_health.sql`** and optional **`OCI_EVIDENCE_*`** targeting. Prefer **pooler/pooled** Postgres URLs via **`scripts/release/resolve-target-db-url.mjs`** ordering. **`TARGET_DB_EVIDENCE_STRICT=1`** must not silently downgrade **`metadata.strict_mode`**. |
 | **Promotion language** | **`HASHED_PHONE_CANARY_TERMINAL_SUCCESS`** is **row-scoped**. Do **not** issue an org-wide **production canary success** verdict unless the **full** release/evidence package (including persisted summaries when applicable) passes policy. |
 
 **PR-9C** remains a **separate, invalid** historical canary record — do not conflate with Koç PR-9H.7D/E outcomes.
+
+### PR-9H.7F — Persisted export-run-summary + strict evidence targeting
+
+- **Table:** `public.oci_export_run_summaries` — unique **`(export_run_id, site_id, provider_key)`**; **RLS ON**; **service_role** writes only (see migration **PR-9H.7F**).
+- **Health SQL:** `scripts/sql/export_run_summary_health.sql` — wired into **`npm run release:evidence:production`** SQL pack hashes.
+- **Targeted canary proof (optional):** set **`OCI_EVIDENCE_EXPORT_RUN_ID`**, **`OCI_EVIDENCE_SITE_ID`**, **`OCI_EVIDENCE_PROVIDER_KEY`** (default **`google_ads`**). With **`TARGET_DB_EVIDENCE_STRICT=1`**, a missing row blocks with **`SCRIPT_SUMMARY_TARGET_MISSING`**.
+- **Historical Koç (`PR-9H.7E`):** cannot reconstruct the exact summary without the original HTTP payload — **future** runs must persist summaries for **HASHED_PHONE_CANARY_TERMINAL_SUCCESS_WITH_PERSISTED_SUMMARY**-style closure.
 
 ## Scheduled Google Ads Script Production Sync
 

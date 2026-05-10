@@ -99,6 +99,8 @@
     "release:evidence:local": "node scripts/release/collect-gate-evidence.mjs --mode=local --output tmp/release-gates-local.md",
     "release:evidence:staging": "node scripts/release/collect-gate-evidence.mjs --mode=staging --output tmp/release-gates-staging.md",
     "release:evidence:production": "node scripts/release/collect-gate-evidence.mjs --mode=production --output tmp/release-gates-production.md",
+    "release:evidence:production:strict": "node scripts/release/run-release-evidence-production-strict.mjs",
+    "resolve:target-db-url": "node scripts/release/resolve-target-db-url.mjs",
     "release:evidence:pr": "node scripts/release/collect-gate-evidence.mjs --mode=static --output tmp/release-gates-pr.md",
     "proof:global-readiness": "npm run test:release-gates && npm run release:evidence",
     "test:intent-flow": "node --import tsx --test tests/intent-flow.test.ts",

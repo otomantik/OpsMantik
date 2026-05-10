@@ -63,21 +63,28 @@ export function validateScriptSummaryShape(payload: unknown): { ok: boolean; sum
   const body = payload as Record<string, unknown>;
 
   if (typeof body.summary_version !== 'string') return { ok: false, error: 'Missing or invalid summary_version' };
+  if (typeof body.export_run_id !== 'string' || !String(body.export_run_id).trim()) {
+    return { ok: false, error: 'Missing or invalid export_run_id' };
+  }
   
   const requiredInts = [
     'classified_uploadable_count',
     'classified_skipped_count',
     'classified_failed_count',
-    'upload_attempted_count'
+    'upload_attempted_count',
   ];
 
+  function isFiniteIntegerLike(n: unknown): boolean {
+    return typeof n === 'number' && Number.isFinite(n) && Math.floor(n) === n;
+  }
+
   for (const field of requiredInts) {
-    if (typeof body[field] !== 'number' || body[field] < 0 || !Number.isInteger(body[field])) {
+    if (!isFiniteIntegerLike(body[field])) {
       return { ok: false, error: `Missing or invalid required integer field: ${field}` };
     }
   }
 
-  // Validate optional ints
+  // Validate optional ints (negatives clamped at persist time — PR-9H.7F)
   const optionalInts = [
     'fetched_count',
     'claimed_count',
@@ -87,12 +94,12 @@ export function validateScriptSummaryShape(payload: unknown): { ok: boolean; sum
     'ack_success_count',
     'ack_failed_count',
     'ack_skipped_count',
-    'external_id_count'
+    'external_id_count',
   ];
 
   for (const field of optionalInts) {
     if (body[field] !== undefined) {
-      if (typeof body[field] !== 'number' || body[field] < 0 || !Number.isInteger(body[field])) {
+      if (!isFiniteIntegerLike(body[field])) {
         return { ok: false, error: `Invalid optional integer field: ${field}` };
       }
     }

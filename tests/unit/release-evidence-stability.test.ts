@@ -115,6 +115,10 @@ test('release evidence contract exposes stable reason codes', () => {
     'DB_URL_INVALID',
     'DB_CONNECTION_FAILED',
     'STALE_ARTIFACT_PREVENTED',
+    'SCRIPT_SUMMARY_TARGET_MISSING',
+    'OCI_EVIDENCE_INCOMPLETE_TARGET_ENV',
+    'OCI_EVIDENCE_QUEUE_TARGET_MISSING',
+    'OCI_EVIDENCE_QUEUE_NOT_TERMINAL',
   ]) {
     assert.ok(src.includes(code), `reason code ${code} must exist`);
   }

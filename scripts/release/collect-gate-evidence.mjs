@@ -13,6 +13,8 @@ import {
   normalizeEvidenceArtifact,
   resolveSqlPackAbsPaths,
 } from './evidence-contracts.mjs';
+import { resolveTargetDbConnectionString, isLikelyPlaceholderValue } from './resolve-target-db-url.mjs';
+import { deriveScriptSummaryEvidenceFields } from './script-summary-evidence-helpers.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -182,19 +184,6 @@ function redactDbTarget(input) {
   }
 }
 
-function isLikelyPlaceholderValue(raw) {
-  const v = String(raw || '').trim().toLowerCase();
-  if (!v) return false;
-  return (
-    v.includes('<') ||
-    v.includes('>') ||
-    v.includes('buraya') ||
-    v.includes('staging_supabase_db_url') ||
-    v.includes('redacted') ||
-    v.includes('example')
-  );
-}
-
 function validateTargetDbUrl(raw) {
   const value = String(raw ?? '').trim();
   if (!value) {
@@ -244,7 +233,7 @@ function validateTargetDbUrl(raw) {
 }
 
 async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) {
-  const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || '';
+  const dbUrl = resolveTargetDbConnectionString(process.env);
   const dbShouldRun = DB_EVIDENCE_MODES.has(mode) || withDb === true;
   const emptyPackResults = sqlPackHashes.map((p) => ({
     pack_id: p.pack_id,
@@ -289,6 +278,8 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
       },
       blocking_failures: [],
       warnings: ['TARGET_DB_NOT_CHECKED', 'STALE_ARTIFACT_PREVENTED'],
+      script_summary_evidence: deriveScriptSummaryEvidenceFields({}),
+      oci_evidence_queue_evidence: null,
     };
   }
 
@@ -331,6 +322,8 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
       },
       blocking_failures: strict ? [blocker] : [],
       warnings: strict ? ['STALE_ARTIFACT_PREVENTED'] : [urlValidation.status, 'STALE_ARTIFACT_PREVENTED'],
+      script_summary_evidence: deriveScriptSummaryEvidenceFields({}),
+      oci_evidence_queue_evidence: null,
     };
   }
 
@@ -351,6 +344,10 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
     rows: [],
   };
   let row_scoped_smoke = { status: 'SMOKE_UNVERIFIED', reason: 'NOT_ATTEMPTED' };
+  let scriptSummaryHealthRow = null;
+  let ociTargetRow = null;
+  /** @type {{ queue_id: string | null; terminal_ok: boolean | null; status: string | null } | null} */
+  let ociEvidenceQueueEvidence = null;
 
   try {
     try {
@@ -399,6 +396,8 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
         },
         blocking_failures: strict ? [blocker] : [],
         warnings: strict ? ['STALE_ARTIFACT_PREVENTED'] : ['DB_CONNECTION_FAILED', 'STALE_ARTIFACT_PREVENTED'],
+        script_summary_evidence: deriveScriptSummaryEvidenceFields({}),
+        oci_evidence_queue_evidence: null,
       };
     }
 
@@ -410,6 +409,9 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
       const src = readFileSync(pack.absPath, 'utf8');
       try {
         const result = await client.query(src);
+        if (pack.pack_id === 'export_run_summary_health') {
+          scriptSummaryHealthRow = result.rows?.[0] ?? null;
+        }
         sql_pack_results.push({
           pack_id: pack.pack_id,
           file: pack.file,
@@ -672,9 +674,103 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
         warnings.push('Row-scoped recovery smoke check skipped/unverified');
       }
     }
+
+    const evRun = String(process.env.OCI_EVIDENCE_EXPORT_RUN_ID ?? '').trim();
+    const evSite = String(process.env.OCI_EVIDENCE_SITE_ID ?? '').trim();
+    const evProv = String(process.env.OCI_EVIDENCE_PROVIDER_KEY ?? 'google_ads').trim() || 'google_ads';
+    const evQueueId = String(process.env.OCI_EVIDENCE_QUEUE_ID ?? '').trim();
+    const requireScriptSummary = process.env.OCI_EVIDENCE_REQUIRE_SCRIPT_SUMMARY === '1';
+    const requireQueueTerminal = process.env.OCI_EVIDENCE_REQUIRE_QUEUE_TERMINAL === '1';
+
+    if (strict && requireScriptSummary && (!evRun || !evSite)) {
+      blocking_failures.push({
+        reason_code: REASON_CODES.OCI_EVIDENCE_INCOMPLETE_TARGET_ENV,
+        message: 'OCI_EVIDENCE_REQUIRE_SCRIPT_SUMMARY=1 requires OCI_EVIDENCE_EXPORT_RUN_ID and OCI_EVIDENCE_SITE_ID',
+      });
+    }
+
+    if (evRun && evSite) {
+      try {
+        const tr = await client.query(
+          `select id, status, mismatch_reasons, fetched_count, claimed_count,
+            classified_uploadable_count, classified_skipped_count, classified_failed_count,
+            upload_attempted_count, upload_success_count, upload_failed_count,
+            ack_success_count, ack_failed_count, ack_skipped_count, provider_ambiguous_pending_count, hashed_phone_csv_canary_active
+           from public.oci_export_run_summaries
+           where export_run_id = $1 and site_id = $2::uuid and provider_key = $3
+           limit 1`,
+          [evRun, evSite, evProv]
+        );
+        ociTargetRow = tr.rows?.[0] ?? null;
+      } catch {
+        ociTargetRow = null;
+      }
+    }
+    if (strict && evRun && evSite && !ociTargetRow) {
+      blocking_failures.push({
+        reason_code: REASON_CODES.SCRIPT_SUMMARY_TARGET_MISSING,
+        message: requireScriptSummary
+          ? 'PR-9H.7G: persisted oci_export_run_summaries row required (OCI_EVIDENCE_REQUIRE_SCRIPT_SUMMARY=1)'
+          : 'OCI_EVIDENCE_EXPORT_RUN_ID/OCI_EVIDENCE_SITE_ID target summary row not found in oci_export_run_summaries',
+      });
+    }
+
+    if (strict && requireQueueTerminal && evQueueId && evSite) {
+      try {
+        const qr = await client.query(
+          `select status::text as status, uploaded_at from public.offline_conversion_queue where id = $1::uuid and site_id = $2::uuid`,
+          [evQueueId, evSite]
+        );
+        const q = qr.rows?.[0];
+        if (!q) {
+          ociEvidenceQueueEvidence = { queue_id: evQueueId, terminal_ok: false, status: null };
+          blocking_failures.push({
+            reason_code: REASON_CODES.OCI_EVIDENCE_QUEUE_TARGET_MISSING,
+            message: 'OCI_EVIDENCE_QUEUE_ID not found for OCI_EVIDENCE_SITE_ID',
+          });
+        } else {
+          const st = String(q.status ?? '');
+          const ok = st === 'COMPLETED' && q.uploaded_at != null;
+          ociEvidenceQueueEvidence = { queue_id: evQueueId, terminal_ok: ok, status: st };
+          if (!ok) {
+            blocking_failures.push({
+              reason_code: REASON_CODES.OCI_EVIDENCE_QUEUE_NOT_TERMINAL,
+              message: `Queue row not terminal (require COMPLETED + uploaded_at): status=${st}`,
+            });
+          }
+        }
+      } catch (e) {
+        blocking_failures.push({
+          reason_code: REASON_CODES.DB_QUERY_FAILED,
+          message: `Queue terminal evidence query failed: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+    } else if (evQueueId && evSite) {
+      try {
+        const qr = await client.query(
+          `select status::text as status, uploaded_at from public.offline_conversion_queue where id = $1::uuid and site_id = $2::uuid`,
+          [evQueueId, evSite]
+        );
+        const q = qr.rows?.[0];
+        if (q) {
+          const st = String(q.status ?? '');
+          const ok = st === 'COMPLETED' && q.uploaded_at != null;
+          ociEvidenceQueueEvidence = { queue_id: evQueueId, terminal_ok: ok, status: st };
+        } else {
+          ociEvidenceQueueEvidence = { queue_id: evQueueId, terminal_ok: null, status: null };
+        }
+      } catch {
+        ociEvidenceQueueEvidence = { queue_id: evQueueId, terminal_ok: null, status: null };
+      }
+    }
   } finally {
     await client.end().catch(() => undefined);
   }
+
+  const script_summary_evidence = deriveScriptSummaryEvidenceFields({
+    healthRow: scriptSummaryHealthRow,
+    targetRow: ociTargetRow,
+  });
 
   const anyPackFail = sql_pack_results.some((p) => p.status === 'DB_QUERY_FAILED');
   const target_db_contract_status =
@@ -701,6 +797,8 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
     row_scoped_smoke,
     blocking_failures,
     warnings,
+    script_summary_evidence,
+    oci_evidence_queue_evidence: ociEvidenceQueueEvidence,
   };
 }
 
@@ -756,6 +854,15 @@ function buildMarkdown(artifact) {
     `- checked_equations: \`${artifact.metadata.checked_equations}\``,
     `- missing_equations: \`${artifact.metadata.missing_equations}\``,
     `- mismatch_reasons: \`${artifact.metadata.mismatch_reasons}\``,
+    `- oci_evidence_queue_terminal_ok: \`${
+      artifact.metadata.oci_evidence_queue_evidence?.terminal_ok === true
+        ? 'true'
+        : artifact.metadata.oci_evidence_queue_evidence?.terminal_ok === false
+          ? 'false'
+          : 'n/a'
+    }\``,
+    `- oci_evidence_queue_status: \`${artifact.metadata.oci_evidence_queue_evidence?.status ?? 'n/a'}\``,
+    `- oci_evidence_site_public_id_set: \`${Boolean(artifact.metadata.oci_evidence_site_public_id)}\``,
     `- export_freeze_runbook_present: \`${artifact.metadata.export_freeze_runbook_present}\``,
     `- production_rollback_drill_documented: \`${artifact.metadata.production_rollback_drill_documented}\``,
     `- production_promotion_dossier_present: \`${artifact.metadata.production_promotion_dossier_present}\``,
@@ -1221,6 +1328,7 @@ async function main() {
   }
 
   const targetDbStrict = process.env.TARGET_DB_EVIDENCE_STRICT === '1';
+  const evidenceStrict = isStrict || targetDbStrict;
   let targetDbEvidence;
   try {
     targetDbEvidence = await collectTargetDbEvidence({
@@ -1252,10 +1360,23 @@ async function main() {
       row_scoped_smoke: { status: 'SMOKE_UNVERIFIED', reason: 'DB_QUERY_FAILED' },
       blocking_failures: [{ reason_code: REASON_CODES.DB_QUERY_FAILED, message: `Unhandled DB evidence error: ${msg}` }],
       warnings: ['STALE_ARTIFACT_PREVENTED'],
+      script_summary_evidence: deriveScriptSummaryEvidenceFields({}),
+      oci_evidence_queue_evidence: null,
     };
   }
   for (const b of targetDbEvidence.blocking_failures ?? []) blockingFailures.push(b);
   for (const w of targetDbEvidence.warnings ?? []) warnings.push(w);
+
+  const scriptSummaryForMeta = targetDbEvidence.script_summary_evidence ?? {};
+  const equationMismatchList = Array.isArray(scriptSummaryForMeta.equation_mismatch_reasons)
+    ? scriptSummaryForMeta.equation_mismatch_reasons
+    : [];
+  const evidenceMismatchReasonsStr =
+    parsed.mode === 'static' ? 'NONE' : equationMismatchList.length > 0 ? equationMismatchList.join('; ') : 'NONE';
+  const evidenceCheckedEquations =
+    parsed.mode === 'static' ? 'STATIC_VALIDATION_ONLY' : scriptSummaryForMeta.checked_equations ?? 'NONE';
+  const evidenceMissingEquations =
+    parsed.mode === 'static' ? 'ALL_RUNTIME_EQUATIONS' : scriptSummaryForMeta.missing_equations ?? 'ALL_RUNTIME_EQUATIONS';
 
   const artifact = {
     metadata: {
@@ -1285,7 +1406,7 @@ async function main() {
       static_queue_contract_green: staticQueueContractGreen,
       export_run_integrity: export_run_integrity,
       export_run_integrity_gate: exportRunIntegrityGate,
-      strict_mode: isStrict,
+      strict_mode: evidenceStrict,
       waiver_status: exportRunIntegrityGate.waiver_accepted ? 'ACCEPTED' : (exportRunIntegrityGate.waiver_required ? 'REQUIRED' : 'NONE'),
       recovery_waiver_status: recoveryGate.waiver_accepted
         ? 'ACCEPTED'
@@ -1294,12 +1415,30 @@ async function main() {
           : 'NONE',
       export_run_lineage: 'EXPORT_RUN_LINEAGE_PRESENT',
       ack_db_transition_count_check: 'ACK_DB_TRANSITION_COUNT_CHECK_PRESENT',
-      script_summary_contract: 'SCRIPT_SUMMARY_CONTRACT_PRESENT',
-      script_summary_reconciliation: 'SCRIPT_SUMMARY_RECONCILIATION_PRESENT',
-      script_summary_status: parsed.mode === 'static' ? 'SCRIPT_SUMMARY_CONTRACT_PRESENT' : 'SCRIPT_SUMMARY_MISSING',
-      checked_equations: parsed.mode === 'static' ? 'STATIC_VALIDATION_ONLY' : 'NONE',
-      missing_equations: parsed.mode === 'static' ? 'ALL_RUNTIME_EQUATIONS' : 'ALL_RUNTIME_EQUATIONS',
-      mismatch_reasons: 'NONE',
+      script_summary_contract:
+        targetDbEvidence.script_summary_evidence?.script_summary_persistence === 'SCRIPT_SUMMARY_PERSISTENCE_PRESENT'
+          ? 'SCRIPT_SUMMARY_CONTRACT_PRESENT'
+          : parsed.mode === 'static'
+            ? 'SCRIPT_SUMMARY_CONTRACT_PRESENT'
+            : 'SCRIPT_SUMMARY_CONTRACT_MISSING',
+      script_summary_reconciliation:
+        targetDbEvidence.script_summary_evidence?.script_summary_reconciliation ?? 'SCRIPT_SUMMARY_RECONCILIATION_UNVERIFIED',
+      script_summary_status:
+        parsed.mode === 'static'
+          ? 'SCRIPT_SUMMARY_CONTRACT_PRESENT'
+          : targetDbEvidence.script_summary_evidence?.script_summary_status ?? 'SCRIPT_SUMMARY_MISSING',
+      script_summary_persistence:
+        targetDbEvidence.script_summary_evidence?.script_summary_persistence ?? 'SCRIPT_SUMMARY_PERSISTENCE_MISSING',
+      script_summary_latest_received_at: targetDbEvidence.script_summary_evidence?.script_summary_latest_received_at ?? null,
+      script_summary_mismatch_count: targetDbEvidence.script_summary_evidence?.script_summary_mismatch_count ?? 0,
+      oci_evidence_target_found: targetDbEvidence.script_summary_evidence?.oci_evidence_target_found ?? false,
+      oci_evidence_target_status: targetDbEvidence.script_summary_evidence?.oci_evidence_target_status ?? null,
+      oci_evidence_target_counts: targetDbEvidence.script_summary_evidence?.oci_evidence_target_counts ?? null,
+      oci_evidence_queue_evidence: targetDbEvidence.oci_evidence_queue_evidence ?? null,
+      oci_evidence_site_public_id: String(process.env.OCI_EVIDENCE_SITE_PUBLIC_ID ?? '').trim() || null,
+      checked_equations: evidenceCheckedEquations,
+      missing_equations: evidenceMissingEquations,
+      mismatch_reasons: evidenceMismatchReasonsStr,
       processing_recovery_mode: processingRecoveryMode,
       classifier_present: classifierPresent,
       processing_classifier_enforcement_supported: processingClassifierEnforcementSupported,

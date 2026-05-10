@@ -25,6 +25,10 @@ export const REASON_CODES = {
   DB_URL_INVALID: 'DB_URL_INVALID',
   DB_CONNECTION_FAILED: 'DB_CONNECTION_FAILED',
   STALE_ARTIFACT_PREVENTED: 'STALE_ARTIFACT_PREVENTED',
+  SCRIPT_SUMMARY_TARGET_MISSING: 'SCRIPT_SUMMARY_TARGET_MISSING',
+  OCI_EVIDENCE_INCOMPLETE_TARGET_ENV: 'OCI_EVIDENCE_INCOMPLETE_TARGET_ENV',
+  OCI_EVIDENCE_QUEUE_TARGET_MISSING: 'OCI_EVIDENCE_QUEUE_TARGET_MISSING',
+  OCI_EVIDENCE_QUEUE_NOT_TERMINAL: 'OCI_EVIDENCE_QUEUE_NOT_TERMINAL',
 };
 
 export const TARGET_DB_STATUSES = {
@@ -174,6 +178,26 @@ export const HEALTH_PACK_CONTRACTS = [
     expected_columns: ['site_id', 'stage_journal_gap_calls', 'contract_status', 'blocking_reasons'],
     red_green_criteria:
       'RED when G1 calls in lookback lack a journal row with matching canonical action (heuristic; see SQL header).',
+  },
+  {
+    file: 'scripts/sql/export_run_summary_health.sql',
+    pack_id: 'export_run_summary_health',
+    contract_version: 'v1',
+    db_required: true,
+    expected_columns: [
+      'policy_version',
+      'contract_status',
+      'script_summary_persistence',
+      'recent_summaries_30d',
+      'latest_received_at',
+      'empty_export_run_id_rows',
+      'negative_count_violations',
+      'duplicate_key_violations',
+      'script_summary_mismatch_count',
+      'reconciled_row_count',
+    ],
+    red_green_criteria:
+      'RED when table missing or duplicate keys / negative counts / empty export_run_id rows; mismatch_count surfaces payload drift.',
   },
 ];
 
