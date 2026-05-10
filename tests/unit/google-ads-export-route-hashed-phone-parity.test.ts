@@ -46,12 +46,14 @@ test('route uses buildExportItems and preview passes hashed phone diagnostics (s
   assert.match(qbSrc, /userIdentifiers/, 'final item builder must emit userIdentifiers');
 });
 
-test('export-fetch: journal select and user_identifiers retry (PR-9H.7C)', () => {
+test('export-fetch: journal select and progressive column fallback (PR-9H.7C / provider_path)', () => {
   const fetchPath = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts');
   const s = readFileSync(fetchPath, 'utf8');
+  assert.match(s, /QUEUE_SELECT_VARIANTS/);
   assert.match(s, /QUEUE_SELECT_WITH_USER_IDENTIFIERS/);
   assert.match(s, /QUEUE_SELECT_WITHOUT_USER_IDENTIFIERS/);
   assert.match(s, /isMissingColumnProjectionError/);
+  assert.match(s, /for\s*\(\s*const\s+selectList\s+of\s+QUEUE_SELECT_VARIANTS/);
   assert.match(s, /offline_conversion_queue/);
 });
 
