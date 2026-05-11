@@ -32,11 +32,11 @@ test('PR-9B.2 stage-gate documentation: export path treated as seal/won-gated fo
   assert.match(runbook, /OpsMantik_Contacted/);
 });
 
-test('PR-9B.2 code gate: export-build path applies seal sendability filter to fetched queue rows', () => {
+test('PR-9B.2 code gate: export-build path applies per-action sendability to fetched queue rows', () => {
   const buildItems = readFileSync(
     join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'),
     'utf8'
   );
-  assert.match(buildItems, /isCallSendableForSealExport/);
+  assert.match(buildItems, /isQueueRowSendableForGoogleAdsExport/);
   assert.match(buildItems, /blockedNotSendableQueueIds/);
 });

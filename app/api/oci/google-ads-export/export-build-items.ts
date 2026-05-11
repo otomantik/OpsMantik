@@ -1,5 +1,5 @@
 import { selectCoexistentFunnelExportCandidates } from '@/lib/oci/single-conversion-highest-only';
-import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
+import { isQueueRowSendableForGoogleAdsExport } from '@/lib/oci/call-sendability';
 import { fetchExportCallContextRows } from '@/lib/oci/call-sendability-fetch';
 import type { GoogleAdsConversionItem } from '@/lib/oci/google-ads-export/types';
 import type { ExportAuthContext } from './export-auth';
@@ -76,17 +76,20 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
     callIds.length > 0 ? await fetchExportCallContextRows(ctx.siteUuid, callIds) : [];
   const sessionByCall: Record<string, string> = {};
   const intentCreatedByCall: Record<string, string> = {};
-  const sendabilityByCall: Record<string, boolean> = {};
+  const callSendabilityCtxById = new Map<
+    string,
+    { status: string | null; oci_status: string | null }
+  >();
   for (const c of calls) {
     const id = (c as { id: string }).id;
     const sid = (c as { matched_session_id?: string | null }).matched_session_id;
     if (sid) sessionByCall[id] = sid;
     const createdAt = (c as { created_at?: string | null }).created_at;
     if (createdAt) intentCreatedByCall[id] = createdAt;
-    sendabilityByCall[id] = isCallSendableForSealExport(
-      (c as { status?: string | null }).status ?? null,
-      (c as { oci_status?: string | null }).oci_status ?? null
-    );
+    callSendabilityCtxById.set(id, {
+      status: (c as { status?: string | null }).status ?? null,
+      oci_status: (c as { oci_status?: string | null }).oci_status ?? null,
+    });
   }
   const callerPhoneHashByCall: Record<string, string | undefined> = {};
   for (const c of calls) {
@@ -100,7 +103,11 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   const blockedNotSendableQueueIds = new Set<string>();
   for (const row of rawList) {
     if (!row.call_id) continue;
-    if (!sendabilityByCall[row.call_id]) {
+    const ctxRow = callSendabilityCtxById.get(row.call_id);
+    const sendable = ctxRow
+      ? isQueueRowSendableForGoogleAdsExport(row.action ?? null, ctxRow.status, ctxRow.oci_status)
+      : false;
+    if (!sendable) {
       blockedNotSendableQueueIds.add(row.id);
     }
   }

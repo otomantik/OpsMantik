@@ -1,3 +1,5 @@
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
+
 export type OciSendableCallStatus = 'confirmed' | 'qualified' | 'real';
 
 const SENDABLE_CALL_STATUSES = new Set<OciSendableCallStatus>(['confirmed', 'qualified', 'real']);
@@ -47,6 +49,31 @@ export function isCallSendableForSealExport(
     return true;
   }
   return isCallStatusSendableForOci(status) && (ociStatus ?? '').trim().toLowerCase() === 'sealed';
+}
+
+/**
+ * Google Ads offline queue export: sendability is **per journal action**, not one bit per call.
+ * Won keeps seal-style rules; contacted/offered/junk use the same intent/signal gates as outbox.
+ */
+export function isQueueRowSendableForGoogleAdsExport(
+  queueAction: string | null | undefined,
+  callStatus: string | null | undefined,
+  ociStatus: string | null | undefined
+): boolean {
+  const act = (queueAction ?? '').trim();
+  if (act === OPSMANTIK_CONVERSION_NAMES.won) {
+    return isCallSendableForSealExport(callStatus, ociStatus);
+  }
+  if (act === OPSMANTIK_CONVERSION_NAMES.contacted) {
+    return isCallStatusSendableForSignal(callStatus, 'contacted');
+  }
+  if (act === OPSMANTIK_CONVERSION_NAMES.offered) {
+    return isCallStatusSendableForSignal(callStatus, 'offered');
+  }
+  if (act === OPSMANTIK_CONVERSION_NAMES.junk) {
+    return isCallSendableForOutboxSignalStage(callStatus, 'junk');
+  }
+  return isCallSendableForSealExport(callStatus, ociStatus);
 }
 
 /**
