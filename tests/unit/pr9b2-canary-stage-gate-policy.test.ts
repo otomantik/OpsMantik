@@ -40,3 +40,12 @@ test('PR-9B.2 code gate: export-build path applies per-action sendability to fet
   assert.match(buildItems, /isQueueRowSendableForGoogleAdsExport/);
   assert.match(buildItems, /blockedNotSendableQueueIds/);
 });
+
+test('PR-9I.1 code gate: ACK success path does not consult live call sendability (export claim is authoritative)', () => {
+  const ack = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'ack', 'route.ts'), 'utf8');
+  assert.doesNotMatch(ack, /fetchCallSendabilityRowsForSite/);
+  assert.doesNotMatch(ack, /isQueueRowSendableForGoogleAdsExport/);
+  assert.doesNotMatch(ack, /CALL_NOT_SENDABLE_AFTER_EXPORT/);
+  assert.match(ack, /aggregateAckSealSuccessRows/);
+  assert.match(ack, /EXPORT_CLAIM_SNAPSHOT_TRUSTED_PR9I1/);
+});

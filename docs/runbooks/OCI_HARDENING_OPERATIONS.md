@@ -48,6 +48,14 @@ If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, r
 - **Google Ads “upload log”** (bulk offline conversions history in the Google Ads UI) lists rows **submitted to Google** via **`upload.apply()`** (Scripts) or the equivalent API upload — **not** OpsMantik DB state by itself.
 - **Required path** (journal-only architecture): `offline_conversion_queue` (QUEUED/RETRY) → **`GET /api/oci/google-ads-export`** (`buildExportItems`: sendability, value/time gates, single-conversion / highest-gear policy) → returned payload → **Google Ads Script / runner** validation → **`upload.apply()`** → **then** a line can appear in Google’s upload history → **`POST /api/oci/ack`** reconciles queue state (ACK does **not** create a Google upload log row).
 
+### PR-9I.1 — ACK SUCCESS trusts the export claim snapshot
+
+- **Export-time sendability and gates are authoritative** when `markAsExported=true` claims rows to **`PROCESSING`** (`append_script_claim_transition_batch`). Operators must still pass PEEK / preview diagnostics before broad drain.
+- **`POST /api/oci/ack` SUCCESS** finalizes **claimed** journal rows (`PROCESSING` → **`COMPLETED`** or **`UPLOADED`** per `pendingConfirmation`). It **does not** re-query live `calls` status or re-run **`isQueueRowSendableForGoogleAdsExport`** as a hard blocker. Post-claim call drift is **not** a reason to **`FAILED`** a row that already uploaded under the prior claim contract.
+- **Replay**: Rows already **`COMPLETED`**, **`UPLOADED`**, or **`COMPLETED_UNVERIFIED`** count as idempotent success (no duplicate transition required).
+- **Script vs Google ingestion**: Apps Script ACK means **dispatch / script-side success** for the batch the script believes it uploaded — not a guarantee of final Google Ads ingestion (bulk upload can still be reviewed in the Google UI; see `pendingConfirmation` semantics).
+- **Safety net**: Stuck **`PROCESSING`** recovery (`recover_stuck_offline_conversion_jobs`, classifier flags) remains the escape hatch when ACK never arrives; **PR-9C invalid-status policy is unchanged**.
+
 **Why operators see fewer PEEK rows than QUEUED DB rows (same site):**
 
 1. **Export page size** — One HTTP GET returns at most **`limit`** rows (default up to 250/1000); cursor pagination applies.

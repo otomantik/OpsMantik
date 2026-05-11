@@ -18,8 +18,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/upstash';
 import { getPvDataKey, getPvProcessingKeysForCleanup } from '@/lib/oci/pv-redis';
-import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
-import { fetchCallSendabilityRowsForSite } from '@/lib/oci/call-sendability-fetch';
+import {
+  ACK_SUCCESS_POLICY_CODES,
+  aggregateAckSealSuccessRows,
+  mapAckFinalizationTallyToObservability,
+  type AckFinalizationCode,
+} from '@/lib/oci/ack-finalization-policy';
 import { logError, logInfo } from '@/lib/logging/logger';
 import { buildAckPayloadHash, completeAckReceipt, registerAckReceipt } from '@/lib/oci/ack-receipt';
 import { sortDeterministicIds } from '@/lib/oci/deterministic-scheduler';
@@ -212,6 +216,7 @@ export async function POST(req: NextRequest) {
     }
     let actualTransitionedCount = 0;
     let alreadyTerminalCount = 0;
+    let sealAckFinalizationTally: Partial<Record<AckFinalizationCode, number>> | undefined;
 
     // Idempotent ack logic: rows already in a terminal state (COMPLETED, UPLOADED) count
     // as already-acked and are returned as successes. Only rows in genuinely unexpected
@@ -222,51 +227,48 @@ export async function POST(req: NextRequest) {
     if (sealIds.length > 0) {
       const { data, error } = await adminClient
         .from('offline_conversion_queue')
-        .select('id, status, call_id')
+        .select('id, status')
         .in('id', sealIds)
         .eq('site_id', siteUuid);
 
       if (error) {
         return dbUpstreamResponse('OCI_ACK_SQL_ERROR', error, 'OCI_ACK_SQL_ERROR');
       }
-      const allRows = Array.isArray(data) ? data as Array<{ id: string; status: string; call_id: string | null }> : [];
+      const allRows = Array.isArray(data) ? (data as Array<{ id: string; status: string }>) : [];
       const sealFound = new Set(allRows.map((r) => r.id));
       const missingSealIds = sealIds.filter((id) => !sealFound.has(id));
       if (missingSealIds.length > 0) {
-        logError('OCI_ACK_SEAL_PARTIAL_MISSING', { requested: sealIds.length, found: allRows.length, missingSealIds });
+        logError('OCI_ACK_SEAL_PARTIAL_MISSING', { requested: sealIds.length, found: allRows.length, missing_seal_count: missingSealIds.length });
         warnings.missing_seal_ids = missingSealIds;
       }
-      const alreadyDone = allRows.filter(r => TERMINAL_STATES.includes(r.status));
-      const processingRows = allRows.filter(r => r.status === 'PROCESSING');
-      const unexpected = allRows.filter(r => !TERMINAL_STATES.includes(r.status) && r.status !== 'PROCESSING');
-      const processingCallIds = [...new Set(processingRows.map((row) => row.call_id).filter((value): value is string => Boolean(value)))];
-      const callStatusById = new Map<string, { status: string | null; oci_status: string | null }>();
-      if (processingCallIds.length > 0) {
-        const sendabilityMap = await fetchCallSendabilityRowsForSite(siteUuid, processingCallIds);
-        for (const callId of processingCallIds) {
-          callStatusById.set(callId, sendabilityMap.get(callId) ?? { status: null, oci_status: null });
-        }
-      }
-      const blockedRows = processingRows.filter((row) => {
-        if (!row.call_id) return false;
-        const callState = callStatusById.get(row.call_id);
-        return !isCallSendableForSealExport(callState?.status, callState?.oci_status);
-      });
-      const blockedIds = new Set(blockedRows.map((row) => row.id));
-      const toTransition = processingRows.filter((row) => !blockedIds.has(row.id));
+      const alreadyDone = allRows.filter((r) => TERMINAL_STATES.includes(r.status));
+      const unexpected = allRows.filter((r) => !TERMINAL_STATES.includes(r.status) && r.status !== 'PROCESSING');
+
+      const agg = aggregateAckSealSuccessRows(allRows);
+      sealAckFinalizationTally = { ...agg.tally };
+      const toFinalizeIds = agg.finalizeIds;
+      const observabilityTally = mapAckFinalizationTallyToObservability(agg.tally);
 
       if (unexpected.length > 0) {
-        logError('OCI_ACK_UNEXPECTED_STATE', { ids: unexpected.map(r => r.id), states: unexpected.map(r => r.status) });
+        logError('OCI_ACK_UNEXPECTED_STATE', { unexpected_count: unexpected.length, states_sample: unexpected.slice(0, 5).map((r) => r.status) });
       }
       if (alreadyDone.length > 0) {
         logInfo('OCI_ACK_IDEMPOTENT_SKIP', { already_done: alreadyDone.length, requested: sealIds.length });
       }
+      if (toFinalizeIds.length > 0) {
+        logInfo('OCI_ACK_SUCCESS_FINALIZE_POLICY', {
+          site_id: siteUuid,
+          policy: ACK_SUCCESS_POLICY_CODES.NOT_BLOCKED_BY_POST_CLAIM_SENDABILITY,
+          finalized_claimed_row_count: observabilityTally.ACK_SUCCESS_FINALIZED_CLAIMED_ROW,
+          code: 'ACK_SUCCESS_FINALIZED_CLAIMED_ROW',
+        });
+      }
       alreadyTerminalCount += alreadyDone.length;
 
-      if (toTransition.length > 0) {
+      if (toFinalizeIds.length > 0) {
         const clearFields = ['last_error', 'provider_error_code', 'provider_error_category', 'next_retry_at', 'claimed_at', 'provider_request_id', 'provider_ref'];
         const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
-          p_queue_ids: toTransition.map((row) => row.id),
+          p_queue_ids: toFinalizeIds,
           p_new_status: pendingConfirmation ? 'UPLOADED' : 'COMPLETED',
           p_created_at: now,
           p_error_payload: { uploaded_at: now, clear_fields: clearFields },
@@ -279,28 +281,6 @@ export async function POST(req: NextRequest) {
           );
         }
         actualTransitionedCount += updatedCount;
-      }
-      if (blockedRows.length > 0) {
-        const { data: updatedCount, error: rpcError } = await adminClient.rpc('append_script_transition_batch', {
-          p_queue_ids: blockedRows.map((row) => row.id),
-          p_new_status: 'FAILED',
-          p_created_at: now,
-          p_error_payload: {
-            last_error: 'CALL_NOT_SENDABLE_AFTER_EXPORT',
-            provider_error_code: 'CALL_NOT_SENDABLE_AFTER_EXPORT',
-            provider_error_category: 'DETERMINISTIC_SKIP',
-            clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
-          },
-        });
-        if (rpcError || typeof updatedCount !== 'number' || updatedCount !== blockedRows.length) {
-          return dbUpstreamResponse(
-            'OCI_ACK_BLOCKED_BATCH_RPC_FAILED',
-            rpcError ?? new Error(`blocked batch expected ${blockedRows.length}, got ${updatedCount}`),
-            'OCI_ACK_BLOCKED_BATCH_RPC_FAILED'
-          );
-        }
-        actualTransitionedCount += updatedCount;
-        logInfo('OCI_ACK_BLOCKED_CALLS_TERMINALIZED', { site_id: siteUuid, count: blockedRows.length });
       }
     }
 
@@ -511,12 +491,20 @@ export async function POST(req: NextRequest) {
       message?: string;
       warnings?: Record<string, unknown> & { redis_cleanup_failed?: string[] };
       export_run_id?: string;
+      ack_finalization_policy?: string;
+      ack_finalization_tally?: Record<string, number>;
+      ack_finalization_observability?: Record<string, number>;
     } = {
       ok: true,
       updated: actualTransitionedCount + alreadyTerminalCount,
       message: Object.keys(warnings).length > 0 ? 'ACK completed with warnings' : undefined,
       export_run_id: exportRunId,
     };
+    if (sealAckFinalizationTally && Object.keys(sealAckFinalizationTally).length > 0) {
+      payload.ack_finalization_policy = 'EXPORT_CLAIM_SNAPSHOT_TRUSTED_PR9I1';
+      payload.ack_finalization_tally = { ...sealAckFinalizationTally } as Record<string, number>;
+      payload.ack_finalization_observability = mapAckFinalizationTallyToObservability(sealAckFinalizationTally);
+    }
     if (Object.keys(warnings).length > 0) {
       payload.warnings = { ...warnings };
     }

@@ -1452,3 +1452,18 @@ Artifact PASS verified at `2026-05-10T23:30:28.252Z`: release:evidence:productio
 **Equations (persisted summary):** **Eq A–D** (PR-9H.7F) plus **Eq E–H** (PR-9I) when the script emits universal counters — see `lib/oci/export-run-summary-equations.ts` and evidence helpers.
 
 **Decision labels (rollout):** `PR9I_AUDIT_READY` → `PR9I_UNIVERSAL_SCRIPT_CANARY_READY` → `PR9I_UNIVERSAL_SCRIPT_CANARY_TERMINAL_SUCCESS` → `PR9I_SITE_DRAIN_READY` → `PR9I_SITE_DRAIN_COMPLETED_WITH_PERSISTED_SUMMARY` (only after terminal queue + reconciled summary + Eq **A–H** green).
+
+## PR-9I.1 — ACK finalization trusts export claim snapshot
+
+**Binding policy**
+
+- **Export-time** `buildExportItems` sendability, value/time gates, and single-conversion policy are **authoritative at claim** (`PROCESSING`).
+- **`POST /api/oci/ack` SUCCESS** is **post-upload finalization** of rows the script reports as successfully dispatched. It **must not** hard-fail **`PROCESSING`** rows based on **mutable** post-claim `calls` status or live sendability helpers.
+- **`POST /api/oci/ack-failed`** records provider/script validation or upload failure for **`PROCESSING`** rows; it **must not** downgrade **`COMPLETED` / `UPLOADED` / `COMPLETED_UNVERIFIED`** terminal success.
+- **Apps Script ACK** confirms script dispatch success for the acknowledged id set — **not** guaranteed final Google offline conversion ingestion (operator may still use Google Ads upload history where applicable).
+
+**Operator sequencing after green**
+
+- When **`PR9I1_ACK_FINALIZATION_SNAPSHOT_GREEN`**: proceed toward **Koç broad script drain** using **drain approval gate** (no allowlist) per runbook, still **no** blind drain without PEEK evidence and approval tokens.
+
+**Evidence:** target DB contract remains **`TARGET_DB_GREEN`** under existing collectors; script summary **Eq A–H** unchanged by this policy module (synthetic rows validated in unit tests).

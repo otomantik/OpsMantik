@@ -11,7 +11,7 @@ function applyAckRace(existing: AckDecision | null, incoming: AckDecision): AckD
   return incoming;
 }
 
-test('chaos/ack-race: first committed decision wins and replay is deterministic', async () => {
+test('chaos/ack-race: first committed decision wins and replay is deterministic (compatible with PR-9I.1 idempotent terminal ACK)', async () => {
   let receipt: AckDecision | null = null;
   const ack: AckDecision = { winner: 'ACK', snapshot: { ok: true, updated: 3 } };
   const failed: AckDecision = { winner: 'ACK_FAILED', snapshot: { ok: true, updated: 3, code: 'TRANSIENT' } };

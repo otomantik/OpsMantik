@@ -1,10 +1,14 @@
 /**
- * POST /api/oci/ack-failed — Script validation/upload fail sonrası: PROCESSING → FAILED.
+ * POST /api/oci/ack-failed — Script validation/upload fail sonrası: PROCESSING → FAILED/RETRY.
  *
  * Script validation (INVALID_TIME_FORMAT vb) veya upload red aldığında bu endpoint'i çağırır.
  * Satırlar FAILED olur, last_error yazılır; recover-processing bunlara dokunmaz.
  *
- * Body: { siteId: string, queueIds: string[], errorCode?: string, errorMessage?: string, errorCategory?: 'VALIDATION'|'TRANSIENT'|'AUTH' }
+ * PR-9I.1: Does not downgrade terminal success (`COMPLETED` / `UPLOADED` / `COMPLETED_UNVERIFIED`).
+ * Only `PROCESSING` (and TRANSIENT retry paths) are mutated. No post-claim live sendability masking.
+ *
+ * Body: { siteId: string, queueIds: string[], errorCode?: string, errorMessage?: string, errorCategory?: … }
+ * errorCategory: `VALIDATION` | `TRANSIENT` | `AUTH` | `RATE_LIMIT` | `UNKNOWN`
  * Auth: Bearer session_token veya x-api-key (export/ack ile aynı).
  */
 
@@ -31,16 +35,18 @@ import {
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
 import { resolveOciScriptAuth } from '@/lib/oci/script-auth';
 import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
+import { isTerminalSuccessStatus } from '@/lib/oci/ack-finalization-policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-type AckFailedCategory = 'VALIDATION' | 'TRANSIENT' | 'AUTH';
+type AckFailedCategory = 'VALIDATION' | 'TRANSIENT' | 'AUTH' | 'RATE_LIMIT' | 'UNKNOWN';
 
 function getAuditErrorCategory(category: AckFailedCategory, maxAttemptsHit: boolean): 'PERMANENT' | 'VALIDATION' | 'AUTH' | 'MAX_ATTEMPTS' {
   if (maxAttemptsHit) return 'MAX_ATTEMPTS';
   if (category === 'VALIDATION') return 'VALIDATION';
-  if (category === 'AUTH') return 'AUTH';
+  if (category === 'AUTH' || category === 'RATE_LIMIT') return 'AUTH';
+  if (category === 'UNKNOWN') return 'PERMANENT';
   return 'PERMANENT';
 }
 
@@ -104,7 +110,7 @@ export async function POST(req: NextRequest) {
     const errorCode = coerced.errorCode || 'VALIDATION_FAILED';
     const errorMessage = coerced.errorMessage || errorCode;
     const rawCategory = typeof body.errorCategory === 'string' ? body.errorCategory : '';
-    const category: AckFailedCategory = ['VALIDATION', 'TRANSIENT', 'AUTH'].includes(rawCategory)
+    const category: AckFailedCategory = ['VALIDATION', 'TRANSIENT', 'AUTH', 'RATE_LIMIT', 'UNKNOWN'].includes(rawCategory)
       ? (rawCategory as AckFailedCategory)
       : 'VALIDATION';
 
@@ -208,6 +214,14 @@ export async function POST(req: NextRequest) {
       const sealRowsList = Array.isArray(sealRows)
         ? (sealRows as Array<{ id: string; status: string; call_id: string | null; attempt_count: number | null }>)
         : [];
+      const terminalSuccessNoopCount = sealRowsList.filter((r) => isTerminalSuccessStatus(r.status)).length;
+      if (terminalSuccessNoopCount > 0) {
+        logInfo('OCI_ACK_FAILED_NOOP_ALREADY_SUCCESS_TERMINAL', {
+          site_id: siteUuid,
+          code: 'ACK_FAILED_NO_DOWNGRADE_ALREADY_COMPLETED',
+          terminal_success_noop_count: terminalSuccessNoopCount,
+        });
+      }
       const bySealId = new Map(sealRowsList.map((r) => [r.id, r]));
       const missingSeals = sealFailedIds.filter((id) => !bySealId.has(id));
       if (missingSeals.length > 0) {
@@ -434,6 +448,7 @@ export async function POST(req: NextRequest) {
         error_category: category,
         retry_count: category === 'TRANSIENT' ? sealFailedIds.length : 0,
         fatal_count: fatalIds.length,
+        dispatch_code: 'ACK_FAILED_DISPATCH_RECORDED',
       });
     }
 
