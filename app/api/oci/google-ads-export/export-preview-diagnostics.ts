@@ -5,6 +5,10 @@
 import type { GoogleAdsConversionItem, QueueRow } from '@/lib/oci/google-ads-export/types';
 import type { QueueCurrencyDiagnostics, QueueHashedPhoneDiagnostics } from './export-build-queue';
 import {
+  computeUniversalScriptDrainPreviewStats,
+  type UniversalScriptDrainPreviewStats,
+} from '@/lib/oci/universal-script-drain-preview-stats';
+import {
   evaluateSignalReadiness,
   type UserIdentifiersPayload,
 } from '@/lib/oci/intent-conversion-journal-contract';
@@ -197,6 +201,11 @@ export type PreviewDiagnosticsExtension = {
   signal_availability_counts: Record<string, number>;
   script_v1_supported_counts: { gclid_ready: number; gclid_not_ready: number };
   api_supported_counts: { click_id_capable: number; enhanced_capable: number };
+  /** PR-9I universal drain — identifier-resolution aggregates only */
+  universal_script_drain: UniversalScriptDrainPreviewStats & {
+    hashed_phone_exported_count: number;
+    hashed_phone_missing_count: number;
+  };
 };
 
 export function buildPreviewDiagnosticsExtension(
@@ -228,6 +237,7 @@ export function buildPreviewDiagnosticsExtension(
   }
 
   const signalBlock = buildScriptAndApiCounts(rawList);
+  const universalBase = computeUniversalScriptDrainPreviewStats(rawList);
 
   return {
     built_count: pipelineStats.build_queue_conversions_count,
@@ -251,5 +261,10 @@ export function buildPreviewDiagnosticsExtension(
     signal_availability_counts: buildSignalAvailabilityCounts(rawList),
     script_v1_supported_counts: signalBlock.script_v1_supported_counts,
     api_supported_counts: signalBlock.api_supported_counts,
+    universal_script_drain: {
+      ...universalBase,
+      hashed_phone_exported_count: phoneDiag.hashed_phone_exported_count,
+      hashed_phone_missing_count: phoneDiag.hashed_phone_missing_count,
+    },
   };
 }

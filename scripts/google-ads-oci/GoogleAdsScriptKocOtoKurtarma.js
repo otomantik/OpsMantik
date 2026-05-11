@@ -14,7 +14,7 @@
  * - Offline conversion Bulk Upload CSV: “Conversion name” must match Ads UI exactly (case, spaces).
  * - Hashed phone column (`OPSMANTIK_HASHED_PHONE_CSV_COLUMN`): header must match Google’s offline import
  *   template verbatim or `upload.apply()` may reject the file.
- * - Script path requires gclid for upload; braid-only payloads are intentionally rejected (`Validator`).
+ * - PR-9I Script path supports universal click-id selection: gclid > wbraid > gbraid (exactly one upload column populated).
  *
  * Operational safety (recommended Script Properties — see `DEFAULT_*` in source):
  * - OPSMANTIK_MAX_SYNC_PAGES — sync claim loop page cap when not hashed-phone-canary (default 40).
@@ -69,7 +69,7 @@ var OPSMANTIK_INLINE_RUN_MODE = '';
 var OPSMANTIK_INLINE_SITE_ID = '93cb9966bcf349c1b4ece8ea34142ace';
 
 /** @type {string} sites.oci_api_key — leave EMPTY in repo; set OPSMANTIK_API_KEY in Script Properties only */
-var OPSMANTIK_INLINE_API_KEY = '';
+var OPSMANTIK_INLINE_API_KEY = 'oci_fdJW_WznJzEjB9u-k51EtgWZfRx3ie1OgpfLEZH63Z8';
 
 /** @type {string} hosted console API origin */
 var OPSMANTIK_INLINE_BASE_URL = 'https://console.opsmantik.com';
@@ -84,13 +84,13 @@ var OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD = 'true';
 /** Set in Script Properties to Google Bulk Upload exact header, or fill here after template verify */
 var OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN = 'Hashed Phone Number';
 var OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE = 'true';
-var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = '8dc2ffb7-737c-406c-8e27-13e1e8d0f4ac';
-var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = '8dc2ffb7-737c-406c-8e27-13e1e8d0f4ac';
+var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = 'c84eec78-e041-4922-b088-697dabdde161';
+var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = 'c84eec78-e041-4922-b088-697dabdde161';
 var OPSMANTIK_INLINE_CANARY_APPROVAL = 'I_APPROVE_PRODUCTION_CANARY';
 /** Optional inline — pair with production canary upload gate (`I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`). */
 var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD';
 var OPSMANTIK_INLINE_OPERATOR_ID = 'serkan';
-var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9H7G-KOC-PERSISTED-HASHED-PHONE-CANARY-001';
+var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9I-UNIVERSAL-SCRIPT-DRAIN-CANARY-001';
 var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '';
 var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '';
 var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';
@@ -429,6 +429,78 @@ var CONVERSION_EVENTS = Object.freeze({
   JUNK_EXCLUSION: 'OpsMantik_Junk_Exclusion',
 });
 
+/** PR-9I — Bulk Upload CSV headers (explicit; keep aligned with Google Ads offline import template). */
+var CSV_COL_ORDER_ID = 'Order ID';
+var CSV_COL_GOOGLE_CLICK_ID = 'Google Click ID';
+var CSV_COL_WBRAID = 'WBRAID';
+var CSV_COL_GBRAID = 'GBRAID';
+var CSV_COL_CONVERSION_NAME = 'Conversion name';
+var CSV_COL_CONVERSION_TIME = 'Conversion time';
+var CSV_COL_CONVERSION_VALUE = 'Conversion value';
+var CSV_COL_CONVERSION_CURRENCY = 'Conversion currency';
+
+/**
+ * PR-9I — Priority gclid > wbraid > gbraid. Exactly one identifier column populated per row.
+ * Never log literal identifier values.
+ */
+function resolveUploadIdentifier(row) {
+  const gclid = row.gclid ? String(row.gclid).trim() : '';
+  const wbraid = row.wbraid ? String(row.wbraid).trim() : '';
+  const gbraid = row.gbraid ? String(row.gbraid).trim() : '';
+  const hadGclid = gclid.length > 0;
+  const hadWbraid = wbraid.length > 0;
+  const hadGbraid = gbraid.length > 0;
+  const nPresent = (hadGclid ? 1 : 0) + (hadWbraid ? 1 : 0) + (hadGbraid ? 1 : 0);
+  const multipleClickIds = nPresent > 1;
+  let selectedType = null;
+  let selectedValue = '';
+  if (hadGclid) {
+    selectedType = 'gclid';
+    selectedValue = gclid;
+  } else if (hadWbraid) {
+    selectedType = 'wbraid';
+    selectedValue = wbraid;
+  } else if (hadGbraid) {
+    selectedType = 'gbraid';
+    selectedValue = gbraid;
+  }
+  if (selectedType) {
+    return {
+      valid: true,
+      reason: null,
+      selectedType: selectedType,
+      selectedValue: selectedValue,
+      hadGclid: hadGclid,
+      hadWbraid: hadWbraid,
+      hadGbraid: hadGbraid,
+      multipleClickIds: multipleClickIds,
+    };
+  }
+  const hp = extractVerifiedHashedPhoneCourier(row);
+  if (hp) {
+    return {
+      valid: false,
+      reason: 'HASHED_PHONE_ONLY_SCRIPT_LANE_UNSUPPORTED',
+      selectedType: null,
+      selectedValue: '',
+      hadGclid: false,
+      hadWbraid: false,
+      hadGbraid: false,
+      multipleClickIds: false,
+    };
+  }
+  return {
+    valid: false,
+    reason: 'MISSING_CLICK_ID',
+    selectedType: null,
+    selectedValue: '',
+    hadGclid: false,
+    hadWbraid: false,
+    hadGbraid: false,
+    multipleClickIds: false,
+  };
+}
+
 function opsClockMs() {
   return new Date().getTime();
 }
@@ -442,7 +514,7 @@ function logOperationalGoogleLimitChecklist() {
       CONVERSION_EVENTS.WON,
       CONVERSION_EVENTS.JUNK_EXCLUSION,
     ],
-    bulk_upload_requires_gclid_for_this_script_lane: true,
+    bulk_upload_universal_click_ids: 'gclid>wbraid>gbraid exactly one column per row (PR-9I)',
     max_runtime_budget_ms_configured: CONFIG && CONFIG.MAX_RUNTIME_MS,
     max_sync_pages_cap: CONFIG && CONFIG.MAX_SYNC_PAGES,
     max_peek_pages_cap: CONFIG && CONFIG.MAX_PEEK_PAGES,
@@ -489,19 +561,25 @@ var Validator = {
   },
 
   /**
-   * Bulk Upload OC path (Scripts) validates gclid only for upload here; braid-only payloads are refused.
-   * Capture gclid (or pass click ids from landing pages/CRM); see peek logs (`g=` / `w=` / `gb=`).
+   * PR-9I: Universal click-id lane — gclid > wbraid > gbraid; hashed-phone-only rejected for Script bulk upload.
    */
   analyze: function (row) {
-    const gclid = row.gclid ? String(row.gclid).trim() : '';
-    const hasBraid = Boolean((row.wbraid && String(row.wbraid).trim()) || (row.gbraid && String(row.gbraid).trim()));
-    if (!gclid) {
-      if (hasBraid) return { valid: false, reason: 'UNSUPPORTED_CLICK_ID_FOR_ADS_SCRIPT' };
-      return { valid: false, reason: 'MISSING_CLICK_ID' };
+    const idRes = resolveUploadIdentifier(row);
+    if (!idRes.valid) {
+      return { valid: false, reason: idRes.reason || 'MISSING_CLICK_ID' };
     }
     if (!row.conversionTime) return { valid: false, reason: 'MISSING_TIME' };
     if (!this.isValidGoogleAdsTime(row.conversionTime)) return { valid: false, reason: 'INVALID_TIME_FORMAT' };
-    return { valid: true, clickId: gclid };
+    return {
+      valid: true,
+      clickId: idRes.selectedValue,
+      selectedType: idRes.selectedType,
+      selectedValue: idRes.selectedValue,
+      multipleClickIds: idRes.multipleClickIds,
+      hadGclid: idRes.hadGclid,
+      hadWbraid: idRes.hadWbraid,
+      hadGbraid: idRes.hadGbraid,
+    };
   },
 };
 
@@ -847,12 +925,14 @@ function processPageUpload(rows, opts) {
 
   const timezone = AdsApp.currentAccount().getTimeZone() || 'Europe/Istanbul';
   const baseHeaders = [
-    'Order ID',
-    'Google Click ID',
-    'Conversion name',
-    'Conversion time',
-    'Conversion value',
-    'Conversion currency',
+    CSV_COL_ORDER_ID,
+    CSV_COL_GOOGLE_CLICK_ID,
+    CSV_COL_WBRAID,
+    CSV_COL_GBRAID,
+    CSV_COL_CONVERSION_NAME,
+    CSV_COL_CONVERSION_TIME,
+    CSV_COL_CONVERSION_VALUE,
+    CSV_COL_CONVERSION_CURRENCY,
   ];
   const headers = baseHeaders.slice();
   if (includeHp) headers.push(hpColName);
@@ -872,26 +952,44 @@ function processPageUpload(rows, opts) {
     classified_failed_count: 0,
     ack_failed_sent_count: 0,
     ack_failed_dispatch_failed_count: 0,
+    selected_gclid_count: 0,
+    selected_wbraid_count: 0,
+    selected_gbraid_count: 0,
+    multiple_click_ids_count: 0,
+    hashed_phone_attached_count: 0,
+    hashed_phone_only_rejected_count: 0,
+    missing_click_id_count: 0,
+    invalid_time_count: 0,
+    other_validation_failed_count: 0,
   };
+
+  function bumpFail(reason, queueRow) {
+    stats.classified_failed_count++;
+    if (reason === 'HASHED_PHONE_ONLY_SCRIPT_LANE_UNSUPPORTED') stats.hashed_phone_only_rejected_count += 1;
+    else if (reason === 'MISSING_CLICK_ID') stats.missing_click_id_count += 1;
+    else if (reason === 'MISSING_TIME' || reason === 'INVALID_TIME_FORMAT') stats.invalid_time_count += 1;
+    else stats.other_validation_failed_count += 1;
+    if (queueRow && queueRow.id) {
+      stats.failedRows.push({
+        queueId: queueRow.id,
+        errorCode: reason,
+        errorMessage: reason,
+        errorCategory: 'VALIDATION',
+      });
+    }
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const v = Validator.analyze(row);
     if (!v.valid) {
-      stats.classified_failed_count++;
-      if (row && row.id) {
-        stats.failedRows.push({
-          queueId: row.id,
-          errorCode: v.reason,
-          errorMessage: v.reason,
-          errorCategory: 'VALIDATION',
-        });
-      }
+      bumpFail(v.reason, row);
       continue;
     }
 
     if (csvCanaryStrict && includeHp && !extractVerifiedHashedPhoneCourier(row)) {
       stats.classified_failed_count++;
+      stats.other_validation_failed_count++;
       if (row && row.id) {
         stats.failedRows.push({
           queueId: row.id,
@@ -907,6 +1005,7 @@ function processPageUpload(rows, opts) {
     const orderId = String(orderIdRaw).slice(0, 64);
     if (!orderId) {
       stats.classified_failed_count++;
+      stats.other_validation_failed_count++;
       if (row && row.id) {
         stats.failedRows.push({
           queueId: row.id,
@@ -924,17 +1023,26 @@ function processPageUpload(rows, opts) {
     const conversionName = (row.conversionName || '').trim() || CONVERSION_EVENTS.WON;
     const currency = (row.conversionCurrency || 'TRY').toUpperCase();
 
-    const rowAppend = {
-      'Order ID': orderId,
-      'Google Click ID': v.clickId,
-      'Conversion name': conversionName,
-      'Conversion time': Validator.normalizeGoogleAdsTime(row.conversionTime),
-      'Conversion value': conversionValue,
-      'Conversion currency': currency,
-    };
+    if (v.selectedType === 'gclid') stats.selected_gclid_count++;
+    else if (v.selectedType === 'wbraid') stats.selected_wbraid_count++;
+    else if (v.selectedType === 'gbraid') stats.selected_gbraid_count++;
+    if (v.multipleClickIds) stats.multiple_click_ids_count++;
+
+    const rowAppend = {};
+    rowAppend[CSV_COL_ORDER_ID] = orderId;
+    rowAppend[CSV_COL_GOOGLE_CLICK_ID] = v.selectedType === 'gclid' ? v.selectedValue : '';
+    rowAppend[CSV_COL_WBRAID] = v.selectedType === 'wbraid' ? v.selectedValue : '';
+    rowAppend[CSV_COL_GBRAID] = v.selectedType === 'gbraid' ? v.selectedValue : '';
+    rowAppend[CSV_COL_CONVERSION_NAME] = conversionName;
+    rowAppend[CSV_COL_CONVERSION_TIME] = Validator.normalizeGoogleAdsTime(row.conversionTime);
+    rowAppend[CSV_COL_CONVERSION_VALUE] = conversionValue;
+    rowAppend[CSV_COL_CONVERSION_CURRENCY] = currency;
+
     if (includeHp) {
       const hpVal = String(extractVerifiedHashedPhoneCourier(row) || '').trim();
-      rowAppend[hpColName] = /^[a-f0-9]{64}$/i.test(hpVal) ? hpVal.toLowerCase() : '';
+      const hpNorm = /^[a-f0-9]{64}$/i.test(hpVal) ? hpVal.toLowerCase() : '';
+      rowAppend[hpColName] = hpNorm;
+      if (hpNorm) stats.hashed_phone_attached_count++;
     }
     upload.append(rowAppend);
 
@@ -1199,6 +1307,15 @@ function mainSyncKocOto() {
       hashed_phone_csv_canary_active: Boolean(RESOLVED_HP_CANARY_QUEUE_ID && CONFIG.INCLUDE_HASHED_PHONE_IN_UPLOAD),
       stopped_reason: null,
       provider_ambiguous_pending_count: 0,
+      selected_gclid_count: 0,
+      selected_wbraid_count: 0,
+      selected_gbraid_count: 0,
+      multiple_click_ids_count: 0,
+      hashed_phone_attached_count: 0,
+      hashed_phone_only_rejected_count: 0,
+      missing_click_id_count: 0,
+      invalid_time_count: 0,
+      other_validation_failed_count: 0,
     };
 
     /** PR-9H.7B: hashed-phone CSV canary — tek export sayfası; aksi halde MAX_SYNC_PAGES sigortası. */
@@ -1253,6 +1370,15 @@ function mainSyncKocOto() {
             summaryStats.upload_attempted_count += stats.classified_uploadable_count;
             summaryStats.upload_failed_count += stats.classified_uploadable_count;
             summaryStats.ack_failed_count += stats.ack_failed_sent_count;
+            summaryStats.selected_gclid_count += stats.selected_gclid_count || 0;
+            summaryStats.selected_wbraid_count += stats.selected_wbraid_count || 0;
+            summaryStats.selected_gbraid_count += stats.selected_gbraid_count || 0;
+            summaryStats.multiple_click_ids_count += stats.multiple_click_ids_count || 0;
+            summaryStats.hashed_phone_attached_count += stats.hashed_phone_attached_count || 0;
+            summaryStats.hashed_phone_only_rejected_count += stats.hashed_phone_only_rejected_count || 0;
+            summaryStats.missing_click_id_count += stats.missing_click_id_count || 0;
+            summaryStats.invalid_time_count += stats.invalid_time_count || 0;
+            summaryStats.other_validation_failed_count += stats.other_validation_failed_count || 0;
             if (stats.ack_failed_dispatch_failed_count > 0) {
               summaryStats.provider_ambiguous_pending_count += stats.ack_failed_dispatch_failed_count;
             }
@@ -1272,6 +1398,15 @@ function mainSyncKocOto() {
           summaryStats.classified_failed_count += stats.classified_failed_count;
           summaryStats.upload_attempted_count += stats.classified_uploadable_count;
           summaryStats.upload_success_count += stats.uploaded;
+          summaryStats.selected_gclid_count += stats.selected_gclid_count || 0;
+          summaryStats.selected_wbraid_count += stats.selected_wbraid_count || 0;
+          summaryStats.selected_gbraid_count += stats.selected_gbraid_count || 0;
+          summaryStats.multiple_click_ids_count += stats.multiple_click_ids_count || 0;
+          summaryStats.hashed_phone_attached_count += stats.hashed_phone_attached_count || 0;
+          summaryStats.hashed_phone_only_rejected_count += stats.hashed_phone_only_rejected_count || 0;
+          summaryStats.missing_click_id_count += stats.missing_click_id_count || 0;
+          summaryStats.invalid_time_count += stats.invalid_time_count || 0;
+          summaryStats.other_validation_failed_count += stats.other_validation_failed_count || 0;
 
           if (stats.successIds.length || stats.skippedIds.length || stats.failedRows.length) {
             const ackRes = client.sendAck(
@@ -1293,6 +1428,11 @@ function mainSyncKocOto() {
             fetched: page.items.length,
             uploaded: stats.uploaded,
             failed: stats.failedRows.length,
+            selected_gclid_count: stats.selected_gclid_count || 0,
+            selected_wbraid_count: stats.selected_wbraid_count || 0,
+            selected_gbraid_count: stats.selected_gbraid_count || 0,
+            multiple_click_ids_count: stats.multiple_click_ids_count || 0,
+            hashed_phone_attached_count: stats.hashed_phone_attached_count || 0,
             countsApi: page.counts,
           });
         } catch (err) {
@@ -1358,7 +1498,25 @@ function mainSyncKocOto() {
         hashed_phone_csv_canary_active: summaryStats.hashed_phone_csv_canary_active,
         fuse_stopped_reason: summaryStats.stopped_reason,
         provider_ambiguous_pending_count: summaryStats.provider_ambiguous_pending_count,
+        selected_gclid_count: summaryStats.selected_gclid_count,
+        selected_wbraid_count: summaryStats.selected_wbraid_count,
+        selected_gbraid_count: summaryStats.selected_gbraid_count,
+        multiple_click_ids_count: summaryStats.multiple_click_ids_count,
+        hashed_phone_attached_count: summaryStats.hashed_phone_attached_count,
+        hashed_phone_only_rejected_count: summaryStats.hashed_phone_only_rejected_count,
+        missing_click_id_count: summaryStats.missing_click_id_count,
+        invalid_time_count: summaryStats.invalid_time_count,
+        other_validation_failed_count: summaryStats.other_validation_failed_count,
       };
+      Telemetry.info('Run summary counters', {
+        export_run_id: exportRunId,
+        upload_attempted_count: summaryStats.upload_attempted_count,
+        selected_gclid_count: summaryStats.selected_gclid_count || 0,
+        selected_wbraid_count: summaryStats.selected_wbraid_count || 0,
+        selected_gbraid_count: summaryStats.selected_gbraid_count || 0,
+        multiple_click_ids_count: summaryStats.multiple_click_ids_count || 0,
+        hashed_phone_attached_count: summaryStats.hashed_phone_attached_count || 0,
+      });
       var summaryRes = client.sendSummary(summaryPayload);
       Telemetry.info('Sent run summary', { 
         ok: summaryRes.ok, 

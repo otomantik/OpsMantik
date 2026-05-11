@@ -1,5 +1,5 @@
 /**
- * PR-9H.7G — Evaluate persisted oci_export_run_summaries counts for evidence metadata (no PII).
+ * PR-9H.7G / PR-9I — Evaluate persisted oci_export_run_summaries counts for evidence metadata (no PII).
  * Aligns with lib/oci/export-run-summary-equations.ts payload checks.
  */
 
@@ -50,6 +50,33 @@ export function evaluatePersistedSummaryEquations(row) {
 
   checked.push('D');
   if (askOk + af + ask > claimed) mismatch_reasons.push('EQ_D_ACK_TOTAL_EXCEEDS_CLAIMED');
+
+  const sg = Number(row.selected_gclid_count ?? 0);
+  const sw = Number(row.selected_wbraid_count ?? 0);
+  const sgb = Number(row.selected_gbraid_count ?? 0);
+  const multi = Number(row.multiple_click_ids_count ?? 0);
+  const hpAtt = Number(row.hashed_phone_attached_count ?? 0);
+  const hpOnly = Number(row.hashed_phone_only_rejected_count ?? 0);
+  const missClick = Number(row.missing_click_id_count ?? 0);
+  const invTime = Number(row.invalid_time_count ?? 0);
+  const otherVal = Number(row.other_validation_failed_count ?? 0);
+
+  const pr9iEmitted = typeof row.selected_gclid_count === 'number';
+
+  if (pr9iEmitted) {
+    checked.push('E');
+    if (ua !== sg + sw + sgb) mismatch_reasons.push('EQ_E_SELECTED_CLICK_SUM_MISMATCH');
+
+    checked.push('F');
+    const failSum = hpOnly + missClick + invTime + otherVal;
+    if (cf !== failSum) mismatch_reasons.push('EQ_F_CLASSIFIED_FAILED_DECOMP_MISMATCH');
+
+    checked.push('G');
+    if (hpAtt > ua) mismatch_reasons.push('EQ_G_HASHED_PHONE_ATTACHED_EXCEEDS_UPLOAD');
+
+    checked.push('H');
+    if (multi > cu) mismatch_reasons.push('EQ_H_MULTIPLE_CLICK_IDS_EXCEEDS_UPLOADABLE');
+  }
 
   const all_green = mismatch_reasons.length === 0 && !partial_evidence;
   let script_summary_reconciliation = 'SCRIPT_SUMMARY_RECONCILIATION_UNVERIFIED';

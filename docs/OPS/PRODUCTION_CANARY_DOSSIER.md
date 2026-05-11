@@ -1437,3 +1437,18 @@ npm run release:evidence:production
 **Expected:** **`overall_status: PASS`**, **`waiver_status: ACCEPTED`** (or policy-passed-with-waiver per artifact), **`target_db_contract_status: TARGET_DB_GREEN`**, reconciliation and equation metadata unchanged vs. green target proof above.
 
 Artifact PASS verified at `2026-05-10T23:30:28.252Z`: release:evidence:production completed with target DB green, Eq A-D green, queue terminal COMPLETED, persisted script summary reconciled, and export_run_integrity waiver accepted for single-site Koç hashed-phone canary scope.
+
+## PR-9I — Universal script drain (GCLID / WBRAID / GBRAID + hashed phone courier)
+
+**Objective:** drain **eligible** pending journal rows across **script-mode** sites using **one** click identifier per CSV row (**`gclid > wbraid > gbraid`**), optional **server courier** hashed phone on the same row, and **honest** classification when identifiers are missing or invalid.
+
+**Invariants**
+
+- **Exactly one** of Google Click ID / WBRAID / GBRAID populated per upload row; others empty.
+- **Hashed phone** only from **verified** server payloads (`offline_conversion_queue.user_identifiers`, `calls.caller_phone_hash_sha256`) — **never** raw phone in Script; **never** log hash or click-id literals in operator logs.
+- **Hashed-phone-only** rows are **not** treated as Script-lane success until a dedicated lane is proven.
+- **Broad drain** remains behind **`SCRIPT_DRAIN_BLOCKED`** unless **`I_APPROVE_SCRIPT_DRAIN`** + site match + max-batch ≥ limit + braids **`true`** (see `export-auth`).
+
+**Equations (persisted summary):** **Eq A–D** (PR-9H.7F) plus **Eq E–H** (PR-9I) when the script emits universal counters — see `lib/oci/export-run-summary-equations.ts` and evidence helpers.
+
+**Decision labels (rollout):** `PR9I_AUDIT_READY` → `PR9I_UNIVERSAL_SCRIPT_CANARY_READY` → `PR9I_UNIVERSAL_SCRIPT_CANARY_TERMINAL_SUCCESS` → `PR9I_SITE_DRAIN_READY` → `PR9I_SITE_DRAIN_COMPLETED_WITH_PERSISTED_SUMMARY` (only after terminal queue + reconciled summary + Eq **A–H** green).

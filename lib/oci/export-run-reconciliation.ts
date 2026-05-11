@@ -27,6 +27,17 @@ export interface ScriptSummaryPayload {
   external_id_hash?: string;
 
   summary_version: string;
+
+  /** PR-9I universal Script lane — optional; enforced when present in payload */
+  selected_gclid_count?: number;
+  selected_wbraid_count?: number;
+  selected_gbraid_count?: number;
+  multiple_click_ids_count?: number;
+  hashed_phone_attached_count?: number;
+  hashed_phone_only_rejected_count?: number;
+  missing_click_id_count?: number;
+  invalid_time_count?: number;
+  other_validation_failed_count?: number;
 }
 
 export type ReconciliationStatus = 'RECONCILED' | 'MISMATCH' | 'INSUFFICIENT_EVIDENCE' | 'NOT_PROVIDED';
@@ -102,6 +113,23 @@ export function validateScriptSummaryShape(payload: unknown): { ok: boolean; sum
       if (!isFiniteIntegerLike(body[field])) {
         return { ok: false, error: `Invalid optional integer field: ${field}` };
       }
+    }
+  }
+
+  const optionalPr9i = [
+    'selected_gclid_count',
+    'selected_wbraid_count',
+    'selected_gbraid_count',
+    'multiple_click_ids_count',
+    'hashed_phone_attached_count',
+    'hashed_phone_only_rejected_count',
+    'missing_click_id_count',
+    'invalid_time_count',
+    'other_validation_failed_count',
+  ];
+  for (const field of optionalPr9i) {
+    if (body[field] !== undefined && !isFiniteIntegerLike(body[field])) {
+      return { ok: false, error: `Invalid optional integer field: ${field}` };
     }
   }
 

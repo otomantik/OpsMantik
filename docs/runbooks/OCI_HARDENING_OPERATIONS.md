@@ -136,6 +136,24 @@ Use this rule after a controlled Koç / Script-lane hashed-phone sync completes.
 - **Targeted canary proof (optional):** set **`OCI_EVIDENCE_EXPORT_RUN_ID`**, **`OCI_EVIDENCE_SITE_ID`**, **`OCI_EVIDENCE_PROVIDER_KEY`** (default **`google_ads`**). With **`TARGET_DB_EVIDENCE_STRICT=1`**, a missing row blocks with **`SCRIPT_SUMMARY_TARGET_MISSING`**.
 - **Historical Koç (`PR-9H.7E`):** cannot reconstruct the exact summary without the original HTTP payload — **future** runs must persist summaries for **HASHED_PHONE_CANARY_TERMINAL_SUCCESS_WITH_PERSISTED_SUMMARY**-style closure.
 
+### PR-9I — Universal script drain (GCLID + WBRAID + GBRAID + hashed phone courier)
+
+- **Click identifiers:** the Google Ads Script bulk-upload lane may send **at most one** non-empty click id per CSV row: **Google Click ID** *or* **WBRAID** *or* **GBRAID** — never more than one. **Selected identifier priority** (deterministic): **`gclid > wbraid > gbraid`**. When several are present, only the chosen column is populated; the other two are empty strings.
+- **Hashed phone (courier):** if a **server-verified** 64-char lowercase SHA-256 hex exists, it is a **first-class** optional field on the same row (when `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD=true` and the exact CSV header is configured). **No raw phone** and **no script-side hashing**.
+- **Hashed-phone-only rows:** must **not** be marked successful through the **click-id** script lane. They are classified as **not exportable** until a separate proven lane exists.
+- **No identifiers:** rows with no usable click id and no valid courier hash for this lane are **not** silently dropped — they are classified and counted in audit/preview.
+- **Audit (read-only):** `node scripts/db/pr9i-universal-script-drain-audit.mjs` classifies `QUEUED` / `RETRY` `google_ads` queue rows for **script-mode** sites. It never prints raw gclid/wbraid/gbraid or hash hex.
+- **Preview / diagnostics:** hosted preview exposes **count-only** universal drain fields (no click id or hash literals).
+- **Persisted summary / evidence:** `oci_export_run_summaries` may include PR-9I counters; reconciliation extends **Eq A–D** with **Eq E–H** when the script payload includes the universal counter bundle (see `lib/oci/export-run-summary-equations.ts`).
+- **Canary matrix (operator):** when available, exercise one controlled canary per class: gclid±hp, wbraid±hp, gbraid±hp — each: **PEEK** (booleans only) → **SYNC** with **server allowlist=1** → **DB terminal** + **persisted summary** + **Eq A–H** green — before any site-level broad drain.
+- **Broad drain safety:** **no** unbounded “claim everything” without **explicit approval**. A **mutating** export with **no** canary allowlist requires **all** of:
+  - Header `x-opsmantik-drain-approval: I_APPROVE_SCRIPT_DRAIN` (or env `OPSMANTIK_DRAIN_APPROVAL`)  
+  - `x-opsmantik-drain-site-id` / `OPSMANTIK_DRAIN_SITE_ID` matching the site being exported  
+  - `x-opsmantik-drain-max-batch-size` / `OPSMANTIK_DRAIN_MAX_BATCH_SIZE` **≥** requested `limit`  
+  - `x-opsmantik-drain-include-braids: true` / `OPSMANTIK_DRAIN_INCLUDE_BRAIDS=true` (acknowledges WBRAID/GBRAID in scope)  
+  Failure returns **`409`** with code **`SCRIPT_DRAIN_BLOCKED`**. **Default** production script settings stay safe; canary remains **`limit=1`** with allowlist.
+- **Rollback / recovery:** disable optional hashed-phone CSV column; reduce export limit; pause scheduler; re-run audit — treat **`PROCESSING`** stuck rows per existing queue recovery runbooks (do not re-upload blindly).
+
 ## Scheduled Google Ads Script Production Sync
 
 **Per-account installation:** one Google Ads Script project (or one MCC-linked script scoped per account) maps to **one** OpsMantik site. Store **`OPSMANTIK_API_KEY`** and **`OPSMANTIK_SITE_ID`** in **Script Properties** (`PropertiesService.getScriptProperties()`); never rely on inline secrets in source. Source file: `scripts/google-ads-oci/GoogleAdsScriptProduction.js` — paste into the Google Ads Script editor and bind **`main`** to a **time-driven** trigger.

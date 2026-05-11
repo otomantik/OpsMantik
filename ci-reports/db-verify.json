@@ -42,7 +42,7 @@
       "ok": true,
       "sample": {
         "ok": false,
-        "checked_at": "2026-05-10T23:30:28.906102+00:00",
+        "checked_at": "2026-05-11T08:59:32.120049+00:00",
         "trigger_sessions_set_created_month": false,
         "trigger_events_set_session_month_from_session": false
       }
@@ -100,7 +100,7 @@
         "ok": true,
         "kind": "revenue_events",
         "limit": 1000,
-        "current": 419
+        "current": 423
       }
     },
     {

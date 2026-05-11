@@ -15,7 +15,11 @@ export type PayloadEquationCode =
   | 'EQ_A_FETCHED_CLAIMED_MISMATCH'
   | 'EQ_B_CLASSIFICATION_MISMATCH'
   | 'EQ_C_UPLOAD_MISMATCH'
-  | 'EQ_D_ACK_TOTAL_EXCEEDS_CLAIMED';
+  | 'EQ_D_ACK_TOTAL_EXCEEDS_CLAIMED'
+  | 'EQ_E_SELECTED_CLICK_SUM_MISMATCH'
+  | 'EQ_F_CLASSIFIED_FAILED_DECOMP_MISMATCH'
+  | 'EQ_G_HASHED_PHONE_ATTACHED_EXCEEDS_UPLOAD'
+  | 'EQ_H_MULTIPLE_CLICK_IDS_EXCEEDS_UPLOADABLE';
 
 export function normalizeNonNegativeInt(n: unknown, fallback = 0): number {
   if (typeof n !== 'number' || !Number.isFinite(n)) return fallback;
@@ -38,6 +42,15 @@ export function normalizeSummaryForPersist(summary: ScriptSummaryPayload): Scrip
     ack_success_count: normalizeNonNegativeInt(summary.ack_success_count, 0),
     ack_failed_count: normalizeNonNegativeInt(summary.ack_failed_count, 0),
     ack_skipped_count: normalizeNonNegativeInt(summary.ack_skipped_count, 0),
+    selected_gclid_count: normalizeNonNegativeInt(summary.selected_gclid_count, 0),
+    selected_wbraid_count: normalizeNonNegativeInt(summary.selected_wbraid_count, 0),
+    selected_gbraid_count: normalizeNonNegativeInt(summary.selected_gbraid_count, 0),
+    multiple_click_ids_count: normalizeNonNegativeInt(summary.multiple_click_ids_count, 0),
+    hashed_phone_attached_count: normalizeNonNegativeInt(summary.hashed_phone_attached_count, 0),
+    hashed_phone_only_rejected_count: normalizeNonNegativeInt(summary.hashed_phone_only_rejected_count, 0),
+    missing_click_id_count: normalizeNonNegativeInt(summary.missing_click_id_count, 0),
+    invalid_time_count: normalizeNonNegativeInt(summary.invalid_time_count, 0),
+    other_validation_failed_count: normalizeNonNegativeInt(summary.other_validation_failed_count, 0),
   };
 }
 
@@ -47,6 +60,10 @@ export function evaluatePersistEquations(summary: ScriptSummaryPayload): {
   checked_b: boolean;
   checked_c: boolean;
   checked_d: boolean;
+  checked_e: boolean;
+  checked_f: boolean;
+  checked_g: boolean;
+  checked_h: boolean;
   partial_evidence: boolean;
 } {
   const mismatch_reasons: PayloadEquationCode[] = [];
@@ -54,6 +71,10 @@ export function evaluatePersistEquations(summary: ScriptSummaryPayload): {
   let checked_b = false;
   let checked_c = false;
   let checked_d = false;
+  let checked_e = false;
+  let checked_f = false;
+  let checked_g = false;
+  let checked_h = false;
   let partial_evidence = false;
 
   const fc = summary.fetched_count;
@@ -68,6 +89,16 @@ export function evaluatePersistEquations(summary: ScriptSummaryPayload): {
   const asOk = summary.ack_success_count ?? 0;
   const af = summary.ack_failed_count ?? 0;
   const ask = summary.ack_skipped_count ?? 0;
+
+  const sg = summary.selected_gclid_count ?? 0;
+  const sw = summary.selected_wbraid_count ?? 0;
+  const sgb = summary.selected_gbraid_count ?? 0;
+  const multi = summary.multiple_click_ids_count ?? 0;
+  const hpAtt = summary.hashed_phone_attached_count ?? 0;
+  const hpOnly = summary.hashed_phone_only_rejected_count ?? 0;
+  const missClick = summary.missing_click_id_count ?? 0;
+  const invTime = summary.invalid_time_count ?? 0;
+  const otherVal = summary.other_validation_failed_count ?? 0;
 
   // Eq A
   if (fc !== undefined) {
@@ -92,7 +123,36 @@ export function evaluatePersistEquations(summary: ScriptSummaryPayload): {
   const ackSum = asOk + af + ask;
   if (ackSum > claimed) mismatch_reasons.push('EQ_D_ACK_TOTAL_EXCEEDS_CLAIMED');
 
-  return { mismatch_reasons, checked_a, checked_b, checked_c, checked_d, partial_evidence };
+  // PR-9I optional equations when Script emits universal counter bundle
+  const pr9iEmitted = typeof summary.selected_gclid_count === 'number';
+
+  if (pr9iEmitted) {
+    checked_e = true;
+    if (ua !== sg + sw + sgb) mismatch_reasons.push('EQ_E_SELECTED_CLICK_SUM_MISMATCH');
+
+    checked_f = true;
+    const failSum = hpOnly + missClick + invTime + otherVal;
+    if (cf !== failSum) mismatch_reasons.push('EQ_F_CLASSIFIED_FAILED_DECOMP_MISMATCH');
+
+    checked_g = true;
+    if (hpAtt > ua) mismatch_reasons.push('EQ_G_HASHED_PHONE_ATTACHED_EXCEEDS_UPLOAD');
+
+    checked_h = true;
+    if (multi > cu) mismatch_reasons.push('EQ_H_MULTIPLE_CLICK_IDS_EXCEEDS_UPLOADABLE');
+  }
+
+  return {
+    mismatch_reasons,
+    checked_a,
+    checked_b,
+    checked_c,
+    checked_d,
+    checked_e,
+    checked_f,
+    checked_g,
+    checked_h,
+    partial_evidence,
+  };
 }
 
 export function derivePersistStatus(params: {

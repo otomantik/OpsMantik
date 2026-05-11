@@ -131,6 +131,10 @@ export async function POST(req: NextRequest) {
         checked_b: eq.checked_b,
         checked_c: eq.checked_c,
         checked_d: eq.checked_d,
+        checked_e: eq.checked_e,
+        checked_f: eq.checked_f,
+        checked_g: eq.checked_g,
+        checked_h: eq.checked_h,
       },
     };
 

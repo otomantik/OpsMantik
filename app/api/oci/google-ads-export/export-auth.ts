@@ -248,6 +248,70 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     }
   }
 
+  /**
+   * PR-9I — Broad mutating export without canary allowlist requires explicit operator approval.
+   * Canary path (allowlist + canaryMode + headers) stays separate.
+   */
+  const broadMutatingExport = markAsExported && !canaryMode && canaryAllowlistIds.length === 0;
+  if (broadMutatingExport) {
+    const drainApproval =
+      readCanaryHeader(req, 'x-opsmantik-drain-approval') ||
+      String(process.env.OPSMANTIK_DRAIN_APPROVAL ?? '').trim();
+    const drainSiteId =
+      readCanaryHeader(req, 'x-opsmantik-drain-site-id') ||
+      String(process.env.OPSMANTIK_DRAIN_SITE_ID ?? '').trim();
+    const drainMaxBatchRaw =
+      readCanaryHeader(req, 'x-opsmantik-drain-max-batch-size') ||
+      String(process.env.OPSMANTIK_DRAIN_MAX_BATCH_SIZE ?? '').trim();
+    const drainIncludeBraids =
+      readCanaryHeader(req, 'x-opsmantik-drain-include-braids') ||
+      String(process.env.OPSMANTIK_DRAIN_INCLUDE_BRAIDS ?? '').trim();
+
+    const missingDrain: string[] = [];
+    if (!drainApproval) missingDrain.push('x-opsmantik-drain-approval / OPSMANTIK_DRAIN_APPROVAL');
+    if (!drainSiteId) missingDrain.push('x-opsmantik-drain-site-id / OPSMANTIK_DRAIN_SITE_ID');
+    if (!drainMaxBatchRaw) missingDrain.push('x-opsmantik-drain-max-batch-size / OPSMANTIK_DRAIN_MAX_BATCH_SIZE');
+    if (!drainIncludeBraids) missingDrain.push('x-opsmantik-drain-include-braids / OPSMANTIK_DRAIN_INCLUDE_BRAIDS');
+
+    if (missingDrain.length > 0) {
+      throw new ExportHttpError(409, {
+        error: 'Script drain blocked: missing broad drain approval metadata',
+        code: 'SCRIPT_DRAIN_BLOCKED',
+        missing: missingDrain,
+      });
+    }
+
+    if (drainApproval !== 'I_APPROVE_SCRIPT_DRAIN') {
+      throw new ExportHttpError(409, {
+        error: 'Script drain blocked: invalid drain approval token',
+        code: 'SCRIPT_DRAIN_BLOCKED',
+      });
+    }
+
+    if (drainSiteId !== site.id && drainSiteId !== site.public_id) {
+      throw new ExportHttpError(409, {
+        error: 'Script drain blocked: drain site mismatch',
+        code: 'SCRIPT_DRAIN_BLOCKED',
+      });
+    }
+
+    const drainMaxBatch = Number(drainMaxBatchRaw);
+    if (!Number.isFinite(drainMaxBatch) || drainMaxBatch < pageLimit) {
+      throw new ExportHttpError(409, {
+        error: 'Script drain blocked: drain max batch size must be >= requested limit',
+        code: 'SCRIPT_DRAIN_BLOCKED',
+      });
+    }
+
+    const braidsOk = drainIncludeBraids === 'true' || drainIncludeBraids === '1';
+    if (!braidsOk) {
+      throw new ExportHttpError(409, {
+        error: 'Script drain blocked: braids must be explicitly acknowledged (true)',
+        code: 'SCRIPT_DRAIN_BLOCKED',
+      });
+    }
+  }
+
   return {
     site,
     siteUuid: site.id,

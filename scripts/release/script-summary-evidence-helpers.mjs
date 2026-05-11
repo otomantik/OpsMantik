@@ -54,6 +54,15 @@ export function deriveScriptSummaryEvidenceFields(input) {
       ack_skipped_count: Number(target.ack_skipped_count ?? 0),
       provider_ambiguous_pending_count: Number(target.provider_ambiguous_pending_count ?? 0),
       hashed_phone_csv_canary_active: target.hashed_phone_csv_canary_active === true,
+      selected_gclid_count: Number(target.selected_gclid_count ?? 0),
+      selected_wbraid_count: Number(target.selected_wbraid_count ?? 0),
+      selected_gbraid_count: Number(target.selected_gbraid_count ?? 0),
+      multiple_click_ids_count: Number(target.multiple_click_ids_count ?? 0),
+      hashed_phone_attached_count: Number(target.hashed_phone_attached_count ?? 0),
+      hashed_phone_only_rejected_count: Number(target.hashed_phone_only_rejected_count ?? 0),
+      missing_click_id_count: Number(target.missing_click_id_count ?? 0),
+      invalid_time_count: Number(target.invalid_time_count ?? 0),
+      other_validation_failed_count: Number(target.other_validation_failed_count ?? 0),
       mismatch_reasons: Array.isArray(target.mismatch_reasons) ? target.mismatch_reasons : [],
     };
     if (target.status === 'SCRIPT_SUMMARY_MISMATCH') {

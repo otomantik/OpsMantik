@@ -72,6 +72,10 @@ SELECT
           WHERE s.fetched_count < 0 OR s.claimed_count < 0 OR s.upload_attempted_count < 0
             OR s.upload_success_count < 0 OR s.upload_failed_count < 0 OR s.ack_success_count < 0
             OR s.ack_failed_count < 0 OR s.ack_skipped_count < 0 OR s.provider_ambiguous_pending_count < 0
+            OR s.selected_gclid_count < 0 OR s.selected_wbraid_count < 0 OR s.selected_gbraid_count < 0
+            OR s.multiple_click_ids_count < 0 OR s.hashed_phone_attached_count < 0
+            OR s.hashed_phone_only_rejected_count < 0 OR s.missing_click_id_count < 0
+            OR s.invalid_time_count < 0 OR s.other_validation_failed_count < 0
         )
     ELSE 0::bigint
   END AS negative_count_violations,

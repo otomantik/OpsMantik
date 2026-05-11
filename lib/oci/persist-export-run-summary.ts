@@ -54,6 +54,15 @@ export async function persistExportRunSummary(input: PersistExportRunSummaryInpu
     status: input.status,
     payload_redacted: input.payload_redacted,
     updated_at: receivedAt,
+    selected_gclid_count: input.summary.selected_gclid_count ?? 0,
+    selected_wbraid_count: input.summary.selected_wbraid_count ?? 0,
+    selected_gbraid_count: input.summary.selected_gbraid_count ?? 0,
+    multiple_click_ids_count: input.summary.multiple_click_ids_count ?? 0,
+    hashed_phone_attached_count: input.summary.hashed_phone_attached_count ?? 0,
+    hashed_phone_only_rejected_count: input.summary.hashed_phone_only_rejected_count ?? 0,
+    missing_click_id_count: input.summary.missing_click_id_count ?? 0,
+    invalid_time_count: input.summary.invalid_time_count ?? 0,
+    other_validation_failed_count: input.summary.other_validation_failed_count ?? 0,
   };
 
   const { data, error } = await adminClient

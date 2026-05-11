@@ -52,6 +52,7 @@ const CRITICAL_MIGRATIONS = [
   '20261226023000_recover_safe_processing_queue_rows_v1.sql',
   '20261226024000_restrict_recover_stuck_offline_conversion_jobs_grants.sql',
   '20261226030000_restore_cron_lease_lock_backend.sql',
+  '20261228120000_pr9i_export_run_summary_universal_stats.sql',
 ];
 const CRITICAL_MIGRATION_EQUIVALENTS = {
   '20261226030000_restore_cron_lease_lock_backend.sql': {
@@ -695,7 +696,10 @@ async function collectTargetDbEvidence({ mode, strict, withDb, sqlPackHashes }) 
           `select id, status, mismatch_reasons, fetched_count, claimed_count,
             classified_uploadable_count, classified_skipped_count, classified_failed_count,
             upload_attempted_count, upload_success_count, upload_failed_count,
-            ack_success_count, ack_failed_count, ack_skipped_count, provider_ambiguous_pending_count, hashed_phone_csv_canary_active
+            ack_success_count, ack_failed_count, ack_skipped_count, provider_ambiguous_pending_count, hashed_phone_csv_canary_active,
+            selected_gclid_count, selected_wbraid_count, selected_gbraid_count, multiple_click_ids_count,
+            hashed_phone_attached_count, hashed_phone_only_rejected_count, missing_click_id_count,
+            invalid_time_count, other_validation_failed_count
            from public.oci_export_run_summaries
            where export_run_id = $1 and site_id = $2::uuid and provider_key = $3
            limit 1`,
