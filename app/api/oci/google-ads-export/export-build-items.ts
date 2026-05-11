@@ -1,4 +1,4 @@
-import { selectHighestPriorityCandidates } from '@/lib/oci/single-conversion-highest-only';
+import { selectCoexistentFunnelExportCandidates } from '@/lib/oci/single-conversion-highest-only';
 import { isCallSendableForSealExport } from '@/lib/oci/call-sendability';
 import { fetchExportCallContextRows } from '@/lib/oci/call-sendability-fetch';
 import type { GoogleAdsConversionItem } from '@/lib/oci/google-ads-export/types';
@@ -113,7 +113,8 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
   );
 
   const rankedCandidates = [...filteredQueueCandidates];
-  const { kept: keptCandidates, suppressed: suppressedCandidates } = selectHighestPriorityCandidates(rankedCandidates);
+  const { kept: keptCandidates, suppressed: suppressedCandidates } =
+    selectCoexistentFunnelExportCandidates(rankedCandidates);
   const rankedIds = new Set(rankedCandidates.map((candidate) => candidate.id));
   const keptIds = new Set(keptCandidates.map((candidate) => candidate.id));
   const keptConversions = filteredQueueConversions.filter((item) => !rankedIds.has(item.id) || keptIds.has(item.id));

@@ -6,7 +6,7 @@
  *
  * Credentials (Script Properties preferred):
  * - OPSMANTIK_SITE_ID, OPSMANTIK_API_KEY, OPSMANTIK_BASE_URL (optional)
- * - OPSMANTIK_RUN_MODE — `peek` | `sync` (overrides file-level `OPSMANTIK_RUN_MODE`; optional inline `OPSMANTIK_INLINE_RUN_MODE`)
+ * - OPSMANTIK_RUN_MODE — `peek` | `sync` (Script Properties override file-level `OPSMANTIK_RUN_MODE`; optional `OPSMANTIK_INLINE_RUN_MODE`)
  *
  * Google platform limits / ops (not enforced by OpsMantik code alone):
  * - Hard ceiling ~30 min execution — use `OPSMANTIK_MAX_RUNTIME_MS` (default ~25 min) plus smaller,
@@ -16,34 +16,37 @@
  *   template verbatim or `upload.apply()` may reject the file.
  * - PR-9I Script path supports universal click-id selection: gclid > wbraid > gbraid (exactly one upload column populated).
  *
- * Operational safety (recommended Script Properties — see `DEFAULT_*` in source):
- * - OPSMANTIK_MAX_SYNC_PAGES — sync claim loop page cap when not hashed-phone-canary (default 40).
- * - OPSMANTIK_MAX_PEEK_PAGES — peek pagination cap (default 120).
+ * Operational safety (inline / Script Properties — see `DEFAULT_*` in source):
+ * - OPSMANTIK_EXPORT_LIMIT — keep aligned with PR-9I broad drain max batch (e.g. 25).
+ * - OPSMANTIK_MAX_SYNC_PAGES — sync claim loop page cap (Koç canlı drain: 1 sayfa kontrollü).
+ * - OPSMANTIK_MAX_PEEK_PAGES — peek pagination cap (PEEK öncesi: 1 sayfa yeter).
  * - OPSMANTIK_MAX_RUNTIME_MS — bail out before Google's wall clock (default 1500000 ≈ 25 min).
  *
  * Run modes:
- * - "peek": queue preview only, no upload/ack
+ * - "peek": queue preview only, no upload/ack (`markAsExportedSunucu=false`)
  * - "sync": upload + ack/ack-failed flow
  *
- * Optional (hashed-phone CSV — courier only; PR-9H.7A):
- * - OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD — `true` to append server `hashedPhoneNumber` / `userIdentifiers` (64-char hex)
- * - OPSMANTIK_HASHED_PHONE_CSV_COLUMN — exact Google Bulk Upload header (or inline `HASHED_PHONE_UPLOAD_COLUMN`)
- * Script never receives raw phone, never hashes, never logs hash values. Peek logs `hasHashedPhoneNumber` only.
+ * Koç canlı drain (PR-9I, ~22 satır) — önerilen sıra:
+ * 1) `OPSMANTIK_RUN_MODE=peek`, `OPSMANTIK_EXPORT_LIMIT=25`, `OPSMANTIK_MAX_SYNC_PAGES` / `OPSMANTIK_MAX_PEEK_PAGES=1`.
+ *    Beklenen: `satirBuSayfa` ~22, `hp=1` ~17 / `hp=0` ~5, g/w/gb bayrakları, `markAsExportedSunucu=false`.
+ * 2) Sonra yalnızca `OPSMANTIK_RUN_MODE=sync` (limit ve sayfa sigortası aynı kalsın).
+ * 3) Başarı logları: `Sayfa sync` fetched=uploaded, failed=0; `SCRIPT_SUMMARY_RECONCILED`; `SYNC_HIT_MAX_SYNC_PAGES_FUSE_MORE_QUEUE_REMAINS`
+ *    tek başına hata değil (MAX_SYNC_PAGES=1 bilinçli sigorta). Evidence etiketi: **PR9I_KOC_LIVE_QUEUE_DRAIN_22_SUCCESS**.
  *
- * PR-9H.7B canary (sync + hashed phone): `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE=true`,
- * `OPSMANTIK_EXPORT_ALLOWLIST_IDS` (single UUID), `OPSMANTIK_CANARY_EXPECTED_QUEUE_ID`,
- * `OPSMANTIK_CANARY_APPROVAL=I_APPROVE_PRODUCTION_CANARY`, `OPSMANTIK_CANARY_UPLOAD_APPROVAL=I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`,
- * `OPSMANTIK_EXPORT_LIMIT=1`, plus `OPSMANTIK_OPERATOR_ID` / `OPSMANTIK_CHANGE_TICKET` for canary headers on claim fetch.
- * **SYNC:** `OPSMANTIK_ALLOWLIST_IDS` is forbidden (claim-then-drop risk). Use server-side
- * `OPSMANTIK_EXPORT_ALLOWLIST_IDS` only within the hashed-phone canary bundle.
- * **Google Ads Script Properties:** delete the `OPSMANTIK_ALLOWLIST_IDS` key entirely (do not leave empty string)
- * — avoids accidental overlap with `OPSMANTIK_EXPORT_ALLOWLIST_IDS`.
- * **PEEK:** optional client allowlist is allowed (no claim); for canary peek you usually rely on export allowlist only.
+ * Hashed phone (courier only; PR-9H.7A) + canlı drain:
+ * - `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD=true` + sütun başlığı — script ham telefon görmez, hash loglamaz.
+ * - `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE` **boş/false** → tek satırlık PR-9H.7B canary zorunluluğu yok; geniş SYNC + drain onayı kullanılır.
  *
- * Koc hashed-phone canary inline defaults (non-empty values override Script Properties):
- * Site `93cb9966…`, export limit 1, PR-9H7G ticket, single-queue allowlist UUID — see inline block below.
+ * PR-9H.7B canary (tek kuyruk, LIMIT=1): `OPSMANTIK_HASHED_PHONE_CSV_CANARY_MODE=true`,
+ * `OPSMANTIK_EXPORT_ALLOWLIST_IDS` (tek UUID), `OPSMANTIK_CANARY_EXPECTED_QUEUE_ID`, canary onay token’ları.
+ * **SYNC:** `OPSMANTIK_ALLOWLIST_IDS` yasak (claim-then-drop). Geniş drain’de allowlist/canary alanları boş.
+ *
+ * PR-9I broad drain gate (mutating claim, allowlist yok):
+ * - Script bu repoda `x-opsmantik-drain-*` header’larını gönderir (`OPSMANTIK_INLINE_DRAIN_*` veya Script Properties `OPSMANTIK_DRAIN_*`).
+ * - Alternatif: Vercel’de `OPSMANTIK_DRAIN_APPROVAL`, `OPSMANTIK_DRAIN_SITE_ID`, `OPSMANTIK_DRAIN_MAX_BATCH_SIZE`, `OPSMANTIK_DRAIN_INCLUDE_BRAIDS`.
+ * - `409` + `SCRIPT_DRAIN_BLOCKED` → hiçbir satır claim edilmemiştir; header veya sunucu env’yi tamamlayın.
+ *
  * **Never commit `OPSMANTIK_INLINE_API_KEY`** — leave empty; set `OPSMANTIK_API_KEY` only in Script Properties.
- * Set `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` in Properties to Google offline import template header (exact string).
  */
 
 'use strict';
@@ -59,41 +62,56 @@ var DEFAULT_MAX_SYNC_PAGES = 40;
 var DEFAULT_MAX_PEEK_PAGES = 120;
 var DEFAULT_MAX_RUNTIME_MS = 1500000;
 
-/** @type {string} peek | sync — Script Property `OPSMANTIK_RUN_MODE` overrides when set */
+/**
+ * @type {string} peek | sync — Script Properties `OPSMANTIK_RUN_MODE` wins when set.
+ * Repo default `peek`: canlı SYNC öncesi bir kez PEEK doğrula, sonra yalnızca bunu `sync` yap.
+ */
 var OPSMANTIK_RUN_MODE = 'peek';
 
 /** Optional inline run mode (empty → Properties / global `OPSMANTIK_RUN_MODE`). */
 var OPSMANTIK_INLINE_RUN_MODE = '';
 
-/** @type {string} sites.public_id — Koc Oto Kurtarma canary */
+/** @type {string} sites.public_id — Koc Oto Kurtarma */
 var OPSMANTIK_INLINE_SITE_ID = '93cb9966bcf349c1b4ece8ea34142ace';
 
 /** @type {string} sites.oci_api_key — leave EMPTY in repo; set OPSMANTIK_API_KEY in Script Properties only */
-var OPSMANTIK_INLINE_API_KEY = 'oci_fdJW_WznJzEjB9u-k51EtgWZfRx3ie1OgpfLEZH63Z8';
+var OPSMANTIK_INLINE_API_KEY = '';
 
 /** @type {string} hosted console API origin */
 var OPSMANTIK_INLINE_BASE_URL = 'https://console.opsmantik.com';
 
-/** @type {string} hashed-phone canary: 1 */
-var OPSMANTIK_INLINE_EXPORT_LIMIT = '1';
+/** @type {string} Koç canlı drain: 25 (OPSMANTIK_DRAIN_MAX_BATCH_SIZE ile hizalı tutun) */
+var OPSMANTIK_INLINE_EXPORT_LIMIT = '25';
 
-/** @type {string} SYNC: leave empty (client allowlist forbidden). PEEK: optional; can use EXPORT_ALLOWLIST fallback */
+/** @type {string} SYNC: leave empty (client allowlist forbidden). PEEK: optional */
 var OPSMANTIK_INLINE_ALLOWLIST_IDS = '';
 
 var OPSMANTIK_INLINE_INCLUDE_HASHED_PHONE_IN_UPLOAD = 'true';
 /** Set in Script Properties to Google Bulk Upload exact header, or fill here after template verify */
 var OPSMANTIK_INLINE_HASHED_PHONE_CSV_COLUMN = 'Hashed Phone Number';
-var OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE = 'true';
-var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = 'c84eec78-e041-4922-b088-697dabdde161';
-var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = 'c84eec78-e041-4922-b088-697dabdde161';
-var OPSMANTIK_INLINE_CANARY_APPROVAL = 'I_APPROVE_PRODUCTION_CANARY';
-/** Optional inline — pair with production canary upload gate (`I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD`). */
-var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = 'I_APPROVE_SINGLE_PAYLOAD_GOOGLE_UPLOAD';
+/** Boş = canlı drain (geniş SYNC). `true` + LIMIT=1 + allowlist = PR-9H.7B tek satır canary. */
+var OPSMANTIK_INLINE_HASHED_PHONE_CSV_CANARY_MODE = '';
+var OPSMANTIK_INLINE_EXPORT_ALLOWLIST_IDS = '';
+var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = '';
+var OPSMANTIK_INLINE_CANARY_APPROVAL = '';
+var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = '';
 var OPSMANTIK_INLINE_OPERATOR_ID = 'serkan';
-var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9I-UNIVERSAL-SCRIPT-DRAIN-CANARY-001';
-var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '';
-var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '';
+var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9I-KOC-LIVE-DRAIN-ALL-22';
+/** Tek sayfa sigortası — 22 satır tek seferde kontrollü */
+var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '1';
+/** PEEK için de tek sayfa yeter (fuse ile kalan kuyruk uyarısı normal) */
+var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '1';
 var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';
+
+/**
+ * PR-9I broad mutating drain — SYNC claim’de (canary kapalıyken) gönderilir.
+ * Sunucuda env ile de verilebilir; ikisi birlikte kullanılabilir.
+ */
+var OPSMANTIK_INLINE_DRAIN_APPROVAL = 'I_APPROVE_SCRIPT_DRAIN';
+var OPSMANTIK_INLINE_DRAIN_SITE_ID = '93cb9966bcf349c1b4ece8ea34142ace';
+/** İstek `limit` değerinden küçük olmamalı; EXPORT_LIMIT ile aynı tutun. */
+var OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE = '25';
+var OPSMANTIK_INLINE_DRAIN_INCLUDE_BRAIDS = 'true';
 
 /** Optional inline CSV header for hashed phone (overrides Script Property when non-empty). */
 var HASHED_PHONE_UPLOAD_COLUMN = '';
@@ -254,6 +272,34 @@ function getInlineForKeys(keys) {
     ) {
       return OPSMANTIK_INLINE_MAX_RUNTIME_MS.trim();
     }
+    if (
+      key === 'OPSMANTIK_DRAIN_APPROVAL' &&
+      typeof OPSMANTIK_INLINE_DRAIN_APPROVAL === 'string' &&
+      OPSMANTIK_INLINE_DRAIN_APPROVAL.trim()
+    ) {
+      return OPSMANTIK_INLINE_DRAIN_APPROVAL.trim();
+    }
+    if (
+      key === 'OPSMANTIK_DRAIN_SITE_ID' &&
+      typeof OPSMANTIK_INLINE_DRAIN_SITE_ID === 'string' &&
+      OPSMANTIK_INLINE_DRAIN_SITE_ID.trim()
+    ) {
+      return OPSMANTIK_INLINE_DRAIN_SITE_ID.trim();
+    }
+    if (
+      key === 'OPSMANTIK_DRAIN_MAX_BATCH_SIZE' &&
+      typeof OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE === 'string' &&
+      OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE.trim()
+    ) {
+      return OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE.trim();
+    }
+    if (
+      key === 'OPSMANTIK_DRAIN_INCLUDE_BRAIDS' &&
+      typeof OPSMANTIK_INLINE_DRAIN_INCLUDE_BRAIDS === 'string' &&
+      OPSMANTIK_INLINE_DRAIN_INCLUDE_BRAIDS.trim()
+    ) {
+      return OPSMANTIK_INLINE_DRAIN_INCLUDE_BRAIDS.trim();
+    }
   }
   return '';
 }
@@ -302,6 +348,11 @@ function getScriptConfig() {
   const MAX_RUNTIME_MS =
     Number.isFinite(maxClockNum) && maxClockNum >= 120000 ? Math.min(1790000, maxClockNum) : DEFAULT_MAX_RUNTIME_MS;
 
+  const drainMaxRaw = getFirst(['OPSMANTIK_DRAIN_MAX_BATCH_SIZE'], '');
+  const drainMaxNum = parseInt(String(drainMaxRaw), 10);
+  const DRAIN_MAX_BATCH_NUM =
+    Number.isFinite(drainMaxNum) && drainMaxNum > 0 ? Math.min(1000, Math.max(1, drainMaxNum)) : 0;
+
   const isLocal = typeof require !== 'undefined' && require.main && require.main === module;
 
   return Object.freeze({
@@ -324,6 +375,10 @@ function getScriptConfig() {
     MAX_SYNC_PAGES: MAX_SYNC_PAGES,
     MAX_PEEK_PAGES: MAX_PEEK_PAGES,
     MAX_RUNTIME_MS: MAX_RUNTIME_MS,
+    DRAIN_APPROVAL_TOKEN: String(getFirst(['OPSMANTIK_DRAIN_APPROVAL'], '')).trim(),
+    DRAIN_SITE_ID: String(getFirst(['OPSMANTIK_DRAIN_SITE_ID'], '')).trim(),
+    DRAIN_MAX_BATCH_NUM: DRAIN_MAX_BATCH_NUM,
+    DRAIN_INCLUDE_BRAIDS: String(getFirst(['OPSMANTIK_DRAIN_INCLUDE_BRAIDS'], '')).trim(),
     HTTP: Object.freeze({
       MAX_RETRIES: 5,
       INITIAL_DELAY_MS: 1500,
@@ -753,6 +808,22 @@ KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported, lim
     getHeaders['x-opsmantik-change-ticket'] = String(CONFIG.CHANGE_TICKET || 'hashed-phone-csv-canary');
     getHeaders['x-opsmantik-operator-id'] = String(CONFIG.OPERATOR_ID || 'google-ads-script');
     getHeaders['x-opsmantik-allowlist-ids'] = String(effectiveServerAllowlistId);
+  }
+
+  /** PR-9I — broad mutating claim without server canary: backend requires drain metadata (headers or Vercel env). */
+  var broadDrainClaim = doMark && !hpCanaryFetch;
+  if (broadDrainClaim && CONFIG) {
+    var dAppr = String(CONFIG.DRAIN_APPROVAL_TOKEN || '').trim();
+    var dSite = String(CONFIG.DRAIN_SITE_ID || '').trim();
+    var dBraid = String(CONFIG.DRAIN_INCLUDE_BRAIDS || '').trim();
+    var dBatchCfg = CONFIG.DRAIN_MAX_BATCH_NUM || 0;
+    var dBatchEff = dBatchCfg >= lim ? dBatchCfg : lim;
+    if (dAppr && dSite && dBraid) {
+      getHeaders['x-opsmantik-drain-approval'] = dAppr;
+      getHeaders['x-opsmantik-drain-site-id'] = dSite;
+      getHeaders['x-opsmantik-drain-max-batch-size'] = String(dBatchEff);
+      getHeaders['x-opsmantik-drain-include-braids'] = dBraid;
+    }
   }
 
   let response;
@@ -1263,14 +1334,18 @@ function mainSyncKocOto() {
       Telemetry.error('HASHED_PHONE_COLUMN_NOT_CONFIGURED: OPSMANTIK_HASHED_PHONE_CSV_COLUMN veya HASHED_PHONE_UPLOAD_COLUMN gerekli.', null);
       return;
     }
-    try {
-      RESOLVED_HP_CANARY_QUEUE_ID = validateHashedPhoneCsvCanaryForSync(CONFIG);
-    } catch (eCanary) {
-      Telemetry.error(
-        'Hashed-phone sync canary dogrulanamadi (PR-9H.7B). Ayarlari kontrol edin.',
-        eCanary || null
-      );
-      throw eCanary;
+    if (CONFIG.HASHED_PHONE_CSV_CANARY_MODE) {
+      try {
+        RESOLVED_HP_CANARY_QUEUE_ID = validateHashedPhoneCsvCanaryForSync(CONFIG);
+      } catch (eCanary) {
+        Telemetry.error(
+          'Hashed-phone sync canary dogrulanamadi (PR-9H.7B). Ayarlari kontrol edin.',
+          eCanary || null
+        );
+        throw eCanary;
+      }
+    } else {
+      RESOLVED_HP_CANARY_QUEUE_ID = '';
     }
     warnHashedPhoneCsvColumnIfSuspect();
   }

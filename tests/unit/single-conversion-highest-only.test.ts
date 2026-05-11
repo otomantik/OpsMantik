@@ -6,6 +6,7 @@ import {
   buildSingleConversionGroupKey,
   getSingleConversionGearRank,
   pickHighestPriorityGear,
+  selectCoexistentFunnelExportCandidates,
   selectHighestPriorityCandidates,
 } from '@/lib/oci/single-conversion-highest-only';
 
@@ -52,9 +53,40 @@ test('single conversion helper keeps only the highest gear per group', () => {
   );
 });
 
-test('google-ads export applies highest-only suppression before combining items', () => {
+test('export coexistence: contacted+offered+won → won only; contacted+offered without won → both kept', () => {
+  const triple = selectCoexistentFunnelExportCandidates([
+    { id: 'c1', groupKey: 'session:a', gear: 'contacted', sortKey: '2026-04-10T10:00:00Z', value: 'c1' },
+    { id: 'o1', groupKey: 'session:a', gear: 'offered', sortKey: '2026-04-10T10:01:00Z', value: 'o1' },
+    { id: 'w1', groupKey: 'session:a', gear: 'won', sortKey: '2026-04-10T10:02:00Z', value: 'w1' },
+    { id: 'c2', groupKey: 'session:b', gear: 'contacted', sortKey: '2026-04-10T10:02:00Z', value: 'c2' },
+    { id: 'o2', groupKey: 'session:b', gear: 'offered', sortKey: '2026-04-10T10:03:00Z', value: 'o2' },
+  ]);
+  assert.deepEqual(
+    triple.kept.map((x) => x.id).sort(),
+    ['c2', 'o2', 'w1']
+  );
+  assert.deepEqual(
+    triple.suppressed.map((x) => x.id).sort(),
+    ['c1', 'o1']
+  );
+
+  const withJunk = selectCoexistentFunnelExportCandidates([
+    { id: 'j1', groupKey: 'session:x', gear: 'junk', sortKey: '2026-04-10T09:00:00Z', value: 'j1' },
+    { id: 'c1', groupKey: 'session:x', gear: 'contacted', sortKey: '2026-04-10T10:00:00Z', value: 'c1' },
+  ]);
+  assert.deepEqual(
+    withJunk.kept.map((x) => x.id).sort(),
+    ['c1', 'j1']
+  );
+  assert.equal(withJunk.suppressed.length, 0);
+});
+
+test('google-ads export applies funnel coexistence (triple → won only) before combining items', () => {
   const src = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
-  assert.ok(src.includes('selectHighestPriorityCandidates'), 'export must use shared highest-only selector');
+  assert.ok(
+    src.includes('selectCoexistentFunnelExportCandidates'),
+    'export must use funnel coexistence selector'
+  );
   const markSrc = readFileSync(join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(markSrc.includes('SUPPRESSED_BY_HIGHER_GEAR'), 'suppressed lower gears must be terminalized with explicit provenance');
   assert.ok(!src.includes('suppressedSignalIds'), 'queue-only export must not keep legacy signal suppression buckets');

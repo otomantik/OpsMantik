@@ -112,7 +112,7 @@ async function main() {
   console.log('='.repeat(72));
   console.log('');
   console.log(
-    'Sunucuda `selectHighestPriorityCandidates` aynı call/session için tek yüzey seçer (PEEK/suppressed).'
+    'Sunucuda `selectCoexistentFunnelExportCandidates`: aynı call/session’da varsayılan olarak tüm aşamalar (Görüşüldü/Teklif/Çöp/Kazan) PEEK’te görünür; yalnızca Görüşüldü+Teklif+Kazan üçünün birden olduğu grupta Kazan tek kalır (suppressed).'
   );
   console.log('');
 
