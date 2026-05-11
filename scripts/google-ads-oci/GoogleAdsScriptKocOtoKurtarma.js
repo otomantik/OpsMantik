@@ -1259,6 +1259,7 @@ function mainPeekOciQueue() {
           returned_count: pd.returned_count,
           returned_action_counts: pd.returned_action_counts,
           skipped_count: pd.skipped_count,
+          skip_reason_counts: pd.skip_reason_counts || null,
         });
       }
 
