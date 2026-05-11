@@ -1259,8 +1259,19 @@ function mainPeekOciQueue() {
           returned_count: pd.returned_count,
           returned_action_counts: pd.returned_action_counts,
           skipped_count: pd.skipped_count,
-          skip_reason_counts: pd.skip_reason_counts || null,
         });
+        /** Ayrı satır: Logger bazen uzun JSON keser; elenme nedenleri burada. */
+        var srs = pd.skip_reason_counts;
+        if (srs && typeof srs === 'object') {
+          Logger.log('[INFO] PEEK_skip_nedenleri | sayfa=' + pageNo + ' | ' + JSON.stringify(srs));
+        } else {
+          Logger.log(
+            '[WARN] PEEK_skip_nedenleri_yok | sayfa=' +
+              pageNo +
+              ' | preview_keys=' +
+              JSON.stringify(Object.keys(pd || {}))
+          );
+        }
       }
 
       let rows = page.items || [];
