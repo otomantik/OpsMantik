@@ -126,13 +126,17 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
     (a, b) => (a.conversionTime || '').localeCompare(b.conversionTime || '')
   );
   const lastRow = rawList.length > 0 ? rawList[rawList.length - 1] : null;
-  const nextCursor = lastRow
-    ? Buffer.from(
-        JSON.stringify({
-          q: { t: (lastRow as { updated_at?: string }).updated_at ?? '', i: lastRow.id },
-        })
-      ).toString('base64')
-    : null;
+  /** Full journal page ⇒ cursor; short page ⇒ end of queue (fixes false hasNextPage when nextCursor was always set). */
+  const pageLimit = Math.min(1000, Math.max(1, ctx.pageLimit));
+  const journalPageFull = rawList.length > 0 && rawList.length >= pageLimit;
+  const nextCursor =
+    lastRow && journalPageFull
+      ? Buffer.from(
+          JSON.stringify({
+            q: { t: (lastRow as { updated_at?: string }).updated_at ?? '', i: lastRow.id },
+          })
+        ).toString('base64')
+      : null;
 
   const callNotSendableQueueIds = [...blockedNotSendableQueueIds];
   const pipelineStats: PipelineStats = {

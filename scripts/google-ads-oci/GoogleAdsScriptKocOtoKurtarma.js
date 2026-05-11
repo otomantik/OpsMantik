@@ -80,8 +80,8 @@ var OPSMANTIK_INLINE_API_KEY = '';
 /** @type {string} hosted console API origin */
 var OPSMANTIK_INLINE_BASE_URL = 'https://console.opsmantik.com';
 
-/** @type {string} Koç canlı drain: 25 (OPSMANTIK_DRAIN_MAX_BATCH_SIZE ile hizalı tutun) */
-var OPSMANTIK_INLINE_EXPORT_LIMIT = '25';
+/** @type {string} Tek istekte claim limiti — `OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE` ile aynı sayı olmalı (sunucu SCRIPT_DRAIN gate). */
+var OPSMANTIK_INLINE_EXPORT_LIMIT = '100';
 
 /** @type {string} SYNC: leave empty (client allowlist forbidden). PEEK: optional */
 var OPSMANTIK_INLINE_ALLOWLIST_IDS = '';
@@ -97,10 +97,13 @@ var OPSMANTIK_INLINE_CANARY_APPROVAL = '';
 var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = '';
 var OPSMANTIK_INLINE_OPERATOR_ID = 'serkan';
 var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9I-KOC-LIVE-DRAIN-ALL-22';
-/** Tek sayfa sigortası — 22 satır tek seferde kontrollü */
+/** Tek sayfa sigortası — SYNC kontrollü batch (kalan kuyruk sonraki tetikleme) */
 var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '1';
-/** PEEK için de tek sayfa yeter (fuse ile kalan kuyruk uyarısı normal) */
-var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '1';
+/**
+ * PEEK: sunucu kuyruğu `updated_at` artan sıralar; ilk sayfada çoğu Won birikmiş olabilir.
+ * Contacted/Offered/Junk sonraki sayfalarda — PEEK’te en az 8 sayfa önerilir (SYNC sigortasından bağımsız).
+ */
+var OPSMANTIK_INLINE_MAX_PEEK_PAGES = '8';
 var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';
 
 /**
@@ -109,8 +112,8 @@ var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';
  */
 var OPSMANTIK_INLINE_DRAIN_APPROVAL = 'I_APPROVE_SCRIPT_DRAIN';
 var OPSMANTIK_INLINE_DRAIN_SITE_ID = '93cb9966bcf349c1b4ece8ea34142ace';
-/** İstek `limit` değerinden küçük olmamalı; EXPORT_LIMIT ile aynı tutun. */
-var OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE = '25';
+/** İstek `limit` değerinden küçük olmamalı; EXPORT_LIMIT ile aynı tutun (ör. ikisi de 100). */
+var OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE = '100';
 var OPSMANTIK_INLINE_DRAIN_INCLUDE_BRAIDS = 'true';
 
 /** Optional inline CSV header for hashed phone (overrides Script Property when non-empty). */
@@ -876,6 +879,9 @@ KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported, lim
     markAsExported: typeof payload.markAsExported === 'boolean' ? payload.markAsExported : doMark,
     warnings: payload.warnings || null,
     exportRunId: payload.export_run_id || null,
+    previewDiagnostics: payload.preview_diagnostics && typeof payload.preview_diagnostics === 'object'
+      ? payload.preview_diagnostics
+      : null,
   };
 };
 
@@ -1243,6 +1249,18 @@ function mainPeekOciQueue() {
         uyarilar: page.warnings,
         satirBuSayfa: (page.items || []).length,
       });
+
+      if (page.previewDiagnostics) {
+        var pd = page.previewDiagnostics;
+        Telemetry.info('PEEK_kuyruk_ozet', {
+          sayfa: pageNo,
+          fetched_count: pd.fetched_count,
+          buildable_count: pd.buildable_count,
+          returned_count: pd.returned_count,
+          returned_action_counts: pd.returned_action_counts,
+          skipped_count: pd.skipped_count,
+        });
+      }
 
       let rows = page.items || [];
       grandTotalRows += rows.length;

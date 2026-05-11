@@ -97,3 +97,9 @@ test('parity: queue without user_identifiers + call hash map yields hashedPhoneN
     assert.doesNotMatch(json, new RegExp(banned, 'i'));
   }
 });
+
+test('export-build-items: journal cursor only when page is full (fixes false PEEK hasNextPage)', () => {
+  const p = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
+  const src = readFileSync(p, 'utf8');
+  assert.match(src, /journalPageFull/, 'short journal pages must not emit misleading nextCursor');
+});
