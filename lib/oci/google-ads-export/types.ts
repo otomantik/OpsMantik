@@ -92,6 +92,8 @@ export type QueueRow = {
   conversion_time: string;
   occurred_at?: string | null;
   created_at?: string | null;
+  /** Cursor + ordering (atomic JIT RPC includes this). */
+  updated_at?: string | null;
   value_cents: number;
   optimization_stage?: string | null;
   optimization_value?: number | null;
@@ -99,6 +101,13 @@ export type QueueRow = {
   action?: string | null;
   provider_key?: string | null;
   external_id?: string | null;
+  /** PR-9H.8: single-query export join — call + session snapshot at export time. */
+  jit_call_status?: string | null;
+  jit_call_oci_status?: string | null;
+  jit_call_matched_session_id?: string | null;
+  jit_call_created_at?: string | null;
+  jit_call_confirmed_at?: string | null;
+  jit_caller_phone_hash_sha256?: string | null;
 };
 
 export type ExportSiteRow = {

@@ -15,6 +15,7 @@ import {
   extractHashedPhoneFromExportSources,
   type HashedPhoneCourierSource,
 } from '@/lib/oci/hashed-phone-courier';
+import { applyCourierZodArmorToConversionItem } from '@/lib/oci/validation/google-ads-hashed-identifiers.zod';
 import type { ExportAuthContext } from './export-auth';
 
 function gearFromQueueExportRow(row: QueueRow): SingleConversionGear {
@@ -229,17 +230,18 @@ export function buildQueueItems(
       };
     }
 
-    conversions.push(item);
+    const armored = applyCourierZodArmorToConversionItem(item);
+    conversions.push(armored);
     queueCandidates.push({
-      id: item.id,
+      id: armored.id,
       groupKey: buildSingleConversionGroupKey(
         row.session_id ?? (row.call_id ? sessionByCall[row.call_id] ?? null : null),
         row.call_id ?? null,
         row.id
       ),
       gear,
-      sortKey: item.conversionTime,
-      value: item,
+      sortKey: armored.conversionTime,
+      value: armored,
     });
   }
 

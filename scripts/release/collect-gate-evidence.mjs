@@ -55,6 +55,7 @@ const CRITICAL_MIGRATIONS = [
   '20261228120000_pr9i_export_run_summary_universal_stats.sql',
   '20261229120000_append_script_transition_batch_processing_source_guard.sql',
   '20261229120500_pr9k_provider_evidence_strong_followup_v1.sql',
+  '20261229130000_fetch_oci_google_ads_export_jit_v1.sql',
 ];
 const CRITICAL_MIGRATION_EQUIVALENTS = {
   '20261226030000_restore_cron_lease_lock_backend.sql': {

@@ -46,23 +46,22 @@ test('route uses buildExportItems and preview passes hashed phone diagnostics (s
   assert.match(qbSrc, /userIdentifiers/, 'final item builder must emit userIdentifiers');
 });
 
-test('export-fetch: journal select and progressive column fallback (PR-9H.7C / provider_path)', () => {
+test('export-fetch: atomic JIT RPC fetch_oci_google_ads_export_jit_v1 + Zod parse (PR-9H.8)', () => {
   const fetchPath = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts');
   const s = readFileSync(fetchPath, 'utf8');
-  assert.match(s, /QUEUE_SELECT_VARIANTS/);
-  assert.match(s, /QUEUE_SELECT_WITH_USER_IDENTIFIERS/);
-  assert.match(s, /QUEUE_SELECT_WITHOUT_USER_IDENTIFIERS/);
-  assert.match(s, /isMissingColumnProjectionError/);
-  assert.match(s, /for\s*\(\s*const\s+selectList\s+of\s+QUEUE_SELECT_VARIANTS/);
-  assert.match(s, /offline_conversion_queue/);
+  assert.match(s, /fetch_oci_google_ads_export_jit_v1/);
+  assert.match(s, /parseJitExportRpcRowsStrict/);
+  assert.match(s, /mapJitRpcRowToQueueRow/);
+  assert.match(s, /QUEUE_SELECT_VARIANTS/, 'column projection constants kept for tooling parity');
 });
 
-test('export-build-items: call context + hash map feed buildQueueItems (source contract)', () => {
+test('export-build-items: JIT row maps feed buildQueueItems (no second calls fetch)', () => {
   const p = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
   const s = readFileSync(p, 'utf8');
-  assert.match(s, /fetchExportCallContextRows/);
+  assert.match(s, /buildJitMapsFromRows/);
   assert.match(s, /callerPhoneHashByCall/);
   assert.match(s, /buildQueueItems/);
+  assert.doesNotMatch(s, /fetchExportCallContextRows/);
 });
 
 test('call sendability fetch: export context merges dedicated caller_phone_hash_sha256 query (PR-9H.7C)', () => {

@@ -1,6 +1,5 @@
 import { selectCoexistentFunnelExportCandidates } from '@/lib/oci/single-conversion-highest-only';
 import { isQueueRowSendableForGoogleAdsExport } from '@/lib/oci/call-sendability';
-import { fetchExportCallContextRows } from '@/lib/oci/call-sendability-fetch';
 import type { GoogleAdsConversionItem } from '@/lib/oci/google-ads-export/types';
 import type { ExportAuthContext } from './export-auth';
 import type { FetchedExportData } from './export-fetch';
@@ -12,6 +11,37 @@ import {
   type QueueCurrencyDiagnostics,
   type QueueHashedPhoneDiagnostics,
 } from './export-build-queue';
+
+/** PR-9H.8: maps from atomic JIT row — no second `calls` fetch (export RPC is single snapshot). */
+function buildJitMapsFromRows(rawList: FetchedExportData['rawList']): {
+  sessionByCall: Record<string, string>;
+  intentCreatedByCall: Record<string, string>;
+  callSendabilityCtxById: Map<string, { status: string | null; oci_status: string | null }>;
+  callerPhoneHashByCall: Record<string, string | undefined>;
+} {
+  const sessionByCall: Record<string, string> = {};
+  const intentCreatedByCall: Record<string, string> = {};
+  const callSendabilityCtxById = new Map<string, { status: string | null; oci_status: string | null }>();
+  const callerPhoneHashByCall: Record<string, string | undefined> = {};
+
+  for (const row of rawList) {
+    const cid = row.call_id;
+    if (!cid) continue;
+    const ms = row.jit_call_matched_session_id;
+    if (ms) sessionByCall[cid] = ms;
+    const ca = row.jit_call_created_at;
+    if (ca) intentCreatedByCall[cid] = ca;
+    callSendabilityCtxById.set(cid, {
+      status: row.jit_call_status ?? null,
+      oci_status: row.jit_call_oci_status ?? null,
+    });
+    const h = row.jit_caller_phone_hash_sha256;
+    const t = typeof h === 'string' ? h.trim() : '';
+    if (t) callerPhoneHashByCall[cid] = t;
+  }
+
+  return { sessionByCall, intentCreatedByCall, callSendabilityCtxById, callerPhoneHashByCall };
+}
 
 /** Exported for PR-9H.7D unit tests (aggregate diagnostics only). */
 export function finalizeReturnedPhoneDiagnostics(
@@ -68,36 +98,8 @@ export type BuiltExportData = {
 export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedExportData): Promise<BuiltExportData> {
   const { rawList } = fetched;
 
-  const callIds: string[] = [];
-  for (let i = 0; i < rawList.length; i++) {
-    if (rawList[i].call_id) callIds.push(rawList[i].call_id as string);
-  }
-  const calls =
-    callIds.length > 0 ? await fetchExportCallContextRows(ctx.siteUuid, callIds) : [];
-  const sessionByCall: Record<string, string> = {};
-  const intentCreatedByCall: Record<string, string> = {};
-  const callSendabilityCtxById = new Map<
-    string,
-    { status: string | null; oci_status: string | null }
-  >();
-  for (const c of calls) {
-    const id = (c as { id: string }).id;
-    const sid = (c as { matched_session_id?: string | null }).matched_session_id;
-    if (sid) sessionByCall[id] = sid;
-    const createdAt = (c as { created_at?: string | null }).created_at;
-    if (createdAt) intentCreatedByCall[id] = createdAt;
-    callSendabilityCtxById.set(id, {
-      status: (c as { status?: string | null }).status ?? null,
-      oci_status: (c as { oci_status?: string | null }).oci_status ?? null,
-    });
-  }
-  const callerPhoneHashByCall: Record<string, string | undefined> = {};
-  for (const c of calls) {
-    const id = (c as { id: string }).id;
-    const h = (c as { caller_phone_hash_sha256?: string | null }).caller_phone_hash_sha256;
-    const t = typeof h === 'string' ? h.trim() : '';
-    if (t) callerPhoneHashByCall[id] = t;
-  }
+  const { sessionByCall, intentCreatedByCall, callSendabilityCtxById, callerPhoneHashByCall } =
+    buildJitMapsFromRows(rawList);
   const queueBuild = buildQueueItems(ctx, rawList, sessionByCall, intentCreatedByCall, callerPhoneHashByCall);
 
   const blockedNotSendableQueueIds = new Set<string>();

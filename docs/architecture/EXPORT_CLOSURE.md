@@ -18,7 +18,7 @@ The Google Ads **script/API export route does not read `marketing_signals`**. **
 - **Raw phone never reaches the Google Ads Script.** The script is a **transport-only** carrier for values the backend has already normalized and hashed.
 - **Backend SSOT:** [`lib/oci/validation/crypto.ts`](../../lib/oci/validation/crypto.ts) — `normalizePhoneToE164` (default `+90` / TR) → **UTF-8** `crypto.createHash('sha256').update(normalizedE164WithPlus).digest('hex')` (lowercase 64-char). Ingestion also funnels through [`lib/dic/phone-hash.ts`](../../lib/dic/phone-hash.ts) for `calls.caller_phone_hash_sha256`.
 - **Queue:** `offline_conversion_queue.user_identifiers` may include `hashed_phone`, `normalization_version` (`e164_sha256_v1`), and `source` (e.g. `caller_phone_hash_sha256`) — **never** raw phone in this JSON ([`enqueue-intent-conversion-journal-row.ts`](../../lib/oci/enqueue-intent-conversion-journal-row.ts)).
-- **Export JSON** ([`export-build-queue.ts`](../../app/api/oci/google-ads-export/export-build-queue.ts)): each item may include **`hashedPhoneNumber`** (valid hex only), **`hashed_phone_number`** (same value, legacy key), and **`userIdentifiers`** with `{ type: 'hashed_phone', value }`. Resolution order: queue `hashed_phone` / `hashedPhoneNumber` → `calls.caller_phone_hash_sha256`. Invalid hex increments diagnostics only (`hashed_phone_invalid_count`); nothing sensitive in logs.
+- **Export JSON** ([`export-build-queue.ts`](../../app/api/oci/google-ads-export/export-build-queue.ts)): each item may include **`hashedPhoneNumber`** (valid hex only), **`hashed_phone_number`** (same value, legacy key), and **`userIdentifiers`** with `{ type: 'hashed_phone', value }`. **PR-9H.8:** journal fetch is **`fetch_oci_google_ads_export_jit_v1`** — one atomic SQL read joins `offline_conversion_queue`, `calls`, and `sessions`; `sessions.consent_scopes` must include **`marketing`** or hashed identifiers and `caller_phone_hash_sha256` are stripped in SQL before Node. Resolution order after gate: queue `hashed_phone` / `hashedPhoneNumber` → `jit_caller_phone_hash_sha256` (call hash only when marketing consent). Invalid hex increments diagnostics only (`hashed_phone_invalid_count`); Zod armor on the final item enforces `/^[a-f0-9]{64}$/` before JSON response.
 - **Preview diagnostics** ([`route.ts`](../../app/api/oci/google-ads-export/route.ts)): `hashed_phone_available_count`, `hashed_phone_invalid_count`, `enhanced_signal_available_count` — counts only (no hashes).
 - **Production script:** [`GoogleAdsScriptProduction.js`](../../scripts/google-ads-oci/GoogleAdsScriptProduction.js) reads `hashedPhoneNumber` / `userIdentifiers` (never hashes, never uploads raw phone). PEEK logs **`hasHashedPhoneNumber`** boolean only. **CSV hashed-phone column is off by default** until canary verifies the exact Google Bulk Upload header: set `OPSMANTIK_INCLUDE_HASHED_PHONE_IN_UPLOAD=true` **and** `OPSMANTIK_HASHED_PHONE_CSV_COLUMN` (or inline `HASHED_PHONE_UPLOAD_COLUMN`); omitting the column while the flag is on fails closed (`HASHED_PHONE_COLUMN_NOT_CONFIGURED`). Until then, hashed values still flow in the JSON payload for observability/courier parity while **GCLID-first** CSV behavior stays unchanged.
 
@@ -30,12 +30,12 @@ The Google Ads **script/API export route does not read `marketing_signals`**. **
 
 **Actual build path (hosted = repo route):**
 
-`app/api/oci/google-ads-export/route.ts` → `fetchExportData` (`export-fetch.ts`) → `buildExportItems` (`export-build-items.ts`) → `fetchExportCallContextRows` + `fetchCallerPhoneHashesForCallIds` (`lib/oci/call-sendability-fetch.ts`) → `buildQueueItems` (`export-build-queue.ts`). Final JSON shape is produced in **`export-build-queue.ts`** (`GoogleAdsConversionItem`).
+`app/api/oci/google-ads-export/route.ts` → `fetchExportData` (`export-fetch.ts`) → **`adminClient.rpc('fetch_oci_google_ads_export_jit_v1')`** (atomic queue + calls + sessions + JIT consent gate) → `parseJitExportRpcRowsStrict` ([`google-ads-hashed-identifiers.zod.ts`](../../lib/oci/validation/google-ads-hashed-identifiers.zod.ts)) → `buildExportItems` (`export-build-items.ts`) → `buildJitMapsFromRows` + `buildQueueItems` (`export-build-queue.ts`). Final JSON shape is produced in **`export-build-queue.ts`** (`GoogleAdsConversionItem`).
 
-**Root causes addressed in PR-9H.7C:**
+**Root causes addressed in PR-9H.7C + PR-9H.8:**
 
-1. **Call-context SELECT brittleness** — If the wide `calls` projection failed for anything other than the legacy `oci_status` drift case, the exporter previously returned **no call rows**, dropping sendability context and **never attaching** `caller_phone_hash_sha256`. The fetch layer now **progressively narrows** the `calls` projection on schema drift and **always** runs a dedicated `select id, caller_phone_hash_sha256` merge for export.
-2. **`offline_conversion_queue.user_identifiers` drift** — Older DBs may omit the column; queue fetch **retries without** `user_identifiers` when PostgREST reports an unknown column, relying on the **call hash fallback** for hashed phone.
+1. **Call-context SELECT brittleness** — (Legacy) If the wide `calls` projection failed, the exporter could drop call context. **PR-9H.8** removes the second round-trip: call columns are selected in the same snapshot as the queue slice via the JIT RPC.
+2. **`offline_conversion_queue.user_identifiers` drift** — Older DBs may omit the column; the JIT RPC selects `user_identifiers` as stored (gated in SQL when marketing consent is absent).
 
 **Never emitted:** raw phone / normalized E.164 / any non–SHA-256-hex phone fields — only `/^[a-f0-9]{64}$/` passes through.
 
@@ -76,7 +76,7 @@ The Google Ads **script/API export route does not read `marketing_signals`**. **
 
 | Path | Role |
 |------|------|
-| Script batch | [`GET .../google-ads-export`](../../app/api/oci/google-ads-export/route.ts) → [`fetchExportData`](../../app/api/oci/google-ads-export/export-fetch.ts) (**queue only**) → `buildExportItems` → highest-gear dedupe within journal |
+| Script batch | [`GET .../google-ads-export`](../../app/api/oci/google-ads-export/route.ts) → [`fetchExportData`](../../app/api/oci/google-ads-export/export-fetch.ts) (**`fetch_oci_google_ads_export_jit_v1`**) → `buildExportItems` → highest-gear dedupe within journal |
 | API worker lane | Same journal rows uploaded by worker/kernel; fast-track via QStash when `oci_sync_method=api` |
 
 **Legacy `marketing_signals`:** It is an **ACTIVE_RUNTIME_RESIDUE** that still receives writes for non-won stages, but it is **not** combined into the Google export batch. It is not an upload authority and must be treated as an audit-only shadow trail. Stranded PENDING rows are an operational cleanup topic (pulse/recovery), not a second upload authority.
