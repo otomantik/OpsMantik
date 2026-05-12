@@ -3,6 +3,8 @@
 -- Supabase SQL Editor'da çalıştır.
 -- Site: Eslamed (b1264552-c859-40cb-a3fb-0ba057afd070)
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- COMPLETED = dönüş aldı (uploaded_at set)
 -- FAILED / RETRY = hata aldı (provider_error_code, last_error set)

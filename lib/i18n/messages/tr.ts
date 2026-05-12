@@ -110,6 +110,15 @@ export const tr = {
   "ociControl.status.DEAD_LETTER_QUARANTINE": "İnceleme kuyruğu",
   "ociControl.status.VOIDED_BY_REVERSAL": "İptal (ters çeviri)",
   "ociControl.status.BLOCKED_PRECEDING_SIGNALS": "Blokeli (ön sinyaller)",
+  /** OCI Truth: Google içe aktarımı “kesin” iddiası yok. */
+  "ociControl.statusTruth.UPLOADED":
+    "Gönderim/dispatch tarafında işlem tamamlandı (ör. script upload.apply). Bu, Google Ads’in dönüşümü arka planda kesin içe aktardığı anlamına gelmez; gerekirse Google toplu yükleme durumuna bakın.",
+  "ociControl.statusTruth.COMPLETED":
+    "ACK ile bizim claim/export sözleşmesine göre hat kapandı. Bu durum tek başına Google Ads’in dönüşümü sistemde kesin kabul ettiği anlamına gelmez; sağlayıcı kanıtını ayrı değerlendirin.",
+  "ociControl.statusTruth.COMPLETED_UNVERIFIED":
+    "Otomatik politika ile kapatıldı (ör. uzun süre UPLOADED sweep). Tam sağlayıcı doğrulaması olmadan kapanan terminal; diğer tamamlanmış yollardan ayrı düşünün.",
+  "ociControl.statusTruthHintLabel": "Bu durum ne anlama geliyor",
+
   "common.backToDashboard": "Panele Geri Dön",
   "admin.sites.title": "ADMİN • Tüm Siteler",
   "admin.sites.subtitle": "Global site yönetimi • Toplam {count} site",

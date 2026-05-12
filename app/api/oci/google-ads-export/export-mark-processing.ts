@@ -32,6 +32,9 @@ async function claimAndFinalizeQueue(
   if (updateError || typeof updatedCount !== 'number') {
     throw new Error('SERVER_ERROR');
   }
+  if (updatedCount !== ids.length) {
+    throw new Error('QUEUE_FINALIZE_MISMATCH');
+  }
 }
 
 /** Export marks **only** `offline_conversion_queue` (journal). Legacy `marketing_signals` is not exported here. */

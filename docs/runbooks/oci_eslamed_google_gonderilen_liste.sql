@@ -3,6 +3,8 @@
 -- Site: b1264552-c859-40cb-a3fb-0ba057afd070
 -- Supabase SQL Editor'da çalıştır.
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- 0) Tanı: Kuyrukta kaç kayıt var, hangi durumda? (0 gelirse script hiç çalışmamış veya kuyruk boş)
 SELECT

@@ -22,7 +22,9 @@ import {
   Ban,
   Home,
   LogOut,
+  Info,
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { OciQueueStats, OciQueueRow, QueueStatus } from '@/lib/domain/oci/queue-types';
 import { useTranslation } from '@/lib/i18n/useTranslation';
@@ -39,6 +41,8 @@ const STATUS_ORDER: QueueStatus[] = [
   'DEAD_LETTER_QUARANTINE',
   'VOIDED_BY_REVERSAL',
 ];
+
+const STATUS_TRUTH_TOOLTIP_KEYS = new Set<QueueStatus>(['UPLOADED', 'COMPLETED', 'COMPLETED_UNVERIFIED']);
 
 function statusLabel(
   status: QueueStatus | string,
@@ -247,26 +251,51 @@ export function OciControlPanel({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3 mb-6">
           {STATUS_ORDER.map((status) => (
-            <button
+            <div
               key={status}
-              type="button"
-              onClick={() => setStatusFilter((current) => current === status ? '' : status)}
-              className="text-left"
+              role="button"
+              tabIndex={0}
+              className="text-left cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20"
+              onClick={() => setStatusFilter((current) => (current === status ? '' : status))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setStatusFilter((current) => (current === status ? '' : status));
+                }
+              }}
             >
             <Card className={cn(
               'border-slate-200 bg-white transition hover:border-slate-300',
               statusFilter === status && 'border-slate-900 ring-2 ring-slate-900/10'
             )}>
               <CardHeader className="p-3 pb-0">
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  {status === 'COMPLETED' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
-                  {status === 'FAILED' && <XCircle className="h-3.5 w-3.5 text-red-600" />}
-                  {status === 'PROCESSING' && <Clock className="h-3.5 w-3.5 text-slate-500" />}
-                  {status === 'RETRY' && <RotateCcw className="h-3.5 w-3.5 text-amber-600" />}
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 flex-wrap">
+                  {status === 'COMPLETED' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
+                  {status === 'FAILED' && <XCircle className="h-3.5 w-3.5 text-red-600 shrink-0" />}
+                  {status === 'PROCESSING' && <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />}
+                  {status === 'RETRY' && <RotateCcw className="h-3.5 w-3.5 text-amber-600 shrink-0" />}
                   {status === 'BLOCKED_PRECEDING_SIGNALS' && (
-                    <Clock className="h-3.5 w-3.5 text-violet-600" />
+                    <Clock className="h-3.5 w-3.5 text-violet-600 shrink-0" />
                   )}
-                  {statusLabel(status, tUnsafe)}
+                  <span className="min-w-0">{statusLabel(status, tUnsafe)}</span>
+                  {STATUS_TRUTH_TOOLTIP_KEYS.has(status) && (
+                    <Tooltip>
+                      <TooltipTrigger className="shrink-0">
+                        <button
+                          type="button"
+                          className="inline-flex rounded p-0.5 text-slate-400 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-400"
+                          aria-label={t('ociControl.statusTruthHintLabel')}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <Info className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {tUnsafe(`ociControl.statusTruth.${status}`)}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 pt-1">
@@ -275,7 +304,7 @@ export function OciControlPanel({
                 </span>
               </CardContent>
             </Card>
-            </button>
+            </div>
           ))}
           {typeof stats?.stuckProcessing === 'number' && stats.stuckProcessing > 0 && (
             <Card className="border-amber-200 bg-amber-50/50">

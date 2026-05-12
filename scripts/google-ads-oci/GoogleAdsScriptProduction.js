@@ -728,6 +728,9 @@ ProductionClient.prototype.sendAck = function (siteId, queueIds, exportRunId) {
   if (!q.length) return { ok: false, skipped: true };
 
   var payload = { siteId: siteId, queueIds: q };
+  // OCI Truth: bulk upload dispatch is not provider confirmation — match Koç / API ACK semantics.
+  payload.pendingConfirmation = true;
+  payload.providerConfirmationMode = 'bulk_upload_async_unconfirmed';
   if (exportRunId) {
     payload.export_run_id = exportRunId;
     payload.exportRunId = exportRunId;

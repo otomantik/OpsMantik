@@ -8,6 +8,8 @@
  * - sync mode requires explicit canary upload approval
  * - sync mode refuses payloads outside the expected canary id
  * - API key should be stored in Script Properties, not inline
+ *
+ * OCI_FLEET_QUARANTINE — see `fleet-quarantine.json` (legacy patterns; replace per replacementPlan).
  */
 
 'use strict';

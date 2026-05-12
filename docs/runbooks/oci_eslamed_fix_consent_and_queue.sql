@@ -2,6 +2,9 @@
 -- Eslamed OCI: Session'lara marketing consent + Site bilgisi + Kuyruğa manuel insert
 -- Production Supabase'te çalıştır. Tek seferlik / test amaçlı.
 -- =============================================================================
+-- OCI_TRUTH_PR-C: Ledger-warning — frozen forensic SQL. Prefer RPC/cron repair; see
+-- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. Do not run status UPDATE in prod without incident.
+-- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- 1) Site bilgisi (script'te kullanacağın siteId = public_id veya id)

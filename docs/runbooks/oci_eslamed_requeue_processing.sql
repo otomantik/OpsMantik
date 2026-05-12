@@ -1,3 +1,9 @@
+-- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING
+-- Prefer approved repair paths (cron recover-processing, RPCs). Ad-hoc UPDATE on
+-- offline_conversion_queue bypasses oci_queue_transitions — use only in frozen
+-- forensic copies; see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
+-- =============================================================================
 -- Eslamed: Stuck PROCESSING rows → RETRY (recover cron does this automatically every 10 min)
 -- Use this for manual recovery when cron hasn't run yet.
 -- Site: b1264552-c859-40cb-a3fb-0ba057afd070

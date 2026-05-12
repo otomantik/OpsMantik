@@ -85,4 +85,20 @@ test('migrations: ACK + finalize_outbox RPCs are service_role-gated and locked d
     outbox.includes('GRANT EXECUTE ON FUNCTION public.finalize_outbox_event_v1(uuid, text, text, integer) TO service_role'),
     'must grant finalize_outbox_event_v1 to service_role'
   );
+  const pr9kFollowup = readFileSync(
+    join(MIGRATIONS, '20261229120500_pr9k_provider_evidence_strong_followup_v1.sql'),
+    'utf8'
+  );
+  assert.ok(
+    pr9kFollowup.includes('CREATE OR REPLACE FUNCTION public.pr9k_provider_evidence_strong_v1'),
+    'follow-up migration must define pr9k_provider_evidence_strong_v1'
+  );
+  assert.ok(
+    pr9kFollowup.includes('REVOKE ALL ON FUNCTION public.pr9k_provider_evidence_strong_v1(text) FROM PUBLIC'),
+    'strong helper must revoke from PUBLIC'
+  );
+  assert.ok(
+    pr9kFollowup.includes('GRANT EXECUTE ON FUNCTION public.pr9k_provider_evidence_strong_v1(text) TO service_role'),
+    'strong helper must grant EXECUTE to service_role'
+  );
 });

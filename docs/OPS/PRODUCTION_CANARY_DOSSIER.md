@@ -13,6 +13,17 @@
 - required_reapproval: `CANARY_REAPPROVAL=I_REAPPROVE_WITH_STUCK_PROCESSING_INCREASE`
 - required_reapproval_present: `NO_EVIDENCE_FOUND`
 
+## OCI Truth sprint closure checklist (PR-G)
+
+Use this when shipping OCI / Google Ads Script / ACK changes (no production `APPLY=1` from dev machines).
+
+- [ ] `npm run test:release-gates` is green locally or in CI.
+- [ ] Script version / change ticket recorded (repo path + commit or Ads Script project timestamp).
+- [ ] PR-9K selector dry-run archived: `OUTPUT_JSON=1` run of `scripts/db/pr9k-select-unconfirmed-script-completed-rows.mjs` when touching script-unconfirmed remediation semantics.
+- [ ] Post-deploy queue stats snapshot (counts by `offline_conversion_queue.status` for affected `site_id`) attached to the ticket.
+- [ ] No ad-hoc `UPDATE offline_conversion_queue` status SQL in ops notes — ledger / RPC / recover-processing only.
+- [ ] Optional strict evidence: `npm run release:evidence:production:strict` only in an approved, read-only evidence environment (see `docs/runbooks/OCI_HARDENING_OPERATIONS.md`).
+
 ## OCI hardening — PR-9J.CI-AUDIT-P1 (lifecycle fail-closed)
 
 - **Change type**: application/runtime contract only (ACK + invalidation helper + metrics); **no** live Google upload, **no** production queue mutation performed by this repository change itself.

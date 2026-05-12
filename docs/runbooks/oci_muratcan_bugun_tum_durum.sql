@@ -3,6 +3,9 @@
 -- Supabase SQL Editor'da çalıştır. Tüm blokları sırayla çalıştırabilirsin.
 -- Site: Muratcan AKÜ (c644fff7-9d7a-440d-b9bf-99f3a0f86073)
 -- =============================================================================
+-- OCI_TRUTH_PR-C: Ledger-warning — frozen forensic SQL. Prefer RPC/cron repair; see
+-- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. Do not run status UPDATE in prod without incident.
+-- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- 0) SİTE BİLGİSİ

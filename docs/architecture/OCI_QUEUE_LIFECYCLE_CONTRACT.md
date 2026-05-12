@@ -15,9 +15,9 @@ These values are valid on `offline_conversion_queue.status` per DB `offline_conv
 | `QUEUED` | Active (export-eligible when other fields OK) |
 | `RETRY` | Active (export-eligible after `next_retry_at`) |
 | `PROCESSING` | In-flight (claimed for script/API upload) |
-| `UPLOADED` | **Compatibility / intermediate** — async bulk upload pending Google confirmation (`pendingConfirmation=true` on ACK) |
-| `COMPLETED` | **Terminal (successful upload path)** — see §5 |
-| `COMPLETED_UNVERIFIED` | **Terminal** — legacy / rare; treated as idempotent-success with ACK |
+| `UPLOADED` | **Dispatch-pending / intermediate** — script or API path handed off to Google; **not** the same as “Google has finished importing” (`pendingConfirmation` / bulk-upload semantics on ACK). See §5.1. |
+| `COMPLETED` | **Terminal (pipeline closed)** — ACK-success under the export/claim contract; **does not by itself assert** Google Ads backend import proof. See §5.1. |
+| `COMPLETED_UNVERIFIED` | **Terminal (unverified closure)** — e.g. cron sweep from long-lived `UPLOADED` without full provider verification; must stay visually and semantically distinct. See §5.1. |
 | `FAILED` | **Terminal** — retriable in product via control-plane / repair |
 | `DEAD_LETTER_QUARANTINE` | **Terminal** — attempt-cap / fatal poison; audit via dead-letter tools |
 | `VOIDED_BY_REVERSAL` | **Terminal** — business reversal |
@@ -78,9 +78,9 @@ Examples enforced by **policy** and **partially** by DB trigger (§7):
 
 ---
 
-## 5. `COMPLETED` semantics (ACK-success only)
+## 5. `COMPLETED` / `UPLOADED` / `COMPLETED_UNVERIFIED` semantics (pipeline vs provider proof)
 
-**Strict rule:** `COMPLETED` means a **successful Google upload path** closed with evidence:
+**Strict rule (pipeline):** `COMPLETED` and `UPLOADED` describe **OpsMantik ledger / ACK closure** under the export-claim contract — **not** a standalone guarantee that Google Ads has fully imported the conversion in their backend.
 
 - **`/api/oci/ack`** success (`COMPLETED` or `UPLOADED` → later `COMPLETED`), including idempotent replays via `register_ack_receipt_v1` / `complete_ack_receipt_v1` (**site-scoped:** completion RPC matches `receipt_id` **and** `site_id` on `ack_receipt_ledger`).
 - **`skippedIds` on ACK** (`V1_SAMPLED_OUT`, etc.) — still ACK-shaped (`/api/oci/ack`), not export-batch self-completion.
@@ -89,9 +89,15 @@ Examples enforced by **policy** and **partially** by DB trigger (§7):
 
 - **Higher-gear suppression:** Rows dropped from the export batch because a higher single-conversion gear already won the group are terminalized as **`FAILED`** with `provider_error_code=SUPPRESSED_BY_HIGHER_GEAR` and `provider_error_category=DETERMINISTIC_SKIP` in [`export-mark-processing.ts`](../../app/api/oci/google-ads-export/export-mark-processing.ts). Nothing was uploaded for those order IDs; they are **not** successful Google conversions and must not be counted as such in lifecycle or reporting.
 
-**`UPLOADED`:** Intermediate only when `pendingConfirmation=true`; final success still requires a later ACK or aligned policy.
+**`UPLOADED`:** Intermediate when `pendingConfirmation=true` / `providerConfirmationMode=bulk_upload_async_unconfirmed` — **dispatch succeeded**, Google import still pending / unobservable from Scripts.
+
+**`COMPLETED_UNVERIFIED`:** Terminal closure without full provider verification (e.g. [`app/api/cron/oci/sweep-zombies/route.ts`](../../app/api/cron/oci/sweep-zombies/route.ts) aging `UPLOADED` → `COMPLETED_UNVERIFIED`). Operators and dashboards must **not** treat this as “Google-confirmed revenue.”
 
 **Queue Health 100 (PR-1C):** Legacy **`failed_rate` / `total_failed_rate`** still reflect total **FAILED + DLQ mass** (deterministic skips remain observable). **Gates and score 100** use **`actionable_failed_rate`** and **`provider_failed_rate`** from [`lib/oci/queue-failure-taxonomy.ts`](../../lib/oci/queue-failure-taxonomy.ts) / [`queue_health.sql`](../../scripts/sql/queue_health.sql) — deterministic skips are **excluded** from those numerators so they do not inflate “provider broken” narratives. There is no separate “successful Google upload” counter in v1 health — do not treat `FAILED` rows with `SUPPRESSED_BY_HIGHER_GEAR` as `COMPLETED` in ops narrative.
+
+### §5.1 OCI Truth — product language (regression bar)
+
+Any UX, doc, or metric that presents **script dispatch**, **`upload.apply()` success**, **ACK-success**, or **pipeline closure** as **“Google definitely imported / accepted the conversion”** without **separate provider proof** is a **regression** against Revenue Truth. UI copy for `UPLOADED`, `COMPLETED`, and `COMPLETED_UNVERIFIED` must keep this distinction (see OCI Control tooltips + i18n).
 
 ---
 

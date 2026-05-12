@@ -8,6 +8,12 @@ Script payload time must represent the first intent creation timestamp from back
 - Script/runtime must not replace conversion time with upload-time `now()`.
 
 `scripts/google-ads-oci/GoogleAdsScript.js` bu repo içindeki tek canonical script kaynağıdır.
+
+## Fleet CI, quarantine, ACK truth
+
+- CI contract: `tests/unit/oci-script-fleet-truth-contract.test.ts` (all `GoogleAdsScript*.js` except `scripts/google-ads-oci/fleet-quarantine.json` entries).
+- Quarantine manifest: `scripts/google-ads-oci/fleet-quarantine.json` — each `productionSafe: false` row must carry owner + sunset; do not add new scripts to quarantine without a replacement plan.
+
 `scripts/google-ads/*.js` ve `scripts/google-ads-oci/deploy/*.js` dosyaları site-specific deploy snapshot'larıdır; kaynak olarak değil, dağıtım kopyası olarak görülmelidir.
 
 **Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)

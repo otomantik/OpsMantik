@@ -6,6 +6,9 @@
 -- Supabase SQL Editor'da çalıştır.
 -- Site: Eslamed — b1264552-c859-40cb-a3fb-0ba057afd070
 -- =============================================================================
+-- OCI_TRUTH_PR-C: Ledger-warning — frozen forensic SQL. Prefer RPC/cron repair; see
+-- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. Do not run status UPDATE in prod without incident.
+-- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- 1) ÖNCE KONTROL — Hangi mühürler kuyruğa girecek, hangileri atlanacak

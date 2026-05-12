@@ -4,6 +4,8 @@
 -- Bu sorgu: Şüpheli (bot/tekrarlı/sahte) intent'leri işaretler.
 -- Site: b1264552-c859-40cb-a3fb-0ba057afd070
 -- Supabase SQL Editor'da çalıştır.
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 --
 -- NEDEN ŞÜPHELİ ALGILANDI? (5 kriter — biri bile sağlansa suspekt = true)
 -- 1) flag_3sn_alti_kalis   : Sitede 3 saniye veya daha az kalınmış (girip hemen tıklamış → bot/script)

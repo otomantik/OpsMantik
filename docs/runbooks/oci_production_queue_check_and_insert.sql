@@ -2,6 +2,8 @@
 -- Production'da kuyruk boş mu? Call/session var mı? Varsa kuyruğa ekle.
 -- Aynı Supabase projesinde (console.opsmantik.com'un bağlı olduğu) çalıştır.
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- 1) Site var mı?
 SELECT '1_site' AS step, id, name, public_id FROM sites WHERE id = 'b1264552-c859-40cb-a3fb-0ba057afd070';

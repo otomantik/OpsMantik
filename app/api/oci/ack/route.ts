@@ -337,6 +337,53 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_BATCH_RPC_FAILED'
           );
         }
+        if (toFinalizeIds.length > 0 && updatedCount !== toFinalizeIds.length) {
+          logError('OCI_ACK_FINALIZE_TRANSITION_COUNT_MISMATCH', {
+            site_id: siteUuid,
+            expected: toFinalizeIds.length,
+            transitioned: updatedCount,
+            export_run_id: exportRunId,
+          });
+          const snap = {
+            ok: false,
+            code: 'ACK_FINALIZE_TRANSITION_COUNT_MISMATCH',
+            expected_count: toFinalizeIds.length,
+            transitioned_count: updatedCount,
+            export_run_id: exportRunId,
+            _ack_http_status: 409,
+          };
+          if (receipt.receiptId) {
+            try {
+              await completeAckReceipt({
+                receiptId: receipt.receiptId,
+                siteId: siteUuid,
+                resultSnapshot: snap as Record<string, unknown>,
+              });
+              await appendRoutingHop({
+                siteId: siteUuid,
+                lane: 'ack',
+                unitId: receipt.receiptId,
+                fromState: 'REGISTERED',
+                toState: 'APPLIED',
+                reasonCode: 'ACK_FINALIZE_BATCH_MISMATCH',
+                idempotencyKey: `ack_finalize_mismatch:${receipt.receiptId}`,
+              });
+            } catch (ledgerErr) {
+              logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+                receiptId: receipt.receiptId,
+                error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+              });
+            }
+          }
+          return NextResponse.json(
+            {
+              status: 'PARTIAL_FAIL',
+              reason: 'ACK_FINALIZE_TRANSITION_COUNT_MISMATCH',
+              ...snap,
+            },
+            { status: 409 }
+          );
+        }
         actualTransitionedCount += updatedCount;
       }
     }
@@ -396,6 +443,47 @@ export async function POST(req: NextRequest) {
               'OCI_ACK_GRANULAR_FAILED_BATCH_RPC_FAILED'
             );
           }
+          if (processingRows.length > 0 && updatedCount !== processingRows.length) {
+            logError('OCI_ACK_GRANULAR_FAILED_BATCH_MISMATCH', {
+              site_id: siteUuid,
+              expected: processingRows.length,
+              transitioned: updatedCount,
+            });
+            const snap = {
+              ok: false,
+              code: 'ACK_GRANULAR_FAILED_TRANSITION_COUNT_MISMATCH',
+              expected_count: processingRows.length,
+              transitioned_count: updatedCount,
+              _ack_http_status: 409,
+            };
+            if (receipt.receiptId) {
+              try {
+                await completeAckReceipt({
+                  receiptId: receipt.receiptId,
+                  siteId: siteUuid,
+                  resultSnapshot: snap as Record<string, unknown>,
+                });
+                await appendRoutingHop({
+                  siteId: siteUuid,
+                  lane: 'ack',
+                  unitId: receipt.receiptId,
+                  fromState: 'REGISTERED',
+                  toState: 'APPLIED',
+                  reasonCode: 'ACK_GRANULAR_FAILED_BATCH_MISMATCH',
+                  idempotencyKey: `ack_granular_failed_mismatch:${receipt.receiptId}`,
+                });
+              } catch (ledgerErr) {
+                logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+                  receiptId: receipt.receiptId,
+                  error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+                });
+              }
+            }
+            return NextResponse.json(
+              { status: 'PARTIAL_FAIL', reason: 'ACK_GRANULAR_FAILED_TRANSITION_COUNT_MISMATCH', ...snap },
+              { status: 409 }
+            );
+          }
           actualTransitionedCount += updatedCount;
           for (const r of processingRows) {
             const key = `seal_${r.id}`;
@@ -442,6 +530,47 @@ export async function POST(req: NextRequest) {
             'OCI_ACK_SKIPPED_BATCH_RPC_FAILED',
             rpcError ?? new Error('skipped batch RPC'),
             'OCI_ACK_SKIPPED_BATCH_RPC_FAILED'
+          );
+        }
+        if (toTransition.length > 0 && updatedCount !== toTransition.length) {
+          logError('OCI_ACK_SKIPPED_BATCH_MISMATCH', {
+            site_id: siteUuid,
+            expected: toTransition.length,
+            transitioned: updatedCount,
+          });
+          const snap = {
+            ok: false,
+            code: 'ACK_SKIPPED_TRANSITION_COUNT_MISMATCH',
+            expected_count: toTransition.length,
+            transitioned_count: updatedCount,
+            _ack_http_status: 409,
+          };
+          if (receipt.receiptId) {
+            try {
+              await completeAckReceipt({
+                receiptId: receipt.receiptId,
+                siteId: siteUuid,
+                resultSnapshot: snap as Record<string, unknown>,
+              });
+              await appendRoutingHop({
+                siteId: siteUuid,
+                lane: 'ack',
+                unitId: receipt.receiptId,
+                fromState: 'REGISTERED',
+                toState: 'APPLIED',
+                reasonCode: 'ACK_SKIPPED_BATCH_MISMATCH',
+                idempotencyKey: `ack_skipped_mismatch:${receipt.receiptId}`,
+              });
+            } catch (ledgerErr) {
+              logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+                receiptId: receipt.receiptId,
+                error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+              });
+            }
+          }
+          return NextResponse.json(
+            { status: 'PARTIAL_FAIL', reason: 'ACK_SKIPPED_TRANSITION_COUNT_MISMATCH', ...snap },
+            { status: 409 }
           );
         }
         actualTransitionedCount += updatedCount;

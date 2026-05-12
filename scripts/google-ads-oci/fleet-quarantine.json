@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "description": "OCI Truth: scripts listed here are not held to full PR-9I/PR-9K fleet CI until sunset; each row must include replacementPlan. Do not expand this list without platform review.",
+  "entries": [
+    {
+      "file": "GoogleAdsScript.js",
+      "owner": "OpsMantik Platform",
+      "reason": "Legacy sample script: mixes granular results into ACK payload (payload.results), uses gclid||wbraid||gbraid for click id instead of PR-9I single-column selection, and does not match dispatch-pending ACK contract.",
+      "productionSafe": false,
+      "sunsetDate": "2026-11-30",
+      "replacementPlan": "Remove from fleet or rewrite on GoogleAdsScriptProduction.js / site-specific SSOT; tracked as tech debt — no new deployments."
+    },
+    {
+      "file": "GoogleAdsScriptMuratcanAku.js",
+      "owner": "OpsMantik Platform",
+      "reason": "Site-specific legacy: ACK path embeds payload.results; click-id selection uses gclid||wbraid||gbraid; not aligned with universal single-column CSV + dispatch-only ACK semantics.",
+      "productionSafe": false,
+      "sunsetDate": "2026-11-30",
+      "replacementPlan": "Port Muratcan deploy to GoogleAdsScriptKocOtoKurtarma.js pattern (PR-9I + PR-9K) or Production template; verify in Ads UI before dropping quarantine."
+    },
+    {
+      "file": "GoogleAdsScriptTecrubeliBakici.js",
+      "owner": "OpsMantik Platform",
+      "reason": "Site-specific legacy: payload.results in ACK; combined click-id expression; lacks verified dispatch-pending ACK flags in sendAck path.",
+      "productionSafe": false,
+      "sunsetDate": "2026-11-30",
+      "replacementPlan": "Rebuild from GoogleAdsScriptProduction.js + PR-9K Koç reference implementation; sunset quarantine entry after green canary."
+    }
+  ]
+}

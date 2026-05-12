@@ -6,7 +6,7 @@
  *
  * Credentials (Script Properties preferred):
  * - OPSMANTIK_SITE_ID, OPSMANTIK_API_KEY, OPSMANTIK_BASE_URL (optional)
- * - OPSMANTIK_RUN_MODE — `peek` | `sync` (Script Properties override file-level `OPSMANTIK_RUN_MODE`; optional `OPSMANTIK_INLINE_RUN_MODE`)
+ * - OPSMANTIK_RUN_MODE — `peek` | `sync` (`resolveRunMode`: Script Properties, then process.env, then inline `OPSMANTIK_INLINE_RUN_MODE`, then file default)
  *
  * Google platform limits / ops (not enforced by OpsMantik code alone):
  * - Hard ceiling ~30 min execution — use `OPSMANTIK_MAX_RUNTIME_MS` (default ~25 min) plus smaller,
@@ -16,7 +16,7 @@
  *   template verbatim or `upload.apply()` may reject the file.
  * - PR-9I Script path supports universal click-id selection: gclid > wbraid > gbraid (exactly one upload column populated).
  *
- * Operational safety (inline / Script Properties — see `DEFAULT_*` in source):
+ * Operational safety (`getScriptConfig` / `getFirst`: Script Properties → process.env → inline `OPSMANTIK_INLINE_*` → defaults):
  * - OPSMANTIK_EXPORT_LIMIT — keep aligned with PR-9I broad drain max batch (e.g. 25).
  * - OPSMANTIK_MAX_SYNC_PAGES — sync claim loop page cap (Koç canlı drain: 1 sayfa kontrollü).
  * - OPSMANTIK_MAX_PEEK_PAGES — peek pagination cap (PEEK öncesi: 1 sayfa yeter).
@@ -45,6 +45,11 @@
  * - Script bu repoda `x-opsmantik-drain-*` header’larını gönderir (`OPSMANTIK_INLINE_DRAIN_*` veya Script Properties `OPSMANTIK_DRAIN_*`).
  * - Alternatif: Vercel’de `OPSMANTIK_DRAIN_APPROVAL`, `OPSMANTIK_DRAIN_SITE_ID`, `OPSMANTIK_DRAIN_MAX_BATCH_SIZE`, `OPSMANTIK_DRAIN_INCLUDE_BRAIDS`.
  * - `409` + `SCRIPT_DRAIN_BLOCKED` → hiçbir satır claim edilmemiştir; header veya sunucu env’yi tamamlayın.
+ *
+ * PR-9K (success ACK after offline bulk `upload.apply()`):
+ * - Başarılı `sendAck` yalnızca upload’a giden `queueIds` + isteğe `skippedIds`; gövdede `pendingConfirmation` + `providerConfirmationMode` ve mümkünse `export_run_id`. Satır validasyon hataları `sendAckFailed` (VALIDATION).
+ * - Eski kopyalar: `sendAck` içine `results`/FAILED karıştırmak veya PR-9K bayrakları eksik bırakmak erken `COMPLETED` riski taşır.
+ * - Google Ads Editor’a her güncellemede bu dosyanın tamamını repodan yapıştırın; parça parça merge etmeyin.
  *
  * **Never commit `OPSMANTIK_INLINE_API_KEY`** — leave empty; set `OPSMANTIK_API_KEY` only in Script Properties.
  */
@@ -81,7 +86,7 @@ var OPSMANTIK_INLINE_API_KEY = '';
 var OPSMANTIK_INLINE_BASE_URL = 'https://console.opsmantik.com';
 
 /** @type {string} Tek istekte claim limiti — `OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE` ile aynı sayı olmalı (sunucu SCRIPT_DRAIN gate). */
-var OPSMANTIK_INLINE_EXPORT_LIMIT = '100';
+var OPSMANTIK_INLINE_EXPORT_LIMIT = '25';
 
 /** @type {string} SYNC: leave empty (client allowlist forbidden). PEEK: optional */
 var OPSMANTIK_INLINE_ALLOWLIST_IDS = '';
@@ -96,7 +101,7 @@ var OPSMANTIK_INLINE_CANARY_EXPECTED_QUEUE_ID = '';
 var OPSMANTIK_INLINE_CANARY_APPROVAL = '';
 var OPSMANTIK_INLINE_CANARY_UPLOAD_APPROVAL = '';
 var OPSMANTIK_INLINE_OPERATOR_ID = 'serkan';
-var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9I-KOC-LIVE-DRAIN-ALL-22';
+var OPSMANTIK_INLINE_CHANGE_TICKET = 'PR-9K-KOC-REQUEUE-REDRAIN';
 /** Tek sayfa sigortası — SYNC kontrollü batch (kalan kuyruk sonraki tetikleme) */
 var OPSMANTIK_INLINE_MAX_SYNC_PAGES = '1';
 /**
@@ -112,8 +117,8 @@ var OPSMANTIK_INLINE_MAX_RUNTIME_MS = '';
  */
 var OPSMANTIK_INLINE_DRAIN_APPROVAL = 'I_APPROVE_SCRIPT_DRAIN';
 var OPSMANTIK_INLINE_DRAIN_SITE_ID = '93cb9966bcf349c1b4ece8ea34142ace';
-/** İstek `limit` değerinden küçük olmamalı; EXPORT_LIMIT ile aynı tutun (ör. ikisi de 100). */
-var OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE = '100';
+/** İstek `limit` değerinden küçük olmamalı; EXPORT_LIMIT ile aynı tutun (ör. ikisi de 25). */
+var OPSMANTIK_INLINE_DRAIN_MAX_BATCH_SIZE = '25';
 var OPSMANTIK_INLINE_DRAIN_INCLUDE_BRAIDS = 'true';
 
 /** Optional inline CSV header for hashed phone (overrides Script Property when non-empty). */
@@ -317,18 +322,22 @@ function getScriptConfig() {
     /* ignore */
   }
   const getFirst = function (keys, fallback) {
-    const inline = getInlineForKeys(keys);
-    if (inline) return inline;
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
-      if (props && props.getProperty && props.getProperty(key)) {
-        return props.getProperty(key);
+      if (props && props.getProperty) {
+        const propValue = props.getProperty(key);
+        if (propValue != null && String(propValue).trim()) {
+          return String(propValue).trim();
+        }
       }
-      if (typeof process !== 'undefined' && process.env && process.env[key]) {
-        return process.env[key];
+      if (typeof process !== 'undefined' && process.env && process.env[key] != null) {
+        const ev = String(process.env[key]).trim();
+        if (ev) return ev;
       }
     }
-    return fallback || '';
+    const inline = getInlineForKeys(keys);
+    if (inline) return inline;
+    return fallback != null && fallback !== '' ? String(fallback) : '';
   };
 
   const limitRaw = getFirst(['OPSMANTIK_EXPORT_LIMIT'], '200');
@@ -885,11 +894,11 @@ KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported, lim
   };
 };
 
-KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows, exportRunId) {
+/** PR-9K: success ACK is dispatch-pending only (`successIds` + optional `skippedIds`). Row-level validation failures use `sendAckFailed`. */
+KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, exportRunId) {
   const q = queueIds || [];
   const s = skippedIds || [];
-  const f = failedRows || [];
-  if (!q.length && !s.length && !f.length) return null;
+  if (!q.length && !s.length) return null;
 
   const url = this.baseUrl + '/api/oci/ack';
   const payload = { siteId: siteId, queueIds: q };
@@ -901,21 +910,6 @@ KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
   payload.pendingConfirmation = true;
   payload.providerConfirmationMode = 'bulk_upload_async_unconfirmed';
   if (s.length > 0) payload.skippedIds = s;
-  if (f.length > 0) {
-    payload.results = []
-      .concat(q.map(function (id) {
-        return { id: id, status: 'SUCCESS' };
-      }))
-      .concat(
-        f.map(function (row) {
-          return {
-            id: row.queueId,
-            status: 'FAILED',
-            reason: row.errorCode || 'SCRIPT_ROW_FAILED',
-          };
-        })
-      );
-  }
 
   const payloadStr = JSON.stringify(payload);
   const response = this._fetchWithSessionRetry(url, {
@@ -1186,8 +1180,8 @@ function resolveRunMode() {
   }
   const raw = String(
     propMode.trim() ||
-      inlineMode ||
       envMode ||
+      inlineMode ||
       (typeof OPSMANTIK_RUN_MODE === 'string' ? OPSMANTIK_RUN_MODE.trim() : '') ||
       'sync'
   ).toLowerCase();
@@ -1500,6 +1494,21 @@ function mainSyncKocOto() {
               summaryStats.provider_ambiguous_pending_count += stats.ack_failed_dispatch_failed_count;
             }
 
+            if (stats.failedRows && stats.failedRows.length) {
+              for (var vfr = 0; vfr < stats.failedRows.length; vfr++) {
+                var vfail = stats.failedRows[vfr];
+                client.sendAckFailed(
+                  CONFIG.SITE_ID,
+                  [vfail.queueId],
+                  vfail.errorCode || 'SCRIPT_ROW_FAILED',
+                  vfail.errorMessage || vfail.errorCode || 'SCRIPT_ROW_FAILED',
+                  vfail.errorCategory || 'VALIDATION',
+                  exportRunId
+                );
+              }
+              summaryStats.ack_failed_count += stats.failedRows.length;
+            }
+
             Telemetry.warn('upload.apply failed — ACK_FAILED dispatch tracked', {
               page: pageNo,
               ack_failed_sent_count: stats.ack_failed_sent_count,
@@ -1528,19 +1537,64 @@ function mainSyncKocOto() {
           summaryStats.invalid_time_count += stats.invalid_time_count || 0;
           summaryStats.other_validation_failed_count += stats.other_validation_failed_count || 0;
 
-          if (stats.successIds.length || stats.skippedIds.length || stats.failedRows.length) {
-            const ackRes = client.sendAck(
-              CONFIG.SITE_ID,
-              stats.successIds,
-              stats.skippedIds,
-              stats.failedRows,
-              exportRunId
-            );
+          var uploadApplySucceeded = stats.uploaded > 0 && !stats.uploadFailed;
+
+          if (stats.failedRows.length) {
+            for (var fr = 0; fr < stats.failedRows.length; fr++) {
+              var failed = stats.failedRows[fr];
+              client.sendAckFailed(
+                CONFIG.SITE_ID,
+                [failed.queueId],
+                failed.errorCode || 'SCRIPT_ROW_FAILED',
+                failed.errorMessage || failed.errorCode || 'SCRIPT_ROW_FAILED',
+                failed.errorCategory || 'VALIDATION',
+                exportRunId
+              );
+            }
+            summaryStats.ack_failed_count += stats.failedRows.length;
+          }
+
+          if (stats.successIds.length || stats.skippedIds.length) {
+            var ackRes = null;
+            try {
+              ackRes = client.sendAck(
+                CONFIG.SITE_ID,
+                stats.successIds,
+                stats.skippedIds,
+                exportRunId
+              );
+            } catch (ackErr) {
+              if (uploadApplySucceeded && (stats.successIds || []).length > 0) {
+                summaryStats.provider_ambiguous_pending_count += stats.successIds.length;
+                Telemetry.error('ACK_FAILED_AFTER_UPLOAD_APPLY_PROVIDER_AMBIGUOUS_NO_ACK_FAILED_SENT', {
+                  page: pageNo,
+                  affected_success_ids: stats.successIds.length,
+                  cause: String(ackErr && ackErr.message ? ackErr.message : ackErr || ''),
+                });
+                var ambWrap = new Error(
+                  'ACK_FAILED_AFTER_UPLOAD_APPLY_PROVIDER_AMBIGUOUS: ' +
+                    (ackErr && ackErr.message ? ackErr.message : String(ackErr || ''))
+                );
+                ambWrap.opsmantikNoPageAckFailed = true;
+                throw ambWrap;
+              }
+              throw ackErr;
+            }
+            if (uploadApplySucceeded && (stats.successIds || []).length > 0 && ackRes && ackRes.ok === false) {
+              summaryStats.provider_ambiguous_pending_count += stats.successIds.length;
+              Telemetry.error('ACK_FAILED_AFTER_UPLOAD_APPLY_PROVIDER_AMBIGUOUS_NO_ACK_FAILED_SENT', {
+                page: pageNo,
+                affected_success_ids: stats.successIds.length,
+                ack_res: ackRes,
+              });
+              var ambHttp = new Error('ACK_FAILED_AFTER_UPLOAD_APPLY_PROVIDER_AMBIGUOUS');
+              ambHttp.opsmantikNoPageAckFailed = true;
+              throw ambHttp;
+            }
             if (ackRes && typeof ackRes.updated === 'number') totalAck += ackRes.updated;
 
             summaryStats.ack_success_count += stats.successIds.length;
             summaryStats.ack_skipped_count += stats.skippedIds.length;
-            summaryStats.ack_failed_count += stats.failedRows.length;
             summaryStats.dispatch_pending_ack_count +=
               (stats.successIds || []).length + (stats.skippedIds || []).length;
             Telemetry.info('GOOGLE_BULK_UPLOAD_PROVIDER_CONFIRMATION_PENDING', {
@@ -1565,6 +1619,13 @@ function mainSyncKocOto() {
           });
         } catch (err) {
           const errMsg = err && err.message ? String(err.message) : String(err || '');
+          if (err && err.opsmantikNoPageAckFailed) {
+            Telemetry.error(
+              'SYNC aborted: upload.apply succeeded but dispatch ACK ambiguous — no page-wide ACK_FAILED sent',
+              err
+            );
+            throw err;
+          }
           if (errMsg.indexOf(HASHED_PHONE_CANARY_ABORTED_UNSAFE_SCOPE) >= 0) {
             Telemetry.error('CANARY_SCOPE_ABORTED_NO_ACK_FAILED_SENT', err);
             throw err;

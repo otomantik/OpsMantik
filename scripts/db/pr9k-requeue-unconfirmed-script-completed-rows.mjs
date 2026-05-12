@@ -15,6 +15,8 @@
  *
  * Optional: PR9K_QUEUE_IDS=uuid,uuid (subset; default = all eligible from selector RPC)
  * Optional: PR9K_ALLOW_NON_EXPORTABLE_REQUEUE=1
+ *
+ * Evidence parity (PR-E): apply RPC rejects the same API-strength provider_request_id shapes as the selector.
  */
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';

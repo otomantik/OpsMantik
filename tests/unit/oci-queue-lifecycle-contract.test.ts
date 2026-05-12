@@ -33,7 +33,8 @@ test('OCI_QUEUE_LIFECYCLE_CONTRACT.md exists and pins core transition headings',
   const md = readFileSync(mdPath, 'utf8');
   assert.ok(md.includes('## 3. Allowed transitions'));
   assert.ok(md.includes('## 4. Forbidden transitions'));
-  assert.ok(md.includes('## 5. `COMPLETED` semantics'));
+  assert.ok(md.includes('## 5. `COMPLETED` / `UPLOADED` / `COMPLETED_UNVERIFIED` semantics'));
+  assert.ok(md.includes('### §5.1 OCI Truth'));
   assert.ok(md.includes('## 9. Approved transition writers'));
   for (const line of [
     '| `QUEUED` | `PROCESSING` |',

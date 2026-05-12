@@ -11,6 +11,8 @@
  *
  * Davranış: 401’de otomatik yeniden handshake, upload.apply() hatasında ack-failed,
  * sayfa işleme çöküşünde ilgili satırlar için TRANSIENT ack-failed.
+ *
+ * OCI_FLEET_QUARANTINE — see `fleet-quarantine.json` (legacy patterns; replace per replacementPlan).
  */
 
 'use strict';

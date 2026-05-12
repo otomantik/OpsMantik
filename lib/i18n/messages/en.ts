@@ -115,6 +115,14 @@ export const en = {
   'ociControl.status.DEAD_LETTER_QUARANTINE': 'Review queue',
   'ociControl.status.VOIDED_BY_REVERSAL': 'Voided (reversal)',
   'ociControl.status.BLOCKED_PRECEDING_SIGNALS': 'Blocked (precursor signals)',
+  /** OCI Truth: tooltips must not imply Google Ads has imported the conversion unless separate provider proof exists. */
+  'ociControl.statusTruth.UPLOADED':
+    'Dispatch succeeded (e.g. script upload.apply / batch handed off). This is not proof that Google Ads finished importing the conversion — check Google Ads bulk upload status when needed.',
+  'ociControl.statusTruth.COMPLETED':
+    'Pipeline closed after ACK under our export/claim contract. This status does not by itself mean Google Ads has definitively accepted the conversion in their backend — treat provider proof separately.',
+  'ociControl.statusTruth.COMPLETED_UNVERIFIED':
+    'Closed by automated policy (e.g. long-lived UPLOADED sweep) without full provider-side verification. Distinct from a provider-attested COMPLETED path.',
+  'ociControl.statusTruthHintLabel': 'What this status means',
 
   // Dashboard
   'common.backToDashboard': 'Back to Dashboard',

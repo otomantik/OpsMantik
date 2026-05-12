@@ -14,6 +14,14 @@
  *   PR9K_EXPORT_RUN_ID=<run> ...
  *
  * Optional: PR9K_INCLUDE_ACTIONS=action1,action2  PR9K_INCIDENT_KEY=<key> (excludes audit hits for that key)
+ *
+ * OUTPUT_JSON=1 example (read-only RPC; no writes from this script):
+ *   PR9K_SITE_ID=<uuid> PR9K_SITE_PUBLIC_ID=<public_id> PR9K_INCIDENT_KEY=demo-incident \\
+ *   PR9K_WINDOW_START=2026-05-01T00:00:00.000Z PR9K_WINDOW_END=2026-05-02T00:00:00.000Z OUTPUT_JSON=1 \\
+ *   node scripts/db/pr9k-select-unconfirmed-script-completed-rows.mjs
+ *
+ * Evidence policy (PR-E): RPC excludes rows with API-strength provider_request_id (UUID / customers/...).
+ * Non-empty provider_ref alone is not treated as provider-confirmed import proof.
  */
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';

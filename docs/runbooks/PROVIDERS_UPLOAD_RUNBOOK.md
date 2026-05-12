@@ -57,8 +57,8 @@ curl.exe -X POST "$baseUrl/api/cron/providers/recover-processing?min_age_minutes
 ## Rollback
 
 - **Disable cron:** Remove or pause `process-offline-conversions` in Vercel crons so no new claims occur.
-- **Stuck PROCESSING:** Run recover-processing to move them back to QUEUED, or manually `UPDATE offline_conversion_queue SET status = 'QUEUED' WHERE status = 'PROCESSING'` (with caution).
-- **Bad credentials:** Fix or replace credentials for the site (re-seed or admin flow); failed rows stay FAILED until manually re-queued if desired.
+- **Stuck PROCESSING:** Run recover-processing only — `POST /api/cron/providers/recover-processing?min_age_minutes=15` with cron auth (see smoke section above). **Do not** hand-`UPDATE` `offline_conversion_queue.status` in SQL; that bypasses the ledger/FSM and is an operational regression. For broader repair guidance see [`OCI_HARDENING_OPERATIONS.md`](./OCI_HARDENING_OPERATIONS.md) and [`OCI_QUEUE_REPAIR_INDEX.md`](./OCI_QUEUE_REPAIR_INDEX.md) (when present).
+- **Bad credentials:** Fix or replace credentials for the site (re-seed or admin flow); failed rows stay FAILED until operator actions use approved RPCs (e.g. control-plane retry), not ad-hoc status SQL.
 
 ## Claim (PR6 + PR7)
 

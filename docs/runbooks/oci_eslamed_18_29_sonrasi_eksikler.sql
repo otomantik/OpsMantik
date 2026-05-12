@@ -3,6 +3,8 @@
 -- Gönderim 18:29'da yapıldı; o andan sonra girilen (sealed) kayıtlar kuyruğa düşmemiş olabilir.
 -- Supabase SQL Editor'da çalıştır. Site: Eslamed (b1264552-c859-40cb-a3fb-0ba057afd070)
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- Sabit: Eslamed site_id
 -- Saat dilimi: Turkey (UTC+3). İstediğin günü/saati aşağıdaki cutoff'ta değiştir.

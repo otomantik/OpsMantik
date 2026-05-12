@@ -8,6 +8,12 @@ This runbook covers the operational procedures for the OCI (Offline Conversion I
 
 Canonical upload authority for Google batch remains **queue-only**: `GET /api/oci/google-ads-export` reads `offline_conversion_queue` only. `marketing_signals` is legacy/audit/recovery support and not an independent upload source.
 
+### Queue status mutation policy (OCI Truth)
+
+- **Never** run ad-hoc `UPDATE offline_conversion_queue ... SET status = ...` in production troubleshooting. That bypasses `oci_queue_transitions`, snapshot apply, and the partial DB FSM — it is a **regression** against Revenue Truth.
+- **Do** use approved paths: cron **`/api/cron/providers/recover-processing`**, maintenance kernels, control-plane **`update_queue_status_locked`**, ledger RPCs (`append_script_*`, `append_worker_transition_batch_v2`), and **PR-9K** incident tools (dry-run by default — see PR-9K section below).
+- **Read first:** [`OCI_QUEUE_REPAIR_INDEX.md`](./OCI_QUEUE_REPAIR_INDEX.md).
+
 ## Site identity: `public_id` vs `sites.id` (PR-9H.5B.0A)
 
 - **Google Ads Script Properties** (`OPSMANTIK_SITE_ID`) usually store **`sites.public_id`** (32-character hex string).
@@ -64,6 +70,7 @@ If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, r
   - **Read-only selector**: `scripts/db/pr9k-select-unconfirmed-script-completed-rows.mjs` (dry-run by default; `OUTPUT_JSON=1`).
   - **Requeue**: `scripts/db/pr9k-requeue-unconfirmed-script-completed-rows.mjs` — dry-run calls `requeue_unconfirmed_script_completed_rows_v1` with `p_apply=false`; apply requires **`APPLY=1`** and **`PR9K_REQUEUE_APPROVAL=I_APPROVE_REQUEUE_UNCONFIRMED_GOOGLE_SCRIPT_COMPLETED_ROWS`** plus **`PR9K_INCIDENT_KEY`**. DB objects: migration **`20261228141500_pr9k_operator_requeue_unconfirmed_google_script_completed.sql`** (`oci_operator_requeue_audit`, FSM session gate **`opsmantik.pr9k_operator_requeue`**, RPCs **`pr9k_unconfirmed_script_completed_candidates_v1`** / **`requeue_unconfirmed_script_completed_rows_v1`**).
 - **Post-apply verification**: confirm affected rows are **`RETRY`** / pickable by export; confirm **`oci_operator_requeue_audit`** rows for the incident key; re-run selector with the same window — should return **`PR9K_NO_REQUEUE_CANDIDATES`** for those ids.
+- **PR-E evidence strength (follow-up migration `20261229120500_pr9k_provider_evidence_strong_followup_v1.sql`)**: the selector / requeue RPCs treat **`provider_request_id`** as strong exclusion evidence only when it matches **API-shaped** values (standard **UUID** or **`customers/...`** prefixes). **`provider_ref` alone** (common script-side markers) **does not** remove a row from the “unconfirmed script completed” candidate set.
 - **Rollback / containment**: pause the Ads schedule; narrow script drain (no broad allowlists); keep **`pendingConfirmation`** path enabled so new runs do not premature-`COMPLETED`.
 
 ### PR-9J.CI-AUDIT-P1 — Lifecycle fail-closed closure (code)

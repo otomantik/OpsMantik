@@ -3,6 +3,8 @@
 -- Supabase SQL Editor'da çalıştır.
 -- Site: Muratcan (c644fff7-9d7a-440d-b9bf-99f3a0f86073)
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- -----------------------------------------------------------------------------
 -- 1) GHOST ORANI — Rome/Amsterdam/Düsseldorf/Ashburn IP geo + GCLID var = yanlış şehir

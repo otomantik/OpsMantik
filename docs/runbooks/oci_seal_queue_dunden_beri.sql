@@ -3,6 +3,8 @@
 -- Site: Eslamed (b1264552-c859-40cb-a3fb-0ba057afd070)
 -- Supabase SQL Editor veya psql'de çalıştır. Başka site için 'SITE_UUID' yerine o site_id yaz.
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Prefer approved repair paths; see
+-- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. Status UPDATE blocks below are legacy/frozen.
 
 -- Sabit: Eslamed site_id (istersen değiştir)
 -- 'b1264552-c859-40cb-a3fb-0ba057afd070'

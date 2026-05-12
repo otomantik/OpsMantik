@@ -4,6 +4,8 @@
 -- Site: Eslamed (b1264552-c859-40cb-a3fb-0ba057afd070)
 -- Supabase SQL Editor'da çalıştır. Tarih aralığını ayarla: '1 day' veya '12 hours'
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- -----------------------------------------------------------------------------
 -- 1) LOST CONVERSIONS: Bugün oluşturulan tüm queue kayıtları

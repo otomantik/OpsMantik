@@ -19,6 +19,7 @@ export interface EntitlementsLimits {
   visible_queue_items: number;
   history_days: number;
   monthly_revenue_events: number;
+  /** Capped export-side counter — not Google offline import proof. SSOT: docs/architecture/BILLING_CONVERSION_SENDS_SSOT.md */
   monthly_conversion_sends: number;
 }
 

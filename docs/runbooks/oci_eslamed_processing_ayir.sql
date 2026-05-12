@@ -3,6 +3,9 @@
 -- Script bizi ack'lemediği için elle ayırıyoruz. İleride script POST /api/oci/ack çağırınca otomatik olacak.
 -- Site: b1264552-c859-40cb-a3fb-0ba057afd070
 -- =============================================================================
+-- OCI_TRUTH_PR-C: Ledger-warning — frozen forensic SQL. Prefer RPC/cron repair; see
+-- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. Do not run status UPDATE in prod without incident.
+-- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- 1) PROCESSING'deki tüm queue satırlarını listele (hangi id'ler Google'a gitti karar ver)

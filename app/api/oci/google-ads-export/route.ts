@@ -210,6 +210,9 @@ export async function GET(req: NextRequest) {
       if (e.message === 'QUEUE_CLAIM_MISMATCH') {
         return NextResponse.json({ error: 'Queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
       }
+      if (e.message === 'QUEUE_FINALIZE_MISMATCH') {
+        return NextResponse.json({ error: 'Queue finalize mismatch', code: 'QUEUE_FINALIZE_MISMATCH' }, { status: 409 });
+      }
       if (e.message === 'SERVER_ERROR') {
         return NextResponse.json({ error: 'Something went wrong', code: 'SERVER_ERROR' }, { status: 500 });
       }

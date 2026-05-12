@@ -3,6 +3,8 @@
  * V8 Engine Native | Deterministic Sampling | Auto-Healing
  * Features: ES6 Classes, Exponential Backoff with Jitter, Script-owned Deterministic V1 Sampling,
  * Strict ANSI Time Validation, Memory-safe Batch Processing.
+ *
+ * OCI_FLEET_QUARANTINE — see `fleet-quarantine.json` (legacy sample; not production-safe until replaced).
  */
 
 'use strict';

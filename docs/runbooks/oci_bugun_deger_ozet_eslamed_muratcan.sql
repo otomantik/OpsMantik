@@ -7,6 +7,8 @@
 --   Görüşüldü / satış yok (sale_amount boş veya 0) → value_cents = 0
 -- Google'a giden Conversion value = value_cents / 100 (TL)
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- -----------------------------------------------------------------------------
 -- 1) BUGÜNKÜ MÜHÜRLER: Call'daki değerler + Kuyrukta/Google'a giden değer

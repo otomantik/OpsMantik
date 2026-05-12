@@ -4,6 +4,8 @@
 -- Site: b1264552-c859-40cb-a3fb-0ba057afd070
 -- Supabase SQL Editor'da çalıştır. Pencere: (CURRENT_DATE - 1) 23:00 → 00:00 Europe/Istanbul
 -- =============================================================================
+-- OCI_TRUTH_PR-C / LEDGER_WARNING: Forensic SQL. Prefer RPC/cron repair for queue status;
+-- see docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md
 
 -- Zaman penceresi: dün gece 23:00 → 00:00 (gece yarısı) İstanbul
 WITH tz AS (
