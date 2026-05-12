@@ -1,14 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 
 /**
  * Monitoring endpoint (legacy name kept for compatibility).
  * Queue-only model: scans `offline_conversion_queue` for stale `PROCESSING` rows.
- * 
+ *
  * Returns counts grouped by site_id.
  * Used for operational observability to detect processing stalls.
+ *
+ * Auth: requireCronAuth — unauthenticated GET previously exposed cross-site aggregates (L30).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const forbidden = requireCronAuth(req);
+  if (forbidden) return forbidden;
+
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await adminClient

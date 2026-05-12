@@ -26,6 +26,8 @@ import {
 } from '@/lib/oci/sweep-unsent-conversions-core';
 
 export const runtime = 'nodejs';
+// L27: 7-day lookback × MAX_ORPHANS_PER_RUN; bounded ceiling under cron lock TTL.
+export const maxDuration = 300;
 
 const LOOKBACK_DAYS = 7;
 const MAX_ORPHANS_PER_RUN = 500;

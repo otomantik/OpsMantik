@@ -17,10 +17,11 @@ async function claimAndFinalizeQueue(
   if (claimError || typeof claimedCount !== 'number' || claimedCount !== ids.length) {
     throw new Error('QUEUE_CLAIM_MISMATCH');
   }
+  const finalizeAt = new Date(new Date(now).getTime() + 1).toISOString();
   const { data: updatedCount, error: updateError } = await adminClient.rpc('append_script_transition_batch', {
     p_queue_ids: ids,
     p_new_status: 'FAILED',
-    p_created_at: now,
+    p_created_at: finalizeAt,
     p_error_payload: {
       last_error: errorMessage,
       provider_error_code: errorCode,

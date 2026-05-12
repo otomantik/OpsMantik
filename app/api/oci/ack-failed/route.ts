@@ -122,12 +122,16 @@ export async function POST(req: NextRequest) {
       sealIds: sealFailedIds,
       signalIds: signalFailedIds,
       pvIds: pvFailedIds,
+      projIds: projFailedIds,
+      adjIds: adjFailedIds,
       unknownIds: unknownFailedIds,
     } = splitAckPrefixedIds(queueIds);
     const {
       sealIds: sealFatalIds,
       signalIds: signalFatalIds,
       pvIds: pvFatalIds,
+      projIds: projFatalIds,
+      adjIds: adjFatalIds,
       unknownIds: unknownFatalIds,
     } = splitAckPrefixedIds(fatalIds);
     if (unknownFailedIds.length > 0 || unknownFatalIds.length > 0) {
@@ -136,6 +140,21 @@ export async function POST(req: NextRequest) {
           error: 'Unknown ACK_FAILED id prefix',
           code: 'ACK_UNKNOWN_PREFIX',
           unknownIds: [...unknownFailedIds, ...unknownFatalIds],
+        },
+        { status: 400 }
+      );
+    }
+    if (
+      projFailedIds.length > 0 ||
+      adjFailedIds.length > 0 ||
+      projFatalIds.length > 0 ||
+      adjFatalIds.length > 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'ACK_FAILED supports seal_* and pv_* queue targets only; proj_/adj_ are not implemented on this route',
+          code: 'ACK_FAILED_PROJ_ADJ_UNSUPPORTED',
         },
         { status: 400 }
       );
@@ -469,6 +488,7 @@ export async function POST(req: NextRequest) {
       try {
         await completeAckReceipt({
           receiptId: receipt.receiptId,
+          siteId: siteUuid,
           resultSnapshot: responsePayload as Record<string, unknown>,
         });
         await appendRoutingHop({
@@ -506,6 +526,7 @@ export async function POST(req: NextRequest) {
         try {
           await completeAckReceipt({
             receiptId: receipt.receiptId,
+            siteId: siteUuid,
             resultSnapshot: verification.payload as Record<string, unknown>,
           });
           await appendRoutingHop({

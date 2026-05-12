@@ -109,6 +109,21 @@ describe('queue-health-contract', () => {
     assert.ok(g.failures.some((f) => f.startsWith('stuckProcessing')));
   });
 
+  it('rollout gate exempts fresh recovered retry backlog only from retry rate', () => {
+    const g = evaluateRolloutGate({
+      stuckProcessing: 0,
+      retryRate: 0.5,
+      retryRateExempt: 0.25,
+      actionableFailedRate: 0,
+      providerFailedRate: 0,
+      unknownFailedCount: 0,
+      wonMissingPipelineCount: 0,
+      deadLetterQuarantineCount: 0,
+      profile: 'prod',
+    });
+    assert.equal(g.pass, true);
+  });
+
   it('PR-1C: rollout gate ignores raw failedRate when only deterministic skips inflate FAILED mass', () => {
     const g = evaluateRolloutGate({
       stuckProcessing: 0,

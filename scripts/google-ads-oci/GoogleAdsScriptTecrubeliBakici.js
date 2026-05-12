@@ -280,10 +280,15 @@ BakiciClient.prototype.fetchPage = function (siteId, cursor) {
       ? payload.meta.hasNextPage === true
       : !!nextCursor;
 
-  return { items: items, nextCursor: nextCursor, hasNextPage: hasNextPage };
+  return {
+    items: items,
+    nextCursor: nextCursor,
+    hasNextPage: hasNextPage,
+    exportRunId: payload.export_run_id || payload.exportRunId || null,
+  };
 };
 
-BakiciClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows) {
+BakiciClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows, exportRunId) {
   const q = queueIds || [];
   const s = skippedIds || [];
   const f = failedRows || [];
@@ -291,6 +296,10 @@ BakiciClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
 
   const url = this.baseUrl + '/api/oci/ack';
   const payload = { siteId: siteId, queueIds: q };
+  if (exportRunId) {
+    payload.exportRunId = exportRunId;
+    payload.export_run_id = exportRunId;
+  }
   if (s.length > 0) payload.skippedIds = s;
   if (f.length > 0) {
     payload.results = []
@@ -323,7 +332,7 @@ BakiciClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
   }
 };
 
-BakiciClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
+BakiciClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory, exportRunId) {
   if (!queueIds || !queueIds.length) return;
   const url = this.baseUrl + '/api/oci/ack-failed';
   this._fetchWithSessionRetry(url, {
@@ -338,6 +347,8 @@ BakiciClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, er
       errorCode: errorCode || 'UNKNOWN',
       errorMessage: errorMessage || errorCode,
       errorCategory: errorCategory || 'TRANSIENT',
+      exportRunId: exportRunId || undefined,
+      export_run_id: exportRunId || undefined,
     }),
   });
 };
@@ -441,11 +452,13 @@ function main() {
     let totalUploaded = 0;
     let totalAck = 0;
     let pageNo = 0;
+    let exportRunId = null;
 
     while (true) {
       pageNo++;
       const page = client.fetchPage(CONFIG.SITE_ID, cursor);
       let rows = page.items || [];
+      if (page.exportRunId && !exportRunId) exportRunId = page.exportRunId;
 
       if (allowlist && rows.length > 0) {
         rows = rows.filter(function (r) {
@@ -457,7 +470,7 @@ function main() {
         try {
           const stats = processPageUpload(rows, {
             onUploadFailure: function (ids, code, msg, cat) {
-              client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat);
+              client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat, exportRunId);
             },
           });
 
@@ -473,7 +486,8 @@ function main() {
               CONFIG.SITE_ID,
               stats.successIds,
               stats.skippedIds,
-              stats.failedRows
+              stats.failedRows,
+              exportRunId
             );
             if (ackRes && typeof ackRes.updated === 'number') totalAck += ackRes.updated;
           }
@@ -500,7 +514,8 @@ function main() {
               ids,
               'PAGE_PROCESSING_FAILURE',
               String(err && err.message ? err.message : err).slice(0, 500),
-              'TRANSIENT'
+              'TRANSIENT',
+              exportRunId
             );
           }
           throw err;
@@ -511,7 +526,7 @@ function main() {
       if (!(page.hasNextPage && cursor)) break;
     }
 
-    Telemetry.info('Tecrübeli Bakıcı tamamlandı', { totalUploaded: totalUploaded, pages: pageNo });
+    Telemetry.info('Tecrübeli Bakıcı tamamlandı', { totalUploaded: totalUploaded, pages: pageNo, exportRunId: exportRunId });
   } catch (err) {
     Telemetry.error('Tecrübeli Bakıcı durdu', err);
     throw err;

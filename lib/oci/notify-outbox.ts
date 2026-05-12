@@ -86,6 +86,7 @@ export async function notifyOutboxPending(params: NotifyOutboxParams): Promise<v
   if (!/^https?:\/\//i.test(payload.url)) {
     // No absolute base URL configured (dev without NEXT_PUBLIC_APP_URL / VERCEL_URL).
     // Silently skip — the cron safety net will still process the row.
+    incrementRefactorMetric('oci_notify_outbox_skipped_no_base_url_total');
     logWarn('OCI_NOTIFY_OUTBOX_SKIPPED_NO_BASE_URL', {
       call_id: params.callId,
       site_id: params.siteId,

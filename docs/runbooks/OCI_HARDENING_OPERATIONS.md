@@ -56,6 +56,20 @@ If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, r
 - **Script vs Google ingestion**: Apps Script ACK means **dispatch / script-side success** for the batch the script believes it uploaded — not a guarantee of final Google Ads ingestion (bulk upload can still be reviewed in the Google UI; see `pendingConfirmation` semantics).
 - **Safety net**: Stuck **`PROCESSING`** recovery (`recover_stuck_offline_conversion_jobs`, classifier flags) remains the escape hatch when ACK never arrives; **PR-9C invalid-status policy is unchanged**.
 
+### PR-9J.CI-AUDIT-P1 — Lifecycle fail-closed closure (code)
+
+- **Junk / reversal invalidation** ([`lib/oci/invalidate-pending-artifacts.ts`](../../lib/oci/invalidate-pending-artifacts.ts)): the same `site_id` + `call_id` scope now includes rows in **`BLOCKED_PRECEDING_SIGNALS`**. They are terminalized to **`FAILED`** via **`append_worker_transition_batch_v2`** with deterministic payload (`CALL_NOT_SENDABLE_FOR_OCI`, `DETERMINISTIC_SKIP`) and **`block_reason` / `blocked_at`** cleared in the ledger snapshot path. This removes a lifecycle leak where blocked rows could survive a call-level junk reversal.
+- **ACK SUCCESS `proj_*` / `adj_*`**: missing rows, wrong `export_status` / `status`, or an update row-count mismatch returns **HTTP 409** with stable codes **`ACK_PROJECTION_TARGET_MISMATCH`** / **`ACK_ADJUSTMENT_TARGET_MISMATCH`** — not a silent “already terminal” success. **Deterministic skips** (e.g. `skippedIds`, sampled-out) remain separate from provider failure semantics.
+- **ACK_FAILED**: **`proj_*` / `adj_*` are not supported** on this route; the API returns **400** with **`ACK_FAILED_PROJ_ADJ_UNSUPPORTED`** instead of ignoring those IDs.
+- **Operator action on 409 mismatch**: inspect the target projection/adjustment row in the DB for the expected pre-state (**`READY`** / **`PROCESSING`**); do not force another ACK until the row matches the script’s actual upload batch.
+
+### PR-9J.CI-AUDIT-P1.1 — Rollout readiness RED_METRIC triage + strict smoke
+
+- **Root cause (evidence `RED_METRIC` before P1.1):** `npm run smoke:oci-rollout-readiness:strict` failed with **`observability_gate_failures_present`** while PR-1C **failed-rate taxonomy** was already correct (e.g. high **`total_failed_rate`** from **`DETERMINISTIC_SKIP`** rows did **not** inflate **`actionable_failed_rate`**). The blocking signal was typically **raw `RETRY / totalQueue`** above **`retryRateMax`** for a site with a large **provider-classified** retry backlog (`provider_error_category` ∈ **`TRANSIENT` / `RATE_LIMIT` / `AUTH`**), not unknown FAILED taxonomy.
+- **Taxonomy / gate fix (code):** [`scripts/oci-rollout-readiness.ts`](../../scripts/oci-rollout-readiness.ts) now subtracts those **pipeline-classified RETRY** rows (plus existing **`PROCESSING_STALE_RECOVERY`** grace) from the **retry-rate gate numerator** before comparing to the profile threshold. **`unknown_failed_count > 0`**, **DLQ**, **won missing pipeline**, **stuck processing**, **`actionable_failed_rate`**, and **`provider_failed_rate`** gates are unchanged.
+- **Evidence clarity:** [`scripts/release/collect-gate-evidence.mjs`](../../scripts/release/collect-gate-evidence.mjs) re-runs readiness as **`--json`**, parses stable triage, maps failures to narrow **`OCI_ROLLOUT_GATE_*`** reason codes (instead of a generic `RED_METRIC` only), and stores **`metadata.oci_rollout_readiness`** for the markdown artifact.
+- **Operator action if strict still fails:** use JSON field **`strict.triage.fleet_gate_site_triage`** (site label + gate failure strings only) to see which invariant fired; for **retry** after P1.1, remaining failures imply **non-pipeline RETRY** (e.g. missing category), **stuck `PROCESSING`**, or another gate — inspect queue rows and cron/recovery posture; do not raise thresholds without incident review.
+
 **Why operators see fewer PEEK rows than QUEUED DB rows (same site):**
 
 1. **Export page size** — One HTTP GET returns at most **`limit`** rows (default up to 250/1000); cursor pagination applies.

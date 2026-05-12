@@ -213,7 +213,7 @@ class QuantumClient {
     const hasNextPage = payload.meta && typeof payload.meta === 'object'
       ? payload.meta.hasNextPage === true
       : Boolean(nextCursor);
-    return { items: data, nextCursor, hasNextPage };
+    return { items: data, nextCursor, hasNextPage, exportRunId: payload.export_run_id || payload.exportRunId || null };
   }
 
   processConversionPages(siteId, onPage, onPageError) {
@@ -225,12 +225,12 @@ class QuantumClient {
       pageCount++;
       if (page.items && page.items.length > 0) {
         try {
-          onPage(page.items, pageCount);
+          onPage(page.items, pageCount, page.exportRunId || null);
         } catch (err) {
           Telemetry.error(`Sayfa ${pageCount} isleme hatasi`, err);
           if (typeof onPageError === 'function') {
             try {
-              onPageError(page.items, pageCount, err);
+              onPageError(page.items, pageCount, err, page.exportRunId || null);
             } catch (handlerErr) {
               Telemetry.error(`Sayfa ${pageCount} hata-isleyici arizasi`, handlerErr);
             }
@@ -245,10 +245,14 @@ class QuantumClient {
     return pageCount;
   }
 
-  sendAck(siteId, queueIds, skippedIds, failedRows) {
+  sendAck(siteId, queueIds, skippedIds, failedRows, exportRunId) {
     if (!queueIds.length && (!skippedIds || !skippedIds.length) && (!failedRows || !failedRows.length)) return null;
     const url = `${this.baseUrl}/api/oci/ack`;
     const payload = { siteId, queueIds: queueIds || [] };
+    if (exportRunId) {
+      payload.exportRunId = exportRunId;
+      payload.export_run_id = exportRunId;
+    }
     if (skippedIds && skippedIds.length > 0) payload.skippedIds = skippedIds;
     if (failedRows && failedRows.length > 0) {
       payload.results = []
@@ -272,7 +276,7 @@ class QuantumClient {
     }
   }
 
-  sendAckFailed(siteId, queueIds, errorCode, errorMessage, errorCategory) {
+  sendAckFailed(siteId, queueIds, errorCode, errorMessage, errorCategory, exportRunId) {
     if (!queueIds.length) return;
     const url = `${this.baseUrl}/api/oci/ack-failed`;
     this._fetchWithSessionRetry(url, {
@@ -286,7 +290,9 @@ class QuantumClient {
         queueIds,
         errorCode: errorCode || 'VALIDATION_FAILED',
         errorMessage: errorMessage || errorCode,
-        errorCategory: errorCategory || 'VALIDATION'
+        errorCategory: errorCategory || 'VALIDATION',
+        exportRunId: exportRunId || undefined,
+        export_run_id: exportRunId || undefined
       })
     });
   }
@@ -413,7 +419,9 @@ function main() {
 
     // 3. Upload & Validate per page
     const engine = new UploadEngine();
-    totalPages = client.processConversionPages(CONFIG.SITE_ID, function (conversions, pageNo) {
+    let exportRunId = null;
+    totalPages = client.processConversionPages(CONFIG.SITE_ID, function (conversions, pageNo, pageExportRunId) {
+      if (pageExportRunId && !exportRunId) exportRunId = pageExportRunId;
       if (!Array.isArray(conversions) || conversions.length === 0) return;
       const filtered = allowlistIds
         ? conversions.filter((row) => row && row.id && allowlistIds.has(String(row.id)))
@@ -425,7 +433,7 @@ function main() {
         onUploadFailure: function (ids, errorCode, errorMessage, errorCategory) {
           if (ids && ids.length > 0) {
             Telemetry.warn('Upload apply failed; marking appended rows FAILED (TRANSIENT)', { count: ids.length, page: pageNo });
-            client.sendAckFailed(CONFIG.SITE_ID, ids, errorCode, errorMessage, errorCategory);
+            client.sendAckFailed(CONFIG.SITE_ID, ids, errorCode, errorMessage, errorCategory, exportRunId);
             totalAutoFailedUploadApply += ids.length;
           }
         }
@@ -452,7 +460,7 @@ function main() {
           ((stats.skippedIds && stats.skippedIds.length) || 0) +
           ((stats.failedRows && stats.failedRows.length) || 0);
         Telemetry.info(`Sayfa ${pageNo}: ${total} kayit icin API\'ye Muhur (ACK) gonderiliyor...`);
-        const ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds, stats.failedRows || []);
+        const ackRes = client.sendAck(CONFIG.SITE_ID, stats.successIds, stats.skippedIds, stats.failedRows || [], exportRunId);
         if (ackRes) {
           totalAckUpdated += Number(ackRes.updated || 0);
           Telemetry.info(
@@ -462,14 +470,15 @@ function main() {
           );
         }
       }
-    }, function (conversions, pageNo, err) {
+    }, function (conversions, pageNo, err, pageExportRunId) {
+      if (pageExportRunId && !exportRunId) exportRunId = pageExportRunId;
       const ids = (Array.isArray(conversions) ? conversions : [])
         .map(function (row) { return row && row.id ? String(row.id) : ''; })
         .filter(function (id) { return id.length > 0; });
       if (ids.length > 0) {
         const msg = (err && err.message) ? String(err.message).slice(0, 500) : 'PAGE_PROCESSING_FAILURE';
         Telemetry.warn(`Sayfa ${pageNo}: ${ids.length} kayit TRANSIENT fail olarak isaretleniyor`, { reason: msg });
-        client.sendAckFailed(CONFIG.SITE_ID, ids, 'PAGE_PROCESSING_FAILURE', msg, 'TRANSIENT');
+        client.sendAckFailed(CONFIG.SITE_ID, ids, 'PAGE_PROCESSING_FAILURE', msg, 'TRANSIENT', exportRunId);
         totalAutoFailedPageProcessing += ids.length;
       }
     });

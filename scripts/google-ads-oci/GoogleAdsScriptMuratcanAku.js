@@ -599,7 +599,7 @@ MuratcanClient.prototype.fetchPage = function (siteId, cursor, markAsExported) {
   };
 };
 
-MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows) {
+MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows, exportRunId) {
   var q = queueIds || [];
   var s = skippedIds || [];
   var f = failedRows || [];
@@ -617,9 +617,10 @@ MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, faile
     payload.skippedIds = s;
   }
 
-  if (CONFIG.CANARY_EXPORT_RUN_ID) {
-    payload.exportRunId = CONFIG.CANARY_EXPORT_RUN_ID;
-    payload.export_run_id = CONFIG.CANARY_EXPORT_RUN_ID;
+  var resolvedExportRunId = exportRunId || CONFIG.CANARY_EXPORT_RUN_ID || null;
+  if (resolvedExportRunId) {
+    payload.exportRunId = resolvedExportRunId;
+    payload.export_run_id = resolvedExportRunId;
   }
 
   if (f.length > 0) {
@@ -662,19 +663,20 @@ MuratcanClient.prototype.sendAck = function (siteId, queueIds, skippedIds, faile
   }
 };
 
-MuratcanClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
+MuratcanClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory, exportRunId) {
   if (!queueIds || !queueIds.length) return null;
 
   var url = this.baseUrl + '/api/oci/ack-failed';
 
+  var resolvedExportRunId = exportRunId || CONFIG.CANARY_EXPORT_RUN_ID || null;
   var payload = JSON.stringify({
     siteId: siteId,
     queueIds: queueIds,
     errorCode: errorCode || 'UNKNOWN',
     errorMessage: errorMessage || errorCode || 'UNKNOWN',
     errorCategory: errorCategory || 'TRANSIENT',
-    exportRunId: CONFIG.CANARY_EXPORT_RUN_ID || undefined,
-    export_run_id: CONFIG.CANARY_EXPORT_RUN_ID || undefined,
+    exportRunId: resolvedExportRunId || undefined,
+    export_run_id: resolvedExportRunId || undefined,
   });
 
   var response = this._fetchWithSessionRetry(url, {
@@ -1093,7 +1095,7 @@ function mainSyncMuratcan() {
         try {
           var stats = processPageUpload(rows, {
             onUploadFailure: function (ids, code, msg, cat) {
-              var ackFailedRes = client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat);
+              var ackFailedRes = client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat, exportRunId);
 
               Telemetry.warn('ACK_FAILED sent after upload.apply failure', {
                 ids: ids,
@@ -1128,7 +1130,8 @@ function mainSyncMuratcan() {
               CONFIG.SITE_ID,
               stats.successIds,
               stats.skippedIds,
-              stats.failedRows
+              stats.failedRows,
+              exportRunId
             );
 
             Telemetry.info('ACK response', ackRes);
@@ -1169,7 +1172,8 @@ function mainSyncMuratcan() {
               ids,
               'PAGE_PROCESSING_FAILURE',
               String(err && err.message ? err.message : err).slice(0, 500),
-              'TRANSIENT'
+              'TRANSIENT',
+              exportRunId
             );
 
             Telemetry.warn('ACK_FAILED sent after page processing failure', {

@@ -69,6 +69,35 @@ async function finalizeOutboxEvent(params: {
   ) {
     incrementRefactorMetric('oci_outbox_contract_violation_total');
   }
+  if (
+    params.status === 'FAILED' &&
+    typeof params.lastError === 'string' &&
+    (
+      params.lastError.includes('OCI_CONTRACT_VIOLATION') ||
+      params.lastError.includes('CALL_NOT_SENDABLE_FOR_OCI_SIGNAL') ||
+      params.lastError.includes('CALL_STATUS_REVERSED')
+    )
+  ) {
+    const { data: outboxRow } = await adminClient
+      .from('outbox_events')
+      .select('site_id, call_id, event_type')
+      .eq('id', params.outboxId)
+      .maybeSingle();
+    if (outboxRow?.site_id) {
+      await adminClient.from('oci_reconciliation_events').insert({
+        site_id: outboxRow.site_id,
+        call_id: outboxRow.call_id ?? null,
+        stage: 'OUTBOX_TERMINAL',
+        reason: params.lastError.slice(0, 500),
+        result: 'FAILED',
+        payload: {
+          outbox_id: params.outboxId,
+          event_type: outboxRow.event_type ?? null,
+          source: 'process_outbox_finalize',
+        },
+      });
+    }
+  }
 }
 
 export interface ProcessOutboxResult {

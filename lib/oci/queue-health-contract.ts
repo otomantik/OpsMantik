@@ -29,6 +29,9 @@ export const QUEUE_HEALTH_MAX_PROCESSING_AGE_FOR_FRESHNESS_MINUTES = STUCK_PROCE
 /** Same formula as scripts/oci-rollout-readiness: retry_rate = RETRY / totalQueue */
 export const QUEUE_HEALTH_MAX_RETRY_RATE = 0.3;
 
+/** Fresh PROCESSING_STALE_RECOVERY backlog is expected immediately after rescue; it must drain before this grace expires. */
+export const ROLLOUT_RECOVERED_RETRY_GRACE_MINUTES = 3 * 60;
+
 /**
  * Max aggregate (FAILED + DLQ) / totalQueue — informational / SQL compat (PR-1C).
  * Gate metrics use actionable_failed_rate and provider_failed_rate (see evaluateQueueHealth / evaluateRolloutGate).
@@ -78,7 +81,11 @@ export type QueueHealthScore = number;
 
 export type RolloutProfile = 'dev' | 'stage' | 'prod';
 
-/** Tolerances for deploy/gate smoke — NOT the same as “Queue Health 100” (stuck must be 0 for 100). */
+/**
+ * Tolerances for deploy/gate smoke — NOT the same as “Queue Health 100” (stuck must be 0 for 100).
+ * `scripts/oci-rollout-readiness.ts` applies PR-9J.CI-AUDIT-P1.1: before comparing to `retryRateMax`, it subtracts
+ * stale-recovery grace RETRY plus RETRY rows whose `provider_error_category` is TRANSIENT/RATE_LIMIT/AUTH (pipeline backlog).
+ */
 export const ROLLOUT_PROFILE_DEFAULTS: Record<
   RolloutProfile,
   { stuckMax: number; retryRateMax: number; failedRateMax: number }
@@ -261,11 +268,14 @@ export function evaluateQueueHealth(metrics: QueueHealthMetricInput): QueueHealt
 /**
  * Rollout gate only — uses profile tolerances (stuck may be >0 and still pass).
  * PR-1C: uses actionableFailedRate (excludes DETERMINISTIC_SKIP FAILED rows from numerator with DLQ).
+ * Caller may pass `retryRateExempt` as the sum of stale-recovery grace **and** pipeline-classified RETRY (PR-9J.CI-AUDIT-P1.1).
  * Aligns with scripts/sql/queue_health.sql: any DLQ or won pipeline leak fails the gate (not rate-toleranced).
  */
 export function evaluateRolloutGate(input: {
   stuckProcessing: number;
   retryRate: number;
+  /** Portion of retryRate temporarily exempted because it is fresh rescue backlog awaiting the next script sync. */
+  retryRateExempt?: number;
   /** Legacy (FAILED+DLQ)/total — ignored for pass/fail; use for logging */
   failedRate?: number;
   actionableFailedRate: number;
@@ -281,8 +291,9 @@ export function evaluateRolloutGate(input: {
   const retryRateMax = input.overrides?.retryRateMax ?? defaults.retryRateMax;
   const failedRateMax = input.overrides?.failedRateMax ?? defaults.failedRateMax;
   const failures: string[] = [];
+  const effectiveRetryRate = Math.max(0, input.retryRate - Math.max(0, input.retryRateExempt ?? 0));
   if (input.stuckProcessing > stuckMax) failures.push(`stuckProcessing>${stuckMax}`);
-  if (input.retryRate > retryRateMax) failures.push(`retryRate>${retryRateMax}`);
+  if (effectiveRetryRate > retryRateMax) failures.push(`retryRate>${retryRateMax}`);
   if (input.actionableFailedRate > failedRateMax) failures.push(`actionableFailedRate>${failedRateMax}`);
   if (input.providerFailedRate > failedRateMax) failures.push(`providerFailedRate>${failedRateMax}`);
   if (input.unknownFailedCount > 0) failures.push('unknownFailedCount>0');

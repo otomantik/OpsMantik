@@ -21,6 +21,10 @@ test('REFACTOR_METRIC_NAMES has scaffold counters including typed-evidence fail 
   assert.ok(REFACTOR_METRIC_NAMES.includes('truth_engine_consolidated_probe_total'));
   assert.ok(REFACTOR_METRIC_NAMES.includes('truth_engine_consolidated_attribution_parity_check_total'));
   assert.ok(REFACTOR_METRIC_NAMES.includes('truth_engine_consolidated_call_event_parity_check_total'));
+  assert.ok(REFACTOR_METRIC_NAMES.includes('oci_notify_outbox_skipped_no_base_url_total'));
+  assert.ok(REFACTOR_METRIC_NAMES.includes('oci_invalidation_blocked_preceding_terminalized_total'));
+  assert.ok(REFACTOR_METRIC_NAMES.includes('oci_ack_projection_target_mismatch_total'));
+  assert.ok(REFACTOR_METRIC_NAMES.includes('oci_ack_adjustment_target_mismatch_total'));
 });
 
 test('incrementRefactorMetric updates in-memory totals', () => {

@@ -23,6 +23,9 @@ import { recordCronHeartbeat } from '@/lib/cron/heartbeat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// L27: explicit budget. Stays comfortably below `CRON_LOCK_TTL_SEC` (540) so a
+// timed-out invocation can still release its lock cleanly on the next tick.
+export const maxDuration = 300;
 
 const CRON_LOCK_KEY = 'oci-maintenance';
 // 9 min — slightly below the next 10-min tick so the TTL releases cleanly if
@@ -85,6 +88,7 @@ async function handle() {
         stats.queue_rescued +
         stats.queue_uploaded_closed +
         stats.attempt_cap_marked +
+        stats.dlq_escalated +
         stats.orphans_enqueued +
         stats.stale_jobs_recovered,
       errorCode: ok ? null : 'PARTIAL_FAILURE',

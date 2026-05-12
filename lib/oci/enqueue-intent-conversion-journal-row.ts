@@ -230,6 +230,39 @@ export async function enqueueIntentConversionJournalRow(
   if (input.entryReason?.trim()) insertPayload.entry_reason = input.entryReason.trim().slice(0, 500);
 
   try {
+    const { count: historicalSuccessCount, error: historicalSuccessError } = await adminClient
+      .from('offline_conversion_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', input.siteId)
+      .eq('provider_key', input.providerKey)
+      .eq('external_id', input.externalId)
+      .in('status', ['COMPLETED', 'UPLOADED', 'COMPLETED_UNVERIFIED']);
+
+    if (historicalSuccessError) {
+      logWarn('OCI_ENQUEUE_DEDUP_HISTORICAL_TERMINAL_SUCCESS_CHECK_FAILED', {
+        call_id: input.callId,
+        stage: input.stage,
+        external_id: input.externalId,
+        error: historicalSuccessError.message,
+      });
+      return { enqueued: false, reason: 'error', error: historicalSuccessError.message };
+    }
+
+    if ((historicalSuccessCount ?? 0) > 0) {
+      logInfo('OCI_ENQUEUE_DEDUP_HISTORICAL_TERMINAL_SUCCESS', {
+        call_id: input.callId,
+        stage: input.stage,
+        external_id: input.externalId,
+        provider_key: input.providerKey,
+      });
+      return {
+        enqueued: false,
+        reason: 'duplicate',
+        queueId: null,
+        dispositionClassification: disposition.classification,
+      };
+    }
+
     const { data: inserted, error } = await adminClient
       .from('offline_conversion_queue')
       .insert(insertPayload)

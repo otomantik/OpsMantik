@@ -13,6 +13,17 @@
 - required_reapproval: `CANARY_REAPPROVAL=I_REAPPROVE_WITH_STUCK_PROCESSING_INCREASE`
 - required_reapproval_present: `NO_EVIDENCE_FOUND`
 
+## OCI hardening — PR-9J.CI-AUDIT-P1 (lifecycle fail-closed)
+
+- **Change type**: application/runtime contract only (ACK + invalidation helper + metrics); **no** live Google upload, **no** production queue mutation performed by this repository change itself.
+- **P1 audit closure**: `BLOCKED_PRECEDING_SIGNALS` included in call-level junk/reversal invalidation; **`POST /api/oci/ack`** projection/adjustment targets are strict **409** on mismatch; **`POST /api/oci/ack-failed`** rejects **`proj_*` / `adj_*`** with **`ACK_FAILED_PROJ_ADJ_UNSUPPORTED`**.
+
+## OCI hardening — PR-9J.CI-AUDIT-P1.1 (rollout strict smoke + evidence)
+
+- **RED_METRIC root cause:** Generic evidence failure on `npm run smoke:oci-rollout-readiness:strict` was driven by **retry-rate** observability on at least one live site, not by PR-1C actionable/provider FAILED mass or unknown FAILED taxonomy drift.
+- **Fix class:** **Rollout gate taxonomy alignment** — pipeline-classified **`RETRY`** rows (`provider_error_category` ∈ **`TRANSIENT` / `RATE_LIMIT` / `AUTH`**) are excluded from the **retry-rate gate** numerator (same semantic family as provider-slice FAILED classification), plus JSON **`strict.triage`** for operators and narrow **`OCI_ROLLOUT_GATE_*`** codes in **`collect-gate-evidence.mjs`**.
+- **Strict smoke / evidence outcome:** **`TARGET_DB_EVIDENCE_STRICT=1 npm run release:evidence:production`** is expected **PASS** when the target DB packs are green **and** fleet rollout gates pass; if a site still fails on **non-exempt RETRY**, **stuck processing**, **DLQ**, **won leak**, or **unknown FAILED**, the gate remains **red** with an explicit **`OCI_ROLLOUT_GATE_*`** reason — **no false green**.
+
 ## Final Preview Result (Read-Only)
 
 - markAsExported: `false`

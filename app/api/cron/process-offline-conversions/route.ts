@@ -16,6 +16,9 @@ import { runOfflineConversionRunner } from '@/lib/oci/runner';
 import { DEFAULT_LIMIT_CRON, MAX_LIMIT_CRON } from '@/lib/oci/constants';
 
 export const runtime = 'nodejs';
+// L27: explicit budget; bounded by `limit` (default 50, max 500). Stays below
+// `CRON_LOCK_TTL_SEC` (660) so timed-out runs surrender their lock cleanly.
+export const maxDuration = 300;
 
 const CRON_LOCK_TTL_SEC = 660; // 11 min — exceeds 10-min schedule to prevent overlap
 

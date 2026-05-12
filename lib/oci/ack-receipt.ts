@@ -98,11 +98,17 @@ export async function registerAckReceipt(params: {
 
 export async function completeAckReceipt(params: {
   receiptId: string;
+  /** Must match the row in `ack_receipt_ledger` (defense in depth vs receipt_id-only updates). */
+  siteId: string;
   resultSnapshot: Record<string, unknown>;
 }): Promise<void> {
-  const { error } = await adminClient.rpc('complete_ack_receipt_v1', {
+  const { data, error } = await adminClient.rpc('complete_ack_receipt_v1', {
     p_receipt_id: params.receiptId,
+    p_site_id: params.siteId,
     p_result_snapshot: params.resultSnapshot,
   });
   if (error) throw error;
+  if (data !== true) {
+    throw new Error('ACK_RECEIPT_COMPLETE_NO_MATCHING_ROW');
+  }
 }

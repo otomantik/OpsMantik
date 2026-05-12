@@ -17,6 +17,9 @@ import { runProcessOutbox } from '@/lib/oci/outbox/process-outbox';
 import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
 
 export const runtime = 'nodejs';
+// L27: bound batch runtime; aligns with the 5-min Vercel cron tick. Worker path
+// has its own shorter `maxDuration` (see `app/api/workers/oci/process-outbox/route.ts`).
+export const maxDuration = 300;
 const LOCK_KEY = 'oci-process-outbox-events';
 const LOCK_TTL_SEC = 300;
 

@@ -82,7 +82,7 @@ Examples enforced by **policy** and **partially** by DB trigger (§7):
 
 **Strict rule:** `COMPLETED` means a **successful Google upload path** closed with evidence:
 
-- **`/api/oci/ack`** success (`COMPLETED` or `UPLOADED` → later `COMPLETED`), including idempotent replays via `register_ack_receipt_v1` / `complete_ack_receipt_v1`.
+- **`/api/oci/ack`** success (`COMPLETED` or `UPLOADED` → later `COMPLETED`), including idempotent replays via `register_ack_receipt_v1` / `complete_ack_receipt_v1` (**site-scoped:** completion RPC matches `receipt_id` **and** `site_id` on `ack_receipt_ledger`).
 - **`skippedIds` on ACK** (`V1_SAMPLED_OUT`, etc.) — still ACK-shaped (`/api/oci/ack`), not export-batch self-completion.
 
 **Not a Google completion (must not use `COMPLETED`):**

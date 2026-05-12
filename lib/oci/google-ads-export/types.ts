@@ -21,6 +21,8 @@ export interface GoogleAdsConversionItem {
   wbraid: string;
   /** iOS app conversions. */
   gbraid: string;
+  /** Audit-only: which click id type the universal Google Ads Script should select. */
+  selected_click_id_kind?: 'gclid' | 'wbraid' | 'gbraid' | null;
   /** Conversion action name (e.g. "OpsMantik_Won"). */
   conversionName: string;
   /** Format: yyyy-mm-dd HH:mm:ss±HH:mm (timezone required). Prefer canonical occurred_at. */

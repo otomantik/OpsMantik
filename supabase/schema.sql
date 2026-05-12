@@ -1,4 +1,15 @@
-
+-- =========================================================================
+-- NON-AUTHORITATIVE SNAPSHOT — DO NOT USE FOR SCHEMA REVIEW OR DEPLOY (T10-2)
+--
+-- Source of truth: ordered migration chain in `supabase/migrations/`,
+-- applied via Cursor Supabase MCP (`apply_migration`). This file is a
+-- historical pg_dump artifact and may drift behind later migrations
+-- (e.g. `BLOCKED_PRECEDING_SIGNALS`, ACK ledger site-scope, OCI grant posture).
+--
+-- Policy: security / schema audits and release gates MUST cite migration
+-- files, not this dump. Treat any mismatch between this file and the
+-- migrations chain as expected drift.
+-- =========================================================================
 
 
 SET statement_timeout = 0;

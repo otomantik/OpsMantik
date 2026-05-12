@@ -19,6 +19,81 @@ function isMissingOciStatusColumnError(err: { code?: string; message?: string } 
   );
 }
 
+/**
+ * L23 — separate transient infra errors (PostgREST 5xx / connection failures)
+ * from deterministic "row not found" so callers can pick a retry vs. fail-closed branch.
+ *
+ * Returned `true` for codes that are typically network/upstream/lock-induced and worth retrying;
+ * `false` for explicit "no rows" or schema-level failures handled elsewhere.
+ */
+export function isTransientCallSendabilityError(
+  err: { code?: string; message?: string } | null | undefined
+): boolean {
+  if (!err) return false;
+  const code = String(err.code ?? '').trim();
+  const msg = String(err.message ?? '').toLowerCase();
+  if (['40001', '40P01', '57014', '55P03', '08000', '08003', '08006', '53300', '53400'].includes(code)) {
+    return true;
+  }
+  if (/^PGRST5\d\d$/.test(code) || code === 'PGRST503') return true;
+  if (/\bfetch failed\b|\bnetwork\b|\btimeout\b|\bconnection\b|\beai_again\b|\beconnreset\b/.test(msg)) {
+    return true;
+  }
+  return false;
+}
+
+export type CallSendabilityFetch =
+  | { kind: 'ok'; status: string | null; oci_status: string | null }
+  | { kind: 'not_found' }
+  | { kind: 'transient_error'; error: { code?: string; message?: string } }
+  | { kind: 'permanent_error'; error: { code?: string; message?: string } };
+
+/**
+ * Classified variant of {@link fetchCallSendabilityContext}. Existing callers that
+ * only need `{status, oci_status}` (with nulls swallowing all errors) can keep
+ * using the original helper; new code should branch on `kind` to decide retry.
+ */
+export async function fetchCallSendabilityContextClassified(
+  callId: string,
+  siteId: string
+): Promise<CallSendabilityFetch> {
+  const primary = await adminClient
+    .from('calls')
+    .select('status, oci_status')
+    .eq('id', callId)
+    .eq('site_id', siteId)
+    .maybeSingle();
+
+  if (!primary.error) {
+    if (!primary.data) return { kind: 'not_found' };
+    const row = primary.data as { status?: string | null; oci_status?: string | null };
+    return { kind: 'ok', status: row.status ?? null, oci_status: row.oci_status ?? null };
+  }
+
+  const err = primary.error as { code?: string; message?: string };
+  if (isMissingOciStatusColumnError(err)) {
+    const fallback = await adminClient
+      .from('calls')
+      .select('status')
+      .eq('id', callId)
+      .eq('site_id', siteId)
+      .maybeSingle();
+    if (!fallback.error) {
+      if (!fallback.data) return { kind: 'not_found' };
+      const row = fallback.data as { status?: string | null };
+      return { kind: 'ok', status: row.status ?? null, oci_status: null };
+    }
+    const ferr = fallback.error as { code?: string; message?: string };
+    return isTransientCallSendabilityError(ferr)
+      ? { kind: 'transient_error', error: ferr }
+      : { kind: 'permanent_error', error: ferr };
+  }
+
+  return isTransientCallSendabilityError(err)
+    ? { kind: 'transient_error', error: err }
+    : { kind: 'permanent_error', error: err };
+}
+
 export async function fetchCallSendabilityContext(
   callId: string,
   siteId: string

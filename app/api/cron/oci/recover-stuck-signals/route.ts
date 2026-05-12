@@ -13,6 +13,8 @@ import { logInfo } from '@/lib/logging/logger';
 import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
+// L27: bounded UPDATE; far below cron lock TTL.
+export const maxDuration = 60;
 
 const DEFAULT_MIN_AGE_MINUTES = 240; // 4 hours — long-stuck queue rows
 const CRON_LOCK_TTL_SEC = 900; // 15 min — exceeds schedule to prevent overlap

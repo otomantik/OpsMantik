@@ -11,6 +11,8 @@ import { logInfo } from '@/lib/logging/logger';
 import { runPrecursorSignalBackfill } from '@/lib/oci/backfill-precursor-signals';
 
 export const runtime = 'nodejs';
+// L27: per-call DB work × `limit`; staying below cron lock TTL so timed-out runs free their lock.
+export const maxDuration = 300;
 
 const CRON_LOCK_TTL_SEC = 900;
 

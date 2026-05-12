@@ -31,6 +31,19 @@ test('migrations: ACK + finalize_outbox RPCs are service_role-gated and locked d
     'hardening must revoke complete_ack_receipt_v1 from PUBLIC'
   );
 
+  const completeSiteScoped = readFileSync(
+    join(MIGRATIONS, '20261228141000_complete_ack_receipt_site_scope_v1.sql'),
+    'utf8'
+  );
+  assert.ok(
+    completeSiteScoped.includes('AND site_id = p_site_id'),
+    'complete_ack_receipt_v1 must scope UPDATE by site_id'
+  );
+  assert.ok(
+    completeSiteScoped.includes('complete_ack_receipt_v1(uuid, uuid, jsonb)'),
+    'site-scoped complete_ack_receipt_v1 signature must be explicit in grants'
+  );
+
   const outbox = readFileSync(join(MIGRATIONS, '20261113000000_outbox_events_table_claim_finalize.sql'), 'utf8');
   const fIdx = outbox.indexOf('FUNCTION public.finalize_outbox_event_v1');
   assert.ok(fIdx !== -1, 'outbox migration must define finalize_outbox_event_v1');

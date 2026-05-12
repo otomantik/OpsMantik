@@ -11,6 +11,8 @@ import { logInfo } from '@/lib/logging/logger';
 import { promoteBlockedQueueRows } from '@/lib/oci/promote-blocked-queue';
 
 export const runtime = 'nodejs';
+// L27: bounded by `limit` (max 500); plenty of budget at 2 minutes.
+export const maxDuration = 120;
 
 const CRON_LOCK_TTL_SEC = 600;
 

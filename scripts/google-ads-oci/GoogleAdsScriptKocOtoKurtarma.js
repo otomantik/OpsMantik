@@ -885,7 +885,7 @@ KocOtoClient.prototype.fetchPage = function (siteId, cursor, markAsExported, lim
   };
 };
 
-KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows) {
+KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedRows, exportRunId) {
   const q = queueIds || [];
   const s = skippedIds || [];
   const f = failedRows || [];
@@ -893,6 +893,10 @@ KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
 
   const url = this.baseUrl + '/api/oci/ack';
   const payload = { siteId: siteId, queueIds: q };
+  if (exportRunId) {
+    payload.exportRunId = exportRunId;
+    payload.export_run_id = exportRunId;
+  }
   if (s.length > 0) payload.skippedIds = s;
   if (f.length > 0) {
     payload.results = []
@@ -927,7 +931,7 @@ KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
   }
 };
 
-KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory) {
+KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, errorMessage, errorCategory, exportRunId) {
   if (!queueIds || !queueIds.length) return null;
   const url = this.baseUrl + '/api/oci/ack-failed';
   const payload = JSON.stringify({
@@ -936,6 +940,8 @@ KocOtoClient.prototype.sendAckFailed = function (siteId, queueIds, errorCode, er
     errorCode: errorCode || 'UNKNOWN',
     errorMessage: errorMessage || errorCode,
     errorCategory: errorCategory || 'TRANSIENT',
+    exportRunId: exportRunId || undefined,
+    export_run_id: exportRunId || undefined,
   });
   const response = this._fetchWithSessionRetry(url, {
     method: 'post',
@@ -1464,7 +1470,7 @@ function mainSyncKocOto() {
         try {
           const stats = processPageUpload(rows, {
             onUploadFailure: function (ids, code, msg, cat) {
-              return client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat);
+              return client.sendAckFailed(CONFIG.SITE_ID, ids, code, msg, cat, exportRunId);
             },
           });
 
@@ -1518,7 +1524,8 @@ function mainSyncKocOto() {
               CONFIG.SITE_ID,
               stats.successIds,
               stats.skippedIds,
-              stats.failedRows
+              stats.failedRows,
+              exportRunId
             );
             if (ackRes && typeof ackRes.updated === 'number') totalAck += ackRes.updated;
             
@@ -1560,7 +1567,8 @@ function mainSyncKocOto() {
               ids,
               'PAGE_PROCESSING_FAILURE',
               String(errMsg).slice(0, 500),
-              'TRANSIENT'
+              'TRANSIENT',
+              exportRunId
             );
           }
           throw err;

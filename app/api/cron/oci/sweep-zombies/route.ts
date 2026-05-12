@@ -9,8 +9,11 @@ import { redis } from '@/lib/upstash';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// L27: zombie sweep walks PROCESSING + UPLOADED windows; bound at 5 minutes.
+export const maxDuration = 300;
 
 const OUROBOROS_REDIS_KEY = 'ouroboros:ema:outbox';
+const OUROBOROS_CONSECUTIVE_ANOMALY_KEY = 'ouroboros:consecutive_anomalies:outbox';
 const OUROBOROS_SAMPLE_WINDOW_HOURS = 2;
 
 /**
@@ -101,39 +104,63 @@ async function runSweep() {
 
         // Anomaly check: is the LATEST observed latency a 3σ outlier?
         if (lastLatencyMs > 0 && watchdog.isAnomaly(lastLatencyMs)) {
-            stats.ouroborosAnomaly = true;
-            logError('PREDICTIVE_DEGRADATION_HALT', {
+            let consecutiveAnomalies = 1;
+            try {
+                const prev = await redis.get(OUROBOROS_CONSECUTIVE_ANOMALY_KEY);
+                consecutiveAnomalies = Math.max(1, Number(prev ?? 0) + 1);
+                await redis.setex(OUROBOROS_CONSECUTIVE_ANOMALY_KEY, 1800, String(consecutiveAnomalies));
+            } catch {
+                consecutiveAnomalies = 1;
+            }
+
+            stats.ouroborosAnomaly = consecutiveAnomalies >= 2;
+            const anomalyPayload = {
                 current_latency_ms: lastLatencyMs,
                 ema_ms: snap.ema,
                 std_dev_ms: snap.stdDev,
                 threshold_ms: snap.threshold,
                 observations: snap.observations,
-                msg: 'Ouroboros: Processing time exceeded EMA + 3σ. Predictive degradation detected.',
-            });
+                consecutive_anomalies: consecutiveAnomalies,
+            };
 
-            // Alert: Post to Slack/PagerDuty webhook if configured
-            const alertUrl = process.env.OUROBOROS_ALERT_WEBHOOK_URL;
-            if (alertUrl) {
-                void fetch(alertUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: [
-                            '🔴 *PREDICTIVE_DEGRADATION_HALT*',
-                            `OCI Outbox latency *${lastLatencyMs}ms* exceeded 3σ threshold (*${snap.threshold}ms*).`,
-                            `EMA: ${snap.ema}ms | σ: ${snap.stdDev}ms | Observations: ${snap.observations}`,
-                            'Ouroboros Watchdog triggered halt. Manual investigation required.',
-                        ].join('\n'),
-                    }),
-                }).catch((err) => { logWarn('OUROBOROS_ALERT_FAILED', { error: err instanceof Error ? err.message : String(err) }); });
+            if (consecutiveAnomalies < 2) {
+                logWarn('PREDICTIVE_DEGRADATION_SINGLE_OUTLIER', anomalyPayload);
+            } else {
+                logError('PREDICTIVE_DEGRADATION_HALT', {
+                    ...anomalyPayload,
+                    msg: 'Ouroboros: Processing time exceeded EMA + 3σ twice consecutively. Predictive degradation detected.',
+                });
+
+                // Alert: Post to Slack/PagerDuty webhook if configured
+                const alertUrl = process.env.OUROBOROS_ALERT_WEBHOOK_URL;
+                if (alertUrl) {
+                    void fetch(alertUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: [
+                                '🔴 *PREDICTIVE_DEGRADATION_HALT*',
+                                `OCI Outbox latency *${lastLatencyMs}ms* exceeded 3σ threshold twice (*${snap.threshold}ms*).`,
+                                `EMA: ${snap.ema}ms | σ: ${snap.stdDev}ms | Observations: ${snap.observations}`,
+                                'Ouroboros Watchdog triggered halt. Manual investigation required.',
+                            ].join('\n'),
+                        }),
+                    }).catch((err) => { logWarn('OUROBOROS_ALERT_FAILED', { error: err instanceof Error ? err.message : String(err) }); });
+                }
+
+                // Return early: do NOT rescue zombies during active degradation.
+                // Rescuing during degradation could mask the root cause.
+                return NextResponse.json(
+                    { ok: false, code: 'PREDICTIVE_DEGRADATION_HALT', stats },
+                    { status: 503, headers: getBuildInfoHeaders() }
+                );
             }
-
-            // Return early: do NOT rescue zombies during active degradation.
-            // Rescuing during degradation could mask the root cause.
-            return NextResponse.json(
-                { ok: false, code: 'PREDICTIVE_DEGRADATION_HALT', stats },
-                { status: 503, headers: getBuildInfoHeaders() }
-            );
+        } else {
+            try {
+                await redis.setex(OUROBOROS_CONSECUTIVE_ANOMALY_KEY, 1800, '0');
+            } catch {
+                // Non-critical
+            }
         }
 
         logInfo('ouroboros_clear', {

@@ -10,12 +10,18 @@ import { fileURLToPath } from 'node:url';
 import { aggregateQueueFailureTaxonomy, computeTaxonomyRates } from '../lib/oci/queue-failure-taxonomy';
 import {
   QUEUE_HEALTH_POLICY_VERSION,
+  ROLLOUT_RECOVERED_RETRY_GRACE_MINUTES,
   ROLLOUT_PROFILE_DEFAULTS,
   STUCK_PROCESSING_MAX_AGE_MINUTES,
   evaluateRolloutGate,
   type RolloutProfile,
 } from '../lib/oci/queue-health-contract';
 import { collectWonPipelineSiteStats } from '../lib/oci/won-missing-pipeline-site';
+import {
+  buildFleetGateSiteTriage,
+  countPipelineClassifiedRetryRows,
+  derivePrimaryStrictFleetClass,
+} from '../lib/oci/rollout-readiness-triage';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '.env.local') });
@@ -92,7 +98,7 @@ async function loadQueueAndOutbox(siteId: string) {
   const [{ data: queueRows, error: queueErr }, { data: outboxRows, error: outboxErr }] = await Promise.all([
     supabase
       .from('offline_conversion_queue')
-      .select('status, updated_at, provider_error_category, provider_error_code')
+      .select('status, updated_at, provider_error_category, provider_error_code, last_error')
       .eq('site_id', siteId),
     supabase.from('outbox_events').select('status, updated_at').eq('site_id', siteId),
   ]);
@@ -115,6 +121,17 @@ async function loadQueueAndOutbox(siteId: string) {
 
   const totalQueue = (queueRows || []).length;
   const retryRate = totalQueue > 0 ? queue.RETRY / totalQueue : 0;
+  const recoveredRetryCutoff = Date.now() - ROLLOUT_RECOVERED_RETRY_GRACE_MINUTES * 60 * 1000;
+  const recoveredRetryGraceCount = (queueRows || []).filter(
+    (r) =>
+      r.status === 'RETRY' &&
+      r.last_error === 'PROCESSING_STALE_RECOVERY' &&
+      new Date(String(r.updated_at || 0)).getTime() >= recoveredRetryCutoff
+  ).length;
+  const pipelineRetryGraceCount = countPipelineClassifiedRetryRows(queueRows || []);
+  const retryRateExempt = totalQueue > 0 ? recoveredRetryGraceCount / totalQueue : 0;
+  const retryRateExemptPipeline = totalQueue > 0 ? pipelineRetryGraceCount / totalQueue : 0;
+  const gateRetryRate = Math.max(0, retryRate - retryRateExempt - retryRateExemptPipeline);
   const failedRate = totalQueue > 0 ? (queue.FAILED + queue.DLQ) / totalQueue : 0;
   const stuckCutoff = Date.now() - STUCK_PROCESSING_MAX_AGE_MINUTES * 60 * 1000;
   const stuckProcessing = (queueRows || []).filter(
@@ -159,6 +176,12 @@ async function loadQueueAndOutbox(siteId: string) {
     outbox,
     totalQueue,
     retryRate,
+    retryRateExempt,
+    gateRetryRate,
+    recoveredRetryGraceCount,
+    pipelineRetryGraceCount,
+    retryRateExemptPipeline,
+    recoveredRetryGraceMinutes: ROLLOUT_RECOVERED_RETRY_GRACE_MINUTES,
     failedRate,
     totalFailedRate: taxRates.total_failed_rate,
     actionableFailedRate: taxRates.actionable_failed_rate,
@@ -203,6 +226,7 @@ async function buildReports(args: ReturnType<typeof parseArgs>): Promise<Report[
     const gate = evaluateRolloutGate({
       stuckProcessing: metrics.stuckProcessing,
       retryRate: metrics.retryRate,
+      retryRateExempt: metrics.retryRateExempt + metrics.retryRateExemptPipeline,
       failedRate: metrics.failedRate,
       actionableFailedRate: metrics.queueTableMissing ? metrics.failedRate : metrics.actionableFailedRate,
       providerFailedRate: metrics.queueTableMissing ? 0 : metrics.providerFailedRate,
@@ -284,6 +308,9 @@ async function run() {
   if (missingEntitlementRpcSites.length > 0) strictFailures.push('missing_entitlement_rpc');
   if (!canary) strictFailures.push('no_canary_candidate');
 
+  const strictPrimaryClass = derivePrimaryStrictFleetClass(strictFailures, reports);
+  const fleetGateSiteTriage = buildFleetGateSiteTriage(reports);
+
   if (args.json) {
     console.log(
       JSON.stringify(
@@ -295,6 +322,7 @@ async function run() {
             stuckMax: args.stuckMax,
             retryRateMax: args.retryRateMax,
             failedRateMax: args.failedRateMax,
+            recoveredRetryGraceMinutes: ROLLOUT_RECOVERED_RETRY_GRACE_MINUTES,
             stuck_age_minutes: STUCK_PROCESSING_MAX_AGE_MINUTES,
           },
           canary: canary?.site || null,
@@ -304,7 +332,17 @@ async function run() {
             missingEntitlementRpcSites,
             schemaDriftSites,
           },
-          strict: { enabled: args.strict, pass: strictFailures.length === 0, failures: strictFailures },
+          strict: {
+            enabled: args.strict,
+            pass: strictFailures.length === 0,
+            failures: strictFailures,
+            triage: {
+              primary_red_metric_class: strictPrimaryClass,
+              fleet_gate_site_triage: fleetGateSiteTriage,
+              pr_1c_note:
+                'Gate uses actionable_failed_rate and provider_failed_rate; total_failed_rate is visible per site. PR-9J.CI-AUDIT-P1.1: TRANSIENT/RATE_LIMIT/AUTH RETRY rows are exempt from retry-rate gate (pipeline backlog), not from FAILED taxonomy.',
+            },
+          },
           reports,
         },
         null,
@@ -349,6 +387,9 @@ async function run() {
       pass: r.gate.pass ? 'PASS' : 'FAIL',
       stuckProcessing: r.metrics.stuckProcessing,
       retryRate: r.metrics.retryRate.toFixed(2),
+      gateRetryRate: r.metrics.gateRetryRate.toFixed(2),
+      recoveredRetryGrace: r.metrics.recoveredRetryGraceCount,
+      pipelineRetryGrace: r.metrics.pipelineRetryGraceCount,
       totalFailedRate: r.metrics.failedRate.toFixed(2),
       actionableRate: r.metrics.queueTableMissing ? 'n/a' : r.metrics.actionableFailedRate.toFixed(2),
       providerRate: r.metrics.queueTableMissing ? 'n/a' : r.metrics.providerFailedRate.toFixed(2),

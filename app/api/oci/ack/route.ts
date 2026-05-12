@@ -40,6 +40,8 @@ import {
 } from '@/lib/oci/oci-ack-route-helpers';
 import { getDbNowIso } from '@/lib/time/db-now';
 import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
+import { resolveAckProjAdjTargetsForSuccess } from '@/lib/oci/ack-proj-adj-guard';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -205,7 +207,10 @@ export async function POST(req: NextRequest) {
 
     if (receipt.replayed) {
       if (receipt.resultSnapshot) {
-        return NextResponse.json(receipt.resultSnapshot);
+        const snap = receipt.resultSnapshot as Record<string, unknown> & { _ack_http_status?: number };
+        const { _ack_http_status, ...rest } = snap;
+        const status = typeof _ack_http_status === 'number' ? _ack_http_status : 200;
+        return NextResponse.json(rest, { status });
       }
       if (receipt.inProgress) {
         return NextResponse.json(
@@ -214,6 +219,52 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+
+    type ProjAdjTargets = { projectionRowIds: string[]; adjustmentIds: string[] };
+    let projAdjTargets: ProjAdjTargets | null = null;
+    if (projIds.length > 0 || adjIds.length > 0) {
+      const guardResult = await resolveAckProjAdjTargetsForSuccess({
+        admin: adminClient,
+        siteId: siteUuid,
+        projCallIds: projIds,
+        adjIds,
+      });
+      if (!guardResult.ok) {
+        const code = typeof guardResult.body.code === 'string' ? guardResult.body.code : '';
+        if (code === 'ACK_PROJECTION_TARGET_MISMATCH') {
+          incrementRefactorMetric('oci_ack_projection_target_mismatch_total');
+        } else if (code === 'ACK_ADJUSTMENT_TARGET_MISMATCH') {
+          incrementRefactorMetric('oci_ack_adjustment_target_mismatch_total');
+        }
+        const snap: Record<string, unknown> = { ...guardResult.body, ok: false, _ack_http_status: 409 };
+        if (receipt.receiptId) {
+          try {
+            await completeAckReceipt({
+              receiptId: receipt.receiptId,
+              siteId: siteUuid,
+              resultSnapshot: snap,
+            });
+            await appendRoutingHop({
+              siteId: siteUuid,
+              lane: 'ack',
+              unitId: receipt.receiptId,
+              fromState: 'REGISTERED',
+              toState: 'APPLIED',
+              reasonCode: 'ACK_PROJ_ADJ_TARGET_MISMATCH',
+              idempotencyKey: `ack_proj_adj_guard:${receipt.receiptId}`,
+            });
+          } catch (ledgerErr) {
+            logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+              receiptId: receipt.receiptId,
+              error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+            });
+          }
+        }
+        return NextResponse.json(guardResult.body, { status: guardResult.status });
+      }
+      projAdjTargets = guardResult;
+    }
+
     let actualTransitionedCount = 0;
     let alreadyTerminalCount = 0;
     let sealAckFinalizationTally: Partial<Record<AckFinalizationCode, number>> | undefined;
@@ -391,72 +442,114 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── proj_ prefix: call_funnel_projection rows ────────────────────────────
-    if (projIds.length > 0) {
-      const { data: projRows, error: projFetchError } = await adminClient
+    // ── proj_ prefix: call_funnel_projection rows (strict READY → EXPORTED/UPLOADED) ──
+    if (projAdjTargets && projAdjTargets.projectionRowIds.length > 0) {
+      const projPkIds = projAdjTargets.projectionRowIds;
+      const { data: updatedProjRows, error: projError } = await adminClient
         .from('call_funnel_projection')
-        .select('call_id')
-        .in('call_id', projIds)
+        .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: now })
+        .in('id', projPkIds)
         .eq('site_id', siteUuid)
-        .eq('export_status', 'READY');
-      if (projFetchError) {
-        return dbUpstreamResponse('OCI_ACK_PROJ_FETCH_ERROR', projFetchError, 'OCI_ACK_PROJ_FETCH_ERROR');
-      }
-      const targetProjIds = Array.isArray(projRows)
-        ? (projRows as Array<{ call_id: string | null }>).map((r) => r.call_id).filter((v): v is string => Boolean(v))
-        : [];
-      alreadyTerminalCount += projIds.length - targetProjIds.length;
-      if (targetProjIds.length > 0) {
-        const { data: updatedProjRows, error: projError } = await adminClient
-          .from('call_funnel_projection')
-          .update({ export_status: pendingConfirmation ? 'UPLOADED' : 'EXPORTED', updated_at: now })
-          .in('call_id', targetProjIds)
-          .eq('site_id', siteUuid)
-          .eq('export_status', 'READY')
-          .select('call_id');
+        .eq('export_status', 'READY')
+        .select('id');
 
-        if (projError) {
-          logError('OCI_ACK_PROJ_ERROR', { code: (projError as { code?: string })?.code });
-        } else {
-          const updatedCount = Array.isArray(updatedProjRows) ? updatedProjRows.length : 0;
-          actualTransitionedCount += updatedCount;
-          logInfo('OCI_ACK_PROJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
-        }
+      if (projError) {
+        return dbUpstreamResponse('OCI_ACK_PROJ_ERROR', projError, 'OCI_ACK_PROJ_ERROR');
       }
+      const updatedCount = Array.isArray(updatedProjRows) ? updatedProjRows.length : 0;
+      if (updatedCount !== projPkIds.length) {
+        incrementRefactorMetric('oci_ack_projection_target_mismatch_total');
+        const body = {
+          ok: false,
+          code: 'ACK_PROJECTION_TARGET_MISMATCH',
+          reason_group: 'ACK_PROJECTION_TARGET_MISMATCH',
+          target_type: 'projection',
+          error: 'update_count_mismatch',
+          expected_count: projPkIds.length,
+          actual_count: updatedCount,
+        };
+        if (receipt.receiptId) {
+          try {
+            await completeAckReceipt({
+              receiptId: receipt.receiptId,
+              siteId: siteUuid,
+              resultSnapshot: { ...body, ok: false, _ack_http_status: 409 } as Record<string, unknown>,
+            });
+            await appendRoutingHop({
+              siteId: siteUuid,
+              lane: 'ack',
+              unitId: receipt.receiptId,
+              fromState: 'REGISTERED',
+              toState: 'APPLIED',
+              reasonCode: 'ACK_PROJ_ADJ_TARGET_MISMATCH',
+              idempotencyKey: `ack_proj_update_mismatch:${receipt.receiptId}`,
+            });
+          } catch (ledgerErr) {
+            logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+              receiptId: receipt.receiptId,
+              error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+            });
+          }
+        }
+        return NextResponse.json(body, { status: 409 });
+      }
+      actualTransitionedCount += updatedCount;
+      logInfo('OCI_ACK_PROJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
     }
 
-    // ── adj_ prefix: conversion_adjustments rows ─────────────────────────────
-    if (adjIds.length > 0) {
-      const { data: adjRows, error: adjFetchError } = await adminClient
+    // ── adj_ prefix: conversion_adjustments rows (strict PROCESSING → COMPLETED) ──
+    if (projAdjTargets && projAdjTargets.adjustmentIds.length > 0) {
+      const adjPkIds = projAdjTargets.adjustmentIds;
+      const { data: updatedAdjRows, error: adjError } = await adminClient
         .from('conversion_adjustments')
-        .select('id')
-        .in('id', adjIds)
+        .update({ status: 'COMPLETED', processed_at: now, updated_at: now })
+        .in('id', adjPkIds)
         .eq('site_id', siteUuid)
-        .eq('status', 'PROCESSING');
-      if (adjFetchError) {
-        return dbUpstreamResponse('OCI_ACK_ADJ_FETCH_ERROR', adjFetchError, 'OCI_ACK_ADJ_FETCH_ERROR');
-      }
-      const targetAdjIds = Array.isArray(adjRows)
-        ? (adjRows as Array<{ id: string | null }>).map((r) => r.id).filter((v): v is string => Boolean(v))
-        : [];
-      alreadyTerminalCount += adjIds.length - targetAdjIds.length;
-      if (targetAdjIds.length > 0) {
-        const { data: updatedAdjRows, error: adjError } = await adminClient
-          .from('conversion_adjustments')
-          .update({ status: 'COMPLETED', processed_at: now, updated_at: now })
-          .in('id', targetAdjIds)
-          .eq('site_id', siteUuid)
-          .eq('status', 'PROCESSING')
-          .select('id');
+        .eq('status', 'PROCESSING')
+        .select('id');
 
-        if (adjError) {
-          logError('OCI_ACK_ADJ_ERROR', { code: (adjError as { code?: string })?.code });
-        } else {
-          const updatedCount = Array.isArray(updatedAdjRows) ? updatedAdjRows.length : 0;
-          actualTransitionedCount += updatedCount;
-          logInfo('OCI_ACK_ADJ_COMPLETED', { site_id: siteUuid, count: updatedCount });
-        }
+      if (adjError) {
+        return dbUpstreamResponse('OCI_ACK_ADJ_ERROR', adjError, 'OCI_ACK_ADJ_ERROR');
       }
+      const updatedAdjCount = Array.isArray(updatedAdjRows) ? updatedAdjRows.length : 0;
+      if (updatedAdjCount !== adjPkIds.length) {
+        incrementRefactorMetric('oci_ack_adjustment_target_mismatch_total');
+        const body = {
+          ok: false,
+          code: 'ACK_ADJUSTMENT_TARGET_MISMATCH',
+          reason_group: 'ACK_ADJUSTMENT_TARGET_MISMATCH',
+          target_type: 'adjustment',
+          error: 'update_count_mismatch',
+          expected_count: adjPkIds.length,
+          actual_count: updatedAdjCount,
+        };
+        if (receipt.receiptId) {
+          try {
+            await completeAckReceipt({
+              receiptId: receipt.receiptId,
+              siteId: siteUuid,
+              resultSnapshot: { ...body, ok: false, _ack_http_status: 409 } as Record<string, unknown>,
+            });
+            await appendRoutingHop({
+              siteId: siteUuid,
+              lane: 'ack',
+              unitId: receipt.receiptId,
+              fromState: 'REGISTERED',
+              toState: 'APPLIED',
+              reasonCode: 'ACK_PROJ_ADJ_TARGET_MISMATCH',
+              idempotencyKey: `ack_adj_update_mismatch:${receipt.receiptId}`,
+            });
+          } catch (ledgerErr) {
+            logError('OCI_ACK_RECEIPT_LEDGER_APPEND_FAILED', {
+              receiptId: receipt.receiptId,
+              error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+            });
+          }
+        }
+        return NextResponse.json(body, { status: 409 });
+      }
+      actualTransitionedCount += updatedAdjCount;
+      logInfo('OCI_ACK_ADJ_COMPLETED', { site_id: siteUuid, count: updatedAdjCount });
     }
 
     const failedRedisCleanups: string[] = [];
@@ -518,6 +611,7 @@ export async function POST(req: NextRequest) {
       try {
         await completeAckReceipt({
           receiptId: receipt.receiptId,
+          siteId: siteUuid,
           resultSnapshot: payload as Record<string, unknown>,
         });
         await appendRoutingHop({
@@ -555,6 +649,7 @@ export async function POST(req: NextRequest) {
         try {
           await completeAckReceipt({
             receiptId: receipt.receiptId,
+            siteId: siteUuid,
             resultSnapshot: verification.payload as Record<string, unknown>,
           });
           await appendRoutingHop({

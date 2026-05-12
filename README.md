@@ -35,17 +35,23 @@ Required variables:
 
 ### 3. Supabase Migration
 
-Apply migrations with the Supabase CLI:
+**Policy:** SQL files in `supabase/migrations/` are SSOT and are applied to the
+database **via the Cursor Supabase MCP** (`apply_migration` for DDL,
+`execute_sql` for ad-hoc DML). See [`.cursor/rules/supabase-mcp-migrations.mdc`](.cursor/rules/supabase-mcp-migrations.mdc).
+
+`supabase db push` is an **escape hatch only** (incident response or local
+sandbox) — the project's `scripts/supabase-db-push.mjs` fails closed unless
+`ALLOW_SUPABASE_CLI_DB_PUSH=1` is explicitly set. Do **not** use it for routine
+deploys.
 
 ```bash
-# Supabase CLI kurulumu (eğer yoksa)
+# (Optional, local sandbox or vendor incident) Supabase CLI install
 npm i -g supabase
 
-# Link project
+# Link project (one-time)
 supabase link --project-ref YOUR_PROJECT_REF
 
-# Apply migrations
-supabase db push
+# Routine deploys: use Cursor Supabase MCP — do NOT run `supabase db push` here.
 ```
 
 ### 4. Development Server

@@ -2,7 +2,7 @@
 -- @contract_version: v1
 -- @policy_version: queue_health_contract_v1
 -- @db_required: true
--- @red_green_criteria: RED when stuck>0 OR won_missing_pipeline>0 OR dlq>0 OR retry_rate>0.3 OR actionable_failed_rate>0.2 OR provider_failed_rate>0.2 OR unknown_failed_count>0 OR queued/retry age > 7d. Deterministic skips visible but excluded from actionable/provider rate numerators (PR-1C).
+-- @red_green_criteria: RED when stuck>0 OR won_missing_pipeline>0 OR dlq>0 OR retry_rate>0.3 OR actionable_failed_rate>0.2 OR provider_failed_rate>0.2 OR unknown_failed_count>0 OR queued/retry age > 7d. Deterministic skips visible but excluded from actionable/provider rate numerators (PR-1C). Note: `scripts/oci-rollout-readiness.ts` strict gate additionally exempts TRANSIENT/RATE_LIMIT/AUTH RETRY rows from the retry-rate numerator (PR-9J.CI-AUDIT-P1.1) — SQL pack here remains the raw observability slice.
 -- PR-4: Adds stuck PROCESSING recovery risk visibility fields. Values are advisory unless strict recovery policy consumes them.
 -- Composed operational queue health per site (read-only). SSOT time/value packs are separate; merge in evidence.
 -- Stuck window = STUCK_PROCESSING_MAX_AGE_MINUTES (15) aligned with lib/oci/queue-health-contract.ts

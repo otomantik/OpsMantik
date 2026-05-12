@@ -199,6 +199,13 @@ export function buildQueueItems(
       gclid: (row.gclid || '').trim(),
       wbraid: (row.wbraid || '').trim(),
       gbraid: (row.gbraid || '').trim(),
+      selected_click_id_kind: row.gclid?.trim()
+        ? 'gclid'
+        : row.wbraid?.trim()
+          ? 'wbraid'
+          : row.gbraid?.trim()
+            ? 'gbraid'
+            : null,
       conversionName,
       conversionTime,
       conversionValue,

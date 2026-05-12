@@ -54,6 +54,7 @@ export const REFACTOR_METRIC_NAMES = [
   'lease_steal_total',
   'lease_heartbeat_lag_ms',
   'fastpath_unclaimed_reject_total',
+  'fastpath_claim_owner_mismatch_total',
   'queue_terminal_without_claim_total',
   'timezone_fallback_used_total',
   'truth_repair_queue_upsert_failed_total',
@@ -79,11 +80,16 @@ export const REFACTOR_METRIC_NAMES = [
   'panel_stage_reconciliation_persist_failed_total',
   'panel_stage_oci_producer_incomplete_total',
   'oci_notify_outbox_publish_failed_total',
+  'oci_notify_outbox_skipped_no_base_url_total',
   'oci_producer_primary_window_drift_total',
   'outbox_inline_drain_failed_total',
   'panel_oci_partial_failure_total',
   'panel_oci_fail_closed_total',
   'panel_oci_reconciliation_reason_total',
+  /** PR-9J.CI-AUDIT-P1: lifecycle fail-closed observability */
+  'oci_invalidation_blocked_preceding_terminalized_total',
+  'oci_ack_projection_target_mismatch_total',
+  'oci_ack_adjustment_target_mismatch_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

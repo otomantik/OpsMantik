@@ -11,6 +11,8 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
+// L27: hourly enqueue scan; capped batch per RPC.
+export const maxDuration = 120;
 
 const DEFAULT_HOURS = 24;
 const MAX_HOURS = 168;

@@ -50,6 +50,10 @@ test('invalidatePendingOciArtifactsForCall uses worker batch RPC (ledger-safe)',
   const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'invalidate-pending-artifacts.ts'), 'utf8');
   assert.ok(src.includes('append_worker_transition_batch_v2'), 'must use append_worker_transition_batch_v2');
   assert.ok(
+    src.includes('BLOCKED_PRECEDING_SIGNALS'),
+    'PR-9J.CI-AUDIT-P1: junk invalidation must include BLOCKED_PRECEDING_SIGNALS rows'
+  );
+  assert.ok(
     !/from\(\s*['']offline_conversion_queue['']\s*\)\s*\.update/.test(src),
     'must not direct-update offline_conversion_queue'
   );

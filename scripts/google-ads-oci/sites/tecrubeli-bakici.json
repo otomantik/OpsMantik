@@ -1,0 +1,8 @@
+{
+  "siteId": "736251e5-ab8f-4ac2-962d-bd257ccd6002",
+  "baseUrl": "https://console.opsmantik.com",
+  "exportLimit": 50,
+  "runMode": "sync",
+  "operatorId": "google-ads-script",
+  "changeTicket": "scheduled-production"
+}

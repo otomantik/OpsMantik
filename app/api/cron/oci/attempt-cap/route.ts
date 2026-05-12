@@ -11,6 +11,8 @@ import { adminClient } from '@/lib/supabase/admin';
 import { MAX_ATTEMPTS } from '@/lib/domain/oci/queue-types';
 
 export const runtime = 'nodejs';
+// L27: single UPDATE statement; finishes in a few hundred ms.
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);

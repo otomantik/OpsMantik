@@ -25,8 +25,8 @@ This manifest is the production source of truth for OCI-critical RPC contracts.
   - Critical path: queue claim for worker lane
 - `register_ack_receipt_v1`
   - Critical path: ack idempotency / replay safety
-- `complete_ack_receipt_v1`
-  - Critical path: ack completion finalization
+- `complete_ack_receipt_v1(p_receipt_id uuid, p_site_id uuid, p_result_snapshot jsonb)`
+  - Critical path: ack completion finalization (site-scoped `UPDATE` on `ack_receipt_ledger`)
 
 ## Required SQL Contracts
 

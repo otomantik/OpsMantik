@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin';
-import { logError } from '@/lib/logging/logger';
+import { logError, logInfo } from '@/lib/logging/logger';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 /**
  * On call-level reversal (e.g. junk), fail in-flight queue rows and outbox without
@@ -13,10 +14,10 @@ export async function invalidatePendingOciArtifactsForCall(
 ): Promise<void> {
   const { data: pendingRows, error: queueSelectError } = await adminClient
     .from('offline_conversion_queue')
-    .select('id')
+    .select('id, status')
     .eq('site_id', siteId)
     .eq('call_id', callId)
-    .in('status', ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED']);
+    .in('status', ['QUEUED', 'RETRY', 'PROCESSING', 'UPLOADED', 'BLOCKED_PRECEDING_SIGNALS']);
 
   if (queueSelectError) {
     logError('INVALIDATE_OCI_QUEUE_SELECT_FAILED', {
@@ -27,12 +28,14 @@ export async function invalidatePendingOciArtifactsForCall(
     });
   }
 
-  const queueIds =
+  const queueRows =
     !queueSelectError && Array.isArray(pendingRows)
-      ? pendingRows
-          .map((r) => (r as { id?: string | null }).id)
-          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      ? (pendingRows as Array<{ id?: string | null; status?: string | null }>)
       : [];
+  const queueIds = queueRows
+    .map((r) => r.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  const blockedPrecedingCount = queueRows.filter((r) => r.status === 'BLOCKED_PRECEDING_SIGNALS').length;
 
   const [queueRpcResult, outboxResult] = await Promise.all([
     (async () => {
@@ -47,7 +50,15 @@ export async function invalidatePendingOciArtifactsForCall(
           last_error: reason,
           provider_error_code: 'CALL_NOT_SENDABLE_FOR_OCI',
           provider_error_category: 'DETERMINISTIC_SKIP',
-          clear_fields: ['next_retry_at', 'uploaded_at', 'claimed_at', 'provider_request_id', 'provider_ref'],
+          clear_fields: [
+            'next_retry_at',
+            'uploaded_at',
+            'claimed_at',
+            'provider_request_id',
+            'provider_ref',
+            'block_reason',
+            'blocked_at',
+          ],
         },
       });
     })(),
@@ -73,6 +84,14 @@ export async function invalidatePendingOciArtifactsForCall(
         requested: queueIds.length,
         affected: typeof affected === 'number' ? affected : null,
         error: rpcErr?.message ?? (typeof affected !== 'number' ? 'non-number rpc result' : 'count mismatch'),
+      });
+    } else if (blockedPrecedingCount > 0) {
+      incrementRefactorMetric('oci_invalidation_blocked_preceding_terminalized_total', blockedPrecedingCount);
+      logInfo('OCI_INVALIDATION_BLOCKED_PRECEDING_TERMINALIZED', {
+        site_id: siteId,
+        reason_group: 'OCI_INVALIDATION_BLOCKED_PRECEDING_TERMINALIZED',
+        blocked_preceding_count: blockedPrecedingCount,
+        total_invalidated: queueIds.length,
       });
     }
   }

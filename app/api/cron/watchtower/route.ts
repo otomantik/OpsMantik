@@ -4,6 +4,7 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logWarn, logError } from '@/lib/logging/logger';
 import { WatchtowerService } from '@/lib/services/watchtower';
 import { getBillingMetrics } from '@/lib/billing-metrics';
+import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs'; // Force Node.js runtime for stability
 
@@ -54,16 +55,34 @@ export async function GET(req: NextRequest) {
 
     const billing = getBillingMetrics();
     const driftCount = health.checks.billingReconciliationDriftLast1h.count;
+    const { data: ociMaintenanceHeartbeat } = await adminClient
+      .from('cron_job_heartbeats')
+      .select('last_status, last_rows_affected, run_count, last_error_message, last_finished_at')
+      .eq('job_name', 'oci-maintenance')
+      .maybeSingle();
+    const ociMaintenancePartialSilent =
+      ociMaintenanceHeartbeat?.last_status === 'PARTIAL' &&
+      Number(ociMaintenanceHeartbeat?.last_rows_affected ?? 0) === 0 &&
+      Number(ociMaintenanceHeartbeat?.run_count ?? 0) >= 3;
+
+    if (ociMaintenancePartialSilent) {
+      logError('WATCHTOWER_OCI_MAINTENANCE_PARTIAL_SILENT', {
+        last_finished_at: ociMaintenanceHeartbeat?.last_finished_at ?? null,
+        run_count: ociMaintenanceHeartbeat?.run_count ?? null,
+        last_error_message: ociMaintenanceHeartbeat?.last_error_message ?? null,
+      });
+    }
 
     return NextResponse.json(
       {
-        ok: health.status === 'ok' || health.status === 'degraded',
-        code: codeByStatus[health.status] ?? 'WATCHTOWER_OK',
-        status: health.status,
-        severity: health.status,
+        ok: !ociMaintenancePartialSilent && (health.status === 'ok' || health.status === 'degraded'),
+        code: ociMaintenancePartialSilent ? 'WATCHTOWER_OCI_MAINTENANCE_PARTIAL_SILENT' : (codeByStatus[health.status] ?? 'WATCHTOWER_OK'),
+        status: ociMaintenancePartialSilent ? 'alarm' : health.status,
+        severity: ociMaintenancePartialSilent ? 'alarm' : health.status,
         failure_count: failureCount,
         checks: health.checks,
         details: health.details,
+        oci_maintenance_partial_silent: ociMaintenancePartialSilent,
         billing_metrics: {
           ...billing,
           billing_reconciliation_drift_sites_last1h: driftCount,

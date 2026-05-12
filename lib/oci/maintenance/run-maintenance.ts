@@ -58,6 +58,7 @@ export interface OciMaintenanceStats {
   queue_rescued: number;
   queue_uploaded_closed: number;
   attempt_cap_marked: number;
+  dlq_escalated: number;
   orphans_found: number;
   orphans_enqueued: number;
   orphan_skipped_reasons: Record<string, number>;
@@ -80,6 +81,7 @@ function newStats(): OciMaintenanceStats {
     queue_rescued: 0,
     queue_uploaded_closed: 0,
     attempt_cap_marked: 0,
+    dlq_escalated: 0,
     orphans_found: 0,
     orphans_enqueued: 0,
     orphan_skipped_reasons: {},
@@ -135,14 +137,25 @@ async function step_sweepZombies(stats: OciMaintenanceStats): Promise<void> {
 
 async function step_attemptCap(stats: OciMaintenanceStats): Promise<void> {
   try {
+    const maxAttempts = Number.parseInt(process.env.OCI_MAX_ATTEMPTS ?? '', 10);
+    const effectiveMaxAttempts = Number.isFinite(maxAttempts) && maxAttempts > 0 ? maxAttempts : MAX_ATTEMPTS;
     const { data, error } = await adminClient.rpc('oci_attempt_cap', {
-      p_max_attempts: MAX_ATTEMPTS,
+      p_max_attempts: effectiveMaxAttempts,
       p_min_age_minutes: 0,
     });
     if (error) throw new Error(error.message);
     stats.attempt_cap_marked = typeof data === 'number' ? data : 0;
     if (stats.attempt_cap_marked > 0) {
-      logWarn('OCI_MAINTENANCE_ATTEMPT_CAP_MARKED', { affected: stats.attempt_cap_marked });
+      logWarn('OCI_MAINTENANCE_ATTEMPT_CAP_MARKED', { affected: stats.attempt_cap_marked, max_attempts: effectiveMaxAttempts });
+    }
+    const { data: dlqData, error: dlqError } = await adminClient.rpc('escalate_exhausted_to_dlq_v1', {
+      p_max_attempts: effectiveMaxAttempts,
+      p_limit: 500,
+    });
+    if (dlqError) throw new Error(dlqError.message);
+    stats.dlq_escalated = typeof dlqData === 'number' ? dlqData : 0;
+    if (stats.dlq_escalated > 0) {
+      logWarn('OCI_MAINTENANCE_DLQ_ESCALATED', { affected: stats.dlq_escalated, max_attempts: effectiveMaxAttempts });
     }
   } catch (err) {
     capture(stats, 'attempt_cap', err);
@@ -326,6 +339,7 @@ export async function runOciMaintenance(): Promise<OciMaintenanceStats> {
     queue_rescued: stats.queue_rescued,
     queue_uploaded_closed: stats.queue_uploaded_closed,
     attempt_cap_marked: stats.attempt_cap_marked,
+    dlq_escalated: stats.dlq_escalated,
     stale_jobs_recovered: stats.stale_jobs_recovered,
     orphans_found: stats.orphans_found,
     orphans_enqueued: stats.orphans_enqueued,

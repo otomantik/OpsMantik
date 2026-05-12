@@ -20,7 +20,8 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
   const prefix = `[oci-value-lane:${queueId}]`;
   
   try {
-    const claimNowIso = new Date().toISOString();
+    const claimNowMs = Date.now();
+    const claimNowIso = new Date(claimNowMs).toISOString();
 
     // Fast-path may arrive while row is still QUEUED/RETRY.
     // Atomically claim the row before trying provider upload.
@@ -57,10 +58,10 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
     if (qRow.status === 'UPLOADED' || qRow.status === 'COMPLETED_UNVERIFIED') {
       return { ok: true, status: 'ALREADY_UPLOADED' };
     }
+    const claimedAt = (row as { claimed_at?: string | null }).claimed_at ?? null;
+    const claimedBy = (row as { claimed_by?: string | null }).claimed_by ?? null;
     const claimEvidence =
-      qRow.status === 'PROCESSING' &&
-      Boolean((row as { claimed_at?: string | null }).claimed_at) &&
-      Boolean((row as { claimed_by?: string | null }).claimed_by);
+      qRow.status === 'PROCESSING' && Boolean(claimedAt) && Boolean(claimedBy);
     if (!claimEvidence) {
       incrementRefactorMetric('fastpath_unclaimed_reject_total');
       logWarn(`${prefix} Unclaimed fast-path export rejected`, {
@@ -69,6 +70,17 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
         status: qRow.status ?? null,
       });
       return { ok: false, error: 'UNCLAIMED_FASTPATH' };
+    }
+    // T10-11: do not upload onto a row another worker (cron / sweep) claimed —
+    // the value lane is only authorised when the owner stamp matches FASTPATH_OCI_EXPORT.
+    if (claimedBy !== 'FASTPATH_OCI_EXPORT') {
+      incrementRefactorMetric('fastpath_claim_owner_mismatch_total');
+      logWarn(`${prefix} Fast-path rejected — row claimed by a different owner`, {
+        siteId,
+        queueId,
+        claimed_by: claimedBy,
+      });
+      return { ok: false, error: 'FASTPATH_CLAIM_OWNER_MISMATCH' };
     }
     const siteRaw = (row as { sites?: { oci_sync_method?: string | null } | null }).sites;
     const syncMethod = siteRaw?.oci_sync_method || 'script';
@@ -130,16 +142,17 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
     const [result] = await adapter.uploadConversions({ jobs: [job], credentials });
 
     const durationMs = Date.now() - startedAt;
+    const finalTransitionIso = new Date(Math.max(Date.now(), claimNowMs + 1)).toISOString();
 
     // 7. Persist Results
     if (result.status === 'COMPLETED') {
       await adminClient.rpc('append_worker_transition_batch_v2', {
         p_queue_ids: [queueId],
         p_new_status: 'COMPLETED',
-        p_created_at: new Date().toISOString(),
+        p_created_at: finalTransitionIso,
         p_error_payload: {
           last_error: null,
-          uploaded_at: new Date().toISOString(),
+          uploaded_at: finalTransitionIso,
           provider_request_id: result.provider_request_id,
           provider_ref: result.provider_ref
         }
@@ -158,7 +171,7 @@ export async function processSingleOciExport(queueId: string, siteId: string) {
       await adminClient.rpc('append_worker_transition_batch_v2', {
         p_queue_ids: [queueId],
         p_new_status: result.status,
-        p_created_at: new Date().toISOString(),
+        p_created_at: finalTransitionIso,
         p_error_payload: payload
       });
 

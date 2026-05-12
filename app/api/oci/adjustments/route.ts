@@ -173,7 +173,29 @@ export async function POST(req: NextRequest) {
       ? (originalRows[0] as { id: string; value_cents?: number | null; action?: string | null; currency?: string | null; created_at: string })
       : null;
 
-    // Validate adjustment age limit
+    // T10-10 — Adjustments must anchor to an original terminal-success queue row.
+    // Inserting an orphan adjustment risks reaching Google Ads without a verifiable
+    // original conversion (ACK/Ads UI dedupe goes off `orderId`). Operators that
+    // genuinely need to bypass this can pass `x-opsmantik-adjustment-override: 1`
+    // alongside their existing auth — recorded in `reason` for audit.
+    const overrideHeader = (req.headers.get('x-opsmantik-adjustment-override') ?? '').trim();
+    const overrideAllowed = overrideHeader === '1' || overrideHeader.toLowerCase() === 'true';
+    if (!originalRow && !overrideAllowed) {
+      logWarn('OCI_ADJUSTMENTS_NO_ANCHOR', {
+        site_id: siteUuid,
+        order_id: orderId,
+        adjustment_type: adjustmentType,
+      });
+      return NextResponse.json(
+        {
+          error: 'No original terminal success conversion found for orderId',
+          code: 'ADJUSTMENT_NO_ANCHOR',
+          hint: 'Original COMPLETED / UPLOADED / COMPLETED_UNVERIFIED row required, or supply x-opsmantik-adjustment-override: 1 to override (audited).',
+        },
+        { status: 422 }
+      );
+    }
+
     if (originalRow) {
       const ageMs = Date.now() - new Date(originalRow.created_at).getTime();
       const ageDays = ageMs / 86400000;
@@ -208,7 +230,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Insert adjustment record
+    // Tag override decisions in reason for audit visibility.
+    const auditReason = overrideAllowed && !originalRow
+      ? `[OVERRIDE_NO_ANCHOR] ${reason ?? ''}`.trim()
+      : (reason ?? null);
+
     const { data: inserted, error: insertError } = await adminClient
       .from('conversion_adjustments')
       .insert({
@@ -218,7 +244,7 @@ export async function POST(req: NextRequest) {
         adjustment_type: adjustmentType,
         original_value_cents: originalRow?.value_cents ?? null,
         new_value_cents: adjustmentType === 'RESTATEMENT' ? (newValueCents ?? null) : null,
-        reason: reason ?? null,
+        reason: auditReason,
         status: 'PENDING',
         conversion_action_name: conversionActionName,
         channel: 'phone',

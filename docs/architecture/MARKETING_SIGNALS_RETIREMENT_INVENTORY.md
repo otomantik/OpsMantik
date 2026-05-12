@@ -7,7 +7,7 @@ Queue-only hard retirement reference inventory and classification.
 - `app/api/oci/ack-failed/route.ts`
 - `app/api/oci/queue-stats/route.ts`
 - `app/api/oci/export-coverage/route.ts`
-- `app/api/ops/stale-signals/route.ts`
+- `app/api/ops/stale-signals/route.ts` (GET: `requireCronAuth` — cross-site aggregate; not public)
 - `app/api/cron/oci/recover-stuck-signals/route.ts`
 - `lib/oci/outbox/process-outbox.ts`
 - `lib/oci/maintenance/run-maintenance.ts`
@@ -21,7 +21,7 @@ Queue-only hard retirement reference inventory and classification.
 ## delete_runtime_path
 - `lib/oci/marketing-signal-dispatch-kernel.ts`
 - `app/api/cron/oci/recover-stuck-signals/route.ts` (legacy compatibility path kept, behavior rewritten queue-only)
-- `app/api/ops/stale-signals/route.ts` (legacy compatibility path kept, behavior rewritten queue-only)
+- `app/api/ops/stale-signals/route.ts` (legacy compatibility path kept, behavior rewritten queue-only; **auth:** `requireCronAuth`)
 
 ## drop_with_table
 - `lib/domain/mizan-mantik/upsert-marketing-signal.ts`

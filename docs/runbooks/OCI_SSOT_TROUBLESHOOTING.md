@@ -17,6 +17,24 @@ flowchart TD
 - Use hashes/truncated values for diagnostics.
 - Treat payload sanitation regressions as release blockers.
 
+## Cron timeout & sendability classification (L23 / L27)
+
+- **`maxDuration`:** Every OCI / queue cron route declares `export const maxDuration` (see `tests/architecture/oci-cron-max-duration-l27.test.ts`). Heavy routes (`oci-maintenance`, `oci/sweep-zombies`, `oci/process-outbox-events`, `sweep-unsent-conversions`, `process-offline-conversions`, `oci/backfill-precursor-signals`) are pinned to **300 s**, well under their `CRON_LOCK_TTL_SEC`. Lightweight routes (delete sweeps, attempt-cap) use **60 s**.
+- **Sendability transient errors:** `isTransientCallSendabilityError` (`lib/oci/call-sendability-fetch.ts`) classifies Postgres `40001 / 40P01 / 57014 / 55P03 / 08006`, PostgREST `5xx`, and network/timeout messages as **retryable**. Callers needing this contract should use `fetchCallSendabilityContextClassified` and branch on `kind`. Schema/permission errors are intentionally **not transient** to avoid retry loops.
+
+## Tenant-safe ops endpoints (L30)
+
+- **`GET /api/ops/stale-signals`**: requires **`requireCronAuth`** (same policy family as OCI crons). Without valid cron credentials you get **`403`** with `{"error":"forbidden","code":"CRON_FORBIDDEN"}`. For manual checks, call with **`Authorization: Bearer $CRON_SECRET`** (and in production hybrid mode, trusted Vercel cron provenance headers when applicable).
+- **ACK receipt completion:** `complete_ack_receipt_v1` applies **`APPLIED`** only when **`id = receipt_id` AND `site_id` matches** the caller-supplied site (see migration `20261228141000_complete_ack_receipt_site_scope_v1.sql`).
+
+## SLI / SLO definitions (L14)
+
+Quantitative definitions and metric pointers: **[`OCI_SLI_SLO_REFERENCE.md`](./OCI_SLI_SLO_REFERENCE.md)**.
+
+## Optional outbox pre-dedupe (Faz 6)
+
+ADR: **[`../architecture/OCI_OUTBOX_PREDEDUPE_OPTIONAL_ADR.md`](../architecture/OCI_OUTBOX_PREDEDUPE_OPTIONAL_ADR.md)**.
+
 ## Required Response Fields
 
 - `oci_outbox_inserted`
@@ -161,13 +179,13 @@ SLO numeric targets are a product/ops decision; use the above for dashboards and
 
 ## DR / PITR (L20)
 
-For mistaken bulk backfill or bad deploy: use Supabase **PITR / branch restore** per vendor runbook before applying ad-hoc SQL to `outbox_events` or `marketing_signals`. Document who approves restore and the time window to revert to.
+See **[`OCI_DISASTER_RECOVERY_DB.md`](./OCI_DISASTER_RECOVERY_DB.md)** for restore principles and incident triggers. Supabase PITR / branch steps stay in your org-wide DR runbook.
 
 ---
 
 ## Marketing consent vs signals (L21)
 
-`enqueueSealConversion` enforces marketing consent on the legacy queue path. **Marketing signals** from the outbox worker may follow different product rules — align with legal: either document “click + site policy = OK” or add explicit consent gates on the signal path. Track as a **workshop outcome**, not only engineering.
+Workshop checklist and decision capture: **[`../OPS/OCI_CONSENT_POSTURE_WORKSHOP.md`](../OPS/OCI_CONSENT_POSTURE_WORKSHOP.md)**. Seal path consent: `enqueueSealConversion` / `hasMarketingConsentForCall`; panel producer rules remain product+legal sign-off.
 
 ---
 
@@ -176,3 +194,17 @@ For mistaken bulk backfill or bad deploy: use Supabase **PITR / branch restore**
 Set `OCI_PRODUCER_PRIMARY_RECHECK=1` to run a second `getPrimarySource` immediately after planning an insert. If Ads click presence flips between reads, `oci_producer_primary_window_drift_total` increments — investigate session/write races or replica lag.
 
 **Deferred (full L18 shadow):** fire-and-forget comparison of producer plan vs worker `getPrimarySource` on the same request (with metric e.g. `oci_producer_worker_primary_mismatch_total`) is **not** shipped — cost and async coupling; use drift metric + staging load tests first.
+
+---
+
+## Adjustment anchoring (T10-10)
+
+`POST /api/oci/adjustments` requires an **original terminal-success** queue row (`COMPLETED` / `UPLOADED` / `COMPLETED_UNVERIFIED`) for the supplied `orderId`. Without it the route returns **422 `ADJUSTMENT_NO_ANCHOR`** and the operator must either fix the anchor or supply **`x-opsmantik-adjustment-override: 1`** to bypass — the override is recorded as `[OVERRIDE_NO_ANCHOR]` in `conversion_adjustments.reason` for audit.
+
+## Fast-path claim ownership (T10-11)
+
+`processSingleOciExport` (Value-Lane) rejects any row whose `claimed_by` is **not** `FASTPATH_OCI_EXPORT`. A cron / sweep claim is **off-limits** for the value lane; mismatched rows increment `fastpath_claim_owner_mismatch_total` and return `FASTPATH_CLAIM_OWNER_MISMATCH`.
+
+## Schema dumps are non-authoritative (T10-2)
+
+`schema.sql` / `schema_utf8.sql` / `supabase/schema.sql` open with a `NON-AUTHORITATIVE SNAPSHOT` banner. Schema review, security audits and release gates must cite the migration chain in `supabase/migrations/` (applied via Cursor Supabase MCP). Pin: `tests/architecture/schema-dump-non-authoritative-t10-2.test.ts`.
