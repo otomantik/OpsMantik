@@ -27,7 +27,9 @@ test_output*.txt
 
 # misc
 .DS_Store
+# Local scratch: gate evidence drops, MCP migration JSON, etc. (never commit)
 /tmp
+/tmp/**
 ci-reports/*.json
 ci-reports/*.md
 *.pem

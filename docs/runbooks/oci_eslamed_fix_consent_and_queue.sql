@@ -82,20 +82,20 @@ WHERE c.id IN (
 
 -- -----------------------------------------------------------------------------
 -- 4) Kuyruktaki value_cents'i intent'e göre düzelt (sale_amount > 0 ise fiyat, yoksa lead_score sentetik)
---    Enqueue mantığı: sale_amount varsa sale_amount*100; yoksa (lead_score/20)*150*100 (1 yıldız=150 TRY, 5=750 TRY)
+--    FROZEN FORENSIC: direct UPDATE offline_conversion_queue disabled in-repo.
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue oq
-SET value_cents = (
-  CASE
-    WHEN c.sale_amount IS NOT NULL AND c.sale_amount > 0 THEN ROUND(c.sale_amount * 100)::bigint
-    ELSE ROUND((COALESCE(c.lead_score, 20) / 20.0) * 150 * 100)::bigint
-  END
-)
-FROM calls c
-WHERE oq.call_id = c.id
-  AND oq.site_id = c.site_id
-  AND oq.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
-  AND oq.status = 'QUEUED';
+-- UPDATE offline_conversion_queue oq
+-- SET value_cents = (
+--   CASE
+--     WHEN c.sale_amount IS NOT NULL AND c.sale_amount > 0 THEN ROUND(c.sale_amount * 100)::bigint
+--     ELSE ROUND((COALESCE(c.lead_score, 20) / 20.0) * 150 * 100)::bigint
+--   END
+-- )
+-- FROM calls c
+-- WHERE oq.call_id = c.id
+--   AND oq.site_id = c.site_id
+--   AND oq.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND oq.status = 'QUEUED';
 
 
 -- -----------------------------------------------------------------------------
@@ -124,14 +124,14 @@ WHERE call_id IN (
 
 -- -----------------------------------------------------------------------------
 -- 7) Bu iki call'ı tekrar QUEUED yap (script "0 records" diyorsa; script zaten PROCESSING yaptı)
---    Çalıştır → script'i tekrar çalıştır → 2 conversion gelir.
+--    FROZEN FORENSIC: UPDATE disabled in-repo.
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue
-SET status = 'QUEUED',
-    claimed_at = NULL,
-    updated_at = now()
-WHERE call_id IN (
-  'f1beadc1-67e9-44fe-908f-e711ea7e6ce3',
-  'e40632a8-511b-4438-be06-b295f3f546de'
-)
-  AND site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070';
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED',
+--     claimed_at = NULL,
+--     updated_at = now()
+-- WHERE call_id IN (
+--   'f1beadc1-67e9-44fe-908f-e711ea7e6ce3',
+--   'e40632a8-511b-4438-be06-b295f3f546de'
+-- )
+--   AND site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070';

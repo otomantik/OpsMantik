@@ -38,6 +38,24 @@ test('ociControl.statusTruth keys exist in en and tr', () => {
   }
 });
 
+test('ociControl.statusTruth keys exist in it', () => {
+  const it = readFileSync(join(process.cwd(), 'lib', 'i18n', 'messages', 'it.ts'), 'utf8');
+  for (const k of KEYS) {
+    assert.ok(it.includes(`"${k}":`), `it missing ${k}`);
+  }
+});
+
+test('ociControl.statusTruth IT copy length and no absolute hype markers', () => {
+  const it = readFileSync(join(process.cwd(), 'lib', 'i18n', 'messages', 'it.ts'), 'utf8');
+  const denyIt = /\b(definitivamente|garantito|certamente accettat[oa])\b/i;
+  for (const k of KEYS) {
+    if (k === 'ociControl.statusTruthHintLabel') continue;
+    const tv = extractTrStatusTruthBlock(it, k);
+    assert.ok(tv.length > 20, `it value for ${k}`);
+    assert.ok(!denyIt.test(tv), `it ${k} must not use forbidden hype: ${tv}`);
+  }
+});
+
 test('ociControl.statusTruth copy avoids absolute provider-import hype (en)', () => {
   const en = readFileSync(join(process.cwd(), 'lib', 'i18n', 'messages', 'en.ts'), 'utf8');
   for (const k of KEYS) {

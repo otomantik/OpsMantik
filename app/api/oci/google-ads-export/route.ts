@@ -210,6 +210,18 @@ export async function GET(req: NextRequest) {
       if (e.message === 'QUEUE_CLAIM_MISMATCH') {
         return NextResponse.json({ error: 'Queue claim mismatch', code: 'QUEUE_CLAIM_MISMATCH' }, { status: 409 });
       }
+      if (e.message === 'CONVERSION_SENDS_LIMIT') {
+        return NextResponse.json(
+          { error: 'Monthly conversion_sends cap exceeded', code: 'CONVERSION_SENDS_LIMIT' },
+          { status: 429 }
+        );
+      }
+      if (e.message === 'CONVERSION_SENDS_INCREMENT_FAILED') {
+        return NextResponse.json(
+          { error: 'Conversion sends billing increment failed', code: 'CONVERSION_SENDS_INCREMENT_FAILED' },
+          { status: 500 }
+        );
+      }
       if (e.message === 'QUEUE_FINALIZE_MISMATCH') {
         return NextResponse.json({ error: 'Queue finalize mismatch', code: 'QUEUE_FINALIZE_MISMATCH' }, { status: 409 });
       }

@@ -23,3 +23,17 @@ test('PR-C: every docs/runbooks/oci*.sql file carries OCI_TRUTH_PR-C / LEDGER_WA
     assert.ok(marker.test(head), `${name} must include OCI_TRUTH_PR-C or LEDGER_WARNING in the header region`);
   }
 });
+
+test('PR-C: no uncommented UPDATE offline_conversion_queue in oci*.sql runbooks', () => {
+  const files = readdirSync(RUNBOOKS).filter((f) => f.startsWith('oci') && f.endsWith('.sql'));
+  const updateRe = /^\s*UPDATE\s+offline_conversion_queue\b/i;
+  for (const name of files) {
+    const body = readFileSync(join(RUNBOOKS, name), 'utf8');
+    for (const line of body.split(/\r?\n/)) {
+      const t = line.trimStart();
+      if (updateRe.test(t) && !t.startsWith('--')) {
+        assert.fail(`${name}: uncommented UPDATE offline_conversion_queue is forbidden — use RPC / repair index`);
+      }
+    }
+  }
+});

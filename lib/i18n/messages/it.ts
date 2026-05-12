@@ -110,6 +110,14 @@ export const it = {
   "ociControl.status.DEAD_LETTER_QUARANTINE": "Review queue",
   "ociControl.status.VOIDED_BY_REVERSAL": "Void (reversal)",
   "ociControl.status.BLOCKED_PRECEDING_SIGNALS": "Blocked (precursor)",
+  /** OCI Truth: nessuna affermazione di importazione Google “certa”. */
+  "ociControl.statusTruth.UPLOADED":
+    "Invio riuscito lato piattaforma (es. script upload.apply / batch consegnato). Non prova che Google Ads abbia completato l'importazione della conversione — se serve, controlla lo stato del caricamento in blocco in Google.",
+  "ociControl.statusTruth.COMPLETED":
+    "Pipeline chiusa dopo ACK secondo il contratto export/claim. Da solo non significa che Google Ads abbia accettato definitivamente la conversione nel backend — valuta separatamente la prova lato provider.",
+  "ociControl.statusTruth.COMPLETED_UNVERIFIED":
+    "Chiusura tramite policy automatica (es. sweep di UPLOADED di lunga durata) senza verifica completa lato provider. Terminale distinto da un percorso COMPLETED con attestazione provider.",
+  "ociControl.statusTruthHintLabel": "Cosa significa questo stato",
   "common.backToDashboard": "Torna al Cruscotto",
   "admin.sites.title": "ADMIN • Tutti i Siti",
   "admin.sites.subtitle": "Gestione globale dei siti • {count} siti in totale",

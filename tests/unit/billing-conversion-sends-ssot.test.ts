@@ -13,11 +13,27 @@ test('PR-F: conversion_sends SSOT doc exists and types module references the con
     'billing SSOT doc must name conversion_sends and SSOT'
   );
   assert.ok(
+    doc.includes('export-mark-processing') && doc.includes('incrementConversionSendsForExportClaim'),
+    'SSOT must document the single OCI export billing hook'
+  );
+  assert.ok(
     doc.includes('provider') || doc.includes('Google'),
     'doc must clarify conversion_sends is not provider-import proof'
   );
   const types = readFileSync(TYPES, 'utf8');
   assert.ok(types.includes('BILLING_CONVERSION_SENDS_SSOT.md'), 'types.ts must point to SSOT doc');
+});
+
+test('PR-F: OCI export mark-processing wires conversion_sends increment before claim', () => {
+  const src = readFileSync(
+    join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'),
+    'utf8'
+  );
+  assert.ok(src.includes("incrementConversionSendsForExportClaim"), 'export flow must call conversion_sends increment helper');
+  assert.ok(src.includes('append_script_claim_transition_batch'), 'export flow must still claim via RPC');
+  const incIdx = src.indexOf('incrementConversionSendsForExportClaim');
+  const claimIdx = src.indexOf('append_script_claim_transition_batch');
+  assert.ok(incIdx >= 0 && claimIdx >= 0 && incIdx < claimIdx, 'increment must run before append_script_claim_transition_batch');
 });
 
 test('PR-F: increment_usage_checked supports conversion_sends kind in schema contract', () => {

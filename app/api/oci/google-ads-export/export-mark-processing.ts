@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import { incrementConversionSendsForExportClaim } from '@/lib/billing/increment-conversion-sends-export';
 import { logError } from '@/lib/logging/logger';
 import type { ExportAuthContext } from './export-auth';
 import type { BuiltExportData } from './export-build-items';
@@ -57,6 +58,11 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
   }
 
   if (idsToMarkProcessing.length > 0) {
+    const inc = await incrementConversionSendsForExportClaim(ctx.siteUuid);
+    if (!inc.ok) {
+      if (inc.reason === 'LIMIT') throw new Error('CONVERSION_SENDS_LIMIT');
+      throw new Error('CONVERSION_SENDS_INCREMENT_FAILED');
+    }
     const { data: claimedCount, error: rpcError } = await adminClient.rpc(
       'append_script_claim_transition_batch',
       { p_queue_ids: idsToMarkProcessing, p_claimed_at: now }

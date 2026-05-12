@@ -48,9 +48,11 @@ ORDER BY oq.claimed_at;
 
 -- -----------------------------------------------------------------------------
 -- 3) Tüm PROCESSING'dekileri tekrar QUEUED yap (script tekrar göndersin)
---    "Giden" varsa önce 2'yi uncomment edip çalıştır; yoksa sadece bunu çalıştır.
+--    FROZEN FORENSIC ONLY: direct queue status UPDATE is disabled in-repo.
+--    Use POST /api/cron/providers/recover-processing or row-scoped RPCs; see
+--    OCI_QUEUE_REPAIR_INDEX.md. Historical recipe kept commented for incident copy-paste.
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue
-SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
-WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
-  AND status = 'PROCESSING';
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
+-- WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND status = 'PROCESSING';

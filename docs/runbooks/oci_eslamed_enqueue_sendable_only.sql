@@ -84,20 +84,21 @@ WHERE c.site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
 
 -- -----------------------------------------------------------------------------
 -- 3) FAILED/RETRY'ları QUEUED yap (script yeniden denesin)
+--    FROZEN FORENSIC: UPDATE disabled in-repo — use approved RPC / recover-processing.
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue
-SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
-WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
-  AND status IN ('FAILED', 'RETRY');
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
+-- WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND status IN ('FAILED', 'RETRY');
 
 
 -- -----------------------------------------------------------------------------
 -- 4) PROCESSING'de takılı olanları QUEUED yap (script yeniden alsın)
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue
-SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
-WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
-  AND status = 'PROCESSING';
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
+-- WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND status = 'PROCESSING';
 
 
 -- -----------------------------------------------------------------------------
@@ -126,15 +127,13 @@ SELECT
 
 -- -----------------------------------------------------------------------------
 -- 6) SISTEM TESTI — COMPLETED'leri QUEUED yap, tekrar gönder
---    Google zaten aldıysa duplicate hatası / ignor; almadıysa bu sefer gider.
---    Sprint sonrası akış doğrulama için kullan.
+--    FROZEN FORENSIC: never run uncommented in prod — ledger/RPC only.
 -- -----------------------------------------------------------------------------
--- Sadece bugünkü COMPLETED satırları resetle (test için)
-UPDATE offline_conversion_queue
-SET status = 'QUEUED', claimed_at = NULL, uploaded_at = NULL, updated_at = now()
-WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
-  AND status = 'COMPLETED'
-  AND created_at::date = current_date;
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED', claimed_at = NULL, uploaded_at = NULL, updated_at = now()
+-- WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND status = 'COMPLETED'
+--   AND created_at::date = current_date;
 
 
 -- -----------------------------------------------------------------------------

@@ -141,11 +141,12 @@ WHERE c.site_id IN ('b1264552-c859-40cb-a3fb-0ba057afd070', 'c644fff7-9d7a-440d-
 
 -- -----------------------------------------------------------------------------
 -- 5) PROCESSING'de takılı olanları QUEUED yap (script yeniden çeksin)
+--    FROZEN FORENSIC: UPDATE disabled in-repo.
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue
-SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
-WHERE site_id IN ('b1264552-c859-40cb-a3fb-0ba057afd070', 'c644fff7-9d7a-440d-b9bf-99f3a0f86073')
-  AND status = 'PROCESSING';
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
+-- WHERE site_id IN ('b1264552-c859-40cb-a3fb-0ba057afd070', 'c644fff7-9d7a-440d-b9bf-99f3a0f86073')
+--   AND status = 'PROCESSING';
 
 
 -- -----------------------------------------------------------------------------

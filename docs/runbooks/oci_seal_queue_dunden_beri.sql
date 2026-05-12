@@ -4,7 +4,7 @@
 -- Supabase SQL Editor veya psql'de çalıştır. Başka site için 'SITE_UUID' yerine o site_id yaz.
 -- =============================================================================
 -- OCI_TRUTH_PR-C / LEDGER_WARNING: Prefer approved repair paths; see
--- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. Status UPDATE blocks below are legacy/frozen.
+-- docs/runbooks/OCI_QUEUE_REPAIR_INDEX.md. In-repo queue **status** UPDATEs are commented (forensic only).
 
 -- Sabit: Eslamed site_id (istersen değiştir)
 -- 'b1264552-c859-40cb-a3fb-0ba057afd070'
@@ -87,11 +87,12 @@ ORDER BY c.confirmed_at DESC;
 
 -- -----------------------------------------------------------------------------
 -- 3) PROCESSING'de takılı olanları tekrar QUEUED yap (script tekrar çeksin)
+--    FROZEN FORENSIC: queue status UPDATE disabled in-repo — use repair index paths.
 -- -----------------------------------------------------------------------------
-UPDATE offline_conversion_queue
-SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
-WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
-  AND status = 'PROCESSING';
+-- UPDATE offline_conversion_queue
+-- SET status = 'QUEUED', claimed_at = NULL, updated_at = now()
+-- WHERE site_id = 'b1264552-c859-40cb-a3fb-0ba057afd070'
+--   AND status = 'PROCESSING';
 
 
 -- -----------------------------------------------------------------------------

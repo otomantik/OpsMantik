@@ -179,28 +179,27 @@ FROM bugun_sealed;
 
 -- -----------------------------------------------------------------------------
 -- 8) BUGÜNKÜ MÜHÜRÜN KUYRUK SATIRINI QUEUED YAP (Google'a tekrar gitsin)
---    Başarıyla gitmemiş (COMPLETED değil) satırları QUEUED + retry sıfırla
+--    FROZEN FORENSIC: UPDATE disabled in-repo — use repair index / RPC paths only.
 -- -----------------------------------------------------------------------------
--- not: next_retry_at NOT NULL; hemen claim edilsin diye geçmiş zaman veriyoruz
-UPDATE offline_conversion_queue oq
-SET
-  status         = 'QUEUED',
-  next_retry_at  = now() - interval '1 minute',
-  retry_count    = 0,
-  last_error     = NULL,
-  provider_error_code = NULL,
-  provider_error_category = NULL,
-  claimed_at     = NULL,
-  updated_at     = now()
-FROM calls c
-WHERE oq.site_id = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'
-  AND oq.call_id = c.id
-  AND oq.provider_key = 'google_ads'
-  AND oq.status <> 'COMPLETED'
-  AND c.site_id = oq.site_id
-  AND c.status IN ('confirmed', 'qualified', 'real')
-  AND c.oci_status = 'sealed'
-  AND (c.confirmed_at::date = current_date OR c.matched_at::date = current_date);
+-- UPDATE offline_conversion_queue oq
+-- SET
+--   status         = 'QUEUED',
+--   next_retry_at  = now() - interval '1 minute',
+--   retry_count    = 0,
+--   last_error     = NULL,
+--   provider_error_code = NULL,
+--   provider_error_category = NULL,
+--   claimed_at     = NULL,
+--   updated_at     = now()
+-- FROM calls c
+-- WHERE oq.site_id = 'c644fff7-9d7a-440d-b9bf-99f3a0f86073'
+--   AND oq.call_id = c.id
+--   AND oq.provider_key = 'google_ads'
+--   AND oq.status <> 'COMPLETED'
+--   AND c.site_id = oq.site_id
+--   AND c.status IN ('confirmed', 'qualified', 'real')
+--   AND c.oci_status = 'sealed'
+--   AND (c.confirmed_at::date = current_date OR c.matched_at::date = current_date);
 -- Kaç satır güncellendi görmek için: yukarıdaki UPDATE'ten sonra "ROW_COUNT" veya
 -- aşağıdaki SELECT ile kontrol et (güncellemeden önce çalıştır = etkilenecek satırlar)
 -- SELECT oq.id, oq.call_id, oq.status FROM offline_conversion_queue oq

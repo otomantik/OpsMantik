@@ -53,6 +53,8 @@ const CRITICAL_MIGRATIONS = [
   '20261226024000_restrict_recover_stuck_offline_conversion_jobs_grants.sql',
   '20261226030000_restore_cron_lease_lock_backend.sql',
   '20261228120000_pr9i_export_run_summary_universal_stats.sql',
+  '20261229120000_append_script_transition_batch_processing_source_guard.sql',
+  '20261229120500_pr9k_provider_evidence_strong_followup_v1.sql',
 ];
 const CRITICAL_MIGRATION_EQUIVALENTS = {
   '20261226030000_restore_cron_lease_lock_backend.sql': {
@@ -69,8 +71,23 @@ const EXTRA_DB_SQL_PACKS = [
 ];
 
 const MODE_COMMANDS = {
-  static: ['node scripts/release/verify-health-pack-contracts.mjs', 'npm run test:tenant-boundary', 'npm run test:oci-kernel'],
-  local: ['node scripts/release/verify-health-pack-contracts.mjs', 'npm run test:tenant-boundary', 'npm run test:oci-kernel'],
+  // Parity with package.json `test:release-gates` (+ health pack): do not drift PR evidence from predeploy.
+  static: [
+    'node scripts/release/verify-health-pack-contracts.mjs',
+    'npm run test:tenant-boundary',
+    'npm run test:oci-kernel',
+    'npm run test:runtime-budget',
+    'npm run test:chaos-core',
+    'npm run smoke:oci-rollout-readiness:strict',
+  ],
+  local: [
+    'node scripts/release/verify-health-pack-contracts.mjs',
+    'npm run test:tenant-boundary',
+    'npm run test:oci-kernel',
+    'npm run test:runtime-budget',
+    'npm run test:chaos-core',
+    'npm run smoke:oci-rollout-readiness:strict',
+  ],
   staging: [
     'node scripts/release/verify-health-pack-contracts.mjs',
     'node scripts/ci/verify-db.mjs',

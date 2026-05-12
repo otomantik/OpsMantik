@@ -23,6 +23,7 @@ Use this when shipping OCI / Google Ads Script / ACK changes (no production `APP
 - [ ] Post-deploy queue stats snapshot (counts by `offline_conversion_queue.status` for affected `site_id`) attached to the ticket.
 - [ ] No ad-hoc `UPDATE offline_conversion_queue` status SQL in ops notes — ledger / RPC / recover-processing only.
 - [ ] Optional strict evidence: `npm run release:evidence:production:strict` only in an approved, read-only evidence environment (see `docs/runbooks/OCI_HARDENING_OPERATIONS.md`).
+- [ ] Full ticket paste list: [`docs/OPS/PRODUCTION_OCI_CHANGE_EVIDENCE_PACK.md`](./PRODUCTION_OCI_CHANGE_EVIDENCE_PACK.md) (commands + artefact table).
 
 ## OCI hardening — PR-9J.CI-AUDIT-P1 (lifecycle fail-closed)
 

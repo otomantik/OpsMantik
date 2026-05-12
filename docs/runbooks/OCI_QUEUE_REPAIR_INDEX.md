@@ -10,4 +10,4 @@
 
 ## Legacy SQL under `docs/runbooks/oci_*.sql`
 
-Files may retain historical `UPDATE` examples for forensics; each file header should state **ledger-only preferred** and link here. Prefer cron + RPC repair paths above.
+These files are **read-only forensic** helpers (mostly `SELECT`). Any historical **`UPDATE offline_conversion_queue`** recipe must stay **fully commented** in git so operators cannot accidentally paste-live a ledger bypass. Prefer cron + RPC repair paths above. For incident response, copy from comments only under explicit change control — see [`OCI_HARDENING_OPERATIONS.md`](./OCI_HARDENING_OPERATIONS.md).
