@@ -31,6 +31,31 @@ test('migrations: ACK + finalize_outbox RPCs are service_role-gated and locked d
     'hardening must revoke complete_ack_receipt_v1 from PUBLIC'
   );
 
+  const pr9k = readFileSync(
+    join(MIGRATIONS, '20261228141500_pr9k_operator_requeue_unconfirmed_google_script_completed.sql'),
+    'utf8'
+  );
+  for (const name of [
+    'pr9k_unconfirmed_script_completed_candidates_v1',
+    'requeue_unconfirmed_script_completed_rows_v1',
+  ] as const) {
+    assert.ok(pr9k.includes(`FUNCTION public.${name}`), `PR-9K migration must define ${name}`);
+    const idx = pr9k.indexOf(`FUNCTION public.${name}`);
+    const slice = pr9k.slice(idx, idx + 900);
+    assert.ok(
+      slice.includes("auth.role() IS DISTINCT FROM 'service_role'"),
+      `${name} must include service_role guard`
+    );
+  }
+  assert.ok(
+    pr9k.includes('CREATE TABLE IF NOT EXISTS public.oci_operator_requeue_audit'),
+    'PR-9K migration must create oci_operator_requeue_audit'
+  );
+  assert.ok(
+    pr9k.includes("current_setting('opsmantik.pr9k_operator_requeue', true) = 'on'"),
+    'PR-9K migration must gate COMPLETED/UPLOADED -> RETRY via session setting'
+  );
+
   const completeSiteScoped = readFileSync(
     join(MIGRATIONS, '20261228141000_complete_ack_receipt_site_scope_v1.sql'),
     'utf8'

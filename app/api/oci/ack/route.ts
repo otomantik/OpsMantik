@@ -9,6 +9,7 @@
  * - Legacy: { siteId: string, queueIds: string[], skippedIds?: string[], pendingConfirmation?: boolean }
  * - Granular: { siteId: string, results: [{ id: string, status: 'SUCCESS'|'FAILED', reason?: string }], pendingConfirmation?: boolean }
  * - pendingConfirmation=true: AdsApp bulk upload is asynchronous; mark seal_* as UPLOADED (not COMPLETED).
+ * - providerConfirmationMode=bulk_upload_async_unconfirmed: same as pendingConfirmation=true (Google Ads Script lane).
  *   Row-level errors cannot be fetched via Scripts — check Google Ads UI > Tools > Uploads.
  * - pendingConfirmation=false or omitted: Mark as COMPLETED (API path or explicit confirmation).
  * skippedIds: DETERMINISTIC_SKIP (V1 sampled out). seal_* → COMPLETED + provider_error_code=V1_SAMPLED_OUT.
@@ -37,6 +38,7 @@ import {
   parseAckJsonEnvelope,
   promoteSingleGranularResult,
   verifyTransitionCount,
+  resolveScriptAckPendingConfirmation,
 } from '@/lib/oci/oci-ack-route-helpers';
 import { getDbNowIso } from '@/lib/time/db-now';
 import { evaluateOciAckSignaturePolicy } from '@/lib/security/oci-ack-signature-policy';
@@ -130,7 +132,9 @@ export async function POST(req: NextRequest) {
     const skippedIds = sortDeterministicIds(
       rawSkipped.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
     );
-    const pendingConfirmation = body.pendingConfirmation === true;
+    const pendingConfirmation = resolveScriptAckPendingConfirmation(body);
+    const providerConfirmationMode =
+      typeof body.providerConfirmationMode === 'string' ? body.providerConfirmationMode : null;
 
     if (queueIds.length === 0 && skippedIds.length === 0 && granularResults.length === 0) {
       return NextResponse.json({ ok: true, updated: 0 });
@@ -184,6 +188,7 @@ export async function POST(req: NextRequest) {
       skippedIds,
       results: granularResults,
       pendingConfirmation,
+      providerConfirmationMode,
     });
     const receipt = await registerAckReceipt({
       siteId: siteUuid,
@@ -194,6 +199,7 @@ export async function POST(req: NextRequest) {
         queueIds,
         skippedIds,
         pendingConfirmation,
+        providerConfirmationMode,
         results: granularResults,
         exportRunId,
       },

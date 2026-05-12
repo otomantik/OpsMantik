@@ -897,6 +897,9 @@ KocOtoClient.prototype.sendAck = function (siteId, queueIds, skippedIds, failedR
     payload.exportRunId = exportRunId;
     payload.export_run_id = exportRunId;
   }
+  /** PR-9K: AdsApp bulk upload is async — ACK is dispatch-pending, not provider-confirmed COMPLETED. */
+  payload.pendingConfirmation = true;
+  payload.providerConfirmationMode = 'bulk_upload_async_unconfirmed';
   if (s.length > 0) payload.skippedIds = s;
   if (f.length > 0) {
     payload.results = []
@@ -1427,6 +1430,9 @@ function mainSyncKocOto() {
       missing_click_id_count: 0,
       invalid_time_count: 0,
       other_validation_failed_count: 0,
+      upload_apply_invoked_count: 0,
+      dispatch_pending_ack_count: 0,
+      provider_confirmed_count: 0,
     };
 
     /** PR-9H.7B: hashed-phone CSV canary — tek export sayfası; aksi halde MAX_SYNC_PAGES sigortası. */
@@ -1509,6 +1515,9 @@ function mainSyncKocOto() {
           summaryStats.classified_failed_count += stats.classified_failed_count;
           summaryStats.upload_attempted_count += stats.classified_uploadable_count;
           summaryStats.upload_success_count += stats.uploaded;
+          if (stats.uploaded > 0 && !stats.uploadFailed) {
+            summaryStats.upload_apply_invoked_count += 1;
+          }
           summaryStats.selected_gclid_count += stats.selected_gclid_count || 0;
           summaryStats.selected_wbraid_count += stats.selected_wbraid_count || 0;
           summaryStats.selected_gbraid_count += stats.selected_gbraid_count || 0;
@@ -1528,10 +1537,17 @@ function mainSyncKocOto() {
               exportRunId
             );
             if (ackRes && typeof ackRes.updated === 'number') totalAck += ackRes.updated;
-            
+
             summaryStats.ack_success_count += stats.successIds.length;
             summaryStats.ack_skipped_count += stats.skippedIds.length;
             summaryStats.ack_failed_count += stats.failedRows.length;
+            summaryStats.dispatch_pending_ack_count +=
+              (stats.successIds || []).length + (stats.skippedIds || []).length;
+            Telemetry.info('GOOGLE_BULK_UPLOAD_PROVIDER_CONFIRMATION_PENDING', {
+              page: pageNo,
+              dispatch_pending_ack_rows: (stats.successIds || []).length + (stats.skippedIds || []).length,
+              note: 'upload.apply succeeded; OpsMantik ACK is UPLOADED/pending — not Google import confirmation.',
+            });
           }
 
           totalUploaded += stats.uploaded;
@@ -1620,6 +1636,9 @@ function mainSyncKocOto() {
         missing_click_id_count: summaryStats.missing_click_id_count,
         invalid_time_count: summaryStats.invalid_time_count,
         other_validation_failed_count: summaryStats.other_validation_failed_count,
+        upload_apply_invoked_count: summaryStats.upload_apply_invoked_count,
+        dispatch_pending_ack_count: summaryStats.dispatch_pending_ack_count,
+        provider_confirmed_count: summaryStats.provider_confirmed_count,
       };
       Telemetry.info('Run summary counters', {
         export_run_id: exportRunId,

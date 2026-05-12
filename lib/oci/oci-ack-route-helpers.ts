@@ -15,6 +15,15 @@ export function safeOciErrorString(value: unknown, maxLen = MAX_SAFE_ERROR_STRIN
   }
 }
 
+/**
+ * Google Ads Script `AdsApp.bulkUploads()` + `upload.apply()` is provider-async: ACK must not imply Google accepted the conversion.
+ * `pendingConfirmation=true` or `providerConfirmationMode=bulk_upload_async_unconfirmed` → seal_* finalize as UPLOADED.
+ */
+export function resolveScriptAckPendingConfirmation(body: Record<string, unknown>): boolean {
+  if (body.pendingConfirmation === true) return true;
+  return body.providerConfirmationMode === 'bulk_upload_async_unconfirmed';
+}
+
 export function parseAckJsonEnvelope(rawBody: unknown): { ok: true; body: Record<string, unknown> } | { ok: false } {
   if (Array.isArray(rawBody)) {
     const results = normalizeGranularResultArray(rawBody);

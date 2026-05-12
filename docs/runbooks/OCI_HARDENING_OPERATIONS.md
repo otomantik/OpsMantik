@@ -56,6 +56,16 @@ If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, r
 - **Script vs Google ingestion**: Apps Script ACK means **dispatch / script-side success** for the batch the script believes it uploaded — not a guarantee of final Google Ads ingestion (bulk upload can still be reviewed in the Google UI; see `pendingConfirmation` semantics).
 - **Safety net**: Stuck **`PROCESSING`** recovery (`recover_stuck_offline_conversion_jobs`, classifier flags) remains the escape hatch when ACK never arrives; **PR-9C invalid-status policy is unchanged**.
 
+### PR-9K — Google Ads Script bulk upload: dispatch ≠ provider confirmed
+
+- **Incident class**: `AdsApp.bulkUploads()` + `upload.apply()` can succeed while Google’s offline conversion import is still **asynchronous / unconfirmed**. **`COMPLETED`** must mean **provider-accepted** (or an explicitly documented terminal), not “CSV applied in-script”.
+- **ACK semantics**: `POST /api/oci/ack` treats **`pendingConfirmation: true`** or **`providerConfirmationMode: bulk_upload_async_unconfirmed`** as **dispatch-pending** → seal rows finalize to **`UPLOADED`**, not **`COMPLETED`**. Koç script (`GoogleAdsScriptKocOtoKurtarma.js`) sends both flags after a successful `upload.apply()`.
+- **Operator remediation (ledger-only)**: do **not** hand-`UPDATE` `offline_conversion_queue`. Use:
+  - **Read-only selector**: `scripts/db/pr9k-select-unconfirmed-script-completed-rows.mjs` (dry-run by default; `OUTPUT_JSON=1`).
+  - **Requeue**: `scripts/db/pr9k-requeue-unconfirmed-script-completed-rows.mjs` — dry-run calls `requeue_unconfirmed_script_completed_rows_v1` with `p_apply=false`; apply requires **`APPLY=1`** and **`PR9K_REQUEUE_APPROVAL=I_APPROVE_REQUEUE_UNCONFIRMED_GOOGLE_SCRIPT_COMPLETED_ROWS`** plus **`PR9K_INCIDENT_KEY`**. DB objects: migration **`20261228141500_pr9k_operator_requeue_unconfirmed_google_script_completed.sql`** (`oci_operator_requeue_audit`, FSM session gate **`opsmantik.pr9k_operator_requeue`**, RPCs **`pr9k_unconfirmed_script_completed_candidates_v1`** / **`requeue_unconfirmed_script_completed_rows_v1`**).
+- **Post-apply verification**: confirm affected rows are **`RETRY`** / pickable by export; confirm **`oci_operator_requeue_audit`** rows for the incident key; re-run selector with the same window — should return **`PR9K_NO_REQUEUE_CANDIDATES`** for those ids.
+- **Rollback / containment**: pause the Ads schedule; narrow script drain (no broad allowlists); keep **`pendingConfirmation`** path enabled so new runs do not premature-`COMPLETED`.
+
 ### PR-9J.CI-AUDIT-P1 — Lifecycle fail-closed closure (code)
 
 - **Junk / reversal invalidation** ([`lib/oci/invalidate-pending-artifacts.ts`](../../lib/oci/invalidate-pending-artifacts.ts)): the same `site_id` + `call_id` scope now includes rows in **`BLOCKED_PRECEDING_SIGNALS`**. They are terminalized to **`FAILED`** via **`append_worker_transition_batch_v2`** with deterministic payload (`CALL_NOT_SENDABLE_FOR_OCI`, `DETERMINISTIC_SKIP`) and **`block_reason` / `blocked_at`** cleared in the ledger snapshot path. This removes a lifecycle leak where blocked rows could survive a call-level junk reversal.

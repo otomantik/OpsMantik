@@ -26,6 +26,7 @@ export function buildAckPayloadHash(input: {
   results?: Array<{ id: string; status: 'SUCCESS' | 'FAILED'; reason?: string | null }>;
   fatalErrorIds?: string[];
   pendingConfirmation?: boolean;
+  providerConfirmationMode?: string | null;
   errorCode?: string;
   errorMessage?: string;
   errorCategory?: string;
@@ -46,6 +47,7 @@ export function buildAckPayloadHash(input: {
       }),
     fatalErrorIds: [...(input.fatalErrorIds ?? [])].sort(),
     pendingConfirmation: input.pendingConfirmation === true,
+    providerConfirmationMode: input.providerConfirmationMode ?? null,
     errorCode: input.errorCode ?? null,
     errorMessage: input.errorMessage ?? null,
     errorCategory: input.errorCategory ?? null,

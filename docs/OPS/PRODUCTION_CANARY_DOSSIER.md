@@ -24,6 +24,12 @@
 - **Fix class:** **Rollout gate taxonomy alignment** — pipeline-classified **`RETRY`** rows (`provider_error_category` ∈ **`TRANSIENT` / `RATE_LIMIT` / `AUTH`**) are excluded from the **retry-rate gate** numerator (same semantic family as provider-slice FAILED classification), plus JSON **`strict.triage`** for operators and narrow **`OCI_ROLLOUT_GATE_*`** codes in **`collect-gate-evidence.mjs`**.
 - **Strict smoke / evidence outcome:** **`TARGET_DB_EVIDENCE_STRICT=1 npm run release:evidence:production`** is expected **PASS** when the target DB packs are green **and** fleet rollout gates pass; if a site still fails on **non-exempt RETRY**, **stuck processing**, **DLQ**, **won leak**, or **unknown FAILED**, the gate remains **red** with an explicit **`OCI_ROLLOUT_GATE_*`** reason — **no false green**.
 
+## OCI hardening — PR-9K (Script bulk-upload dispatch vs COMPLETED)
+
+- **Truth**: `upload.apply()` success is **not** proof Google imported conversions. Premature **`COMPLETED`** on `offline_conversion_queue` is a **classification bug** if the script used a provider-confirmed ACK shape.
+- **Fix**: Script lane ACK is **dispatch-pending** (`UPLOADED` / pending semantics) via `pendingConfirmation` + `providerConfirmationMode=bulk_upload_async_unconfirmed` on `POST /api/oci/ack` (Koç script updated).
+- **Remediation**: Operator requeue is **RPC + ledger + `oci_operator_requeue_audit`** only — see **`docs/runbooks/OCI_HARDENING_OPERATIONS.md`** PR-9K and `scripts/db/pr9k-*-unconfirmed-script-completed-rows.mjs`.
+
 ## Final Preview Result (Read-Only)
 
 - markAsExported: `false`
