@@ -35,13 +35,22 @@ test('PR-3A: Active docs do not claim export run integrity is already fully gree
   assert.ok(content.includes('NOT_SUPPORTED_YET') || content.includes('UNVERIFIED'), 'Current state must be honest');
 });
 
-test('PR-3A: export-fetch remains queue-only and QUEUED/RETRY only', () => {
+test('PR-3A: export-fetch remains queue-only (JIT RPC) and QUEUED/RETRY only', () => {
   const fetchPath = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts');
   const fetchSrc = readFileSync(fetchPath, 'utf8');
-  
-  assert.match(fetchSrc, /\.from\('offline_conversion_queue'\)/, 'Must query queue journal');
+
+  assert.match(fetchSrc, /fetch_oci_google_ads_export_jit_v1/, 'Must call JIT queue journal RPC');
   assert.ok(!fetchSrc.includes(".from('marketing_signals')"), 'Must not query marketing_signals');
-  assert.match(fetchSrc, /\.in\('status', \['QUEUED', 'RETRY'\]\)/, 'Must restrict to exportable statuses');
+  assert.doesNotMatch(fetchSrc, /\.from\('offline_conversion_queue'\)/, 'Must not use PostgREST queue reads');
+  const jit = readFileSync(
+    join(ROOT, 'supabase', 'migrations', '20261229130000_fetch_oci_google_ads_export_jit_v1.sql'),
+    'utf8'
+  );
+  assert.match(
+    jit,
+    /q\.status\s*=\s*ANY\s*\(\s*ARRAY\['QUEUED'::text,\s*'RETRY'::text\]\s*\)/i,
+    'JIT SQL must restrict to exportable statuses'
+  );
 });
 
 test('PR-3A: export-mark-processing contains QUEUE_CLAIM_MISMATCH anchor', () => {

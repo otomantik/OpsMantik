@@ -123,7 +123,7 @@ test('oci workers re-check current call sendability before exporting or draining
   const exportSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts'), 'utf8');
   const outboxSrc = readFileSync(PROCESS_OUTBOX_LIB, 'utf8');
   assert.ok(fetchSrc.includes('status, oci_status'), 'sendability helper must probe oci_status (with drift fallback)');
-  assert.ok(exportSrc.includes('fetchExportCallContextRows'), 'queue export must use shared sendability fetch');
+  assert.ok(exportSrc.includes('buildJitMapsFromRows'), 'queue export must derive call/session context from atomic JIT rows');
   assert.ok(!exportSrc.includes('blockedSignalIds'), 'journal-only export must not expose legacy signal buckets');
   const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(

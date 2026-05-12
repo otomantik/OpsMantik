@@ -56,7 +56,8 @@ test('PR-9H.4A: wrapper requires hardened metadata env vars', () => {
   assert.match(src, /readRequiredEnv\('OPERATOR_ID'\)/);
   assert.match(src, /readRequiredEnv\('CANARY_APPROVAL'\)/);
   assert.match(src, /readRequiredEnv\('CANARY_EXPECTED_QUEUE_ID'\)/);
-  assert.match(src, /readRequiredEnv\('CANARY_API_KEY'\)/);
+  assert.match(src, /function readCanaryApiKey/);
+  assert.match(src, /CANARY_API_KEY/);
   assert.match(src, /CANARY_MAX_BATCH_SIZE_MUST_BE_1/);
 });
 

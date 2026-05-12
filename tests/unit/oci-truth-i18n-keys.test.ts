@@ -24,7 +24,7 @@ function extractEnSingleQuoted(src: string, key: string): string | null {
 
 function extractTrStatusTruthBlock(src: string, key: string): string {
   const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`"${esc}"\\s*:\\s*\\n\\s*"([^"]+)"`, 'm');
+  const re = new RegExp(`"${esc}"\\s*:\\s*(?:\\r?\\n\\s*)?"([^"]*)"`, 'm');
   const m = src.match(re);
   return m ? m[1] : '';
 }

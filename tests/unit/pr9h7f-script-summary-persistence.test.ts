@@ -68,6 +68,16 @@ test('PR-9H.7F: reconciled when equations hold and fetched present', () => {
     ack_success_count: 3,
     ack_failed_count: 2,
     ack_skipped_count: 3,
+    /** PR-9I counters: normalize always materializes these; must satisfy Eq E–H when present as numbers. */
+    selected_gclid_count: 8,
+    selected_wbraid_count: 0,
+    selected_gbraid_count: 0,
+    multiple_click_ids_count: 0,
+    hashed_phone_attached_count: 0,
+    hashed_phone_only_rejected_count: 1,
+    missing_click_id_count: 0,
+    invalid_time_count: 0,
+    other_validation_failed_count: 0,
   });
   const eq = evaluatePersistEquations(s);
   assert.strictEqual(eq.mismatch_reasons.length, 0);

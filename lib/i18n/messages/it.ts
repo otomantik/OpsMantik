@@ -114,7 +114,7 @@ export const it = {
   "ociControl.statusTruth.UPLOADED":
     "Invio riuscito lato piattaforma (es. script upload.apply / batch consegnato). Non prova che Google Ads abbia completato l'importazione della conversione — se serve, controlla lo stato del caricamento in blocco in Google.",
   "ociControl.statusTruth.COMPLETED":
-    "Pipeline chiusa dopo ACK secondo il contratto export/claim. Da solo non significa che Google Ads abbia accettato definitivamente la conversione nel backend — valuta separatamente la prova lato provider.",
+    "Pipeline chiusa dopo ACK secondo il contratto export/claim. Da solo non implica una conferma definitiva da Google Ads sulla conversione nel backend — valuta separatamente la prova lato provider.",
   "ociControl.statusTruth.COMPLETED_UNVERIFIED":
     "Chiusura tramite policy automatica (es. sweep di UPLOADED di lunga durata) senza verifica completa lato provider. Terminale distinto da un percorso COMPLETED con attestazione provider.",
   "ociControl.statusTruthHintLabel": "Cosa significa questo stato",

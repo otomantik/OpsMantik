@@ -69,9 +69,15 @@ test('promote-blocked-queue passes clear_fields for blocked metadata', () => {
 
 test('export claim path never selects BLOCKED_PRECEDING_SIGNALS rows', () => {
   const exportFetch = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  assert.ok(
-    exportFetch.includes(".in('status', ['QUEUED', 'RETRY'])"),
-    'export fetch must never include BLOCKED_PRECEDING_SIGNALS rows'
+  assert.ok(exportFetch.includes('fetch_oci_google_ads_export_jit_v1'), 'export fetch must use JIT RPC');
+  const jit = readFileSync(
+    join(ROOT, 'supabase', 'migrations', '20261229130000_fetch_oci_google_ads_export_jit_v1.sql'),
+    'utf8'
+  );
+  assert.match(
+    jit,
+    /q\.status\s*=\s*ANY\s*\(\s*ARRAY\['QUEUED'::text,\s*'RETRY'::text\]\s*\)/i,
+    'JIT export slice must never include BLOCKED_PRECEDING_SIGNALS rows'
   );
   const claimSrc = readFileSync(
     join(ROOT, 'supabase', 'migrations', '20261223020200_oci_queue_transitions_ledger_and_claim_rpcs.sql'),

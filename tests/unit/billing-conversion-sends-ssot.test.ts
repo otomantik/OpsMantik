@@ -13,8 +13,11 @@ test('PR-F: conversion_sends SSOT doc exists and types module references the con
     'billing SSOT doc must name conversion_sends and SSOT'
   );
   assert.ok(
-    doc.includes('export-mark-processing') && doc.includes('incrementConversionSendsForExportClaim'),
-    'SSOT must document the single OCI export billing hook'
+    doc.includes('export-mark-processing') &&
+      doc.includes('incrementConversionSendsForExportClaim') &&
+      doc.includes('increment_oci_conversion_sends_v1') &&
+      doc.includes('oci_conversion_send_billing_ledger'),
+    'SSOT must document the OCI export billing hook, ledger, and RPC'
   );
   assert.ok(
     doc.includes('provider') || doc.includes('Google'),
@@ -34,13 +37,15 @@ test('PR-F: OCI export mark-processing wires conversion_sends increment before c
   const incIdx = src.indexOf('incrementConversionSendsForExportClaim');
   const claimIdx = src.indexOf('append_script_claim_transition_batch');
   assert.ok(incIdx >= 0 && claimIdx >= 0 && incIdx < claimIdx, 'increment must run before append_script_claim_transition_batch');
+  assert.ok(
+    /incrementConversionSendsForExportClaim\s*\(\s*ctx\.siteUuid\s*,\s*idsToMarkProcessing\s*\)/.test(src),
+    'increment must receive the same queue id batch as claim'
+  );
 });
 
-test('PR-F: increment_usage_checked supports conversion_sends kind in schema contract', () => {
-  const schema = readFileSync(join(process.cwd(), 'schema_utf8.sql'), 'utf8');
-  const idx = schema.indexOf('CREATE OR REPLACE FUNCTION "public"."increment_usage_checked"');
-  assert.ok(idx >= 0);
-  const slice = schema.slice(idx, idx + 1200);
-  assert.ok(slice.includes("'conversion_sends'"), 'increment_usage_checked must allow conversion_sends kind');
-  assert.ok(slice.includes('conversion_sends_count'), 'increment must touch conversion_sends_count column');
+test('PR-F: OCI billing helper calls increment_oci_conversion_sends_v1 (not Node-side counter math)', () => {
+  const src = readFileSync(join(process.cwd(), 'lib', 'billing', 'increment-conversion-sends-export.ts'), 'utf8');
+  assert.ok(src.includes("'increment_oci_conversion_sends_v1'"), 'must use idempotent ledger RPC');
+  assert.ok(src.includes('ociConversionSendBillingQueueIdsSchema'), 'must validate queue ids with Zod');
+  assert.ok(!src.includes("'increment_usage_checked'"), 'OCI export must not use increment_usage_checked');
 });

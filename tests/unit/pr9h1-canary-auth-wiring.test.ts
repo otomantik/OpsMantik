@@ -22,9 +22,11 @@ test('PR-9H.2: wrong x-api-key path is rejected with 401 invalid API key', () =>
   assert.match(src, /throw new ExportHttpError\(401/);
 });
 
-test('PR-9H.1: wrapper requires CANARY_API_KEY and blocks before request when missing', () => {
+test('PR-9H.1: wrapper requires CANARY_API_KEY (or OCI_API_KEY) and blocks before request when missing', () => {
   const src = readFileSync(wrapperPath, 'utf8');
-  assert.match(src, /readRequiredEnv\('CANARY_API_KEY'\)/);
+  assert.match(src, /function readCanaryApiKey/);
+  assert.match(src, /CANARY_API_KEY/);
+  assert.match(src, /OCI_API_KEY/);
   assert.match(src, /MISSING_REQUIRED_ENV/);
 });
 

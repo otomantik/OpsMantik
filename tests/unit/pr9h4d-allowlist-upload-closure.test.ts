@@ -43,7 +43,8 @@ test('PR-9H.4F.1: export route emits allowlist_contract preview diagnostics + no
 test('PR-9H.4D: export fetch is server-side filtered by allowlist in canary mode', () => {
   const src = readFileSync(exportFetchPath, 'utf8');
   assert.match(src, /ctx\.canaryMode && ctx\.canaryAllowlistIds\.length > 0/);
-  assert.match(src, /\.in\('id', ctx\.canaryAllowlistIds\)/);
+  assert.match(src, /p_canary_queue_ids/);
+  assert.match(src, /canaryAllowlistIds/);
 });
 
 test('PR-9H.4D: claim path enforces allowlist/expected id parity', () => {

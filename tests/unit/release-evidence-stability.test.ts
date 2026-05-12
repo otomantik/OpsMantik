@@ -7,6 +7,20 @@ import { normalizeEvidenceArtifact } from '../../scripts/release/evidence-contra
 
 const ROOT = process.cwd();
 
+/** Clear every URL key read by `scripts/release/resolve-target-db-url.mjs` so strict DB tests do not inherit `.env.local`. */
+function envWithoutTargetDbUrls(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...base,
+    SUPABASE_DB_POOLER_URL: '',
+    DATABASE_POOLER_URL: '',
+    SUPABASE_POOLER_URL: '',
+    SUPABASE_TRANSACTION_POOLER_URL: '',
+    SUPABASE_DATABASE_URL: '',
+    SUPABASE_DB_URL: '',
+    DATABASE_URL: '',
+  };
+}
+
 test('queue_health SQL pack contract lists PR-1C taxonomy columns', () => {
   const src = readFileSync(join(ROOT, 'scripts/release/evidence-contracts.mjs'), 'utf8');
   for (const col of [
@@ -255,13 +269,11 @@ test('strict target DB mode fails closed when DB env missing', () => {
       shell: true,
       encoding: 'utf8',
       env: {
-        ...process.env,
+        ...envWithoutTargetDbUrls(process.env),
         EVIDENCE_TEST_FAST: '1',
         TARGET_DB_EVIDENCE_STRICT: '1',
         NEXT_PUBLIC_SUPABASE_URL: '',
         SUPABASE_SERVICE_ROLE_KEY: '',
-        DATABASE_URL: '',
-        SUPABASE_DB_URL: '',
       },
     }
   );
@@ -281,7 +293,7 @@ test('strict target DB mode rejects placeholder URL and writes fresh artifacts',
       shell: true,
       encoding: 'utf8',
       env: {
-        ...process.env,
+        ...envWithoutTargetDbUrls(process.env),
         EVIDENCE_TEST_FAST: '1',
         TARGET_DB_EVIDENCE_STRICT: '1',
         SUPABASE_DB_URL: '<STAGING_SUPABASE_DB_URL>',
@@ -309,7 +321,7 @@ test('strict target DB mode rejects malformed URL and writes fresh artifacts', (
       shell: true,
       encoding: 'utf8',
       env: {
-        ...process.env,
+        ...envWithoutTargetDbUrls(process.env),
         EVIDENCE_TEST_FAST: '1',
         TARGET_DB_EVIDENCE_STRICT: '1',
         SUPABASE_DB_URL: 'not-a-url',
@@ -332,7 +344,7 @@ test('staging mode updates mode-specific and latest artifact aliases together', 
       shell: true,
       encoding: 'utf8',
       env: {
-        ...process.env,
+        ...envWithoutTargetDbUrls(process.env),
         EVIDENCE_TEST_FAST: '1',
         TARGET_DB_EVIDENCE_STRICT: '1',
         SUPABASE_DB_URL: 'not-a-url',
@@ -365,7 +377,7 @@ test('production mode updates production artifact and latest alias together', ()
       shell: true,
       encoding: 'utf8',
       env: {
-        ...process.env,
+        ...envWithoutTargetDbUrls(process.env),
         EVIDENCE_TEST_FAST: '1',
         RELEASE_EVIDENCE_MODE: 'production',
         TARGET_DB_EVIDENCE_STRICT: '1',
@@ -392,7 +404,7 @@ test('production evidence does not leak DB URL secrets', () => {
       shell: true,
       encoding: 'utf8',
       env: {
-        ...process.env,
+        ...envWithoutTargetDbUrls(process.env),
         EVIDENCE_TEST_FAST: '1',
         TARGET_DB_EVIDENCE_STRICT: '1',
         SUPABASE_DB_URL: 'postgresql://user:supersecret@/postgres',

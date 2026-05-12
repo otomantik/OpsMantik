@@ -54,7 +54,10 @@ test('qualification queue shell keeps premium header and state copy localized', 
 
 test('oci control panel turns summary boxes into useful filters', () => {
   const src = readFileSync(ociControlPath, 'utf8');
-  assert.ok(src.includes('setStatusFilter((current) => current === status ? \'\' : status)'), 'oci summary cards toggle status filtering');
+  assert.ok(
+    src.includes('setStatusFilter((current) =>') && src.includes("current === status ? '' : status"),
+    'oci summary cards toggle status filtering'
+  );
   assert.ok(src.includes("ociControl.status."), 'oci panel localizes operator-facing queue statuses');
   assert.ok(src.includes("ociControl.loadMore"), 'oci panel keeps localized pagination action');
 });

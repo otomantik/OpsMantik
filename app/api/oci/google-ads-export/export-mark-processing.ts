@@ -58,7 +58,7 @@ export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltE
   }
 
   if (idsToMarkProcessing.length > 0) {
-    const inc = await incrementConversionSendsForExportClaim(ctx.siteUuid);
+    const inc = await incrementConversionSendsForExportClaim(ctx.siteUuid, idsToMarkProcessing);
     if (!inc.ok) {
       if (inc.reason === 'LIMIT') throw new Error('CONVERSION_SENDS_LIMIT');
       throw new Error('CONVERSION_SENDS_INCREMENT_FAILED');

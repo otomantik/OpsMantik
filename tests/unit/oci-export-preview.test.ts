@@ -62,7 +62,10 @@ test('google-ads-export: fetch has no marketing_signals batch', () => {
   const fetchPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts');
   const fetchSrc = readFileSync(fetchPath, 'utf8');
   assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'export fetch must not query marketing_signals');
-  assert.ok(fetchSrc.includes('offline_conversion_queue'), 'export fetch reads journal only');
+  assert.ok(
+    fetchSrc.includes('fetch_oci_google_ads_export_jit_v1') && fetchSrc.includes('parseJitExportRpcRowsStrict'),
+    'export fetch reads journal via JIT RPC + Zod'
+  );
 });
 
 test('google-ads-export: cursor is journal-only (q stream)', () => {
@@ -70,7 +73,15 @@ test('google-ads-export: cursor is journal-only (q stream)', () => {
   const buildPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-build-items.ts');
   const fetchSrc = readFileSync(fetchPath, 'utf8');
   const buildSrc = readFileSync(buildPath, 'utf8');
-  assert.ok(buildSrc.includes('decoded?.q') || buildSrc.includes('"q":') || buildSrc.includes("'q':") || buildSrc.includes('JSON.stringify({'), 'next cursor encodes queue position');
+  assert.ok(
+    fetchSrc.includes('decoded?.q') ||
+      buildSrc.includes('decoded?.q') ||
+      buildSrc.includes('"q":') ||
+      buildSrc.includes("'q':") ||
+      buildSrc.includes('JSON.stringify({') ||
+      buildSrc.includes('q: { t:'),
+    'next cursor encodes queue position'
+  );
   assert.ok(!fetchSrc.includes('signalCursor') && !fetchSrc.includes('signalCursorUpdatedAt'), 'auth must not track signal pagination');
   assert.ok(!buildSrc.includes('lastSig'), 'build-items must not encode legacy signal cursor');
 });

@@ -27,11 +27,12 @@ describe('PR-2A: Intent-to-Queue Enqueue Contract', () => {
     assert.doesNotMatch(content, /marketing_signals is an upload authority/i);
   });
 
-  it('export-fetch reads offline_conversion_queue only', () => {
+  it('export-fetch delegates journal read to JIT RPC + Zod (no direct PostgREST queue reads)', () => {
     assert.ok(existsSync(exportFetchPath), 'export-fetch.ts should exist');
     const content = readFileSync(exportFetchPath, 'utf8');
-    assert.match(content, /from\('offline_conversion_queue'\)/);
-    // Ensure it doesn't query marketing_signals, though it may mention it in comments
+    assert.match(content, /fetch_oci_google_ads_export_jit_v1/);
+    assert.match(content, /parseJitExportRpcRowsStrict/);
+    assert.doesNotMatch(content, /\.from\('offline_conversion_queue'\)/);
     assert.doesNotMatch(content, /\.from\('marketing_signals'\)/);
   });
 

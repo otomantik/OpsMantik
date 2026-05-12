@@ -27,7 +27,10 @@ test('enqueue journal rows stamp deterministic economics path', () => {
 test('export-fetch is journal-only (no marketing_signals upload surface)', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
   assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'export must not query marketing_signals');
-  assert.ok(fetchSrc.includes('offline_conversion_queue'), 'export reads only journal');
+  assert.ok(
+    fetchSrc.includes('fetch_oci_google_ads_export_jit_v1') && fetchSrc.includes('parseJitExportRpcRowsStrict'),
+    'export reads journal via JIT RPC + Zod (no marketing_signals surface)'
+  );
 });
 
 test('export-build-queue derives conversionName from row.action (four OpsMantik names)', () => {
@@ -56,9 +59,13 @@ test('D11: evidence contracts export a pinned version token', () => {
 });
 
 test('D5: export batch uses stable ordering (updated_at, id)', () => {
-  const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  assert.ok(
-    fetchSrc.includes(".order('updated_at'") && fetchSrc.includes(".order('id'"),
-    'journal stream must have deterministic sort + tie-break'
+  const jit = readFileSync(
+    join(ROOT, 'supabase', 'migrations', '20261229130000_fetch_oci_google_ads_export_jit_v1.sql'),
+    'utf8'
+  );
+  assert.match(
+    jit,
+    /ORDER BY\s+q\.updated_at\s+ASC\s*,\s*q\.id\s+ASC/i,
+    'JIT RPC must define deterministic journal ordering'
   );
 });

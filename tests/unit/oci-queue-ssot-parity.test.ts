@@ -22,5 +22,14 @@ test('QUEUE_STATUSES matches offline_conversion_queue CHECK (migration)', () => 
 test('export fetch still restricts queue to QUEUED and RETRY', () => {
   const exportFetch = join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts');
   const src = readFileSync(exportFetch, 'utf8');
-  assert.ok(src.includes(".in('status', ['QUEUED', 'RETRY'])"), 'export fetch must not pull BLOCKED rows');
+  assert.ok(src.includes('fetch_oci_google_ads_export_jit_v1'), 'export fetch must use JIT RPC');
+  const jit = readFileSync(
+    join(ROOT, 'supabase', 'migrations', '20261229130000_fetch_oci_google_ads_export_jit_v1.sql'),
+    'utf8'
+  );
+  assert.match(
+    jit,
+    /q\.status\s*=\s*ANY\s*\(\s*ARRAY\['QUEUED'::text,\s*'RETRY'::text\]\s*\)/i,
+    'JIT SQL must not pull BLOCKED rows'
+  );
 });

@@ -38,10 +38,18 @@ test('PR-2C: idempotency is maintained for structured blocked rows', () => {
   assert.ok(sealSrc.includes("'duplicate'"), 'seal must treat journal duplicate parity as skipped enqueue');
 });
 
-test('PR-2C: export-fetch excludes FAILED + DETERMINISTIC_SKIP rows', () => {
+test('PR-2C: JIT export RPC excludes FAILED + DETERMINISTIC_SKIP (QUEUED|RETRY slice only)', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  // It only selects QUEUED and RETRY, thereby excluding FAILED.
-  assert.ok(fetchSrc.includes(".in('status', ['QUEUED', 'RETRY'])"), 'must only fetch exportable rows');
+  assert.ok(fetchSrc.includes('fetch_oci_google_ads_export_jit_v1'), 'Node must call JIT RPC');
+  const jit = readFileSync(
+    join(ROOT, 'supabase', 'migrations', '20261229130000_fetch_oci_google_ads_export_jit_v1.sql'),
+    'utf8'
+  );
+  assert.match(
+    jit,
+    /q\.status\s*=\s*ANY\s*\(\s*ARRAY\['QUEUED'::text,\s*'RETRY'::text\]\s*\)/i,
+    'SQL must only return exportable queue statuses'
+  );
 });
 
 test('PR-2C: queue_health explicitly excludes DETERMINISTIC_SKIP from actionable_failed_rate', () => {

@@ -36,11 +36,16 @@ export function resolveTargetDbConnectionString(env = process.env) {
     'SUPABASE_DB_URL',
     'DATABASE_URL',
   ];
+  let lastNonEmptyRaw = '';
   for (const k of keys) {
     const v = String(env[k] ?? '').trim();
-    if (v && !isLikelyPlaceholderValue(v)) return v;
+    if (!v) continue;
+    lastNonEmptyRaw = v;
+    if (!isLikelyPlaceholderValue(v)) return v;
   }
-  return '';
+  // Only placeholder(s) configured: return the last non-empty raw value so strict
+  // evidence can classify DB_URL_INVALID instead of DB_ENV_MISSING.
+  return lastNonEmptyRaw;
 }
 
 /** @param {string | undefined} input */

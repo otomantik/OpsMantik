@@ -13,7 +13,10 @@ test('PR-2D: Active docs state offline_conversion_queue is the only runtime Goog
 test('PR-2D: export-fetch does not reference marketing_signals', () => {
   const content = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
   assert.ok(!content.includes("from('marketing_signals')"), 'export-fetch must never query marketing_signals');
-  assert.ok(content.includes('offline_conversion_queue'), 'export-fetch must query the queue journal');
+  assert.ok(
+    content.includes('fetch_oci_google_ads_export_jit_v1') && content.includes('parseJitExportRpcRowsStrict'),
+    'export-fetch must delegate journal read to JIT RPC + strict Zod parse'
+  );
 });
 
 test('PR-2D: release evidence does not label marketing_signals pending as Google upload backlog', () => {
