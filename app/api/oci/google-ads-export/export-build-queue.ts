@@ -3,8 +3,10 @@ import { minorToMajor } from '@/lib/i18n/currency';
 import { buildOrderId } from '@/lib/oci/build-order-id';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
+import { validateExportRow } from '@/lib/oci/export-gate';
 import { validateOciQueueValueCents } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
+import { getConversionActionConfig, parseExportConfig, type ChannelKey } from '@/lib/oci/site-export-config';
 import { buildSingleConversionGroupKey } from '@/lib/oci/single-conversion-highest-only';
 import { ensureCurrencyCode, ensureNumericValue } from '@/lib/oci/google-ads-export/sanitize';
 import { resolveQueueExportGear } from '@/lib/oci/google-ads-export/signal-normalizers';
@@ -175,6 +177,32 @@ export function buildQueueItems(
     tallies.hashed_phone_candidate_count += 1;
 
     const emailHash = extractEmailHashFromQueueRow(row);
+
+    const exportCfg = ctx.exportConfig ?? parseExportConfig(null);
+    const channel: ChannelKey = exportCfg.channels[0] ?? 'phone';
+    const actionConfig = getConversionActionConfig(exportCfg, channel, gear);
+    const clickDate = row.jit_call_created_at ? new Date(row.jit_call_created_at) : null;
+    const signalDate = new Date(baseTs);
+    if (
+      !validateExportRow(
+        {
+          id: row.id,
+          gclid: row.gclid,
+          wbraid: row.wbraid,
+          gbraid: row.gbraid,
+          hashed_phone: phoneHash ?? undefined,
+          hashed_email: emailHash ?? undefined,
+          value_cents: valueGuard.normalized,
+          click_date: clickDate,
+          signal_date: signalDate,
+        },
+        exportCfg,
+        actionConfig
+      ).ok
+    ) {
+      blockedExportGateIds.push(row.id);
+      continue;
+    }
 
     if (phoneHash) {
       tallies.hashed_phone_available_count += 1;

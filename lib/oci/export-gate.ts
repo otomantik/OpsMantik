@@ -8,13 +8,13 @@
  *   gclid → wbraid → gbraid → OCT (hashed phone/email) → VOIDED or no-id
  *
  * Returns:
- *   { ok: true, clickSource, clickId } — eligible, proceed with export
+ *   { ok: true, clickSource, clickId, stableOrderId } — eligible; stableOrderId matches adjustment SSOT
  *   { ok: false, reason }             — blocked, log reason and skip
  */
 
 import { calculateDecayDays } from '@/lib/shared/time-utils';
+import { buildStableOrderId, type ClickSource } from './stable-order-id';
 import type { SiteExportConfig, ConversionActionConfig } from './site-export-config';
-import type { ClickSource } from './stable-order-id';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gate Result Types
@@ -29,7 +29,7 @@ export type ExportGateReason =
   | 'MIXED_MODE_VIOLATION' // Reserved: value mode changed for existing action
 
 export type ExportGateResult =
-  | { ok: true; clickSource: ClickSource; clickId: string }
+  | { ok: true; clickSource: ClickSource; clickId: string; stableOrderId: string }
   | { ok: false; reason: ExportGateReason }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,6 +55,20 @@ export interface ExportGateRow {
   click_date?: Date | null;
   /** Conversion event date */
   signal_date: Date;
+}
+
+function gateSuccess(
+  row: ExportGateRow,
+  actionConfig: ConversionActionConfig,
+  clickSource: ClickSource,
+  clickId: string
+): ExportGateResult {
+  return {
+    ok: true,
+    clickSource,
+    clickId,
+    stableOrderId: buildStableOrderId(clickSource, clickId, actionConfig.action_name, row.signal_date),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,15 +115,15 @@ export function validateExportRow(
   // Try each click identifier in priority order.
   // gclid: Standard — best match rate, all platforms
   if (row.gclid?.trim()) {
-    return { ok: true, clickSource: 'gclid', clickId: row.gclid.trim() };
+    return gateSuccess(row, actionConfig, 'gclid', row.gclid.trim());
   }
   // wbraid: iOS Safari web-to-web (Google's ITP workaround, server-side ID)
   if (row.wbraid?.trim()) {
-    return { ok: true, clickSource: 'wbraid', clickId: row.wbraid.trim() };
+    return gateSuccess(row, actionConfig, 'wbraid', row.wbraid.trim());
   }
   // gbraid: iOS Safari app-to-web
   if (row.gbraid?.trim()) {
-    return { ok: true, clickSource: 'gbraid', clickId: row.gbraid.trim() };
+    return gateSuccess(row, actionConfig, 'gbraid', row.gbraid.trim());
   }
 
   // ── Step 5: OCT (Enhanced Conversions) Fallback ───────────────────────
@@ -120,10 +134,10 @@ export function validateExportRow(
     // Try identifiers in the order specified by config.fallback_identifiers
     for (const identifier of ec.fallback_identifiers) {
       if (identifier === 'hashed_phone' && row.hashed_phone?.trim()) {
-        return { ok: true, clickSource: 'oct_phone', clickId: row.hashed_phone.trim() };
+        return gateSuccess(row, actionConfig, 'oct_phone', row.hashed_phone.trim());
       }
       if (identifier === 'hashed_email' && row.hashed_email?.trim()) {
-        return { ok: true, clickSource: 'oct_email', clickId: row.hashed_email.trim() };
+        return gateSuccess(row, actionConfig, 'oct_email', row.hashed_email.trim());
       }
     }
     // OCT enabled but no identifier found
@@ -139,5 +153,5 @@ export function validateExportRow(
   // require_click_id=false: allow export without click attribution.
   // Conversion is visible in Google Ads but cannot be matched to a user.
   // Used for observation and volume tracking only.
-  return { ok: true, clickSource: 'no_id', clickId: row.id };
+  return gateSuccess(row, actionConfig, 'no_id', row.id);
 }
