@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import crypto from 'node:crypto';
 import { adminClient } from '@/lib/supabase/admin';
 import { verifySessionToken } from '@/lib/oci/session-auth';
-import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
+import { verifySiteApiKey } from '@/lib/oci/export/auth';
 import { getEntitlements } from '@/lib/entitlements/getEntitlements';
 import { requireCapability, EntitlementError } from '@/lib/entitlements/requireEntitlement';
 import { parseExportConfig } from '@/lib/oci/site-export-config';
@@ -178,7 +178,7 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
   }
 
   if (apiKey) {
-    if (!site.oci_api_key || !timingSafeCompare(site.oci_api_key, apiKey)) {
+    if (!verifySiteApiKey(site.oci_api_key, apiKey)) {
       throw new ExportHttpError(401, { error: 'Unauthorized: Invalid API key' });
     }
   } else if (siteIdFromAuth) {

@@ -5,9 +5,9 @@ import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { validateOciQueueValueCents } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
-import type { SingleConversionGear } from '@/lib/oci/single-conversion-highest-only';
 import { buildSingleConversionGroupKey } from '@/lib/oci/single-conversion-highest-only';
 import { ensureCurrencyCode, ensureNumericValue } from '@/lib/oci/google-ads-export/sanitize';
+import { resolveQueueExportGear } from '@/lib/oci/google-ads-export/signal-normalizers';
 import type { GoogleAdsConversionItem, QueueRow, RankedExportCandidate } from '@/lib/oci/google-ads-export/types';
 import {
   appendHashedPhoneCourier,
@@ -17,18 +17,6 @@ import {
 } from '@/lib/oci/hashed-phone-courier';
 import { applyCourierZodArmorToConversionItem } from '@/lib/oci/validation/google-ads-hashed-identifiers.zod';
 import type { ExportAuthContext } from './export-auth';
-
-function gearFromQueueExportRow(row: QueueRow): SingleConversionGear {
-  const st = (row.optimization_stage ?? '').trim().toLowerCase();
-  if (st === 'contacted' || st === 'offered' || st === 'junk' || st === 'won') {
-    return st as SingleConversionGear;
-  }
-  const action = (row.action ?? '').trim();
-  if (action === OPSMANTIK_CONVERSION_NAMES.junk) return 'junk';
-  if (action === OPSMANTIK_CONVERSION_NAMES.contacted) return 'contacted';
-  if (action === OPSMANTIK_CONVERSION_NAMES.offered) return 'offered';
-  return 'won';
-}
 
 export type QueueHashedPhoneDiagnostics = {
   hashed_phone_available_count: number;
@@ -160,7 +148,7 @@ export function buildQueueItems(
       blockedMissingConversionActionIds.push(row.id);
       continue;
     }
-    const gear = gearFromQueueExportRow(row);
+    const gear = resolveQueueExportGear(row);
     const externalId = row.external_id || computeOfflineConversionExternalId({
       providerKey: row.provider_key,
       action: conversionName,

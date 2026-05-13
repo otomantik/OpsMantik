@@ -4,7 +4,9 @@
  * god-object split. No behaviour change.
  */
 
+import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
+import type { SingleConversionGear } from '@/lib/oci/single-conversion-highest-only';
 
 export function resolveSignalStage(
   optimizationStage: string | null | undefined,
@@ -41,4 +43,22 @@ export function normalizeSignalChannel(
     default:
       return null;
   }
+}
+
+/**
+ * Maps queue RPC snapshot rows to {@link SingleConversionGear} for ranking / dedupe.
+ * Mirrors `gearFromQueueExportRow` invariants in `export-build-queue.ts` (queue-only path).
+ */
+export function resolveQueueExportGear(row: {
+  optimization_stage?: string | null;
+  action?: string | null;
+}): SingleConversionGear {
+  const fromStage = resolveSignalStage(row.optimization_stage, '');
+  if (fromStage) return fromStage;
+
+  const action = (row.action ?? '').trim();
+  if (action === OPSMANTIK_CONVERSION_NAMES.junk) return 'junk';
+  if (action === OPSMANTIK_CONVERSION_NAMES.contacted) return 'contacted';
+  if (action === OPSMANTIK_CONVERSION_NAMES.offered) return 'offered';
+  return 'won';
 }

@@ -34,8 +34,6 @@
     "lib/security/hmac-verification.ts",
     "lib/services/audit-logger.ts",
     "lib/shared/time-utils.ts",
-    "lib/oci/export/auth.ts",
-    "lib/oci/google-ads-export/signal-normalizers.ts",
     "lib/providers/google-ads-api/conversion-upload-adapter.ts"
   ],
   "ignoreBinaries": ["k6", "wrangler"],

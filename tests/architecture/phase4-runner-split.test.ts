@@ -101,7 +101,7 @@ const EXPORT_SUBMODULES: Array<{ path: string; exports: string[] }> = [
   },
   {
     path: 'lib/oci/google-ads-export/signal-normalizers.ts',
-    exports: ['resolveSignalStage', 'normalizeSignalChannel'],
+    exports: ['resolveSignalStage', 'normalizeSignalChannel', 'resolveQueueExportGear'],
   },
   {
     path: 'lib/oci/google-ads-export/sanitize.ts',
