@@ -105,7 +105,7 @@ export function buildQueueItems(
       intentCreatedByCall[row.call_id] ?? null,
     ]);
     const conversionTime = formatGoogleAdsTimeOrNull(baseTs, ctx.site.timezone);
-    if (!conversionTime) {
+    if (!conversionTime || !baseTs) {
       blockedQueueTimeIds.push(row.id);
       continue;
     }
