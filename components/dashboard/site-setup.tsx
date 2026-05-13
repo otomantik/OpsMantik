@@ -44,7 +44,7 @@ export function SiteSetup() {
           : null;
       debugLog('[SITE_SETUP] Test site created:', site);
       if (site && typeof site.public_id === 'string') {
-        debugLog('[SITE_SETUP] public_id:', site.public_id, 'Use in test page: data-site-id="' + site.public_id + '"');
+        debugLog('[SITE_SETUP] public_id:', site.public_id, 'Embed data-site-id="' + site.public_id + '"');
       }
 
       // Reload page after 2 seconds to refresh dashboard
@@ -132,7 +132,7 @@ export function SiteSetup() {
 
           <p className="text-sm text-muted-foreground text-center">
             {t('dashboard.setup.afterCreating')}{' '}
-            <a href="/test-page" className="text-emerald-700 hover:text-emerald-800 underline">
+            <a href="/dashboard?gclid=TEST_GCLID_X99_AB" className="text-emerald-700 hover:text-emerald-800 underline">
               {t('dashboard.setup.testPage')}
             </a>
           </p>

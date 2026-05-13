@@ -137,7 +137,6 @@ async function verifyArchitecture() {
     // 5. Check Components
     console.log('\n🎨 5. Component Files Check...');
     const componentFiles = [
-      'components/dashboard/session-group.tsx',
       'components/dashboard/dashboard-shell.tsx',
       'docs/architecture/ARCH.md',
     ];
