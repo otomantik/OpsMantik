@@ -7,6 +7,7 @@ import type { PipelineStats } from './export-preview-diagnostics';
 import { normalizeServerHashedPhone } from '@/lib/oci/hashed-phone-courier';
 import {
   buildQueueItems,
+  type ExportGateBlockReason,
   type HashedPhoneAttribution,
   type QueueCurrencyDiagnostics,
   type QueueHashedPhoneDiagnostics,
@@ -84,6 +85,7 @@ export type BuiltExportData = {
   blockedValueZeroIds: string[];
   blockedExpiredIds: string[];
   blockedExportGateIds: string[];
+  blockedExportGateReasonByQueueId: Record<string, ExportGateBlockReason>;
   blockedCurrencyIds: string[];
   blockedMissingConversionActionIds: string[];
   /** Explicit sendability skips (merged into blockedQueueIds for legacy counts). */
@@ -164,6 +166,7 @@ export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedE
     blockedValueZeroIds: queueBuild.blockedValueZeroIds,
     blockedExpiredIds: queueBuild.blockedExpiredIds,
     blockedExportGateIds: queueBuild.blockedExportGateIds,
+    blockedExportGateReasonByQueueId: queueBuild.blockedExportGateReasonByQueueId,
     blockedCurrencyIds: queueBuild.blockedCurrencyIds,
     blockedMissingConversionActionIds: queueBuild.blockedMissingConversionActionIds,
     callNotSendableQueueIds,

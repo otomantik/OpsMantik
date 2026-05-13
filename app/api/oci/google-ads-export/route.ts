@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     const built = await buildExportItems(auth, fetched);
     const skipReasonCounts = {
       call_not_sendable: built.callNotSendableQueueIds.length,
+      /** Total rows stopped at export gate (missing call, NO_CLICK_ID, EXPIRED, OCT, …). */
       export_gate_call_id_required: built.blockedExportGateIds.length,
       missing_currency: built.blockedCurrencyIds.length,
       missing_conversion_action: built.blockedMissingConversionActionIds.length,
@@ -47,7 +48,14 @@ export async function GET(req: NextRequest) {
       invalid_value: built.blockedValueZeroIds.length + built.blockedExpiredIds.length,
       suppressed_by_higher_gear: built.suppressedQueueIds.length,
     };
-    const skippedCount = Object.values(skipReasonCounts).reduce((acc, n) => acc + n, 0);
+    const skippedCount =
+      skipReasonCounts.call_not_sendable +
+      skipReasonCounts.export_gate_call_id_required +
+      skipReasonCounts.missing_currency +
+      skipReasonCounts.missing_conversion_action +
+      skipReasonCounts.invalid_conversion_time +
+      skipReasonCounts.invalid_value +
+      skipReasonCounts.suppressed_by_higher_gear;
 
     const previewExtension = auth.markAsExported
       ? null
@@ -59,6 +67,7 @@ export async function GET(req: NextRequest) {
             blockedValueZeroIds: built.blockedValueZeroIds,
             blockedExpiredIds: built.blockedExpiredIds,
             blockedExportGateIds: built.blockedExportGateIds,
+            blockedExportGateReasonByQueueId: built.blockedExportGateReasonByQueueId,
             blockedMissingConversionActionIds: built.blockedMissingConversionActionIds,
             combined: built.combined,
           },

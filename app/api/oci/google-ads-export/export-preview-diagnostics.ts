@@ -3,7 +3,7 @@
  * No raw gclid/wbraid/gbraid values — only booleans and aggregates.
  */
 import type { GoogleAdsConversionItem, QueueRow } from '@/lib/oci/google-ads-export/types';
-import type { QueueCurrencyDiagnostics, QueueHashedPhoneDiagnostics } from './export-build-queue';
+import type { QueueCurrencyDiagnostics, QueueHashedPhoneDiagnostics, ExportGateBlockReason } from './export-build-queue';
 import {
   computeUniversalScriptDrainPreviewStats,
   type UniversalScriptDrainPreviewStats,
@@ -26,6 +26,8 @@ export type SkipSetsForPreview = {
   blockedValueZeroIds: string[];
   blockedExpiredIds: string[];
   blockedExportGateIds: string[];
+  /** When present, keys are a subset of `blockedExportGateIds` (same queue id). */
+  blockedExportGateReasonByQueueId: Record<string, ExportGateBlockReason>;
   blockedMissingConversionActionIds: string[];
   combined: GoogleAdsConversionItem[];
 };
@@ -105,6 +107,40 @@ function providerPathLabel(row: QueueRow | undefined): string {
   return p && p.length > 0 ? p : 'google_ads_script_v1';
 }
 
+export type ExportGateSkipDetailKey =
+  | 'export_gate_missing_call_id'
+  | 'export_gate_no_click_id'
+  | 'export_gate_expired'
+  | 'export_gate_oct_no_identifier'
+  | 'export_gate_unknown_action'
+  | 'export_gate_zero_value'
+  | 'export_gate_mixed_mode_violation'
+  | 'export_gate_blocked_unknown';
+
+/**
+ * Maps gate engine / build reasons to stable preview bucket keys (no PII).
+ */
+export function exportGateSkipDetailLabel(reason: ExportGateBlockReason | undefined): ExportGateSkipDetailKey {
+  switch (reason) {
+    case 'MISSING_CALL_ID':
+      return 'export_gate_missing_call_id';
+    case 'NO_CLICK_ID':
+      return 'export_gate_no_click_id';
+    case 'EXPIRED':
+      return 'export_gate_expired';
+    case 'OCT_NO_IDENTIFIER':
+      return 'export_gate_oct_no_identifier';
+    case 'UNKNOWN_ACTION':
+      return 'export_gate_unknown_action';
+    case 'ZERO_VALUE':
+      return 'export_gate_zero_value';
+    case 'MIXED_MODE_VIOLATION':
+      return 'export_gate_mixed_mode_violation';
+    default:
+      return 'export_gate_blocked_unknown';
+  }
+}
+
 /**
  * Single primary skip reason per row (priority order matches build pipeline).
  */
@@ -114,7 +150,7 @@ function classifySkipReason(
   callNotSendable: Set<string>
 ):
   | 'missing_conversion_action'
-  | 'export_gate_call_id_required'
+  | ExportGateSkipDetailKey
   | 'invalid_conversion_time'
   | 'invalid_value_cents'
   | 'invalid_value_non_positive'
@@ -122,7 +158,9 @@ function classifySkipReason(
   | 'suppressed_by_higher_gear'
   | 'unknown' {
   if (skip.blockedMissingConversionActionIds.includes(queueId)) return 'missing_conversion_action';
-  if (skip.blockedExportGateIds.includes(queueId)) return 'export_gate_call_id_required';
+  if (skip.blockedExportGateIds.includes(queueId)) {
+    return exportGateSkipDetailLabel(skip.blockedExportGateReasonByQueueId[queueId]);
+  }
   if (skip.blockedQueueTimeIds.includes(queueId)) return 'invalid_conversion_time';
   if (skip.blockedValueZeroIds.includes(queueId)) return 'invalid_value_cents';
   if (skip.blockedExpiredIds.includes(queueId)) return 'invalid_value_non_positive';

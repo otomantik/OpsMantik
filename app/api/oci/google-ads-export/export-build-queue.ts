@@ -3,7 +3,7 @@ import { minorToMajor } from '@/lib/i18n/currency';
 import { buildOrderId } from '@/lib/oci/build-order-id';
 import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
-import { validateExportRow } from '@/lib/oci/export-gate';
+import { validateExportRow, type ExportGateReason } from '@/lib/oci/export-gate';
 import { validateOciQueueValueCents } from '@/lib/oci/export-value-guard';
 import { pickCanonicalOccurredAt } from '@/lib/oci/occurred-at';
 import { getConversionActionConfig, parseExportConfig, type ChannelKey } from '@/lib/oci/site-export-config';
@@ -42,6 +42,9 @@ export type QueueCurrencyDiagnostics = {
 
 export type HashedPhoneAttribution = { queueId: string; source: HashedPhoneCourierSource | null };
 
+/** Synthetic when the row never reaches `validateExportRow` (no `call_id`). */
+export type ExportGateBlockReason = ExportGateReason | 'MISSING_CALL_ID';
+
 export type QueueBuildResult = {
   conversions: GoogleAdsConversionItem[];
   queueCandidates: RankedExportCandidate[];
@@ -50,6 +53,8 @@ export type QueueBuildResult = {
   blockedValueZeroIds: string[];
   blockedExpiredIds: string[];
   blockedExportGateIds: string[];
+  /** Sub-reason for each id in `blockedExportGateIds` (preview / ops tooling). */
+  blockedExportGateReasonByQueueId: Record<string, ExportGateBlockReason>;
   blockedCurrencyIds: string[];
   /** action + optimization_stage both missing/unknown — no silent default to Won */
   blockedMissingConversionActionIds: string[];
@@ -76,6 +81,7 @@ export function buildQueueItems(
   const blockedValueZeroIds: string[] = [];
   const blockedExpiredIds: string[] = [];
   const blockedExportGateIds: string[] = [];
+  const blockedExportGateReasonByQueueId: Record<string, ExportGateBlockReason> = {};
   const blockedCurrencyIds: string[] = [];
   const blockedMissingConversionActionIds: string[] = [];
   const hashedPhoneAttributions: HashedPhoneAttribution[] = [];
@@ -97,6 +103,7 @@ export function buildQueueItems(
     const row = rawList[i];
     if (!row.call_id) {
       blockedExportGateIds.push(row.id);
+      blockedExportGateReasonByQueueId[row.id] = 'MISSING_CALL_ID';
       continue;
     }
     const baseTs = pickCanonicalOccurredAt([
@@ -183,24 +190,24 @@ export function buildQueueItems(
     const actionConfig = getConversionActionConfig(exportCfg, channel, gear);
     const clickDate = row.jit_call_created_at ? new Date(row.jit_call_created_at) : null;
     const signalDate = new Date(baseTs);
-    if (
-      !validateExportRow(
-        {
-          id: row.id,
-          gclid: row.gclid,
-          wbraid: row.wbraid,
-          gbraid: row.gbraid,
-          hashed_phone: phoneHash ?? undefined,
-          hashed_email: emailHash ?? undefined,
-          value_cents: valueGuard.normalized,
-          click_date: clickDate,
-          signal_date: signalDate,
-        },
-        exportCfg,
-        actionConfig
-      ).ok
-    ) {
+    const gateResult = validateExportRow(
+      {
+        id: row.id,
+        gclid: row.gclid,
+        wbraid: row.wbraid,
+        gbraid: row.gbraid,
+        hashed_phone: phoneHash ?? undefined,
+        hashed_email: emailHash ?? undefined,
+        value_cents: valueGuard.normalized,
+        click_date: clickDate,
+        signal_date: signalDate,
+      },
+      exportCfg,
+      actionConfig
+    );
+    if (!gateResult.ok) {
       blockedExportGateIds.push(row.id);
+      blockedExportGateReasonByQueueId[row.id] = gateResult.reason;
       continue;
     }
 
@@ -276,6 +283,7 @@ export function buildQueueItems(
     blockedValueZeroIds,
     blockedExpiredIds,
     blockedExportGateIds,
+    blockedExportGateReasonByQueueId,
     blockedCurrencyIds,
     blockedMissingConversionActionIds,
     hashedPhoneDiagnostics,

@@ -33,6 +33,7 @@ test('buildQueueItems blocks queue rows without call_id via export gate', () => 
 
   assert.equal(built.conversions.length, 0);
   assert.deepEqual(built.blockedExportGateIds, ['q1']);
+  assert.deepEqual(built.blockedExportGateReasonByQueueId, { q1: 'MISSING_CALL_ID' });
   assert.deepEqual(built.blockedMissingConversionActionIds, []);
 });
 
@@ -64,4 +65,5 @@ test('buildQueueItems blocks queue rows with no click ids when require_click_id'
 
   assert.equal(built.conversions.length, 0);
   assert.deepEqual(built.blockedExportGateIds, ['q-no-click']);
+  assert.deepEqual(built.blockedExportGateReasonByQueueId, { 'q-no-click': 'NO_CLICK_ID' });
 });

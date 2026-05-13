@@ -151,6 +151,7 @@ test('finalizeReturnedPhoneDiagnostics: exported/missing/source_counts without h
       blockedValueZeroIds: [],
       blockedExpiredIds: [],
       blockedExportGateIds: [],
+      blockedExportGateReasonByQueueId: {},
       blockedMissingConversionActionIds: [],
       combined,
     },
