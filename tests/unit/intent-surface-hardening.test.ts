@@ -12,7 +12,7 @@ const TRACKER_CONFIG = join(ROOT, 'lib', 'tracker', 'config.js');
 const TRACKER_TRANSPORT = join(ROOT, 'lib', 'tracker', 'transport.js');
 const SYNC_ROUTE = join(ROOT, 'app', 'api', 'sync', 'route.ts');
 const USE_INTENTS = join(ROOT, 'lib', 'hooks', 'use-intents.ts');
-const INTENT_STATUS_BADGE = join(ROOT, 'components', 'dashboard', 'intent-status-badge.tsx');
+const QUEUE_STATUS_UTILS = join(ROOT, 'components', 'dashboard', 'qualification-queue', 'utils.tsx');
 const QUEUE_DECK = join(ROOT, 'components', 'dashboard', 'qualification-queue', 'queue-deck.tsx');
 const OCI_CONTROL_PAGE = join(ROOT, 'app', 'dashboard', 'site', '[siteId]', 'oci-control', 'page.tsx');
 const OCI_CONTROL_PANEL = join(ROOT, 'components', 'dashboard', 'oci-control', 'oci-control-panel.tsx');
@@ -106,10 +106,10 @@ test('tracker shadow mode stamps payload version and backend logs stale trackers
 
 test('cancelled intents stay visible in dashboard status model', () => {
   const hookSrc = readFileSync(USE_INTENTS, 'utf8');
-  const badgeSrc = readFileSync(INTENT_STATUS_BADGE, 'utf8');
+  const utilsSrc = readFileSync(QUEUE_STATUS_UTILS, 'utf8');
   assert.ok(hookSrc.includes("'cancelled'"), 'use-intents status union must include cancelled');
-  assert.ok(badgeSrc.includes("if (status === 'cancelled')"), 'status badge must render cancelled explicitly');
-  assert.ok(badgeSrc.includes("t('activity.statusCancelled')"), 'cancelled badge must use dedicated label');
+  assert.ok(utilsSrc.includes("s === 'cancelled'"), 'queue status badge must render cancelled explicitly');
+  assert.ok(utilsSrc.includes("t('activity.statusCancelled')"), 'cancelled badge must use dedicated label');
 });
 
 test('junk mutations wait for server confirmation and OCI panel exposes honest read-only state', () => {

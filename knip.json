@@ -38,9 +38,7 @@
     "lib/shared/time-utils.ts",
     "lib/oci/export/auth.ts",
     "lib/oci/google-ads-export/signal-normalizers.ts",
-    "lib/providers/google-ads-api/conversion-upload-adapter.ts",
-    "components/dashboard/intent-status-badge.tsx",
-    "components/ui/badge.tsx"
+    "lib/providers/google-ads-api/conversion-upload-adapter.ts"
   ],
   "ignoreBinaries": ["k6", "wrangler"],
   "ignoreDependencies": ["tailwindcss"],
