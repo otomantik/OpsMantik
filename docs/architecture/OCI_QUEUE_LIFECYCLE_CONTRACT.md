@@ -109,9 +109,9 @@ Any UX, doc, or metric that presents **script dispatch**, **`upload.apply()` suc
 
 ---
 
-## 7. Database FSM guard (partial)
+## 7. Database FSM guard
 
-Trigger `tr_oci_status_fsm` / `enforce_oci_status_fsm()` blocks **some** backward moves from selected terminals (e.g. `COMPLETED` | `VOIDED_BY_REVERSAL` | `DEAD_LETTER_QUARANTINE` → `QUEUED` | `RETRY`). It does **not** encode the full matrix in §3–4; illegal moves may still need ledger-level tests and ops discipline.
+Trigger `tr_oci_status_fsm` / `enforce_oci_status_fsm()` enforces an **explicit allow-list** of legal `(OLD.status → NEW.status)` transitions (see migration `supabase/migrations/20261231000000_defcon1_absolute_fsm_dictatorship.sql`), including the **PR-9K** session gate (`opsmantik.pr9k_operator_requeue`) for operator requeue from `COMPLETED` / `UPLOADED` to `RETRY` | `QUEUED`. Any transition outside the matrix raises `DEFCON_1_ILLEGAL_STATE_TRANSITION`.
 
 ---
 
@@ -170,7 +170,7 @@ Single-conversion mode drops lower-gear queue rows from the **export batch** whe
 | ID | Item |
 |----|------|
 | P1 | (Resolved PR-1B) ~~`SUPPRESSED_BY_HIGHER_GEAR` → `COMPLETED`~~ — now `FAILED` + `DETERMINISTIC_SKIP`. |
-| P2 | Expand DB FSM to full §3–4 matrix if product agrees (migration + replay tests) |
+| P2 | ~~Expand DB FSM to full §3–4 matrix~~ — superseded by `20261231000000_defcon1_absolute_fsm_dictatorship.sql` (allow-list + PR-9K gate). |
 
 ---
 

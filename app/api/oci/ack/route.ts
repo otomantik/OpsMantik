@@ -66,6 +66,16 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseAckJsonEnvelope(bodyUnknown);
     if (!parsed.ok) {
+      if (parsed.reason === 'schema_violation') {
+        return NextResponse.json(
+          {
+            error: 'Invalid ACK payload',
+            code: 'ACK_SCHEMA_VIOLATION',
+            issues: parsed.issues,
+          },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         { error: 'Body must be a JSON object or granular results array', code: 'BAD_REQUEST' },
         { status: 400 }

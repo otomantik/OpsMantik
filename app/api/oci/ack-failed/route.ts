@@ -29,7 +29,7 @@ import {
   coerceAckFailedFields,
   dbUpstreamResponse,
   isInfrastructurePostgrestError,
-  normalizeAckFailedBody,
+  parseAckFailedJsonEnvelope,
   verifyTransitionCount,
 } from '@/lib/oci/oci-ack-route-helpers';
 import { splitAckPrefixedIds } from '@/lib/oci/ack-id-groups';
@@ -71,10 +71,34 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const body = normalizeAckFailedBody(bodyUnknown);
+    const parsedBody = parseAckFailedJsonEnvelope(bodyUnknown);
+    if (!parsedBody.ok) {
+      if (parsedBody.reason === 'schema_violation') {
+        return NextResponse.json(
+          {
+            error: 'Invalid ACK_FAILED payload',
+            code: 'ACK_FAILED_SCHEMA_VIOLATION',
+            issues: parsedBody.issues,
+          },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json(
+        { error: 'ACK_FAILED body must be a JSON object', code: 'BAD_REQUEST' },
+        { status: 400 }
+      );
+    }
+    const body = parsedBody.body;
     const coerced = coerceAckFailedFields(body);
     const siteIdFromBody = typeof body.siteId === 'string' ? body.siteId : undefined;
-    const exportRunId = typeof body.export_run_id === 'string' ? body.export_run_id : typeof body.run_id === 'string' ? body.run_id : req.headers.get('x-opsmantik-export-run-id') || undefined;
+    const exportRunId =
+      typeof body.export_run_id === 'string'
+        ? body.export_run_id
+        : typeof body.exportRunId === 'string'
+          ? body.exportRunId
+          : typeof body.run_id === 'string'
+            ? body.run_id
+            : req.headers.get('x-opsmantik-export-run-id') || undefined;
 
     const auth = await resolveOciScriptAuth({
       req,

@@ -57,6 +57,7 @@ const CRITICAL_MIGRATIONS = [
   '20261229120500_pr9k_provider_evidence_strong_followup_v1.sql',
   '20261229130000_fetch_oci_google_ads_export_jit_v1.sql',
   '20261230140000_increment_oci_conversion_sends_v1.sql',
+  '20261231000000_defcon1_absolute_fsm_dictatorship.sql',
 ];
 const CRITICAL_MIGRATION_EQUIVALENTS = {
   '20261226030000_restore_cron_lease_lock_backend.sql': {

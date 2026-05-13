@@ -1,7 +1,56 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { logError, logInfo } from '@/lib/logging/logger';
 
 const MAX_SAFE_ERROR_STRING = 2048;
+/** Hard cap per DEFCON-1 — matches fleet script batch sizes + hostile payload ceiling. */
+const OCI_ACK_MAX_ARRAY = 5000;
+const OCI_ACK_ID_MAX_LEN = 512;
+const OCI_ACK_SITE_ID_MAX = 128;
+const OCI_ACK_RUN_ID_MAX = 128;
+const OCI_ACK_REASON_MAX = 256;
+
+export const ociAckGranularResultItemSchema = z
+  .object({
+    id: z.string().min(1).max(OCI_ACK_ID_MAX_LEN),
+    status: z.enum(['SUCCESS', 'FAILED']),
+    reason: z.string().max(OCI_ACK_REASON_MAX).optional().nullable(),
+  })
+  .strict();
+
+export const ociAckTopLevelResultsArraySchema = z.array(ociAckGranularResultItemSchema).max(OCI_ACK_MAX_ARRAY);
+
+/**
+ * Strict allow-list for POST /api/oci/ack JSON object bodies (fleet scripts + API).
+ * Unknown keys are rejected (.strict()) — no silent strip.
+ */
+export const ociAckStrictObjectBodySchema = z
+  .object({
+    siteId: z.string().trim().min(1).max(OCI_ACK_SITE_ID_MAX).optional(),
+    queueIds: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    skippedIds: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    results: z.array(ociAckGranularResultItemSchema).max(OCI_ACK_MAX_ARRAY).optional(),
+    pendingConfirmation: z.boolean().optional(),
+    providerConfirmationMode: z.literal('bulk_upload_async_unconfirmed').optional(),
+    export_run_id: z.string().max(OCI_ACK_RUN_ID_MAX).optional(),
+    exportRunId: z.string().max(OCI_ACK_RUN_ID_MAX).optional(),
+    id: z.string().min(1).max(OCI_ACK_ID_MAX_LEN).optional(),
+    status: z.enum(['SUCCESS', 'FAILED']).optional(),
+    reason: z.string().max(OCI_ACK_REASON_MAX).optional(),
+  })
+  .strict();
+
+export type ParseAckJsonEnvelopeResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; reason: 'invalid_top_level' }
+  | { ok: false; reason: 'schema_violation'; issues: Array<{ path: string; message: string }> };
+
+function formatZodIssues(err: z.ZodError): Array<{ path: string; message: string }> {
+  return err.issues.map((i) => ({
+    path: i.path.length ? i.path.map(String).join('.') : '(root)',
+    message: i.message,
+  }));
+}
 
 /** Stringify arbitrary client payloads for DB/text columns — never throws. */
 export function safeOciErrorString(value: unknown, maxLen = MAX_SAFE_ERROR_STRING): string {
@@ -24,40 +73,114 @@ export function resolveScriptAckPendingConfirmation(body: Record<string, unknown
   return body.providerConfirmationMode === 'bulk_upload_async_unconfirmed';
 }
 
-export function parseAckJsonEnvelope(rawBody: unknown): { ok: true; body: Record<string, unknown> } | { ok: false } {
+export function parseAckJsonEnvelope(rawBody: unknown): ParseAckJsonEnvelopeResult {
   if (Array.isArray(rawBody)) {
-    const results = normalizeGranularResultArray(rawBody);
-    return { ok: true, body: { results, _normalizedFromArrayBody: true } };
+    const parsed = ociAckTopLevelResultsArraySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return { ok: false, reason: 'schema_violation', issues: formatZodIssues(parsed.error) };
+    }
+    const results = parsed.data.map((r) => ({
+      ...r,
+      reason: r.reason != null ? safeOciErrorString(r.reason, OCI_ACK_REASON_MAX) : r.reason,
+    }));
+    return { ok: true, body: { results } };
   }
-  if (rawBody && typeof rawBody === 'object') {
-    return { ok: true, body: rawBody as Record<string, unknown> };
+  if (rawBody !== null && typeof rawBody === 'object' && !Array.isArray(rawBody)) {
+    const parsed = ociAckStrictObjectBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return { ok: false, reason: 'schema_violation', issues: formatZodIssues(parsed.error) };
+    }
+    const o = parsed.data;
+    const body: Record<string, unknown> = {};
+    if (o.siteId !== undefined) body.siteId = o.siteId;
+    if (o.queueIds !== undefined) body.queueIds = o.queueIds;
+    if (o.skippedIds !== undefined) body.skippedIds = o.skippedIds;
+    if (o.results !== undefined) {
+      body.results = o.results.map((r) => ({
+        ...r,
+        reason: r.reason != null ? safeOciErrorString(r.reason, OCI_ACK_REASON_MAX) : r.reason,
+      }));
+    }
+    if (o.pendingConfirmation !== undefined) body.pendingConfirmation = o.pendingConfirmation;
+    if (o.providerConfirmationMode !== undefined) body.providerConfirmationMode = o.providerConfirmationMode;
+    if (o.export_run_id !== undefined) body.export_run_id = o.export_run_id;
+    if (o.exportRunId !== undefined) body.exportRunId = o.exportRunId;
+    if (o.id !== undefined) body.id = o.id;
+    if (o.status !== undefined) body.status = o.status;
+    if (o.reason !== undefined) body.reason = safeOciErrorString(o.reason, OCI_ACK_REASON_MAX);
+    return { ok: true, body };
   }
-  return { ok: false };
+  return { ok: false, reason: 'invalid_top_level' };
 }
 
-function normalizeGranularResultArray(
-  arr: unknown[]
-): Array<{ id: string; status: 'SUCCESS' | 'FAILED'; reason?: string | null }> {
-  const out: Array<{ id: string; status: 'SUCCESS' | 'FAILED'; reason?: string | null }> = [];
-  for (const item of arr) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const rec = item as Record<string, unknown>;
-    if (typeof rec.id !== 'string' || (rec.status !== 'SUCCESS' && rec.status !== 'FAILED')) continue;
-    out.push({
-      id: rec.id,
-      status: rec.status,
-      reason: rec.reason != null ? safeOciErrorString(rec.reason, 256) : null,
-    });
-  }
-  return out;
-}
+const ociAckFailedErrorCategorySchema = z.enum(['VALIDATION', 'TRANSIENT', 'AUTH', 'RATE_LIMIT', 'UNKNOWN']);
 
-export function normalizeAckFailedBody(raw: unknown): Record<string, unknown> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return {};
+/**
+ * Strict allow-list for POST /api/oci/ack-failed (matches fleet + coerceAckFailedFields legacy aliases).
+ */
+export const ociAckFailedStrictObjectBodySchema = z
+  .object({
+    siteId: z.string().trim().min(1).max(OCI_ACK_SITE_ID_MAX).optional(),
+    queueIds: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    queue_ids: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    ids: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    fatalErrorIds: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    fatal_ids: z.array(z.string().min(1).max(OCI_ACK_ID_MAX_LEN)).max(OCI_ACK_MAX_ARRAY).optional(),
+    errorCode: z.string().max(64).optional(),
+    error_code: z.string().max(64).optional(),
+    code: z.string().max(64).optional(),
+    type: z.string().max(64).optional(),
+    errorMessage: z.string().max(1024).optional(),
+    message: z.string().max(1024).optional(),
+    error: z.string().max(1024).optional(),
+    reason: z.string().max(1024).optional(),
+    details: z.string().max(1024).optional(),
+    errorCategory: ociAckFailedErrorCategorySchema.optional(),
+    export_run_id: z.string().max(OCI_ACK_RUN_ID_MAX).optional(),
+    run_id: z.string().max(OCI_ACK_RUN_ID_MAX).optional(),
+    exportRunId: z.string().max(OCI_ACK_RUN_ID_MAX).optional(),
+  })
+  .strict();
+
+export type ParseAckFailedJsonEnvelopeResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; reason: 'invalid_top_level' }
+  | { ok: false; reason: 'schema_violation'; issues: Array<{ path: string; message: string }> };
+
+/** Object-only JSON body for `/api/oci/ack-failed` (no array envelope). */
+export function parseAckFailedJsonEnvelope(rawBody: unknown): ParseAckFailedJsonEnvelopeResult {
+  if (rawBody === null || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return { ok: false, reason: 'invalid_top_level' };
   }
-  const o = raw as Record<string, unknown>;
-  return o;
+  const parsed = ociAckFailedStrictObjectBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return { ok: false, reason: 'schema_violation', issues: formatZodIssues(parsed.error) };
+  }
+  const o = parsed.data;
+  const body: Record<string, unknown> = {};
+  const put = (k: string, v: unknown) => {
+    if (v !== undefined) body[k] = v;
+  };
+  put('siteId', o.siteId);
+  put('queueIds', o.queueIds);
+  put('queue_ids', o.queue_ids);
+  put('ids', o.ids);
+  put('fatalErrorIds', o.fatalErrorIds);
+  put('fatal_ids', o.fatal_ids);
+  put('errorCode', o.errorCode);
+  put('error_code', o.error_code);
+  put('code', o.code);
+  put('type', o.type);
+  put('errorMessage', o.errorMessage);
+  put('message', o.message);
+  put('error', o.error);
+  put('reason', o.reason);
+  put('details', o.details);
+  put('errorCategory', o.errorCategory);
+  put('export_run_id', o.export_run_id);
+  put('run_id', o.run_id);
+  put('exportRunId', o.exportRunId);
+  return { ok: true, body };
 }
 
 function coerceQueueIdArray(value: unknown): string[] {
