@@ -112,7 +112,7 @@ function fileContains(rel, needle) {
 
 // Basic wiring proof
 assertFileExists('components/dashboard-v2/HunterCard.tsx');
-assertFileExists('components/ui/dialog.tsx');
+assertFileExists('components/ui/button.tsx');
 assertFileExists('components/dashboard-v2/DashboardShell.tsx');
 assertFileExists('components/dashboard-v2/QualificationQueue.tsx');
 
