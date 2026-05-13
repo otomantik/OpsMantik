@@ -39,7 +39,7 @@ interface DashboardShellProps {
   /** Server-passed today range from URL; avoids hydration mismatch (data-to differs server vs client). */
   initialTodayRange?: { fromIso: string; toIso: string };
   siteRole: SiteRole;
-  /** Tenant entitlements; used by FeatureGuard. Default [] so missing prop does not break. */
+  /** Tenant entitlements for module-gated dashboard features. Default [] when unknown. */
   activeModules?: OpsMantikModule[];
 }
 

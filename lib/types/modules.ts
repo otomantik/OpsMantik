@@ -1,5 +1,5 @@
 /**
- * Tenant-level feature modules (entitlements). Used for backend gating and UI FeatureGuard.
+ * Tenant-level feature modules (entitlements). Used for backend gating and dashboard props.
  */
 
 export const OPSMANTIK_MODULES = [
