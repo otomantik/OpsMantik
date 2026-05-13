@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
@@ -42,7 +42,11 @@ test('PR-3B: ACK routes parse optional export_run_id backwards compatibly', () =
   assert.match(ackSrc, /export_run_id: exportRunId/i, 'Must echo export_run_id in response');
   assert.match(ackSrc, /EXPORT_RUN_ID_MISSING/i, 'Must log missing run id without failing');
 
-  assert.match(ackFailedSrc, /exportRunId = typeof body.export_run_id === 'string' \? body.export_run_id : typeof body.run_id === 'string' \? body.run_id : req\.headers\.get\('x-opsmantik-export-run-id'\)/i, 'Must parse export_run_id from body or headers in ack-failed');
+  assert.match(
+    ackFailedSrc,
+    /typeof body\.export_run_id === 'string'[\s\S]*?typeof body\.exportRunId === 'string'[\s\S]*?typeof body\.run_id === 'string'[\s\S]*?req\.headers\.get\('x-opsmantik-export-run-id'\)/i,
+    'Must parse export_run_id / exportRunId / run_id / header in ack-failed'
+  );
   assert.match(ackFailedSrc, /export_run_id: exportRunId/i, 'Must echo export_run_id in response in ack-failed');
 });
 

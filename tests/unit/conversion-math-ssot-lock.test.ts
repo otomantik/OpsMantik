@@ -103,8 +103,8 @@ test('PR-D: repair playbook is dry-run-first and non-destructive', () => {
 test('PR-D: unsafe db scripts require explicit override for value writes', () => {
   const scripts = [
     'scripts/db/oci-enqueue.mjs',
-    'scripts/db/oci-eslamed-fix-values-and-enqueue.mjs',
-    'scripts/db/oci-muratcan-v3-value-fix.mjs',
+    'scripts/db/_archive/site-specific/oci-eslamed-fix-values-and-enqueue.mjs',
+    'scripts/db/_archive/site-specific/oci-muratcan-v3-value-fix.mjs',
     'scripts/db/oci-fix-zero-value-queue.mjs',
   ];
   for (const rel of scripts) {
@@ -116,8 +116,8 @@ test('PR-D: unsafe db scripts require explicit override for value writes', () =>
 
 test('Workstream-B: deprecated operator writes require ticket + operator provenance', () => {
   const scripts = [
-    'scripts/db/oci-eslamed-fix-values-and-enqueue.mjs',
-    'scripts/db/oci-muratcan-v3-value-fix.mjs',
+    'scripts/db/_archive/site-specific/oci-eslamed-fix-values-and-enqueue.mjs',
+    'scripts/db/_archive/site-specific/oci-muratcan-v3-value-fix.mjs',
   ];
   for (const rel of scripts) {
     const src = readFileSync(join(ROOT, rel), 'utf8');

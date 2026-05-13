@@ -9,6 +9,9 @@
  * │  SITE_ID  →  OpsMantik konsolundan sitenin public_id │
  * │  API_KEY  →  OpsMantik konsolundan sitenin OCI key'i │
  * └──────────────────────────────────────────────────────┘
+ *
+ * Canonical production fleet script (not in fleet-quarantine.json).
+ * Site-specific forks are quarantined; customization is config / Script Properties — not new forks — unless explicitly approved.
  */
 
 'use strict';

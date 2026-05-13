@@ -47,6 +47,16 @@ test('QueueActionsBodySchema: RESET_TO_QUEUED clearErrors default false', () => 
   if (r.success) assert.equal(r.data.clearErrors, false);
 });
 
+test('QueueActionsBodySchema: rejects unknown keys (strict)', () => {
+  const r = QueueActionsBodySchema.safeParse({
+    siteId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    action: 'RETRY_SELECTED',
+    ids: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+    extraField: true,
+  });
+  assert.equal(r.success, false);
+});
+
 test('queue-types: QUEUE_STATUSES includes terminal states', () => {
   assert.ok(QUEUE_STATUSES.includes('COMPLETED'));
   assert.ok(QUEUE_STATUSES.includes('FAILED'));

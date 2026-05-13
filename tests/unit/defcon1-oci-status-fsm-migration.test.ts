@@ -15,3 +15,14 @@ test('DEFCON-1 FSM migration: explicit matrix + PR-9K gate + DEFCON_1 exception'
   assert.match(sql, /OLD\.status = 'FAILED'/);
   assert.match(sql, /'BLOCKED_PRECEDING_SIGNALS'/);
 });
+
+test('DEFCON-1 FSM migration: pinned illegal transition (QUEUED → UPLOADED) stays absent from allow-list', () => {
+  const sql = readFileSync(
+    join(process.cwd(), 'supabase', 'migrations', '20261231000000_defcon1_absolute_fsm_dictatorship.sql'),
+    'utf8'
+  );
+  // Export must go QUEUED → PROCESSING → …; a direct jump to UPLOADED would bypass claim semantics.
+  assert.doesNotMatch(sql, /OLD\.status = 'QUEUED'[^)]*'UPLOADED'/);
+  // Terminal COMPLETED must not re-open to QUEUED except via the explicit PR-9K session gate (uses IN lists, not this shape).
+  assert.doesNotMatch(sql, /OLD\.status = 'COMPLETED' AND NEW\.status = 'QUEUED'/);
+});

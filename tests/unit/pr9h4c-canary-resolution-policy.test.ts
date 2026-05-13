@@ -5,7 +5,13 @@ import { join } from 'node:path';
 
 const wrapperPath = join(process.cwd(), 'scripts', 'db', 'oci-canary-live-export.mjs');
 const pr9h4cRecoverPath = join(process.cwd(), 'scripts', 'db', 'pr9h4c-recover-claimed-not-uploaded.mjs');
-const muratcanScriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptMuratcanAku.js');
+const muratcanMarkSnapshotPath = join(
+  process.cwd(),
+  'tests',
+  'fixtures',
+  'google-ads-oci',
+  'PR9H4C_MURATCAN_MARK_DEFAULT_SNAPSHOT.js'
+);
 const dossierPath = join(process.cwd(), 'docs', 'OPS', 'PRODUCTION_CANARY_DOSSIER.md');
 
 test('PR-9H.4C: recovery wrapper targets only hardened PR-9H.4B queue/site pair', () => {
@@ -37,7 +43,7 @@ test('PR-9H.4C: live export wrapper documents ACK/out-of-band (no inlined ACK HT
 });
 
 test('PR-9H.4C: Muratcan Ads script export client defaults mark unless peek', () => {
-  const src = readFileSync(muratcanScriptPath, 'utf8');
+  const src = readFileSync(muratcanMarkSnapshotPath, 'utf8');
   assert.match(src, /var doMark = markAsExported !== false/);
 });
 

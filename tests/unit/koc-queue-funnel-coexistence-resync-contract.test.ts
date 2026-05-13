@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 test('koc-queue-funnel-coexistence-resync.mjs: Koç default site + summary mode + APPLY delegates to pr9h6', () => {
-  const p = join(process.cwd(), 'scripts', 'db', 'koc-queue-funnel-coexistence-resync.mjs');
+  const p = join(process.cwd(), 'scripts', 'db', '_archive', 'site-specific', 'koc-queue-funnel-coexistence-resync.mjs');
   const src = readFileSync(p, 'utf8');
   assert.match(src, /93cb9966bcf349c1b4ece8ea34142ace/);
   assert.match(src, /FUNNEL_COEXISTENCE_QUEUE_SUMMARY/);

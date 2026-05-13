@@ -10,4 +10,6 @@
 
 ## Legacy SQL under `docs/runbooks/oci_*.sql`
 
+**Site/client forensic** helpers live under [`_archive/site-specific/`](./_archive/site-specific/) (Eslamed / Muratcan / joint slugs in filenames). **Generic** helpers remain next to this file: `oci_production_queue_check_and_insert.sql`, `oci_seal_queue_dunden_beri.sql`.
+
 These files are **read-only forensic** helpers (mostly `SELECT`). Any historical **`UPDATE offline_conversion_queue`** recipe must stay **fully commented** in git so operators cannot accidentally paste-live a ledger bypass. Prefer cron + RPC repair paths above. For incident response, copy from comments only under explicit change control — see [`OCI_HARDENING_OPERATIONS.md`](./OCI_HARDENING_OPERATIONS.md).

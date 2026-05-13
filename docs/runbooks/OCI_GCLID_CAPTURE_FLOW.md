@@ -90,7 +90,7 @@ Muratcan için:
 
 ```bash
 # Son 7 gün session’larında GCLID oranı ve attribution dağılımı
-node scripts/db/oci-muratcan-gclid-yakalama-teşhis.mjs
+node scripts/db/_archive/site-specific/oci-muratcan-gclid-yakalama-teşhis.mjs
 ```
 
 - Session’da gclid/wbraid/gbraid dolu oranı düşükse → client veya Organic sınıflandırması kontrol edilmeli.

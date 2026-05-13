@@ -29,13 +29,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const parsed = QueueActionsBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Invalid body', details: parsed.error.flatten() },
-      { status: 400 }
-    );
-  }
+    const parsed = QueueActionsBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid body',
+          code: 'OCI_QUEUE_ACTIONS_SCHEMA_VIOLATION',
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        },
+        { status: 400 }
+      );
+    }
 
   const auth = await requireOciControlAuth(parsed.data.siteId, 'queue:operate');
   if (auth instanceof NextResponse) return auth;

@@ -91,7 +91,7 @@ These scripts exist but are not wired to any `npm run` command. They may be run 
 
 - `scripts/find-zombies.mjs`, `scripts/backfill-traffic-sources.mjs`, `scripts/check-site-id-scope.mjs`, `scripts/check-calls.mjs`, `scripts/check-duplicates.mjs`, `scripts/check-geo-history.mjs`, `scripts/check-today.mjs`, `scripts/check-today-trt.mjs`
 - `scripts/analyze-rpc-performance.mjs`, `scripts/verify-rpc-evidence.mjs`, `scripts/verify-ai-pipeline.mjs`, `scripts/run-diagnostics.mjs`, `scripts/run-diagnostics-cli.mjs`
-- Many `scripts/db/*.mjs` (oci-muratcan-*, oci-eslamed-*, etc.) and `scripts/smoke/*.mjs` beyond those in package.json
+- Many `scripts/db/*.mjs` (site-specific helpers live under `scripts/db/_archive/site-specific/`; generic `oci-enqueue.mjs`, etc. remain in `scripts/db/`) and `scripts/smoke/*.mjs` beyond those in package.json
 - **scripts/find-unused-i18n-keys.mjs** — lists i18n keys in en.ts never referenced by t()/translate(). Run: `npm run report:i18n:unused`
 
 ## Recommendations

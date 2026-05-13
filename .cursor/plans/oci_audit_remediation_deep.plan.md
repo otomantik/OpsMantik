@@ -440,7 +440,7 @@ Aşağıdakiler **hedef özellikler**; her biri için birim veya entegrasyon tes
 
 **Hedef:** `scripts/db` ile service_role arka kapısı plan dışı queue mutasyonu yapamasın.
 
-- **Critical mutators:** `reset-muratcan-queue.mjs`, `simulate-script-flow.mjs`, `oci-cleanup-junk-and-backfill-intent-contacted.ts` quarantine.
+- **Critical mutators:** `scripts/db/_archive/site-specific/reset-muratcan-queue.mjs`, `simulate-script-flow.mjs`, `oci-cleanup-junk-and-backfill-intent-contacted.ts` quarantine.
 - **High mutators:** `oci-clone-completed-ms.ts`, `oci-requeue-all-failed.mjs`, `oci-repair-marketing-signal-queue-parity.ts`, `oci-pipeline-fill-and-report.mjs` approval + dry-run default + RPC-only standardına taşınmalı.
 - **Direct queue updates:** GCLID/currency/value/fix scripts direct `.update` yerine canonical RPC veya explicit forensic transition ile çalışmalı.
 - **Default safety:** Tüm mutating scripts default dry-run; live için `--apply` + typed approval token + target site + output plan + no-localhost check.

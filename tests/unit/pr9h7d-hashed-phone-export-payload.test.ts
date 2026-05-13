@@ -168,8 +168,8 @@ test('finalizeReturnedPhoneDiagnostics: exported/missing/source_counts without h
   assert.equal(json.includes(FIX_HP_LOWER), false);
 });
 
-test('GoogleAdsScriptKocOtoKurtarma.js remains courier-only (no raw-phone hashing primitives)', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptKocOtoKurtarma.js');
+test('GoogleAdsScriptUniversal.js: no raw-phone hashing primitives (courier-only contract)', () => {
+  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptUniversal.js');
   const src = readFileSync(scriptPath, 'utf8');
   assert.doesNotMatch(src, /\bsha256\b/i);
   assert.doesNotMatch(src, /Utilities\.digest|digestHex/i);

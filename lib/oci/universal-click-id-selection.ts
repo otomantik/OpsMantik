@@ -1,7 +1,7 @@
 /**
  * PR-9I — Universal offline conversion click-id selection for Google Ads Script lane.
  * Priority: gclid > wbraid > gbraid. Exactly one non-empty click identifier per upload row.
- * Keep GoogleAdsScriptKocOtoKurtarma.js resolver logic aligned with this module.
+ * Keep `GoogleAdsScriptUniversal.js` click-id selection aligned with this module.
  */
 
 export type SelectedClickIdType = 'gclid' | 'wbraid' | 'gbraid';

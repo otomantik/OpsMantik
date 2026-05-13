@@ -1,6 +1,6 @@
 # OCI Google Ads Script Deployment Runbook
 
-**Purpose:** Deploy and configure the Eslamed Quantum OCI Script for Google Ads Offline Conversion Import. The script reads from the OpsMantik API and uploads conversions to Google Ads.
+**Purpose:** Deploy and configure the **Universal** OpsMantik OCI Google Ads Script for Offline Conversion Import. Canonical source: `scripts/google-ads-oci/GoogleAdsScriptUniversal.js`. The script reads from the OpsMantik API and uploads conversions to Google Ads.
 
 ## Prerequisites
 
@@ -32,19 +32,18 @@ Do **not** hardcode secrets in the script. Use **Project Settings > Script Prope
 
 ## Local Testing
 
-For local mock runs (`node scripts/google-ads-oci/GoogleAdsScript.js`):
+For local mock runs (`node` against the repo file — **not** supported for Universal motor without Google Ads mocks):
 
-- Set environment variables: `OPSMANTIK_SITE_ID`, `OPSMANTIK_API_KEY`
-- Or the script uses mock fallbacks when run as main module
+- Prefer validating fleet contracts via `npm run test:unit` and `tests/unit/oci-script-fleet-truth-contract.test.ts`.
+- Legacy `GoogleAdsScript.js` (historical; **removed** from repo) was **quarantined**; do not treat any legacy fork as the paste target — use **Universal**.
 
 ## Deterministic Features
 
-- **V1 Ingress Contract:** Tracker page views post to `/api/track/pv`; backend exports every eligible V1 row and the Google Ads script is the only sampling layer
-- **V1 Sampling:** 10% deterministic hash-based sampling (DJB2) in `scripts/google-ads-oci/GoogleAdsScript.js`
-- **V1 Value Contract:** `OpsMantik_V1_Nabiz` uses a 1 minor-unit visibility value, not `0`
-- **Time Validation:** Strict `YYYY-MM-DD HH:mm:ss+ZZ:ZZ` format
-- **Upload Failure Invariant:** On `upload.apply()` exception, script returns `uploadFailed: true` and does **not** call ACK
-- **DETERMINISTIC_SKIP Audit:** Skipped V1 items are sent as `skippedIds` to ACK endpoint; backend marks them COMPLETED with `provider_error_category = 'DETERMINISTIC_SKIP'`
+- **V1 Ingress Contract:** Tracker page views post to `/api/track/pv`; backend exports every eligible V1 row and historical scripts implemented sampling in-client. **Universal** does not reimplement DJB2 sampling; server export + queue journal own eligibility.
+- **V1 Sampling (historical):** Documented previously on quarantined `GoogleAdsScript.js` — not replicated in `GoogleAdsScriptUniversal.js`.
+- **Time validation:** Universal `isValidTime` / `normalizeTime` accept Ads-style timestamps with optional colon in numeric timezone offset.
+- **Upload failure invariant:** On `upload.apply()` exception, Universal calls **`/api/oci/ack-failed`** for attempted queue ids with **`UPLOAD_EXCEPTION` / `TRANSIENT`**, then **returns** — it does **not** send dispatch-pending **`/api/oci/ack`** for those rows.
+- **Skipped rows:** Optional `skippedIds` may be forwarded on success ACK when applicable; deterministic skip semantics remain backend-owned.
 
 ## Sites migrated to API (Worker)
 

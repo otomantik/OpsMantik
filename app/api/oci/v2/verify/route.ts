@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { adminClient } from '@/lib/supabase/admin';
 import { createSessionToken } from '@/lib/oci/session-auth';
 import { timingSafeCompare } from '@/lib/security/timing-safe-compare';
@@ -8,6 +9,12 @@ import { requireCapability, EntitlementError } from '@/lib/entitlements/requireE
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const OciVerifyBodySchema = z
+  .object({
+    siteId: z.string().min(1).max(128),
+  })
+  .strict();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const capGateEnv = (process.env.OCI_VERIFY_CAPABILITY_ENFORCE || '').trim().toLowerCase();
@@ -19,16 +26,27 @@ const ENFORCE_CAPABILITY_GATE =
 export async function POST(req: NextRequest) {
   try {
     const apiKey = (req.headers.get('x-api-key') || '').trim();
-    const bodyUnknown = await req.json().catch(() => ({}));
-    const body =
-      bodyUnknown && typeof bodyUnknown === 'object' && !Array.isArray(bodyUnknown)
-        ? (bodyUnknown as Record<string, unknown>)
-        : {};
-    const siteId = typeof body.siteId === 'string' ? body.siteId.trim() : '';
-
-    if (!siteId) {
-      return NextResponse.json({ code: 'BAD_REQUEST', message: 'siteId is required' }, { status: 400 });
+    let bodyUnknown: unknown;
+    try {
+      bodyUnknown = await req.json();
+    } catch {
+      return NextResponse.json(
+        { code: 'OCI_VERIFY_SCHEMA_VIOLATION', message: 'Invalid JSON body' },
+        { status: 400 }
+      );
     }
+    const parsedBody = OciVerifyBodySchema.safeParse(bodyUnknown);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        {
+          code: 'OCI_VERIFY_SCHEMA_VIOLATION',
+          message: 'Request body validation failed',
+          issues: parsedBody.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        },
+        { status: 400 }
+      );
+    }
+    const siteId = parsedBody.data.siteId.trim();
 
     // Identity boundary: public_id only on verify handshake.
     if (UUID_RE.test(siteId)) {

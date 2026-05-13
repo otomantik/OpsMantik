@@ -26,17 +26,10 @@ test('PR-9J migrations encode recovery, snapshot, FSM, and dedup hardening', () 
   assert.match(m4, /COMPLETED_UNVERIFIED/);
 });
 
-test('script ACK helpers propagate export_run_id in legacy site scripts', () => {
-  for (const path of [
-    'scripts/google-ads-oci/GoogleAdsScriptKocOtoKurtarma.js',
-    'scripts/google-ads-oci/GoogleAdsScriptTecrubeliBakici.js',
-    'scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js',
-    'scripts/google-ads-oci/GoogleAdsScript.js',
-  ]) {
-    const source = read(path);
-    assert.match(source, /export_run_id/);
-    assert.match(source, /exportRunId/);
-  }
+test('Universal Google Ads script propagates export_run_id on ACK surfaces', () => {
+  const source = read('scripts/google-ads-oci/GoogleAdsScriptUniversal.js');
+  assert.match(source, /export_run_id/);
+  assert.match(source, /exportRunId/);
 });
 
 test('app-side belt-and-suspenders guards are present', () => {

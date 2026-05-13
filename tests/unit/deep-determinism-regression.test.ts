@@ -158,6 +158,14 @@ test('oci recovery routes and runner delegate to DB-owned batch kernels', () => 
   const migrationSrc = migration.source;
   assert.ok(sweepSrc.includes("recover_stuck_offline_conversion_jobs"), 'sweep-zombies must delegate processing recovery to DB recovery RPC');
   assert.ok(sweepSrc.includes("close_stale_uploaded_conversions"), 'sweep-zombies must close stale uploaded rows via DB atomic rpc');
+  const closeStaleLedger = readFileSync(
+    join(ROOT, 'supabase', 'migrations', '20261231130000_close_stale_uploaded_conversions_ledger_v1.sql'),
+    'utf8'
+  );
+  assert.ok(
+    closeStaleLedger.includes('append_worker_transition_batch_v2'),
+    'close_stale_uploaded_conversions must ledger-close via append_worker_transition_batch_v2'
+  );
   assert.ok(runnerSrc.includes("append_worker_transition_batch_v2"), 'runner must use DB-owned worker batch rpc');
   assert.ok(migrationSrc.includes('CREATE OR REPLACE FUNCTION public.append_worker_transition_batch_v2'), 'migration must define worker batch v2 rpc');
   assert.ok(migrationSrc.includes('outbox_events'), 'migration must include outbox support contracts');

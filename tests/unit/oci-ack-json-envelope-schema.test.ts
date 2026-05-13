@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 import {
   ociAckStrictObjectBodySchema,
@@ -38,6 +39,23 @@ test('parseAckJsonEnvelope: array body over 5000 items fails schema', () => {
   const arr = Array.from({ length: 5001 }, () => ({ ...row }));
   const r = parseAckJsonEnvelope(arr);
   assert.equal(r.ok, false);
+});
+
+test('parseAckJsonEnvelope: identical payloads yield identical canonical body hash (double-submit idempotency aid)', () => {
+  const raw = {
+    siteId: 'site-slug',
+    queueIds: ['seal_00000000-0000-4000-8000-000000000001'],
+    exportRunId: 'run-1',
+    export_run_id: 'run-1',
+  };
+  const a = parseAckJsonEnvelope(raw);
+  const b = parseAckJsonEnvelope(raw);
+  assert.equal(a.ok, true);
+  assert.equal(b.ok, true);
+  if (!a.ok || !b.ok) return;
+  const ha = crypto.createHash('sha256').update(JSON.stringify(a.body)).digest('hex');
+  const hb = crypto.createHash('sha256').update(JSON.stringify(b.body)).digest('hex');
+  assert.equal(ha, hb);
 });
 
 test('ociAckStrictObjectBodySchema: Production + Universal keys only', () => {

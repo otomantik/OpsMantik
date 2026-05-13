@@ -91,7 +91,7 @@ Examples enforced by **policy** and **partially** by DB trigger (§7):
 
 **`UPLOADED`:** Intermediate when `pendingConfirmation=true` / `providerConfirmationMode=bulk_upload_async_unconfirmed` — **dispatch succeeded**, Google import still pending / unobservable from Scripts.
 
-**`COMPLETED_UNVERIFIED`:** Terminal closure without full provider verification (e.g. [`app/api/cron/oci/sweep-zombies/route.ts`](../../app/api/cron/oci/sweep-zombies/route.ts) aging `UPLOADED` → `COMPLETED_UNVERIFIED`). Operators and dashboards must **not** treat this as “Google-confirmed revenue.”
+**`COMPLETED_UNVERIFIED`:** Terminal closure without full provider verification (e.g. [`app/api/cron/oci/sweep-zombies/route.ts`](../../app/api/cron/oci/sweep-zombies/route.ts) aging `UPLOADED` → `COMPLETED_UNVERIFIED` via DB RPC `close_stale_uploaded_conversions`, which appends a **`WORKER`** ledger transition through `append_worker_transition_batch_v2`). Operators and dashboards must **not** treat this as “Google-confirmed revenue.”
 
 **Queue Health 100 (PR-1C):** Legacy **`failed_rate` / `total_failed_rate`** still reflect total **FAILED + DLQ mass** (deterministic skips remain observable). **Gates and score 100** use **`actionable_failed_rate`** and **`provider_failed_rate`** from [`lib/oci/queue-failure-taxonomy.ts`](../../lib/oci/queue-failure-taxonomy.ts) / [`queue_health.sql`](../../scripts/sql/queue_health.sql) — deterministic skips are **excluded** from those numerators so they do not inflate “provider broken” narratives. There is no separate “successful Google upload” counter in v1 health — do not treat `FAILED` rows with `SUPPRESSED_BY_HIGHER_GEAR` as `COMPLETED` in ops narrative.
 
@@ -165,7 +165,19 @@ Single-conversion mode drops lower-gear queue rows from the **export batch** whe
 
 ---
 
-## 11. Follow-ups
+## 11. Staging smoke checklist (ACK / export perimeter)
+
+Run on staging before a Zero-Trust evidence cut:
+
+- **ACK 400:** POST `/api/oci/ack` with an unknown top-level JSON key → **400** and stable `code` / issues shape (strict envelope).
+- **ACK 409:** Controlled transition mismatch / conflict path (receipt or FSM) → **409** with documented `code` (not a silent 200).
+- **Export query 400:** GET `/api/oci/google-ads-export?...` with an unknown query key → **400** `EXPORT_QUERY_UNKNOWN_KEY`; invalid `limit` / `providerKey` → **400** `EXPORT_QUERY_SCHEMA_VIOLATION`.
+
+CI static evidence: `CRITICAL_MIGRATIONS` in [`scripts/release/collect-gate-evidence.mjs`](../../scripts/release/collect-gate-evidence.mjs) must list ledger / FSM migrations applied in prod.
+
+---
+
+## 12. Follow-ups
 
 | ID | Item |
 |----|------|
@@ -174,7 +186,7 @@ Single-conversion mode drops lower-gear queue rows from the **export batch** whe
 
 ---
 
-## 12. PR-1 verification
+## 13. PR-1 verification
 
 - Unit: `tests/unit/oci-queue-lifecycle-contract.test.ts` pins this document’s matrices and key implementation anchors.
 - Release: `npm run test:release-gates` before deploy (workspace rule).

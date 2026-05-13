@@ -92,7 +92,7 @@ async function run() {
     })));
   }
 
-  console.log('\nTam veri: docs/runbooks/oci_eslamed_bugun_google_sonuc.sql');
+  console.log('\nTam veri: docs/runbooks/_archive/site-specific/oci_eslamed_bugun_google_sonuc.sql');
 }
 
 run().catch((e) => {

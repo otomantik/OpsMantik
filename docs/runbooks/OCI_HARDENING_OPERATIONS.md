@@ -65,7 +65,7 @@ If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, r
 ### PR-9K — Google Ads Script bulk upload: dispatch ≠ provider confirmed
 
 - **Incident class**: `AdsApp.bulkUploads()` + `upload.apply()` can succeed while Google’s offline conversion import is still **asynchronous / unconfirmed**. **`COMPLETED`** must mean **provider-accepted** (or an explicitly documented terminal), not “CSV applied in-script”.
-- **ACK semantics**: `POST /api/oci/ack` treats **`pendingConfirmation: true`** or **`providerConfirmationMode: bulk_upload_async_unconfirmed`** as **dispatch-pending** → seal rows finalize to **`UPLOADED`**, not **`COMPLETED`**. Koç script (`GoogleAdsScriptKocOtoKurtarma.js`) sends both flags after a successful `upload.apply()`.
+- **ACK semantics**: `POST /api/oci/ack` treats **`pendingConfirmation: true`** or **`providerConfirmationMode: bulk_upload_async_unconfirmed`** as **dispatch-pending** → seal rows finalize to **`UPLOADED`**, not **`COMPLETED`**. Historical Koç fork (removed; git history) sent both flags after a successful `upload.apply()`.
 - **Operator remediation (ledger-only)**: do **not** hand-`UPDATE` `offline_conversion_queue`. Use:
   - **Read-only selector**: `scripts/db/pr9k-select-unconfirmed-script-completed-rows.mjs` (dry-run by default; `OUTPUT_JSON=1`).
   - **Requeue**: `scripts/db/pr9k-requeue-unconfirmed-script-completed-rows.mjs` — dry-run calls `requeue_unconfirmed_script_completed_rows_v1` with `p_apply=false`; apply requires **`APPLY=1`** and **`PR9K_REQUEUE_APPROVAL=I_APPROVE_REQUEUE_UNCONFIRMED_GOOGLE_SCRIPT_COMPLETED_ROWS`** plus **`PR9K_INCIDENT_KEY`**. DB objects: migration **`20261228141500_pr9k_operator_requeue_unconfirmed_google_script_completed.sql`** (`oci_operator_requeue_audit`, FSM session gate **`opsmantik.pr9k_operator_requeue`**, RPCs **`pr9k_unconfirmed_script_completed_candidates_v1`** / **`requeue_unconfirmed_script_completed_rows_v1`**).
@@ -195,7 +195,7 @@ Use this rule after a controlled Koç / Script-lane hashed-phone sync completes.
 
 ## Scheduled Google Ads Script Production Sync
 
-**Per-account installation:** one Google Ads Script project (or one MCC-linked script scoped per account) maps to **one** OpsMantik site. Store **`OPSMANTIK_API_KEY`** and **`OPSMANTIK_SITE_ID`** in **Script Properties** (`PropertiesService.getScriptProperties()`); never rely on inline secrets in source. Source file: `scripts/google-ads-oci/GoogleAdsScriptProduction.js` — paste into the Google Ads Script editor and bind **`main`** to a **time-driven** trigger.
+**Per-account installation:** one Google Ads Script project (or one MCC-linked script scoped per account) maps to **one** OpsMantik site. Store **`OPSMANTIK_API_KEY`** and **`OPSMANTIK_SITE_ID`** in **Script Properties** (`PropertiesService.getScriptProperties()`); never rely on inline secrets in source. **Canonical paste source:** `scripts/google-ads-oci/GoogleAdsScriptUniversal.js` — paste into the Google Ads Script editor and bind **`main`** to a **time-driven** trigger. (PR-9H.7B canary template strings are frozen in `tests/fixtures/google-ads-oci/PR9H7B_GOOGLE_ADS_SCRIPT_PRODUCTION_SNAPSHOT.js` — **not** a paste target.)
 
 ### Script-first enhanced conversions phone hash (PR-9H.7A)
 

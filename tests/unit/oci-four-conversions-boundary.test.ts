@@ -9,10 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 test('enqueueSealConversion inserts offline queue with OpsMantik_Won only', () => {
-  const src = readFileSync(
-    join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts'),
-    'utf8'
-  );
+  const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
   assert.match(
     src,
     /action:\s*OPSMANTIK_CONVERSION_NAMES\.won/,
@@ -27,10 +24,7 @@ test('enqueueSealConversion inserts offline queue with OpsMantik_Won only', () =
 });
 
 test('enqueueOciConversionRow maps micro stages to canonical queue actions', () => {
-  const src = readFileSync(
-    join(process.cwd(), 'lib', 'oci', 'enqueue-oci-conversion-row.ts'),
-    'utf8'
-  );
+  const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
   assert.ok(
     src.includes('const actionName = OPSMANTIK_CONVERSION_NAMES[stage]'),
     'micro-stage queue writer must derive action from canonical conversion names'
@@ -64,28 +58,13 @@ test('stage-router enqueues contacted/offered/junk into queue journal', () => {
   );
 });
 
-test('Apps Script engines share the four literal conversion names', () => {
-  const must = [
-    'OpsMantik_Contacted',
-    'OpsMantik_Offered',
-    'OpsMantik_Won',
-    'OpsMantik_Junk_Exclusion',
-  ];
-  const gas = readFileSync(
-    join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js'),
-    'utf8'
-  );
-  const tec = readFileSync(
-    join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptTecrubeliBakici.js'),
-    'utf8'
-  );
-  const mur = readFileSync(
-    join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptMuratcanAku.js'),
+test('Canonical Apps Script (Universal) carries the four literal conversion names', () => {
+  const must = ['OpsMantik_Contacted', 'OpsMantik_Offered', 'OpsMantik_Won', 'OpsMantik_Junk_Exclusion'];
+  const universal = readFileSync(
+    join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptUniversal.js'),
     'utf8'
   );
   for (const m of must) {
-    assert.ok(gas.includes(`'${m}'`), `GoogleAdsScript.js missing ${m}`);
-    assert.ok(tec.includes(`'${m}'`), `GoogleAdsScriptTecrubeliBakici.js missing ${m}`);
-    assert.ok(mur.includes(`'${m}'`), `GoogleAdsScriptMuratcanAku.js missing ${m}`);
+    assert.ok(universal.includes(`'${m}'`), `GoogleAdsScriptUniversal.js missing ${m}`);
   }
 });

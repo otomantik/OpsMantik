@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
           persisted: false,
           export_run_integrity: 'EXPORT_RUN_INTEGRITY_RED',
           error: 'SCRIPT_SUMMARY_INVALID',
+          code: 'SCRIPT_SUMMARY_INVALID',
           details: { message: error },
         },
         { status: 400 }

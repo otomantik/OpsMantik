@@ -1,5 +1,5 @@
 /**
- * OCI script: upload.apply() exception triggers onUploadFailure with TRANSIENT.
+ * OCI Universal script: upload.apply() exception path uses ack-failed (TRANSIENT), not success ACK.
  */
 
 import test from 'node:test';
@@ -7,65 +7,49 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-test('GoogleAdsScript: process wraps apply in try/catch', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScriptUniversal.js');
+
+test('GoogleAdsScriptUniversal: upload.apply wrapped in try/catch', () => {
   const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('try'), 'has try');
-  assert.ok(src.includes('upload.apply()'), 'calls apply');
-  assert.ok(src.includes('catch'), 'has catch');
+  assert.ok(src.includes('try'));
+  assert.ok(src.includes('upload.apply()'));
+  assert.ok(src.includes('catch'));
 });
 
-test('GoogleAdsScript: on apply catch calls onUploadFailure with UPLOAD_EXCEPTION and TRANSIENT', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+test('GoogleAdsScriptUniversal: on apply catch calls sendAckFailed with UPLOAD_EXCEPTION and TRANSIENT', () => {
   const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('onUploadFailure'), 'uses onUploadFailure callback');
-  assert.ok(src.includes('UPLOAD_EXCEPTION'), 'errorCode UPLOAD_EXCEPTION');
-  assert.ok(src.includes('TRANSIENT'), 'errorCategory TRANSIENT');
+  assert.ok(src.includes('sendAckFailed'));
+  assert.ok(src.includes("'UPLOAD_EXCEPTION'") || src.includes('"UPLOAD_EXCEPTION"'));
+  assert.ok(src.includes("'TRANSIENT'") || src.includes('"TRANSIENT"'));
 });
 
-test('GoogleAdsScript: main passes onUploadFailure that calls sendAckFailed', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+test('GoogleAdsScriptUniversal: upload failure path returns before success ACK', () => {
   const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('sendAckFailed'), 'calls sendAckFailed on upload failure');
-  assert.ok(src.includes('onUploadFailure: function'), 'passes onUploadFailure to process');
+  const catchIdx = src.indexOf("Log.error('upload.apply() FAILED'");
+  assert.ok(catchIdx >= 0);
+  const tryIdx = src.lastIndexOf('// ── Phase 4: Single upload.apply()', catchIdx);
+  assert.ok(tryIdx >= 0);
+  const phase4 = src.slice(tryIdx, tryIdx + 900);
+  assert.match(phase4, /catch\s*\([^)]*\)\s*\{[\s\S]*?\breturn\b/);
 });
 
-test('GoogleAdsScript: on apply catch returns uploadFailed:true instead of throw', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+test('GoogleAdsScriptUniversal: success ACK only after uploadOk guard', () => {
   const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('uploadFailed: true'), 'returns uploadFailed on apply exception');
-  assert.ok(src.includes('Object.assign'), 'returns stats with uploadFailed');
+  assert.ok(src.includes('if (uploadOk && successIds.length)'), 'must gate sendAck on uploadOk');
 });
 
-test('GoogleAdsScript: main blocks ACK when uploadFailed', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+test('GoogleAdsScriptUniversal: sendAck accepts skippedIds in payload', () => {
   const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('stats.uploadFailed') && src.includes('return'), 'checks uploadFailed before ACK');
+  assert.ok(src.includes('skippedIds'));
+  assert.ok(src.includes('payload.skippedIds') || src.includes('payload.skippedIds ='));
+  const sendAckIdx = src.indexOf('OciClient.prototype.sendAck');
+  assert.ok(sendAckIdx >= 0);
+  const sendAckSlice = src.slice(sendAckIdx, sendAckIdx + 800);
+  assert.ok(sendAckSlice.includes('skippedIds'), 'sendAck must accept skippedIds');
 });
 
-test('GoogleAdsScript: process uses skippedIds and skippedDeterministic', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
+test('GoogleAdsScriptUniversal: fetchPage maps API meta to nextCursor / hasNextPage', () => {
   const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('skippedIds'), 'has skippedIds in stats');
-  assert.ok(src.includes('skippedDeterministic'), 'has skippedDeterministic in stats');
-  assert.ok(src.includes('skippedValidation'), 'has skippedValidation in stats');
-});
-
-test('GoogleAdsScript: sendAck accepts skippedIds parameter', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
-  const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('skippedIds'), 'sendAck accepts skippedIds');
-  assert.ok(src.includes('payload.skippedIds'), 'passes skippedIds to ACK payload');
-});
-
-test('GoogleAdsScript: fetchConversions understands paged { items, next_cursor } payloads', () => {
-  const scriptPath = join(process.cwd(), 'scripts', 'google-ads-oci', 'GoogleAdsScript.js');
-  const src = readFileSync(scriptPath, 'utf8');
-  assert.ok(src.includes('fetchConversionsPage'), 'script must have paged fetch helper');
-  assert.ok(src.includes('payload.items') && src.includes('payload.next_cursor'), 'script must read structured API payload');
-  assert.ok(
-    src.includes('do {') &&
-      (src.includes('} while (hasNextPage);') || src.includes('} while (cursor);')),
-    'script must page until no next page / cursor'
-  );
+  assert.ok(src.includes('fetchPage'));
+  assert.ok(src.includes('nextCursor') && src.includes('hasNextPage'));
 });

@@ -74,18 +74,20 @@ export const QueueActionSchema = z.enum([
   'MARK_FAILED',
 ]);
 
-export const QueueActionsBodySchema = z.object({
-  siteId: z.string().min(1, 'siteId is required'),
-  action: QueueActionSchema,
-  ids: z.array(z.string().uuid()).min(1, 'ids must not be empty'),
-  reason: z.string().optional(),
-  errorCode: z.string().optional(),
-  errorCategory: z
-    .enum(PROVIDER_ERROR_CATEGORIES as [string, ...string[]])
-    .optional(),
-  /** Only for RESET_TO_QUEUED: clear last_error, provider_error_* (default false). */
-  clearErrors: z.boolean().optional().default(false),
-});
+export const QueueActionsBodySchema = z
+  .object({
+    siteId: z.string().min(1, 'siteId is required'),
+    action: QueueActionSchema,
+    ids: z.array(z.string().uuid()).min(1, 'ids must not be empty').max(5000),
+    reason: z.string().max(2048).optional(),
+    errorCode: z.string().max(64).optional(),
+    errorCategory: z
+      .enum(PROVIDER_ERROR_CATEGORIES as [string, ...string[]])
+      .optional(),
+    /** Only for RESET_TO_QUEUED: clear last_error, provider_error_* (default false). */
+    clearErrors: z.boolean().optional().default(false),
+  })
+  .strict();
 
 export type QueueStatsQuery = z.infer<typeof QueueStatsQuerySchema>;
 export type QueueRowsQuery = z.infer<typeof QueueRowsQuerySchema>;

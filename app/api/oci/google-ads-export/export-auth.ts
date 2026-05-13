@@ -9,6 +9,12 @@ import { parseExportConfig } from '@/lib/oci/site-export-config';
 import { readExportCursorMark } from '@/lib/oci/google-ads-export/sanitize';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import type { ExportSiteRow } from '@/lib/oci/google-ads-export/types';
+import {
+  collectUnknownExportQueryKeys,
+  exportQueryParamsToStrictInput,
+  formatZodIssues,
+  googleAdsExportQueryStringsSchema,
+} from '@/lib/oci/schemas/google-ads-export-query.zod';
 
 export class ExportHttpError extends Error {
   status: number;
@@ -78,7 +84,24 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
   }
 
   const { searchParams } = new URL(req.url);
-  const siteIdParam = String(searchParams.get('siteId') || '');
+  const unknownQ = collectUnknownExportQueryKeys(searchParams);
+  if (unknownQ.length > 0) {
+    throw new ExportHttpError(400, {
+      error: 'Unknown query parameter',
+      code: 'EXPORT_QUERY_UNKNOWN_KEY',
+      keys: unknownQ,
+    });
+  }
+  const qParsed = googleAdsExportQueryStringsSchema.safeParse(exportQueryParamsToStrictInput(searchParams));
+  if (!qParsed.success) {
+    throw new ExportHttpError(400, {
+      error: 'Invalid export query',
+      code: 'EXPORT_QUERY_SCHEMA_VIOLATION',
+      issues: formatZodIssues(qParsed.error),
+    });
+  }
+  const q = qParsed.data;
+  const siteIdParam = String(q.siteId ?? '');
   const siteId = siteIdFromAuth || siteIdParam;
   if (!siteId) throw new ExportHttpError(400, { error: 'Missing siteId' });
   if (process.env.OCI_EXPORT_PAUSED === 'true' || process.env.OCI_EXPORT_PAUSED === '1') {
@@ -87,20 +110,20 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
 
   let queueCursorUpdatedAt: string | null = null;
   let queueCursorId: string | null = null;
-  const cursorStr = searchParams.get('cursor');
-  const requestedLimit = Number(searchParams.get('limit') ?? 250);
+  const cursorStr = q.cursor ?? null;
+  const requestedLimit = Number(q.limit ?? 250);
   const pageLimit = Math.min(1000, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 250));
-  const markAsExported = searchParams.get('markAsExported') === 'true';
+  const markAsExported = q.markAsExported === 'true';
   const canaryMode =
-    parseBooleanFlag(searchParams.get('canaryMode')) ||
+    parseBooleanFlag(q.canaryMode ?? null) ||
     parseBooleanFlag(readCanaryHeader(req, 'x-opsmantik-canary-mode'));
   const canaryExpectedQueueIdHeader = readCanaryHeader(req, 'x-opsmantik-canary-expected-queue-id');
-  const canaryExpectedQueueIdQuery = String(searchParams.get('canaryExpectedQueueId') || '').trim();
+  const canaryExpectedQueueIdQuery = String(q.canaryExpectedQueueId || '').trim();
   const canaryExpectedQueueId = canaryExpectedQueueIdHeader || canaryExpectedQueueIdQuery || null;
   const canaryAllowlistRawHeader = readCanaryHeader(req, 'x-opsmantik-allowlist-ids');
-  const canaryAllowlistRawQuery = String(searchParams.get('allowlistIds') || '').trim();
+  const canaryAllowlistRawQuery = String(q.allowlistIds || '').trim();
   /** Alternate query keys — some proxies normalize/drop camelCase; Apps Script may emit snake_case. */
-  const canaryAllowlistRawQuerySnake = String(searchParams.get('allowlist_ids') || '').trim();
+  const canaryAllowlistRawQuerySnake = String(q.allowlist_ids || '').trim();
   const canaryAllowlistQuerySeen =
     canaryAllowlistRawQuery.length > 0 || canaryAllowlistRawQuerySnake.length > 0;
   const canaryAllowlistHeaderSeen = canaryAllowlistRawHeader.length > 0;
@@ -316,7 +339,7 @@ export async function authorizeExportRequest(req: NextRequest): Promise<ExportAu
     site,
     siteUuid: site.id,
     markAsExported,
-    providerFilter: searchParams.get('providerKey') ?? 'google_ads',
+    providerFilter: q.providerKey ?? 'google_ads',
     isGhostCursor,
     exportConfig: parseExportConfig(site.oci_config),
     queueCursorUpdatedAt,

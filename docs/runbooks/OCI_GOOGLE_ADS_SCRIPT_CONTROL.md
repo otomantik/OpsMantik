@@ -35,10 +35,10 @@ Use canonical English runbooks for active operations:
 **Özet:** 404 alıyorsan önce curl ile aynı URL’i dene; 200 geliyorsa script tarafında URL/header hatası, 404 geliyorsa host/path/deploy tarafını kontrol et.
 
 **Eslamed “dün 22:40’tan beri ne birikti?” raporu:**  
-`node scripts/db/oci-eslamed-dun-2240-biriken.mjs` — Kuyruk özeti (QUEUED/PROCESSING/UPLOADED), 22:40 sonrası mühürlenen call’lar, nabız PENDING sayısı.
+`node scripts/db/_archive/site-specific/oci-eslamed-dun-2240-biriken.mjs` — Kuyruk özeti (QUEUED/PROCESSING/UPLOADED), 22:40 sonrası mühürlenen call’lar, nabız PENDING sayısı.
 
 **Eslamed tam aktivite (operatör + kuyruk + nabız):**  
-`node scripts/db/oci-eslamed-aktivite-rapor.mjs` — Dün 22:00 TRT sonrası call_actions, mühürlenen call'lar, kuyruk, marketing_signals. PROCESSING takılı varsa manuel ack örnek curl çıktıda.
+`node scripts/db/_archive/site-specific/oci-eslamed-aktivite-rapor.mjs` — Dün 22:00 TRT sonrası call_actions, mühürlenen call'lar, kuyruk, marketing_signals. PROCESSING takılı varsa manuel ack örnek curl çıktıda.
 
 ---
 
@@ -92,7 +92,7 @@ Use canonical English runbooks for active operations:
 
 **Sonuç:** Eslamed ve Muratcan deploy script’leri (`scripts/google-ads-oci/deploy/*.js`) mevcut API ile uyumlu snapshot'lardır.
 
-**Not:** Canonical kaynak artık `scripts/google-ads-oci/GoogleAdsScript.js` dosyasıdır ve `{ items, next_cursor }` cevabını doğru işler. Deploy snapshot'ları kaynak dosya değil, dağıtım kopyası olarak görülmelidir.
+**Not:** Canonical fleet kaynak `scripts/google-ads-oci/GoogleAdsScriptUniversal.js` dosyasıdır (`fetchPage` ile `meta.nextCursor` / `next_cursor` türevi). Eski site fork’ları repodan kaldırıldı; donmuş string anları `tests/fixtures/google-ads-oci/` altında ve `fleet-quarantine.json` / `FLEET_QUARANTINE.md` ile izlenir — **yapıştırma hedefi değildir**. Deploy snapshot'ları (`scripts/google-ads-oci/deploy/*.js`) kaynak değil, dağıtım kopyasıdır.
 
 ---
 
@@ -102,7 +102,7 @@ Use canonical English runbooks for active operations:
 
 **Kriterler (runbook ile uyumlu):** ≤3sn kalış, tek etkileşim, proxy, aynı fingerprint >3 intent, aynı IP >5 intent — bunlardan biri varsa **saldırı**.
 
-**Çalıştır:** `npm run db:oci-2240-rontgen` veya `node scripts/db/oci-eslamed-2240-rontgen-saldiri-ayikla.mjs`. Seçenekler: `--full` (tüm satırlar), `--no-write` (JSON yazma).
+**Çalıştır:** `npm run db:oci-2240-rontgen` veya `node scripts/db/_archive/site-specific/oci-eslamed-2240-rontgen-saldiri-ayikla.mjs`. Seçenekler: `--full` (tüm satırlar), `--no-write` (JSON yazma).
 
 **Çıktı:** Özet (saldırı/temiz sayısı), röntgen tablosu, temiz kuyruk ve saldırı call_id listesi. Yazılırsa: `tmp/oci-eslamed-2240-<stamp>-temiz-kuyruk.json`, `-saldiri-call-ids.json`, `-rontgen-full.json`.
 
@@ -150,7 +150,7 @@ Tüm siteler script ise `oci_sync_method = 'script'` olmalı.
 **Ne:** İki kanal var:
 
 - **API (worker):** `POST /api/workers/google-ads-oci` → claim → Google’a REST ile yükleme. Sadece **`oci_sync_method = 'api'`** siteleri işlenir.
-- **Script:** `scripts/google-ads-oci/GoogleAdsScript.js` (Apps Script) → `/api/oci/google-ads-export` ile dönüşümleri çeker → Google tarafında yükler → ack.
+- **Script:** `scripts/google-ads-oci/GoogleAdsScriptUniversal.js` (Apps Script, `main`) → `/api/oci/google-ads-export` ile dönüşümleri çeker → Google bulk upload → dispatch-pending `/api/oci/ack`.
 
 Aynı site için hem `api` hem script’i aynı anda kullanırsanız, sync_method’a göre sadece biri kuyruğu “görür”; yine de **tek site için tek kanal (ya api ya script)** kullanılması daha net olur. Muratcan worker ile gidiyorsa, bu site için Script’in aynı kuyruğu çekmemesi (veya Script’in bu site’ta çalışmaması) iyi olur.
 
@@ -219,7 +219,7 @@ Aynı site için hem `api` hem script’i aynı anda kullanırsanız, sync_metho
 
 | Step | Action |
 |------|--------|
-| 1. **Infiltrate** | Log into the Google Cloud / Google Workspace account that hosts the legacy Apps Script (`GoogleAdsScript.js` or site-specific Quantum script). |
+| 1. **Infiltrate** | Log into the Google Cloud / Google Workspace account that hosts the legacy Apps Script (`GoogleAdsScriptUniversal.js` veya eski site-specific / Quantum snapshot). |
 | 2. **Navigate** | Open the Apps Script Editor → click the **Project Settings** (gear icon) in the left sidebar. |
 | 3. **Locate target** | Scroll to **Script Properties**. Find the key that holds active site IDs (e.g. `OPSMANTIK_SITE_ID`, `SITE_IDS`, `TARGET_SITES`, or equivalent). |
 | 4. **Neutralize** | Edit the value and **remove** Muratcan’s site ID: `c644fff7-9d7a-440d-b9bf-99f3a0f86073`. Keep any other site IDs intact. |
@@ -243,7 +243,7 @@ Aynı site için hem `api` hem script’i aynı anda kullanırsanız, sync_metho
 - **Telefon eşleştirme:** Export API dönüşüm satırına `hashed_phone_number` (SHA256, E.164) ekliyor; Script CSV’ye **"Phone"** kolonu ile bu değeri yazıyor. Google Ads hesabında **Gelişmiş dönüşümler (Enhanced Conversions for leads)** açıksa, GCLID decode hatası olsa bile **hashed phone** ile eşleşme yapılabilir.
 - **Kontrol:** Google Ads → Araçlar → Yüklemeler’de hata detayı; hesap ayarlarında "Gelişmiş dönüşümler" / "Enhanced Conversions" açık olmalı.
 
-**Nitelikli görüşmeler listelenmedi:** Üst funnel adımları journal’a işlenmediyse veya `OpsMantik_Contacted` satırı kuyrukta/engelde değilse Script CSV’de görünmez; ayrıca **click_id** yoksa export kapısı satırı düşürür, limit sayfalama eksik bırakabilir. DB tarafında ayrıca `marketing_signals` (audit) satırları tutulabilir — **Script GET export bu tabloyu okumaz.** Kuyruk raporu: `oci-muratcan-kuyruk-rapor.mjs` / `oci-export-send-preview.mjs` / `oci-muratcan-kuyruk-donusum-tarama.mjs`.
+**Nitelikli görüşmeler listelenmedi:** Üst funnel adımları journal’a işlenmediyse veya `OpsMantik_Contacted` satırı kuyrukta/engelde değilse Script CSV’de görünmez; ayrıca **click_id** yoksa export kapısı satırı düşürür, limit sayfalama eksik bırakabilir. DB tarafında ayrıca `marketing_signals` (audit) satırları tutulabilir — **Script GET export bu tabloyu okumaz.** Kuyruk raporu (arşiv): `scripts/db/_archive/site-specific/oci-muratcan-kuyruk-rapor.mjs` / `scripts/db/oci-export-send-preview.mjs` / `scripts/db/_archive/site-specific/oci-muratcan-kuyruk-donusum-tarama.mjs`.
 
 ---
 

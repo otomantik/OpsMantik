@@ -27,6 +27,8 @@ test_output*.txt
 
 # misc
 .DS_Store
+# Generated per-site Google Ads paste bundles (may embed site public_id)
+/scripts/google-ads-oci/dist/
 # Local scratch: gate evidence drops, MCP migration JSON, etc. (never commit)
 /tmp
 /tmp/**

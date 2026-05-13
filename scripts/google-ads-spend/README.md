@@ -83,4 +83,4 @@ var SITE_ID = "b1264552-c859-40cb-a3fb-0ba057afd070";  // Eslamed (zaten dolu)
 | Dosya | Açıklama |
 |-------|----------|
 | `scripts/google-ads-spend/GoogleAdsScript.js` | Google Ads’e yapıştırılacak V2 script (sadece bugünün verisi). |
-| `scripts/google-ads-oci/GoogleAdsScript.js` | OCI (offline conversion) için ayrı script; spend ile karıştırma. |
+| `scripts/google-ads-oci/GoogleAdsScriptUniversal.js` | OCI (offline conversion) canonical fleet script; spend script is separate |

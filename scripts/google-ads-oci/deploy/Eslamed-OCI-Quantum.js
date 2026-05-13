@@ -1,6 +1,6 @@
 /**
  * DEPLOY SNAPSHOT ONLY
- * Source of truth: scripts/google-ads-oci/GoogleAdsScript.js
+ * Historical `GoogleAdsScript.js` (quarantined; **removed** from repo — git history). New installs: `GoogleAdsScriptUniversal.js`.
  *
  * SECURITY: Prefer Script Properties. File > Project properties > Script properties:
  *   OCI_API_KEY, OPSMANTIK_SITE_ID. Avoid committing real keys.

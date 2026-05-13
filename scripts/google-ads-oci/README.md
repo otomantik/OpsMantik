@@ -1,63 +1,73 @@
 # Google Ads OCI Script (OpsMantik Exit Valve)
 
-## Conversion Time Policy (Zero Tolerance)
+## Canonical production script
+
+**`GoogleAdsScriptUniversal.js`** is the **only** canonical production Google Ads OCI fleet script in this repository. Paste it into the Google Ads Script editor with entry point `main` (Chrome V8 ON).
+
+- **Legacy site forks** (`GoogleAdsScriptKocOtoKurtarma.js`, `TecrubeliBakici`, `MuratcanAku`, `GoogleAdsScript.js`, `GoogleAdsScriptProduction.js`) were **removed** from this tree; frozen **string snapshots** for CI live under `tests/fixtures/google-ads-oci/` and are listed in `fleet-quarantine.json` / `FLEET_QUARANTINE.md` — **not** paste targets.
+- **New site onboarding** must use **Universal** + **Script Properties** (`OPSMANTIK_SITE_ID`, `OPSMANTIK_API_KEY`, optional `OPSMANTIK_BASE_URL`, `OPSMANTIK_EXPORT_LIMIT`, `OPSMANTIK_RUN_MODE`, etc.) and/or `scripts/google-ads-oci/sites/<slug>.json` with `npm run build:google-ads-script -- --site=<slug>`.
+- **New `GoogleAdsScript*.js` forks** require **explicit exception approval** and a `fleet-quarantine.json` row before merge (CI enforces a single non-quarantined script: Universal).
+
+## SSOT conversion action names (Google Ads)
+
+Create matching **offline conversion** actions in Google Ads with these **exact** strings (from `lib/oci/conversion-names.ts`):
+
+- `OpsMantik_Contacted`
+- `OpsMantik_Offered`
+- `OpsMantik_Won`
+- `OpsMantik_Junk_Exclusion`
+
+## Core invariants (fleet CI)
+
+- **`upload.apply()` success is not Google provider confirmation.** Success `/api/oci/ack` uses **`pendingConfirmation: true`** and **`providerConfirmationMode: 'bulk_upload_async_unconfirmed'`** (dispatch-pending / UPLOADED semantics). Failures belong on **`/api/oci/ack-failed`**, not mixed into success ACK rows.
+- **Click IDs:** priority **gclid > wbraid > gbraid**; exactly **one** of the Bulk Upload columns `Google Click ID` / `WBRAID` / `GBRAID` is populated per row.
+- **Hashed phone:** courier-only from server JSON (`extractHashedPhone`); **never** hash raw phone in script (`Utilities.computeDigest` / `DigestAlgorithm` banned in fleet truth tests).
+
+## Conversion time policy (zero tolerance)
 
 Script payload time must represent the first intent creation timestamp from backend SSOT.
 
-- Mandatory contract: `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
+- Contract: `docs/OPS/OCI_CONVERSION_TIME_ZERO_TOLERANCE.md`
 - Script/runtime must not replace conversion time with upload-time `now()`.
-
-`scripts/google-ads-oci/GoogleAdsScript.js` bu repo içindeki tek canonical script kaynağıdır.
 
 ## Fleet CI, quarantine, ACK truth
 
-- CI contract: `tests/unit/oci-script-fleet-truth-contract.test.ts` (all `GoogleAdsScript*.js` except `scripts/google-ads-oci/fleet-quarantine.json` entries).
-- Quarantine manifest: `scripts/google-ads-oci/fleet-quarantine.json` — each `productionSafe: false` row must carry owner + sunset; do not add new scripts to quarantine without a replacement plan.
+- CI: `tests/unit/oci-script-fleet-truth-contract.test.ts` (every `GoogleAdsScript*.js` under `scripts/google-ads-oci/` is either listed in `fleet-quarantine.json` with a repo path or must match Universal-only rules; quarantine fixtures under `tests/fixtures/` carry provenance headers).
+- Quarantine: `scripts/google-ads-oci/fleet-quarantine.json` — each `productionSafe: false` row carries `replacementCanonical`, `sunsetDate`, `replacementPlan`, and `lastKnownUse`.
 
-`scripts/google-ads/*.js` ve `scripts/google-ads-oci/deploy/*.js` dosyaları site-specific deploy snapshot'larıdır; kaynak olarak değil, dağıtım kopyası olarak görülmelidir.
+`scripts/google-ads/*.js` and `scripts/google-ads-oci/deploy/*.js` are **deploy snapshots**, not canonical sources.
 
-**Eslamed (eslamed.com)** için hazır script: `Eslamed-OCI-Quantum.js` (Engine v3.0 — Deterministic Sampling, Auto-Healing, ack-failed)
+## Build per-site paste bundle (optional)
 
-**Muratcan Akü (`muratcanaku.com`):** hardened script kaynağı **`GoogleAdsScriptMuratcanAku.js`** — `OPSMANTIK_RUN_MODE`: `peek` (journal kuyruk log’ları, yükleme yok) veya `sync` (yükleyici + ACK). Export GET yalnızca `offline_conversion_queue`. Kimlikleri inline veya Script Properties.
-
-**SECURITY:** Prefer Script Properties over hardcoded keys. Set `OCI_API_KEY` and `OPSMANTIK_SITE_ID` in File > Project properties > Script properties. Deploy snapshots support this; fallback to CONFIG for backward compatibility.
-
-`deploy/Muratcan-OCI-Quantum.js` **deprecated** — eski sızdırılmış snapshot; kullanmayın.
-
-**OCI credentials (SITE_ID, API_KEY)** — Supabase'den çekip scripte yaz veya Script Properties kullan:
 ```bash
-npm run oci:credentials Eslamed              # Eslamed değerlerini göster
-npm run oci:credentials Eslamed -- --write   # Eslamed-OCI-Quantum.js güncelle
-node scripts/get-oci-credentials.mjs Muratcan   # Muratcan için değerler
+npm run build:google-ads-script -- --site=muratcan-aku
 ```
 
-## Ne yapar?
+Emits `scripts/google-ads-oci/dist/google-ads-script-<slug>.js` from **`GoogleAdsScriptUniversal.js`** (injects `SITE_ID`, `BASE_URL`, `EXPORT_LIMIT`, `RUN_MODE`; **API key stays empty** — set in Script Properties).
 
-1. OpsMantik'ten **hazır dönüşüm listesini** alır: `GET .../api/oci/google-ads-export?siteId=...&markAsExported=true`
-2. Gelen kayıtları **Google Ads Offline Conversion** bulk upload ile yükler.
-3. `markAsExported=true` ile yüklenen kayıtlar tekrar gelmez; ACK ile backend durumu güncellenir.
+## OCI credentials
 
-## Eslamed Kurulumu
+Prefer **Script Properties** over inline secrets.
 
-1. **Script ekle:** Google Ads → Araçlar → Toplu işlemler → Scripts → Yeni script.
-2. `Eslamed-OCI-Quantum.js` içeriğini kopyalayıp yapıştırın.
-3. **Script Properties** (Project Settings → Script Properties):
-   | Key | Value |
-   |-----|-------|
-   | `OPSMANTIK_SITE_ID` | Eslamed public_id (OpsMantik Console'dan) |
-   | `OPSMANTIK_API_KEY` | OpsMantik OCI API key |
-   | `OPSMANTIK_BASE_URL` | `https://console.opsmantik.com` (opsiyonel) |
-4. **Dönüşüm adları (SSOT):** Google Ads'te Offline Conversion aksiyonları oluşturun — `lib/domain/mizan-mantik/conversion-names.ts` ile birebir aynı isimler: `OpsMantik_Junk_Exclusion`, `OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`
-5. **Test:** Önce Önizleme ile çalıştırın; logda "0 records" veya "Yuklendi=X" görünür.
-6. **Zamanlama:** Tetikleyici ekleyin (örn. günde 2–4 kez).
+```bash
+npm run oci:credentials Eslamed              # print values
+npm run oci:credentials Eslamed -- --write   # update deploy snapshot (if applicable)
+node scripts/get-oci-credentials.mjs Muratcan
+```
 
-## Diğer siteler
+## What it does
 
-`GoogleAdsScript.js` jenerik versiyondur; aynı Script Properties ile herhangi bir site için kullanılabilir. Sadece `OPSMANTIK_SITE_ID` değerini ilgili sitenin public_id'si ile değiştirin.
+1. Fetches ready conversions: `GET .../api/oci/google-ads-export?siteId=...&markAsExported=true` (with signed / drain headers as implemented in Universal).
+2. Uploads via Google Ads **offline conversions** bulk CSV (`upload.apply()` once per run).
+3. ACK: `POST /api/oci/ack` with dispatch-pending flags; validation / upload errors use `POST /api/oci/ack-failed`.
 
-## Tek Baş Kuralı
+## Endpoints (single rule)
 
-- Canlı endpoint adı: `/api/oci/google-ads-export`
-- ACK yüzeyi: `/api/oci/ack`
-- NACK yüzeyi: `/api/oci/ack-failed`
-- Legacy `/api/oci/export` ve `/api/oci/export-batch` emekliye ayrılmıştır.
+- Live export: `/api/oci/google-ads-export`
+- ACK: `/api/oci/ack`
+- NACK: `/api/oci/ack-failed`
+- Legacy `/api/oci/export` and `/api/oci/export-batch` are retired.
+
+## Eslamed / legacy Quantum snapshots
+
+Historical references to `Eslamed-OCI-Quantum.js` / deploy folder snapshots may still appear in older runbooks; **new work** should standardize on **Universal**. `deploy/Muratcan-OCI-Quantum.js` was previously marked deprecated — prefer Universal + properties.

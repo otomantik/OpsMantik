@@ -2,6 +2,13 @@
 
 Supabase'e karşı sık yaptığımız işlemler: kuyruğa alma, credentials, günlük sorgular.
 
+## HC-U2 — site-isimli bakım script’leri
+
+- **Tercih:** Site adını/UUID’yi CLI argümanı verin; dosya adında site tutmayın (yeni script’ler için).
+- **Arşiv:** Ad hoc / site-isimli script’ler `scripts/db/_archive/site-specific/` altında (bkz. `_archive/README.md`).
+- **Örnek:** `npm run db:oci-junk-clean-intent-contacted -- Tecrubeli --report-only` — `package.json` içindeki `db:oci-intent-contacted:tecrubeli:*` satırları geriye dönük alias’tır.
+- **npm `db:oci-dump` / `db:oci-aktivite` / `db:oci-2240-doküm`:** arşivdeki ilgili `.mjs` dosyalarını çağırır (`package.json` güncel yolları kullanır).
+
 ## Gereksinim
 
 ```bash
@@ -26,6 +33,10 @@ npm run db:enqueue Eslamed
 npm run db:enqueue:today          # Eslamed, sadece bugunun muhurleri
 npm run db:credentials Eslamed -- --write
 npm run db:daily Eslamed
+# Intent contacted cleanup — site adını `--` sonrası verin (Tecrubeli/Eslamed/…)
+npm run db:oci-junk-clean-intent-contacted -- Tecrubeli --report-only
+npm run db:oci-junk-clean-intent-contacted -- Tecrubeli --dry-run --skip-junk-delete --all-sources
+# Geriye dönük: db:oci-intent-contacted:tecrubeli:* aynı script'e sabit Tecrubeli ile bağlıdır
 ```
 
 ## Enqueue Parametreleri

@@ -575,7 +575,7 @@ Executed **PR-9H.4C** below supersedes these bullets (recovery path selected).
 
 ### Upload mechanism determination (Task 4)
 
-Source: `scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js` — **`MuratcanClient.prototype.fetchPage`** issues **`UrlFetchApp.fetch`** against the export URL; **`sync` mode** defaults **`markAsExported` to server `true`** unless **`peek`**. There is **no** “paste JSON then upload” lane.
+Source (historical Muratcan Ads fork **removed** from repo; frozen mark-default line: `tests/fixtures/google-ads-oci/PR9H4C_MURATCAN_MARK_DEFAULT_SNAPSHOT.js`) — **`MuratcanClient.prototype.fetchPage`** issues **`UrlFetchApp.fetch`** against the export URL; **`sync` mode** defaults **`markAsExported` to server `true`** unless **`peek`**. There is **no** “paste JSON then upload” lane.
 
 **Conclusion:** **`CANARY_UPLOAD_PATH_NOT_SAFE`** under **PR-9H.4C hard non-goals** (forbid **new** `markAsExported=true` / new claims) — **do not run `sync` here to repair**.
 

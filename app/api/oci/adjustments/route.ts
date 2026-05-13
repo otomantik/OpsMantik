@@ -26,14 +26,16 @@ import { z } from 'zod';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const AdjustmentRequestSchema = z.object({
-  siteId: z.string().min(1),
-  orderId: z.string().min(1).max(64),
-  adjustmentType: z.enum(['RETRACTION', 'RESTATEMENT']),
-  /** Required for RESTATEMENT; must be null/absent for RETRACTION */
-  newValueCents: z.number().int().positive().optional(),
-  reason: z.string().max(500).optional(),
-});
+const AdjustmentRequestSchema = z
+  .object({
+    siteId: z.string().min(1).max(128),
+    orderId: z.string().min(1).max(64),
+    adjustmentType: z.enum(['RETRACTION', 'RESTATEMENT']),
+    /** Required for RESTATEMENT; must be null/absent for RETRACTION */
+    newValueCents: z.number().int().positive().optional(),
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,7 +73,11 @@ export async function POST(req: NextRequest) {
     const parsed = AdjustmentRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: parsed.error.flatten() },
+        {
+          error: 'Validation failed',
+          code: 'OCI_ADJUSTMENTS_SCHEMA_VIOLATION',
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        },
         { status: 400 }
       );
     }

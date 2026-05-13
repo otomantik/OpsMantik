@@ -366,7 +366,9 @@ async function printReport(site: ResolvedSite) {
   }
   console.log('Şu an PENDING/RETRY OpsMantik_Contacted satırı:', pendingContacted ?? '?');
   console.log('Sonraki: npm run db:oci-intent-contacted:tecrubeli:dry → apply (veya --all-sources ile npx tsx ...)');
-  console.log('Google Ads: scripts/google-ads-oci/GoogleAdsScriptTecrubeliBakici.js — public_id + oci_api_key doğrula.\n');
+  console.log(
+    'Google Ads: `GoogleAdsScriptTecrubeliBakici.js` fork kaldırıldı — yeni kurulum: `scripts/google-ads-oci/GoogleAdsScriptUniversal.js`; public_id + oci_api_key doğrula.\n'
+  );
 }
 
 async function main() {

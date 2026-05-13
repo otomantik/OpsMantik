@@ -16,7 +16,7 @@ Method: read-only code/migration/test audit (no code changes in this pass).
 ### Top 10 Risks
 
 1. **Over-broad GRANTs in OCI transition migration** can expose privileged mutation surfaces to `anon/authenticated` (`supabase/migrations/20261223020200_oci_queue_transitions_ledger_and_claim_rpcs.sql`) — **P0**.
-2. **Hardcoded API key in Apps Script** file (`scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js`) — credential exposure risk — **P0**.
+2. **Hardcoded API key in Apps Script** (historical Muratcan fork; **removed** from repo — see git history) — credential exposure risk — **P0**.
 3. Stage/status/seal routes can return overall success while `oci_enqueue_ok=false` (artifact may be missing) (`app/api/intents/[id]/stage/route.ts`, `app/api/intents/[id]/status/route.ts`, `app/api/calls/[id]/seal/route.ts`) — **P1**.
 4. `apply_call_action_v2` allows stage coercion behavior that can mask invalid transitions (`supabase/migrations/20260502103000_apply_call_action_v2_caller_phone_sha256.sql`) — **P1**.
 5. Outbox pre-dedupe not enforced at DB level (known ADR) can inflate pending workload under bursts (`docs/architecture/OCI_OUTBOX_PRE_DEDUPE_ADR.md`) — **P1**.
@@ -102,9 +102,7 @@ Method: read-only code/migration/test audit (no code changes in this pass).
 - Export entry route: `app/api/oci/google-ads-export/route.ts`.
 - Script auth/mode split: `app/api/oci/google-ads-export/export-auth.ts`.
 - Apps Script clients:
-  - `scripts/google-ads-oci/GoogleAdsScript.js`
-  - `scripts/google-ads-oci/GoogleAdsScriptTecrubeliBakici.js`
-  - `scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js`.
+  - `scripts/google-ads-oci/GoogleAdsScriptUniversal.js` (canonical); legacy site forks **removed** (see `fleet-quarantine.json`, `FLEET_QUARANTINE.md`, `tests/fixtures/google-ads-oci/`)
 - ACK endpoints:
   - `app/api/oci/ack/route.ts`
   - `app/api/oci/ack-failed/route.ts`.
@@ -314,7 +312,7 @@ Below are suspicious silent or ambiguous success patterns requiring tightening:
    - Required: throw explicit invalid transition/invalid stage error
 
 6. **Credential default in script encourages insecure silent usage**
-   - File: `scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js`
+   - File: historical `GoogleAdsScriptMuratcanAku.js` (removed; frozen line `tests/fixtures/google-ads-oci/PR9H4C_MURATCAN_MARK_DEFAULT_SNAPSHOT.js`)
    - Current behavior: inline API key fallback
    - Required: remove fallback, hard-fail when property missing
 
@@ -405,7 +403,7 @@ Below are suspicious silent or ambiguous success patterns requiring tightening:
    - Risk: **Low** (security hardening)
 
 2. **Commit title:** `fix(security): remove inline OCI script key and require properties`
-   - Files: `scripts/google-ads-oci/GoogleAdsScriptMuratcanAku.js`, script README
+   - Files: historical Muratcan fork (removed), script README
    - Tests: secret literal scanner test
    - Risk: **Medium** (ops rollout coordination)
 

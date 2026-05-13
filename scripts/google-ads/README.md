@@ -6,7 +6,11 @@ caused drift from the canonical script.
 
 **Canonical source (single source of truth):**
 
-- `scripts/google-ads-oci/GoogleAdsScript.js`
+- `scripts/google-ads-oci/GoogleAdsScriptUniversal.js`
+
+**Quarantined / historical (do not paste for new sites):**
+
+- Legacy site forks (`GoogleAdsScript.js`, `Production`, Koç / Muratcan / Tecrubeli) **removed** from repo; CI string snapshots: `tests/fixtures/google-ads-oci/` — see `scripts/google-ads-oci/fleet-quarantine.json`.
 
 **Deployment:**
 
