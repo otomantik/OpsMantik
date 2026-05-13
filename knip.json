@@ -29,8 +29,6 @@
     "lib/oci/convergence-gates.ts",
     "lib/oci/conversion-ssot.ts",
     "lib/oci/export-gate.ts",
-    "lib/oci/index.ts",
-    "lib/oci/processing-recovery-policy.ts",
     "lib/oci/pulse-recovery-worker.ts",
     "lib/oci/stable-order-id.ts",
     "lib/security/hmac-verification.ts",
