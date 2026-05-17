@@ -17,7 +17,6 @@ const TRUTH_ENV_KEYS = [
   'TRUTH_INFERENCE_REGISTRY_ENABLED',
   'IDENTITY_GRAPH_ENABLED',
   'EXPLAINABILITY_API_ENABLED',
-  'LEGACY_ENDPOINTS_ENABLED',
   'CONSENT_PROVENANCE_SHADOW_ENABLED',
 ] as const;
 
@@ -65,7 +64,6 @@ test('PR1: sync POST response unchanged when truth env unset vs explicitly off; 
     process.env.IDENTITY_GRAPH_ENABLED = 'false';
     process.env.EXPLAINABILITY_API_ENABLED = 'false';
     process.env.CONSENT_PROVENANCE_SHADOW_ENABLED = 'false';
-    process.env.LEGACY_ENDPOINTS_ENABLED = 'false';
 
     const flagsExplicit = getRefactorFlags();
     const ctxV2Explicit = buildPhaseContext({
@@ -119,7 +117,6 @@ test('PR1: sync POST response unchanged when truth env unset vs explicitly off; 
       process.env.IDENTITY_GRAPH_ENABLED = 'false';
       process.env.EXPLAINABILITY_API_ENABLED = 'false';
       process.env.CONSENT_PROVENANCE_SHADOW_ENABLED = 'false';
-      process.env.LEGACY_ENDPOINTS_ENABLED = 'false';
 
       const reqB = new NextRequest('http://localhost:3000/api/sync', {
         method: 'POST',
