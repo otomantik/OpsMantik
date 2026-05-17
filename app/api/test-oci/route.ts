@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { getAccessToken } from '@/lib/providers/google_ads/auth';
 import { GOOGLE_ADS } from '@/lib/providers/google_ads/types';
 import type { GoogleAdsCredentials } from '@/lib/providers/google_ads/types';
+import { assertNotProductionDeployment } from '@/lib/env/is-production-deployment';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -51,15 +52,10 @@ function toConversionDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace('T', ' ') + '+00:00';
 }
 
-function isProductionEnvironment(): boolean {
-  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
-}
-
-/** Dev/sandbox only; not available in production or Vercel production deployments. */
+/** Dev/sandbox only; not available in production deployments. */
 export async function GET() {
-  if (isProductionEnvironment()) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
+  const blocked = assertNotProductionDeployment();
+  if (blocked) return blocked;
   try {
     const creds = getTestCredentials();
     const accessToken = await getAccessToken(creds);

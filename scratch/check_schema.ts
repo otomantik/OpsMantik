@@ -1,4 +1,4 @@
-import { adminClient } from '../lib/supabase/admin';
+import { adminClient } from '@/lib/supabase/admin';
 
 async function main() {
   console.log('Querying information_schema.columns...');

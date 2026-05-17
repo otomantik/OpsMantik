@@ -1,18 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { DEFAULT_SITE_ACTIVE_MODULES } from '@/lib/types/modules';
+import { assertNotProductionDeployment } from '@/lib/env/is-production-deployment';
 
 export const dynamic = 'force-dynamic';
 
-function isProductionEnvironment(): boolean {
-  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
-}
-
-/** Dev/sandbox only; not available in production or Vercel production deployments. */
+/** Dev/sandbox only; not available in production deployments. */
 export async function POST() {
-  if (isProductionEnvironment()) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
+  const blocked = assertNotProductionDeployment();
+  if (blocked) return blocked;
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

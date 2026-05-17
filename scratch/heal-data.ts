@@ -1,5 +1,5 @@
 
-import { adminClient } from './lib/supabase/admin';
+import { adminClient } from '@/lib/supabase/admin';
 
 async function healGclidDataRobust() {
   try {

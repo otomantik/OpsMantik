@@ -9,6 +9,22 @@ Fill one row per `app/api/**/route.ts` over time. Classes:
 | `session_user` | Cookie session (Supabase) |
 | `service_role_cron` | `CRON_SECRET` bearer |
 | `internal_webhook` | Shared-secret or signed webhook |
+| `debug_dev` | Dev/smoke helpers; **must not respond in production** |
+
+## `debug_dev` — production policy
+
+Routes in this class exist for local smoke, Playwright proofs, or operator sandboxes. They **must** use [`lib/env/is-production-deployment.ts`](../../../lib/env/is-production-deployment.ts) (`assertNotProductionDeployment` / `isProductionDeployment`).
+
+When `NODE_ENV`, `VERCEL_ENV`, or `OCI_ENV` is `production`, handlers return **404** with body `{ "error": "Not found" }` (fail-closed; no route metadata).
+
+| Route | Non-prod behavior | Prod |
+|-------|-------------------|------|
+| `POST /api/debug/realtime-signal` | Session + site access; synthetic realtime row | 404 |
+| `POST /api/create-test-site` | Session; provision test site | 404 |
+| `GET /api/test-oci` | Mock Google Ads upload probe | 404 |
+| `GET /api/watchtower/test-throw` | `WATCHTOWER_TEST_THROW=1` → 500 + Sentry | **404 always** (env cannot enable throw) |
+
+Regression: [`tests/unit/dev-api-production-guard.test.ts`](../../../tests/unit/dev-api-production-guard.test.ts).
 
 ## Webhooks
 

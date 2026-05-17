@@ -41,6 +41,7 @@
     ".next/dev",
     "adsmantik-engine",
     "supabase/functions",
+    "scratch",
     "tmp"
   ]
 }

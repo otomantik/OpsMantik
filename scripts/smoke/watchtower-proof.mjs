@@ -3,6 +3,7 @@
  * 1) GET /api/health → assert ok=true, x-request-id header present.
  * 2) If WATCHTOWER_TEST_THROW=1: GET /api/watchtower/test-throw → assert 500 + x-request-id
  *    (verifies integration hooks fire; we cannot verify Sentry delivery offline).
+ *    Production deployments always return 404 for test-throw — run this check only against local/preview.
  *
  * Requires: app running (npm run dev).
  * Usage: node scripts/smoke/watchtower-proof.mjs
