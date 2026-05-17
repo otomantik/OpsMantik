@@ -13,12 +13,6 @@
   "ignore": [
     "adsmantik-engine/**",
     "scripts/**",
-    "analyze-sessions.ts",
-    "check-ads-quality.ts",
-    "check-schema.ts",
-    "heal-data.ts",
-    "search-schema.ts",
-    "verify-stitching.ts",
     "scratch/**",
     "supabase/functions/**",
     "lib/domain/mizan-mantik/**",
