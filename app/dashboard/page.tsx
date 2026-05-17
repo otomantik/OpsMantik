@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { isAdmin } from '@/lib/auth/is-admin';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
-import { resolveLandingRoute } from '@/lib/auth/landing-route';
 
 import { headers, cookies } from 'next/headers';
 import { resolveLocale } from '@/lib/i18n/locale';
@@ -51,15 +50,6 @@ export default async function DashboardPage() {
   const firstSite = sites && sites.length > 0 ? sites[0] : null;
   const resolvedLocale = resolveLocale(firstSite, user?.user_metadata, acceptLanguage, cookieLocale);
 
-  // Router logic:
-  // Non-admins are ALWAYS force-redirected to the simplified /panel CRM view.
-  // Admins can see the traditional OpsMantik dashboard structure.
-
-  const landingRoute = resolveLandingRoute({ isAdmin: userIsAdmin, siteCount });
-  if (landingRoute === '/panel') {
-    redirect(landingRoute);
-  }
-
   return (
     <I18nProvider locale={resolvedLocale}>
       <div className="min-h-screen bg-background text-foreground p-6 relative">
@@ -82,13 +72,6 @@ export default async function DashboardPage() {
               <Link href="/admin/sites">
                 <Button variant="outline">
                   {translate(resolvedLocale, 'admin.sites.title')}
-                </Button>
-              </Link>
-            )}
-            {process.env.NODE_ENV === 'development' && (
-              <Link href="/test-page">
-                <Button variant="outline">
-                  🧪 {translate(resolvedLocale, 'dashboard.testPage')}
                 </Button>
               </Link>
             )}

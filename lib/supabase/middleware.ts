@@ -68,8 +68,8 @@ export async function updateSession(request: NextRequest) {
     // Protected Routes Logic
     const path = request.nextUrl.pathname
 
-    // Dashboard protection
-    if (path.startsWith('/dashboard') && !user) {
+    // Dashboard + panel protection (single auth gate)
+    if ((path.startsWith('/dashboard') || path.startsWith('/panel')) && !user) {
         return NextResponse.redirect(new URL('/login', request.url))
     }
 
@@ -84,7 +84,7 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle()
         if (!resolvePlatformAdmin(profile?.role ?? null, user)) {
-            return NextResponse.redirect(new URL('/panel', request.url))
+            return NextResponse.redirect(new URL('/dashboard', request.url))
         }
     }
 

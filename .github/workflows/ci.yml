@@ -38,5 +38,12 @@ jobs:
       - name: Verify i18n keys exist (en/tr/it)
         run: npm run verify:i18n:keys
 
+      - name: Knip (unused files / deps)
+        run: npm run audit:knip
+
       - name: Build
         run: npm run build
+
+      - name: npm audit production deps (informational)
+        continue-on-error: true
+        run: npm audit --omit=dev

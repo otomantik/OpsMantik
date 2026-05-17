@@ -12,20 +12,7 @@
   var runtimeConfig = typeof window !== "undefined" ? window.opsmantikConfig || window.opmantikConfig || {} : {};
   function deriveSyncProxyUrl(url) {
     if (!url || typeof url !== "string") return "";
-    return url.replace(/\/call-event(?:\/v2)?\/?(?=[?#]|$)/i, "/sync");
-  }
-  function resolveIngestBaseOriginForCallEvent(syncApiUrl) {
-    if (!syncApiUrl || typeof syncApiUrl !== "string") {
-      return typeof window !== "undefined" ? window.location.origin : "";
-    }
-    try {
-      const u = new URL(syncApiUrl, typeof window !== "undefined" ? window.location.origin : "https://opsmantik.invalid");
-      const stripped = u.pathname.replace(/\/api\/sync\/?$/i, "").replace(/\/opsmantik\/sync\/?$/i, "");
-      u.pathname = stripped === "" || stripped === "/" ? "/" : stripped.replace(/\/+$/, "") || "/";
-      return u.origin + (u.pathname === "/" ? "" : u.pathname);
-    } catch {
-      return syncApiUrl.replace(/\/api\/sync\/?$/i, "").replace(/\/opsmantik\/sync\/?$/i, "");
-    }
+    return url.replace(/\/call-event\/?$/i, "/sync");
   }
   function safeResolveUrl(val) {
     if (!val || typeof val !== "string") return "";
@@ -1378,7 +1365,7 @@
   function sendCallEvent(phoneNumber, intentMeta = null) {
     if (!siteId) return;
     const session = getOrCreateSession();
-    const base = CONFIG.apiUrl ? resolveIngestBaseOriginForCallEvent(CONFIG.apiUrl) : window.location.origin;
+    const base = CONFIG.apiUrl ? CONFIG.apiUrl.replace(/\/api\/sync\/?$/, "") : window.location.origin;
     const callEventUrl = base + "/api/call-event/v2";
     const scriptTag2 = getTrackerScriptTag();
     const proxyUrl2 = scriptTag2?.getAttribute("data-ops-proxy-url") || (window.opsmantikConfig || window.opmantikConfig || {})?.opsProxyUrl || "";

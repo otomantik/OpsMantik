@@ -219,7 +219,7 @@ test('uploadConversions: partial_failure permanent error (Conversion not found) 
             message: 'partial',
             details: [
               {
-                '@type': 'type.googleapis.com/google.ads.googleads.v19.errors.GoogleAdsFailure',
+                '@type': 'type.googleapis.com/google.ads.googleads.v20.errors.GoogleAdsFailure',
                 errors: [
                   {
                     message: 'Conversion not found',

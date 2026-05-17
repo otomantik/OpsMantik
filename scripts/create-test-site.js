@@ -82,8 +82,8 @@ async function createTestSite() {
     if (newSite.name) {
       console.log(`   Name: ${newSite.name}`);
     }
-    console.log('\n🎉 Artık test-page\'de tracker script\'i çalışacak!');
-    console.log('   Test URL: http://localhost:3000/test-page?gclid=TEST_GCLID_X99_AB');
+    console.log('\n🎉 Test site is ready. Exercise the tracker on your local app with a gclid query:');
+    console.log('   Example: http://localhost:3000/dashboard?gclid=TEST_GCLID_X99_AB');
 
   } catch (error) {
     console.error('❌ Hata:', error.message);

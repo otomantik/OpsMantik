@@ -1,0 +1,6 @@
+{
+  "OPSMANTIK_BASE_URL": "https://console.opsmantik.com",
+  "SITE_CONFIG": "{\"gecgenotokurtarici.com\":\"862314ce888d44b29aa222833e9b0af2\"}",
+  "SITE_CONFIG_URL": "https://console.opsmantik.com/api/internal/worker/tenant-map",
+  "SITE_CONFIG_TTL_MS": "300000"
+}

@@ -30,6 +30,8 @@
     "create-test-site": "node scripts/create-test-site.js",
     "generate-missing-keys": "npx tsx scripts/generate-missing-keys.ts",
     "seed:google-ads": "node scripts/seed-google-ads-credentials.mjs",
+    "smoke:google-ads-api": "node scripts/google-ads-api-smoke.mjs",
+    "google-ads:list-conversions": "node scripts/google-ads-list-conversion-actions.mjs",
     "oci:credentials": "node scripts/get-oci-credentials.mjs",
     "db:enqueue": "node scripts/db/oci-enqueue.mjs",
     "db:oci-outbox-backfill": "node scripts/db/oci-outbox-missed-backfill.mjs",

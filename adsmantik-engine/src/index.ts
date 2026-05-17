@@ -69,9 +69,22 @@ async function loadTenantMap(env: WorkerEnv): Promise<TenantMap> {
 						? parsed.map
 						: {};
 				for (const [host, value] of Object.entries(remoteMapRaw)) {
-					if (typeof value === "string" && value.trim().length > 0) {
-						mergedMap[normalizeHost(host)] = value.trim();
+					if (typeof value !== "string" || !value.trim()) continue;
+					const h = normalizeHost(host);
+					const remoteId = value.trim();
+					// Wrangler `SITE_CONFIG` is the bundle-of-record for known hosts; never let a bad
+					// remote map overwrite it (prevents ghost UUIDs / stale API rows → SITE_NOT_FOUND upstream).
+					if (Object.prototype.hasOwnProperty.call(staticMap, h) && staticMap[h]) {
+						if (remoteId !== staticMap[h]) {
+							console.log("[adsmantik-engine] remote tenant map skipped (static wins)", {
+								host: h,
+								static_site_id: staticMap[h],
+								remote_site_id: remoteId,
+							});
+						}
+						continue;
 					}
+					mergedMap[h] = remoteId;
 				}
 			}
 		} catch (error) {
@@ -103,6 +116,31 @@ function injectEdgeGeo(meta: Record<string, unknown>, request: Request): Record<
 	if (cf?.country && !next.country) next.country = cf.country;
 	if (cf?.timezone && !next.timezone) next.timezone = cf.timezone;
 	return next;
+}
+
+function readPayloadSiteHint(incoming: unknown): string | null {
+	if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return null;
+	const obj = incoming as Record<string, unknown>;
+	const top = obj.s;
+	if (typeof top === "string" && top.trim()) return top.trim();
+	const siteIdTop = obj.site_id;
+	if (typeof siteIdTop === "string" && siteIdTop.trim()) return siteIdTop.trim();
+	const ev = obj.events;
+	if (Array.isArray(ev) && ev.length > 0 && ev[0] && typeof ev[0] === "object" && !Array.isArray(ev[0])) {
+		const s0 = (ev[0] as Record<string, unknown>).s;
+		if (typeof s0 === "string" && s0.trim()) return s0.trim();
+	}
+	return null;
+}
+
+function logTenantPayloadSiteMismatch(incoming: unknown, siteId: string, requestHost: string): void {
+	const hint = readPayloadSiteHint(incoming);
+	if (!hint || hint === siteId) return;
+	console.log("[adsmantik-engine] payload site hint differs from tenant map (tenant wins)", {
+		request_host: requestHost,
+		tenant_site_id: siteId,
+		payload_site_hint: hint,
+	});
 }
 
 function normalizeSyncPayload(incoming: unknown, siteId: string, request: Request): Record<string, unknown> {
@@ -214,10 +252,47 @@ async function forwardJson(
 	}
 }
 
+function isWorkersDevHost(hostname: string): boolean {
+	const h = hostname.trim().toLowerCase();
+	return h.endsWith(".workers.dev") || h === "workers.dev";
+}
+
+function parseOriginOrRefererHost(headerValue: string | null): string | null {
+	if (!headerValue) return null;
+	try {
+		return normalizeHost(new URL(headerValue).hostname);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Resolve OpsMantik site public_id for this request.
+ * 1) Request URL hostname (custom domain + `/opsmantik/*` route on that zone).
+ * 2) If the Worker URL is `*.workers.dev` (shared bridge), use `Origin` then `Referer` host
+ *    so one deployment serves every storefront in `SITE_CONFIG` without per-zone routes.
+ */
 function resolveTenantSiteId(request: Request, tenantMap: TenantMap): string | null {
 	const url = new URL(request.url);
-	const host = normalizeHost(url.hostname);
-	return tenantMap[host] ?? null;
+	const primary = normalizeHost(url.hostname);
+	const direct = tenantMap[primary];
+	if (direct) return direct;
+
+	if (!isWorkersDevHost(url.hostname)) {
+		return null;
+	}
+
+	const originHost = parseOriginOrRefererHost(request.headers.get("origin"));
+	if (originHost) {
+		const hit = tenantMap[originHost];
+		if (hit) return hit;
+	}
+	const refererHost = parseOriginOrRefererHost(request.headers.get("referer"));
+	if (refererHost) {
+		const hit = tenantMap[refererHost];
+		if (hit) return hit;
+	}
+	return null;
 }
 
 export default {
@@ -235,6 +310,8 @@ export default {
 			console.log("[adsmantik-engine] unresolved tenant", { host: url.hostname, path: url.pathname });
 			return jsonResponse({ error: "unresolved_site" }, 401);
 		}
+
+		const requestHost = normalizeHost(url.hostname);
 
 		const base = (env.OPSMANTIK_BASE_URL || "https://console.opsmantik.com").replace(/\/+$/, "");
 
@@ -267,6 +344,7 @@ export default {
 						400
 					);
 				}
+				logTenantPayloadSiteMismatch(incoming, siteId, requestHost);
 				const payload = normalizeSyncPayload(incoming, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, payload);
 			}
@@ -283,6 +361,7 @@ export default {
 						400
 					);
 				}
+				logTenantPayloadSiteMismatch(incoming, siteId, requestHost);
 				const payload = normalizeSyncPayload(incoming, siteId, request);
 				return await forwardJson(`${base}/api/sync`, request, payload);
 			}
@@ -297,9 +376,12 @@ export default {
 					return jsonResponse({ error: "invalid_json" }, 400);
 				}
 
+				logTenantPayloadSiteMismatch(body, siteId, requestHost);
+
+				// Tenant map is authoritative — same as normalizeSyncPayload `s` override.
 				const payload = {
 					...body,
-					site_id: typeof body.site_id === "string" && body.site_id.trim().length > 0 ? body.site_id : siteId,
+					site_id: siteId,
 				};
 				const secret = secretMap[siteId];
 				if (!secret) {

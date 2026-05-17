@@ -1,0 +1,8 @@
+{
+  "siteId": "a05909df-a03f-4cca-9876-5b37196aaf24",
+  "baseUrl": "https://console.opsmantik.com",
+  "exportLimit": 50,
+  "runMode": "sync",
+  "operatorId": "google-ads-script",
+  "changeTicket": "gecgen-oto-kurtarici-onboard"
+}

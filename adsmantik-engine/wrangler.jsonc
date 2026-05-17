@@ -11,13 +11,25 @@
 		"nodejs_compat",
 		"global_fetch_strictly_public"
 	],
+	"routes": [
+		{ "pattern": "kocotokurtarma.com/opsmantik/*", "zone_name": "kocotokurtarma.com" },
+		{ "pattern": "www.kocotokurtarma.com/opsmantik/*", "zone_name": "kocotokurtarma.com" },
+		{ "pattern": "muratcanaku.com/opsmantik/*", "zone_name": "muratcanaku.com" },
+		{ "pattern": "www.muratcanaku.com/opsmantik/*", "zone_name": "muratcanaku.com" },
+		{ "pattern": "spotbizdelastik.com/opsmantik/*", "zone_name": "spotbizdelastik.com" },
+		{ "pattern": "www.spotbizdelastik.com/opsmantik/*", "zone_name": "spotbizdelastik.com" },
+		{ "pattern": "umutotocekici.com/opsmantik/*", "zone_name": "umutotocekici.com" },
+		{ "pattern": "www.umutotocekici.com/opsmantik/*", "zone_name": "umutotocekici.com" },
+		{ "pattern": "gecgenotokurtarici.com/opsmantik/*", "zone_name": "gecgenotokurtarici.com" },
+		{ "pattern": "www.gecgenotokurtarici.com/opsmantik/*", "zone_name": "gecgenotokurtarici.com" }
+	],
 	"observability": {
 		"enabled": true
 	},
 	"upload_source_maps": true,
 	"vars": {
 		"OPSMANTIK_BASE_URL": "https://console.opsmantik.com",
-		"SITE_CONFIG": "{\"kocotokurtarma.com\":\"93cb9966bcf349c1b4ece8ea34142ace\",\"muratcanaku.com\":\"178c4e31306e436b8be67d5f6134b118\",\"umutotocekici.com\":\"b54e2f0e3ca44fd1a614d8d99bfa6902\"}",
+		"SITE_CONFIG": "{\"kocotokurtarma.com\":\"93cb9966bcf349c1b4ece8ea34142ace\",\"gecgenotokurtarici.com\":\"862314ce888d44b29aa222833e9b0af2\",\"kirklareli-luleburgaz-servisi.com\":\"2e695ecf1c49453590882ca9bd655fb7\",\"muratcanaku.com\":\"178c4e31306e436b8be67d5f6134b118\",\"spotbizdelastik.com\":\"00699ff719394611b224a05ffab0675d\",\"umutotocekici.com\":\"b54e2f0e3ca44fd1a614d8d99bfa6902\"}",
 		"SITE_CONFIG_URL": "https://console.opsmantik.com/api/internal/worker/tenant-map",
 		"SITE_CONFIG_TTL_MS": "300000"
 	}

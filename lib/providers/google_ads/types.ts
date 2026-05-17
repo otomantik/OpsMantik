@@ -31,7 +31,7 @@ export interface GoogleAdsCredentials {
 
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_ADS_API_BASE = 'https://googleads.googleapis.com';
-const API_VERSION = 'v19';
+const API_VERSION = 'v20';
 
 export const GOOGLE_ADS = {
   OAUTH_TOKEN_URL,

@@ -1,6 +1,10 @@
-export function resolveLandingRoute(params: { isAdmin: boolean; siteCount: number }): '/dashboard' | '/panel' {
-  // Super admins should land on dashboard site list.
-  if (params.isAdmin) return '/dashboard';
-  if (params.siteCount > 0) return '/panel';
-  return '/dashboard';
+/**
+ * Post-login landing. All authenticated users go to `/dashboard` so we keep
+ * a single shell; `/panel` remains available for deep links and admin preview.
+ */
+export function resolveLandingRoute(_params: {
+  isAdmin: boolean;
+  siteCount: number;
+}): "/dashboard" {
+  return "/dashboard";
 }
