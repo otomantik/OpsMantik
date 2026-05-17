@@ -4,8 +4,8 @@
 
 | Surface | Method | Auth | Notes |
 |---------|--------|------|------|
-| `POST /api/call-event` | POST | Site signing secret / headers per route | Legacy |
-| `POST /api/call-event/v2` | POST | Same | Preferred ingest |
+| `POST /api/call-event` | POST | — | **410 Gone** (sunset 2026-05-10); use v2 |
+| `POST /api/call-event/v2` | POST | Site signing secret / headers per route | Canonical intent ingest |
 | `GET /api/oci/google-ads-export` | GET | `x-api-key` = `OCI_API_KEY` | Batch payload for MCC script |
 | `POST /api/oci/ack` | POST | Script-signed body | Offline conversion ACK |
 | `POST /api/oci/ack-failed` | POST | Script-signed body | Failure path |

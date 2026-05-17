@@ -10,7 +10,7 @@
 flowchart TB
     subgraph Ingress["1. Ingress"]
         A1[POST /api/sync]
-        A2[POST /api/call-event]
+        A2[POST /api/call-event/v2]
         A3[POST /api/track/pv]
     end
 
@@ -70,7 +70,7 @@ flowchart TB
 
 | # | Component | Description |
 |---|------------|-------------|
-| 1 | **Ingress** | sync (events), call-event (intent), track/pv (pageview) |
+| 1 | **Ingress** | sync (events), call-event/v2 (intent), track/pv (pageview) |
 | 2 | **Identity Stitch** | session → fingerprint, call → matched_session, GCLID resolution |
 | 3 | **Funnel Kernel** | ledger (append-only), projection (funnel metrics / readiness), policy/weights |
 | 4 | **Projection** | export_status READY/BLOCKED (kernel); **not** the `google-ads-export` batch table source |

@@ -69,7 +69,7 @@ async function main() {
   console.log(scriptTag);
   console.log('---');
   console.log('');
-  console.log('After adding this script, WhatsApp/phone clicks will send signed requests and /api/call-event will return 200.');
+  console.log('After adding this script, WhatsApp/phone clicks will send signed requests to /api/call-event/v2.');
 }
 
 main().catch((e) => {

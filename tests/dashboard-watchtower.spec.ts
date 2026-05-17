@@ -100,42 +100,51 @@ test.describe('Dashboard Watchtower E2E-lite', () => {
     }
 
     const ts = Math.floor(Date.now() / 1000);
+    const eventId = (globalThis.crypto?.randomUUID?.() || `00000000-0000-0000-0000-${String(ts).padStart(12, '0')}`) as string;
     const rawBody = JSON.stringify({
+      event_id: eventId,
       site_id: sitePublicId,
       fingerprint: `e2e_fp_${ts}`,
       phone_number: 'tel:+900000000000',
+      action: 'phone',
+      url: `${origin}/e2e`,
+      ua: 'playwright',
     });
     const sig = createHmac('sha256', callEventSecret).update(`${ts}.${rawBody}`, 'utf8').digest('hex');
 
-    const res = await request.post(`${origin}/api/call-event`, {
+    const res = await request.post(`${origin}/api/call-event/v2`, {
       data: rawBody,
       headers: {
-        Origin: origin,
         'Content-Type': 'application/json',
-        'x-ops-site-id': sitePublicId,
+        'x-ops-site-id': siteId,
         'x-ops-ts': String(ts),
         'x-ops-signature': sig,
+        'x-ops-proxy': '1',
+        'x-ops-proxy-host': 'e2e.local',
       },
     });
 
-    // 200 + JSON when session+consent present; 204 when signature valid but no session/consent
-    expect([200, 204], await res.text()).toContain(res.status());
-    if (res.status() === 200) {
+    // 200/202 + JSON when session+consent present; 204 when signature valid but no session/consent
+    expect([200, 202, 204], await res.text()).toContain(res.status());
+    if (res.status() === 200 || res.status() === 202) {
       const json = await res.json().catch(() => ({}));
       expect(json.status).toMatch(/matched|queued|noop/);
       if (json.status === 'matched' || json.status === 'queued') expect(typeof json.call_id).toBe('string');
     }
   });
 
-  test('5) call-event signed request: replay rejected (old ts)', async ({ request }) => {
+  test('5) call-event v2 signed request: replay rejected (old ts)', async ({ request }) => {
     const ts = Math.floor(Date.now() / 1000) - 1000; // > 300s old
-    const rawBody = JSON.stringify({ site_id: sitePublicId || '0'.repeat(32), fingerprint: `e2e_fp_${ts}` });
+    const rawBody = JSON.stringify({
+      site_id: sitePublicId || '0'.repeat(32),
+      fingerprint: `e2e_fp_${ts}`,
+      action: 'phone',
+    });
     const sig = createHmac('sha256', callEventSecret || 'dummy').update(`${ts}.${rawBody}`, 'utf8').digest('hex');
 
-    const res = await request.post(`${origin}/api/call-event`, {
+    const res = await request.post(`${origin}/api/call-event/v2`, {
       data: rawBody,
       headers: {
-        Origin: origin,
         'Content-Type': 'application/json',
         'x-ops-site-id': sitePublicId || '0'.repeat(32),
         'x-ops-ts': String(ts),
@@ -191,9 +200,9 @@ test.describe('Dashboard Watchtower E2E-lite', () => {
       },
     });
 
-    // 200 + JSON when session+consent present; 204 when signature valid but no session/consent
-    expect([200, 204], await res.text()).toContain(res.status());
-    if (res.status() === 200) {
+    // 200/202 + JSON when session+consent present; 204 when signature valid but no session/consent
+    expect([200, 202, 204], await res.text()).toContain(res.status());
+    if (res.status() === 200 || res.status() === 202) {
       const json = await res.json().catch(() => ({}));
       expect(json.status).toMatch(/matched|queued|noop/);
     }

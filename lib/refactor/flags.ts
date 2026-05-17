@@ -10,7 +10,7 @@
  *   - TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED → truth_canonical_ledger shadow writes (default off until migrated).
  *   - CONSENT_PROVENANCE_SHADOW_ENABLED    → consent provenance shadow audit.
  *   - EXPLAINABILITY_API_ENABLED           → /api/truth/explain endpoint.
- *   - LEGACY_ENDPOINTS_ENABLED             → keep legacy ingest paths alive.
+ *   - LEGACY_ENDPOINTS_ENABLED             → emergency rollback: forward v1 → v2 (default off after 2026-05-10 sunset).
  *
  * The old TRUTH_PROJECTION_READ_ENABLED flag was removed along with
  * lib/domain/truth/projection-dual-read.ts. Any residual env var is ignored.
@@ -53,7 +53,7 @@ function asEnum<T extends string>(v: string | undefined, allowed: readonly T[], 
   return (allowed as readonly string[]).includes(normalized) ? (normalized as T) : fallback;
 }
 
-/** Defaults keep current production behavior (all specialized paths off; legacy endpoints on). */
+/** Defaults: specialized truth paths off; legacy call-event v1 off (canonical v2). */
 export function getRefactorFlags(): RefactorFlags {
   return {
     truth_shadow_write_enabled: asBool(process.env.TRUTH_SHADOW_WRITE_ENABLED, false),
@@ -62,7 +62,7 @@ export function getRefactorFlags(): RefactorFlags {
     truth_inference_registry_enabled: asBool(process.env.TRUTH_INFERENCE_REGISTRY_ENABLED, false),
     identity_graph_enabled: asBool(process.env.IDENTITY_GRAPH_ENABLED, false),
     explainability_api_enabled: asBool(process.env.EXPLAINABILITY_API_ENABLED, false),
-    legacy_endpoints_enabled: asBool(process.env.LEGACY_ENDPOINTS_ENABLED, true),
+    legacy_endpoints_enabled: asBool(process.env.LEGACY_ENDPOINTS_ENABLED, false),
     consent_provenance_shadow_enabled: asBool(process.env.CONSENT_PROVENANCE_SHADOW_ENABLED, false),
     truth_canonical_ledger_shadow_enabled: asBool(process.env.TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED, false),
     strict_mutation_version_enforce: asBool(process.env.STRICT_MUTATION_VERSION_ENFORCE, true),

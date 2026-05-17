@@ -35,12 +35,13 @@ function buildSignedHeaders(overrides?: Partial<Record<string, string>>): Header
   });
 }
 
-test('v1 and v2 routes both use shared call-event signature policy helper', () => {
+test('v2 is signature SSOT; v1 sunset shim forwards to v2 on rollback only', () => {
   const v1 = readFileSync(join(ROOT, 'app', 'api', 'call-event', 'route.ts'), 'utf8');
   const v2 = readFileSync(join(ROOT, 'app', 'api', 'call-event', 'v2', 'route.ts'), 'utf8');
 
-  assert.ok(v1.includes('verifyCallEventSignaturePolicy'), 'v1 must use shared signature policy');
   assert.ok(v2.includes('verifyCallEventSignaturePolicy'), 'v2 must use shared signature policy');
+  assert.ok(v1.includes('postCallEventV2'), 'v1 rollback must forward to v2');
+  assert.ok(!v1.includes('verifyCallEventSignaturePolicy'), 'v1 must not duplicate signature policy');
 });
 
 test('invalid signature is rejected (parity baseline for v1/v2)', async () => {
