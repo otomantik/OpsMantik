@@ -149,7 +149,7 @@
     "tailwind-merge": "^2.6.0",
     "tweetnacl-sealed-box": "^1.0.5",
     "ua-parser-js": "^1.0.37",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
