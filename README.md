@@ -93,7 +93,7 @@ opsmantik-v1/
 ├── public/
 │   ├── assets/
 │   │   └── core.js       # Tracking script (neutral path, ad-blocker friendly)
-│   └── ux-core.js         # Legacy tracking script (backwards compatibility)
+│   └── ux-core.js         # Legacy URL shim → loads /assets/core.js
 │
 └── supabase/
     └── migrations/         # Database migrations

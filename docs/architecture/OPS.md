@@ -38,7 +38,7 @@ OpsMantik is mission-critical for conversion attribution. Reliability is priorit
 - **Fix**: Verify deduplication logic in the sync worker.
 
 ### 2. Zero GCLIDs Reported
-- **Check**: Site tracker version (ensure `ux-core.js` is V2).
+- **Check**: Site embed uses canonical `/assets/core.js` (not a stale self-hosted copy).
 - **Check**: URL parameters are being passed through correctly from Google Ads.
 - **Check**: `Watchtower` for liveness status.
 

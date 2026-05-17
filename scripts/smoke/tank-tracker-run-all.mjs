@@ -2,7 +2,7 @@
 
 /**
  * SECTOR BRAVO — Tank Tracker: Tüm kanıtları sırayla çalıştır.
- * 1) Statik proof (ux-core.js desenleri)
+ * 1) Statik proof (assets/core.js + ux-core shim)
  * 2) Events proof (Supabase: son 5 dk event sayısı + son 10 event)
  * 3) Offline/Online proof (Playwright, TRACKER_SITE_URL veya PROOF_URL varsa)
  *

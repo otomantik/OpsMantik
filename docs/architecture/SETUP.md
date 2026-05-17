@@ -19,9 +19,11 @@ To track a website, embed the following script tag just before the closing `</he
 
 ```html
 <script 
-  src="https://console.opsmantik.com/ux-core.js" 
+  defer
+  src="https://console.opsmantik.com/assets/core.js?v=7" 
   data-ops-site-id="YOUR_SITE_PUBLIC_ID"
-  async>
+  data-ops-consent="analytics"
+  data-api="https://console.opsmantik.com/api/sync">
 </script>
 ```
 

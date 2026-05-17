@@ -4,9 +4,8 @@
  * Transport Proof Script - Verify sendBeacon + keepalive in tracking scripts
  * 
  * Checks:
- * 1. sendBeacon exists in both ux-core.js and assets/core.js
- * 2. keepalive: true exists in both files
- * 3. queueEvent and drainQueue functions exist
+ * 1. sendBeacon + keepalive in canonical assets/core.js
+ * 2. ux-core.js remains shim-only (no duplicate bundle)
  * 
  * Usage: node scripts/smoke/track-transport-proof.mjs
  */
@@ -42,17 +41,15 @@ function bold(msg) {
   return `${BOLD}${msg}${RESET}`;
 }
 
-// Files to check
-const files = [
-  {
-    path: join(rootDir, 'public/ux-core.js'),
-    name: 'ux-core.js',
-  },
-  {
-    path: join(rootDir, 'public/assets/core.js'),
-    name: 'assets/core.js',
-  },
-];
+const coreFile = {
+  path: join(rootDir, 'public/assets/core.js'),
+  name: 'assets/core.js',
+};
+const shimFile = {
+  path: join(rootDir, 'public/ux-core.js'),
+  name: 'ux-core.js (shim)',
+};
+const files = [coreFile];
 
 // Required patterns
 const requiredPatterns = [
@@ -67,23 +64,23 @@ const requiredPatterns = [
     critical: true,
   },
   {
-    name: 'queueEvent function',
-    pattern: /function\s+queueEvent\s*\(/,
+    name: 'addToOutbox function',
+    pattern: /function\s+addToOutbox\s*\(/,
     critical: true,
   },
   {
-    name: 'drainQueue function',
-    pattern: /function\s+drainQueue\s*\(/,
+    name: 'processOutbox function',
+    pattern: /function\s+processOutbox\s*\(/,
     critical: true,
   },
   {
-    name: 'opsmantik_evtq_v1 queue key',
-    pattern: /opsmantik_evtq_v1/,
+    name: 'opsmantik_outbox_v2 queue key',
+    pattern: /opsmantik_outbox_v2/,
     critical: true,
   },
   {
-    name: 'Blob application/json',
-    pattern: /new\s+Blob\(\[.*?\],\s*\{\s*type:\s*['"]application\/json['"]\s*\}\)/,
+    name: 'sendBeacon Blob (last gasp)',
+    pattern: /sendBeacon[\s\S]{0,120}new\s+Blob/,
     critical: true,
   },
 ];
@@ -104,6 +101,21 @@ console.log(`\n${bold('🔬 TRANSPORT PROOF SCRIPT')}`);
 console.log(`${bold('========================================')}\n`);
 
 let allPassed = true;
+
+try {
+  const shim = readFileSync(shimFile.path, 'utf-8');
+  if (shim.includes('/api/call-event') || /opsmantik_outbox|opsmantik_evtq/.test(shim)) {
+    fail(`${shimFile.name}: must not embed tracker bundle`);
+    allPassed = false;
+  } else {
+    pass(`${shimFile.name}: shim-only`);
+  }
+} catch (err) {
+  fail(`${shimFile.name}: file not found`);
+  allPassed = false;
+}
+console.log('');
+
 const results = [];
 
 // Check each file
@@ -179,7 +191,7 @@ console.log('');
 
 if (allPassed) {
   console.log(`${GREEN}${bold('✅ TRANSPORT PROOF: PASS')}${RESET}`);
-  console.log(`${GREEN}sendBeacon + keepalive + offline queue present in both files${RESET}\n`);
+  console.log(`${GREEN}sendBeacon + keepalive + offline queue present in assets/core.js; ux-core shim ok${RESET}\n`);
   process.exit(0);
 } else {
   console.log(`${RED}${bold('❌ TRANSPORT PROOF: FAIL')}${RESET}`);

@@ -2,7 +2,7 @@
 
 /**
  * SECTOR BRAVO — Tank Tracker (Store & Forward) static proof.
- * Verifies ux-core.js contains the new outbox + processOutbox logic.
+ * Verifies public/assets/core.js contains Store & Forward (outbox) logic.
  *
  * Usage: node scripts/smoke/tank-tracker-proof.mjs
  */
@@ -49,17 +49,20 @@ const requiredPatterns = [
 console.log(`\n${bold('SECTOR BRAVO — Tank Tracker (Store & Forward) proof')}`);
 console.log(`${bold('========================================')}\n`);
 
-const filesToCheck = [
-  { path: uxCorePath, name: 'public/ux-core.js' },
-  { path: corePath, name: 'public/assets/core.js' },
-];
-
-for (const { path: filePath, name } of filesToCheck) {
-  if (!existsSync(filePath)) {
-    fail(`File not found: ${name}`);
-    process.exit(1);
-  }
+if (!existsSync(corePath)) {
+  fail('File not found: public/assets/core.js');
+  process.exit(1);
 }
+if (!existsSync(uxCorePath)) {
+  fail('File not found: public/ux-core.js (back-compat shim)');
+  process.exit(1);
+}
+const shim = readFileSync(uxCorePath, 'utf-8');
+if (shim.includes('/api/call-event') || shim.includes('opsmantik_outbox')) {
+  fail('public/ux-core.js must be shim-only (no embedded tracker bundle)');
+  process.exit(1);
+}
+pass('public/ux-core.js is shim-only');
 
 // Check canonical production bundle (core.js) as primary
 const content = readFileSync(corePath, 'utf-8');
@@ -81,10 +84,10 @@ console.log(`${bold(`Result: ${passed} passed, ${failed} failed`)}\n`);
 
 if (failed === 0) {
   console.log(`${GREEN}${bold('✅ Tank Tracker static proof: PASS')}${RESET}`);
-  console.log(`${GREEN}ux-core.js contains Store & Forward (outbox + processOutbox + response.ok)${RESET}\n`);
+  console.log(`${GREEN}assets/core.js contains Store & Forward (outbox + processOutbox + response.ok)${RESET}\n`);
   process.exit(0);
 } else {
   console.log(`${RED}${bold('❌ Tank Tracker static proof: FAIL')}${RESET}`);
-  console.log(`${RED}Missing required patterns in public/ux-core.js${RESET}\n`);
+  console.log(`${RED}Missing required patterns in public/assets/core.js${RESET}\n`);
   process.exit(1);
 }

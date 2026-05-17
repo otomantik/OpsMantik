@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "public, max-age=60" }],
       },
       {
+        source: "/ux-core.js",
+        headers: [{ key: "Cache-Control", value: "public, max-age=60" }],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },

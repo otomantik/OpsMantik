@@ -20,7 +20,9 @@
 
 ## Versioning
 
-- Tracker asset [`/assets/core.js`](../../public) uses short `Cache-Control` in `next.config.ts` so fixes propagate; customers may still append `?v=` when caching aggressively.
+- Tracker asset [`/assets/core.js`](../../public) is canonical (built from `lib/tracker` via `npm run tracker:build`).
+- Legacy [`/ux-core.js`](../../public) is a **shim only** (loads `/assets/core.js`); do not embed it on new sites.
+- Both paths use short `Cache-Control` in `next.config.ts`; customers may append `?v=` when caching aggressively.
 
 ## Breaking changes
 

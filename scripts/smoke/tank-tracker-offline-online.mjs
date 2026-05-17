@@ -50,8 +50,8 @@ let targetUrl;
 let localServer = null;
 
 if (USE_LOCAL_TRACKER_PAGE) {
-  if (!existsSync(join(publicDir, 'smoke-tracker-test.html')) || !existsSync(join(publicDir, 'ux-core.js'))) {
-    console.log(`${RED}public/smoke-tracker-test.html veya public/ux-core.js yok.${RESET}\n`);
+  if (!existsSync(join(publicDir, 'smoke-tracker-test.html')) || !existsSync(join(publicDir, 'assets/core.js'))) {
+    console.log(`${RED}public/smoke-tracker-test.html veya public/assets/core.js yok.${RESET}\n`);
     process.exit(1);
   }
   const siteId = SMOKE_SITE_ID || '00000000-0000-4000-8000-000000000000';
@@ -171,7 +171,7 @@ try {
     pass(`Offline sonrası eski kuyrukta (evtq_v1) ${oldQueue.length} öğe var (Store başarılı — site henüz yeni tracker deploy etmemiş).`);
   } else {
     fail(`Offline sonrası hem outbox_v2 (${outboxV2.length}) hem eski kuyruk (${oldQueue.length}) boş. Beklenen: en az biri >= 1.`);
-    info('İpucu: Site yeni ux-core.js (Tank Tracker) ile deploy edildi mi? Eski tracker offline\'da bazen event\'i kuyuğa yazmaz.');
+    info('İpucu: Site canonical assets/core.js (Tank Tracker) ile deploy edildi mi? Eski tracker offline\'da bazen event\'i kuyuğa yazmaz.');
     passed = false;
   }
 
