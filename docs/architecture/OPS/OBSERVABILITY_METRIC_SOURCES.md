@@ -50,7 +50,8 @@ This document maps each **required** metric to **concrete** observation paths (c
 
 | Gate | Source |
 |------|--------|
-| `smoke:intent-multi-site` | [`docs/OPS/DEPLOY_GATE_INTENT.md`](../../OPS/DEPLOY_GATE_INTENT.md), `npm run smoke:intent-multi-site` |
+| `test:release-gates` | [`docs/OPS/DEPLOY_GATE_INTENT.md`](../../OPS/DEPLOY_GATE_INTENT.md), `npm run test:release-gates` |
+| `smoke:intent-multi-site` | Optional diagnostic — [`DEPLOY_GATE_INTENT.md`](../../OPS/DEPLOY_GATE_INTENT.md), `npm run smoke:intent-multi-site` |
 | `/api/health` | [`app/api/health/route.ts`](../../../app/api/health/route.ts) |
 
 ---

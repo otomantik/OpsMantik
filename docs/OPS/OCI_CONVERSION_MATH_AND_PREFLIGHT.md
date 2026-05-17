@@ -41,7 +41,7 @@ Birim testler: `tests/unit/precursor-backfill-plan.test.ts`.
 2. `npm run verify:i18n:keys` (OCI Control yeni anahtarlar).
 3. OCI matematiği birim testleri (özet set):
    `node --import tsx --test tests/unit/oci-queue-ssot-parity.test.ts tests/unit/oci-export-touchpoints.test.ts tests/unit/precursor-backfill-plan.test.ts tests/unit/oci-backfill-time-source.test.ts`
-4. Deploy gate (workspace kuralı): `npm run smoke:intent-multi-site` — 2/2 site PASS olmadan deploy yok.
+4. Deploy gate (workspace kuralı): `npm run test:release-gates` — see [DEPLOY_GATE_INTENT.md](./DEPLOY_GATE_INTENT.md). Optional: `npm run smoke:intent-multi-site` for canary sites when inventory exists.
 5. Cron’lar: `oci/promote-blocked-queue` zamanlandı mı? (Bloklu won birikimini çözer.)
 6. Canary: bir sitede `queue-stats` → `BLOCKED_PRECEEDING_SIGNALS`, `promotionReadyInSample`, `oldestBlockedAgeSeconds` izlenir.
 

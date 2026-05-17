@@ -71,7 +71,8 @@
 
 | Gate | Status |
 |------|--------|
-| smoke:intent-multi-site | Deploy gate in deploy-gate-intent.mdc; 2/2 PASS before deploy. |
+| test:release-gates | Mandatory deploy gate per deploy-gate-intent.mdc and [DEPLOY_GATE_INTENT.md](../../OPS/DEPLOY_GATE_INTENT.md). |
+| smoke:intent-multi-site | Optional multi-site intent diagnostic; not required for deploy pass/fail. |
 | /api/health | If exists: checks DB, Redis; 503 if any down. |
 | Contract tests | Optional: schema tests for sync/call-event; build fails on drift. P2. |
 | Vercel deploy | Doc: run smoke before deploy; no auto-block. |

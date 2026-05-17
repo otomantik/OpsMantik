@@ -14,5 +14,5 @@ A release is complete only if all checks pass:
 4. Tracker embed API returns proxy-first script by default.
 5. Super admin sees full site list and add-site controls.
 6. Worker tenant map resolves newly created site without static `SITE_CONFIG` edit.
-7. `npm run smoke:intent-multi-site` passes.
+7. `npm run test:release-gates` passes (or staging-equivalent evidence). Optional: `npm run smoke:intent-multi-site` when `P0_SITES` is configured.
 8. No P0/P1 regression detected in first 72 hours.

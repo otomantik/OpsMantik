@@ -39,10 +39,16 @@ npm run test:unit
 **Expected:** full `tests/unit/*.test.ts` sweep passes (includes taxonomy, intent status, grants, call-event, ACK, blocked metadata contracts among others).
 
 ```bash
+npm run test:release-gates
+```
+
+**Expected:** mandatory deploy gate passes (tenant boundary, OCI kernel, runtime budget, chaos-core, strict rollout readiness).
+
+```bash
 npm run smoke:intent-multi-site
 ```
 
-**Expected:** script completes successfully (multi-site intent smoke).
+**Expected (optional):** script completes successfully when `P0_SITES` inventory is configured — not a deploy pass/fail requirement.
 
 ### Targeted unit tests (remediation-focused)
 
@@ -214,7 +220,7 @@ Document **expected HTTP / behavior** (exact status codes may vary by middleware
    (Plus any prerequisite migrations already in chain — follow repo order.)
 2. **Run tests:** `npm run test:oci-kernel`, `npm run test:unit`, and targeted tests in §2.
 3. **Run staging SQL** evidence in §3 (grants + BLOCKED inventory + drift counts).
-4. **Run** `npm run smoke:intent-multi-site`.
+4. **Run** `npm run test:release-gates`. Optional: `npm run smoke:intent-multi-site` when canary sites are available.
 5. **Monitor 30–60 minutes** post-production deploy: outbox drain rates, OCI worker errors, panel mutation 4xx/5xx, ACK rejection spikes, conversion upload retries.
 
 ---
@@ -244,9 +250,9 @@ Document **expected HTTP / behavior** (exact status codes may vary by middleware
 
 Production may proceed **only if**:
 
-- [ ] **All P0/P1 automated gates pass** — at minimum `npm run test:oci-kernel` and full `npm run test:unit` green on the release artifact.
+- [ ] **All P0/P1 automated gates pass** — at minimum `npm run test:release-gates` (or `test:release-gates:pr` + staging evidence) and full `npm run test:unit` green on the release artifact.
 - [ ] **SQL grants prove least privilege** — §3.2 evidence captured; no unexpected **`anon` / `authenticated` / PUBLIC** EXECUTE on listed RPCs.
-- [ ] **`npm run smoke:intent-multi-site` passes** on staging (or equivalent approved smoke tenant).
+- [ ] **`npm run test:release-gates` passes** on staging (or equivalent). Optional: `npm run smoke:intent-multi-site` when `P0_SITES` is configured.
 - [ ] **Route signature matrix** exercised — call-event + ACK scenarios in §4 consistent with deployed env flags.
 - [ ] **No unexplained blocked-metadata drift** — §3.3–3.4 counts zero **or** an explicit repair plan is approved and tracked.
 

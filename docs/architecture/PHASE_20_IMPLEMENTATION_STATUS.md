@@ -19,7 +19,8 @@
 ## Verification
 
 ```bash
-npm run smoke:intent-multi-site  # Deploy gate
+npm run test:release-gates       # Deploy gate (mandatory)
+npm run smoke:intent-multi-site  # Optional multi-site diagnostic
 npm run smoke:api
 npm run smoke:forensic
 ```

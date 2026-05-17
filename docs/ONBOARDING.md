@@ -59,7 +59,7 @@ npm run test:unit
 npm run test:release-gates:pr    # tenant + OCI kernel (no live smoke)
 ```
 
-Full release gates (includes live `smoke:intent-multi-site`) need production-like Supabase secrets:
+Full release gates need production-like Supabase secrets (tenant boundary + OCI kernel + runtime budget + chaos + strict rollout readiness):
 
 ```bash
 npm run test:release-gates
@@ -67,13 +67,15 @@ npm run test:release-gates
 
 ---
 
-## 5. Deploy gate (intent)
+## 5. Deploy gate
 
 Before production deploy:
 
 ```bash
-npm run smoke:intent-multi-site
+npm run test:release-gates
 ```
+
+Optional multi-site intent diagnostic (when `P0_SITES` is configured): `npm run smoke:intent-multi-site`.
 
 See [docs/OPS/DEPLOY_GATE_INTENT.md](./OPS/DEPLOY_GATE_INTENT.md) and [`.cursor/rules/deploy-gate-intent.mdc`](../.cursor/rules/deploy-gate-intent.mdc).
 

@@ -163,12 +163,12 @@ The biggest risk in conversion systems is a nondeterministic pipeline; these rul
 ## Deploy Gate
 
 ```bash
-npm run smoke:intent-multi-site
+npm run test:release-gates
 ```
 
-**Purpose:** Multi-tenant safety check. Before deploy, intent pipeline is verified for at least two different sites (sync → events → calls). No deploy without 2/2 PASS.
+**Purpose:** Mandatory pre-deploy verification (tenant boundary, OCI kernel, runtime budget, chaos-core, strict rollout readiness). See [DEPLOY_GATE_INTENT.md](../OPS/DEPLOY_GATE_INTENT.md).
 
-**Sites (örnek):** yapiozmendanismanlik.com, sosreklam.com
+**Optional diagnostic** (when `P0_SITES` is configured): `npm run smoke:intent-multi-site` — multi-site intent pipeline check (örnek domains: yapiozmendanismanlik.com, sosreklam.com). Not required for deploy pass/fail.
 
 ---
 

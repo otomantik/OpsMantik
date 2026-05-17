@@ -10,7 +10,7 @@
 |-------|-------------------|--------------|
 | **Unit** | `npm run test:unit` — [`tests/unit/*.test.ts`](tests/unit/) | Local + CI (via repo scripts) |
 | **Integration (DB)** | `npm run test:integration` — [`tests/integration/`](tests/integration/) | Requires Supabase credentials; often local or protected CI |
-| **Release gates** | `npm run test:release-gates` — tenant + OCI kernel + [`smoke:intent-multi-site`](scripts/smoke/p0_intent_multi_site.mjs) | [`release-gates.yml`](../.github/workflows/release-gates.yml) with secrets |
+| **Release gates** | `npm run test:release-gates` — tenant-boundary + OCI kernel + runtime-budget + chaos-core + `smoke:oci-rollout-readiness:strict` | [`release-gates.yml`](../.github/workflows/release-gates.yml); see [DEPLOY_GATE_INTENT](./OPS/DEPLOY_GATE_INTENT.md) |
 | **E2E** | `npm run e2e` — Playwright | Optional CI ([`e2e.yml`](../.github/workflows/e2e.yml)); needs `E2E_*` env |
 
 ---
@@ -41,8 +41,9 @@ Maintain or extend tests when changing these areas:
 
 ## 4. Integration test strategy
 
-- **PR:** Prefer `test:release-gates:pr` (`tenant-boundary` + `oci-kernel` only) when DB secrets are unavailable.
-- **Main / nightly:** Run full `test:integration` + `smoke:intent-multi-site` when `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured.
+- **PR:** Prefer `test:release-gates:pr` (`tenant-boundary` + `oci-kernel` + `runtime-budget`) when DB secrets are unavailable.
+- **Main / nightly:** Run full `test:integration` when `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured.
+- **Optional diagnostics:** `smoke:intent-multi-site` for multi-site intent canaries when `P0_SITES` inventory is available (not a deploy pass/fail gate).
 
 Document secrets in [ONBOARDING.md](./ONBOARDING.md).
 
@@ -50,10 +51,20 @@ Document secrets in [ONBOARDING.md](./ONBOARDING.md).
 
 ## 5. Smoke & deploy gate
 
-Mandatory before production deploy per [`.cursor/rules/deploy-gate-intent.mdc`](../.cursor/rules/deploy-gate-intent.mdc):
+**Deploy gate (mandatory)** per [`.cursor/rules/deploy-gate-intent.mdc`](../.cursor/rules/deploy-gate-intent.mdc) and [DEPLOY_GATE_INTENT.md](./OPS/DEPLOY_GATE_INTENT.md):
+
+```bash
+npm run test:release-gates
+```
+
+**PR CI subset:**
+
+```bash
+npm run test:release-gates:pr
+```
+
+**Optional diagnostics** (staging / canary; not required for deploy pass/fail):
 
 ```bash
 npm run smoke:intent-multi-site
 ```
-
-See [docs/OPS/DEPLOY_GATE_INTENT.md](./OPS/DEPLOY_GATE_INTENT.md).

@@ -50,7 +50,7 @@ Every PR that adds a writer path or retry path must update this contract.
 
 - Formal spec: `specs/invariants/tla/InvariantCrucible.tla` and `.cfg`.
 - Runtime gate: chaos tests + OCI kernel tests must pass before release.
-- Deploy gate: `npm run smoke:intent-multi-site` is mandatory.
+- Deploy gate: `npm run test:release-gates` is mandatory; `smoke:intent-multi-site` is optional diagnostics only ([`DEPLOY_GATE_INTENT.md`](../OPS/DEPLOY_GATE_INTENT.md)).
 
 ## Related
 
