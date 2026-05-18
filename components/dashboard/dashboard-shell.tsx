@@ -31,6 +31,7 @@ import type { SiteRole } from '@/lib/auth/rbac';
 import type { OpsMantikModule } from '@/lib/types/modules';
 import { SiteModulesProvider } from '@/lib/contexts/site-modules-context';
 import { useSiteTimezone } from '@/components/context/site-locale-context';
+import { formatSupabaseClientError } from '@/lib/oci/format-supabase-error';
 
 interface DashboardShellProps {
   siteId: string;
@@ -287,7 +288,7 @@ function DashboardShellInner({
 
             {statsError && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-                {statsError}
+                {formatSupabaseClientError(statsError)}
               </div>
             )}
             {/* Scoreboard */}

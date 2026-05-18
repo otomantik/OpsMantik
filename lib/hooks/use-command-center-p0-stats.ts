@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { formatSupabaseClientError } from '@/lib/oci/format-supabase-error';
 import { getTodayTrtUtcRange, resolveDashboardDayTimezone } from '@/lib/time/today-range';
 
 import useSWR from 'swr';
@@ -91,7 +92,7 @@ export function useCommandCenterP0Stats(
   return {
     stats: data ?? null,
     loading: isLoading,
-    error: error ? (error instanceof Error ? error.message : String(error)) : null,
+    error: error ? formatSupabaseClientError(error) : null,
     refetch: mutate,
     dateRange
   };
