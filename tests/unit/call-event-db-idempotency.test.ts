@@ -22,7 +22,7 @@ test('A) 23505 conflict returns 200 noop and signature_hash lookup path exists',
   const processCall = readFileSync(PROCESS_CALL_EVENT, 'utf8');
   assert.ok(worker.includes("code === '23505'"), 'worker must handle 23505 (non-retryable)');
   assert.ok(v2.includes('signature_hash'), 'v2 must include signature_hash in worker payload');
-  assert.ok(v1.includes('signature_hash'), 'v1 must include signature_hash in worker payload');
+  assert.ok(v1.includes("status: 410"), 'v1 tombstone must not publish worker payload');
   assert.ok(processCall.includes('signature_hash'), 'process-call-event must include signature_hash in insert');
 });
 
@@ -32,8 +32,7 @@ test('B) signature_hash is sha256(signature) and stable', () => {
   assert.ok(v2.includes("createHash('sha256')"), 'v2 must use sha256 for signature_hash');
   assert.ok(v2.includes('update(headerSig'), 'v2 must hash headerSig (signature)');
   assert.ok(v2.includes('.digest(\'hex\')'), 'v2 must output hex');
-  assert.ok(v1.includes("createHash('sha256')"), 'v1 must use sha256 for signature_hash');
-  assert.ok(v1.includes('update(headerSig'), 'v1 must hash headerSig');
+  assert.ok(v1.includes('/api/call-event/v2'), 'v1 tombstone must reference canonical v2 route');
 });
 
 test('C) Consent gate still prevents publish (analytics missing → 204)', () => {
@@ -52,9 +51,8 @@ test('D) DB idempotency: signature_hash included in worker payload', () => {
   const v2 = readFileSync(CALL_EVENT_V2, 'utf8');
   const v1 = readFileSync(CALL_EVENT_V1, 'utf8');
   assert.ok(v2.includes('signature_hash: signatureHash'), 'v2 must include signature_hash in worker payload');
-  assert.ok(v1.includes('signature_hash: signatureHash'), 'v1 must include signature_hash in worker payload');
   assert.ok(v2.includes('signatureHash'), 'v2 must compute and use signatureHash');
-  assert.ok(v1.includes('signatureHash'), 'v1 must compute and use signatureHash');
+  assert.ok(v1.includes("status: 410"), 'v1 tombstone must not publish worker payload');
 });
 
 test('E) Migration adds signature_hash column and unique index', () => {

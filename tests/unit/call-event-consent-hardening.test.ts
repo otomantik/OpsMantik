@@ -50,8 +50,7 @@ test('D) Call-event cannot modify consent — rejects payload with consent_scope
   const v1 = readFileSync(CALL_EVENT_V1, 'utf8');
   assert.ok(v2.includes("'consent_scopes' in bodyJson"), 'v2 must reject consent_scopes in payload');
   assert.ok(v2.includes("'consent_at' in bodyJson"), 'v2 must reject consent_at in payload');
-  assert.ok(v1.includes("'consent_scopes' in bodyJson"), 'v1 must reject consent_scopes in payload');
-  assert.ok(v1.includes("'consent_at' in bodyJson"), 'v1 must reject consent_at in payload');
+  assert.ok(v1.includes("status: 410") && v1.includes('/api/call-event/v2'), 'v1 tombstone must point to v2');
 });
 
 test('E) Replay protection present (ReplayCacheService)', () => {
@@ -126,8 +125,7 @@ test('I) match-session returns consent_scopes for analytics gate', () => {
 test('K) Phase 14: call-event routes fail when site unresolved, no "unknown" fallback', () => {
   const v1 = readFileSync(CALL_EVENT_V1, 'utf8');
   const v2 = readFileSync(CALL_EVENT_V2, 'utf8');
-  assert.ok(v1.includes('replaySiteKey = resolvedSiteUuid ?? legacyPublicId'), 'v1 must not use unknown for site');
-  assert.ok(v1.includes('if (!replaySiteKey)') && v1.includes('Site not resolved'), 'v1 must 400 when site unresolved');
+  assert.ok(v1.includes("status: 410"), 'v1 tombstone must not accept ingest');
   assert.ok(v2.includes('replaySiteKey = resolvedSiteUuid ?? legacyPublicId'), 'v2 must not use unknown for site');
   assert.ok(v2.includes('if (!replaySiteKey)') && v2.includes('Site not resolved'), 'v2 must 400 when site unresolved');
 });

@@ -344,6 +344,7 @@ export function useQueueController(siteId: string, readOnly = false): { state: Q
         if (process.env.NODE_ENV === 'development' && (rows.length > 0 || (Array.isArray(data) && (data as unknown[]).length > 0))) {
           logger.info('Queue filter', { parsed: rows.length, afterRangeFilter: filtered.length, fromIso: r.fromIso, toIso: r.toIso });
         }
+        // Dedupe priority: canonical_intent_key → dedupe_key → row.id (dedupeByIdOrCanonicalKey / intentDedupeKey).
         return dedupeByIdOrCanonicalKey(dedupeLatestByIntentKey(filtered));
       }
 

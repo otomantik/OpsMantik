@@ -1,15 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
 
 const shimPath = join(process.cwd(), 'public/ux-core.js');
 
-describe('public/ux-core.js back-compat shim', () => {
-  it('loads canonical /assets/core.js only (no embedded tracker)', () => {
-    const shim = readFileSync(shimPath, 'utf-8');
-    expect(shim).toContain("/assets/core.js");
-    expect(shim).not.toMatch(/\/api\/call-event(?!\/v2)/);
-    expect(shim).not.toContain('opsmantik_outbox');
-    expect(shim.length).toBeLessThan(1024);
-  });
+test('public/ux-core.js back-compat shim loads canonical /assets/core.js only', () => {
+  const shim = readFileSync(shimPath, 'utf-8');
+  assert.ok(shim.includes('/assets/core.js'));
+  assert.ok(!/\/api\/call-event(?!\/v2)/.test(shim));
+  assert.ok(!shim.includes('opsmantik_outbox'));
+  assert.ok(shim.length < 1024);
 });

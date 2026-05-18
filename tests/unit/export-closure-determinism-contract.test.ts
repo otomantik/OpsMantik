@@ -35,7 +35,7 @@ test('export-fetch is journal-only (no marketing_signals upload surface)', () =>
 
 test('export-build-queue derives conversionName from row.action (four OpsMantik names)', () => {
   const qSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-build-queue.ts'), 'utf8');
-  assert.ok(qSrc.includes('gearFromQueueExportRow'), 'queue export must map gear from journal row');
+  assert.ok(qSrc.includes('resolveQueueExportGear'), 'queue export must map gear from journal row');
   assert.ok(qSrc.includes('OPSMANTIK_CONVERSION_NAMES'), 'queue export must use canonical names');
 });
 

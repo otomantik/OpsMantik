@@ -14,9 +14,12 @@ test('verify route checks x-api-key against sites.oci_api_key and returns INVALI
 
 test('export auth validates x-api-key against sites.oci_api_key', () => {
   const authPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-auth.ts');
+  const ssotPath = join(process.cwd(), 'lib', 'oci', 'export', 'auth.ts');
   const src = readFileSync(authPath, 'utf8');
+  const ssot = readFileSync(ssotPath, 'utf8');
 
   assert.ok(src.includes('oci_api_key'), 'export auth must read oci_api_key from sites');
-  assert.ok(src.includes('timingSafeCompare(site.oci_api_key, apiKey)'), 'export auth must use timing-safe compare');
+  assert.ok(src.includes('verifySiteApiKey'), 'export auth must delegate to shared verifySiteApiKey');
+  assert.ok(ssot.includes('timingSafeCompare'), 'export auth SSOT must use timing-safe compare');
   assert.ok(src.includes('Unauthorized: Invalid API key'), 'export auth must reject invalid API keys');
 });

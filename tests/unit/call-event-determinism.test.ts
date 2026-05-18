@@ -51,11 +51,10 @@ test('tracker sends explicit canonical intent contract for call events', () => {
 test('call-event routes normalize explicit target before persisting worker payload', () => {
   const v1 = readFileSync(CALL_EVENT_V1, 'utf8');
   const v2 = readFileSync(CALL_EVENT_V2, 'utf8');
-  for (const src of [v1, v2]) {
-    assert.ok(src.includes('const rawIntentTarget ='), 'route must derive a single raw intent target');
-    assert.ok(src.includes('const intent_target = normalizePhoneTarget(rawIntentTarget);'), 'route must canonicalize intent_target');
-    assert.ok(src.includes("intent_target.toLowerCase().startsWith('whatsapp:')"), 'route must let canonical target force whatsapp action');
-  }
+  assert.ok(v1.includes("status: 410") && v1.includes('/api/call-event/v2'), 'v1 tombstone must point to v2');
+  assert.ok(v2.includes('const rawIntentTarget ='), 'v2 must derive a single raw intent target');
+  assert.ok(v2.includes('const intent_target = normalizePhoneTarget(rawIntentTarget);'), 'v2 must canonicalize intent_target');
+  assert.ok(v2.includes("intent_target.toLowerCase().startsWith('whatsapp:')"), 'v2 must let canonical target force whatsapp action');
 });
 
 test('tracker installs window.open hook for widget-driven WhatsApp opens', () => {
