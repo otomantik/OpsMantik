@@ -1,3 +1,11 @@
+/**
+ * Repair marketing_signals → offline_conversion_queue parity gaps (audit lane only).
+ * Google export reads journal queue only; this does not create a second upload path.
+ *
+ * Usage:
+ *   npm run oci:repair-marketing-signal-parity -- --dry-run
+ *   npm run oci:repair-marketing-signal-parity -- --site=<uuid> --limit=200
+ */
 import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';

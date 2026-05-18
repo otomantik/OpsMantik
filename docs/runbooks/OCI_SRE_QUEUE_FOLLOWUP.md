@@ -34,4 +34,15 @@ npm run oci:repair-enqueue-won-calls -- --site=<filtre> --apply
 
 Tam akış: [WON_PIPELINE_REPAIR.md](./WON_PIPELINE_REPAIR.md).
 
+## Marketing signals (audit-only, not Google export)
+
+`marketing_signals` kuyruk değil; script batch yalnızca `offline_conversion_queue` okur. Parity gap onarımı:
+
+```bash
+npm run oci:repair-marketing-signal-parity -- --dry-run
+npm run oci:repair-marketing-signal-parity -- --site=<site-uuid>
+```
+
+Ayrıntı: [MARKETING_SIGNALS_AUDIT_LANE.md](./MARKETING_SIGNALS_AUDIT_LANE.md).
+
 `--apply`, `enqueueSealConversion` ile dener. **Tıklama yok:** satır yine de oluşturulur: **`BLOCKED_PRECEDING_SIGNALS` + `block_reason: MISSING_CLICK_ID`** — `WON_MISSING_PIPELINE` gider, Google export script tarafında yine gönderilmez (`claim` bu statüyü almaz). Tıklama sonradan bağlanınca satır güncellenene veya operasyonel yükseltme yapılana kadar **`promote-blocked-queue`** bu satırları **QUEUED yapmaz** (tıklama yokken yükseltme yok).
