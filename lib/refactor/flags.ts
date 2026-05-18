@@ -10,7 +10,7 @@
  *   - TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED → truth_canonical_ledger shadow writes (default off until migrated).
  *   - CONSENT_PROVENANCE_SHADOW_ENABLED    → consent provenance shadow audit.
  *   - EXPLAINABILITY_API_ENABLED           → /api/truth/explain endpoint.
- *   - SOURCE_TRUTH_SHADOW_ENABLED          → sessions.traffic_v2_ledger shadow writes.
+ *   - SOURCE_TRUTH_SHADOW_ENABLED          → Source Truth v2 SSOT (attribution + traffic_* + traffic_v2_ledger).
  *
  * The old TRUTH_PROJECTION_READ_ENABLED flag was removed along with
  * lib/domain/truth/projection-dual-read.ts. Any residual env var is ignored.
@@ -36,7 +36,7 @@ export type RefactorFlags = {
   lease_lock_mode: 'legacy' | 'shadow' | 'lease';
   /** Integrity roadmap: disallow implicit non-UTC timezone fallback on critical paths. */
   site_timezone_strict_mode: boolean;
-  /** Conversion Truth OS P0: write traffic_v2_ledger without changing legacy attribution columns. */
+  /** Conversion Truth OS: v2 drives attribution_source, traffic_*, and traffic_v2_ledger when on. */
   source_truth_shadow_enabled: boolean;
 };
 

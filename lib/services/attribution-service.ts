@@ -3,11 +3,24 @@ import { runDeterministicEngineProbe, runAttributionPaidSurfaceParity } from '@/
 import { adminClient } from '@/lib/supabase/admin';
 import { getRecentMonths } from '@/lib/sync-utils';
 import { computeAttribution, extractUTM, sanitizeClickId } from '@/lib/attribution';
+import {
+  isSourceTruthSsotEnabled,
+  resolveSourceTruthForIngest,
+  type ResolveSourceTruthResult,
+} from '@/lib/attribution/resolve-source-truth';
 
 export interface ResolveAttributionOptions {
     /** For tests: inject a mock client so past-GCLID lookup is site-scoped in the test double. */
     client?: SupabaseClient;
+    userAgent?: string;
 }
+
+export type ResolveAttributionResult = {
+    attribution: { source: string; isPaid: boolean };
+    utm: ReturnType<typeof extractUTM>;
+    hasPastGclid: boolean;
+    sourceTruth?: ResolveSourceTruthResult;
+};
 
 export class AttributionService {
     /**
@@ -22,11 +35,11 @@ export class AttributionService {
         url: string,
         referrer: string | null,
         options?: ResolveAttributionOptions
-    ) {
+    ): Promise<ResolveAttributionResult> {
         const client = options?.client ?? adminClient;
         const sanitizedCurrentGclid = sanitizeClickId(currentGclid) ?? null;
+        const utm = extractUTM(url);
 
-        // 1. Check for past GCLID (Multi-touch) — MUST be site-scoped + fingerprint in SQL
         let hasPastGclid = false;
         if (!sanitizedCurrentGclid && fingerprint) {
             const recentMonths = getRecentMonths(6);
@@ -44,10 +57,32 @@ export class AttributionService {
             hasPastGclid = pastEvent != null;
         }
 
-        // 2. Extract UTM
-        const utm = extractUTM(url);
+        if (isSourceTruthSsotEnabled()) {
+            const sourceTruth = await resolveSourceTruthForIngest({
+                site_id: siteId,
+                url,
+                referrer,
+                user_agent: options?.userAgent ?? '',
+                fingerprint,
+            });
 
-        // 3. Compute Attribution
+            if (
+                sourceTruth.v2.channel === 'dark_return' ||
+                sourceTruth.attribution.source === 'Ads Assisted'
+            ) {
+                hasPastGclid = true;
+            }
+
+            runDeterministicEngineProbe({ kind: 'attribution_resolve', siteId });
+
+            return {
+                attribution: sourceTruth.attribution,
+                utm,
+                hasPastGclid,
+                sourceTruth,
+            };
+        }
+
         const attribution = computeAttribution({
             gclid: sanitizedCurrentGclid,
             utm,

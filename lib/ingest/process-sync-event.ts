@@ -318,12 +318,13 @@ async function doProcessSyncEvent(
       return `${year}-${month}-01`;
     })();
 
-  const { attribution, utm, hasPastGclid } = await AttributionService.resolveAttribution(
+  const { attribution, utm, hasPastGclid, sourceTruth } = await AttributionService.resolveAttribution(
     siteIdUuid,
     currentGclid,
     fingerprint,
     safeUrl,
-    referrer
+    referrer,
+    { userAgent }
   );
   const attributionSourceBeforeDebloat = attribution.source;
   let attributionSource = attributionSourceBeforeDebloat;
@@ -428,6 +429,9 @@ async function doProcessSyncEvent(
         event_label,
         utm,
         referrer,
+        traffic_source: sourceTruth?.traffic_source,
+        traffic_medium: sourceTruth?.traffic_medium,
+        sourceTruth: sourceTruth?.v2,
         consent_scopes: consentScopes.length > 0 ? consentScopes : undefined,
       },
       { ip, userAgent, geoInfo, deviceInfo }

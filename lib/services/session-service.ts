@@ -4,6 +4,9 @@ import { debugLog, debugWarn } from '@/lib/utils';
 import { logWarn, logError } from '@/lib/logging/logger';
 import type { GeoInfo, DeviceInfo } from '@/lib/geo';
 import { determineTrafficSource } from '@/lib/analytics/source-classifier';
+import { shouldNullClickIdsForSourceTruth } from '@/lib/attribution/attribution-from-truth';
+import { isSourceTruthSsotEnabled, resolveSourceTruthForIngest } from '@/lib/attribution/resolve-source-truth';
+import type { TrafficClassificationV2 } from '@/lib/attribution/truth-engine-types';
 import { sanitizeClickId, computeUtmUpdates } from '@/lib/attribution';
 import type { IngestMeta } from '@/lib/types/ingest';
 import { hasValidClickId } from '@/lib/ingest/bot-referrer-gates';
@@ -17,8 +20,6 @@ import {
     shouldReuseSessionV1,
 } from '@/lib/intents/session-reuse-v1';
 import { intentSessionReuseHardeningEnabled } from '@/lib/config/intent-session-reuse-hardening';
-import { buildTrafficV2Ledger } from '@/lib/attribution/session-shadow';
-
 /** PR-OCI-7.3.1: Evidence-based weights for monotonic attribution (never downgrade Paid → Organic) */
 const ATTRIBUTION_WEIGHTS: Record<string, number> = {
     'First Click (Paid)': 100,
@@ -57,6 +58,60 @@ interface IncomingData {
         target_id?: string; feed_item_id?: string; loc_interest_ms?: string; loc_physical_ms?: string;
     } | null;
     referrer?: string | null;
+    /** Source Truth v2 SSOT — when set, legacy classifier is skipped. */
+    sourceTruth?: TrafficClassificationV2 | null;
+    traffic_source?: string | null;
+    traffic_medium?: string | null;
+}
+
+async function resolveSessionTrafficFields(
+    siteId: string,
+    sessionId: string | undefined,
+    data: IncomingData,
+    userAgent: string
+): Promise<{ traffic_source: string; traffic_medium: string; ledger: TrafficClassificationV2 | null }> {
+    if (data.sourceTruth) {
+        return {
+            traffic_source: data.traffic_source ?? data.sourceTruth.traffic_source,
+            traffic_medium: data.traffic_medium ?? data.sourceTruth.traffic_medium,
+            ledger: data.sourceTruth,
+        };
+    }
+
+    if (isSourceTruthSsotEnabled()) {
+        const resolved = await resolveSourceTruthForIngest({
+            site_id: siteId,
+            session_id: sessionId,
+            url: data.url,
+            referrer: data.referrer ?? null,
+            user_agent: userAgent,
+            fingerprint: data.fingerprint,
+        });
+        return {
+            traffic_source: resolved.traffic_source,
+            traffic_medium: resolved.traffic_medium,
+            ledger: resolved.v2,
+        };
+    }
+
+    const traffic = determineTrafficSource(data.url, data.referrer || '', {
+        utm_source: data.utm?.source ?? null,
+        utm_medium: data.utm?.medium ?? null,
+        utm_campaign: data.utm?.campaign ?? null,
+        utm_term: data.utm?.term ?? null,
+        utm_content: data.utm?.content ?? null,
+        gclid: data.currentGclid ?? null,
+        wbraid: data.params.get('wbraid') || data.meta?.wbraid || null,
+        gbraid: data.params.get('gbraid') || data.meta?.gbraid || null,
+        fbclid: data.params.get('fbclid') || data.meta?.fbclid || null,
+        ttclid: data.params.get('ttclid') || data.meta?.ttclid || null,
+        msclkid: data.params.get('msclkid') || data.meta?.msclkid || null,
+    });
+    return {
+        traffic_source: traffic.traffic_source,
+        traffic_medium: traffic.traffic_medium,
+        ledger: null,
+    };
 }
 
 function hashTarget(value: string | null): string | null {
@@ -154,8 +209,10 @@ export class SessionService {
                         p_wbraid: sanitizeClickId(data.params.get('wbraid') || data.meta?.wbraid || null) ?? null,
                         p_gbraid: sanitizeClickId(data.params.get('gbraid') || data.meta?.gbraid || null) ?? null,
                         p_attribution_source: data.attributionSource ?? null,
-                        p_traffic_source: null,
-                        p_traffic_medium: null,
+                        p_traffic_source:
+                            data.traffic_source ?? data.sourceTruth?.traffic_source ?? null,
+                        p_traffic_medium:
+                            data.traffic_medium ?? data.sourceTruth?.traffic_medium ?? null,
                         p_device_type: data.deviceType ?? null,
                         p_device_os: context.deviceInfo.os ?? null,
                     });
@@ -300,19 +357,12 @@ export class SessionService {
         const shouldUpdate = hasNewUTM || hasNewClickId || !session.attribution_source;
 
         if (shouldUpdate) {
-            const traffic = determineTrafficSource(data.url, data.referrer || '', {
-                utm_source: utm?.source ?? null,
-                utm_medium: utm?.medium ?? null,
-                utm_campaign: utm?.campaign ?? null,
-                utm_term: utm?.term ?? null,
-                utm_content: utm?.content ?? null,
-                gclid: currentGclid ?? null,
-                wbraid: params.get('wbraid') || meta?.wbraid || null,
-                gbraid: params.get('gbraid') || meta?.gbraid || null,
-                fbclid: params.get('fbclid') || meta?.fbclid || null,
-                ttclid: params.get('ttclid') || meta?.ttclid || null,
-                msclkid: params.get('msclkid') || meta?.msclkid || null,
-            });
+            const trafficFields = await resolveSessionTrafficFields(
+                siteId,
+                session.id,
+                data,
+                context.userAgent
+            );
 
             const rawGclid = currentGclid ?? null;
             const rawWbraid = params.get('wbraid') || meta?.wbraid || null;
@@ -326,7 +376,10 @@ export class SessionService {
             const hasExistingGbraid = session.gbraid != null && String(session.gbraid).trim() !== '';
 
             // PR-OCI-7.3.2: Click-ID immutability - do not overwrite when session already has valid click ID
-            const sessionIsOrganic = session.attribution_source === 'Organic';
+            const sessionIsOrganic =
+                trafficFields.ledger
+                    ? shouldNullClickIdsForSourceTruth(trafficFields.ledger)
+                    : session.attribution_source === 'Organic';
             const safeGclidUpdate = sessionIsOrganic
                 ? (session.gclid ?? null)
                 : (hasExistingGclid ? session.gclid ?? null : (sanitizedGclid || session.gclid || null));
@@ -353,9 +406,12 @@ export class SessionService {
                 device_os: deviceInfo.os || null,
                 fingerprint: fingerprint,
                 gclid: safeGclidUpdate,
-                traffic_source: traffic.traffic_source,
-                traffic_medium: traffic.traffic_medium,
+                traffic_source: trafficFields.traffic_source,
+                traffic_medium: trafficFields.traffic_medium,
             };
+            if (trafficFields.ledger) {
+                updates.traffic_v2_ledger = trafficFields.ledger;
+            }
             if (!sessionIsOrganic) {
                 if (safeWbraidUpdate != null) updates.wbraid = safeWbraidUpdate;
                 if (safeGbraidUpdate != null) updates.gbraid = safeGbraidUpdate;
@@ -403,23 +459,6 @@ export class SessionService {
 
             if (utm?.device && /^(mobile|desktop|tablet)$/i.test(utm.device)) {
                 updates.device_type = utm.device.toLowerCase();
-            }
-
-            const v2Ledger = await buildTrafficV2Ledger({
-                site_id: siteId,
-                session_id: session.id,
-                url: data.url,
-                referrer: data.referrer ?? null,
-                user_agent: context.userAgent,
-                fingerprint,
-                gclid: currentGclid ?? null,
-                wbraid: params.get('wbraid') || meta?.wbraid || null,
-                gbraid: params.get('gbraid') || meta?.gbraid || null,
-                utm: utm ?? null,
-                has_past_valid_click_id: hasExistingGclid || hasExistingWbraid || hasExistingGbraid,
-            });
-            if (v2Ledger) {
-                updates.traffic_v2_ledger = v2Ledger;
             }
 
             const { error: updateErr } = await adminClient
@@ -476,19 +515,12 @@ export class SessionService {
 
         debugLog('[SYNC_API] Creating NEW session:', { final_id: sessionId, partition: dbMonth });
 
-        const traffic = determineTrafficSource(url, data.referrer || '', {
-            utm_source: utm?.source ?? null,
-            utm_medium: utm?.medium ?? null,
-            utm_campaign: utm?.campaign ?? null,
-            utm_term: utm?.term ?? null,
-            utm_content: utm?.content ?? null,
-            gclid: currentGclid ?? null,
-            wbraid: params.get('wbraid') || meta?.wbraid || null,
-            gbraid: params.get('gbraid') || meta?.gbraid || null,
-            fbclid: params.get('fbclid') || meta?.fbclid || null,
-            ttclid: params.get('ttclid') || meta?.ttclid || null,
-            msclkid: params.get('msclkid') || meta?.msclkid || null,
-        });
+        const trafficFields = await resolveSessionTrafficFields(
+            siteId,
+            sessionId,
+            data,
+            context.userAgent
+        );
 
         // Prompt 2.2 Returning Giant: count previous sessions with same fingerprint in last 7 days
         let previousVisitCount = 0;
@@ -507,7 +539,10 @@ export class SessionService {
 
         // Sprint 3 GCLID Phase 2: If session is Organic, do not persist click IDs from payload (ghost attribution safety).
         // PR-OCI-7.1.3: sanitizeClickId for values from URL/meta before persisting
-        const isOrganic = attributionSource === 'Organic' || ['Direct', 'SEO', 'Referral'].includes(traffic.traffic_source || '');
+        const isOrganic = trafficFields.ledger
+            ? shouldNullClickIdsForSourceTruth(trafficFields.ledger)
+            : attributionSource === 'Organic' ||
+              ['Direct', 'SEO', 'Referral'].includes(trafficFields.traffic_source || '');
         const rawGclid = currentGclid ?? null;
         const rawWbraid = params.get('wbraid') || meta?.wbraid || null;
         const rawGbraid = params.get('gbraid') || meta?.gbraid || null;
@@ -551,8 +586,8 @@ export class SessionService {
             // dbMonth (browser's sm) is ONLY used for lookups, never for INSERT routing.
             created_month: insertMonth,
             attribution_source: attributionSource,
-            traffic_source: traffic.traffic_source,
-            traffic_medium: traffic.traffic_medium,
+            traffic_source: trafficFields.traffic_source,
+            traffic_medium: trafficFields.traffic_medium,
             device_type: deviceType,
             device_os: deviceInfo.os || null,
             city: geoDecision.city,
@@ -604,21 +639,8 @@ export class SessionService {
             sessionPayload.consent_scopes = data.consent_scopes;
         }
 
-        const v2Ledger = await buildTrafficV2Ledger({
-            site_id: siteId,
-            session_id: sessionId,
-            url,
-            referrer: data.referrer ?? null,
-            user_agent: context.userAgent,
-            fingerprint,
-            gclid: currentGclid ?? null,
-            wbraid: params.get('wbraid') || meta?.wbraid || null,
-            gbraid: params.get('gbraid') || meta?.gbraid || null,
-            utm: utm ?? null,
-            has_past_valid_click_id: previousVisitCount > 0,
-        });
-        if (v2Ledger) {
-            sessionPayload.traffic_v2_ledger = v2Ledger;
+        if (trafficFields.ledger) {
+            sessionPayload.traffic_v2_ledger = trafficFields.ledger;
         }
 
         const { data: newSession, error: sError } = await adminClient
