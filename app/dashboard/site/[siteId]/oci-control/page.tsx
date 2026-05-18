@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { headers, cookies } from 'next/headers';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
+import { isAdmin } from '@/lib/auth/is-admin';
+import { panelSitePath } from '@/lib/auth/site-operational-route';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { OciControlPanel } from '@/components/dashboard/oci-control/oci-control-panel';
 import { hasCapability } from '@/lib/auth/rbac';
@@ -20,6 +22,11 @@ export default async function OciControlPage({ params }: PageProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+
+  const userIsAdmin = await isAdmin();
+  if (!userIsAdmin) {
+    redirect(panelSitePath(siteId));
+  }
 
   const { data: site } = await supabase
     .from('sites')

@@ -5,6 +5,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { SiteLocaleProvider } from '@/components/context/site-locale-context';
 import { isAdmin } from '@/lib/auth/is-admin';
+import { panelSitePath } from '@/lib/auth/site-operational-route';
 import { getTodayTrtUtcRange, resolveDashboardUiTimezone } from '@/lib/time/today-range';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { translate } from '@/lib/i18n/t';
@@ -54,6 +55,18 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
   const from = Array.isArray(sp.from) ? sp.from[0] : sp.from;
   const to = Array.isArray(sp.to) ? sp.to[0] : sp.to;
   const supabase = await createClient();
+  const [userResult, userIsAdmin] = await Promise.all([
+    supabase.auth.getUser(),
+    isAdmin(),
+  ]);
+  const user = userResult.data?.user ?? null;
+  if (!user) {
+    redirect('/login');
+  }
+  if (!userIsAdmin) {
+    redirect(panelSitePath(siteId));
+  }
+
   const { data: siteTimezoneRow } = await supabase
     .from('sites')
     .select('timezone, locale')
@@ -86,64 +99,16 @@ export default async function SiteDashboardPage({ params, searchParams }: SitePa
     redirect(`/dashboard/site/${siteId}?${qp.toString()}`);
   }
 
-  const [userResult, userIsAdmin, siteResult] = await Promise.all([
-    supabase.auth.getUser(),
-    isAdmin(),
-    supabase
-      .from('sites')
-      .select('id, name, domain, public_id, user_id, currency, timezone, locale, active_modules')
-      .eq('id', siteId)
-      .single(),
-  ]);
-
-  const user = userResult.data?.user ?? null;
-  if (!user) {
-    redirect('/login');
-  }
-
-  const { data: site, error: siteError } = siteResult;
+  const { data: site, error: siteError } = await supabase
+    .from('sites')
+    .select('id, name, domain, public_id, user_id, currency, timezone, locale, active_modules')
+    .eq('id', siteId)
+    .single();
   if (siteError || !site) {
     notFound();
   }
 
-  let membershipForRole: { role?: string } | null = null;
-  if (!userIsAdmin) {
-    const [ownedSiteResult, membershipResult] = await Promise.all([
-      supabase
-        .from('sites')
-        .select('id')
-        .eq('id', siteId)
-        .eq('user_id', user.id)
-        .single(),
-      supabase
-        .from('site_memberships')
-        .select('site_id, role')
-        .eq('site_id', siteId)
-        .eq('user_id', user.id)
-        .maybeSingle(),
-    ]);
-    const ownedSite = ownedSiteResult.data;
-    membershipForRole = membershipResult.data;
-    if (!ownedSite && !membershipForRole) {
-      notFound();
-    }
-  }
-
-  // Site role (for client-side capability mapping)
-  let siteRole: SiteRole = 'analyst';
-  if (userIsAdmin) {
-    siteRole = 'admin';
-  } else {
-    const isOwner = site.user_id === user.id;
-    if (isOwner) {
-      siteRole = 'owner';
-    } else {
-      const r = (membershipForRole?.role || '').toString();
-      if (r === 'admin' || r === 'operator' || r === 'analyst' || r === 'billing') {
-        siteRole = r as SiteRole;
-      }
-    }
-  }
+  const siteRole: SiteRole = 'admin';
 
   // Locale resolution: cookie (user preference) > site > user metadata > header
   const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);

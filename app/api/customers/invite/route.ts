@@ -5,6 +5,7 @@ import { isAdmin } from '@/lib/auth/is-admin';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { hasCapability } from '@/lib/auth/rbac';
+import { panelSitePath } from '@/lib/auth/site-operational-route';
 
 async function findUserIdByEmailLc(emailLc: string): Promise<string | null> {
   const { data, error } = await adminClient
@@ -54,20 +55,25 @@ async function auditInvite(params: {
   }
 }
 
+function consoleBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
+    ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}`
+    : 'http://localhost:3000';
+}
+
 function buildConsoleMagicLink(params: {
   actionLink?: string | null;
   hashedToken?: string | null;
   verificationType?: string | null;
+  nextPath?: string;
 }) {
-  const consoleBase = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
-    ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}`
-    : 'http://localhost:3000';
+  const consoleBase = consoleBaseUrl();
   if (params.hashedToken) {
     const type = params.verificationType || 'magiclink';
     const url = new URL('/auth/confirm', consoleBase);
     url.searchParams.set('token_hash', params.hashedToken);
     url.searchParams.set('type', type);
-    url.searchParams.set('next', '/dashboard');
+    url.searchParams.set('next', params.nextPath ?? '/panel');
     return url.toString();
   }
   return params.actionLink || null;
@@ -289,7 +295,7 @@ export async function POST(req: NextRequest) {
         type: 'magiclink',
         email: emailNorm,
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}` : 'http://localhost:3000'}/dashboard`,
+          redirectTo: `${consoleBaseUrl()}${panelSitePath(site_id)}`,
         },
       });
 
@@ -297,6 +303,7 @@ export async function POST(req: NextRequest) {
         actionLink: linkData?.properties?.action_link || null,
         hashedToken: linkData?.properties?.hashed_token || null,
         verificationType: linkData?.properties?.verification_type || null,
+        nextPath: panelSitePath(site_id),
       });
       return NextResponse.json({
         success: true,
@@ -337,9 +344,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate magic link for customer login
-    const redirectUrl = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
-      ? `https://console.${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}/dashboard`
-      : 'http://localhost:3000/dashboard';
+    const redirectUrl = `${consoleBaseUrl()}${panelSitePath(site_id)}`;
 
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: 'magiclink',
@@ -386,6 +391,7 @@ export async function POST(req: NextRequest) {
       actionLink: linkData.properties.action_link,
       hashedToken: linkData.properties.hashed_token,
       verificationType: linkData.properties.verification_type,
+      nextPath: panelSitePath(site_id),
     });
     return NextResponse.json({
       success: true,

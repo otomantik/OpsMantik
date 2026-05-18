@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { resolveLocale } from '@/lib/i18n/locale';
 import { isAdmin } from '@/lib/auth/is-admin';
+import { panelSitePath } from '@/lib/auth/site-operational-route';
 import { ActivityLogShell } from '@/components/dashboard/activity-log-shell';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,9 @@ export default async function ActivityLogPage({ params }: PageProps) {
   if (!user) redirect('/login');
 
   const userIsAdmin = await isAdmin();
+  if (!userIsAdmin) {
+    redirect(panelSitePath(siteId));
+  }
 
   const { data: site, error: siteError } = await supabase
     .from('sites')
@@ -29,26 +33,6 @@ export default async function ActivityLogPage({ params }: PageProps) {
     .single();
 
   if (siteError || !site) notFound();
-
-  if (!userIsAdmin) {
-    const { data: ownedSite } = await supabase
-      .from('sites')
-      .select('id')
-      .eq('id', siteId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!ownedSite) {
-      const { data: membership } = await supabase
-        .from('site_memberships')
-        .select('site_id')
-        .eq('site_id', siteId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) notFound();
-    }
-  }
 
   const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
   const acceptLanguage = headersList.get('accept-language') ?? null;

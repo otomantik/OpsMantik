@@ -1,6 +1,6 @@
 /**
- * Post-login landing. All authenticated users go to `/dashboard` so we keep
- * a single shell; `/panel` remains available for deep links and admin preview.
+ * Post-login landing: site list / setup shell. Operators open a site via
+ * `/panel?siteId=…`; platform admins use Komuta Merkezi or panel-preview.
  */
 export function resolveLandingRoute(_params: {
   isAdmin: boolean;

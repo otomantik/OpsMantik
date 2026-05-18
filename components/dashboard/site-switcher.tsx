@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { panelSitePath } from '@/lib/auth/site-operational-route';
 
 interface Site {
   id: string;
@@ -63,7 +64,7 @@ export function SiteSwitcher({ isAdmin = false, currentSiteId }: SiteSwitcherPro
       router.push(`/api/admin/panel-preview?siteId=${encodeURIComponent(siteId)}&mode=rw`);
       return;
     }
-    router.push(`/dashboard/site/${siteId}`);
+    router.push(panelSitePath(siteId));
   };
 
   if (isLoading) {
