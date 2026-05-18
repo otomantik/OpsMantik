@@ -110,26 +110,32 @@ test('notifyOutboxPending helper exists', () => {
 });
 
 test('seal route enqueues IntentSealed + fires notifyOutboxPending after apply_call_action_v2', () => {
-  const src = readFileSync(
-    join(ROOT, 'app/api/calls/[id]/seal/route.ts'),
-    'utf8'
+  const routeSrc = readFileSync(join(ROOT, 'app/api/calls/[id]/seal/route.ts'), 'utf8');
+  const probeSrc = readFileSync(join(ROOT, 'lib/api/calls/seal-probe-handler.ts'), 'utf8');
+  assert.ok(
+    routeSrc.includes("from '@/lib/oci/notify-outbox'"),
+    'seal route must import notifyOutboxPending (bearer path)'
   );
   assert.ok(
-    src.includes("from '@/lib/oci/notify-outbox'"),
-    'seal route must import notifyOutboxPending'
+    routeSrc.includes('enqueuePanelStageOciOutbox') || probeSrc.includes('enqueuePanelStageOciOutbox'),
+    'seal must insert outbox rows via enqueuePanelStageOciOutbox (apply_call_action_v2 does not write outbox internally)'
+  );
+  assert.ok(routeSrc.includes('handleSealProbePost'), 'seal route must delegate probe path to handler');
+  const notifyCalls =
+    (routeSrc.match(/notifyOutboxPending\(/g) ?? []).length +
+    (probeSrc.match(/notifyOutboxPending\(/g) ?? []).length;
+  assert.ok(
+    notifyCalls >= 2,
+    `seal probe + bearer must call notifyOutboxPending (found ${notifyCalls})`
   );
   assert.ok(
-    src.includes('enqueuePanelStageOciOutbox'),
-    'seal route must insert outbox rows (apply_call_action_v2 does not write outbox internally)'
+    routeSrc.includes('oci_reconciliation_reason') || probeSrc.includes('oci_reconciliation_reason'),
+    'seal must expose oci_reconciliation_reason'
   );
-  // Probe + bearer paths both call it.
-  const calls = src.match(/notifyOutboxPending\(/g) ?? [];
   assert.ok(
-    calls.length >= 2,
-    `seal route must call notifyOutboxPending from both probe and bearer paths (found ${calls.length})`
+    routeSrc.includes('oci_enqueue_ok') || probeSrc.includes('oci_enqueue_ok'),
+    'seal must expose oci_enqueue_ok'
   );
-  assert.ok(src.includes('oci_reconciliation_reason'), 'seal route must expose oci_reconciliation_reason');
-  assert.ok(src.includes('oci_enqueue_ok'), 'seal route must expose oci_enqueue_ok');
 });
 
 test('stage route enqueues IntentSealed + fires notifyOutboxPending after panel RPC', () => {

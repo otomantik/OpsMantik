@@ -15,51 +15,12 @@ import type { ActivityRow } from '@/components/dashboard/qualification-queue/act
 import { logger } from '@/lib/logging/logger';
 import { parseMutationError } from '@/lib/queue/mutation-error';
 import { dedupeLatestByIntentKey } from '@/lib/queue/dedupe-latest-by-intent-key';
+import { dedupeByIdOrCanonicalKey } from '@/lib/queue/dedupe-by-canonical-intent-key';
+import { parseRpcTimestampMs } from '@/lib/queue/parse-rpc-timestamp-ms';
 
 export type QueueRange = { day: 'today' | 'yesterday'; fromIso: string; toIso: string };
 
 export type QueueToastState = null | { kind: 'success' | 'danger'; text: string };
-
-function parseRpcTimestampMs(value: string | null | undefined): number {
-  if (!value) return Number.NaN;
-  const raw = String(value).trim();
-  if (!raw) return Number.NaN;
-
-  // Postgres RPC may return "YYYY-MM-DD HH:mm:ss.ssssss+00".
-  // Normalize to ISO8601 for consistent browser parsing.
-  const normalized = raw
-    .replace(' ', 'T')
-    .replace(/([+-]\d{2})$/, '$1:00')
-    .replace('Z+00:00', '+00:00');
-
-  const parsed = new Date(normalized).getTime();
-  if (Number.isFinite(parsed)) return parsed;
-  return new Date(raw).getTime();
-}
-
-function dedupeByIdOrCanonicalKey(rows: HunterIntentLite[]): HunterIntentLite[] {
-  const byPrimary = new Map<string, HunterIntentLite>();
-  for (const row of rows) {
-    // Dedupe must prefer logical-intent keys first; `id` is always unique and would defeat collapse.
-    const key =
-      (typeof row.canonical_intent_key === 'string' && row.canonical_intent_key.trim()) ||
-      (typeof row.dedupe_key === 'string' && row.dedupe_key.trim()) ||
-      (typeof row.id === 'string' && row.id.trim()) ||
-      '';
-    if (!key) continue;
-    const prev = byPrimary.get(key);
-    if (!prev) {
-      byPrimary.set(key, row);
-      continue;
-    }
-    const prevTs = parseRpcTimestampMs(prev.created_at);
-    const curTs = parseRpcTimestampMs(row.created_at);
-    if (!Number.isFinite(prevTs) || (Number.isFinite(curTs) && curTs >= prevTs)) {
-      byPrimary.set(key, row);
-    }
-  }
-  return Array.from(byPrimary.values());
-}
 
 export type QueueControllerState = {
   range: QueueRange | null;
