@@ -1,11 +1,11 @@
 import {
   isSourceTruthSsotEnabled,
   resolveSourceTruthForIngest,
-  type SessionShadowInput,
+  type ResolveSourceTruthInput,
 } from './resolve-source-truth';
 import type { TrafficClassificationV2 } from './truth-engine-types';
 
-export type { SessionShadowInput };
+export type SessionShadowInput = ResolveSourceTruthInput;
 
 /** Persist traffic_v2_ledger; when SSOT enabled, caller must use v2 for legacy columns too. */
 export async function buildTrafficV2Ledger(

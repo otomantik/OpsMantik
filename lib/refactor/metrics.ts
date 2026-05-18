@@ -93,6 +93,8 @@ export const REFACTOR_METRIC_NAMES = [
   'oci_invalidation_blocked_preceding_terminalized_total',
   'oci_ack_projection_target_mismatch_total',
   'oci_ack_adjustment_target_mismatch_total',
+  'storage_cleanup_limit_hit_total',
+  'billing_reconcile_candidate_truncated_total',
 ] as const;
 
 export type RefactorMetricName = (typeof REFACTOR_METRIC_NAMES)[number];

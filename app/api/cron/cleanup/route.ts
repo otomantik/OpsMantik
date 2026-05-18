@@ -5,7 +5,7 @@
  * 1) Zombie recovery (2h): recover_stuck_offline_conversion_jobs (fallback buffer retired 20260419180000)
  * 2) Archive FAILED conversions to tombstones (30d)
  * 3) Delete terminal OCI queue rows (90d)
- * 4) Auto-junk stale intents (7d)
+ * 4) Auto-junk stale intents — skipped (recovery_junk=1 only; SSOT = auto-junk)
  *
  * Auth: requireCronAuth (Bearer CRON_SECRET or x-vercel-cron).
  * Query: dry_run, days_to_keep, limit, days_archive_failed, days_old_intents, limit_intents, zombie_minutes
@@ -17,11 +17,22 @@ import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logInfo, logError } from '@/lib/logging/logger';
 import { recordCronHeartbeat } from '@/lib/cron/heartbeat';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import {
+  parseStorageCleanupParams,
+  parseRpcAffected,
+  assessLimitHit,
+  logLimitHitAssessment,
+} from '@/lib/storage/cleanup-kernel';
 
 export const runtime = 'nodejs';
 
+const CLEANUP_LOCK_KEY = 'cleanup';
+const CLEANUP_LOCK_TTL_SEC = 3600;
+
 const DEFAULT_DAYS_TO_KEEP = 90;
-const DEFAULT_CLEANUP_LIMIT = 5000;
+const DEFAULT_ARCHIVE_LIMIT = 5000;
+const DEFAULT_OCI_QUEUE_LIMIT = 500;
 const DEFAULT_DAYS_ARCHIVE_FAILED = 30;
 const DEFAULT_DAYS_OLD_INTENTS = 7;
 const DEFAULT_LIMIT_INTENTS = 5000;
@@ -48,9 +59,32 @@ function parseParam(req: NextRequest, key: string, defaultVal: number, min: numb
 async function runCleanup(req: NextRequest) {
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
-  const dryRun = req.nextUrl.searchParams.get('dry_run') === 'true';
+  const storageParams = parseStorageCleanupParams(req, { batchLimit: DEFAULT_OCI_QUEUE_LIMIT });
+  const dryRun = storageParams.dryRun || req.nextUrl.searchParams.get('dry_run') === 'true';
+  const recoveryJunk = storageParams.recoveryJunk;
+
+  const acquired = await tryAcquireCronLock(CLEANUP_LOCK_KEY, CLEANUP_LOCK_TTL_SEC);
+  if (!acquired) {
+    await recordCronHeartbeat({
+      jobName: 'cleanup',
+      routePath: '/api/cron/cleanup',
+      status: 'PARTIAL',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      errorCode: 'LOCK_HELD',
+      errorMessage: 'Skipped due to active lock',
+    });
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { headers: getBuildInfoHeaders() }
+    );
+  }
+
+  try {
   const daysToKeep = parseParam(req, 'days_to_keep', DEFAULT_DAYS_TO_KEEP, 1, 365);
-  const limit = parseParam(req, 'limit', DEFAULT_CLEANUP_LIMIT, 1, 10000);
+  const ociLimit = parseParam(req, 'oci_limit', DEFAULT_OCI_QUEUE_LIMIT, 1, 10000);
+  const limit = parseParam(req, 'limit', DEFAULT_ARCHIVE_LIMIT, 1, 10000);
   const daysArchiveFailed = parseParam(req, 'days_archive_failed', DEFAULT_DAYS_ARCHIVE_FAILED, 1, 365);
   const daysOldIntents = parseParam(req, 'days_old_intents', DEFAULT_DAYS_OLD_INTENTS, 1, 365);
   const limitIntents = parseParam(req, 'limit_intents', DEFAULT_LIMIT_INTENTS, 1, 10000);
@@ -59,7 +93,8 @@ async function runCleanup(req: NextRequest) {
   logInfo('CLEANUP_CRON_START', {
     dryRun,
     daysToKeep,
-    limit,
+    ociLimit,
+    archiveLimit: limit,
     daysArchiveFailed,
     daysOldIntents,
     limitIntents,
@@ -97,7 +132,7 @@ async function runCleanup(req: NextRequest) {
 
     logInfo('CLEANUP_CRON_DRY_RUN', {
       wouldArchiveFailed: Math.min(archiveRes.count ?? 0, limit),
-      wouldDeleteQueue: Math.min(queueRes.count ?? 0, limit),
+      wouldDeleteQueue: Math.min(queueRes.count ?? 0, ociLimit),
       wouldJunkIntents: Math.min(intentsRes.count ?? 0, limitIntents),
     });
     await recordCronHeartbeat({
@@ -116,7 +151,7 @@ async function runCleanup(req: NextRequest) {
         dry_run: true,
         zombie_recovery: { note: 'Would run recover_stuck_offline_conversion_jobs' },
         archive_failed: { would_archive: Math.min(archiveRes.count ?? 0, limit), days: daysArchiveFailed },
-        oci_queue: { would_delete: Math.min(queueRes.count ?? 0, limit), days_to_keep: daysToKeep },
+        oci_queue: { would_delete: Math.min(queueRes.count ?? 0, ociLimit), days_to_keep: daysToKeep },
         queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
         auto_junk: { would_update: Math.min(intentsRes.count ?? 0, limitIntents), days_old: daysOldIntents },
       },
@@ -169,7 +204,8 @@ async function runCleanup(req: NextRequest) {
     // Phase 3: Delete terminal OCI queue rows (90d)
     const { data: ociData, error: ociErr } = await adminClient.rpc('cleanup_oci_queue_batch', {
       p_days_to_keep: daysToKeep,
-      p_limit: limit,
+      p_limit: ociLimit,
+      p_dry_run: false,
     });
     if (ociErr) {
       logError('CLEANUP_OCI_QUEUE_FAIL', { error: ociErr.message });
@@ -185,28 +221,31 @@ async function runCleanup(req: NextRequest) {
       });
       return NextResponse.json({ error: ociErr.message, step: 'cleanup_oci_queue_batch' }, { status: 500 });
     }
-    ociDeleted = typeof ociData === 'number' ? ociData : 0;
+    ociDeleted = parseRpcAffected(ociData);
+    logLimitHitAssessment('cleanup-oci-queue', assessLimitHit(ociDeleted, ociLimit));
 
-    // Phase 4: Auto-junk stale intents (7d)
-    const { data: junkData, error: junkErr } = await adminClient.rpc('cleanup_auto_junk_stale_intents', {
-      p_days_old: daysOldIntents,
-      p_limit: limitIntents,
-    });
-    if (junkErr) {
-      logError('CLEANUP_AUTO_JUNK_FAIL', { error: junkErr.message });
-      await recordCronHeartbeat({
-        jobName: 'cleanup',
-        routePath: '/api/cron/cleanup',
-        status: 'FAIL',
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedMs,
-        errorCode: 'AUTO_JUNK_FAILED',
-        errorMessage: junkErr.message,
+    // Phase 4: recovery-only stale intent junk (SSOT = auto-junk / expires_at)
+    if (recoveryJunk) {
+      const { data: junkData, error: junkErr } = await adminClient.rpc('cleanup_auto_junk_stale_intents', {
+        p_days_old: daysOldIntents,
+        p_limit: limitIntents,
       });
-      return NextResponse.json({ error: junkErr.message, step: 'cleanup_auto_junk_stale_intents' }, { status: 500 });
+      if (junkErr) {
+        logError('CLEANUP_AUTO_JUNK_FAIL', { error: junkErr.message });
+        await recordCronHeartbeat({
+          jobName: 'cleanup',
+          routePath: '/api/cron/cleanup',
+          status: 'FAIL',
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedMs,
+          errorCode: 'AUTO_JUNK_FAILED',
+          errorMessage: junkErr.message,
+        });
+        return NextResponse.json({ error: junkErr.message, step: 'cleanup_auto_junk_stale_intents' }, { status: 500 });
+      }
+      intentsJunked = typeof junkData === 'number' ? junkData : 0;
     }
-    intentsJunked = typeof junkData === 'number' ? junkData : 0;
 
     // Phase 6: Singularity — Merkle heartbeat every 1000 causal_dna_ledger entries
     const { data: merkleData, error: merkleErr } = await adminClient.rpc('heartbeat_merkle_1000');
@@ -241,7 +280,7 @@ async function runCleanup(req: NextRequest) {
 
   const backlog =
     archivedFailed >= limit ||
-    ociDeleted >= limit ||
+    ociDeleted >= ociLimit ||
     intentsJunked >= limitIntents;
 
   await recordCronHeartbeat({
@@ -262,12 +301,17 @@ async function runCleanup(req: NextRequest) {
       dry_run: false,
       zombie_recovery: { offline_queue: zombiesQueue },
       archive_failed: { archived: archivedFailed, days: daysArchiveFailed },
-      oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit },
+      oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit: ociLimit },
       queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
-      auto_junk: { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents },
+      auto_junk: recoveryJunk
+        ? { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents, mode: 'recovery_junk' }
+        : { skipped: true, reason: 'expires_at SSOT via /api/cron/auto-junk; use ?recovery_junk=true for fallback' },
       singularity_merkle: merkleHeartbeat,
       note: backlog ? 'Backlog may remain; run again or schedule daily.' : undefined,
     },
     { headers: getBuildInfoHeaders() }
   );
+  } finally {
+    await releaseCronLock(CLEANUP_LOCK_KEY);
+  }
 }

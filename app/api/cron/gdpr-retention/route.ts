@@ -1,14 +1,22 @@
 /**
- * GET/POST /api/cron/gdpr-retention — Anonymize consent-less sessions/events older than retention.
- * Auth: Cron secret. Body (POST): { days?: number }. Query (GET): days=90.
- * Vercel Cron sends GET; POST kept for manual/Bearer calls.
+ * GET/POST /api/cron/gdpr-retention — Batch anonymize consent-less sessions/events (PR-B2).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { adminClient } from '@/lib/supabase/admin';
+import { recordCronHeartbeat } from '@/lib/cron/heartbeat';
+import { tryAcquireCronLock, releaseCronLock } from '@/lib/cron/with-cron-lock';
+import {
+  assessLimitHit,
+  logLimitHitAssessment,
+  parseStorageCleanupParams,
+} from '@/lib/storage/cleanup-kernel';
 
 export const runtime = 'nodejs';
+
+const LOCK_KEY = 'gdpr-retention';
+const LOCK_TTL_SEC = 600;
 
 export async function GET(req: NextRequest) {
   const forbidden = requireCronAuth(req);
@@ -23,11 +31,30 @@ export async function POST(req: NextRequest) {
 }
 
 async function runGdprRetention(req: NextRequest) {
-  try {
-    const days = await parseDaysParam(req);
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  const params = parseStorageCleanupParams(req, { batchLimit: 5000, days: await parseDaysParam(req) });
 
-    const { data: rows, error } = await adminClient.rpc('anonymize_consent_less_data', {
-      p_days: days,
+  const acquired = await tryAcquireCronLock(LOCK_KEY, LOCK_TTL_SEC);
+  if (!acquired) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: 'lock_held' },
+      { headers: getBuildInfoHeaders() }
+    );
+  }
+
+  try {
+    await recordCronHeartbeat({
+      jobName: 'gdpr-retention',
+      routePath: '/api/cron/gdpr-retention',
+      status: 'RUNNING',
+      startedAt,
+    });
+
+    const { data, error } = await adminClient.rpc('anonymize_consent_less_data_batch', {
+      p_days: params.days ?? 90,
+      p_limit: params.batchLimit,
+      p_dry_run: params.dryRun,
     });
 
     if (error) {
@@ -37,16 +64,35 @@ async function runGdprRetention(req: NextRequest) {
       );
     }
 
-    const row = Array.isArray(rows) && rows[0] ? rows[0] : { sessions_affected: 0, events_affected: 0 };
+    const row =
+      data && typeof data === 'object'
+        ? (data as { sessions_affected?: number; events_affected?: number })
+        : { sessions_affected: 0, events_affected: 0 };
     const sessionsAffected = Number(row.sessions_affected ?? 0);
     const eventsAffected = Number(row.events_affected ?? 0);
+    const total = sessionsAffected + eventsAffected;
+
+    logLimitHitAssessment('gdpr-retention', assessLimitHit(total, params.batchLimit));
+
+    const partial = total >= params.batchLimit;
+    await recordCronHeartbeat({
+      jobName: 'gdpr-retention',
+      routePath: '/api/cron/gdpr-retention',
+      status: partial ? 'PARTIAL' : 'PASS',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      rowsAffected: total,
+    });
 
     return NextResponse.json(
       {
         ok: true,
-        days,
+        dry_run: params.dryRun,
+        days: params.days ?? 90,
         sessions_affected: sessionsAffected,
         events_affected: eventsAffected,
+        result: data,
       },
       { headers: getBuildInfoHeaders() }
     );
@@ -55,6 +101,8 @@ async function runGdprRetention(req: NextRequest) {
       { ok: false, error: 'Internal error' },
       { status: 500, headers: getBuildInfoHeaders() }
     );
+  } finally {
+    await releaseCronLock(LOCK_KEY);
   }
 }
 
@@ -67,6 +115,6 @@ async function parseDaysParam(req: NextRequest): Promise<number> {
     }
     return 90;
   }
-  const body = await req.json().catch(() => ({})) as { days?: number };
+  const body = (await req.json().catch(() => ({}))) as { days?: number };
   return typeof body?.days === 'number' && body.days > 0 ? Math.min(body.days, 365) : 90;
 }

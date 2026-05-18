@@ -2,6 +2,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { reconcileUsageForMonth, getCurrentYearMonthUTC } from '@/lib/reconciliation';
 import { logInfo, logError } from '@/lib/logging/logger';
 import { incrementBillingReconciliationRunOk, incrementBillingReconciliationRunFailed } from '@/lib/billing-metrics';
+import { incrementRefactorMetric } from '@/lib/refactor/metrics';
 
 function previousYearMonth(yearMonth: string): string {
     const [y, m] = yearMonth.split('-').map(Number);
@@ -31,17 +32,22 @@ export const BillingReconciliationService = {
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
         // 1. Sites with activity in current month OR last 24h
+        const CANDIDATE_CAP = 10_000;
         const { data: currentRows } = await adminClient
             .from('ingest_idempotency')
             .select('site_id')
             .eq('year_month', currentMonth)
-            .limit(10000);
+            .limit(CANDIDATE_CAP);
 
         const { data: recentRows } = await adminClient
             .from('ingest_idempotency')
             .select('site_id')
             .gte('created_at', twentyFourHoursAgo)
-            .limit(10000);
+            .limit(CANDIDATE_CAP);
+
+        if ((currentRows?.length ?? 0) >= CANDIDATE_CAP || (recentRows?.length ?? 0) >= CANDIDATE_CAP) {
+            incrementRefactorMetric('billing_reconcile_candidate_truncated_total');
+        }
 
         const siteIds = new Set<string>();
         currentRows?.forEach(r => r.site_id && siteIds.add(r.site_id));
