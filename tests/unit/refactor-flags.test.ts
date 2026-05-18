@@ -17,6 +17,7 @@ const FLAG_KEYS = [
   'TRUTH_PARITY_MODE',
   'LEASE_LOCK_MODE',
   'SITE_TIMEZONE_STRICT_MODE',
+  'SOURCE_TRUTH_SHADOW_ENABLED',
 ] as const;
 
 function clearTruthEnv(): Record<string, string | undefined> {
@@ -50,6 +51,7 @@ test('getRefactorFlags: defaults — integrity strict modes on', () => {
     assert.equal(f.truth_parity_mode, 'detect');
     assert.equal(f.lease_lock_mode, 'lease');
     assert.equal(f.site_timezone_strict_mode, true);
+    assert.equal(f.source_truth_shadow_enabled, false);
   } finally {
     restoreTruthEnv(prev);
   }

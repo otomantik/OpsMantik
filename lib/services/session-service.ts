@@ -17,6 +17,7 @@ import {
     shouldReuseSessionV1,
 } from '@/lib/intents/session-reuse-v1';
 import { intentSessionReuseHardeningEnabled } from '@/lib/config/intent-session-reuse-hardening';
+import { buildTrafficV2Ledger } from '@/lib/attribution/session-shadow';
 
 /** PR-OCI-7.3.1: Evidence-based weights for monotonic attribution (never downgrade Paid → Organic) */
 const ATTRIBUTION_WEIGHTS: Record<string, number> = {
@@ -404,6 +405,23 @@ export class SessionService {
                 updates.device_type = utm.device.toLowerCase();
             }
 
+            const v2Ledger = await buildTrafficV2Ledger({
+                site_id: siteId,
+                session_id: session.id,
+                url: data.url,
+                referrer: data.referrer ?? null,
+                user_agent: context.userAgent,
+                fingerprint,
+                gclid: currentGclid ?? null,
+                wbraid: params.get('wbraid') || meta?.wbraid || null,
+                gbraid: params.get('gbraid') || meta?.gbraid || null,
+                utm: utm ?? null,
+                has_past_valid_click_id: hasExistingGclid || hasExistingWbraid || hasExistingGbraid,
+            });
+            if (v2Ledger) {
+                updates.traffic_v2_ledger = v2Ledger;
+            }
+
             const { error: updateErr } = await adminClient
                 .from('sessions')
                 .update(updates)
@@ -584,6 +602,23 @@ export class SessionService {
         if (data.consent_scopes && data.consent_scopes.length > 0) {
             sessionPayload.consent_at = new Date().toISOString();
             sessionPayload.consent_scopes = data.consent_scopes;
+        }
+
+        const v2Ledger = await buildTrafficV2Ledger({
+            site_id: siteId,
+            session_id: sessionId,
+            url,
+            referrer: data.referrer ?? null,
+            user_agent: context.userAgent,
+            fingerprint,
+            gclid: currentGclid ?? null,
+            wbraid: params.get('wbraid') || meta?.wbraid || null,
+            gbraid: params.get('gbraid') || meta?.gbraid || null,
+            utm: utm ?? null,
+            has_past_valid_click_id: previousVisitCount > 0,
+        });
+        if (v2Ledger) {
+            sessionPayload.traffic_v2_ledger = v2Ledger;
         }
 
         const { data: newSession, error: sError } = await adminClient

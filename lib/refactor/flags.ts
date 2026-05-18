@@ -10,6 +10,7 @@
  *   - TRUTH_CANONICAL_LEDGER_SHADOW_ENABLED → truth_canonical_ledger shadow writes (default off until migrated).
  *   - CONSENT_PROVENANCE_SHADOW_ENABLED    → consent provenance shadow audit.
  *   - EXPLAINABILITY_API_ENABLED           → /api/truth/explain endpoint.
+ *   - SOURCE_TRUTH_SHADOW_ENABLED          → sessions.traffic_v2_ledger shadow writes.
  *
  * The old TRUTH_PROJECTION_READ_ENABLED flag was removed along with
  * lib/domain/truth/projection-dual-read.ts. Any residual env var is ignored.
@@ -35,6 +36,8 @@ export type RefactorFlags = {
   lease_lock_mode: 'legacy' | 'shadow' | 'lease';
   /** Integrity roadmap: disallow implicit non-UTC timezone fallback on critical paths. */
   site_timezone_strict_mode: boolean;
+  /** Conversion Truth OS P0: write traffic_v2_ledger without changing legacy attribution columns. */
+  source_truth_shadow_enabled: boolean;
 };
 
 function asBool(v: string | undefined, fallback: boolean): boolean {
@@ -66,5 +69,6 @@ export function getRefactorFlags(): RefactorFlags {
     truth_parity_mode: asEnum(process.env.TRUTH_PARITY_MODE, ['off', 'detect', 'enforce'] as const, 'detect'),
     lease_lock_mode: asEnum(process.env.LEASE_LOCK_MODE, ['legacy', 'shadow', 'lease'] as const, 'lease'),
     site_timezone_strict_mode: asBool(process.env.SITE_TIMEZONE_STRICT_MODE, true),
+    source_truth_shadow_enabled: asBool(process.env.SOURCE_TRUTH_SHADOW_ENABLED, false),
   };
 }

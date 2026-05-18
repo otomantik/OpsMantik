@@ -34,6 +34,8 @@ export interface HunterIntentLite {
   /** Traffic source/medium (from sessions join in RPC). */
   traffic_source?: string | null;
   traffic_medium?: string | null;
+  /** Source Truth Engine v2 shadow ledger (when RPC exposes sessions.traffic_v2_ledger). */
+  traffic_v2_ledger?: Record<string, unknown> | null;
   attribution_source?: string | null;
   gclid?: string | null;
   wbraid?: string | null;
@@ -164,6 +166,8 @@ export interface HunterIntent {
   /** Traffic source/medium (from sessions join in RPC). */
   traffic_source?: string | null;
   traffic_medium?: string | null;
+  /** Source Truth Engine v2 shadow ledger when exposed from sessions. */
+  traffic_v2_ledger?: Record<string, unknown> | null;
 }
 
 export interface HunterCardV3Props {

@@ -1,0 +1,87 @@
+[
+  {
+    "name": "srsltid_only",
+    "url": "https://shop.example/?srsltid=abc123xyz",
+    "referrer": "",
+    "userAgent": "",
+    "expected": { "channel": "organic_shopping", "is_paid": false }
+  },
+  {
+    "name": "valid_gclid",
+    "url": "https://example.com/?gclid=abcdefghijklmnopqrstuvwxyz",
+    "referrer": "",
+    "userAgent": "Mozilla/5.0",
+    "expected": { "channel": "paid_search", "is_paid": true }
+  },
+  {
+    "name": "maps_business_google",
+    "url": "https://example.com/",
+    "referrer": "https://business.google.com/nearme",
+    "userAgent": "",
+    "expected": { "channel": "local_maps", "is_paid": false }
+  },
+  {
+    "name": "perplexity_ai",
+    "url": "https://example.com/",
+    "referrer": "https://www.perplexity.ai/search?q=test",
+    "userAgent": "",
+    "expected": { "channel": "ai_referral", "is_paid": false }
+  },
+  {
+    "name": "whatsapp_utm",
+    "url": "https://example.com/?utm_source=whatsapp",
+    "referrer": "",
+    "userAgent": "",
+    "expected": { "channel": "dark_social", "is_paid": false }
+  },
+  {
+    "name": "instagram_in_app",
+    "url": "https://example.com/",
+    "referrer": "",
+    "userAgent": "Mozilla/5.0 (iPhone) Instagram 300.0",
+    "expected": { "channel": "dark_social", "is_paid": false }
+  },
+  {
+    "name": "gclid_facebook_utm_conflict",
+    "url": "https://example.com/?gclid=abcdefghijklmnopqrstuvwxyz&utm_source=facebook&utm_medium=cpc",
+    "referrer": "",
+    "userAgent": "",
+    "expected": { "channel": "paid_search", "is_paid": true, "contradiction": "UTM_CONTRADICTS_CLICK_ID" }
+  },
+  {
+    "name": "organic_google_search",
+    "url": "https://example.com/",
+    "referrer": "https://www.google.com/search?q=lastik",
+    "userAgent": "",
+    "expected": { "channel": "organic_search", "is_paid": false }
+  },
+  {
+    "name": "direct_empty",
+    "url": "https://example.com/",
+    "referrer": "",
+    "userAgent": "Mozilla/5.0 Chrome",
+    "expected": { "channel": "direct", "is_paid": false }
+  },
+  {
+    "name": "dark_return_1h",
+    "url": "https://example.com/",
+    "referrer": "",
+    "userAgent": "",
+    "previousSession": { "channel": "paid_search", "hoursAgo": 1 },
+    "expected": { "channel": "dark_return", "is_paid": true }
+  },
+  {
+    "name": "fraud_headless_gclid",
+    "url": "https://example.com/?gclid=abcdefghijklmnopqrstuvwxyz",
+    "referrer": "",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/120.0",
+    "expected": { "channel": "fraudulent_signal", "is_paid": false, "is_fraud_suspected": true }
+  },
+  {
+    "name": "srsltid_beats_gclid",
+    "url": "https://example.com/?srsltid=x&gclid=abcdefghijklmnopqrstuvwxyz",
+    "referrer": "",
+    "userAgent": "",
+    "expected": { "channel": "organic_shopping", "is_paid": false }
+  }
+]

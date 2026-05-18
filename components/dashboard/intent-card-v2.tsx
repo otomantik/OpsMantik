@@ -15,6 +15,8 @@ import { MapPin, Monitor, Smartphone, Clock, Trash2, CheckCircle2 } from 'lucide
 import { Icons } from '@/components/icons';
 import { Leaf, Share2 } from 'lucide-react';
 import type { HunterIntent } from '@/lib/types/hunter';
+import { formatSourceTruthExplain } from '@/lib/attribution/explain-ledger';
+import type { TrafficClassificationV2 } from '@/lib/attribution/truth-engine-types';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import type { TranslationKey } from '@/lib/i18n/t';
 
@@ -103,10 +105,24 @@ function SourceBadge({ intent }: { intent: HunterIntent }) {
 
   const { cls, Icon } = styles[kind];
 
+  const ledger = intent.traffic_v2_ledger as TrafficClassificationV2 | null | undefined;
+  const explain = formatSourceTruthExplain(ledger);
+  const title = explain
+    ? `Source Truth: ${explain.channel} (${explain.confidence_label}) — ${explain.top_evidence.join(', ')}`
+    : undefined;
+
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none', cls)}>
+    <span
+      title={title}
+      className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none', cls)}
+    >
       <Icon className="h-3 w-3 shrink-0" />
       {label}
+      {explain && explain.has_contradiction ? (
+        <span className="text-[9px] font-bold text-amber-700" aria-label="source contradiction">
+          !
+        </span>
+      ) : null}
     </span>
   );
 }
