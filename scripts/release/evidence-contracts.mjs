@@ -311,3 +311,27 @@ export function resolveSqlPackAbsPaths(repoRoot) {
     absPath: join(repoRoot, c.file),
   }));
 }
+
+/** Map rollout triage primary class → evidence reason code (PR-9J). */
+export function mapRolloutPrimaryClassToReasonCode(pc) {
+  switch (pc) {
+    case 'RED_METRIC_RETRY_RATE_HIGH':
+      return REASON_CODES.OCI_ROLLOUT_GATE_RETRY_RATE;
+    case 'RED_METRIC_STUCK_PROCESSING':
+      return REASON_CODES.OCI_ROLLOUT_GATE_STUCK_PROCESSING;
+    case 'RED_METRIC_ACTIONABLE_REAL':
+      return REASON_CODES.OCI_ROLLOUT_GATE_ACTIONABLE_FAILED_RATE;
+    case 'RED_METRIC_PROVIDER_RISK':
+      return REASON_CODES.OCI_ROLLOUT_GATE_PROVIDER_FAILED_RATE;
+    case 'RED_METRIC_UNKNOWN_FAILED':
+      return REASON_CODES.OCI_ROLLOUT_GATE_UNKNOWN_FAILED;
+    case 'RED_METRIC_WON_PIPELINE_LEAK':
+      return REASON_CODES.OCI_ROLLOUT_GATE_WON_PIPELINE_LEAK;
+    case 'RED_METRIC_DLQ_PRESENT':
+      return REASON_CODES.OCI_ROLLOUT_GATE_DLQ;
+    case 'RED_METRIC_SCHEMA_DRIFT':
+      return REASON_CODES.DB_SCHEMA_DRIFT;
+    default:
+      return pc === 'RED_METRIC_UNKNOWN' ? REASON_CODES.RED_METRIC : REASON_CODES.OCI_ROLLOUT_GATE_FLEET_OTHER;
+  }
+}

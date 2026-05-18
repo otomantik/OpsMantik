@@ -129,3 +129,33 @@ export function buildFleetGateSiteTriage(
         r.gate.failures.length > 0 ? classifyRolloutGateFailureString(r.gate.failures[0]) : 'RED_METRIC_UNKNOWN',
     }));
 }
+
+export type RolloutReadinessJson = {
+  reports?: Array<{ gate: { pass: boolean; failures: string[] } }>;
+  strict?: { failures?: string[]; triage?: { primary_red_metric_class?: RolloutRedMetricClass | null } };
+};
+
+/** Parse strict JSON from mixed stdout (dotenv may log before `{`). */
+export function extractJsonObjectFromMixedOutput(s: string): RolloutReadinessJson | null {
+  const start = s.indexOf('{');
+  const end = s.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(s.slice(start, end + 1)) as RolloutReadinessJson;
+  } catch {
+    return null;
+  }
+}
+
+export function derivePrimaryRolloutMetricClassFromRolloutJson(
+  json: RolloutReadinessJson | null | undefined
+): RolloutRedMetricClass {
+  return derivePrimaryRolloutMetricClassFromReports(json?.reports ?? []);
+}
+
+export function derivePrimaryStrictFleetClassFromRolloutJson(
+  json: RolloutReadinessJson | null | undefined
+): RolloutRedMetricClass | null {
+  if (!json) return null;
+  return derivePrimaryStrictFleetClass(json.strict?.failures ?? [], json.reports ?? []);
+}
