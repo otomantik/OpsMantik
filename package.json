@@ -88,6 +88,7 @@
     "oci:dlq-autopsy": "node scripts/oci/dlq-autopsy-report.mjs",
     "oci:queue-health-snapshot": "npx tsx scripts/oci/queue-health-snapshot.ts",
     "oci:diagnose-won-missing": "npx tsx scripts/oci/diagnose-won-missing.ts",
+    "oci:repair-orphan-won": "node scripts/db/repair-orphan-won-queue.mjs",
     "oci:repair-enqueue-won-calls": "npx tsx scripts/oci/repair-enqueue-won-calls.ts",
     "oci:intent-google-audit": "npx tsx scripts/oci/intent-google-attribution-audit.ts",
     "load:smoke": "k6 run tests/load/smoke-load.js",

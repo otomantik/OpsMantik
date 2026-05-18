@@ -32,6 +32,13 @@ test('PR-7F introduces no queue deletion or direct value math writes in sweep ro
   assert.ok(!route.includes('COMPLETED'));
 });
 
+test('PR-7F repair-enqueue-won-calls uses sale_currency not calls.currency', () => {
+  const repair = readFileSync(join(ROOT, 'scripts', 'oci', 'repair-enqueue-won-calls.ts'), 'utf8');
+  assert.ok(!repair.includes('sale_amount, currency, lead_score'));
+  assert.ok(repair.includes('sale_amount, sale_currency, lead_score'));
+  assert.ok(repair.includes('normalizeCurrencyOrNeutral(c.sale_currency'));
+});
+
 test('PR-7F dry-run candidate discovery contract remains stable', () => {
   const sql = readFileSync(join(ROOT, 'scripts', 'sql', 'orphan_won_backfill.sql'), 'utf8');
   assert.ok(sql.includes('BLOCKED_MISSING_CLICK_ID'));

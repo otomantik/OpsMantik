@@ -74,7 +74,7 @@ async function main() {
 
   const { data: calls, error: callsErr } = await supabase
     .from('calls')
-    .select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')
+    .select('id, site_id, status, oci_status, confirmed_at, sale_amount, sale_currency, lead_score')
     .eq('site_id', siteId)
     .eq('status', 'confirmed')
     .not('confirmed_at', 'is', null)
@@ -124,7 +124,7 @@ async function main() {
       siteId: call.site_id,
       confirmedAt,
       saleAmount,
-      currency: (call.currency?.trim() || currency) as string,
+      currency: (call.sale_currency?.trim() || currency) as string,
       leadScore: call.lead_score ?? null,
       entryReason: 'orphan_backfill_script',
     });

@@ -89,7 +89,7 @@ async function main() {
   for (const callId of targets) {
     const { data: call, error } = await adminClient
       .from('calls')
-      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, currency, lead_score')
+      .select('id, site_id, status, oci_status, confirmed_at, sale_amount, sale_currency, lead_score')
       .eq('id', callId)
       .eq('site_id', siteId)
       .maybeSingle();
@@ -105,7 +105,7 @@ async function main() {
       id: string;
       confirmed_at: string | null;
       sale_amount: number | null;
-      currency: string | null;
+      sale_currency: string | null;
       lead_score: number | null;
     };
 
@@ -125,7 +125,7 @@ async function main() {
       siteId,
       confirmedAt: c.confirmed_at,
       saleAmount: c.sale_amount ?? null,
-      currency: normalizeCurrencyOrNeutral(c.currency),
+      currency: normalizeCurrencyOrNeutral(c.sale_currency ?? null),
       leadScore: c.lead_score ?? null,
       entryReason: 'repair_enqueue_won_pipeline',
     });

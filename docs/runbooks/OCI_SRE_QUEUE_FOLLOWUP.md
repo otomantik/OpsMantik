@@ -27,8 +27,11 @@ Queue health, **won/sealed** çağrıların kuyrukta “koruyucu” statülerde 
 
 ```bash
 npm run oci:diagnose-won-missing -- --site=<filtre>    # read-only: eksik call_id + kuyruk satırları
+npm run oci:repair-orphan-won -- --site=<site-uuid>    # SQL dry-run (orphan_won_backfill.sql)
 npm run oci:repair-enqueue-won-calls -- --site=<filtre>  # dry-run (yazmaz)
 npm run oci:repair-enqueue-won-calls -- --site=<filtre> --apply
 ```
+
+Tam akış: [WON_PIPELINE_REPAIR.md](./WON_PIPELINE_REPAIR.md).
 
 `--apply`, `enqueueSealConversion` ile dener. **Tıklama yok:** satır yine de oluşturulur: **`BLOCKED_PRECEDING_SIGNALS` + `block_reason: MISSING_CLICK_ID`** — `WON_MISSING_PIPELINE` gider, Google export script tarafında yine gönderilmez (`claim` bu statüyü almaz). Tıklama sonradan bağlanınca satır güncellenene veya operasyonel yükseltme yapılana kadar **`promote-blocked-queue`** bu satırları **QUEUED yapmaz** (tıklama yokken yükseltme yok).
