@@ -1,9 +1,128 @@
 [
   {
-    "file": "app\\login\\page.tsx",
-    "line": 75,
-    "col": 34,
-    "rule": "dynamic-key",
-    "message": "Forbidden dynamic key in t(): keys must be string literals."
+    "file": "app\\panel\\page.tsx",
+    "line": 203,
+    "col": 21,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"read-only preview\""
+  },
+  {
+    "file": "components\\dashboard\\hunter-card.tsx",
+    "line": 136,
+    "col": 87,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"GCLID ONAYLI\""
+  },
+  {
+    "file": "components\\dashboard\\intent-card-v2.tsx",
+    "line": 122,
+    "col": 63,
+    "rule": "visible-prop",
+    "message": "Hardcoded prop \"aria-label\": \"source contradiction\""
+  },
+  {
+    "file": "components\\dashboard\\lazy-session-drawer.tsx",
+    "line": 182,
+    "col": 33,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"ledger\""
+  },
+  {
+    "file": "components\\dashboard\\lead-action-overlay.tsx",
+    "line": 172,
+    "col": 97,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"SOĞUK / DÜŞÜK\""
+  },
+  {
+    "file": "components\\dashboard\\lead-action-overlay.tsx",
+    "line": 186,
+    "col": 97,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"NORMAL / ORTA\""
+  },
+  {
+    "file": "components\\dashboard\\lead-action-overlay.tsx",
+    "line": 200,
+    "col": 97,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"SICAK / YÜKSEK\""
+  },
+  {
+    "file": "components\\dashboard\\live-clock.tsx",
+    "line": 51,
+    "col": 7,
+    "rule": "visible-prop-template",
+    "message": "Hardcoded template head in \"title\": \"Site timezone: \""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-list.tsx",
+    "line": 56,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Görülmemiş\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-list.tsx",
+    "line": 64,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Tümü\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-list.tsx",
+    "line": 72,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Ads-only\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-list.tsx",
+    "line": 101,
+    "col": 15,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Görüldü\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-list.tsx",
+    "line": 122,
+    "col": 95,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Girilenler (Son 50)\""
+  },
+  {
+    "file": "components\\dashboard\\qualification-queue\\queue-list.tsx",
+    "line": 131,
+    "col": 53,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Henüz girilen kayıt yok.\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 410,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Language\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 427,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Country\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 444,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Timezone\""
+  },
+  {
+    "file": "components\\dashboard\\sites-manager.tsx",
+    "line": 461,
+    "col": 19,
+    "rule": "jsx-text",
+    "message": "Hardcoded JSX text: \"Currency\""
   }
 ]

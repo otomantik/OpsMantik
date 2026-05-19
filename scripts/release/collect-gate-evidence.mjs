@@ -76,14 +76,12 @@ const EXTRA_DB_SQL_PACKS = [
 ];
 
 const MODE_COMMANDS = {
-  // Parity with package.json `test:release-gates` (+ health pack): do not drift PR evidence from predeploy.
+  // PR/static parity with package.json `test:release-gates:pr` (no live DB smoke on GitHub PR runners).
   static: [
     'node scripts/release/verify-health-pack-contracts.mjs',
     'npm run test:tenant-boundary',
     'npm run test:oci-kernel',
     'npm run test:runtime-budget',
-    'npm run test:chaos-core',
-    'npm run smoke:oci-rollout-readiness:strict',
   ],
   local: [
     'node scripts/release/verify-health-pack-contracts.mjs',
