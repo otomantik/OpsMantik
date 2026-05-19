@@ -56,13 +56,12 @@ test('PR-D: won policy uses SSOT and preserves fallback provenance', () => {
 
 test('PR-D: enqueue/upsert paths do not keep local ad-hoc value math', () => {
   const enqueueSrc = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
-  const upsertSrc = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts'), 'utf8');
+  const journalSrc = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
   assert.ok(enqueueSrc.includes('resolveWonConversionEconomics'));
   assert.ok(enqueueSrc.includes('value_policy_version'));
   assert.ok(!enqueueSrc.includes('Math.round(valueUnits * 100)'));
-  assert.ok(upsertSrc.includes('value_policy_version'));
-  assert.ok(upsertSrc.includes('value_policy_reason'));
-  assert.ok(upsertSrc.includes('value_fallback_used'));
+  assert.ok(journalSrc.includes('loadMarketingSignalEconomics'));
+  assert.ok(journalSrc.includes('value_policy_version') || journalSrc.includes('economics'));
 });
 
 test('PR-D: DB guardrail migration exists and is ordered after OCI P0 migrations', () => {

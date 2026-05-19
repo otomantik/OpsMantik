@@ -42,23 +42,10 @@ test('MODULE 1: identity-stitcher discovery_confidence and PHONE_STITCH safeguar
   assert.ok(src.includes('session_created_at') || src.includes('sessionCreated'), 'session temporal check');
 });
 
-test('marketing-signals insert persists recovered click ids', () => {
-  const src = readFileSync(
-    join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'insert-marketing-signal.ts'),
-    'utf-8'
-  );
-  assert.ok(src.includes('normalizeClickSegment'), 'normalizes click segments before persist');
-  assert.ok(
-    src.includes('gclid: normalizeClickSegment(gclid ?? null)'),
-    'persists gclid via normalizeClickSegment'
-  );
-  assert.ok(
-    src.includes('wbraid: normalizeClickSegment(wbraid ?? null)'),
-    'persists wbraid via normalizeClickSegment'
-  );
-  assert.ok(
-    src.includes('gbraid: normalizeClickSegment(gbraid ?? null)'),
-    'persists gbraid via normalizeClickSegment'
-  );
-  assert.ok(src.includes('clickIds: clickNorm'), 'forwards normalized click ids to upsertMarketingSignal');
+test('queue enqueue path forwards click ids to journal (no marketing_signals insert)', () => {
+  const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf-8');
+  assert.ok(src.includes('gclid'), 'journal enqueue carries gclid');
+  assert.ok(src.includes('wbraid'), 'journal enqueue carries wbraid');
+  assert.ok(src.includes('gbraid'), 'journal enqueue carries gbraid');
+  assert.ok(!src.includes("from('marketing_signals')"), 'must not write marketing_signals');
 });

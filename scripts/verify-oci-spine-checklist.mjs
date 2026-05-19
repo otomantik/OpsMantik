@@ -44,9 +44,13 @@ if (!ssot.includes('OPSMANTIK_CONVERSION_NAMES')) {
   process.exit(1);
 }
 
-const upsertWriter = readFileSync(join(root, 'lib/oci/upsert-marketing-signal.ts'), 'utf8');
-if (upsertWriter.includes('toExpectedValueCents')) {
-  console.error('[verify-oci-spine] upsert-marketing-signal must not use toExpectedValueCents for SSOT cents');
+const journalEnqueue = readFileSync(join(root, 'lib/oci/enqueue-oci-conversion-row.ts'), 'utf8');
+if (journalEnqueue.includes('toExpectedValueCents')) {
+  console.error('[verify-oci-spine] enqueue-oci-conversion-row must not use toExpectedValueCents for SSOT cents');
+  process.exit(1);
+}
+if (journalEnqueue.includes("from('marketing_signals')")) {
+  console.error('[verify-oci-spine] enqueue-oci-conversion-row must not write marketing_signals');
   process.exit(1);
 }
 

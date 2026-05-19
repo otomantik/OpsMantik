@@ -1,6 +1,6 @@
 /**
  * GET/POST /api/cron/night-maintenance — Serial night storage hygiene (PR-D1).
- * Runs idempotency → outbox → GDPR → processed_signals under one lock.
+ * Runs idempotency → outbox → GDPR → processed_signals → marketing_signals retention → truth_evidence under one lock.
  * Mutations require ?apply=true and OPSMANTIK_STORAGE_CLEANUP_APPROVAL.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -138,6 +138,31 @@ async function runNightMaintenance(req: NextRequest) {
     totalRows += dedupAffected;
 
     if (dedupAffected >= params.batchLimit || staleAffected >= params.batchLimit) {
+      partial = true;
+    }
+
+    const { data: msData, error: msErr } = await adminClient.rpc('cleanup_marketing_signals_batch', {
+      p_days_old: 60,
+      p_limit: params.batchLimit,
+      p_dry_run: dryRun,
+    });
+    if (msErr) throw new Error(`marketing_signals_retention: ${msErr.message}`);
+    const msAffected = parseRpcAffected(msData);
+    phases.marketing_signals_retention = msData;
+    totalRows += msAffected;
+    logLimitHitAssessment('night-maintenance-marketing-signals', assessLimitHit(msAffected, params.batchLimit));
+
+    const { data: truthData, error: truthErr } = await adminClient.rpc('delete_truth_evidence_batch', {
+      p_days_old: 90,
+      p_limit: params.batchLimit,
+      p_dry_run: dryRun,
+    });
+    if (truthErr) throw new Error(`truth_evidence: ${truthErr.message}`);
+    const truthAffected = parseRpcAffected(truthData);
+    phases.truth_evidence = truthData;
+    totalRows += truthAffected;
+
+    if (msAffected >= params.batchLimit || truthAffected >= params.batchLimit) {
       partial = true;
     }
 

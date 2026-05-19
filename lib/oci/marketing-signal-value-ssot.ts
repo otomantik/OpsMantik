@@ -1,5 +1,5 @@
 /**
- * Single resolver for `marketing_signals` row economics (four-conversions plan; not the Google GET export batch).
+ * Conversion economics for journal enqueue (offline_conversion_queue). Legacy filename; does not write marketing_signals.
  * Upper-funnel rows must not rely on export-runtime NOW() for business time — see occurred-at +
  * conversion_time_source stamped at insert.
  *

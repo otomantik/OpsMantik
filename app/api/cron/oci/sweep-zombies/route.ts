@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { rescueStaleMarketingSignalsProcessing } from '@/lib/oci/marketing-signal-dispatch-kernel';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { logInfo, logError, logWarn } from '@/lib/logging/logger';
 import { getBuildInfoHeaders } from '@/lib/build-info';
@@ -23,7 +22,7 @@ const OUROBOROS_SAMPLE_WINDOW_HOURS = 2;
  * 0. Ouroboros Watchdog: EMA + 3σ anomaly detection on outbox processing times.
  * 1. Outbox: Resets PROCESSING events older than SCRIPT_ACK_TIMEOUT_MINUTES back to PENDING.
  * 2. OCI Queue: Resets PROCESSING queue rows older than SCRIPT_ACK_TIMEOUT_MINUTES to QUEUED.
- * 2.5. Signals: Resets PROCESSING signals older than SCRIPT_ACK_TIMEOUT_MINUTES to PENDING.
+ * 2.5. Legacy marketing_signals rescue retired (queue-only).
  * 3. OCI Queue: Closes UPLOADED rows older than 48 hours as COMPLETED_UNVERIFIED.
  *
  * SCRIPT_ACK_TIMEOUT_MINUTES default is 30 (up from the old 10-minute hardcode).
@@ -223,19 +222,7 @@ async function runSweep() {
         logError('sweep_zombies_queue_error', { error: err instanceof Error ? err.message : String(err) });
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Phase 2.5: OCI Signals Zombie Sweeper (PROCESSING)
-    // ─────────────────────────────────────────────────────────────────────────
-    try {
-        const cutoffIso = new Date(Date.now() - SCRIPT_ACK_TIMEOUT_MINUTES * 60 * 1000).toISOString();
-        const signalsRescued = await rescueStaleMarketingSignalsProcessing(adminClient, cutoffIso);
-        stats.signalsRescued = signalsRescued;
-        if (stats.signalsRescued > 0) {
-            logInfo('sweep_zombies_signals_rescued', { count: stats.signalsRescued });
-        }
-    } catch (err) {
-        logError('sweep_zombies_signals_error', { error: err instanceof Error ? err.message : String(err) });
-    }
+    stats.signalsRescued = 0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Phase 3: OCI Queue — Close stale UPLOADED rows (atomic DB-side close)

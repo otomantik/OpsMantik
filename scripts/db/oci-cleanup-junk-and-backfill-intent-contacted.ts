@@ -19,8 +19,7 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
-import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import { ensureOciQueueEnqueue } from '@/lib/oci/ensure-oci-queue-enqueue';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
@@ -485,7 +484,7 @@ async function main() {
     rows.length
   );
 
-  let inserted = 0;
+  let queueEnqueued = 0;
   let duplicates = 0;
   let skipped = 0;
   let errors = 0;
@@ -520,54 +519,43 @@ async function main() {
       snapshot,
     });
 
-    const up = await upsertMarketingSignal({
-      source: 'router',
-      siteId: site.id,
-      callId: row.id,
-      traceId: null,
-      stage,
-      signalDate,
-      snapshot,
-      economics,
-      clickIds: { gclid: row.gclid, wbraid: row.wbraid, gbraid: row.gbraid },
-      featureSnapshotExtras: {
-        source_detail: 'intent_click_backfill',
-        click_attribution: row.clickSource,
-      },
-    });
-
-    if (up.success && up.signalId && !up.duplicate && !up.skipped) inserted++;
-    else if (up.duplicate) duplicates++;
-    else if (up.skipped) skipped++;
-    else {
-      errors++;
-      console.warn('upsert başarısız', row.id);
+    const hasClick = Boolean(row.gclid || row.wbraid || row.gbraid);
+    if (!hasClick) {
+      skipped++;
+      continue;
     }
 
-    if (up.success && !up.skipped) {
-      const parity = await ensureMarketingSignalQueueParity({
-        siteId: site.id,
-        callId: row.id,
-        stage: 'contacted',
-        occurredAt: signalDate,
-        leadScore: Number.isFinite(row.lead_score as number) ? Number(row.lead_score) : 0,
-        currency: economics.currencyCode,
-        gclid: row.gclid,
-        wbraid: row.wbraid,
-        gbraid: row.gbraid,
-        source: 'intent_contacted_backfill',
-        consentState: 'unknown',
-        traceId: null,
-      });
-      if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') parityQueueEnqueued++;
-      else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') parityQueueDuplicates++;
-      else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') parityQueueConsentMissing++;
-      else parityQueueErrors++;
+    const parity = await ensureOciQueueEnqueue({
+      siteId: site.id,
+      callId: row.id,
+      stage: 'contacted',
+      occurredAt: signalDate,
+      leadScore: Number.isFinite(row.lead_score as number) ? Number(row.lead_score) : 0,
+      currency: economics.currencyCode,
+      gclid: row.gclid,
+      wbraid: row.wbraid,
+      gbraid: row.gbraid,
+      source: 'intent_contacted_backfill',
+      consentState: 'unknown',
+      traceId: null,
+    });
+    if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') {
+      queueEnqueued++;
+      parityQueueEnqueued++;
+    } else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') {
+      duplicates++;
+      parityQueueDuplicates++;
+    } else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') {
+      parityQueueConsentMissing++;
+      skipped++;
+    } else {
+      errors++;
+      parityQueueErrors++;
     }
   }
 
   console.log('Sonuç:', {
-    inserted,
+    queueEnqueued,
     duplicates,
     skipped,
     errors,

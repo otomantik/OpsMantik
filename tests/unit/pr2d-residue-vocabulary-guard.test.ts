@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
@@ -32,15 +32,8 @@ test('PR-2D: script_backlog_health labels marketing_signals as legacy/audit pres
   assert.ok(content.includes('must not be interpreted as Google upload backlog'), 'Must warn against treating signals as upload backlog');
 });
 
-test('PR-2D: upsertMarketingSignal and insertMarketingSignal comments classify them as ACTIVE_RUNTIME_RESIDUE', () => {
-  const upsertSrc = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts'), 'utf8');
-  const insertSrc = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'insert-marketing-signal.ts'), 'utf8');
-  
-  assert.ok(upsertSrc.includes('ACTIVE_RUNTIME_RESIDUE'), 'upsert helper must declare itself residue');
-  assert.ok(upsertSrc.includes('audit-only path'), 'upsert helper must declare itself audit-only');
-  assert.ok(upsertSrc.includes('NOT a Google upload authority'), 'upsert helper must explicitly deny upload authority');
-  
-  assert.ok(insertSrc.includes('ACTIVE_RUNTIME_RESIDUE'), 'insert helper must declare itself residue');
-  assert.ok(insertSrc.includes('audit-only path'), 'insert helper must declare itself audit-only');
-  assert.ok(insertSrc.includes('NOT a Google upload authority'), 'insert helper must explicitly deny upload authority');
+test('PR-2D: runtime marketing_signals write modules removed', () => {
+  assert.ok(!existsSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts')));
+  assert.ok(!existsSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'insert-marketing-signal.ts')));
+  assert.ok(!existsSync(join(ROOT, 'lib', 'oci', 'upsert-marketing-signal.ts')));
 });

@@ -9,7 +9,7 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import { ensureOciQueueEnqueue } from '@/lib/oci/ensure-oci-queue-enqueue';
 
 config({ path: join(process.cwd(), '.env.local') });
 
@@ -86,7 +86,7 @@ async function main() {
 
     if (dryRun) continue;
 
-    const parity = await ensureMarketingSignalQueueParity({
+    const parity = await ensureOciQueueEnqueue({
       siteId: row.site_id,
       callId: row.call_id,
       stage,

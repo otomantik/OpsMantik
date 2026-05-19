@@ -24,12 +24,12 @@ test('MARKETING_SIGNALS_AUDIT_LANE runbook states audit-only and queue authority
   assert.ok(doc.includes('EXPORT_CLOSURE'));
 });
 
-test('parity repair script uses ensureMarketingSignalQueueParity', () => {
+test('parity repair script uses ensureOciQueueEnqueue', () => {
   const src = readFileSync(
     join(ROOT, 'scripts', 'db', 'oci-repair-marketing-signal-queue-parity.ts'),
     'utf8'
   );
-  assert.ok(src.includes('ensureMarketingSignalQueueParity'));
+  assert.ok(src.includes('ensureOciQueueEnqueue'));
   assert.ok(src.includes('--dry-run'));
   assert.ok(src.includes(".from('marketing_signals')"));
 });

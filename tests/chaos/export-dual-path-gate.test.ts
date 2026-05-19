@@ -32,7 +32,7 @@ test('chaos: backfill writers fail-closed toward queue parity helper', () => {
     'utf8'
   );
   assert.ok(
-    precursor.includes('ensureMarketingSignalQueueParity'),
+    precursor.includes('ensureOciQueueEnqueue'),
     'precursor backfill must route through queue parity helper'
   );
   assert.ok(

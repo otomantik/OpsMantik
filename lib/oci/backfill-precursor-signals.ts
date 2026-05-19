@@ -11,7 +11,7 @@ import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-s
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
 import { planPrecursorBackfillStages, type BackfillTimeSource } from '@/lib/oci/precursor-backfill-plan';
 import type { PipelineStage } from '@/lib/oci/signal-types';
-import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import { ensureOciQueueEnqueue } from '@/lib/oci/ensure-oci-queue-enqueue';
 
 export interface PrecursorBackfillParams {
   siteId: string;
@@ -165,7 +165,7 @@ export async function runPrecursorSignalBackfill(
         snapshot,
       });
 
-      const parity = await ensureMarketingSignalQueueParity({
+      const parity = await ensureOciQueueEnqueue({
         siteId: params.siteId,
         callId,
         stage: plan.stage as Exclude<PipelineStage, 'won'>,

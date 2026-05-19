@@ -4,7 +4,7 @@
  */
 
 import type { PipelineStage, SignalPayload, EvaluateResult } from '../types';
-import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import { ensureOciQueueEnqueue } from '@/lib/oci/ensure-oci-queue-enqueue';
 
 export interface RouterContext {
   siteId: string;
@@ -22,14 +22,13 @@ export async function routeStage(
   }
 
   // 'won' is exclusively owned by the seal path (enqueueSealConversion → offline_conversion_queue).
-  // contacted / offered / junk → insertMarketingSignal → marketing_signals (ACTIVE_RUNTIME_RESIDUE / audit-only).
-  // offline_conversion_queue is the ONLY runtime Google upload journal.
+  // contacted / offered / junk → offline_conversion_queue journal only (queue SSOT).
   if (stage === 'won') {
     return { routed: false, conversionValue: 0, dropped: true, causalDna: {} };
   }
 
   const leadScore = Number.isFinite(payload.systemScore as number) ? Number(payload.systemScore) : 0;
-  const queueParityResult = await ensureMarketingSignalQueueParity({
+  const queueParityResult = await ensureOciQueueEnqueue({
     siteId,
     callId,
     stage,

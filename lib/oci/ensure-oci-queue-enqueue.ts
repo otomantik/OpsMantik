@@ -1,13 +1,13 @@
 import { enqueueOciConversionRow } from '@/lib/oci/enqueue-oci-conversion-row';
 import type { EnqueueOciMicroStage } from '@/lib/oci/enqueue-oci-conversion-row';
 
-export type ParityReasonCode =
+export type OciQueueEnqueueReasonCode =
   | 'PARITY_QUEUE_ENQUEUED'
   | 'PARITY_QUEUE_DUPLICATE'
   | 'PARITY_CONSENT_MISSING'
   | 'PARITY_QUEUE_ERROR';
 
-export interface EnsureMarketingSignalQueueParityParams {
+export interface EnsureOciQueueEnqueueParams {
   siteId: string;
   callId: string;
   stage: EnqueueOciMicroStage;
@@ -22,12 +22,12 @@ export interface EnsureMarketingSignalQueueParityParams {
   traceId?: string | null;
 }
 
-export interface EnsureMarketingSignalQueueParityResult {
+export interface EnsureOciQueueEnqueueResult {
   parityKey: string;
   queueAttempted: boolean;
   queueEnqueued: boolean;
   queueId?: string | null;
-  reasonCode: ParityReasonCode;
+  reasonCode: OciQueueEnqueueReasonCode;
   retryable: boolean;
   traceId: string | null;
 }
@@ -39,9 +39,10 @@ function toBucketIso(input: Date): string {
   return d.toISOString();
 }
 
-export async function ensureMarketingSignalQueueParity(
-  params: EnsureMarketingSignalQueueParityParams
-): Promise<EnsureMarketingSignalQueueParityResult> {
+/** Enqueue a micro-stage row on `offline_conversion_queue` (journal SSOT). */
+export async function ensureOciQueueEnqueue(
+  params: EnsureOciQueueEnqueueParams
+): Promise<EnsureOciQueueEnqueueResult> {
   const parityKey = [
     params.siteId,
     params.callId,
