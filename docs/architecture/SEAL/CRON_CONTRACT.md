@@ -1,49 +1,51 @@
-# Cron contract matrix — SEAL-00
+# Cron contract matrix — SEAL-00 / CUT-02A
 
-**Source:** [`vercel.json`](../../../vercel.json) (**19** schedules as of 2026-05-19; counted `crons[].path`)  
-**Final target:** **6 core** + **optional** monthly `invoice-freeze` (7th schedule, not counted in six)
+**Source:** [`vercel.json`](../../../vercel.json)  
+**CUT-02A (merged):** **9** Vercel schedules (was 19). **No handler files deleted. No route handler edits.**  
+**Rollback:** revert `vercel.json` only.
 
-## Retained core (target state — CUT-02)
+## Scheduled after CUT-02A (9)
 
-| Cron | Frequency | Owner | Lock | Heartbeat | Idempotent | Max runtime | Max batch | Failure visibility | Rollback |
-|------|-----------|-------|------|-----------|------------|-------------|-----------|-------------------|----------|
-| `/api/cron/oci/process-outbox-events` | 5m | OCI | yes | partial | claim loop | 300s | ~50 claims | metrics + logs | restore vercel row |
-| `/api/cron/oci-maintenance` | 10m | OCI | yes | yes | yes | 300s | per `run-maintenance` | FAIL in heartbeat | restore row |
-| `/api/cron/night-maintenance` | 03:00 UTC | Storage | yes (`night-maintenance`) | yes | batch RPCs | 300s | 5k×loops | PARTIAL JSON | disable `OPSMANTIK_STORAGE_CLEANUP_APPROVAL` |
-| `/api/cron/auto-junk` | 02:00 | Product | optional | yes | yes | 120s | 500 sites | PASS/PARTIAL | restore row |
-| `/api/cron/watchtower` | 15m | Ops | no | partial | yes | 60s | counts | WARN logs | restore row |
-| `/api/cron/reconcile-usage` | 15m stagger | Billing | yes | yes | yes | 600s | 50 jobs | BILLING_* metrics | restore row |
-| `/api/cron/invoice-freeze` | monthly `0 0 1 * *` | Billing | yes | yes | yes | 300s | all sites | FAIL alert | restore row (**optional 7th**) |
+| Cron | Schedule | Owner | Notes |
+|------|----------|-------|-------|
+| `/api/cron/oci/process-outbox-events` | `1-56/5 * * * *` | OCI | Outbox safety-net worker |
+| `/api/cron/oci-maintenance` | `*/10 * * * *` | OCI | `runOciMaintenance` + bounded upload |
+| `/api/cron/night-maintenance` | `0 3 * * *` | Storage | Idempotency → outbox → GDPR → processed_signals |
+| `/api/cron/auto-junk` | `0 2 * * *` | Product | Intent `expires_at` junk |
+| `/api/cron/watchtower` | `*/15 * * * *` | Ops | Ingest/OCI/billing diagnostics |
+| `/api/cron/reconcile-usage` | `8,23,38,53 * * * *` | Billing | Enqueue + process |
+| `/api/cron/invoice-freeze` | `0 0 1 * *` | Billing | Monthly freeze |
+| `/api/cron/marketing-signals-cleanup` | `55 3 * * *` | Storage | **Kept until CUT-02B** — SENT 60d not in night yet |
+| `/api/cron/cleanup` | `0 4 * * *` | Storage | **Kept until CUT-02B** — archive_failed + queue batch not in night yet |
 
-## Currently scheduled — remove from vercel in CUT-02 (handlers kept)
+## Removed from Vercel schedule in CUT-02A (handlers remain — break-glass)
 
-| Removed (from target core) | Why | Merge into | Break-glass | Rollback |
-|----------------------------|-----|------------|-------------|----------|
-| `idempotency-cleanup` | Overlap | `night-maintenance` | manual GET+`?apply=true` | re-add stagger row |
-| `oci/outbox-cleanup` | Overlap | `night-maintenance` | same | re-add |
-| `processed-signals-retention` | Overlap | `night-maintenance` | same | re-add |
-| `marketing-signals-cleanup` | Overlap | `night-maintenance` | same | re-add |
-| `cleanup` (4-phase) | Overlap | night + auto-junk + oci-maintenance | `?recovery_junk=true` on cleanup route | re-add |
-| `gdpr-retention` | Overlap | night-maintenance phase | manual route | re-add |
-| `oci-recovery` | Overlap | `oci-maintenance` | manual invoke | re-add |
-| `vacuum` | Overlap | oci-maintenance | manual | re-add |
-| `funnel-projection` | OUT_OF_CORE writes | — (stop) | manual | re-add if reporting revived |
-| `truth-parity-repair` | Experimental | — | manual + flag off | re-add |
-| `oci/enqueue-from-sales` | Legacy sales path | document / break-glass | manual | re-add if needed |
-| `oci/ack-receipt-ttl` | TTL hygiene | oci-maintenance or night | manual | re-add |
+| Path | Why removed from schedule | Manual invoke |
+|------|---------------------------|---------------|
+| `funnel-projection` | OUT_OF_CORE analytics | `GET` + `CRON_SECRET` |
+| `truth-parity-repair` | Experimental parity repair | same |
+| `idempotency-cleanup` | Covered by `night-maintenance` | `?apply=true` + approval env |
+| `oci/outbox-cleanup` | Covered by night | same |
+| `processed-signals-retention` | Covered by night | same |
+| `gdpr-retention` | Duplicate anonymize RPC in night | same |
+| `oci-recovery` | Largely superseded by `oci-maintenance` | same |
+| `vacuum` | Product PENDING hygiene | same |
+| `oci/ack-receipt-ttl` | TTL sweep; optional 02C merge | same |
+| `oci/enqueue-from-sales` | Legacy sales enqueue | same |
 
 ## Not in vercel.json (break-glass only)
 
-`process-offline-conversions`, `sweep-unsent-conversions`, `oci/sweep-zombies`, `recover-stuck-signals`, `promote-blocked-queue`, `backfill-precursor-signals`, `attempt-cap`, `providers/*`, `reconcile-usage/{enqueue,run,backfill}`, `test-notification`
+`process-offline-conversions`, `sweep-unsent-conversions`, `oci/sweep-zombies`, `recover-stuck-signals`, `promote-blocked-queue`, `backfill-precursor-signals`, `attempt-cap`, `providers/*`, `reconcile-usage/{enqueue,run,backfill}`, `test-notification`, plus all paths in the table above.
 
 ## Special rules
 
-- Do **not** delete handler files in CUT-02 — remove schedule only; `@deprecated` header for one release.
-- Do **not** merge `oci-recovery` into maintenance without lock + attempt cap + observability (already on maintenance path).
+- **CUT-02A:** schedule-only — do not delete `app/api/cron/**/route.ts` without a later DELETE_AFTER_ONE_RELEASE PR.
 - Night-maintenance mutations require `OPSMANTIK_STORAGE_CLEANUP_APPROVAL=I_APPROVE_STORAGE_MUTATION` when `apply=true`.
+- Manual break-glass: `curl -H "Authorization: Bearer $CRON_SECRET" https://console.opsmantik.com/api/cron/<path>`
 
 ## Evidence
 
-- Locks: [`lib/cron/with-cron-lock.ts`](../../../lib/cron/with-cron-lock.ts), `LEASE_LOCK_MODE=lease` default
+- Contract test: [`tests/unit/cron-schedule-contract.test.ts`](../../../tests/unit/cron-schedule-contract.test.ts)
+- Locks: [`lib/cron/with-cron-lock.ts`](../../../lib/cron/with-cron-lock.ts)
 - Night: [`app/api/cron/night-maintenance/route.ts`](../../../app/api/cron/night-maintenance/route.ts)
 - Storage matrix: [`docs/architecture/OPS/STORAGE_RETENTION_MATRIX.md`](../OPS/STORAGE_RETENTION_MATRIX.md)
