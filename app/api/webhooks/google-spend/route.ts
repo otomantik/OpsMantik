@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertOutOfCoreSurfaceAllowed } from '@/lib/api/out-of-core-surface';
 import { adminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
@@ -42,6 +43,9 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Idempotent: upsert by (site_id, campaign_id, spend_date).
  */
 export async function POST(req: NextRequest) {
+  const retired = assertOutOfCoreSurfaceAllowed('google_spend_webhook');
+  if (retired) return retired;
+
   if (req.method !== 'POST') {
     return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
   }

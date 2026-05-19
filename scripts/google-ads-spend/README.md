@@ -1,5 +1,7 @@
 # Google Ads — Günlük Harcama Webhook (V2)
 
+> **Production status (CUT-01A):** `POST /api/webhooks/google-spend` and `GET /api/dashboard/spend` are **PROD_OFF** on production deployments (HTTP **410** `{ "error": "gone", "code": "SURFACE_RETIRED", "surface": "…" }`). Do **not** deploy or schedule `GoogleAdsScript.js` against `console.opsmantik.com`. Break-glass only on non-production stacks.
+
 Eslamed (ve isteğe bağlı diğer tenant’lar) için Google Ads kampanya harcamasını OpsMantik’e saatlik gönderen script. Sadece **bugünün** verisi çekilir; webhook idempotent upsert yapar.
 
 ---

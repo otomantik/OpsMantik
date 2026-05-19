@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { assertOutOfCoreSurfaceAllowed } from '@/lib/api/out-of-core-surface';
 import { createClient } from '@/lib/supabase/server';
 import { RateLimitService } from '@/lib/services/rate-limit-service';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
@@ -18,6 +19,9 @@ export const dynamic = 'force-dynamic';
 const QUERY_TIMEOUT_MS = 10_000; // 10s
 
 export async function GET(req: NextRequest) {
+  const retired = assertOutOfCoreSurfaceAllowed('reporting_dashboard_stats');
+  if (retired) return retired;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureDefaultSiteActiveModules, DEFAULT_SITE_ACTIVE_MODULES } from '@/lib/types/modules';
+import {
+  ensureDefaultSiteActiveModules,
+  DEFAULT_SITE_ACTIVE_MODULES,
+  OPSMANTIK_DEFAULT_MODULES,
+} from '@/lib/types/modules';
+
+test('DEFAULT_SITE_ACTIVE_MODULES: does not include google_ads_spend', () => {
+  const defaults = DEFAULT_SITE_ACTIVE_MODULES as readonly string[];
+  assert.equal(defaults.includes('google_ads_spend'), false);
+  assert.equal(OPSMANTIK_DEFAULT_MODULES.includes('google_ads_spend'), false);
+});
 
 test('ensureDefaultSiteActiveModules: appends core_oci and scoring when missing', () => {
   const a = ensureDefaultSiteActiveModules(['dashboard', 'google_ads_spend']);

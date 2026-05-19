@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { assertOutOfCoreSurfaceAllowed } from '@/lib/api/out-of-core-surface';
 import { createClient } from '@/lib/supabase/server';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
 import { requireModule, ModuleNotEnabledError } from '@/lib/auth/require-module';
@@ -12,6 +13,9 @@ import { getBuildInfoHeaders } from '@/lib/build-info';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
+  const retired = assertOutOfCoreSurfaceAllowed('google_spend_dashboard');
+  if (retired) return retired;
+
   const supabase = await createClient();
   const {
     data: { user },

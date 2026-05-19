@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertOutOfCoreSurfaceAllowed } from '@/lib/api/out-of-core-surface';
 import { createClient } from '@/lib/supabase/server';
 import { StatsService } from '@/lib/services/stats-service';
 import { isAllowedOriginForSite } from '@/lib/security/origin-registry';
@@ -27,6 +28,9 @@ function formatServerTiming(dbMs: number, redisMs: number, totalMs: number): str
  * Security: requires auth + site access (IDOR fix). siteId can be site UUID or public_id.
  */
 export async function GET(req: NextRequest) {
+    const retired = assertOutOfCoreSurfaceAllowed('stats_realtime');
+    if (retired) return retired;
+
     const t0 = nowMs();
     let dbMs = 0;
     let redisMs = 0;

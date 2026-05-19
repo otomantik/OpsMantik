@@ -64,7 +64,16 @@ async function timeFetch(name, url, opts = {}) {
     const ms = Math.round(performance.now() - start);
     const target = TARGETS[name];
     const s = target != null ? status(ms, target) : '';
-    return { ok: res.ok, ms, target, status: s, error: res.ok ? undefined : `HTTP ${res.status}` };
+    const retired = res.status === 410;
+    return {
+      ok: res.ok || retired,
+      ms,
+      target,
+      status: s,
+      statusCode: res.status,
+      retired,
+      error: res.ok || retired ? undefined : `HTTP ${res.status}`,
+    };
   } catch (e) {
     const ms = Math.round(performance.now() - start);
     const msg = e?.message || '';
@@ -146,7 +155,11 @@ async function main() {
       r3 = await timeFetch('/api/stats/realtime', url, { headers: { Origin: origin } });
       if (r3.ok) break;
     }
-    if (r3?.ok) {
+    if (r3?.retired) {
+      console.log(
+        '  /api/stats/realtime     — skipped (HTTP 410 SURFACE_RETIRED; out-of-core PROD_OFF)'
+      );
+    } else if (r3?.ok) {
       const s = r3.ms <= TARGETS['/api/stats/realtime'] ? '✅' : '⚠️';
       console.log(
         `  /api/stats/realtime     ${r3.ms} ms  ${s}  (target ${r3.target} ms, optional)`
