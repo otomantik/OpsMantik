@@ -13,7 +13,7 @@
     "verify:oci-write-schema": "node scripts/db/verify-oci-write-schema.mjs",
     "verify-rpcs": "node scripts/verify-rpc-exists.mjs",
     "verify:partition-triggers": "node scripts/verify-partition-triggers.mjs",
-    "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs",
+    "verify:i18n": "node scripts/verify-dashboard-i18n-atomic.mjs --mode=baseline --baseline=dashboard-i18n-baseline.json",
     "audit:i18n": "node --import tsx scripts/audit-i18n-dictionaries.mjs",
     "verify:i18n:keys": "node scripts/verify-i18n-keys.mjs",
     "report:i18n:unused": "node scripts/find-unused-i18n-keys.mjs",

@@ -66,6 +66,7 @@ next-env.d.ts
 *_ENV_*.txt
 VERCEL_ENV_*.txt
 test-*.mjs
+!scripts/ci/test-oci-perimeter.mjs
 *_CHECKS.sql
 *_DIAGNOSTIC.sql
 *_ANALYSIS.sql

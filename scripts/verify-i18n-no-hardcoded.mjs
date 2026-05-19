@@ -301,7 +301,8 @@ function loadBaseline(baselinePath) {
 }
 
 function baselineKey(v) {
-    return `${v.file}:${v.line}:${v.col}:${v.rule}`;
+    const file = String(v.file).replace(/\\/g, "/");
+    return `${file}:${v.line}:${v.col}:${v.rule}`;
 }
 
 const mode = process.argv.includes("--mode=report") ? "report" : process.argv.includes("--mode=baseline") ? "baseline" : "fail";

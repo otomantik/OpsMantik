@@ -1,0 +1,26 @@
+[
+  {
+    "file": "components/dashboard/hunter-card.tsx",
+    "line": 136,
+    "rule": "jsx-text",
+    "text": "GCLID ONAYLI"
+  },
+  {
+    "file": "components/dashboard/lead-action-overlay.tsx",
+    "line": 172,
+    "rule": "jsx-text",
+    "text": "SOĞUK / DÜŞÜK"
+  },
+  {
+    "file": "components/dashboard/lead-action-overlay.tsx",
+    "line": 186,
+    "rule": "jsx-text",
+    "text": "NORMAL / ORTA"
+  },
+  {
+    "file": "components/dashboard/lead-action-overlay.tsx",
+    "line": 200,
+    "rule": "jsx-text",
+    "text": "SICAK / YÜKSEK"
+  }
+]

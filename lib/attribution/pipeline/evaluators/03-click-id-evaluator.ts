@@ -34,7 +34,7 @@ export function evaluateClickId(ctx: ClassificationContext): void {
   pushTrace(ctx, 'EVIDENCE_EVAL', 'Found valid Google click-id');
   ctx.selected_evidence.push(gclid ? 'param.gclid_valid' : wbraid ? 'param.wbraid_valid' : 'param.gbraid_valid');
 
-  let channel: import('../../truth-engine-types').TrafficChannel = 'paid_search';
+  const channel: import('../../truth-engine-types').TrafficChannel = 'paid_search';
   const utmSource = normSource(ctx.parsed.utm_source);
   const conflictingUtm =
     utmSource &&

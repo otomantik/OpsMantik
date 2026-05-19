@@ -40,7 +40,7 @@ export async function loadPreviousSessionContext(
 
   const since = new Date(Date.now() - DARK_RETURN_MS).toISOString();
 
-  let query = adminClient
+  const query = adminClient
     .from('sessions')
     .select('id, created_at, traffic_v2_ledger, traffic_source, attribution_source')
     .eq('site_id', siteId)
