@@ -17,6 +17,9 @@ import {
 } from '@/lib/auth/panel-preview-context';
 import { resolvePlatformAdmin } from '@/lib/auth/platform-admin';
 import { dedupeLatestByIntentKey } from '@/lib/queue/dedupe-latest-by-intent-key';
+import { OciStatusStrip } from '@/components/panel/oci-status-strip';
+import { InstallHealthStrip } from '@/components/panel/install-health-strip';
+import { hasCapability } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -164,6 +167,11 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
   });
   const dedupedProcessedCalls = dedupeLatestByIntentKey(processedCalls);
 
+  const access = await validateSiteAccess(targetSiteId, user.id, supabase);
+  const showOciManage =
+    Boolean(access.allowed && access.role && hasCapability(access.role, 'queue:operate')) ||
+    isPlatformAdmin;
+
   return (
     <I18nProvider
       locale={resolvedLocale}
@@ -218,7 +226,9 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
           </div>
         </div>
         {/* Surface */}
-        <div className="max-w-xl mx-auto px-4 py-8">
+        <div className="max-w-xl mx-auto px-4 py-8 space-y-4">
+          <InstallHealthStrip siteId={targetSiteId} />
+          <OciStatusStrip siteId={targetSiteId} showManageLink={showOciManage} />
           <PanelFeed
             siteId={targetSiteId}
             initialCalls={dedupedProcessedCalls as unknown as import('@/lib/types/hunter').HunterIntent[]}

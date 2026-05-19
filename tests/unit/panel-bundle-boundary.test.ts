@@ -10,9 +10,12 @@ const ROOT = process.cwd();
 
 const PANEL_FILES = [
   'app/panel/page.tsx',
+  'app/panel/oci/page.tsx',
   'components/dashboard/panel-feed.tsx',
   'components/dashboard/hunter-card.tsx',
   'components/dashboard/lead-action-overlay.tsx',
+  'components/panel/oci-status-strip.tsx',
+  'components/panel/install-health-strip.tsx',
 ] as const;
 
 const FORBIDDEN_PATTERNS: { label: string; pattern: RegExp }[] = [
