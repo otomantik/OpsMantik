@@ -42,14 +42,14 @@ export function InstallHealthStrip({ siteId }: { siteId: string }) {
     void load();
   }, [load]);
 
-  const stateKey =
+  const stateMessage =
     verified === true
-      ? 'ready'
+      ? t('panel.installStrip.state.ready')
       : verified === false
         ? originCount > 0
-          ? 'pending'
-          : 'notInstalled'
-        : 'unknown';
+          ? t('panel.installStrip.state.pending')
+          : t('panel.installStrip.state.notInstalled')
+        : t('panel.installStrip.state.unknown');
 
   return (
     <section
@@ -59,7 +59,7 @@ export function InstallHealthStrip({ siteId }: { siteId: string }) {
       <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1">
         {t('panel.installStrip.title')}
       </h2>
-      <p className="text-xs font-semibold text-slate-800">{t(`panel.installStrip.state.${stateKey}`)}</p>
+      <p className="text-xs font-semibold text-slate-800">{stateMessage}</p>
       <p className="text-[10px] text-slate-500 mt-1">{t('panel.installStrip.hint')}</p>
     </section>
   );

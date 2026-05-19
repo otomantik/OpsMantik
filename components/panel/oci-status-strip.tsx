@@ -10,6 +10,24 @@ const POLL_MS = 45_000;
 
 const STRIP_STATUSES = ['QUEUED', 'PROCESSING', 'UPLOADED', 'COMPLETED', 'FAILED'] as const;
 
+function ociStripStatusLabel(
+  status: (typeof STRIP_STATUSES)[number],
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case 'QUEUED':
+      return t('panel.ociStrip.status.QUEUED');
+    case 'PROCESSING':
+      return t('panel.ociStrip.status.PROCESSING');
+    case 'UPLOADED':
+      return t('panel.ociStrip.status.UPLOADED');
+    case 'COMPLETED':
+      return t('panel.ociStrip.status.COMPLETED');
+    case 'FAILED':
+      return t('panel.ociStrip.status.FAILED');
+  }
+}
+
 export function OciStatusStrip({
   siteId,
   showManageLink,
@@ -75,7 +93,7 @@ export function OciStatusStrip({
                 key={status}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-700"
               >
-                <span className="text-slate-400">{t(`panel.ociStrip.status.${status}`)}</span>
+                <span className="text-slate-400">{ociStripStatusLabel(status, t)}</span>
                 <span>{n}</span>
               </span>
             );

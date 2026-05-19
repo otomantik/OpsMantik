@@ -245,6 +245,8 @@ export const en = {
   'panel.brandMonogram': 'OM',
   'panel.focusDeck': 'Focus Deck',
   'panel.live': 'Live',
+  'panel.readOnlyPreview': 'read-only preview',
+  'panel.previewBadge': 'preview',
   'panel.nav.desk': 'Desk',
   'panel.nav.oci': 'OCI',
   'panel.ociStrip.title': 'Google upload queue',

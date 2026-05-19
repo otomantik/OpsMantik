@@ -64,7 +64,7 @@ export function PanelChrome({
             </span>
             {isReadOnlyPreview ? (
               <span className="px-2 py-1 text-[9px] font-black uppercase text-amber-800 bg-amber-50 border border-amber-200 rounded-full">
-                preview
+                {translate(locale, 'panel.previewBadge')}
               </span>
             ) : null}
             <form action="/auth/signout" method="post">
