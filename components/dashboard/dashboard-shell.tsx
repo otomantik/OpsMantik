@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { QualificationQueue } from './qualification-queue';
 import {
@@ -23,8 +22,6 @@ import {
 } from '@/lib/contexts/site-realtime-dashboard-context';
 import Link from 'next/link';
 import { LiveClock } from './live-clock';
-import { useFunnelAnalytics } from '@/lib/hooks/use-funnel-analytics';
-import { CROInsights } from './widgets/cro-insights';
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import './reset.css';
 import type { SiteRole } from '@/lib/auth/rbac';
@@ -43,46 +40,6 @@ interface DashboardShellProps {
   /** Tenant entitlements for module-gated dashboard features. Default [] when unknown. */
   activeModules?: OpsMantikModule[];
 }
-
-const BreakdownWidgets = dynamic(
-  () => import('./widgets/breakdown-widgets').then((mod) => mod.BreakdownWidgets),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="space-y-4">
-        <div className="h-6 w-32 bg-slate-100 rounded animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="h-[300px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
-          <div className="h-[300px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
-          <div className="h-[300px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
-        </div>
-      </div>
-    ),
-  }
-);
-
-const PulseProjectionWidgets = dynamic(
-  () => import('./widgets/pulse-projection-widgets').then((mod) => mod.PulseProjectionWidgets),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="h-[180px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
-        <div className="h-[180px] bg-slate-50 rounded-xl border border-slate-200 animate-pulse" />
-      </div>
-    ),
-  }
-);
-
-const TrafficSourceBreakdown = dynamic(
-  () => import('./widgets/traffic-source-breakdown').then((mod) => mod.TrafficSourceBreakdown),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="bg-slate-50 rounded-xl border border-slate-200 h-[400px] animate-pulse" />
-    ),
-  }
-);
 
 export function DashboardShell(props: DashboardShellProps) {
   return (
@@ -105,34 +62,25 @@ function DashboardShellInner({
   const resolvedTimezone = resolveDashboardDayTimezone(siteTimezone);
   const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today'>('today');
 
-  // Single holistic realtime channel for shell badge + queue refetches (see provider).
   const realtime = useSiteRealtimeDashboard();
-
-  // Funnel analytics and CRO insights
-  const { metrics, loading: analyticsLoading } = useFunnelAnalytics(siteId);
 
   const initialFrom = initialTodayRange?.fromIso?.trim();
   const initialTo = initialTodayRange?.toIso?.trim();
 
-  // GO3: single source of truth for queue day selection.
   const queueRange = useMemo(() => {
     const nowUtc = new Date();
     const { fromIso: todayStartUtcIso, toIso: todayEndUtcIso } = getTodayTrtUtcRange(nowUtc, resolvedTimezone);
     const todayStartUtcMs = new Date(todayStartUtcIso).getTime();
     if (selectedDay === 'today') {
-      // IMPORTANT: Use full TRT day [start, next day start) (same as server redirect).
-      // This avoids "today empty" when DB timestamps drift slightly into the future (TRT/UTC offset bugs).
       const fromIso = initialFrom || todayStartUtcIso;
       const toIso = initialTo || todayEndUtcIso;
       return { day: 'today' as const, fromIso, toIso };
     }
     const fromMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
-    // Half-open range [yesterdayStart, todayStart)
     const toMs = todayStartUtcMs;
     return { day: 'yesterday' as const, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
   }, [selectedDay, initialFrom, initialTo, resolvedTimezone]);
 
-  // Scope-aware HUD stats
   const { stats, loading, error: statsError } = useCommandCenterP0Stats(
     siteId,
     { fromIso: queueRange.fromIso, toIso: queueRange.toIso },
@@ -142,7 +90,6 @@ function DashboardShellInner({
   const captured = loading ? '…' : String(stats?.sealed ?? 0);
   const filtered = loading ? '…' : String(stats?.junk ?? 0);
 
-  // DERMINISTIC ENTERPRISE METRICS (no fake fallback for scroll — show — when no data)
   const gclidRatio = stats?.total_leads ? Math.round(((stats?.gclid_leads || 0) / stats.total_leads) * 100) : 0;
   const avgScroll = stats?.avg_scroll_depth;
   const avgEngagement = typeof avgScroll === 'number' && Number.isFinite(avgScroll) ? avgScroll : null;
@@ -150,7 +97,6 @@ function DashboardShellInner({
   return (
     <SiteModulesProvider siteId={siteId} activeModules={activeModules}>
       <div className="om-dashboard-reset min-h-screen transition-all duration-500 overflow-x-hidden pb-10 bg-slate-100 text-slate-900">
-        {/* ENTERPRISE GLOBAL STATUS BAR */}
         <div className="w-full h-9 px-4 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-200 bg-white text-slate-600 z-60 relative">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
@@ -164,7 +110,6 @@ function DashboardShellInner({
           <LiveClock />
         </div>
 
-        {/* Desktop-first Header */}
         <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
           <div className="mx-auto max-w-7xl px-6 py-4 w-full min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -173,7 +118,7 @@ function DashboardShellInner({
                   href="/dashboard"
                   className={cn(
                     buttonVariants({ variant: 'ghost' }),
-                    "-ml-2 h-10 px-3 inline-flex items-center gap-2 min-w-0 hover:bg-slate-100 transition-colors rounded-lg"
+                    '-ml-2 h-10 px-3 inline-flex items-center gap-2 min-w-0 hover:bg-slate-100 transition-colors rounded-lg'
                   )}
                 >
                   <Home className="h-5 w-5 shrink-0 text-slate-600" />
@@ -181,16 +126,17 @@ function DashboardShellInner({
                     {siteName || siteDomain || 'OpsMantik'}
                   </span>
                 </Link>
-                <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">{t('sidebar.p0CommandCenter')}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider px-3 pt-0.5 leading-none text-slate-500">
+                  {t('sidebar.p0CommandCenter')}
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 min-w-0">
-                {/* Desktop: LocaleSwitcher visible; Mobile: moved into dropdown to free space */}
                 <div className="hidden sm:block shrink-0">
                   <LocaleSwitcher />
                 </div>
                 <Link
-                  href={`#niyetler`}
+                  href="#niyetler"
                   className={cn(
                     buttonVariants({ variant: 'outline' }),
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
@@ -199,13 +145,13 @@ function DashboardShellInner({
                   {t('dashboard.intents')}
                 </Link>
                 <Link
-                  href={`#raporlar`}
+                  href="/panel"
                   className={cn(
                     buttonVariants({ variant: 'outline' }),
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                   )}
                 >
-                  {t('dashboard.reportsHub')}
+                  /panel
                 </Link>
                 <div className="shrink-0 flex flex-col items-end">
                   {(() => {
@@ -227,7 +173,11 @@ function DashboardShellInner({
                         <span
                           className={cn(
                             'h-1.5 w-1.5 rounded-full shrink-0',
-                            status === 'active' ? 'bg-emerald-500 animate-pulse' : status === 'connected' ? 'bg-amber-500' : 'bg-red-500'
+                            status === 'active'
+                              ? 'bg-emerald-500 animate-pulse'
+                              : status === 'connected'
+                                ? 'bg-amber-500'
+                                : 'bg-red-500'
                           )}
                         />
                         <span className="hidden min-[420px]:inline">
@@ -266,7 +216,6 @@ function DashboardShellInner({
                         </DropdownMenuItem>
                       </Link>
                     </div>
-                    {/* Mobile: LocaleSwitcher moved here to free header space */}
                     <div className="sm:hidden mt-2 pt-2 border-t border-slate-700">
                       <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">{t('common.language')}</DropdownMenuLabel>
                       <div className="mt-2">
@@ -291,20 +240,19 @@ function DashboardShellInner({
                 {formatSupabaseClientError(statsError)}
               </div>
             )}
-            {/* Scoreboard */}
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: t('kpi.capture'), value: captured, icon: Target, sub: t('kpi.verified') },
                 { label: t('kpi.shield'), value: filtered, icon: Shield, sub: t('kpi.redacted') },
                 { label: t('kpi.efficiency'), value: `${gclidRatio}%`, icon: Zap, sub: t('kpi.gclidRatio') },
-                { label: t('kpi.interest'), value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: t('kpi.avgScroll') }
+                { label: t('kpi.interest'), value: avgEngagement != null ? `${avgEngagement}%` : '—', icon: Flame, sub: t('kpi.avgScroll') },
               ].map((item, idx) => (
                 <div key={idx} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm flex flex-col justify-between min-h-[72px]">
                   <div className="flex items-center gap-2">
                     <item.icon className="h-4 w-4 text-slate-500" />
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</span>
                   </div>
-                  <div className="mt-2">
+                  <div>
                     <div className="text-xl sm:text-2xl font-bold tabular-nums leading-tight text-slate-900">{item.value}</div>
                     <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{item.sub}</div>
                   </div>
@@ -315,38 +263,19 @@ function DashboardShellInner({
         </header>
 
         <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <div id="niyetler" className="xl:col-span-7">
-              <div className="mb-3">
-                <h2 className="text-base font-semibold text-slate-800">{t('dashboard.intents')}</h2>
-                <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.intentsSubtitle')}</p>
-              </div>
-              <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
-            </div>
-            <div id="raporlar" className="xl:col-span-5 space-y-6">
-              <div className="mb-1">
-                <h2 className="text-base font-semibold text-slate-800">{t('dashboard.reportsHub')}</h2>
-                <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.reportsHubSubtitle')}</p>
-              </div>
-              <CROInsights metrics={metrics} loading={analyticsLoading} />
-              <TrafficSourceBreakdown
-                siteId={siteId}
-                dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-              />
-              <PulseProjectionWidgets
-                siteId={siteId}
-                dateRange={queueRange}
-                scope="all"
-              />
-            </div>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600" data-testid="analytics-retired-notice">
+            Analytics reports retired. Use{' '}
+            <Link href="/panel" className="font-semibold text-slate-900 underline underline-offset-2">
+              /panel
+            </Link>{' '}
+            for Today Desk and OCI operations.
           </div>
-
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <BreakdownWidgets
-              siteId={siteId}
-              dateRange={{ from: queueRange.fromIso, to: queueRange.toIso }}
-              adsOnly={false}
-            />
+          <div id="niyetler">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-slate-800">{t('dashboard.intents')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('dashboard.intentsSubtitle')}</p>
+            </div>
+            <QualificationQueue siteId={siteId} range={queueRange} siteRole={siteRole} />
           </div>
         </main>
       </div>

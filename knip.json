@@ -27,7 +27,10 @@
     "lib/services/audit-logger.ts",
     "lib/providers/google-ads-api/conversion-upload-adapter.ts",
     "lib/attribution/session-shadow.ts",
-    "lib/attribution/shadow-evaluator.ts"
+    "lib/attribution/shadow-evaluator.ts",
+    "lib/hooks/use-funnel-analytics.ts",
+    "lib/services/analytics-service.ts",
+    "components/dashboard/widgets/cro-insights.tsx"
   ],
   "ignoreBinaries": ["k6", "wrangler"],
   "ignoreDependencies": ["tailwindcss"],

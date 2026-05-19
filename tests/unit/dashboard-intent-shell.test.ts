@@ -21,10 +21,30 @@ test('dashboard shell is intent-first: no CRM desk or follow-up preview', () => 
   assert.ok(!src.includes('FollowUpPreview'), 'dashboard shell does not import CRM follow-up preview');
   assert.ok(!src.includes('/conversations'), 'dashboard shell does not link to legacy conversation desk');
   assert.ok(!src.includes('today-desk'), 'dashboard shell does not link to today desk');
-  assert.ok(src.includes("dashboard.intents"), 'dashboard shell exposes localized intent navigation');
-  assert.ok(src.includes("dashboard.reportsHub"), 'dashboard shell exposes localized reports navigation');
+  assert.ok(src.includes('dashboard.intents'), 'dashboard shell exposes localized intent navigation');
   assert.ok(src.includes('id="niyetler"'), 'dashboard shell anchors the intents section');
-  assert.ok(src.includes('id="raporlar"'), 'dashboard shell anchors the reports section');
+});
+
+test('CUT-01B: dashboard shell has no funnel/CRO/chart analytics imports', () => {
+  const src = readFileSync(shellPath, 'utf8');
+  const forbidden = [
+    'useFunnelAnalytics',
+    'CROInsights',
+    'BreakdownWidgets',
+    'TrafficSourceBreakdown',
+    'PulseProjectionWidgets',
+    'from "recharts"',
+    "from 'recharts'",
+    '#raporlar',
+    'dashboard.reportsHub',
+  ];
+  for (const token of forbidden) {
+    assert.ok(!src.includes(token), `dashboard shell must not contain ${token}`);
+  }
+  assert.ok(src.includes('QualificationQueue'), 'dashboard shell keeps qualification queue');
+  assert.ok(src.includes('oci-control'), 'dashboard shell keeps OCI control link');
+  assert.ok(src.includes('/activity'), 'dashboard shell keeps activity link');
+  assert.ok(src.includes('analytics-retired-notice'), 'dashboard shell shows analytics retired notice');
 });
 
 test('legacy CRM routes redirect to intent command center', () => {
