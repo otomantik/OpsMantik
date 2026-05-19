@@ -77,7 +77,7 @@ export function isQueueRowSendableForGoogleAdsExport(
 }
 
 /**
- * Outbox → marketing_signals (contacted / offered / junk). Won uses {@link isCallSendableForSealExport}.
+ * Outbox → journal micro-stages (contacted / offered / junk). Won uses {@link isCallSendableForSealExport}.
  * Junk satırı: çağrı durumu junk olmalı; contacted/offered için intent + mevcut sinyal kuralları.
  */
 export function isCallSendableForOutboxSignalStage(

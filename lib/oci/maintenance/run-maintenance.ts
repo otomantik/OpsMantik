@@ -9,9 +9,9 @@
  *
  * Behavioural parity with the legacy routes:
  *
- *   1. `sweep-zombies`             → outbox + journal queue + marketing_signals PROCESSING rescue +
+ *   1. `sweep-zombies`             → outbox + journal queue rescue +
  *                                    stale UPLOADED close-out (GET export reads journal only).
- *   2. `recover-stuck-signals`     → re-PENDING marketing_signals stuck > 4h (ops; not script GET).
+ *   2. `recover-stuck-signals`     → queue-only compatibility route (legacy name).
  *   3. `attempt-cap`               → mark rows with attempt_count >= MAX_ATTEMPTS as FAILED.
  *   4. `sweep-unsent-conversions`  → re-enqueue sealed calls missing from OCI queue.
  *   5. `pulse-recovery`            → identity-stitcher backoff retries (MODULE 2).

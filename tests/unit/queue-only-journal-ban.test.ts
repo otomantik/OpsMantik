@@ -16,7 +16,7 @@ const RUNTIME_FILES = [
   join(ROOT, 'lib', 'oci', 'outbox', 'process-outbox.ts'),
 ];
 
-test('queue-only gate: runtime files must not reference marketing_signals', () => {
+test('queue-only gate: OCI runtime files must not reference marketing_signals', () => {
   for (const file of RUNTIME_FILES) {
     const src = readFileSync(file, 'utf8');
     assert.ok(!src.includes("from('marketing_signals')"), `${file} must be queue-only`);

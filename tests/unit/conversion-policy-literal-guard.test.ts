@@ -28,7 +28,7 @@ test('PR-D guard: no duplicate stage-base literal maps outside approved SSOT mod
 
   const allow = new Set([
     'lib/oci/optimization-contract.ts',
-    'lib/oci/marketing-signal-value-ssot.ts',
+    'lib/oci/oci-conversion-economics.ts',
   ]);
 
   const offenders: string[] = [];

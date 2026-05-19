@@ -1,7 +1,7 @@
 import { adminClient } from '@/lib/supabase/admin';
 
 type DeadLetterPipeline = 'SCRIPT' | 'WORKER';
-type DeadLetterResourceType = 'oci_queue' | 'marketing_signal';
+type DeadLetterResourceType = 'oci_queue';
 type DeadLetterErrorCategory = 'PERMANENT' | 'VALIDATION' | 'AUTH' | 'MAX_ATTEMPTS';
 
 export interface DeadLetterAuditEntry {

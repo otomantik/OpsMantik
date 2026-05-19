@@ -23,7 +23,7 @@ import {
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { NEUTRAL_CURRENCY } from '@/lib/i18n/site-locale';
 import { resolveWonQueueInitialStatus } from '@/lib/oci/preceding-signals';
-import { resolveWonConversionEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { resolveWonConversionEconomics } from '@/lib/oci/oci-conversion-economics';
 import {
   defaultProviderPathFromSyncMethod,
   type IntentJournalClassification,

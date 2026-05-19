@@ -22,7 +22,7 @@ const OUROBOROS_SAMPLE_WINDOW_HOURS = 2;
  * 0. Ouroboros Watchdog: EMA + 3σ anomaly detection on outbox processing times.
  * 1. Outbox: Resets PROCESSING events older than SCRIPT_ACK_TIMEOUT_MINUTES back to PENDING.
  * 2. OCI Queue: Resets PROCESSING queue rows older than SCRIPT_ACK_TIMEOUT_MINUTES to QUEUED.
- * 2.5. Legacy marketing_signals rescue retired (queue-only).
+ * 2.5. Legacy signal rescue retired (queue-only).
  * 3. OCI Queue: Closes UPLOADED rows older than 48 hours as COMPLETED_UNVERIFIED.
  *
  * SCRIPT_ACK_TIMEOUT_MINUTES default is 30 (up from the old 10-minute hardcode).

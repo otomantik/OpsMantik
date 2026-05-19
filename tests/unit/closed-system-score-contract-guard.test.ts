@@ -14,8 +14,7 @@ import {
 const ROOT = process.cwd();
 
 const VALUE_MATH_FILES = [
-  'lib/oci/marketing-signal-value-ssot.ts',
-  'lib/oci/marketing-signal-hash.ts',
+  'lib/oci/oci-conversion-economics.ts',
   'lib/oci/enqueue-oci-conversion-row.ts',
 ] as const;
 
@@ -42,8 +41,8 @@ test('CLOSED_SYSTEM_OPTIMIZATION_VALUE_LAW remains stage_base_only_v1', () => {
   assert.equal(CLOSED_SYSTEM_OPTIMIZATION_VALUE_LAW, 'stage_base_only_v1');
 });
 
-test('marketing-signal value SSOT does not reference lead_score (Google cents path)', () => {
-  const rel = 'lib/oci/marketing-signal-value-ssot.ts';
+test('OCI conversion economics does not reference lead_score (Google cents path)', () => {
+  const rel = 'lib/oci/oci-conversion-economics.ts';
   const src = readFileSync(join(ROOT, rel), 'utf8');
   assert.match(src, /optimizationValue|OptimizationValueSnapshot/);
   assert.ok(!/\blead_score\b/.test(src), `${rel} must not mention lead_score on the export economics path`);
@@ -72,8 +71,8 @@ test('lib/oci (excluding optimization-contract) does not reference CATEGORICAL_S
   assert.deepEqual(offenders, []);
 });
 
-test('truth_closure_score is not used on marketing-signal value SSOT path', () => {
-  const rel = 'lib/oci/marketing-signal-value-ssot.ts';
+test('truth_closure_score is not used on OCI conversion economics path', () => {
+  const rel = 'lib/oci/oci-conversion-economics.ts';
   const src = readFileSync(join(ROOT, rel), 'utf8');
   assert.ok(!/\btruth_closure_score\b/.test(src), `${rel} must not reference truth_closure_score (audit-only)`);
 });

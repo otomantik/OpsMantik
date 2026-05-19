@@ -12,8 +12,7 @@ import {
   buildOptimizationSnapshot,
   resolveOptimizationValue,
 } from '@/lib/oci/optimization-contract';
-import { toExpectedValueCents } from '@/lib/oci/marketing-signal-hash';
-import { resolveMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { toExpectedValueCents, resolveOciConversionEconomics } from '@/lib/oci/oci-conversion-economics';
 
 const ROOT = process.cwd();
 
@@ -32,8 +31,8 @@ test('Faz 1: replay — aynı snapshot + para birimi → aynı expected_value_ce
   const snapA = buildOptimizationSnapshot({ stage: 'won', systemScore: 0, actualRevenue: null });
   const snapB = buildOptimizationSnapshot({ stage: 'won', systemScore: 100, actualRevenue: null });
   assert.equal(snapA.optimizationValue, snapB.optimizationValue);
-  const a = resolveMarketingSignalEconomics({ stage: 'won', snapshot: snapA, siteCurrency: 'TRY' });
-  const b = resolveMarketingSignalEconomics({ stage: 'won', snapshot: snapB, siteCurrency: 'TRY' });
+  const a = resolveOciConversionEconomics({ stage: 'contacted', snapshot: snapA, siteCurrency: 'TRY' });
+  const b = resolveOciConversionEconomics({ stage: 'contacted', snapshot: snapB, siteCurrency: 'TRY' });
   assert.equal(a.expectedValueCents, b.expectedValueCents);
   assert.equal(a.expectedValueCents, toExpectedValueCents(snapA.optimizationValue));
 });

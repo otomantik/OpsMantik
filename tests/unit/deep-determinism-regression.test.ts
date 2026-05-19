@@ -127,8 +127,8 @@ test('oci workers re-check current call sendability before exporting or draining
   assert.ok(!exportSrc.includes('blockedSignalIds'), 'journal-only export must not expose legacy signal buckets');
   const markSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-mark-processing.ts'), 'utf8');
   assert.ok(
-    markSrc.includes('Legacy `marketing_signals` is not exported here'),
-    'mark-processing must stay queue-only; marketing_signals are out of script batch'
+    markSrc.includes('offline_conversion_queue'),
+    'mark-processing must stay queue-only journal'
   );
   assert.ok(outboxSrc.includes('isCallSendableForSealExport'), 'outbox worker must re-check live call sendability');
   assert.ok(

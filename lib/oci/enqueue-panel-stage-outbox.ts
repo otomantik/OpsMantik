@@ -8,7 +8,7 @@ import { OCI_RECONCILIATION_REASONS } from '@/lib/oci/reconciliation-reasons';
 import type { OciReconciliationReason } from '@/lib/oci/reconciliation-reasons';
 import { resolveOciClickAttribution, type PrimarySource } from '@/lib/oci/oci-click-attribution';
 import { overlayPanelReturnedCallMergeContextFromDb } from '@/lib/oci/panel-call-merge-context';
-import { resolveWonConversionEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { resolveWonConversionEconomics } from '@/lib/oci/oci-conversion-economics';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 
 async function appendReconciliationBestEffort(
@@ -235,7 +235,7 @@ function bumpSkipMetric(metric: PanelStageOciSkipMetric): void {
 
 /**
  * After panel stage RPC succeeds, inserts a PENDING outbox row so the OCI worker
- * can emit marketing_signals / offline_conversion_queue. Without this row,
+ * can emit offline_conversion_queue journal rows. Without this row,
  * notifyOutboxPending alone has nothing to claim.
  *
  * Click eligibility uses {@link resolveOciClickAttribution} (aligned with process-outbox `getPrimarySource`).

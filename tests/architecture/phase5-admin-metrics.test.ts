@@ -95,7 +95,6 @@ test('buildAdminMetricsSnapshot queries the expected tables', () => {
   for (const table of [
     'outbox_events',
     'offline_conversion_queue',
-    'marketing_signals',
     'sync_dlq',
   ]) {
     assert.ok(

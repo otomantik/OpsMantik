@@ -49,8 +49,8 @@ if (journalEnqueue.includes('toExpectedValueCents')) {
   console.error('[verify-oci-spine] enqueue-oci-conversion-row must not use toExpectedValueCents for SSOT cents');
   process.exit(1);
 }
-if (journalEnqueue.includes("from('marketing_signals')")) {
-  console.error('[verify-oci-spine] enqueue-oci-conversion-row must not write marketing_signals');
+if (/from\(['"]marketing_signals['"]\)/.test(journalEnqueue)) {
+  console.error('[verify-oci-spine] enqueue-oci-conversion-row must not write retired audit table');
   process.exit(1);
 }
 

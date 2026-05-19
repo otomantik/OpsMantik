@@ -18,12 +18,7 @@ async function verifySignalGeneration() {
 
   console.log('--- Verifying Signal Generation Logic ---');
   
-  // Actually, I'll just check the DB directly to see if any marketing_signals exist for my test call
-  // from when I ran the earlier manual tests (if they reached the insert).
-  // But they didn't because of the "Unauthorized" check.
-  
-  // I'll create a dedicated script that uses adminClient to manually generate a signal 
-  // exactly as the API would, to verify the SQL/Schema works.
+  // Queue-only: verify journal enqueue path (no retired audit table).
   
   const { adminClient } = await import('../lib/supabase/admin');
   const { computeLcv } = await import('../lib/oci/lcv-engine');
@@ -63,53 +58,27 @@ async function verifySignalGeneration() {
     systemScore: lcv.breakdown.systemScore,
   });
 
-  const { loadMarketingSignalEconomics } = await import('../lib/oci/marketing-signal-value-ssot');
-  const economics = await loadMarketingSignalEconomics({
+  void OPSMANTIK_CONVERSION_NAMES;
+  void lcv;
+  void canonicalValue;
+
+  const { ensureOciQueueEnqueue } = await import('../lib/oci/ensure-oci-queue-enqueue');
+  console.log('Enqueue journal row (contacted)...');
+  const result = await ensureOciQueueEnqueue({
     siteId,
+    callId,
     stage: 'contacted',
-    snapshot: canonicalValue,
+    occurredAt: new Date(occurredAtIso),
+    leadScore: 0,
+    currency: 'TRY',
+    gclid: call.gclid || 'test_gclid',
+    wbraid: call.wbraid ?? null,
+    gbraid: call.gbraid ?? null,
+    source: 'VERIFICATION_SCRIPT',
+    traceId: null,
   });
 
-  const conversionName = OPSMANTIK_CONVERSION_NAMES.contacted;
-
-  console.log('Writing to marketing_signals...');
-  const { data: signal, error } = await adminClient.from('marketing_signals').insert({
-    site_id: siteId,
-    call_id: callId,
-    signal_type: 'contacted',
-    google_conversion_name: conversionName,
-    google_conversion_time: occurredAtIso,
-    currency_code: economics.currencyCode,
-    value_source: economics.valueSource,
-    conversion_time_source: economics.conversionTimeSource,
-    conversion_value: economics.conversionValueMajor,
-    expected_value_cents: economics.expectedValueCents,
-    optimization_stage: canonicalValue.optimizationStage,
-    optimization_stage_base: canonicalValue.stageBase,
-    system_score: canonicalValue.systemScore,
-    quality_factor: canonicalValue.qualityFactor,
-    optimization_value: economics.conversionValueMajor,
-    gclid: call.gclid || 'test_gclid',
-    dispatch_status: 'PENDING',
-    occurred_at: occurredAtIso,
-    adjustment_sequence: 0,
-    current_hash: 'test_hash_verified',
-    causal_dna: {
-      lcv_stage: 'contacted',
-      lcv_quality_multiplier: lcv.qualityMultiplier,
-      source: 'VERIFICATION_SCRIPT'
-    }
-  }).select('id').single();
-
-  if (error) {
-    console.error('❌ DB Insert Failed:', error.message);
-  } else {
-    console.log('✅ Signal Generated Successfully! ID:', signal.id);
-    
-    // Cleanup
-    await adminClient.from('marketing_signals').delete().eq('id', signal.id);
-    console.log('Cleanup done.');
-  }
+  console.log('Queue enqueue result:', result.reasonCode, result.queueId ?? '(none)');
 }
 
 verifySignalGeneration();

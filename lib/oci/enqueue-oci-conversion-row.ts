@@ -10,7 +10,7 @@ import { computeOfflineConversionExternalId } from '@/lib/oci/external-id';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import type { PipelineStage } from '@/lib/oci/signal-types';
-import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { loadOciConversionEconomics } from '@/lib/oci/oci-conversion-economics';
 import { hasMarketingConsentForCall } from '@/lib/gdpr/consent-check';
 import { logInfo, logWarn } from '@/lib/logging/logger';
 import { parseWithinTemporalSanityWindow } from '@/lib/utils/temporal-sanity';
@@ -102,7 +102,7 @@ export async function enqueueOciConversionRow(
     modelVersion: 'universal-value-v1',
   });
 
-  const economics = await loadMarketingSignalEconomics({ siteId, stage, snapshot });
+  const economics = await loadOciConversionEconomics({ siteId, stage, snapshot });
   const valueCents = economics.expectedValueCents;
 
   const tenantClient = createTenantClient(siteId);

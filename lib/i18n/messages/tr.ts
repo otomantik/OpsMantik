@@ -86,7 +86,7 @@ export const tr = {
   "ociControl.loading": "Liste hazırlanıyor",
   "ociControl.loadMore": "Daha fazla yükle",
   "ociControl.unifiedExportBacklog": "Birleşik dışa aktarma biriken (aktif)",
-  "ociControl.marketingSignalsExportActive": "Sinyal PENDING + PROCESSING",
+  "ociControl.journalExportActive": "Kuyruk PENDING + PROCESSING",
   "ociControl.wonQueueBacklogActive": "Won kuyruk biriken (UPLOADED öncesi)",
   "ociControl.wonQueueInFlightUploaded": "Won UPLOADED (ACK bekliyor)",
   "ociControl.ociSyncMethod.script": "Dışa aktarma: Script (çekme)",

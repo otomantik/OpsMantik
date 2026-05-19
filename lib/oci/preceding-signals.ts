@@ -6,7 +6,7 @@
 import { adminClient } from '@/lib/supabase/admin';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
-/** In-flight precursor rows on the journal (S1) — same semantics as PENDING/PROCESSING marketing_signals. */
+/** In-flight precursor rows on the journal (S1) — QUEUED/PROCESSING micro-stages. */
 const BLOCKING_QUEUE_STATUSES = new Set([
   'QUEUED',
   'RETRY',
@@ -35,7 +35,7 @@ export async function hasBlockingPrecedingJournalMicroStages(
 }
 
 /**
- * Won-row gate: precursors must be exported (legacy `marketing_signals` backlog and/or journal rows).
+ * Won-row gate: precursors must be exported on the journal before Won upload.
  */
 export async function hasBlockingPrecedingExports(siteId: string, callId: string): Promise<boolean> {
   return hasBlockingPrecedingJournalMicroStages(siteId, callId);

@@ -38,7 +38,7 @@ async function claimAndFinalizeQueue(
   }
 }
 
-/** Export marks **only** `offline_conversion_queue` (journal). Legacy `marketing_signals` is not exported here. */
+/** Export marks **only** `offline_conversion_queue` (journal). */
 export async function markExportProcessing(ctx: ExportAuthContext, built: BuiltExportData): Promise<void> {
   if (!ctx.markAsExported) return;
 

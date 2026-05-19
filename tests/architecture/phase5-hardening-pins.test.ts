@@ -6,8 +6,7 @@
  *   1) Seal kill-switch  — OCI_SEAL_PAUSED as first-line env gate.
  *   2) Outbox claim RPC  — FOR UPDATE SKIP LOCKED + attempt_count increment.
  *   3) Outbox retry cap  — OUTBOX_MAX_ATTEMPTS wired into the processor.
- *   4) CHECK constraints — marketing_signals.occurred_at_source + sites locale.
- *   5) Hash helper SSOT  — only marketing-signal-hash.ts owns the computation.
+ *   4) CHECK constraints — sites locale.
  *
  * All tests are static — they inspect migration files and source to pin
  * behaviour no DB round-trip required.
@@ -122,19 +121,6 @@ test('runProcessOutbox caps retries via OUTBOX_MAX_ATTEMPTS', () => {
 // 4) CHECK constraints
 // ---------------------------------------------------------------------------
 
-test('marketing_signals.occurred_at_source CHECK allows the canonical set', () => {
-  const hit = latestMigrationContaining(/marketing_signals_occurred_at_source_check/);
-  assert.ok(hit, 'no migration touches marketing_signals_occurred_at_source_check');
-  // The allowed set must include sale (added in 20260419130000) and must not
-  // silently drop intent / qualified / proposal.
-  for (const value of ['intent', 'qualified', 'proposal', 'sale', 'legacy_migrated']) {
-    assert.ok(
-      new RegExp(`'${value}'`).test(hit!.body),
-      `CHECK allowed set missing '${value}'`
-    );
-  }
-});
-
 test('sites locale CHECK constraints are pinned to ISO-4217 and IANA shapes', () => {
   const path = join(MIGRATIONS, '20260419200000_sites_locale_strict_check.sql');
   assert.ok(existsSync(path), 'locale CHECK migration is missing');
@@ -162,55 +148,6 @@ test('sites.default_country_iso CHECK is pinned to ISO-3166-1 alpha-2 shape', ()
     body,
     /CHECK\s*\(\s*default_country_iso IS NULL\s*OR\s*default_country_iso\s*~\s*'\^\[A-Z\]\{2\}\$'/,
     'country_iso CHECK must enforce ISO-3166-1 alpha-2 shape (2 uppercase letters), NULL allowed for legacy rows'
-  );
-});
-
-// ---------------------------------------------------------------------------
-// 5) Hash helper SSOT
-// ---------------------------------------------------------------------------
-
-test('only marketing-signal-hash.ts implements computeMarketingSignalCurrentHash', () => {
-  const extensions = new Set(['.ts', '.tsx']);
-  const skipDirs = new Set([
-    'node_modules',
-    '.next',
-    '.git',
-    'coverage',
-    'dist',
-    'build',
-    '.vercel',
-    'out',
-    'tests',
-  ]);
-  const hits: string[] = [];
-
-  function walk(dir: string) {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (skipDirs.has(entry.name)) continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
-      }
-      const dot = entry.name.lastIndexOf('.');
-      const ext = dot >= 0 ? entry.name.slice(dot) : '';
-      if (!extensions.has(ext)) continue;
-      const body = readFileSync(full, 'utf8');
-      if (/export function computeMarketingSignalCurrentHash\b/.test(body)) {
-        hits.push(full);
-      }
-    }
-  }
-  walk(ROOT);
-
-  assert.equal(
-    hits.length,
-    1,
-    `expected exactly one runtime implementation of computeMarketingSignalCurrentHash, got:\n${hits.join('\n')}`
-  );
-  assert.ok(
-    hits[0].replace(/\\/g, '/').endsWith('lib/oci/marketing-signal-hash.ts'),
-    `unexpected implementation location: ${hits[0]}`
   );
 });
 

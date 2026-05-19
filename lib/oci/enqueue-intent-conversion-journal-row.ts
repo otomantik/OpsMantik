@@ -1,6 +1,6 @@
 /**
  * PR-9H.6 — Single enqueue surface for intent stages → offline_conversion_queue (journal SSOT).
- * Does not upload, ACK, or write marketing_signals upload authority.
+ * Does not upload or ACK; writes journal rows only.
  */
 
 import { adminClient } from '@/lib/supabase/admin';

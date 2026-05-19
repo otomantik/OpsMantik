@@ -19,7 +19,7 @@ test('computeOfflineConversionExternalId produces oci_ + 32 hex (D1)', () => {
 test('enqueue journal rows stamp deterministic economics path', () => {
   const micro = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
   assert.ok(micro.includes('computeOfflineConversionExternalId'), 'micro enqueue must use deterministic external_id');
-  assert.ok(micro.includes('loadMarketingSignalEconomics'), 'micro enqueue must use value SSOT');
+  assert.ok(micro.includes('loadOciConversionEconomics'), 'micro enqueue must use value SSOT');
   const seal = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
   assert.ok(seal.includes('computeOfflineConversionExternalId'), 'seal enqueue must use deterministic external_id');
 });

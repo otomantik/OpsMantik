@@ -152,7 +152,7 @@ async function runCleanup(req: NextRequest) {
         zombie_recovery: { note: 'Would run recover_stuck_offline_conversion_jobs' },
         archive_failed: { would_archive: Math.min(archiveRes.count ?? 0, limit), days: daysArchiveFailed },
         oci_queue: { would_delete: Math.min(queueRes.count ?? 0, ociLimit), days_to_keep: daysToKeep },
-        queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
+        queue_only_mode: { legacy_signals_cleanup: 'retired' },
         auto_junk: { would_update: Math.min(intentsRes.count ?? 0, limitIntents), days_old: daysOldIntents },
       },
       { headers: getBuildInfoHeaders() }
@@ -302,7 +302,7 @@ async function runCleanup(req: NextRequest) {
       zombie_recovery: { offline_queue: zombiesQueue },
       archive_failed: { archived: archivedFailed, days: daysArchiveFailed },
       oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit: ociLimit },
-      queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
+      queue_only_mode: { legacy_signals_cleanup: 'retired' },
       auto_junk: recoveryJunk
         ? { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents, mode: 'recovery_junk' }
         : { skipped: true, reason: 'expires_at SSOT via /api/cron/auto-junk; use ?recovery_junk=true for fallback' },

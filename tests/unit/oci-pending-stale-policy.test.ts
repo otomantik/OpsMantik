@@ -14,7 +14,7 @@ test('PR-OCI-5: cleanup cron keeps marketing_signals retired (queue-only mode)',
   const src = readFileSync(CLEANUP_ROUTE, 'utf-8');
 
   assert.ok(src.includes('queue_only_mode'));
-  assert.ok(src.includes("legacy_marketing_signals_cleanup: 'retired'"));
+  assert.ok(src.includes("legacy_signals_cleanup: 'retired'"));
   assert.ok(!src.includes(".from('marketing_signals')"));
   assert.ok(!src.includes('STALLED_FOR_HUMAN_AUDIT'));
   assert.ok(!src.includes('applyMarketingSignalDispatchBatch'));
