@@ -1,5 +1,10 @@
 /**
  * OpsMantik — Real-Time Daily Ad Spend Webhook (V2)
+ *
+ * ⚠️ PRODUCTION RETIRED (CUT-01A): Do not deploy or schedule this script against
+ * console.opsmantik.com. POST /api/webhooks/google-spend returns HTTP 410 SURFACE_RETIRED.
+ * Break-glass: run only against a non-production deployment with guard disabled.
+ *
  * Sadece BUGÜNÜN (TODAY) verilerini çeker ve OpsMantik'e gönderir.
  * Saatlik tetikleyici ile çalıştır; her seferinde bugünkü güncel harcama upsert edilir.
  */

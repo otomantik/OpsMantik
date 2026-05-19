@@ -9,6 +9,12 @@ import { join } from 'node:path';
 
 const routePath = join(process.cwd(), 'app', 'api', 'dashboard', 'spend', 'route.ts');
 
+test('GET /api/dashboard/spend: uses out-of-core PROD_OFF guard', () => {
+  const src = readFileSync(routePath, 'utf8');
+  assert.ok(src.includes('assertOutOfCoreSurfaceAllowed'), 'route guards retired surface');
+  assert.ok(src.includes('google_spend_dashboard'), 'route uses google_spend_dashboard surface id');
+});
+
 test('GET /api/dashboard/spend: requires auth', () => {
   const src = readFileSync(routePath, 'utf8');
   assert.ok(src.includes('getUser()'), 'route checks auth');
