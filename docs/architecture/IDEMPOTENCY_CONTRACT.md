@@ -11,7 +11,7 @@ Every PR that adds a writer path or retry path must update this contract.
   - Owner: `enqueuePanelStageOciOutbox`; audit failures increment `panel_stage_reconciliation_persist_failed_total`.
 - Marketing signal ingest
   - Mechanism: `idempotency_key` + unique violation collapse.
-  - Owner: `upsertMarketingSignal`.
+  - Owner: `upsertRetiredAudit`.
 - Same call to second OCI queue row
   - Mechanism: `UNIQUE(call_id)` on `offline_conversion_queue` (`23505` -> skip).
   - Owner: `enqueueSealConversion`.

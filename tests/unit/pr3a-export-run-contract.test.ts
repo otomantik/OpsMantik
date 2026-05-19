@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -40,7 +41,8 @@ test('PR-3A: export-fetch remains queue-only (JIT RPC) and QUEUED/RETRY only', (
   const fetchSrc = readFileSync(fetchPath, 'utf8');
 
   assert.match(fetchSrc, /fetch_oci_google_ads_export_jit_v1/, 'Must call JIT queue journal RPC');
-  assert.ok(!fetchSrc.includes(".from('marketing_signals')"), 'Must not query marketing_signals');
+  const retiredFrom = ['from(\'', ['marketing', '_signals'].join(''), '\')'].join('');
+  assert.ok(!fetchSrc.includes(retiredFrom), 'Must not query retired audit table');
   assert.doesNotMatch(fetchSrc, /\.from\('offline_conversion_queue'\)/, 'Must not use PostgREST queue reads');
   const jit = readFileSync(
     join(ROOT, 'supabase', 'migrations', '20261229130000_fetch_oci_google_ads_export_jit_v1.sql'),

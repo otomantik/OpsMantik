@@ -1,8 +1,8 @@
 # PR-OM-CUT-02A — Cron Kemik Implementation Plan
 
-**Status:** **CUT-02A implemented** — Vercel schedule diet only (`19 → 9`).  
+**Status:** **CUT-02A ✅** (`19 → 10` schedules) · **CUT-02B ✅** (`cleanup` → night-maintenance; **7** schedules).  
 **Prerequisite:** CUT-01 family complete on `master` (`510e36c`).  
-**Scope ladder:** 02A ✅ (vercel schedule diet) → 02B (night consolidation) → 02C (OCI maintenance) → 02D (break-glass docs).
+**Scope ladder:** 02A ✅ → 02B ✅ → 02C (OCI maintenance) → 02D (break-glass docs).
 
 **CUT-02A result:** No handler files edited. No route deletes. No migrations. Rollback = revert `vercel.json`.
 
@@ -25,7 +25,7 @@
 | `/api/cron/idempotency-cleanup` | yes | `10 3 * * *` | `delete_expired_idempotency_batch` | yes | yes | batch | no | **PROD_OFF_FROM_VERCEL** — covered by night-maintenance |
 | `/api/cron/oci/outbox-cleanup` | yes | `25 3 * * *` | `delete_outbox_processed_batch` | partial | yes | batch | no | **PROD_OFF_FROM_VERCEL** — covered by night-maintenance |
 | `/api/cron/processed-signals-retention` | yes | `40 3 * * *` | stale fail + delete processed_signals | yes | yes | batch | no | **PROD_OFF_FROM_VERCEL** — covered by night-maintenance |
-| `/api/cron/marketing-signals-cleanup` | yes | `55 3 * * *` | `cleanup_marketing_signals_batch` (SENT 60d) | yes | yes | batch | no | **DEFER** — **not** in night-maintenance; remove only after 02B extends night |
+| `/api/cron/retired-audit-cleanup (removed)` | yes | `55 3 * * *` | `cleanup_offline_conversion_queue_batch` (SENT 60d) | yes | yes | batch | no | **DEFER** — **not** in night-maintenance; remove only after 02B extends night |
 | `/api/cron/gdpr-retention` | yes | `30 5 * * *` | `anonymize_consent_less_data_batch` | yes | yes | batch | no | **PROD_OFF_FROM_VERCEL** — duplicate RPC in night-maintenance |
 | `/api/cron/oci-recovery` | yes | `*/30 * * * *` | `recover_stuck_offline_conversion_jobs` (30m) | no | yes | RPC | partial | **PROD_OFF_FROM_VERCEL** — largely superseded by oci-maintenance; monitor 1 release |
 | `/api/cron/vacuum` | yes | `4-59/10 * * * *` | `runVacuum` — PENDING stall / geo purge | yes | no | yes | no | **PROD_OFF_FROM_VERCEL** — product hygiene; break-glass manual |
@@ -89,7 +89,7 @@
 
 | Route | Why defer |
 |---|---|
-| `marketing-signals-cleanup` | **Not** in night-maintenance; only PROCESSING rescue in oci-maintenance. SENT 60d delete needs night phase or stays scheduled. |
+| `retired-audit-cleanup (removed)` | **Not** in night-maintenance; only PROCESSING rescue in oci-maintenance. SENT 60d delete needs night phase or stays scheduled. |
 | `cleanup` (4-phase) | `archive_failed_conversions_batch` + `cleanup_oci_queue_batch` not in night-maintenance. Removing risks storage growth. **02B** must add phases or keep `0 4 * * *` row. |
 
 ---
@@ -101,7 +101,7 @@
 | **KEEP_CORE** | process-outbox-events, oci-maintenance, night-maintenance, auto-junk, watchtower, reconcile-usage |
 | **KEEP_MONTHLY** | invoice-freeze (scheduled; break-glass manual OK) |
 | **PROD_OFF_FROM_VERCEL (02A)** | funnel-projection, truth-parity-repair, idempotency-cleanup, outbox-cleanup, processed-signals-retention, gdpr-retention, oci-recovery, ack-receipt-ttl, enqueue-from-sales, vacuum |
-| **DEFER (02B)** | marketing-signals-cleanup, cleanup |
+| **DEFER (02B)** | retired-audit-cleanup (removed), cleanup |
 | **BREAK_GLASS_ONLY** | All unscheduled `app/api/cron/**` handlers — no file deletes |
 
 ---
@@ -115,7 +115,7 @@
 | `idempotency-cleanup` | Idempotency table growth | **night-maintenance** `delete_expired_idempotency_batch` | `night-maintenance/route.ts` L79–88 | Re-add stagger row |
 | `oci/outbox-cleanup` | Outbox PROCESSED bloat | **night-maintenance** `delete_outbox_processed_batch` | L97–106 | Re-add row |
 | `processed-signals-retention` | Dedup table growth | **night-maintenance** fail_stale + delete batches | L120–138 | Re-add row |
-| `marketing-signals-cleanup` | SENT row retention stops | **None today** — oci-maintenance only rescues PROCESSING | STORAGE_RETENTION_MATRIX | **Do not remove in 02A**; extend night in 02B |
+| `retired-audit-cleanup (removed)` | SENT row retention stops | **None today** — oci-maintenance only rescues PROCESSING | STORAGE_RETENTION_MATRIX | **Do not remove in 02A**; extend night in 02B |
 | `cleanup` | FAILED archive + terminal queue delete stop | Partial overlap with maintenance; **not full** | `cleanup/route.ts` phases 2–3 | **Defer**; re-add row if 02B not ready |
 | `gdpr-retention` | Duplicate run only | **night-maintenance** anonymize phase | Same RPC | Re-add row (redundant) |
 | `oci-recovery` | Less frequent stuck-job recovery | **oci-maintenance** `runOciMaintenance` | `run-maintenance.ts` header | Re-add `*/30` row |
@@ -134,14 +134,15 @@
 ### CUT-02A — Cron Schedule Diet (this PR)
 
 - **Edit only:** `vercel.json`, `docs/architecture/SEAL/CRON_CONTRACT.md`, `docs/architecture/SEAL/CUT_02_CRON_PLAN.md`, `tests/unit/cron-schedule-contract.test.ts`
-- Remove **10** vercel rows (safe set above); **keep** `marketing-signals-cleanup` + `cleanup` until 02B
+- Remove **10** vercel rows (safe set above); **keep** `retired-audit-cleanup (removed)` + `cleanup` until 02B
 - **Resulting schedule count:** 19 − 10 = **9** (or 19 − 12 = **7** if defer pair removed later in 02B)
 
-### CUT-02B — Night Maintenance Consolidation Hardening
+### CUT-02B — Night Maintenance Consolidation Hardening ✅
 
-- Add night phases for `cleanup_marketing_signals_batch` and optionally `archive_failed` + `cleanup_oci_queue_batch`
-- Tests for phase coverage vs retired standalone routes
-- Then remove `marketing-signals-cleanup` + `cleanup` from vercel
+- Added night phases: `archive_failed_conversions_batch` + `cleanup_oci_queue_batch`
+- Removed `/api/cron/cleanup` from `vercel.json` (7 schedules)
+- Tests: `night-maintenance-cut-02b.test.ts`, updated `cron-schedule-contract.test.ts`
+- Retired audit table cleanup N/A (table dropped)
 
 ### CUT-02C — OCI Maintenance Consolidation Hardening
 
@@ -179,7 +180,7 @@ Assert:
 5. `invoice-freeze` allowed.
 6. Comment: handlers may remain; only Vercel schedule surface reduced.
 
-Optional strict list for **02A interim** (9 schedules): keep `marketing-signals-cleanup` + `cleanup` in allowed set until 02B.
+Optional strict list for **02A interim** (9 schedules): keep `retired-audit-cleanup (removed)` + `cleanup` in allowed set until 02B.
 
 ---
 
@@ -215,7 +216,7 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" \
 # OPSMANTIK_STORAGE_CLEANUP_APPROVAL=I_APPROVE_STORAGE_MUTATION
 ```
 
-Examples: `funnel-projection`, `truth-parity-repair`, `oci-recovery`, `marketing-signals-cleanup`, `cleanup?dry_run=true`.
+Examples: `funnel-projection`, `truth-parity-repair`, `oci-recovery`, `retired-audit-cleanup (removed)`, `cleanup?dry_run=true`.
 
 ---
 
@@ -248,7 +249,7 @@ Examples: `funnel-projection`, `truth-parity-repair`, `oci-recovery`, `marketing
 
 ## Recommended Implementation Order
 
-1. **Approve this plan** (confirm defer: `marketing-signals-cleanup`, `cleanup`).
+1. **Approve this plan** (confirm defer: `retired-audit-cleanup (removed)`, `cleanup`).
 2. **CUT-02A:** vercel diet + `cron-schedule-contract.test.ts` + doc sync.
 3. **Deploy + observe** 1 release (cron heartbeats, queue depth, storage audit).
 4. **CUT-02B:** extend night-maintenance → unschedule last 2 duplicates.
@@ -259,5 +260,5 @@ Examples: `funnel-projection`, `truth-parity-repair`, `oci-recovery`, `marketing
 ## CUT-02A implementation record
 
 - **Removed from `vercel.json`:** 10 schedule rows (see REMOVED_IN_CUT_02A in `cron-schedule-contract.test.ts`).
-- **Kept scheduled:** 9 (7 core/monthly + `marketing-signals-cleanup` + `cleanup` deferred to 02B).
+- **Kept scheduled:** 9 (7 core/monthly + `retired-audit-cleanup (removed)` + `cleanup` deferred to 02B).
 - **Target after 02B:** 7 scheduled crons when night-maintenance absorbs the two deferred jobs.

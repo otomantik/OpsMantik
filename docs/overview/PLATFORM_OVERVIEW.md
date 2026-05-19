@@ -93,7 +93,7 @@ flowchart TB
 | Layer | Purpose |
 |-------|---------|
 | Redis | V1 pageview pulse |
-| marketing_signals | Stage/audit signals (not read by `google-ads-export` GET) |
+| offline_conversion_queue | Stage/audit signals (not read by `google-ads-export` GET) |
 | offline_conversion_queue | Journal — **Google Ads script upload batch source** |
 | call_funnel_ledger | append-only event log |
 | call_funnel_projection | Analytics / shadow export readiness (not the script GET row source) |

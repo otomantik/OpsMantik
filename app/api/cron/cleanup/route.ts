@@ -1,6 +1,9 @@
 /**
  * GET/POST /api/cron/cleanup — The Cleansing Protocol: Daily storage hygiene
  *
+ * @deprecated CUT-02B — Scheduled via `/api/cron/night-maintenance` (archive_failed + oci_queue phases).
+ * Break-glass only: manual `GET` with `CRON_SECRET` and `?apply=true` + storage approval env.
+ *
  * Order of operations (production-grade):
  * 1) Zombie recovery (2h): recover_stuck_offline_conversion_jobs (fallback buffer retired 20260419180000)
  * 2) Archive FAILED conversions to tombstones (30d)

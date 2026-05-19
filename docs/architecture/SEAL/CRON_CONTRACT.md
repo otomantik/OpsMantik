@@ -1,51 +1,39 @@
-# Cron contract matrix — SEAL-00 / CUT-02A
+# Cron contract matrix — SEAL-00 / CUT-02A / CUT-02B
 
 **Source:** [`vercel.json`](../../../vercel.json)  
-**CUT-02A (merged):** **9** Vercel schedules (was 19). **No handler files deleted. No route handler edits.**  
-**Rollback:** revert `vercel.json` only.
+**CUT-02A:** schedule diet `19 → 10` (handlers kept).  
+**CUT-02B (implemented):** `cleanup` merged into `night-maintenance`; schedule **`7`**.  
+**Rollback:** revert `vercel.json` (+ night-maintenance route if needed).
 
-## Scheduled after CUT-02A (9)
+## Scheduled after CUT-02B (7)
 
 | Cron | Schedule | Owner | Notes |
 |------|----------|-------|-------|
 | `/api/cron/oci/process-outbox-events` | `1-56/5 * * * *` | OCI | Outbox safety-net worker |
 | `/api/cron/oci-maintenance` | `*/10 * * * *` | OCI | `runOciMaintenance` + bounded upload |
-| `/api/cron/night-maintenance` | `0 3 * * *` | Storage | Idempotency → outbox → GDPR → processed_signals |
+| `/api/cron/night-maintenance` | `0 3 * * *` | Storage | Idempotency → outbox → GDPR → processed_signals → truth_evidence → **archive_failed** → **oci_queue** |
 | `/api/cron/auto-junk` | `0 2 * * *` | Product | Intent `expires_at` junk |
 | `/api/cron/watchtower` | `*/15 * * * *` | Ops | Ingest/OCI/billing diagnostics |
 | `/api/cron/reconcile-usage` | `8,23,38,53 * * * *` | Billing | Enqueue + process |
 | `/api/cron/invoice-freeze` | `0 0 1 * *` | Billing | Monthly freeze |
-| `/api/cron/marketing-signals-cleanup` | `55 3 * * *` | Storage | **Kept until CUT-02B** — SENT 60d not in night yet |
-| `/api/cron/cleanup` | `0 4 * * *` | Storage | **Kept until CUT-02B** — archive_failed + queue batch not in night yet |
 
-## Removed from Vercel schedule in CUT-02A (handlers remain — break-glass)
+## Removed from Vercel schedule (handlers remain — break-glass)
 
-| Path | Why removed from schedule | Manual invoke |
-|------|---------------------------|---------------|
-| `funnel-projection` | OUT_OF_CORE analytics | `GET` + `CRON_SECRET` |
-| `truth-parity-repair` | Experimental parity repair | same |
-| `idempotency-cleanup` | Covered by `night-maintenance` | `?apply=true` + approval env |
-| `oci/outbox-cleanup` | Covered by night | same |
-| `processed-signals-retention` | Covered by night | same |
-| `gdpr-retention` | Duplicate anonymize RPC in night | same |
-| `oci-recovery` | Largely superseded by `oci-maintenance` | same |
-| `vacuum` | Product PENDING hygiene | same |
-| `oci/ack-receipt-ttl` | TTL sweep; optional 02C merge | same |
-| `oci/enqueue-from-sales` | Legacy sales enqueue | same |
-
-## Not in vercel.json (break-glass only)
-
-`process-offline-conversions`, `sweep-unsent-conversions`, `oci/sweep-zombies`, `recover-stuck-signals`, `promote-blocked-queue`, `backfill-precursor-signals`, `attempt-cap`, `providers/*`, `reconcile-usage/{enqueue,run,backfill}`, `test-notification`, plus all paths in the table above.
+| Path | Why | Replacement |
+|------|-----|-------------|
+| `cleanup` | CUT-02B | **night-maintenance** phases `archive_failed` + `cleanup_oci_queue_batch` |
+| `idempotency-cleanup`, `oci/outbox-cleanup`, `processed-signals-retention`, `gdpr-retention` | CUT-02A | **night-maintenance** |
+| Legacy audit cleanup cron | Table retired | N/A |
+| `funnel-projection`, `truth-parity-repair`, `oci-recovery`, `vacuum`, `oci/ack-receipt-ttl`, `oci/enqueue-from-sales` | CUT-02A | Manual / oci-maintenance |
 
 ## Special rules
 
-- **CUT-02A:** schedule-only — do not delete `app/api/cron/**/route.ts` without a later DELETE_AFTER_ONE_RELEASE PR.
+- Do not delete `app/api/cron/**/route.ts` without DELETE_AFTER_ONE_RELEASE PR.
 - Night-maintenance mutations require `OPSMANTIK_STORAGE_CLEANUP_APPROVAL=I_APPROVE_STORAGE_MUTATION` when `apply=true`.
 - Manual break-glass: `curl -H "Authorization: Bearer $CRON_SECRET" https://console.opsmantik.com/api/cron/<path>`
 
 ## Evidence
 
-- Contract test: [`tests/unit/cron-schedule-contract.test.ts`](../../../tests/unit/cron-schedule-contract.test.ts)
-- Locks: [`lib/cron/with-cron-lock.ts`](../../../lib/cron/with-cron-lock.ts)
-- Night: [`app/api/cron/night-maintenance/route.ts`](../../../app/api/cron/night-maintenance/route.ts)
-- Storage matrix: [`docs/architecture/OPS/STORAGE_RETENTION_MATRIX.md`](../OPS/STORAGE_RETENTION_MATRIX.md)
+- [`tests/unit/cron-schedule-contract.test.ts`](../../../tests/unit/cron-schedule-contract.test.ts)
+- [`tests/unit/night-maintenance-cut-02b.test.ts`](../../../tests/unit/night-maintenance-cut-02b.test.ts)
+- [`app/api/cron/night-maintenance/route.ts`](../../../app/api/cron/night-maintenance/route.ts)

@@ -6,7 +6,7 @@ status: active
 
 **Canonical export item shape and ACK routing**
 
-**Google Ads script/API upload batch:** `offline_conversion_queue` only (`export-fetch.ts` → `export-build-queue.ts`). The `marketing_signals` table may still exist for hash/audit/recovery flows; it is **not** merged into the GET export payload. `call_funnel_projection` is an analytics/read-model surface, not the Google Ads upload row source for that route.
+**Google Ads script/API upload batch:** `offline_conversion_queue` only (`export-fetch.ts` → `export-build-queue.ts`). The `offline_conversion_queue` table may still exist for hash/audit/recovery flows; it is **not** merged into the GET export payload. `call_funnel_projection` is an analytics/read-model surface, not the Google Ads upload row source for that route.
 
 **Score semantics** (`lead_score` vs `stage_base_major` vs `truth_closure_score`): [CLOSED_SYSTEM_SCORE_CONTRACT.md](./CLOSED_SYSTEM_SCORE_CONTRACT.md).
 

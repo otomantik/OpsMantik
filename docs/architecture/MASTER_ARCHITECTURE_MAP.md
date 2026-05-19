@@ -85,7 +85,7 @@ flowchart TB
 | Path | Components | Status |
 |-----|------------|-------|
 | **Target** | Ingress → ledger → projection → Export | SHADOW MODE |
-| **Legacy planes** | `marketing_signals` + Redis V1 (not in script GET); **`offline_conversion_queue` → Google script export** | ACTIVE |
+| **Legacy planes** | `offline_conversion_queue` + Redis V1 (not in script GET); **`offline_conversion_queue` → Google script export** | ACTIVE |
 
 ---
 

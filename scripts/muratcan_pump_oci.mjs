@@ -45,31 +45,18 @@ async function pump() {
   for (const call of calls) {
     console.log(`İşleniyor: ${call.id}`);
 
-    // Marketing signals'dan GCLID'yi bulalım (identity stitcher logic'i simüle ediyoruz)
-    const { data: signals } = await supabase
-      .from('marketing_signals')
-      .select('gclid, wbraid, gbraid')
-      .eq('call_id', call.id)
-      .not('gclid', 'is', null)
-      .limit(1);
-
-    let gclid = signals?.[0]?.gclid || null;
-    let wbraid = signals?.[0]?.wbraid || null;
-    let gbraid = signals?.[0]?.gbraid || null;
-
-    if (!gclid && !wbraid && !gbraid) {
-      // Eğer signal'da yoksa session'a bakalım
-      if (call.matched_session_id) {
-        const { data: session } = await supabase
-          .from('sessions')
-          .select('gclid, wbraid, gbraid')
-          .eq('id', call.matched_session_id)
-          .single();
-        
-        gclid = session?.gclid || null;
-        wbraid = session?.wbraid || null;
-        gbraid = session?.gbraid || null;
-      }
+    let gclid = null;
+    let wbraid = null;
+    let gbraid = null;
+    if (call.matched_session_id) {
+      const { data: session } = await supabase
+        .from('sessions')
+        .select('gclid, wbraid, gbraid')
+        .eq('id', call.matched_session_id)
+        .single();
+      gclid = session?.gclid || null;
+      wbraid = session?.wbraid || null;
+      gbraid = session?.gbraid || null;
     }
 
     if (!gclid && !wbraid && !gbraid) {

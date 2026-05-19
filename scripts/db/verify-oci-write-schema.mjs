@@ -27,7 +27,6 @@ const CORE_TABLES = [
   'sessions',
   'calls',
   'outbox_events',
-  'marketing_signals',
   'offline_conversion_queue',
 ];
 

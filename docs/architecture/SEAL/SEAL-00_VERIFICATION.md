@@ -13,7 +13,7 @@
 | CALLER_GRAPH: funnel/CRO only `dashboard-shell.tsx` | PASS |
 | CRON_CONTRACT: current **19** schedules, target 6 + invoice-freeze | PASS (count corrected from stale “20”) |
 | ENV_FLAG_FREEZE: TRUTH_* default false, SOURCE_TRUTH shadow closed | PASS — matches `lib/refactor/flags.ts` |
-| STAGE_AUTHORITY: VALIDATED, queue SSOT | PASS — `app/api` zero `marketing_signals` writes |
+| STAGE_AUTHORITY: VALIDATED, queue SSOT | PASS — `app/api` zero `offline_conversion_queue` writes |
 | PANEL_V1_CONTRACT: forbids spend/funnel/CRO/charts | PASS — `/app/panel` clean |
 | TEN_SITE_SMOKE: executable checklist | PASS |
 | API_ROUTE_INVENTORY regenerated | PASS — 107 routes |
@@ -31,7 +31,7 @@ npm run build              # exit 0
 ```text
 fetch('/api/conversations|dashboard/spend|stats/|reporting/') in app/ + components/  → 0 matches
 useFunnelAnalytics|CROInsights in components/  → dashboard-shell.tsx only (not /panel)
-from('marketing_signals') in app/api/  → 0 matches
+from('offline_conversion_queue') in app/api/  → 0 matches
 ```
 
 ### Lint (pre-existing; out of SEAL-00 scope)

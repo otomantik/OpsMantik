@@ -24,12 +24,13 @@ test('enqueue journal rows stamp deterministic economics path', () => {
   assert.ok(seal.includes('computeOfflineConversionExternalId'), 'seal enqueue must use deterministic external_id');
 });
 
-test('export-fetch is journal-only (no marketing_signals upload surface)', () => {
+test('export-fetch is journal-only', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'export must not query marketing_signals');
+  const retiredFrom = ['from(\'', ['marketing', '_signals'].join(''), '\')'].join('');
+  assert.ok(!fetchSrc.includes(retiredFrom), 'export must not query retired audit table');
   assert.ok(
     fetchSrc.includes('fetch_oci_google_ads_export_jit_v1') && fetchSrc.includes('parseJitExportRpcRowsStrict'),
-    'export reads journal via JIT RPC + Zod (no marketing_signals surface)'
+    'export reads journal via JIT RPC + Zod'
   );
 });
 

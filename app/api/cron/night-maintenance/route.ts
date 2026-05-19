@@ -1,6 +1,6 @@
 /**
- * GET/POST /api/cron/night-maintenance — Serial night storage hygiene (PR-D1).
- * Runs idempotency → outbox → GDPR → processed_signals → truth_evidence under one lock.
+ * GET/POST /api/cron/night-maintenance — Serial night storage hygiene (PR-D1 / CUT-02B).
+ * Runs idempotency → outbox → GDPR → processed_signals → truth_evidence → archive_failed → oci_queue under one lock.
  * Mutations require ?apply=true and OPSMANTIK_STORAGE_CLEANUP_APPROVAL.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -25,6 +25,8 @@ const LOCK_KEY = 'night-maintenance';
 const LOCK_TTL_SEC = 7200;
 const IDEM_BATCH = 10_000;
 const IDEM_MAX_LOOPS = 3;
+const ARCHIVE_FAILED_DAYS = 30;
+const OCI_QUEUE_CLEANUP_LIMIT = 500;
 
 async function runNightMaintenance(req: NextRequest) {
   const startedAt = new Date().toISOString();
@@ -154,6 +156,33 @@ async function runNightMaintenance(req: NextRequest) {
     if (truthAffected >= params.batchLimit) {
       partial = true;
     }
+
+    if (dryRun) {
+      phases.archive_failed = { skipped: true, reason: 'dry_run_archive_rpc_has_no_dry_mode' };
+    } else {
+      const { data: archiveData, error: archiveErr } = await adminClient.rpc('archive_failed_conversions_batch', {
+        p_days_old: ARCHIVE_FAILED_DAYS,
+        p_limit: params.batchLimit,
+      });
+      if (archiveErr) throw new Error(`archive_failed: ${archiveErr.message}`);
+      const archived = typeof archiveData === 'number' ? archiveData : 0;
+      phases.archive_failed = { archived, days: ARCHIVE_FAILED_DAYS };
+      totalRows += archived;
+      logLimitHitAssessment('night-maintenance-archive-failed', assessLimitHit(archived, params.batchLimit));
+      if (archived >= params.batchLimit) partial = true;
+    }
+
+    const { data: ociData, error: ociErr } = await adminClient.rpc('cleanup_oci_queue_batch', {
+      p_days_to_keep: params.days ?? 90,
+      p_limit: OCI_QUEUE_CLEANUP_LIMIT,
+      p_dry_run: dryRun,
+    });
+    if (ociErr) throw new Error(`oci_queue: ${ociErr.message}`);
+    const ociAffected = parseRpcAffected(ociData);
+    phases.oci_queue = ociData;
+    totalRows += ociAffected;
+    logLimitHitAssessment('night-maintenance-oci-queue', assessLimitHit(ociAffected, OCI_QUEUE_CLEANUP_LIMIT));
+    if (ociAffected >= OCI_QUEUE_CLEANUP_LIMIT) partial = true;
 
     logInfo('NIGHT_MAINTENANCE_COMPLETE', { dryRun, totalRows, partial });
 

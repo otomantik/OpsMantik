@@ -111,9 +111,9 @@ CREATE INDEX IF NOT EXISTS idx_ocq_site_status_created_covering
   INCLUDE (call_id, gclid, conversion_time, value_cents)
   WHERE status = 'COMPLETED';
 
--- marketing_signals: PENDING rows (audit/ops; not read by google-ads-export)
-CREATE INDEX IF NOT EXISTS idx_marketing_signals_site_pending_covering
-  ON public.marketing_signals (site_id, created_at)
+-- offline_conversion_queue: PENDING rows (audit/ops; not read by google-ads-export)
+CREATE INDEX IF NOT EXISTS idx_offline_conversion_queue_site_pending_covering
+  ON public.offline_conversion_queue (site_id, created_at)
   INCLUDE (call_id, signal_type, google_conversion_name, dispatch_status)
   WHERE dispatch_status = 'PENDING';
 ```
@@ -173,18 +173,18 @@ END $$;
 
 **Caution:** Because `sessions` is partitioned, UPDATE must respect `created_month`. The partition key cannot be changed; only `city`/`district` or `geo_city`/`geo_district` are updated.
 
-### 3.2 marketing_signals Autovacuum (Index Bloat Prevention)
+### 3.2 offline_conversion_queue Autovacuum (Index Bloat Prevention)
 
 ```sql
--- marketing_signals: append-only, frequent INSERTs; high bloat risk
-ALTER TABLE public.marketing_signals SET (
+-- offline_conversion_queue: append-only, frequent INSERTs; high bloat risk
+ALTER TABLE public.offline_conversion_queue SET (
   autovacuum_vacuum_scale_factor = 0.02,   -- vacuum at 2% dead rows
   autovacuum_analyze_scale_factor = 0.01,  -- analyze at 1%
   autovacuum_vacuum_cost_delay = 2,
   autovacuum_vacuum_cost_limit = 1000
 );
 
-COMMENT ON TABLE public.marketing_signals IS
+COMMENT ON TABLE public.offline_conversion_queue IS
   'Aggressive autovacuum: scale_factor 0.02 to prevent index bloat on high-insert table.';
 ```
 
@@ -228,7 +228,7 @@ LEFT JOIN sessions s
   ON s.id = c.matched_session_id
   AND s.site_id = c.site_id
   AND s.created_month = c.session_created_month  -- Partition pruning, no COALESCE
-LEFT JOIN marketing_signals ms
+LEFT JOIN offline_conversion_queue ms
   ON ms.call_id = c.id AND ms.site_id = c.site_id
 WHERE oq.site_id = :site_id
   AND oq.status = 'COMPLETED'
@@ -274,7 +274,7 @@ ORDER BY c.created_at DESC;
 
 1. **Migration:** `20260625000000_precision_logic_session_created_month.sql` (trigger + backfill)
 2. **Indexes:** Covering index migration
-3. **Autovacuum:** marketing_signals ALTER
+3. **Autovacuum:** offline_conversion_queue ALTER
 4. **Repair:** Ghost scrub (once, in a maintenance window)
 5. **Code:** Edge/proxy discrimination → sync/call-event integration (header priority + ghost city/UA rules)
 6. **RPC/BI:** Switch to queries without COALESCE

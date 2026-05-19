@@ -972,7 +972,7 @@ No **`--live`**, no **`markAsExported=true`**, no claim, no Google upload, no AC
 ## PR-9H.4G — Controlled Live Canary Upload + ACK Verification
 
 - **PR-9C** remains **invalid and separate** — **PR-9H.4G does not validate or execute PR-9C**.
-- **`offline_conversion_queue`** remains the **canonical upload authority**; **`marketing_signals`** was **not** used as upload authority in this chain.
+- **`offline_conversion_queue`** remains the **canonical upload authority**; **`offline_conversion_queue`** was **not** used as upload authority in this chain.
 
 ### Final decision (`final_decision`)
 
@@ -1082,7 +1082,7 @@ The terminal outcomes **`LIVE_CANARY_ACK_GREEN`**, **`LIVE_CANARY_UPLOAD_FAILED_
 ## PR-9H.4G.1 — Provider upload + ACK closure (operator lane)
 
 - **PR-9C** remains **invalid and separate**.
-- **`offline_conversion_queue`** remains the **canonical upload authority**; **`marketing_signals`** was **not** used as upload authority.
+- **`offline_conversion_queue`** remains the **canonical upload authority**; **`offline_conversion_queue`** was **not** used as upload authority.
 - **No broad live export** and **no second hosted `--live`** export run in this closure step (HTTP claim already completed in **PR-9H.4G**).
 
 ### Final decision (`final_decision`)
@@ -1143,7 +1143,7 @@ The terminal outcomes **`LIVE_CANARY_ACK_GREEN`**, **`LIVE_CANARY_UPLOAD_FAILED_
 ## PR-9H.4G.2 — Google Ads Script blocked (`CANARY_EXPORT_BLOCKED` / HTTP 409)
 
 - **PR-9C** remains **invalid and separate**.
-- **`offline_conversion_queue`** remains upload authority; **`marketing_signals`** not used as upload authority.
+- **`offline_conversion_queue`** remains upload authority; **`offline_conversion_queue`** not used as upload authority.
 - **No broad live export.** **No `upload.apply`**, **no ACK**, **no ACK_FAILED** for this blocked attempt (provider lane never started — **do not** record **`ACK_FAILED`** as a Google upload failure).
 
 ### Final decision (`final_decision`) — operator Apps Script attempt
@@ -1235,7 +1235,7 @@ Run **`GoogleAdsScriptMuratcanAku.js`** **`sync`** **once** with **`OPSMANTIK_EX
 ## PR-9H.4G.3 — Google Ads Script upload + ACK closure
 
 - **PR-9C** remains **invalid and separate**.
-- **`offline_conversion_queue`** remains the **single upload authority**; **`marketing_signals`** was **not** used as upload authority.
+- **`offline_conversion_queue`** remains the **single upload authority**; **`offline_conversion_queue`** was **not** used as upload authority.
 - **No broad live export.** **Do not** re-run Muratcan **`sync`** after successful upload. **Do not** run hosted **`oci-canary-live-export.mjs --live`** again for this canary. **Do not** upload the same conversion again.
 
 ### Final decision (`final_decision`)

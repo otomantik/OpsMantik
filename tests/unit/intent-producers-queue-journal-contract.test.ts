@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -17,9 +18,8 @@ test('Outbox processors journal contacted/offered/junk via enqueueOciConversionR
   assert.ok(outbox.includes('enqueueOciConversionRow'));
 });
 
-test('marketing_signals upsert modules removed (queue-only runtime)', () => {
-  assert.ok(!existsSync(join(process.cwd(), 'lib', 'oci', 'upsert-marketing-signal.ts')));
-  assert.ok(!existsSync(join(process.cwd(), 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts')));
+test('ensureOciQueueEnqueue is the journal parity entrypoint', () => {
+  assert.ok(existsSync(join(process.cwd(), 'lib', 'oci', 'ensure-oci-queue-enqueue.ts')));
 });
 
 test('Seal route does not ACK or export from producer', () => {

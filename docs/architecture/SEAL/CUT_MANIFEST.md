@@ -42,5 +42,5 @@
 
 - Analytics product, spend dashboards, funnel projection as operator UX
 - CRM conversations in `/panel`
-- Stage storage migration (`marketing_signals` authority change)
+- Stage storage migration (`offline_conversion_queue` authority change)
 - Deleting migrations or OCI FSM SQL

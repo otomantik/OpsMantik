@@ -2,7 +2,7 @@
 
 ## 1. Single Truth Upload Journal
 `offline_conversion_queue` is the ONLY runtime Google upload journal. 
-The legacy `marketing_signals` table is an **ACTIVE_RUNTIME_RESIDUE**. It still receives writes for non-won stages, but it is NOT the Google upload authority. It must be treated as an audit-only shadow trail. The upload backlog is exclusively defined by `offline_conversion_queue` where `status IN ('QUEUED', 'RETRY')`.
+The legacy `offline_conversion_queue` table is an **ACTIVE_RUNTIME_RESIDUE**. It still receives writes for non-won stages, but it is NOT the Google upload authority. It must be treated as an audit-only shadow trail. The upload backlog is exclusively defined by `offline_conversion_queue` where `status IN ('QUEUED', 'RETRY')`.
 
 ## 2. Four-Stage Alignment
 All four Google-bound fired stages must be queue-journaled when triggered:

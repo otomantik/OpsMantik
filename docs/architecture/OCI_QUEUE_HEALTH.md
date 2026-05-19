@@ -24,7 +24,7 @@ Queue health scores measure **export pipeline reliability** (queue, retry, DLQ, 
 - PR-7 extends queue-only vocabulary for optional legacy residue: `LEGACY_RESIDUE_ABSENT`, `AUDIT_TABLE_NOT_PRESENT`, `OPTIONAL_LEGACY_CHECK_SKIPPED`.
 - In strict target mode, `DB_ENV_MISSING`, `DB_RPC_MISSING`, `DB_RPC_SIGNATURE_DRIFT`, `DB_UNSAFE_GRANT`, and smoke failures are blocking.
 - PR-7E adds cron lock backend contract checks (`acquire_cron_lease_v1`, `steal_expired_cron_lease_v1`, `heartbeat_cron_lease_v1`, `release_cron_lease_v1`, `try_acquire_cron_lock_v1`) so lease backend drift is surfaced as target DB contract failure instead of ambiguous operational `lock_held`.
-- `marketing_signals` absence alone is not a queue upload-health failure in queue-only environments; SQL packs must degrade with explicit residue status, not `DB_QUERY_FAILED`.
+- `offline_conversion_queue` absence alone is not a queue upload-health failure in queue-only environments; SQL packs must degrade with explicit residue status, not `DB_QUERY_FAILED`.
 
 ## API (`queue-stats`)
 
@@ -87,8 +87,8 @@ Unit coverage includes `oci-script-ack-failed` and ACK parity tests under `tests
 ## Google export surface (journal only)
 
 - [`export-fetch.ts`](../../app/api/oci/google-ads-export/export-fetch.ts) reads **`offline_conversion_queue` only** — see [`EXPORT_CLOSURE.md`](./EXPORT_CLOSURE.md). Micro stages are written by [`enqueueOciConversionRow`](../../lib/oci/enqueue-oci-conversion-row.ts) from [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts).
-- **`marketing_signals`** is not merged into the script export batch; backlog/dispatch for that table is separate (recovery workers, ops). Optional gap heuristics: [`export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql).
-- Fail-closed parity check: `scripts/sql/script_backlog_health.sql` reports `parity_enforcement_mode` + `marketing_signals_queue_parity_gap_count` for Google-eligible signal rows lacking a queue match. In `enforce` mode any non-zero gap is RED/release-blocking.
+- **`offline_conversion_queue`** is not merged into the script export batch; backlog/dispatch for that table is separate (recovery workers, ops). Optional gap heuristics: [`export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql).
+- Fail-closed parity check: `scripts/sql/script_backlog_health.sql` reports `parity_enforcement_mode` + `offline_conversion_queue_queue_parity_gap_count` for Google-eligible signal rows lacking a queue match. In `enforce` mode any non-zero gap is RED/release-blocking.
 - Canonical Google-bound actions represented in queue journal: `OpsMantik_Contacted`, `OpsMantik_Offered`, `OpsMantik_Won`, `OpsMantik_Junk_Exclusion`.
 - If fired stage is ineligible (missing click / consent / export gate), reason must remain explicit (`MISSING_CLICK_ID`, `CONSENT_MISSING`, or structured non-eligible reason). Silent disappearance is a contract violation.
 

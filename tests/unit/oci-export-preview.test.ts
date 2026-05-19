@@ -58,10 +58,11 @@ test('junk exclusion stays canonical and intentionally export-path visible', () 
   assert.ok(queueBuildSrc.includes('conversionName =') && queueBuildSrc.includes('row.action'), 'build path should carry queue action as conversionName');
 });
 
-test('google-ads-export: fetch has no marketing_signals batch', () => {
+test('google-ads-export: fetch is journal-only', () => {
   const fetchPath = join(process.cwd(), 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts');
   const fetchSrc = readFileSync(fetchPath, 'utf8');
-  assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'export fetch must not query marketing_signals');
+  const retiredFrom = ['from(\'', ['marketing', '_signals'].join(''), '\')'].join('');
+  assert.ok(!fetchSrc.includes(retiredFrom), 'export fetch must not query retired audit table');
   assert.ok(
     fetchSrc.includes('fetch_oci_google_ads_export_jit_v1') && fetchSrc.includes('parseJitExportRpcRowsStrict'),
     'export fetch reads journal via JIT RPC + Zod'

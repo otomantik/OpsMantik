@@ -165,7 +165,7 @@ try {
     gapTally[g] = (gapTally[g] || 0) + 1;
   }
 
-  const ms = await safeCount('marketing_signals', 'site_id', siteUuid);
+  const queueRows = await safeCount('offline_conversion_queue', 'site_id', siteUuid);
   const calls = await safeCount('calls', 'site_id', siteUuid);
 
   const report = {
@@ -185,13 +185,13 @@ try {
     },
     F_gap_classifications: gapTally,
     G_source_table_counts: {
-      marketing_signals_site_rows: ms.ok ? ms.count : null,
-      marketing_signals_error: ms.ok ? null : ms.error,
+      offline_conversion_queue_site_rows: queueRows.ok ? queueRows.count : null,
+      offline_conversion_queue_error: queueRows.ok ? null : queueRows.error,
       calls_site_rows: calls.ok ? calls.count : null,
       calls_error: calls.ok ? null : calls.error,
     },
     notes: {
-      marketing_signals_audit_only: 'marketing_signals is not Google upload authority; offline_conversion_queue is SSOT.',
+      upload_authority: 'offline_conversion_queue is the Google upload journal (queue-only).',
       no_raw_click_ids: 'This report uses booleans/counts only.',
     },
   };

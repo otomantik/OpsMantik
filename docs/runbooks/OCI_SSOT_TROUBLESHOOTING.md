@@ -49,7 +49,7 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 
 ## 1. Click ID on the call
 
-- Confirm the sealed call has a usable `gclid`, `wbraid`, or `gbraid` (direct session or stitch). Without a click ID, **won** never enters `offline_conversion_queue`, and **marketing_signals** upserts skip with canonical reason `NO_ADS_CLICK_ID` (recorded in `oci_reconciliation_events` when applicable; legacy label `missing_click_ids` may appear in older telemetry).
+- Confirm the sealed call has a usable `gclid`, `wbraid`, or `gbraid` (direct session or stitch). Without a click ID, **won** never enters `offline_conversion_queue`, and **offline_conversion_queue** upserts skip with canonical reason `NO_ADS_CLICK_ID` (recorded in `oci_reconciliation_events` when applicable; legacy label `missing_click_ids` may appear in older telemetry).
 - Panel mutations follow a strict producer identity: each successful HTTP mutation should end with **`oci_enqueue_ok: true`** in the panel JSON (when the route exposes OCI fields): that means either a new `outbox_events` **PENDING** row (`oci_outbox_inserted: true`) **or** a durable `oci_reconciliation_events` row (`oci_reconciliation_persisted: true`, including idempotent duplicate / `23505`). **`oci_reconciliation_reason`** is the canonical skip/audit reason when no outbox row was inserted (`null` when `oci_outbox_inserted: true`). If `oci_enqueue_ok: false`, neither artifact landed — treat as operator-visible failure (metrics: `panel_stage_oci_producer_incomplete_total`, `panel_stage_outbox_insert_failed_total` on insert errors, `panel_stage_reconciliation_persist_failed_total` on audit append errors).
 - **`queued`** on panel routes now tracks **IntentSealed outbox insert** (`oci_outbox_inserted`), not “notify fired”; background notify may still run for other pending rows.
 - Reconciliation reasons from the producer include: `MERGED_CALL`, `NO_EXPORTABLE_OCI_STAGE` (legacy telemetry may still say `NOT_EXPORTABLE_STAGE`), `NO_MATCHED_SESSION`, `SESSION_NOT_FOUND`, `NO_ADS_CLICK_ID`, `TEST_CLICK_ID`, `OUTBOX_INSERT_FAILED`.
@@ -57,8 +57,8 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 
 ## 2. Precursor marketing signals (ordering)
 
-- **OpsMantik_Won** journal rows stay **`BLOCKED_PRECEDING_SIGNALS`** until precursors are non-blocking. The gate checks **both** `marketing_signals` (`hasBlockingPrecedingMarketingSignals`) **and** journal micro-stages for contacted/offered (`hasBlockingPrecedingJournalMicroStages`) — see `lib/oci/preceding-signals.ts` (`hasBlockingPrecedingExports`).
-- **Legacy / parallel lane:** **OpsMantik_Contacted** and **OpsMantik_Offered** rows in `marketing_signals` must leave blocking dispatch states (`PENDING`, `PROCESSING`, `STALLED_FOR_HUMAN_AUDIT`) when those rows exist for the call.
+- **OpsMantik_Won** journal rows stay **`BLOCKED_PRECEDING_SIGNALS`** until precursors are non-blocking. The gate checks **both** `offline_conversion_queue` (`hasBlockingPrecedingRetiredAudits`) **and** journal micro-stages for contacted/offered (`hasBlockingPrecedingJournalMicroStages`) — see `lib/oci/preceding-signals.ts` (`hasBlockingPrecedingExports`).
+- **Legacy / parallel lane:** **OpsMantik_Contacted** and **OpsMantik_Offered** rows in `offline_conversion_queue` must leave blocking dispatch states (`PENDING`, `PROCESSING`, `STALLED_FOR_HUMAN_AUDIT`) when those rows exist for the call.
 - Historically missing signals use **`planPrecursorBackfillStages`** (`lib/oci/precursor-backfill-plan.ts`): **ledger** time per stage when present; if the ledger has *some* events but not every stage required by `calls.status`, missing stages use **hybrid** (`call_snapshot_hybrid`) with `confirmed_at` / `created_at` — not job `NOW()`; if the ledger is **empty** for the call, **full fallback** (`call_snapshot_fallback`). Conversion time is never the backfill job’s wall-clock `NOW()`.
 - If precursors are still blocking, the won row stays in **`BLOCKED_PRECEDING_SIGNALS`** with `block_reason` set (for example `PRECEDING_SIGNALS_NOT_EXPORTED`).
 - Cron **`/api/cron/oci/promote-blocked-queue`** promotes blocked rows to **`QUEUED`** when precursors are ready (ledger-safe transition).
@@ -68,9 +68,9 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 - Script/API export only pulls **`offline_conversion_queue`** rows in **`QUEUED`** or **`RETRY`**.
 - **`BLOCKED_PRECEDING_SIGNALS`** is intentionally excluded until promotion.
 
-## 4. `marketing_signals` table (ops / audit — not the Script GET batch)
+## 4. `offline_conversion_queue` table (ops / audit — not the Script GET batch)
 
-- `GET /api/oci/google-ads-export` does **not** read this table. Pending rows use `marketing_signals.dispatch_status = 'PENDING'` until separate maintenance/ack paths move them. For visibility: OCI Control **Signals PENDING** and **`GET /api/oci/queue-stats`** dispatch breakdown.
+- `GET /api/oci/google-ads-export` does **not** read this table. Pending rows use `offline_conversion_queue.dispatch_status = 'PENDING'` until separate maintenance/ack paths move them. For visibility: OCI Control **Signals PENDING** and **`GET /api/oci/queue-stats`** dispatch breakdown.
 
 ## 5. ACK and terminal states
 
@@ -86,7 +86,7 @@ Follow this order when conversions look wrong in Google Ads or in OpsMantik OCI 
 | Concern | Primary table |
 |--------|----------------|
 | Won conversion payload & export ordering | `offline_conversion_queue` |
-| Stage-level conversions (contacted/offered) | `marketing_signals` |
+| Stage-level conversions (contacted/offered) | `offline_conversion_queue` |
 | Skip / audit for SSOT gaps | `oci_reconciliation_events` |
 | Funnel timeline (contacted/offered/won events) | `call_funnel_ledger` |
 | Queue row transitions / snapshot | `oci_queue_transitions` + `apply_snapshot_batch` |
@@ -116,7 +116,7 @@ flowchart TD
   Plan -->|skip| Rec[oci_reconciliation_events deduped]
   Obx --> Notify[notifyOutboxPending QStash best-effort]
   Notify --> Cron[cron / worker process-outbox safety net]
-  Obx --> Worker[Worker claims outbox → marketing_signals / queue]
+  Obx --> Worker[Worker claims outbox → offline_conversion_queue / queue]
 ```
 
 **L15 — Order:** routes call `enqueuePanelStageOciOutbox` **before** `notifyOutboxPending`. If outbox insert fails, notify still runs (cron may process other PENDING rows); do not assume notify implies this call was queued.
@@ -162,7 +162,7 @@ SLO numeric targets are a product/ops decision; use the above for dashboards and
 
 - **Default off** in production until marketing agrees on Google funnel ordering (precursor contacted before won/offered in the wild).
 - **Canary:** enable on a single staging site or one production `site_id` via env split if you add routing; otherwise global env toggles all tenants.
-- **Rollback:** set to `false` / unset and redeploy; existing `marketing_signals` / outbox rows are not deleted.
+- **Rollback:** set to `false` / unset and redeploy; existing `offline_conversion_queue` / outbox rows are not deleted.
 - **Scope:** panel-only path (`intent` + valid Ads click → payload stage `contacted`); sync/ingest remains unchanged by design.
 
 ---

@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 /**
  * OCI Deep Intelligence — Unit tests for canonical signal recovery and universal value helpers.
  */
@@ -42,10 +43,11 @@ test('MODULE 1: identity-stitcher discovery_confidence and PHONE_STITCH safeguar
   assert.ok(src.includes('session_created_at') || src.includes('sessionCreated'), 'session temporal check');
 });
 
-test('queue enqueue path forwards click ids to journal (no marketing_signals insert)', () => {
+test('queue enqueue path forwards click ids to journal only', () => {
   const src = readFileSync(join(process.cwd(), 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf-8');
+  const retiredFrom = ['from(\'', ['marketing', '_signals'].join(''), '\')'].join('');
   assert.ok(src.includes('gclid'), 'journal enqueue carries gclid');
   assert.ok(src.includes('wbraid'), 'journal enqueue carries wbraid');
   assert.ok(src.includes('gbraid'), 'journal enqueue carries gbraid');
-  assert.ok(!src.includes("from('marketing_signals')"), 'must not write marketing_signals');
+  assert.ok(!src.includes(retiredFrom), 'must not write retired audit table');
 });

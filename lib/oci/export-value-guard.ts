@@ -16,6 +16,4 @@ export function validateOciValueCents(raw: unknown): OciValueGuardResult {
   return { ok: true, normalized: value };
 }
 
-// Kept for call-site compatibility — both names map to the same validator.
 export const validateOciQueueValueCents = validateOciValueCents;
-export const validateOciSignalConversionValue = validateOciValueCents;

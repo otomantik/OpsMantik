@@ -9,7 +9,7 @@ Use canonical English contracts and runbooks:
 
 **Amaç:** Mühürlenmiş ledger verisini BI araçlarına (Metabase, Tableau, Looker Studio vb.) servis etmek için SQL taslakları ve veri mantığı.
 
-**Bağımlılık:** BI için `offline_conversion_queue` + isteğe bağlı `marketing_signals` (audit). **Not:** Google Script `google-ads-export` yalnızca journal okur; BI “Pipeline B” script batch’i değildir.
+**Bağımlılık:** BI için `offline_conversion_queue` + isteğe bağlı `offline_conversion_queue` (audit). **Not:** Google Script `google-ads-export` yalnızca journal okur; BI “Pipeline B” script batch’i değildir.
 
 ---
 
@@ -20,7 +20,7 @@ Use canonical English contracts and runbooks:
 | `offline_conversion_queue` | id, site_id, call_id, sale_id, gclid, wbraid, gbraid, conversion_time, value_cents, currency, status, provider_key | - |
 | `calls` | id, site_id, phone_number, matched_session_id, session_created_month, lead_score, sale_amount, confirmed_at, intent_action, intent_target | - |
 | `sessions` | id, site_id, created_month, created_at, attribution_source, utm_source, utm_medium, utm_campaign, ads_network, gclid | `created_month` |
-| `marketing_signals` | id, site_id, call_id, signal_type, google_conversion_name, conversion_value, dispatch_status | - |
+| `offline_conversion_queue` | id, site_id, call_id, signal_type, google_conversion_name, conversion_value, dispatch_status | - |
 
 **Not:** Precision Logic migration sonrası `c.session_created_month` zorunlu (trigger). JOIN: `s.created_month = c.session_created_month` — COALESCE yok, partition pruning aktif.
 
@@ -63,7 +63,7 @@ LEFT JOIN sessions s
     ON s.id = c.matched_session_id
     AND s.site_id = c.site_id
     AND s.created_month = c.session_created_month
-LEFT JOIN marketing_signals ms
+LEFT JOIN offline_conversion_queue ms
     ON ms.call_id = c.id
     AND ms.site_id = c.site_id
     -- Uygulama katmanında include_signals=false ise bu JOIN tamamen atlanmalı (performans)
@@ -153,7 +153,7 @@ ORDER BY s.created_at DESC;
 |-------|----------|
 | Composite index | Yukarıdaki `idx_ocq_site_status_created` — BI export sorgularını hızlandırır. |
 | Tarih aralığı limiti | Varsayılan `from` / `to` 90 gün; maksimum 365 gün (rate limit ile korunabilir) |
-| `include_signals` | `false` iken marketing_signals JOIN atlanmalı (N+1 veya gereksiz JOIN maliyeti) |
+| `include_signals` | `false` iken offline_conversion_queue JOIN atlanmalı (N+1 veya gereksiz JOIN maliyeti) |
 
 ---
 
@@ -175,4 +175,4 @@ Export taslağında `c.phone_number` kolonu şimdiden mevcut. Phase 2'de:
 | granularity | enum | Evet | - | `conversion`, `call`, `session` |
 | from | ISO8601 | Evet | - | Başlangıç zamanı |
 | to | ISO8601 | Evet | - | Bitiş zamanı |
-| include_signals | boolean | Hayır | false | marketing_signals JOIN |
+| include_signals | boolean | Hayır | false | offline_conversion_queue JOIN |

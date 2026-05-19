@@ -10,7 +10,7 @@
 
 ## Idempotency
 
-- Postgres **23505** unique violations are used as success signals in several upsert paths — see `tests/unit/upsert-marketing-signal-idempotency.test.ts` and related OCI kernel tests.
+- Postgres **23505** unique violations are used as success signals in several upsert paths — see `tests/unit/retired upsert module (removed)-idempotency.test.ts` and related OCI kernel tests.
 - Outbox / queue inserts must remain safe under duplicate delivery (QStash, cron overlap).
 
 ## Serverless limits

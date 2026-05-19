@@ -6,7 +6,7 @@
 
 Maintain a spreadsheet keyed by **table → writers (route/cron/script)** before dropping columns:
 
-- `marketing_signals` — queue / export source of truth (see architecture docs on queue-only doctrine).
+- `offline_conversion_queue` — queue / export source of truth (see architecture docs on queue-only doctrine).
 - `oci_*` / outbox / reconciliation tables as referenced from `lib/oci` and migrations.
 - `calls`, `sessions`, `intents` — panel + ingest overlap.
 

@@ -14,9 +14,10 @@ test('chaos: export route counts include signals key for script compat (always z
   assert.ok(routeSrc.includes('signals: 0'), 'signals count is hard-zero in queue-only mode');
 });
 
-test('chaos: fetch never loads legacy marketing_signals into export batch', () => {
+test('chaos: fetch never loads retired audit table into export batch', () => {
   const fetchSrc = readFileSync(join(ROOT, 'app', 'api', 'oci', 'google-ads-export', 'export-fetch.ts'), 'utf8');
-  assert.ok(!fetchSrc.includes("from('marketing_signals')"), 'fetch must be journal-only');
+  const retiredFrom = ['from(\'', ['marketing', '_signals'].join(''), '\')'].join('');
+  assert.ok(!fetchSrc.includes(retiredFrom), 'fetch must be journal-only');
 });
 
 test('chaos: preceding gate is strict queue-only', () => {

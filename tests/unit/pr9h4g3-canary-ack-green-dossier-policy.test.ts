@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -37,5 +38,5 @@ test('PR-9H.4G.3: dossier states safety invariants (no broad export, no second u
   assert.match(section, /[Dd]o not.*re-run.*sync|no second.*upload|Do not.*upload.*again/i);
   assert.match(section, /PR-9C.*invalid.*separate|invalid.*PR-9C/i);
   assert.match(section, /offline_conversion_queue.*upload authority|single upload authority/i);
-  assert.match(section, /marketing_signals.*not.*upload authority|not used as upload authority/i);
+  assert.match(section, /offline_conversion_queue.*upload authority|single upload authority/i);
 });

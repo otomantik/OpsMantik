@@ -8,7 +8,7 @@ Use it before writing any recovery migration.
 | Surface | Evidence | Decision |
 |---|---|---|
 | `ingest_fallback_buffer` + fallback RPCs + `/api/cron/recover` + `lib/sync-fallback.ts` | `tests/architecture/phase4-ingest-fallback-drop.test.ts`, `app/api/sync/route.ts` Phase 4 note | Keep retired |
-| Bitemporal `marketing_signals` (`sys_period`, `valid_period`, history table, time-travel RPC) | `tests/architecture/phase4-bitemporal-drop.test.ts` | Keep retired |
+| Bitemporal `offline_conversion_queue` (`sys_period`, `valid_period`, history table, time-travel RPC) | `tests/architecture/phase4-bitemporal-drop.test.ts` | Keep retired |
 | `site_members` runtime path | runtime now uses `site_memberships` in auth/access files | Keep replaced by `site_memberships` |
 | Physical `public.profiles` table | active compatibility uses `public.profiles` view (`00000000000005_profiles_compat_view.sql`) | Keep compatibility view model |
 
@@ -23,7 +23,7 @@ Use it before writing any recovery migration.
 | `usage_counters` | required by usage increment/decrement RPC semantics | missing in active migrations | Restore |
 | `call_funnel_ledger` | inserted/read in funnel runtime and metrics routes | table DDL missing in active migrations | Restore |
 | Drop migration `20260419180000_drop_ingest_fallback_buffer.sql` | pinned by architecture test | missing in repo migrations | Reconcile (add pinned artifact) |
-| Drop migration `20260419170000_drop_bitemporal_marketing_signals.sql` | pinned by architecture test | missing in repo migrations | Reconcile (add pinned artifact) |
+| Drop migration `20260419170000_drop_bitemporal_offline_conversion_queue.sql` | pinned by architecture test | missing in repo migrations | Reconcile (add pinned artifact) |
 | PR4 migration `20260216000004_revenue_kernel_pr4_reconciliation_jobs.sql` | pinned by revenue gate test | missing in repo migrations | Reconcile (add pinned artifact) |
 
 ## C) Recovery safety rules

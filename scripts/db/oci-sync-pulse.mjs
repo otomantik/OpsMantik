@@ -2,7 +2,7 @@
  * OCI Sync Pulse (Phase 19 Reliability Tool)
  * 
  * Manually triggers the OCI pipeline to:
- * 1. Sweep pending outbox events into marketing_signals.
+ * 1. Sweep pending outbox events into offline_conversion_queue journal.
  * 2. Trigger the Google Ads export sync for all active sites.
  * 
  * Usage: node scripts/db/oci-sync-pulse.mjs

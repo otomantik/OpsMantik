@@ -1,27 +1,25 @@
 # Stage Authority Matrix — SEAL-00 validated
 
 **Status:** VALIDATED (code evidence 2026-05-19)  
-**Hypothesis confirmed:** All four operator stages journal to `offline_conversion_queue`; `marketing_signals` is **not** export authority.
+**Hypothesis confirmed:** All four operator stages journal to `offline_conversion_queue` only. Retired audit table dropped (`20261320120000` drop migration).
 
 ## Validation commands (re-run before CUT)
 
 ```bash
-rg "from\(['\"]marketing_signals['\"]\)" app/api
 rg "enqueuePanelStageOciOutbox|enqueueIntentConversionJournalRow" lib app/api
 rg "from\(['\"]offline_conversion_queue['\"]\)" app/api/oci
+npm run test:oci-kernel
 ```
 
 **Results (SEAL-00):**
 
-- `app/api/**`: **zero** `marketing_signals` writes.
+- `app/api/**`, `lib/**`: queue-only OCI writers.
 - Export: [`export-mark-processing.ts`](../../../app/api/oci/google-ads-export/export-mark-processing.ts) — journal only.
-- Tests: `tests/chaos/export-dual-path-gate.test.ts`, `tests/unit/enqueue-intent-conversion-journal-row.test.ts`.
+- Tests: `tests/chaos/export-dual-path-gate.test.ts`, `tests/unit/oci-retired-vocabulary-ban.test.ts`.
 
 ## Authority contract (code)
 
-[`lib/oci/intent-conversion-journal-contract.ts`](../../../lib/oci/intent-conversion-journal-contract.ts):
-
-> marketing_signals remains audit-only; this module describes the queue SSOT only.
+[`lib/oci/intent-conversion-journal-contract.ts`](../../../lib/oci/intent-conversion-journal-contract.ts) — queue SSOT only.
 
 ## End-to-end flow
 
@@ -53,16 +51,6 @@ flowchart TD
 | Offered | OpsMantik_Offered | Same | Same | `offered` | Same | Same | Same | Same | Same | Same | Same | Same | Same |
 | Won | OpsMantik_Won | `stage` **or** `POST /api/calls/[id]/seal` → outbox; seal path also `enqueueIntentConversionJournalRow` via [`enqueue-seal-conversion.ts`](../../../lib/oci/enqueue-seal-conversion.ts) | Same queue | `won` | Same | Same + sale value | Same | Same | Same | Same | sale amount on seal | seal + journal tests | Won E2E |
 | Junk | OpsMantik_Junk_Exclusion | `stage` (`junk_exclusion`) | Same queue | `junk` | Same | Same | Same | Same | Same | COMPLETED / exclusion paths | exclusion | junk boundary | — |
-
-## marketing_signals residue (do not use for CUT authority changes)
-
-| Location | Role | CUT impact |
-|----------|------|------------|
-| [`lib/oci/upsert-marketing-signal.ts`](../../../lib/oci/upsert-marketing-signal.ts) | Legacy audit / parity writes | **Do not** re-enable as upload SSOT |
-| `app/api/cron/marketing-signals-cleanup` | Retention batch | Keep until night-maintenance absorbs (CUT-02) |
-| Scripts / forensics | Ops only | Not hot path |
-
-**NOT PART OF CORE SEAL CUT:** Migrating Contacted/Offered to a different table. If new evidence shows a live `marketing_signals` export path, **stop CUT** and file separate RFC.
 
 ## Conversion names SSOT
 

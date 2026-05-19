@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Tüm sitelerde default_aov = 1000 yap.
- * V2/V3/V4 (marketing_signals) hesaplaması için kullanılır.
+ * V2/V3/V4 stage economics (queue journal) için kullanılır.
  *
  * Usage:
  *   node scripts/sites-default-aov-1000.mjs           # Önce mevcut durum, sonra güncelle

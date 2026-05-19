@@ -14,7 +14,7 @@ status: historical
 
 **Category:** Production Operations Documentation
 
-> **Errata (2026-05, authoritative for upload surface):** The Google Ads `GET /api/oci/google-ads-export` response is built **only** from `offline_conversion_queue` (journal). `marketing_signals` is not read by that route. See `docs/architecture/EXPORT_CLOSURE.md`.
+> **Errata (2026-05, authoritative for upload surface):** The Google Ads `GET /api/oci/google-ads-export` response is built **only** from `offline_conversion_queue` (journal). `offline_conversion_queue` is not read by that route. See `docs/architecture/EXPORT_CLOSURE.md`.
 
 ---
 
@@ -30,7 +30,7 @@ flowchart TB
     end
 
     subgraph Legacy["LEGACY — Compatibility"]
-        E[marketing_signals\nV2–V4]
+        E[offline_conversion_queue\nV2–V4]
         F[offline_conversion_queue\nV5]
         G[Redis V1]
         E --> D
@@ -72,16 +72,16 @@ flowchart TB
 | Set | Google Ads name | Store | Origin | In export | After ack |
 |-----|----------------|------|--------|-----------|-----------|
 | **V1** | OpsMantik_V1_Nabiz | **Redis** (pv:queue, pv:data) | POST /api/track/pv → V1PageViewGear | Redis LMOVE | pv_* → Redis DEL |
-| **V2 (legacy)** | OpsMantik_V2_Ilk_Temas | **marketing_signals** | process-call-event, process-sync-event | PENDING selected | signal_* → SENT |
-| **V3 (legacy)** | OpsMantik_V3_Nitelikli_Gorusme | **marketing_signals** | Seal lead_score=60 | PENDING | signal_* → SENT |
-| **V4 (legacy)** | OpsMantik_V4_Sicak_Teklif | **marketing_signals** | Seal lead_score=80 | PENDING | signal_* → SENT |
+| **V2 (legacy)** | OpsMantik_V2_Ilk_Temas | **offline_conversion_queue** | process-call-event, process-sync-event | PENDING selected | signal_* → SENT |
+| **V3 (legacy)** | OpsMantik_V3_Nitelikli_Gorusme | **offline_conversion_queue** | Seal lead_score=60 | PENDING | signal_* → SENT |
+| **V4 (legacy)** | OpsMantik_V4_Sicak_Teklif | **offline_conversion_queue** | Seal lead_score=80 | PENDING | signal_* → SENT |
 | **V5** | OpsMantik_V5_DEMIR_MUHUR | **offline_conversion_queue** | Seal lead_score=100 + sale_amount | QUEUED/RETRY | seal_* → UPLOADED |
 
-Three stores: Redis (V1), marketing_signals (V2–V4), offline_conversion_queue (V5). **Google Ads script GET export (2026-05+):** only journal rows are serialized to Script; signal rows are not merged into that JSON. Legacy prose below describes pre-unification staging; upload SSOT for the export route is the journal.
+Three stores: Redis (V1), offline_conversion_queue (V2–V4), offline_conversion_queue (V5). **Google Ads script GET export (2026-05+):** only journal rows are serialized to Script; signal rows are not merged into that JSON. Legacy prose below describes pre-unification staging; upload SSOT for the export route is the journal.
 
 **Architecture note**
 
-> **Single upload surface for the Google Ads script export:** `offline_conversion_queue` only — not `marketing_signals`. Funnel Kernel remains the target SSOT evolution track; `call_funnel_projection` is a read/projection surface and is not the current Google write authority.
+> **Single upload surface for the Google Ads script export:** `offline_conversion_queue` only — not `offline_conversion_queue`. Funnel Kernel remains the target SSOT evolution track; `call_funnel_projection` is a read/projection surface and is not the current Google write authority.
 
 ---
 
@@ -94,7 +94,7 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 | `ledger_count` | TARGET | call_funnel_ledger row count (new funnel SSOT) |
 | `projection_count` | TARGET | call_funnel_projection total rows |
 | `projection_ready_count` | TARGET | rows with export_status=READY |
-| `legacy_ms_count` | TRANSITIONAL | marketing_signals total rows |
+| `legacy_ms_count` | TRANSITIONAL | offline_conversion_queue total rows |
 | `legacy_queue_queued_retry` | TRANSITIONAL | offline_conversion_queue QUEUED + RETRY count |
 | `open_violations` | TARGET | funnel_invariant_violations (resolved_at null) |
 | `blocked_incomplete_funnel_count` | TARGET | projection export_status=BLOCKED (incomplete funnel) |
@@ -115,17 +115,17 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 ### 3.2 Legacy `TRANSITIONAL` (USE_FUNNEL_PROJECTION=false or default)
 
 - **Current `google-ads-export` route:** claims/reads **only** `offline_conversion_queue` (see errata at top). The following bullets describe the older “merged batch” mental model; do not use them as the live upload contract.
-- **Historical:** **offline_conversion_queue** (V5) + **marketing_signals** (V2–V4) + **Redis** (V1)
+- **Historical:** **offline_conversion_queue** (V5) + **offline_conversion_queue** (V2–V4) + **Redis** (V1)
 - Queue: status IN (QUEUED, RETRY)
 - Signals (out of script batch today): dispatch_status semantics still apply for ops/recovery
 - After claim: queue → PROCESSING (signals unchanged for export — not selected by export fetch)
-- After ack: queue → UPLOADED/COMPLETED; `marketing_signals` updates remain on ack when signal ids are posted
+- After ack: queue → UPLOADED/COMPLETED; `offline_conversion_queue` updates remain on ack when signal ids are posted
 
 ---
 
 ## 4. Signal State Machines `CURRENT`
 
-### marketing_signals.dispatch_status
+### offline_conversion_queue.dispatch_status
 
 **Active:** `PENDING`, `PROCESSING`  
 **Terminal:** `SENT`, `FAILED`, `JUNK_ABORTED`, `DEAD_LETTER_QUARANTINE`
@@ -163,19 +163,19 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 |-------|----------|--------|------|
 | Ack signal_* PENDING → SENT | FIXED | ✅ Fixed | Ack now looks for PROCESSING (previously PENDING; pulse was not becoming SENT) |
 | 0 TL seal must not go to Google | FIXED | ✅ | Seal path: computeConversionValue returns null; no enqueue. enqueue-from-sales: value_cents<=0 skip |
-| PENDING signal stuck | MITIGATED | ✅ | Stuck-Signal-Recoverer added: `recover_stuck_marketing_signals` RPC + `/api/cron/oci/recover-stuck-signals` (every 15 min, PROCESSING older than 4 hr → PENDING). sweep-zombies (10 min) short-term; this is long-term safety net. |
-| Duplicate row (same gear) | CONTROLLED | ✅ | DB unique idx_marketing_signals_site_call_gear; 23505 idempotent |
+| PENDING signal stuck | MITIGATED | ✅ | Stuck-Signal-Recoverer added: `recover_stuck_offline_conversion_queue` RPC + `/api/cron/oci/recover-stuck-signals` (every 15 min, PROCESSING older than 4 hr → PENDING). sweep-zombies (10 min) short-term; this is long-term safety net. |
+| Duplicate row (same gear) | CONTROLLED | ✅ | DB unique idx_offline_conversion_queue_site_call_gear; 23505 idempotent |
 | Duplicate queue row (same call) | CONTROLLED | ✅ | unique call_id; 23505 idempotent |
 | Google duplicate conversion | CONTROLLED | ✅ | order_id deterministic; Google dedups |
 
 ### Stuck-Signal-Recoverer ✅ Implemented
 
-**Implementation:** `recover_stuck_marketing_signals(p_min_age_minutes int DEFAULT 240)` RPC; cron: `/api/cron/oci/recover-stuck-signals` (every 15 min).
+**Implementation:** `recover_stuck_offline_conversion_queue(p_min_age_minutes int DEFAULT 240)` RPC; cron: `/api/cron/oci/recover-stuck-signals` (every 15 min).
 
 - Trigger: Vercel Cron `*/15 * * * *`
-- Criterion: `dispatch_status = 'PROCESSING' AND updated_at < now() - age` (see `recover_stuck_marketing_signals` in migrations)
+- Criterion: `dispatch_status = 'PROCESSING' AND updated_at < now() - age` (see `recover_stuck_offline_conversion_queue` in migrations)
 - Action: `dispatch_status → 'PENDING'` (ops recovery; Script GET export does not read this table)
-- Migration: `20261112000000_recover_stuck_marketing_signals.sql`
+- Migration: `20261112000000_recover_stuck_offline_conversion_queue.sql`
 
 ---
 
@@ -185,7 +185,7 @@ With cron or admin auth, `GET /api/metrics` returns these funnel_kernel metrics:
 |---------|-------------|
 | **Intent** | Call not yet sealed (status=intent, confirmed, etc.) |
 | **Queue** | V5 only; row added only after seal |
-| Intent → V2 | Goes to marketing_signals (pulse). No queue row; correct behavior |
+| Intent → V2 | Goes to offline_conversion_queue (pulse). No queue row; correct behavior |
 | Two entry paths | Sync (process-sync-event) and Call-Event (process-call-event) → both write V2 |
 
 ---
@@ -203,8 +203,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" "https://<APP>/api/metrics"
 Database queries (site-scoped):
 
 ```sql
--- marketing_signals dispatch status
-SELECT dispatch_status, COUNT(*) FROM marketing_signals WHERE site_id = '...' GROUP BY dispatch_status;
+-- offline_conversion_queue dispatch status
+SELECT dispatch_status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROUP BY dispatch_status;
 
 -- offline_conversion_queue status
 SELECT status, COUNT(*) FROM offline_conversion_queue WHERE site_id = '...' GROUP BY status;

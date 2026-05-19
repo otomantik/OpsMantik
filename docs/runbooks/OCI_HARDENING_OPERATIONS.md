@@ -6,7 +6,7 @@ status: active
 
 This runbook covers the operational procedures for the OCI (Offline Conversion Import) hardening phase, specifically the rollout of strict fail-closed semantics for panel mutations and the necessary observability to maintain system health.
 
-Canonical upload authority for Google batch remains **queue-only**: `GET /api/oci/google-ads-export` reads `offline_conversion_queue` only. `marketing_signals` is legacy/audit/recovery support and not an independent upload source.
+Canonical upload authority for Google batch remains **queue-only**: `GET /api/oci/google-ads-export` reads `offline_conversion_queue` only. `offline_conversion_queue` is legacy/audit/recovery support and not an independent upload source.
 
 ### Queue status mutation policy (OCI Truth)
 
@@ -105,7 +105,7 @@ If `resolved_site` returns **0 rows**, the identifier is wrong; if **>1 row**, r
 
 - Every operator stage must land in **`offline_conversion_queue`** (or explicit `FAILED` / `BLOCKED_*` with reason) — see [`lib/oci/intent-conversion-journal-contract.ts`](../../lib/oci/intent-conversion-journal-contract.ts).
 - **PR-9H.6.1:** Won/seal uses the **same** journal helper as micro-stages ([`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) → [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts)).
-- **`marketing_signals`** stays audit-only — not upload authority. After an audit insert, [`ensureMarketingSignalQueueParity`](../../lib/oci/marketing-signal-queue-parity.ts) runs **best-effort** from the upsert helpers so the journal is not left behind.
+- **`offline_conversion_queue`** stays audit-only — not upload authority. After an audit insert, [`ensureOciQueueEnqueue`](../../lib/oci/ensure-oci-queue-enqueue.ts) runs **best-effort** from the upsert helpers so the journal is not left behind.
 - **Parity read-only checks:** [`lib/oci/intent-queue-parity-guard.ts`](../../lib/oci/intent-queue-parity-guard.ts).
 - **Enhanced Conversions** identifiers are stored **hashed only** under `user_identifiers` with consent; normalization: `google_ads_sha256_v1`.
 - **Rollout:** keep **sync** on **GCLID-ready** rows through Script v1; journalize wbraid/gbraid-only as blocked until API upload adapter is enabled (separate PR).
@@ -355,7 +355,7 @@ The following metrics must be actively monitored in production dashboards/alerts
 - **Panel Fail Closed Total:** Tracks `panel_oci_fail_closed_total` (number of times users saw a 503 due to producer failure).
 
 ### 2.3 Ledger & Queue Health
-- **`BLOCKED_PRECEDING_SIGNALS` Count:** Number of rows in the offline conversion queue blocked waiting for preceding conversion evidence (queue-first; legacy `marketing_signals` consult may remain for compatibility).
+- **`BLOCKED_PRECEDING_SIGNALS` Count:** Number of rows in the offline conversion queue blocked waiting for preceding conversion evidence (queue-first; legacy `offline_conversion_queue` consult may remain for compatibility).
 - **`BLOCKED` Max Age:** Alerts should trigger if blocked rows age beyond 24 hours (indicates stuck promotion).
 
 ### 2.4 Google Ads Sync Health
@@ -398,7 +398,7 @@ Projection contract note:
 - **Critical migration drift:** target DB evidence marks `DB_SCHEMA_DRIFT` when required migration history/object proof is missing; this is a promotion blocker.
 - **Won leak (unrepresented):** `won_pipeline_health.sql` shows `won_missing_unrepresented_count > 0` (alias: `won_missing_pipeline_count`) and non-zero `leak_rate`.
 - **Won represented terminal failed:** `won_represented_failed_terminal_count > 0` means row(s) are represented in queue journal but ended in terminal failure taxonomy; this is not an orphan queue-representation leak.
-- **Backlog:** `script_backlog_health.sql` shows growing active queue ages/retry counts (Google upload truth). `marketing_signals_pending_count` is legacy/audit pressure unless explicitly promoted by separate policy.
+- **Backlog:** `script_backlog_health.sql` shows growing active queue ages/retry counts (Google upload truth). `offline_conversion_queue_pending_count` is legacy/audit pressure unless explicitly promoted by separate policy.
 - **Value integrity:** `value_integrity_health.sql` shows abnormal fallback ratio or suspicious zero/null value rows.
 - **Identity integrity:** `identity_integrity_health.sql` shows malformed/missing phone hash anomalies.
 
@@ -487,8 +487,8 @@ Rollback path for recovery strict gate: set `OCI_PROCESSING_RECOVERY_CLASSIFIER_
    - `DB_QUERY_FAILED`: DB connected but pack/query execution failed.
 9. `target_db_checked` is the canonical PR-6 proof flag. Do not infer target DB proof from legacy preflight checks.
 10. `legacy_verify_db_checked` (if present) only indicates legacy `verify-db` command execution; it is separate from target DB SQL-pack/RPC proof.
-11. Queue-only deployments may not have `public.marketing_signals`; this must be classified as `LEGACY_RESIDUE_ABSENT` / `AUDIT_TABLE_NOT_PRESENT` and must not crash SQL packs.
-12. Required queue/recovery RPC drift is still a hard blocker; only legacy marketing-signal RPCs can be treated as optional residue checks.
+11. Queue-only deployments may not have `public.offline_conversion_queue`; this must be classified as `LEGACY_RESIDUE_ABSENT` / `AUDIT_TABLE_NOT_PRESENT` and must not crash SQL packs.
+12. Required queue/recovery RPC drift is still a hard blocker; only legacy retired-audit RPCs can be treated as optional residue checks.
 13. Every evidence run must overwrite both mode-specific and latest artifacts (`release-gates-<mode>.md/json` and `release-gates-latest.md/json`) with matching `generated_at` and `mode`.
 
 ### 3.8 Production Export Freeze (No Live Export Drill)
@@ -588,7 +588,7 @@ Canonical conversion names:
 - `OpsMantik_Junk_Exclusion`
 
 Canonical policy module:
-- `lib/oci/marketing-signal-value-ssot.ts`
+- `lib/oci/retired-audit-value-ssot.ts`
 
 Policy version:
 - `oci_conversion_value_policy_v1`

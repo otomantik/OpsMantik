@@ -28,7 +28,7 @@
      - `lib/i18n/site-locale.ts` for currency/timezone resolution
      - `lib/dic/phone-hash.ts` (+ `hashE164ForEnhancedConversions`,
        `resolvePhoneHashSalt`) for identity hashing
-     - `lib/oci/marketing-signal-hash.ts` + `getVoidLedgerSalt` for the
+     - `lib/oci/retired-audit-hash.ts` + `getVoidLedgerSalt` for the
        Merkle chain
      - `lib/oci/outbox/process-outbox.ts` for outbox processing (shared
        between the cron backup and the new QStash worker)
@@ -86,7 +86,7 @@
       unified-table merge is explicitly deferred (see
       `f4-conversion-dispatch-merge`). The schemas stay separate today;
       the merge needs its own dedicated PR with staged migrations.
-    - `marketing_signals.dispatch_status` counters in `admin_metrics`
+    - `offline_conversion_queue.dispatch_status` counters in `admin_metrics`
       assume the column exists in every environment. A preview branch
       without the migration will report 0s — acceptable, documented.
   - **Risk surface**
@@ -100,7 +100,7 @@
 - **Links:**
   - `docs/GLOBAL_LAUNCH_CHECKLIST.md` — pre-cutover gate
   - `docs/architecture/OCI_VALUE_ENGINES_SSOT.md` — canonical value math
-  - `supabase/migrations/20260419170000_drop_bitemporal_marketing_signals.sql`
+  - `supabase/migrations/20260419170000_drop_bitemporal_offline_conversion_queue.sql`
   - `supabase/migrations/20260419180000_drop_ingest_fallback_buffer.sql`
   - `supabase/migrations/20260419200000_sites_locale_strict_check.sql`
   - `supabase/migrations/20260419210000_sites_country_iso_strict_check.sql`

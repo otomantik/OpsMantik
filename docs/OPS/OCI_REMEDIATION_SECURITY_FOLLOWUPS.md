@@ -15,12 +15,12 @@
 ## GDPR / retention
 
 - Reconciliation payloads must avoid raw PII (phone, full URL, IP). Prefer hashes or truncated tokens (`lib/oci/reconciliation-events.ts`).
-- Define retention / anonymization policy for `marketing_signals`, `offline_conversion_queue`, and `oci_reconciliation_events` with legal owner; align with compliance freeze tests if extended.
+- Define retention / anonymization policy for `offline_conversion_queue`, `offline_conversion_queue`, and `oci_reconciliation_events` with legal owner; align with compliance freeze tests if extended.
 
 ### Operational backlog (owner + target)
 
 - **Data owner + legal review:** define retention windows for:
-  - `marketing_signals`
+  - `offline_conversion_queue`
   - `offline_conversion_queue`
   - `oci_reconciliation_events`
 - **Implementation owner (backend):** add scheduled purge/anonymize jobs after legal approval.

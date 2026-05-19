@@ -18,7 +18,7 @@ todos:
     content: "DB: journal için NULL external_id yasak (uygulanabilir satırlarda); çakışma kuralları"
     status: completed
   - id: wire-outbox
-    content: process-outbox — her canonical stage emit → journal satırı; Google upload = journal only (marketing_signals audit/parallel)
+    content: process-outbox — her canonical stage emit → journal satırı; Google upload = journal only (__RETIRED_AUDIT_TABLE_DROPPED__ audit/parallel)
     status: completed
   - id: worker-script-actions
     content: "Script/worker: 4 conversion name tam map; BLOCKED claim yok"
@@ -83,7 +83,7 @@ isProject: false
 | ID | Kural | Not |
 |----|--------|-----|
 | **D1** | `external_id` **saf fonksiyon**: `computeOfflineConversionExternalId({ providerKey, action, saleId?, callId?, sessionId? })` ([`lib/oci/external-id.ts`](lib/oci/external-id.ts)) — **random/time yok** | Aynı tuple → aynı hash öneki |
-| **D2** | `value_cents` / stage ekonomisi **aynı policy sürümü + aynı snapshot girdileri** → aynı sayısal sonuç ([value SSOT](lib/oci/marketing-signal-value-ssot.ts)) | Şema sürümü drift = deploy STOP (I8) |
+| **D2** | `value_cents` / stage ekonomisi **aynı policy sürümü + aynı snapshot girdileri** → aynı sayısal sonuç ([value SSOT](lib/oci/retired-oci-signal-value-ssot.ts)) | Şema sürümü drift = deploy STOP (I8) |
 | **D3** | **Transition / seal / ACK** zaman damgaları: sözleşmede **DB otoritesi** (`getDbNowIso` vb.) — **wall-clock tek başına** yasaklanmış yüzeyler listelenir ve testlenir | Zaman SSOT = G3 |
 | **D4** | **Replay / idempotency**: Aynı outbox veya aynı `(site_id, external_id)` ile **yeniden çağrı** → ikinci yazım ya **23505 no-op** ya da **deterministik replay cevabı** (ACK hash) | I6 ile uyum |
 | **D5** | **Mutabakat ve tarama sıraları** sabit: `ORDER BY` + tie-break (ör. `call_id`, `action`, `created_at`) — “ilk gelen kazanır” belirsizliği yok | SQL + worker aynı sıra semantiği |
@@ -190,7 +190,7 @@ flowchart LR
 flowchart LR
   subgraph today [Bugun]
     OB[outbox / panel]
-    OB --> MS[marketing_signals]
+    OB --> MS[__RETIRED_AUDIT_TABLE_DROPPED__]
     OB --> WIN[enqueueSealConversion]
     WIN --> Q[offline_conversion_queue won]
     MS --> Pulse[pulse / dispatch]
@@ -250,7 +250,7 @@ stateDiagram-v2
 
 ## 6) S1 vs S2
 
-**S1** önerilir: `marketing_signals` → Google doğrudan **kapatılır** (veya salt projection); upload **yalnızca** journal + worker/script.
+**S1** önerilir: `__RETIRED_AUDIT_TABLE_DROPPED__` → Google doğrudan **kapatılır** (veya salt projection); upload **yalnızca** journal + worker/script.
 
 ---
 

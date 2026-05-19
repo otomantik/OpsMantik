@@ -38,7 +38,7 @@ Use canonical English runbooks for active operations:
 `node scripts/db/_archive/site-specific/oci-eslamed-dun-2240-biriken.mjs` — Kuyruk özeti (QUEUED/PROCESSING/UPLOADED), 22:40 sonrası mühürlenen call’lar, nabız PENDING sayısı.
 
 **Eslamed tam aktivite (operatör + kuyruk + nabız):**  
-`node scripts/db/_archive/site-specific/oci-eslamed-aktivite-rapor.mjs` — Dün 22:00 TRT sonrası call_actions, mühürlenen call'lar, kuyruk, marketing_signals. PROCESSING takılı varsa manuel ack örnek curl çıktıda.
+`node scripts/db/_archive/site-specific/oci-eslamed-aktivite-rapor.mjs` — Dün 22:00 TRT sonrası call_actions, mühürlenen call'lar, kuyruk, offline_conversion_queue. PROCESSING takılı varsa manuel ack örnek curl çıktıda.
 
 ---
 
@@ -66,7 +66,7 @@ Use canonical English runbooks for active operations:
 
 ## 0d. Nabız (V2/V3/V4) PROCESSING'de takılı — ack PENDING arıyordu (düzeltildi)
 
-**Belirti (tarihsel / sinyal satırı ack):** Eski düzende export partisine dahil edilen `marketing_signals` satırları için: script Google'a yüklüyor, ack 200 alıyor ama satırlar `dispatch_status = PROCESSING`'de kalıyordu; SENT olmuyordu. **Güncel:** script batch journal-only; sinyal tablosu bu GET ile gönderilmez. Bu madde, hâlen ack üzerinden güncellenen eski veya paralel sinyal satırları için geçerli olabilir.
+**Belirti (tarihsel / sinyal satırı ack):** Eski düzende export partisine dahil edilen `offline_conversion_queue` satırları için: script Google'a yüklüyor, ack 200 alıyor ama satırlar `dispatch_status = PROCESSING`'de kalıyordu; SENT olmuyordu. **Güncel:** script batch journal-only; sinyal tablosu bu GET ile gönderilmez. Bu madde, hâlen ack üzerinden güncellenen eski veya paralel sinyal satırları için geçerli olabilir.
 
 **Neden:** Export, döndürdüğü sinyal satırlarını hemen **PROCESSING** yapıyor. Ack ise **PENDING** olanları SENT yapıyordu. Sonuç: Hiçbir nabız satırı ack'te güncellenmiyordu.
 
@@ -243,7 +243,7 @@ Aynı site için hem `api` hem script’i aynı anda kullanırsanız, sync_metho
 - **Telefon eşleştirme:** Export API dönüşüm satırına `hashed_phone_number` (SHA256, E.164) ekliyor; Script CSV’ye **"Phone"** kolonu ile bu değeri yazıyor. Google Ads hesabında **Gelişmiş dönüşümler (Enhanced Conversions for leads)** açıksa, GCLID decode hatası olsa bile **hashed phone** ile eşleşme yapılabilir.
 - **Kontrol:** Google Ads → Araçlar → Yüklemeler’de hata detayı; hesap ayarlarında "Gelişmiş dönüşümler" / "Enhanced Conversions" açık olmalı.
 
-**Nitelikli görüşmeler listelenmedi:** Üst funnel adımları journal’a işlenmediyse veya `OpsMantik_Contacted` satırı kuyrukta/engelde değilse Script CSV’de görünmez; ayrıca **click_id** yoksa export kapısı satırı düşürür, limit sayfalama eksik bırakabilir. DB tarafında ayrıca `marketing_signals` (audit) satırları tutulabilir — **Script GET export bu tabloyu okumaz.** Kuyruk raporu (arşiv): `scripts/db/_archive/site-specific/oci-muratcan-kuyruk-rapor.mjs` / `scripts/db/oci-export-send-preview.mjs` / `scripts/db/_archive/site-specific/oci-muratcan-kuyruk-donusum-tarama.mjs`.
+**Nitelikli görüşmeler listelenmedi:** Üst funnel adımları journal’a işlenmediyse veya `OpsMantik_Contacted` satırı kuyrukta/engelde değilse Script CSV’de görünmez; ayrıca **click_id** yoksa export kapısı satırı düşürür, limit sayfalama eksik bırakabilir. DB tarafında ayrıca `offline_conversion_queue` (audit) satırları tutulabilir — **Script GET export bu tabloyu okumaz.** Kuyruk raporu (arşiv): `scripts/db/_archive/site-specific/oci-muratcan-kuyruk-rapor.mjs` / `scripts/db/oci-export-send-preview.mjs` / `scripts/db/_archive/site-specific/oci-muratcan-kuyruk-donusum-tarama.mjs`.
 
 ---
 

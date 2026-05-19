@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 /**
  * Call-Event Consent Hardening — Invariant tests.
  * Fails if call-event path bypasses GDPR consent gates.

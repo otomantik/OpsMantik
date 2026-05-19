@@ -5,8 +5,8 @@
  * 1) outbox_events: seal/stage sonrası kaçmış satırlar — oci-outbox-missed-backfill ile.
  * 2) drain: BASE_URL + CRON_SECRET ile POST /api/workers/oci/process-outbox (varsayılan)
  *    --use-cron-lock verilirse cron endpointi kullanılır.
- *    claim_outbox_events → marketing_signals / offline_conversion_queue.
- * 3) rapor: outbox durumları + offline_conversion_queue + marketing_signals.dispatch_status (site bazlı öz).
+ *    claim_outbox_events → offline_conversion_queue (journal).
+ * 3) rapor: outbox durumları + offline_conversion_queue (site bazlı öz).
  *
  * Kullanım:
  *   node scripts/db/oci-pipeline-fill-and-report.mjs
@@ -227,9 +227,7 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
   const gOut = {};
   /** @type {Record<string, number>} */
   const gQ = {};
-  /** @type {Record<string, number>} */
-  const gSig = {};
-  /** @type {Array<{site_id:string,site_label:string,outbox:any,offline_queue:any,marketing_signals_dispatch:any,queued_or_retry_hint:number,sample_queue_exports:any[]}>} */
+  /** @type {Array<{site_id:string,site_label:string,outbox:any,offline_queue:any,queued_or_retry_hint:number,sample_queue_exports:any[]}>} */
   const sections = [];
   const sinceIso = new Date(Date.now() - WINDOW_MS[reconciliationWindow]).toISOString();
 
@@ -237,7 +235,6 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
     const sid = s.id;
     let obRows = [];
     let qRows = [];
-    let sigRows = [];
     let samples = [];
     let recoRows = [];
     try {
@@ -249,11 +246,6 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
       qRows = await fetchSiteFieldPages(admin, 'offline_conversion_queue', sid, 'status');
     } catch {
       console.warn('[rapor] offline_conversion_queue site', sid.slice(0, 8));
-    }
-    try {
-      sigRows = await fetchSiteFieldPages(admin, 'marketing_signals', sid, 'dispatch_status');
-    } catch {
-      console.warn('[rapor] marketing_signals site', sid.slice(0, 8));
     }
     try {
       samples = await fetchQueueSamples(admin, sid, 8);
@@ -268,7 +260,6 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
 
     const outbox = countBy(obRows, 'status');
     const offline_queue = countBy(qRows, 'status');
-    const marketing_signals_dispatch = countBy(sigRows, 'dispatch_status');
     const queued_or_retry_hint = ['QUEUED', 'RETRY'].reduce((acc, st) => acc + (offline_queue[st] || 0), 0);
     const reconciliation_by_reason = Object.fromEntries(
       Object.values(OCI_RECONCILIATION_REASONS).map((reason) => [reason, 0])
@@ -280,16 +271,13 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
 
     for (const [k, v] of Object.entries(outbox)) gOut[k] = (gOut[k] || 0) + v;
     for (const [k, v] of Object.entries(offline_queue)) gQ[k] = (gQ[k] || 0) + v;
-    for (const [k, v] of Object.entries(marketing_signals_dispatch)) gSig[k] = (gSig[k] || 0) + v;
-
-    const hasAny = obRows.length + qRows.length + sigRows.length > 0;
+    const hasAny = obRows.length + qRows.length > 0;
     if (siteIdFilter || hasAny) {
       sections.push({
         site_id: sid,
         site_label: `${s.name || sid}${s.domain ? ` (${s.domain})` : ''}`,
         outbox,
         offline_queue,
-        marketing_signals_dispatch,
         reconciliation_window: reconciliationWindow,
         reconciliation_by_reason,
         queued_or_retry_hint,
@@ -301,14 +289,11 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
   const globalSummary = {
     outbox_total_status: gOut,
     queue_total_status: gQ,
-    signals_total_dispatch: gSig,
     site_count_sections: sections.length,
   };
 
   const totalsOb = Object.values(gOut).reduce((a, b) => a + b, 0);
   const totalsQ = Object.values(gQ).reduce((a, b) => a + b, 0);
-  const totalsS = Object.values(gSig).reduce((a, b) => a + b, 0);
-
   return {
     sections,
     globalSummary,
@@ -316,7 +301,6 @@ async function buildReport(siteIdFilter, reconciliationWindow) {
       sites_scanned: sites.length,
       outbox_rows_rollup: totalsOb,
       queue_rows_rollup: totalsQ,
-      signals_rows_rollup: totalsS,
     },
   };
 }
@@ -394,14 +378,12 @@ async function main() {
     const g = report.globalSummary;
     console.log('[Global] outbox:', g.outbox_total_status);
     console.log('[Global] offline_conversion_queue:', g.queue_total_status);
-    console.log('[Global] marketing_signals dispatch_status:', g.signals_total_dispatch);
   }
 
   for (const sec of report.sections || []) {
     console.log('\n── Site ──', sec.site_label);
     console.log('  outbox_events (status):', sec.outbox);
     console.log('  offline_conversion_queue (status):', sec.offline_queue);
-    console.log('  marketing_signals (dispatch_status):', sec.marketing_signals_dispatch);
     console.log(`  reconciliation (${sec.reconciliation_window}) by reason:`, sec.reconciliation_by_reason);
     console.log('  Script export için sıra ipucu (QUEUED+RETRY):', sec.queued_or_retry_hint);
     if (sec.sample_queue_exports?.length) {
@@ -415,7 +397,7 @@ async function main() {
   console.log('\n──────────────────────────────────────────────────────────');
   console.log('Akış özeti');
   console.log('  Panel/RPC sonrası: outbox_events (PENDING)');
-  console.log('  İşçi (cron/QStash): PENDING→PROCESS→journal ve/veya marketing_signals (audit); Won→offline_conversion_queue');
+  console.log('  İşçi (cron/QStash): PENDING→PROCESS→offline_conversion_queue journal');
   console.log('  Google Ads script GET: /api/oci/google-ads-export yalnızca offline_conversion_queue (outbox doğrudan sayılmaz)');
   console.log('  Drain için .env.local: BASE_URL (veya NEXT_PUBLIC_APP_URL) = prod origin; CRON_SECRET gerekir.');
   console.log('  Varsayılan drain worker endpointini kullanır; cron lock yolu için --use-cron-lock ver.');

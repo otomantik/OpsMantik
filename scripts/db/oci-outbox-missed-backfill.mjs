@@ -7,7 +7,7 @@
  * Idempotent yaklaşım:
  *   - Aynı çağrı için zaten PENDING/PROCESSING outbox varsa atlar.
  *   - won (confirmed/qualified/real dahil): aktif offline_conversion_queue satırı varsa atlar.
- *   - contacted/offered/junk: aynı çağrı için ilgili stage’de halihazırda marketing_signals varsa atlar.
+ *   - contacted/offered/junk: aynı çağrı için ilgili stage journal satırı varsa atlar.
  *
  * Kullanım:
  *   node scripts/db/oci-outbox-missed-backfill.mjs Muratcan
@@ -193,21 +193,24 @@ async function hasActiveOfflineQueue(supabase, siteId, callId) {
   return (data?.length ?? 0) > 0;
 }
 
-async function hasExistingSignalForStage(supabase, siteId, callId, stage) {
+const STAGE_TO_ACTION = {
+  contacted: 'OpsMantik_Contacted',
+  offered: 'OpsMantik_Offered',
+  junk: 'OpsMantik_Junk_Exclusion',
+};
+
+async function hasExistingQueueForStage(supabase, siteId, callId, stage) {
+  const action = STAGE_TO_ACTION[stage.toLowerCase()];
+  if (!action) return false;
   const { data, error } = await supabase
-    .from('marketing_signals')
-    .select('id, optimization_stage, signal_type')
+    .from('offline_conversion_queue')
+    .select('id')
     .eq('site_id', siteId)
     .eq('call_id', callId)
-    .limit(50);
+    .eq('action', action)
+    .limit(1);
   if (error) throw error;
-  const st = stage.toLowerCase();
-  for (const row of data || []) {
-    const os = String(row.optimization_stage ?? '').toLowerCase();
-    const sig = String(row.signal_type ?? '').toLowerCase();
-    if (os === st || sig === st) return true;
-  }
-  return false;
+  return (data?.length ?? 0) > 0;
 }
 
 async function shouldSkip({ supabase, siteId, call, stage }) {
@@ -219,8 +222,8 @@ async function shouldSkip({ supabase, siteId, call, stage }) {
       return { skip: true, reason: 'offline_queue_active' };
     }
   } else {
-    if (await hasExistingSignalForStage(supabase, siteId, call.id, stage)) {
-      return { skip: true, reason: 'marketing_signal_exists' };
+    if (await hasExistingQueueForStage(supabase, siteId, call.id, stage)) {
+      return { skip: true, reason: 'queue_row_exists' };
     }
   }
   return { skip: false };
