@@ -144,9 +144,7 @@ async function main() {
     mode: dryRun ? 'dry-run' : 'apply',
     sitesProcessed: results.length,
     queueNeedsUpdateTotal: results.reduce((acc, row) => acc + row.queueNeedsUpdate, 0),
-    signalNeedsUpdateTotal: results.reduce((acc, row) => acc + row.signalNeedsUpdate, 0),
     queueUpdatedTotal: results.reduce((acc, row) => acc + row.queueUpdated, 0),
-    signalUpdatedTotal: results.reduce((acc, row) => acc + row.signalUpdated, 0),
   };
   console.log(JSON.stringify(summary, null, 2));
 }
