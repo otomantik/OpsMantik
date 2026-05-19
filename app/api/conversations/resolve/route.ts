@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { assertOutOfCoreSurfaceAllowed } from '@/lib/api/out-of-core-surface';
 import { createClient } from '@/lib/supabase/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { logError } from '@/lib/logging/logger';
@@ -17,6 +18,9 @@ export const runtime = 'nodejs';
 const RESOLVE_STATUSES = ['WON', 'LOST', 'JUNK'];
 
 export async function POST(req: NextRequest) {
+  const retired = assertOutOfCoreSurfaceAllowed('conversations_resolve');
+  if (retired) return retired;
+
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {

@@ -7,6 +7,15 @@ export const OUT_OF_CORE_SURFACES = {
   google_spend_dashboard: 'google_spend_dashboard',
   stats_realtime: 'stats_realtime',
   reporting_dashboard_stats: 'reporting_dashboard_stats',
+  conversations_collection: 'conversations_collection',
+  conversations_detail: 'conversations_detail',
+  conversations_assign: 'conversations_assign',
+  conversations_follow_up: 'conversations_follow_up',
+  conversations_link: 'conversations_link',
+  conversations_note: 'conversations_note',
+  conversations_reopen: 'conversations_reopen',
+  conversations_resolve: 'conversations_resolve',
+  conversations_stage: 'conversations_stage',
 } as const;
 
 export type OutOfCoreSurface = (typeof OUT_OF_CORE_SURFACES)[keyof typeof OUT_OF_CORE_SURFACES];
