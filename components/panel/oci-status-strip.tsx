@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import type { TranslationKey } from '@/lib/i18n/t';
 import { panelOciPath } from '@/lib/auth/site-operational-route';
 import type { OciQueueStats } from '@/lib/domain/oci/queue-types';
 
@@ -12,7 +13,7 @@ const STRIP_STATUSES = ['QUEUED', 'PROCESSING', 'UPLOADED', 'COMPLETED', 'FAILED
 
 function ociStripStatusLabel(
   status: (typeof STRIP_STATUSES)[number],
-  t: (key: string) => string
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 ): string {
   switch (status) {
     case 'QUEUED':
