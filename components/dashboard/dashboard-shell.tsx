@@ -151,7 +151,7 @@ function DashboardShellInner({
                     'h-9 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-slate-200 bg-white hover:bg-slate-50 shrink-0 whitespace-nowrap'
                   )}
                 >
-                  /panel
+                  {t('dashboard.openPanelLabel')}
                 </Link>
                 <div className="shrink-0 flex flex-col items-end">
                   {(() => {
@@ -264,11 +264,11 @@ function DashboardShellInner({
 
         <main className="mx-auto max-w-7xl px-6 py-6 pb-16 overflow-x-hidden min-w-0 relative z-10">
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600" data-testid="analytics-retired-notice">
-            Analytics reports retired. Use{' '}
+            {t('dashboard.analyticsRetired.noticePrefix')}{' '}
             <Link href="/panel" className="font-semibold text-slate-900 underline underline-offset-2">
-              /panel
+              {t('dashboard.analyticsRetired.panelLinkLabel')}
             </Link>{' '}
-            for Today Desk and OCI operations.
+            {t('dashboard.analyticsRetired.noticeSuffix')}
           </div>
           <div id="niyetler">
             <div className="mb-3">

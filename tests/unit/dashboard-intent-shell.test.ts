@@ -45,6 +45,8 @@ test('CUT-01B: dashboard shell has no funnel/CRO/chart analytics imports', () =>
   assert.ok(src.includes('oci-control'), 'dashboard shell keeps OCI control link');
   assert.ok(src.includes('/activity'), 'dashboard shell keeps activity link');
   assert.ok(src.includes('analytics-retired-notice'), 'dashboard shell shows analytics retired notice');
+  assert.ok(src.includes("dashboard.analyticsRetired.noticePrefix"), 'dashboard shell localizes retired analytics notice');
+  assert.ok(src.includes('dashboard.openPanelLabel'), 'dashboard shell localizes panel link label');
 });
 
 test('legacy CRM routes redirect to intent command center', () => {
