@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `manual only (legacy enqueue)`
+ */
+/**
  * GET/POST /api/cron/oci/enqueue-from-sales — enqueue CONFIRMED sales (last N hours) missing from queue.
  * Query param: hours (optional, default 24, max 168). Auth: requireCronAuth.
  * Vercel Cron sends GET (hourly); POST kept for manual/Bearer calls.

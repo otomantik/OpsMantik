@@ -27,7 +27,7 @@ This document removes ambiguity around the word **“100”** and related scores
 | **G1** | Click | En az biri dolu: `gclid` \| `wbraid` \| `gbraid` | Hiçbiri yok → Google upload için queue satırı `BLOCKED_PRECEDING_SIGNALS` + `MISSING_CLICK_ID` veya structured skip reason |
 | **G2** | Rıza | `hasMarketingConsentForCall` true (seal/satış yollarında) | false → queue write yok; structured reason `CONSENT_MISSING` (silent skip yasak) |
 | **G3** | Zaman SSOT | [`oci_time_ssot_health.sql`](../../scripts/sql/oci_time_ssot_health.sql) ve operasyonel süreç **GREEN** | **RED** → şema/veri düzeltmeden release yok |
-| **G4** | Hash | `marketing_signals` hash zinciri tutarlı | Kırık zincir → **STOP** + incident; deploy yok |
+| **G4** | Hash | `offline_conversion_queue` hash zinciri tutarlı | Kırık zincir → **STOP** + incident; deploy yok |
 | **G5** | Idempotency | Aynı `call_id` + aynı dönüşüm için çifte kuruş yok | 23505 dışı çelişki / tutarsız `value_cents` → **BUG** |
 
 Deploy öncesi zorunlu paket: `npm run test:release-gates` (workspace kuralı). G3/G4 **FAIL** iken production deploy **yasak** (operasyonel STOP).
@@ -43,7 +43,7 @@ Deploy öncesi zorunlu paket: `npm run test:release-gates` (workspace kuralı). 
 
 ## Google Ads value (production)
 
-- **Production Google conversion value** (minor units / majors per policy) is determined by **canonical stage economics** and **approved value policy** (`value_policy_version`, `value_source`, [`CONVERSION_VALUE_POLICY_VERSION`](../../lib/oci/marketing-signal-value-ssot.ts)).
+- **Production Google conversion value** (minor units / majors per policy) is determined by **canonical stage economics** and **approved value policy** (`value_policy_version`, `value_source`, [`CONVERSION_VALUE_POLICY_VERSION`](../../lib/oci/retired-audit-value-ssot.ts)).
 - **`lead_score` is not**, today, a **direct production multiplier** on Google value in [`resolveOptimizationValue`](../../lib/oci/optimization-contract.ts) (`systemScore` is held at `0` for optimization value — intentional).
 
 ## Storage field glossary
@@ -75,7 +75,7 @@ Deploy öncesi zorunlu paket: `npm run test:release-gates` (workspace kuralı). 
 - Do **not** say “lead_score 100” and “won economic 100” are the same thing.
 - Do **not** use health/audit “all green” scores as **offline conversion payload value**.
 - **A seçiliyken:** UI kalite puanı (`lead_score`) **tek başına** Google kuruşunu değiştirmez; çarpan yoksa ara “yarı çarpan” da yok (`LEAD_SCORE_GOOGLE_VALUE_MULTIPLIER_ENABLED === false`).
-- **Aynı anda** iki farklı `expected_value_cents` formülünü üretimde paralel yürütmek **yasak** (tek SSOT: `buildOptimizationSnapshot` → `resolveMarketingSignalEconomics` / ilgili seal yolu).
+- **Aynı anda** iki farklı `expected_value_cents` formülünü üretimde paralel yürütmek **yasak** (tek SSOT: `buildOptimizationSnapshot` → `resolveRetiredAuditEconomics` / ilgili seal yolu).
 - **Stage tabanları** (`OPTIMIZATION_STAGE_BASES`) ML veya shadow skorla **runtime’da değiştirilmez**; değişiklik yalnızca sözleşmeli migration + PR.
 
 ## Related documents

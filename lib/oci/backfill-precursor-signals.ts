@@ -7,11 +7,11 @@
 
 import { adminClient } from '@/lib/supabase/admin';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
-import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { loadOciConversionEconomics } from '@/lib/oci/oci-conversion-economics';
 import type { OptimizationStage } from '@/lib/oci/optimization-contract';
 import { planPrecursorBackfillStages, type BackfillTimeSource } from '@/lib/oci/precursor-backfill-plan';
 import type { PipelineStage } from '@/lib/oci/signal-types';
-import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import { ensureOciQueueEnqueue } from '@/lib/oci/ensure-oci-queue-enqueue';
 
 export interface PrecursorBackfillParams {
   siteId: string;
@@ -159,13 +159,13 @@ export async function runPrecursorSignalBackfill(
       result.queueAttempts++;
       bumpSourceCounter(result, plan.source);
 
-      const economics = await loadMarketingSignalEconomics({
+      const economics = await loadOciConversionEconomics({
         siteId: params.siteId,
         stage: plan.stage as Exclude<PipelineStage, 'won'>,
         snapshot,
       });
 
-      const parity = await ensureMarketingSignalQueueParity({
+      const parity = await ensureOciQueueEnqueue({
         siteId: params.siteId,
         callId,
         stage: plan.stage as Exclude<PipelineStage, 'won'>,

@@ -378,7 +378,7 @@ $$;
 ALTER FUNCTION "public"."_jwt_role"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."_marketing_signals_append_only"() RETURNS "trigger"
+CREATE OR REPLACE FUNCTION "public"."___RETIRED_AUDIT_TABLE_DROPPED___append_only"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
     AS $$
@@ -390,12 +390,12 @@ BEGIN
     IF OLD.dispatch_status = 'SENT' AND OLD.created_at < (now() - interval '60 days') THEN
       RETURN OLD;
     END IF;
-    RAISE EXCEPTION 'marketing_signals: DELETE not allowed (append-only). SENT rows older than 60 days may be purged via cleanup RPC.';
+    RAISE EXCEPTION '__RETIRED_AUDIT_TABLE_DROPPED__: DELETE not allowed (append-only). SENT rows older than 60 days may be purged via cleanup RPC.';
   END IF;
 
   IF TG_OP = 'UPDATE' THEN
     IF NEW.site_id != OLD.site_id OR NEW.signal_type != OLD.signal_type OR NEW.google_conversion_name != OLD.google_conversion_name THEN
-      RAISE EXCEPTION 'marketing_signals: signal content immutable. Only dispatch_status and google_sent_at may be updated.';
+      RAISE EXCEPTION '__RETIRED_AUDIT_TABLE_DROPPED__: signal content immutable. Only dispatch_status and google_sent_at may be updated.';
     END IF;
   END IF;
 
@@ -404,7 +404,7 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."_marketing_signals_append_only"() OWNER TO "postgres";
+ALTER FUNCTION "public"."___RETIRED_AUDIT_TABLE_DROPPED___append_only"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."_provider_dispatches_no_delete"() RETURNS "trigger"
@@ -3055,7 +3055,7 @@ COMMENT ON FUNCTION "public"."cleanup_auto_junk_stale_intents"("p_days_old" inte
 
 
 
-CREATE OR REPLACE FUNCTION "public"."cleanup_marketing_signals_batch"("p_days_old" integer DEFAULT 60, "p_limit" integer DEFAULT 5000) RETURNS integer
+CREATE OR REPLACE FUNCTION "public"."cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch"("p_days_old" integer DEFAULT 60, "p_limit" integer DEFAULT 5000) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -3064,19 +3064,19 @@ DECLARE
   v_deleted int;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role' THEN
-    RAISE EXCEPTION 'cleanup_marketing_signals_batch may only be called by service_role' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch may only be called by service_role' USING ERRCODE = 'P0001';
   END IF;
 
   v_cutoff := now() - (LEAST(GREATEST(p_days_old, 1), 365) || ' days')::interval;
 
   WITH to_delete AS (
-    SELECT id FROM public.marketing_signals
+    SELECT id FROM public.__RETIRED_AUDIT_TABLE_DROPPED__
     WHERE dispatch_status = 'SENT'
       AND created_at < v_cutoff
     ORDER BY created_at ASC
     LIMIT LEAST(GREATEST(p_limit, 1), 10000)
   )
-  DELETE FROM public.marketing_signals
+  DELETE FROM public.__RETIRED_AUDIT_TABLE_DROPPED__
   WHERE id IN (SELECT id FROM to_delete);
 
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
@@ -3085,10 +3085,10 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."cleanup_marketing_signals_batch"("p_days_old" integer, "p_limit" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch"("p_days_old" integer, "p_limit" integer) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."cleanup_marketing_signals_batch"("p_days_old" integer, "p_limit" integer) IS 'Delete SENT marketing_signals older than p_days_old. service_role only.';
+COMMENT ON FUNCTION "public"."cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch"("p_days_old" integer, "p_limit" integer) IS 'Delete SENT __RETIRED_AUDIT_TABLE_DROPPED__ older than p_days_old. service_role only.';
 
 
 
@@ -3631,7 +3631,7 @@ COMMENT ON FUNCTION "public"."delete_expired_idempotency_batch"("p_cutoff_iso" t
 
 
 
-CREATE OR REPLACE FUNCTION "public"."enforce_marketing_signals_state_machine"() RETURNS "trigger"
+CREATE OR REPLACE FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
     AS $$
@@ -3671,10 +3671,10 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."enforce_marketing_signals_state_machine"() OWNER TO "postgres";
+ALTER FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"() OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."enforce_marketing_signals_state_machine"() IS 'Phase 21 strict signal transition matrix. Preserves PENDING terminalization to SKIPPED_NO_CLICK_ID/STALLED_FOR_HUMAN_AUDIT for existing vacuum flows.';
+COMMENT ON FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"() IS 'Phase 21 strict signal transition matrix. Preserves PENDING terminalization to SKIPPED_NO_CLICK_ID/STALLED_FOR_HUMAN_AUDIT for existing vacuum flows.';
 
 
 
@@ -6760,7 +6760,7 @@ COMMENT ON FUNCTION "public"."get_kill_feed_v1"("p_site_id" "uuid", "p_hours_bac
 
 
 
-CREATE OR REPLACE FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone DEFAULT "now"()) RETURNS TABLE("id" "uuid", "call_id" "uuid", "site_id" "uuid", "signal_type" "text", "google_conversion_name" "text", "google_conversion_time" "text", "conversion_value" numeric, "gclid" "text", "wbraid" "text", "gbraid" "text", "dispatch_status" "text", "expected_value_cents" bigint, "sys_period" "tstzrange", "valid_period" "tstzrange")
+CREATE OR REPLACE FUNCTION "public"."get___RETIRED_AUDIT_TABLE_DROPPED___as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone DEFAULT "now"()) RETURNS TABLE("id" "uuid", "call_id" "uuid", "site_id" "uuid", "signal_type" "text", "google_conversion_name" "text", "google_conversion_time" "text", "conversion_value" numeric, "gclid" "text", "wbraid" "text", "gbraid" "text", "dispatch_status" "text", "expected_value_cents" bigint, "sys_period" "tstzrange", "valid_period" "tstzrange")
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -6773,7 +6773,7 @@ CREATE OR REPLACE FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "u
       ms.conversion_value, ms.gclid, ms.wbraid, ms.gbraid,
       ms.dispatch_status, ms.expected_value_cents,
       ms.sys_period, ms.valid_period
-    FROM public.marketing_signals ms
+    FROM public.__RETIRED_AUDIT_TABLE_DROPPED__ ms
     WHERE ms.site_id = p_site_id
       AND ms.sys_period @> p_as_of
   )
@@ -6785,17 +6785,17 @@ CREATE OR REPLACE FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "u
       h.conversion_value, h.gclid, h.wbraid, h.gbraid,
       h.dispatch_status, h.expected_value_cents,
       h.sys_period, h.valid_period
-    FROM public.marketing_signals_history h
+    FROM public.__RETIRED_AUDIT_TABLE_DROPPED___history h
     WHERE h.site_id = p_site_id
       AND h.sys_period @> p_as_of
   );
 $$;
 
 
-ALTER FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) OWNER TO "postgres";
+ALTER FUNCTION "public"."get___RETIRED_AUDIT_TABLE_DROPPED___as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) IS 'Bitemporal time-travel: returns marketing_signals as the system believed them at p_as_of. Uses live table for current, history table for past.';
+COMMENT ON FUNCTION "public"."get___RETIRED_AUDIT_TABLE_DROPPED___as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) IS 'Bitemporal time-travel: returns __RETIRED_AUDIT_TABLE_DROPPED__ as the system believed them at p_as_of. Uses live table for current, history table for past.';
 
 
 
@@ -8523,14 +8523,14 @@ COMMENT ON FUNCTION "public"."log_oci_payload_validation_event"("p_actor" "text"
 
 
 
-CREATE OR REPLACE FUNCTION "public"."marketing_signals_bitemporal_audit"() RETURNS "trigger"
+CREATE OR REPLACE FUNCTION "public"."__RETIRED_AUDIT_TABLE_DROPPED___bitemporal_audit"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
 BEGIN
   OLD.sys_period := tstzrange(lower(OLD.sys_period), now(), '[)');
 
-  INSERT INTO public.marketing_signals_history (
+  INSERT INTO public.__RETIRED_AUDIT_TABLE_DROPPED___history (
     id,
     site_id,
     call_id,
@@ -8594,7 +8594,7 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."marketing_signals_bitemporal_audit"() OWNER TO "postgres";
+ALTER FUNCTION "public"."__RETIRED_AUDIT_TABLE_DROPPED___bitemporal_audit"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."oci_attempt_cap"("p_max_attempts" integer DEFAULT 5, "p_min_age_minutes" integer DEFAULT 0) RETURNS integer
@@ -9142,14 +9142,14 @@ BEGIN
   CREATE TEMP TABLE tmp_old_snapshots ON COMMIT DROP AS SELECT r.id FROM public.revenue_snapshots r WHERE r.created_at < p_cutoff OR r.call_id IN (SELECT id FROM tmp_old_calls) OR r.sale_id IN (SELECT id FROM tmp_old_sales);
   CREATE TEMP TABLE tmp_old_sync_dlq ON COMMIT DROP AS SELECT d.id FROM public.sync_dlq d WHERE d.received_at < p_cutoff;
   CREATE TEMP TABLE tmp_old_queue ON COMMIT DROP AS SELECT q.id FROM public.offline_conversion_queue q WHERE q.call_id IN (SELECT id FROM tmp_old_calls) OR q.sale_id IN (SELECT id FROM tmp_old_sales) OR COALESCE(q.occurred_at, q.conversion_time, q.created_at) < p_cutoff;
-  CREATE TEMP TABLE tmp_old_signals ON COMMIT DROP AS SELECT m.id FROM public.marketing_signals m WHERE m.call_id IN (SELECT id FROM tmp_old_calls) OR COALESCE(m.occurred_at, m.recorded_at, m.created_at) < p_cutoff;
+  CREATE TEMP TABLE tmp_old_signals ON COMMIT DROP AS SELECT m.id FROM public.__RETIRED_AUDIT_TABLE_DROPPED__ m WHERE m.call_id IN (SELECT id FROM tmp_old_calls) OR COALESCE(m.occurred_at, m.recorded_at, m.created_at) < p_cutoff;
 
-  INSERT INTO tmp_reset_summary(step, affected) VALUES ('provider_dispatches',0),('revenue_snapshots',0),('outbox_events',0),('marketing_signals_history',0),('marketing_signals',0),('offline_conversion_tombstones',0),('oci_queue_transitions',0),('offline_conversion_queue',0),('sales',0),('conversation_links',0),('conversations',0),('call_scores',0),('call_actions',0),('calls',0),('events',0),('sessions',0),('processed_signals',0),('ingest_idempotency',0),('ingest_fallback_buffer',0),('sync_dlq_replay_audit',0),('sync_dlq',0),('audit_log',0),('gdpr_consents',0),('shadow_decisions',0),('causal_dna_ledger',0),('causal_dna_ledger_failures',0),('system_integrity_merkle',0),('signal_entropy_by_fingerprint',0),('conversions',0),('ingest_publish_failures',0);
+  INSERT INTO tmp_reset_summary(step, affected) VALUES ('provider_dispatches',0),('revenue_snapshots',0),('outbox_events',0),('__RETIRED_AUDIT_TABLE_DROPPED___history',0),('__RETIRED_AUDIT_TABLE_DROPPED__',0),('offline_conversion_tombstones',0),('oci_queue_transitions',0),('offline_conversion_queue',0),('sales',0),('conversation_links',0),('conversations',0),('call_scores',0),('call_actions',0),('calls',0),('events',0),('sessions',0),('processed_signals',0),('ingest_idempotency',0),('ingest_fallback_buffer',0),('sync_dlq_replay_audit',0),('sync_dlq',0),('audit_log',0),('gdpr_consents',0),('shadow_decisions',0),('causal_dna_ledger',0),('causal_dna_ledger_failures',0),('system_integrity_merkle',0),('signal_entropy_by_fingerprint',0),('conversions',0),('ingest_publish_failures',0);
   UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.provider_dispatches pd WHERE pd.snapshot_id IN (SELECT id FROM tmp_old_snapshots) OR pd.created_at < p_cutoff) AS sub WHERE tmp_reset_summary.step = 'provider_dispatches';
   UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.revenue_snapshots r WHERE r.id IN (SELECT id FROM tmp_old_snapshots)) AS sub WHERE tmp_reset_summary.step = 'revenue_snapshots';
   UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.outbox_events o WHERE o.call_id IN (SELECT id FROM tmp_old_calls) OR o.created_at < p_cutoff) AS sub WHERE tmp_reset_summary.step = 'outbox_events';
-  UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.marketing_signals_history h WHERE h.call_id IN (SELECT id FROM tmp_old_calls) OR h.created_at < p_cutoff) AS sub WHERE tmp_reset_summary.step = 'marketing_signals_history';
-  UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.marketing_signals m WHERE m.id IN (SELECT id FROM tmp_old_signals)) AS sub WHERE tmp_reset_summary.step = 'marketing_signals';
+  UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.__RETIRED_AUDIT_TABLE_DROPPED___history h WHERE h.call_id IN (SELECT id FROM tmp_old_calls) OR h.created_at < p_cutoff) AS sub WHERE tmp_reset_summary.step = '__RETIRED_AUDIT_TABLE_DROPPED___history';
+  UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.__RETIRED_AUDIT_TABLE_DROPPED__ m WHERE m.id IN (SELECT id FROM tmp_old_signals)) AS sub WHERE tmp_reset_summary.step = '__RETIRED_AUDIT_TABLE_DROPPED__';
   UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.offline_conversion_tombstones t WHERE t.created_at < p_cutoff) AS sub WHERE tmp_reset_summary.step = 'offline_conversion_tombstones';
   UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.oci_queue_transitions t WHERE t.queue_id IN (SELECT id FROM tmp_old_queue) OR t.created_at < p_cutoff) AS sub WHERE tmp_reset_summary.step = 'oci_queue_transitions';
   UPDATE tmp_reset_summary SET affected = sub.cnt FROM (SELECT count(*)::bigint AS cnt FROM public.offline_conversion_queue q WHERE q.id IN (SELECT id FROM tmp_old_queue)) AS sub WHERE tmp_reset_summary.step = 'offline_conversion_queue';
@@ -9184,8 +9184,8 @@ BEGIN
   DELETE FROM public.provider_dispatches WHERE snapshot_id IN (SELECT id FROM tmp_old_snapshots) OR created_at < p_cutoff; GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'provider_dispatches';
   DELETE FROM public.revenue_snapshots WHERE id IN (SELECT id FROM tmp_old_snapshots); GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'revenue_snapshots';
   DELETE FROM public.outbox_events WHERE call_id IN (SELECT id FROM tmp_old_calls) OR created_at < p_cutoff; GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'outbox_events';
-  DELETE FROM public.marketing_signals_history WHERE call_id IN (SELECT id FROM tmp_old_calls) OR created_at < p_cutoff; GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'marketing_signals_history';
-  DELETE FROM public.marketing_signals WHERE id IN (SELECT id FROM tmp_old_signals); GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'marketing_signals';
+  DELETE FROM public.__RETIRED_AUDIT_TABLE_DROPPED___history WHERE call_id IN (SELECT id FROM tmp_old_calls) OR created_at < p_cutoff; GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = '__RETIRED_AUDIT_TABLE_DROPPED___history';
+  DELETE FROM public.__RETIRED_AUDIT_TABLE_DROPPED__ WHERE id IN (SELECT id FROM tmp_old_signals); GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = '__RETIRED_AUDIT_TABLE_DROPPED__';
   DELETE FROM public.offline_conversion_tombstones WHERE created_at < p_cutoff; GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'offline_conversion_tombstones';
   DELETE FROM public.oci_queue_transitions WHERE queue_id IN (SELECT id FROM tmp_old_queue) OR created_at < p_cutoff; GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'oci_queue_transitions';
   DELETE FROM public.offline_conversion_queue WHERE id IN (SELECT id FROM tmp_old_queue); GET DIAGNOSTICS v_count = ROW_COUNT; UPDATE tmp_reset_summary SET affected = v_count WHERE tmp_reset_summary.step = 'offline_conversion_queue';
@@ -11590,7 +11590,7 @@ COMMENT ON TABLE "public"."invoice_snapshot" IS 'Revenue Kernel: immutable audit
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."marketing_signals" (
+CREATE TABLE IF NOT EXISTS "public"."__RETIRED_AUDIT_TABLE_DROPPED__" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "site_id" "uuid" NOT NULL,
     "call_id" "uuid",
@@ -11622,86 +11622,86 @@ CREATE TABLE IF NOT EXISTS "public"."marketing_signals" (
     "time_confidence" "text",
     "occurred_at_source" "text",
     "entry_reason" "text",
-    CONSTRAINT "marketing_signals_dispatch_status_check" CHECK (("dispatch_status" = ANY (ARRAY['PENDING'::"text", 'PROCESSING'::"text", 'SENT'::"text", 'FAILED'::"text", 'JUNK_ABORTED'::"text", 'DEAD_LETTER_QUARANTINE'::"text", 'SKIPPED_NO_CLICK_ID'::"text", 'STALLED_FOR_HUMAN_AUDIT'::"text"]))),
-    CONSTRAINT "marketing_signals_entropy_score_check" CHECK ((("entropy_score" >= (0)::numeric) AND ("entropy_score" <= (1)::numeric))),
-    CONSTRAINT "marketing_signals_occurred_at_source_check" CHECK ((("occurred_at_source" IS NULL) OR ("occurred_at_source" = ANY (ARRAY['intent'::"text", 'qualified'::"text", 'proposal'::"text", 'legacy_migrated'::"text"])))),
-    CONSTRAINT "marketing_signals_time_confidence_check" CHECK ((("time_confidence" IS NULL) OR ("time_confidence" = ANY (ARRAY['observed'::"text", 'operator_entered'::"text", 'inferred'::"text", 'legacy_migrated'::"text"]))))
+    CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___dispatch_status_check" CHECK (("dispatch_status" = ANY (ARRAY['PENDING'::"text", 'PROCESSING'::"text", 'SENT'::"text", 'FAILED'::"text", 'JUNK_ABORTED'::"text", 'DEAD_LETTER_QUARANTINE'::"text", 'SKIPPED_NO_CLICK_ID'::"text", 'STALLED_FOR_HUMAN_AUDIT'::"text"]))),
+    CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___entropy_score_check" CHECK ((("entropy_score" >= (0)::numeric) AND ("entropy_score" <= (1)::numeric))),
+    CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___occurred_at_source_check" CHECK ((("occurred_at_source" IS NULL) OR ("occurred_at_source" = ANY (ARRAY['intent'::"text", 'qualified'::"text", 'proposal'::"text", 'legacy_migrated'::"text"])))),
+    CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___time_confidence_check" CHECK ((("time_confidence" IS NULL) OR ("time_confidence" = ANY (ARRAY['observed'::"text", 'operator_entered'::"text", 'inferred'::"text", 'legacy_migrated'::"text"]))))
 )
 WITH ("autovacuum_vacuum_scale_factor"='0.02', "autovacuum_analyze_scale_factor"='0.01', "autovacuum_vacuum_cost_delay"='2', "autovacuum_vacuum_cost_limit"='1000');
 
 
-ALTER TABLE "public"."marketing_signals" OWNER TO "postgres";
+ALTER TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED__" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."marketing_signals" IS 'Aggressive autovacuum (scale 0.02) to prevent index bloat on high-insert append-only table.';
-
-
-
-COMMENT ON COLUMN "public"."marketing_signals"."dispatch_status" IS 'Queue status: PENDING (new), PROCESSING (exported to script), SENT (ACKed), FAILED (nack), DEAD_LETTER_QUARANTINE (poison pill).';
+COMMENT ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED__" IS 'Aggressive autovacuum (scale 0.02) to prevent index bloat on high-insert append-only table.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."causal_dna" IS 'Singularity: Decision path for this signal. gear, gates_passed, logic_branch, math_version.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."dispatch_status" IS 'Queue status: PENDING (new), PROCESSING (exported to script), SENT (ACKed), FAILED (nack), DEAD_LETTER_QUARANTINE (poison pill).';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."expected_value_cents" IS 'Conversion value in minor units (cents). SSOT for internal math; conversion_value = expected_value_cents/100 for export.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."causal_dna" IS 'Singularity: Decision path for this signal. gear, gates_passed, logic_branch, math_version.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."recovery_attempt_count" IS 'Self-Healing: number of recovery attempts. Max 3.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."expected_value_cents" IS 'Conversion value in minor units (cents). SSOT for internal math; conversion_value = expected_value_cents/100 for export.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."last_recovery_attempt_at" IS 'Self-Healing: last retry timestamp. Gates next attempt via exponential backoff.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."recovery_attempt_count" IS 'Self-Healing: number of recovery attempts. Max 3.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."gclid" IS 'Recovered GCLID from Identity Stitcher. Export uses this if set.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."last_recovery_attempt_at" IS 'Self-Healing: last retry timestamp. Gates next attempt via exponential backoff.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."previous_hash" IS 'SHA-256 hash of the previous adjustment in the sequence.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."gclid" IS 'Recovered GCLID from Identity Stitcher. Export uses this if set.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."current_hash" IS 'SHA-256 hash of (call_id + sequence + value_cents + previous_hash + salt).';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."previous_hash" IS 'SHA-256 hash of the previous adjustment in the sequence.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."trace_id" IS 'Phase 20: OM-TRACE-UUID from sync/call-event request for forensic audit chain';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."current_hash" IS 'SHA-256 hash of (call_id + sequence + value_cents + previous_hash + salt).';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."occurred_at" IS 'Canonical business-event time for signal export. Prefer over google_conversion_time.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."trace_id" IS 'Phase 20: OM-TRACE-UUID from sync/call-event request for forensic audit chain';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."recorded_at" IS 'Physical row-write time for audit. Never export this to Google Ads.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."occurred_at" IS 'Canonical business-event time for signal export. Prefer over google_conversion_time.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."source_timestamp" IS 'Raw upstream timestamp used to derive occurred_at.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."recorded_at" IS 'Physical row-write time for audit. Never export this to Google Ads.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."time_confidence" IS 'Signal timestamp provenance: observed, operator_entered, inferred, legacy_migrated.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."source_timestamp" IS 'Raw upstream timestamp used to derive occurred_at.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."occurred_at_source" IS 'Source of signal business-event time: intent, qualified, proposal, legacy_migrated.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."time_confidence" IS 'Signal timestamp provenance: observed, operator_entered, inferred, legacy_migrated.';
 
 
 
-COMMENT ON COLUMN "public"."marketing_signals"."entry_reason" IS 'Optional human-entered reason for delayed or corrected business-event time.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."occurred_at_source" IS 'Source of signal business-event time: intent, qualified, proposal, legacy_migrated.';
 
 
 
-COMMENT ON CONSTRAINT "marketing_signals_dispatch_status_check" ON "public"."marketing_signals" IS 'Phase 21 strict signal ontology: PENDING, PROCESSING, SENT, FAILED, JUNK_ABORTED, DEAD_LETTER_QUARANTINE, SKIPPED_NO_CLICK_ID, STALLED_FOR_HUMAN_AUDIT.';
+COMMENT ON COLUMN "public"."__RETIRED_AUDIT_TABLE_DROPPED__"."entry_reason" IS 'Optional human-entered reason for delayed or corrected business-event time.';
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."marketing_signals_history" (
+COMMENT ON CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___dispatch_status_check" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" IS 'Phase 21 strict signal ontology: PENDING, PROCESSING, SENT, FAILED, JUNK_ABORTED, DEAD_LETTER_QUARANTINE, SKIPPED_NO_CLICK_ID, STALLED_FOR_HUMAN_AUDIT.';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "site_id" "uuid" NOT NULL,
     "call_id" "uuid",
@@ -11732,7 +11732,7 @@ CREATE TABLE IF NOT EXISTS "public"."marketing_signals_history" (
 );
 
 
-ALTER TABLE "public"."marketing_signals_history" OWNER TO "postgres";
+ALTER TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."oci_payload_validation_events" (
@@ -11851,7 +11851,7 @@ CREATE TABLE IF NOT EXISTS "public"."outbox_events" (
 ALTER TABLE "public"."outbox_events" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."outbox_events" IS 'Transactional outbox for OCI: IntentSealed written in same tx as call seal; worker consumes and writes marketing_signals / queue.';
+COMMENT ON TABLE "public"."outbox_events" IS 'Transactional outbox for OCI: IntentSealed written in same tx as call seal; worker consumes and writes __RETIRED_AUDIT_TABLE_DROPPED__ / queue.';
 
 
 
@@ -12900,8 +12900,8 @@ ALTER TABLE ONLY "public"."invoice_snapshot"
 
 
 
-ALTER TABLE ONLY "public"."marketing_signals"
-    ADD CONSTRAINT "marketing_signals_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."__RETIRED_AUDIT_TABLE_DROPPED__"
+    ADD CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___pkey" PRIMARY KEY ("id");
 
 
 
@@ -13729,71 +13729,71 @@ CREATE INDEX "idx_ingest_publish_failures_site_created" ON "public"."ingest_publ
 
 
 
-CREATE INDEX "idx_marketing_signals_chain" ON "public"."marketing_signals" USING "btree" ("site_id", "call_id", "google_conversion_name", "adjustment_sequence");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___chain" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "call_id", "google_conversion_name", "adjustment_sequence");
 
 
 
-CREATE INDEX "idx_marketing_signals_expected_value_cents" ON "public"."marketing_signals" USING "btree" ("expected_value_cents");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___expected_value_cents" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("expected_value_cents");
 
 
 
-CREATE INDEX "idx_marketing_signals_pending" ON "public"."marketing_signals" USING "btree" ("site_id", "created_at") WHERE ("dispatch_status" = 'PENDING'::"text");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___pending" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "created_at") WHERE ("dispatch_status" = 'PENDING'::"text");
 
 
 
-CREATE INDEX "idx_marketing_signals_pending_recovery" ON "public"."marketing_signals" USING "btree" ("dispatch_status", "created_at") WHERE ("dispatch_status" = 'PENDING'::"text");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___pending_recovery" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("dispatch_status", "created_at") WHERE ("dispatch_status" = 'PENDING'::"text");
 
 
 
-COMMENT ON INDEX "public"."idx_marketing_signals_pending_recovery" IS 'Self-Healing Pulse: efficient scan of PENDING signals for recovery.';
+COMMENT ON INDEX "public"."idx___RETIRED_AUDIT_TABLE_DROPPED___pending_recovery" IS 'Self-Healing Pulse: efficient scan of PENDING signals for recovery.';
 
 
 
-CREATE UNIQUE INDEX "idx_marketing_signals_site_call_gear_seq" ON "public"."marketing_signals" USING "btree" ("site_id", "call_id", "google_conversion_name", "adjustment_sequence") WHERE ("call_id" IS NOT NULL);
+CREATE UNIQUE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___site_call_gear_seq" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "call_id", "google_conversion_name", "adjustment_sequence") WHERE ("call_id" IS NOT NULL);
 
 
 
-COMMENT ON INDEX "public"."idx_marketing_signals_site_call_gear_seq" IS 'Strict Ledger Sequence: One signal per (site, call, gear, sequence). Enables immutable adjustments.';
+COMMENT ON INDEX "public"."idx___RETIRED_AUDIT_TABLE_DROPPED___site_call_gear_seq" IS 'Strict Ledger Sequence: One signal per (site, call, gear, sequence). Enables immutable adjustments.';
 
 
 
-CREATE INDEX "idx_marketing_signals_site_call_id" ON "public"."marketing_signals" USING "btree" ("site_id", "call_id") WHERE ("call_id" IS NOT NULL);
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___site_call_id" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "call_id") WHERE ("call_id" IS NOT NULL);
 
 
 
-COMMENT ON INDEX "public"."idx_marketing_signals_site_call_id" IS 'Hot-path: tenant-scoped signal lookups by call_id (dedup, attribution, gear queries).';
+COMMENT ON INDEX "public"."idx___RETIRED_AUDIT_TABLE_DROPPED___site_call_id" IS 'Hot-path: tenant-scoped signal lookups by call_id (dedup, attribution, gear queries).';
 
 
 
-CREATE INDEX "idx_marketing_signals_site_occurred_at" ON "public"."marketing_signals" USING "btree" ("site_id", "occurred_at" DESC);
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___site_occurred_at" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "occurred_at" DESC);
 
 
 
-CREATE INDEX "idx_marketing_signals_site_pending_covering" ON "public"."marketing_signals" USING "btree" ("site_id", "created_at") INCLUDE ("call_id", "signal_type", "google_conversion_name", "dispatch_status") WHERE ("dispatch_status" = 'PENDING'::"text");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___site_pending_covering" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "created_at") INCLUDE ("call_id", "signal_type", "google_conversion_name", "dispatch_status") WHERE ("dispatch_status" = 'PENDING'::"text");
 
 
 
-CREATE INDEX "idx_marketing_signals_site_type" ON "public"."marketing_signals" USING "btree" ("site_id", "signal_type");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___site_type" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("site_id", "signal_type");
 
 
 
-COMMENT ON INDEX "public"."idx_marketing_signals_site_type" IS 'Hot-path: gear dedup checks filtered by signal_type (e.g. INTENT_CAPTURED) per site.';
+COMMENT ON INDEX "public"."idx___RETIRED_AUDIT_TABLE_DROPPED___site_type" IS 'Hot-path: gear dedup checks filtered by signal_type (e.g. INTENT_CAPTURED) per site.';
 
 
 
-CREATE INDEX "idx_marketing_signals_sys_period" ON "public"."marketing_signals" USING "gist" ("sys_period");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___sys_period" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "gist" ("sys_period");
 
 
 
-CREATE INDEX "idx_marketing_signals_trace_id" ON "public"."marketing_signals" USING "btree" ("trace_id") WHERE ("trace_id" IS NOT NULL);
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___trace_id" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "btree" ("trace_id") WHERE ("trace_id" IS NOT NULL);
 
 
 
-CREATE INDEX "idx_marketing_signals_valid_period" ON "public"."marketing_signals" USING "gist" ("valid_period");
+CREATE INDEX "idx___RETIRED_AUDIT_TABLE_DROPPED___valid_period" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING "gist" ("valid_period");
 
 
 
-CREATE INDEX "idx_ms_history_call_id" ON "public"."marketing_signals_history" USING "btree" ("call_id", "history_recorded_at" DESC);
+CREATE INDEX "idx_ms_history_call_id" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" USING "btree" ("call_id", "history_recorded_at" DESC);
 
 
 
@@ -14997,7 +14997,7 @@ CREATE OR REPLACE TRIGGER "conversions_set_updated_at" BEFORE UPDATE ON "public"
 
 
 
-CREATE OR REPLACE TRIGGER "enforce_append_only_signals" BEFORE DELETE OR UPDATE ON "public"."marketing_signals" FOR EACH ROW EXECUTE FUNCTION "public"."_marketing_signals_append_only"();
+CREATE OR REPLACE TRIGGER "enforce_append_only_signals" BEFORE DELETE OR UPDATE ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" FOR EACH ROW EXECUTE FUNCTION "public"."___RETIRED_AUDIT_TABLE_DROPPED___append_only"();
 
 
 
@@ -15073,11 +15073,11 @@ CREATE OR REPLACE TRIGGER "trg_check_caller_phone_update" BEFORE UPDATE ON "publ
 
 
 
-CREATE OR REPLACE TRIGGER "trg_marketing_signals_bitemporal" BEFORE UPDATE ON "public"."marketing_signals" FOR EACH ROW WHEN ((("old"."conversion_value" IS DISTINCT FROM "new"."conversion_value") OR ("old"."expected_value_cents" IS DISTINCT FROM "new"."expected_value_cents") OR ("old"."dispatch_status" IS DISTINCT FROM "new"."dispatch_status"))) EXECUTE FUNCTION "public"."marketing_signals_bitemporal_audit"();
+CREATE OR REPLACE TRIGGER "trg___RETIRED_AUDIT_TABLE_DROPPED___bitemporal" BEFORE UPDATE ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" FOR EACH ROW WHEN ((("old"."conversion_value" IS DISTINCT FROM "new"."conversion_value") OR ("old"."expected_value_cents" IS DISTINCT FROM "new"."expected_value_cents") OR ("old"."dispatch_status" IS DISTINCT FROM "new"."dispatch_status"))) EXECUTE FUNCTION "public"."__RETIRED_AUDIT_TABLE_DROPPED___bitemporal_audit"();
 
 
 
-CREATE OR REPLACE TRIGGER "trg_marketing_signals_state_machine" BEFORE UPDATE ON "public"."marketing_signals" FOR EACH ROW EXECUTE FUNCTION "public"."enforce_marketing_signals_state_machine"();
+CREATE OR REPLACE TRIGGER "trg___RETIRED_AUDIT_TABLE_DROPPED___state_machine" BEFORE UPDATE ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" FOR EACH ROW EXECUTE FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"();
 
 
 
@@ -15223,13 +15223,13 @@ ALTER TABLE ONLY "public"."invoice_snapshot"
 
 
 
-ALTER TABLE ONLY "public"."marketing_signals"
-    ADD CONSTRAINT "marketing_signals_call_id_fkey" FOREIGN KEY ("call_id") REFERENCES "public"."calls"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."__RETIRED_AUDIT_TABLE_DROPPED__"
+    ADD CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___call_id_fkey" FOREIGN KEY ("call_id") REFERENCES "public"."calls"("id") ON DELETE SET NULL;
 
 
 
-ALTER TABLE ONLY "public"."marketing_signals"
-    ADD CONSTRAINT "marketing_signals_site_id_fkey" FOREIGN KEY ("site_id") REFERENCES "public"."sites"("id") ON DELETE RESTRICT;
+ALTER TABLE ONLY "public"."__RETIRED_AUDIT_TABLE_DROPPED__"
+    ADD CONSTRAINT "__RETIRED_AUDIT_TABLE_DROPPED___site_id_fkey" FOREIGN KEY ("site_id") REFERENCES "public"."sites"("id") ON DELETE RESTRICT;
 
 
 
@@ -15704,13 +15704,13 @@ CREATE POLICY "invoice_snapshot_select_site_members" ON "public"."invoice_snapsh
 
 
 
-ALTER TABLE "public"."marketing_signals" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED__" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."marketing_signals_history" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "marketing_signals_service_role" ON "public"."marketing_signals" USING ((("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text"));
+CREATE POLICY "__RETIRED_AUDIT_TABLE_DROPPED___service_role" ON "public"."__RETIRED_AUDIT_TABLE_DROPPED__" USING ((("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text"));
 
 
 
@@ -16877,9 +16877,9 @@ GRANT ALL ON FUNCTION "public"."_jwt_role"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."_marketing_signals_append_only"() TO "anon";
-GRANT ALL ON FUNCTION "public"."_marketing_signals_append_only"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."_marketing_signals_append_only"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."___RETIRED_AUDIT_TABLE_DROPPED___append_only"() TO "anon";
+GRANT ALL ON FUNCTION "public"."___RETIRED_AUDIT_TABLE_DROPPED___append_only"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."___RETIRED_AUDIT_TABLE_DROPPED___append_only"() TO "service_role";
 
 
 
@@ -17139,9 +17139,9 @@ GRANT ALL ON FUNCTION "public"."cleanup_auto_junk_stale_intents"("p_days_old" in
 
 
 
-GRANT ALL ON FUNCTION "public"."cleanup_marketing_signals_batch"("p_days_old" integer, "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."cleanup_marketing_signals_batch"("p_days_old" integer, "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."cleanup_marketing_signals_batch"("p_days_old" integer, "p_limit" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch"("p_days_old" integer, "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch"("p_days_old" integer, "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cleanup___RETIRED_AUDIT_TABLE_DROPPED___batch"("p_days_old" integer, "p_limit" integer) TO "service_role";
 
 
 
@@ -17206,9 +17206,9 @@ GRANT ALL ON FUNCTION "public"."delete_expired_idempotency_batch"("p_cutoff_iso"
 
 
 
-GRANT ALL ON FUNCTION "public"."enforce_marketing_signals_state_machine"() TO "anon";
-GRANT ALL ON FUNCTION "public"."enforce_marketing_signals_state_machine"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."enforce_marketing_signals_state_machine"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"() TO "anon";
+GRANT ALL ON FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."enforce___RETIRED_AUDIT_TABLE_DROPPED___state_machine"() TO "service_role";
 
 
 
@@ -17403,9 +17403,9 @@ GRANT ALL ON FUNCTION "public"."get_kill_feed_v1"("p_site_id" "uuid", "p_hours_b
 
 
 
-GRANT ALL ON FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) TO "anon";
-GRANT ALL ON FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."get_marketing_signals_as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) TO "service_role";
+GRANT ALL ON FUNCTION "public"."get___RETIRED_AUDIT_TABLE_DROPPED___as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."get___RETIRED_AUDIT_TABLE_DROPPED___as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get___RETIRED_AUDIT_TABLE_DROPPED___as_of"("p_site_id" "uuid", "p_as_of" timestamp with time zone) TO "service_role";
 
 
 
@@ -17598,9 +17598,9 @@ GRANT ALL ON FUNCTION "public"."log_oci_payload_validation_event"("p_actor" "tex
 
 
 
-GRANT ALL ON FUNCTION "public"."marketing_signals_bitemporal_audit"() TO "anon";
-GRANT ALL ON FUNCTION "public"."marketing_signals_bitemporal_audit"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."marketing_signals_bitemporal_audit"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."__RETIRED_AUDIT_TABLE_DROPPED___bitemporal_audit"() TO "anon";
+GRANT ALL ON FUNCTION "public"."__RETIRED_AUDIT_TABLE_DROPPED___bitemporal_audit"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."__RETIRED_AUDIT_TABLE_DROPPED___bitemporal_audit"() TO "service_role";
 
 
 
@@ -18044,15 +18044,15 @@ GRANT ALL ON TABLE "public"."invoice_snapshot" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."marketing_signals" TO "anon";
-GRANT ALL ON TABLE "public"."marketing_signals" TO "authenticated";
-GRANT ALL ON TABLE "public"."marketing_signals" TO "service_role";
+GRANT ALL ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED__" TO "anon";
+GRANT ALL ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED__" TO "authenticated";
+GRANT ALL ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED__" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."marketing_signals_history" TO "anon";
-GRANT ALL ON TABLE "public"."marketing_signals_history" TO "authenticated";
-GRANT ALL ON TABLE "public"."marketing_signals_history" TO "service_role";
+GRANT ALL ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" TO "anon";
+GRANT ALL ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" TO "authenticated";
+GRANT ALL ON TABLE "public"."__RETIRED_AUDIT_TABLE_DROPPED___history" TO "service_role";
 
 
 

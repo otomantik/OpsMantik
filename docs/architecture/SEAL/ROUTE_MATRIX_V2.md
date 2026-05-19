@@ -62,7 +62,7 @@ Columns: Route | Purpose | Surface | Auth | Tenant guard | Service role? | PII |
 | `/api/cron/funnel-projection` | OUT_OF_CORE | vercel off | CUT-02 |
 | `/api/cron/truth-parity-repair` | OUT_OF_CORE | vercel off | CUT-02 |
 | `/api/cron/vacuum`, `oci-recovery` | INTERNAL_LAB | merge schedule into maintenance | CUT-02 |
-| `/api/cron/idempotency-cleanup`, `outbox-cleanup`, `processed-signals-retention`, `marketing-signals-cleanup`, `cleanup`, `gdpr-retention` | KEEP_CRON_CORE | absorbed by night-maintenance | CUT-02 |
+| `/api/cron/idempotency-cleanup`, `outbox-cleanup`, `processed-signals-retention`, `retired-audit-cleanup (removed)`, `cleanup`, `gdpr-retention` | KEEP_CRON_CORE | absorbed by night-maintenance | CUT-02 |
 | `/api/cron/oci/enqueue-from-sales` | BREAK_GLASS_ONLY | vercel off | CUT-02 |
 | `/api/cron/providers/seed-credentials` | BREAK_GLASS_ONLY | never vercel | — |
 | `/api/cron/test-notification` | BREAK_GLASS_ONLY | manual only | — |

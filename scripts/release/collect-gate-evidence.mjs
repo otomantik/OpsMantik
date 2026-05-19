@@ -39,10 +39,7 @@ const REQUIRED_RPCS = [
   { name: 'release_cron_lease_v1', args: 'text, text' },
   { name: 'try_acquire_cron_lock_v1', args: 'text' },
 ];
-const OPTIONAL_LEGACY_RPCS = [
-  { name: 'apply_marketing_signal_dispatch_batch_v1', args: 'uuid, uuid[], text, text, timestamp with time zone' },
-  { name: 'rescue_marketing_signals_stale_processing_v1', args: 'timestamp with time zone' },
-];
+const OPTIONAL_LEGACY_RPCS = [];
 const CRITICAL_MIGRATIONS = [
   '20260506111400_restore_get_call_session_for_oci_rpc.sql',
   '20260506123500_create_rebuild_call_projection_rpc.sql',

@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -160,11 +161,11 @@ test('release evidence includes target DB contract statuses', () => {
   }
 });
 
-test('queue-only SQL packs guard optional marketing_signals residue', () => {
+test('queue-only SQL packs do not reference retired audit table', () => {
   for (const file of ['value_integrity_health.sql', 'script_backlog_health.sql', 'oci_time_ssot_health.sql']) {
     const src = readFileSync(join(ROOT, 'scripts/sql', file), 'utf8');
-    assert.ok(src.includes("to_regclass('public.marketing_signals')"), `${file} must guard table presence`);
-    assert.ok(!src.includes('FROM public.marketing_signals'), `${file} must not hard-reference marketing_signals`);
+    assert.ok(src.includes('offline_conversion_queue'), `${file} must read queue journal`);
+    assert.ok(!src.includes(RETIRED_AUDIT_TABLE), `${file} must not reference retired table`);
   }
 });
 
@@ -177,7 +178,7 @@ test('rpc contract list keeps queue/recovery canonical set', () => {
   const src = readFileSync(join(ROOT, 'scripts/release/collect-gate-evidence.mjs'), 'utf8');
   assert.ok(src.includes("append_script_claim_transition_batch', args: 'uuid[], timestamp with time zone'"));
   assert.ok(src.includes("const OPTIONAL_LEGACY_RPCS = ["));
-  assert.ok(src.includes("apply_marketing_signal_dispatch_batch_v1"));
+  assert.ok(!src.includes('apply_marketing_signal_dispatch_batch_v1'));
   assert.ok(src.includes('dependency_drift_count'));
   assert.ok(src.includes("acquire_cron_lease_v1', args: 'text, text, integer'"));
   assert.ok(src.includes("steal_expired_cron_lease_v1', args: 'text, text, integer, integer'"));

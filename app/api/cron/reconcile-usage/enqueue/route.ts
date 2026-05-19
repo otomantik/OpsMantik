@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/reconcile-usage`
+ */
+/**
  * Revenue Kernel PR-4: Enqueue reconciliation jobs for active sites.
  * GET /api/cron/reconcile-usage/enqueue — cron auth required.
  * Active = sites with any ingest_idempotency in last 24h OR any row in current month.

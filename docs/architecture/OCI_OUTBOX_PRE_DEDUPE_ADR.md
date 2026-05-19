@@ -14,7 +14,7 @@ If product requires hard cap on duplicate PENDING work per call:
 
 1. **Partial unique index** (example sketch): unique on `(site_id, call_id, (payload->>'stage'))` **where** `status = 'PENDING'` and `event_type = 'IntentSealed'`. Postgres allows expression/partial unique indexes but migration must match exact JSON shape.
 2. **Alternative:** `INSERT … ON CONFLICT DO NOTHING` into a staging constraint — requires stable conflict target.
-3. **Risk:** blocking a legitimate lower-gear PENDING when a higher gear is still only in `marketing_signals` but not yet visible to the producer check — align with `process-outbox` skip rules before enabling.
+3. **Risk:** blocking a legitimate lower-gear PENDING when a higher gear is still only in `offline_conversion_queue` but not yet visible to the producer check — align with `process-outbox` skip rules before enabling.
 
 ## Consequences
 

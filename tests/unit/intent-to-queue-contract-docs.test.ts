@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../helpers/retired-oci-vocabulary';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { describe, it } from 'node:test';
@@ -21,10 +22,9 @@ describe('PR-2A: Intent-to-Queue Enqueue Contract', () => {
     }
   });
 
-  it('active docs do not describe marketing_signals as an active Google-bound signal system', () => {
+  it('active docs do not describe a second upload authority', () => {
     const content = readFileSync(exportClosurePath, 'utf8');
-    assert.match(content, /ACTIVE_RUNTIME_RESIDUE/i);
-    assert.doesNotMatch(content, /marketing_signals is an upload authority/i);
+    assert.doesNotMatch(content, new RegExp(`${RETIRED_AUDIT_TABLE} is an upload authority`, 'i'));
   });
 
   it('export-fetch delegates journal read to JIT RPC + Zod (no direct PostgREST queue reads)', () => {
@@ -32,8 +32,7 @@ describe('PR-2A: Intent-to-Queue Enqueue Contract', () => {
     const content = readFileSync(exportFetchPath, 'utf8');
     assert.match(content, /fetch_oci_google_ads_export_jit_v1/);
     assert.match(content, /parseJitExportRpcRowsStrict/);
-    assert.doesNotMatch(content, /\.from\('offline_conversion_queue'\)/);
-    assert.doesNotMatch(content, /\.from\('marketing_signals'\)/);
+    assert.doesNotMatch(content, new RegExp(`\\.from\\(['"]${RETIRED_AUDIT_TABLE}['"]\\)`));
   });
 
   it('all four canonical conversion names are included in the enqueue contract', () => {

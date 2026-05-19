@@ -1,3 +1,4 @@
+import { RETIRED_AUDIT_TABLE, RETIRED_FROM_CLAUSE, RETIRED_CLEANUP_RPC } from '../../helpers/retired-oci-vocabulary';
 /**
  * FROZEN SNAPSHOT — `tests/fixtures/google-ads-oci/` only (PR-9H.7B / GCLID-first template string parity for CI).
  * OCI_FLEET_QUARANTINE — lineage: former `GoogleAdsScriptProduction.js` (removed from `scripts/google-ads-oci/`).
@@ -37,7 +38,7 @@
  *   **Forbidden in `sync` mode** — setting it with `OPSMANTIK_RUN_MODE=sync` aborts the run (prevents claim-then-drop PROCESSING rows).
  *
  * Upload authority: `offline_conversion_queue` via `GET /api/oci/google-ads-export` only.
- * Do not use `marketing_signals` as an upload source. Do not log raw gclid / wbraid / gbraid.
+ * Queue journal only — do not use retired audit tables as upload source. Do not log raw click ids.
  *
  * PR-9H.7A — Courier-only hashed phone: this script never receives raw phone, never hashes phone,
  * never logs hash values. Peek logs `hasHashedPhoneNumber` boolean only.

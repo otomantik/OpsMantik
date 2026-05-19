@@ -13,7 +13,7 @@
 ## Migration Dosyaları
 
 - `20260305000000_audit_log_trace.sql` — audit_log tablosu
-- `20260305000001_trace_id_marketing_signals_calls.sql` — trace_id kolonları
+- `20260305000001_trace_id_offline_conversion_queue_calls.sql` — trace_id kolonları
 - `20260305000002_vacuum_stalled_status.sql` — STALLED_FOR_HUMAN_AUDIT
 
 ## Verification

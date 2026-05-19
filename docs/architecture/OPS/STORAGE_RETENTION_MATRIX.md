@@ -15,7 +15,6 @@ Fill after `npm run db:storage-audit` and `scripts/sql/storage_audit.sql` in SQL
 | `sessions` / `events` row DELETE | TBD | **Not automated** | — | — | **legal required** |
 | `calls` intent junk | product | `auto-junk` (`expires_at`) | 500 sites | no | no |
 | `calls` stale recovery | fallback | `cleanup_auto_junk_stale_intents` | 5000 | `recovery_junk=1` only | no |
-| `marketing_signals` SENT | 60d | `cleanup_marketing_signals_batch` | 5000 | yes | no |
 | `truth_evidence_ledger` | 90–180d (TBD) | `delete_truth_evidence_batch` | 5000 | yes | flag gated |
 
 ## Audit thresholds (PR-E1 partition)

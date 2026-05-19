@@ -1,3 +1,7 @@
+/**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `dev/test only`
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { TelegramService } from '@/lib/services/telegram-service';

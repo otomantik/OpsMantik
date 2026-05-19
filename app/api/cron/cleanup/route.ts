@@ -1,6 +1,9 @@
 /**
  * GET/POST /api/cron/cleanup — The Cleansing Protocol: Daily storage hygiene
  *
+ * @deprecated CUT-02B — Scheduled via `/api/cron/night-maintenance` (archive_failed + oci_queue phases).
+ * Break-glass only: manual `GET` with `CRON_SECRET` and `?apply=true` + storage approval env.
+ *
  * Order of operations (production-grade):
  * 1) Zombie recovery (2h): recover_stuck_offline_conversion_jobs (fallback buffer retired 20260419180000)
  * 2) Archive FAILED conversions to tombstones (30d)
@@ -152,7 +155,7 @@ async function runCleanup(req: NextRequest) {
         zombie_recovery: { note: 'Would run recover_stuck_offline_conversion_jobs' },
         archive_failed: { would_archive: Math.min(archiveRes.count ?? 0, limit), days: daysArchiveFailed },
         oci_queue: { would_delete: Math.min(queueRes.count ?? 0, ociLimit), days_to_keep: daysToKeep },
-        queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
+        queue_only_mode: { legacy_signals_cleanup: 'retired' },
         auto_junk: { would_update: Math.min(intentsRes.count ?? 0, limitIntents), days_old: daysOldIntents },
       },
       { headers: getBuildInfoHeaders() }
@@ -302,7 +305,7 @@ async function runCleanup(req: NextRequest) {
       zombie_recovery: { offline_queue: zombiesQueue },
       archive_failed: { archived: archivedFailed, days: daysArchiveFailed },
       oci_queue: { deleted: ociDeleted, days_to_keep: daysToKeep, limit: ociLimit },
-      queue_only_mode: { legacy_marketing_signals_cleanup: 'retired' },
+      queue_only_mode: { legacy_signals_cleanup: 'retired' },
       auto_junk: recoveryJunk
         ? { updated: intentsJunked, days_old: daysOldIntents, limit: limitIntents, mode: 'recovery_junk' }
         : { skipped: true, reason: 'expires_at SSOT via /api/cron/auto-junk; use ?recovery_junk=true for fallback' },

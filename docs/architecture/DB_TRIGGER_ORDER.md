@@ -10,8 +10,8 @@
 |-------|---------|-------|---------|
 | calls | trg_void_pending_oci_queue_on_call_reversal | UPDATE | VOIDs QUEUED/RETRY when call junked/cancelled/restored |
 | calls | trg_assign_offline_conversion_queue_external_id | INSERT/UPDATE | Assigns external_id to queue rows |
-| marketing_signals | enforce_append_only_signals | INSERT/UPDATE/DELETE | Prevents non-append operations |
-| marketing_signals | trg_marketing_signals_state_machine | UPDATE | Enforces dispatch_status transitions |
+| offline_conversion_queue | enforce_append_only_signals | INSERT/UPDATE/DELETE | Prevents non-append operations |
+| offline_conversion_queue | trg_offline_conversion_queue_state_machine | UPDATE | Enforces dispatch_status transitions |
 | offline_conversion_queue | trg_offline_conversion_queue_state_machine | UPDATE | Enforces state transitions |
 | sessions | sessions_set_created_month | INSERT/UPDATE | Sets created_month for partitioning |
 | events | events_set_session_month_from_session | INSERT | Cascade session_month from session |
@@ -29,7 +29,7 @@
 See `supabase/migrations/` for definitions. Key migrations:
 
 - `20261105130000_oci_external_id_and_reversal_void.sql` — void cascade, external_id
-- Bitemporal `marketing_signals` triggers/history were **dropped** (see `20260419170000_drop_bitemporal_marketing_signals.sql`); do not resurrect in docs or runtime assumptions.
+- Bitemporal `offline_conversion_queue` triggers/history were **dropped** (see `20260419170000_drop_bitemporal_offline_conversion_queue.sql`); do not resurrect in docs or runtime assumptions.
 - `20260305000004_strict_state_machine.sql` — state machines
-- `20260329000004_marketing_signals_stream.sql` — enforce_append_only
+- `20260329000004_offline_conversion_queue_stream.sql` — enforce_append_only
 - `20260201210000_comprehensive_partition_cleanup_and_fix.sql` — partition triggers

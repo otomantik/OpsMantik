@@ -36,11 +36,11 @@ Tam akış: [WON_PIPELINE_REPAIR.md](./WON_PIPELINE_REPAIR.md).
 
 ## Marketing signals (audit-only, not Google export)
 
-`marketing_signals` kuyruk değil; script batch yalnızca `offline_conversion_queue` okur. Parity gap onarımı:
+`offline_conversion_queue` kuyruk değil; script batch yalnızca `offline_conversion_queue` okur. Parity gap onarımı:
 
 ```bash
-npm run oci:repair-marketing-signal-parity -- --dry-run
-npm run oci:repair-marketing-signal-parity -- --site=<site-uuid>
+npm run oci:repair-retired-audit-parity -- --dry-run
+npm run oci:repair-retired-audit-parity -- --site=<site-uuid>
 ```
 
 Ayrıntı: [MARKETING_SIGNALS_AUDIT_LANE.md](./MARKETING_SIGNALS_AUDIT_LANE.md).

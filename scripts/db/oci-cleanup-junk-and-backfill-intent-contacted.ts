@@ -1,7 +1,6 @@
 /**
- * 1) (İsteğe bağlı) Junk / cancelled click çağrılarını ve ilişkili marketing_signals / offline_conversion_queue temizler.
- * 2) `intent` + (session veya çağrı satırında) Ads click id olan ve henüz OpsMantik_Contacted olmayan kayıtlar için
- *    `marketing_signals` (PENDING) üretir — audit/hash lane; Google `google-ads-export` yalnızca journal okur.
+ * 1) (İsteğe bağlı) Junk / cancelled click çağrılarını ve ilişkili offline_conversion_queue temizler.
+ * 2) `intent` + Ads click id olan ve henüz OpsMantik_Contacted journal satırı olmayan kayıtlar için kuyruğa enqueue eder.
  *
  * Flags:
  *   --dry-run              Silme/insert yok; contacted adaylarını listeler.
@@ -19,11 +18,10 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { upsertMarketingSignal } from '@/lib/oci/upsert-marketing-signal';
-import { ensureMarketingSignalQueueParity } from '@/lib/oci/marketing-signal-queue-parity';
+import { ensureOciQueueEnqueue } from '@/lib/oci/ensure-oci-queue-enqueue';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
-import { loadMarketingSignalEconomics } from '@/lib/oci/marketing-signal-value-ssot';
+import { loadOciConversionEconomics } from '@/lib/oci/oci-conversion-economics';
 import type { PipelineStage } from '@/lib/oci/signal-types';
 
 config({ path: join(process.cwd(), '.env.local') });
@@ -295,13 +293,13 @@ async function printReport(site: ResolvedSite) {
   const alreadyContacted = new Set<string>();
   for (const part of chunks(candidateIds, CHUNK)) {
     const { data: msRows, error: msErr } = await supabase
-      .from('marketing_signals')
+      .from('offline_conversion_queue')
       .select('call_id')
       .eq('site_id', site.id)
-      .eq('google_conversion_name', contactedName)
+      .eq('action', contactedName)
       .in('call_id', part);
     if (msErr) {
-      console.error('marketing_signals sorgusu hatası:', msErr.message);
+      console.error('offline_conversion_queue sorgusu hatası:', msErr.message);
       process.exit(1);
     }
     for (const r of msRows ?? []) {
@@ -316,11 +314,11 @@ async function printReport(site: ResolvedSite) {
   }
 
   const { count: pendingContacted } = await supabase
-    .from('marketing_signals')
+    .from('offline_conversion_queue')
     .select('id', { count: 'exact', head: true })
     .eq('site_id', site.id)
-    .eq('google_conversion_name', contactedName)
-    .in('dispatch_status', ['PENDING', 'RETRY']);
+    .eq('action', contactedName)
+    .in('status', ['QUEUED', 'RETRY', 'PROCESSING']);
 
   const clickOnly = list.filter((r) => (r.source ?? '').trim().toLowerCase() === 'click');
   let clickOnlyBackfill = 0;
@@ -332,10 +330,10 @@ async function printReport(site: ResolvedSite) {
     const ac = new Set<string>();
     for (const part of chunks(cCand, CHUNK)) {
       const { data: msRows } = await supabase
-        .from('marketing_signals')
+        .from('offline_conversion_queue')
         .select('call_id')
         .eq('site_id', site.id)
-        .eq('google_conversion_name', contactedName)
+        .eq('action', contactedName)
         .in('call_id', part);
       for (const r of msRows ?? []) {
         const cid = (r as { call_id?: string | null }).call_id;
@@ -399,13 +397,6 @@ async function main() {
 
   if (!skipJunkDelete && !dryRun && ids.length) {
     for (const part of chunks(ids, CHUNK)) {
-      const { error: delMs } = await supabase.from('marketing_signals').delete().eq('site_id', site.id).in('call_id', part);
-      if (delMs) {
-        console.error('marketing_signals silinemedi:', delMs.message);
-        process.exit(1);
-      }
-    }
-    for (const part of chunks(ids, CHUNK)) {
       const { error: delQ } = await supabase
         .from('offline_conversion_queue')
         .delete()
@@ -446,13 +437,13 @@ async function main() {
   const alreadyContacted = new Set<string>();
   for (const part of chunks(candidateCallIds, CHUNK)) {
     const { data: msRows, error: msErr } = await supabase
-      .from('marketing_signals')
+      .from('offline_conversion_queue')
       .select('call_id')
       .eq('site_id', site.id)
-      .eq('google_conversion_name', contactedName)
+      .eq('action', contactedName)
       .in('call_id', part);
     if (msErr) {
-      console.error('marketing_signals (contacted) sorgusu hatası:', msErr.message);
+      console.error('offline_conversion_queue (contacted) sorgusu hatası:', msErr.message);
       process.exit(1);
     }
     for (const r of msRows ?? []) {
@@ -485,7 +476,7 @@ async function main() {
     rows.length
   );
 
-  let inserted = 0;
+  let queueEnqueued = 0;
   let duplicates = 0;
   let skipped = 0;
   let errors = 0;
@@ -514,60 +505,49 @@ async function main() {
       continue;
     }
 
-    const economics = await loadMarketingSignalEconomics({
+    const economics = await loadOciConversionEconomics({
       siteId: site.id,
       stage,
       snapshot,
     });
 
-    const up = await upsertMarketingSignal({
-      source: 'router',
-      siteId: site.id,
-      callId: row.id,
-      traceId: null,
-      stage,
-      signalDate,
-      snapshot,
-      economics,
-      clickIds: { gclid: row.gclid, wbraid: row.wbraid, gbraid: row.gbraid },
-      featureSnapshotExtras: {
-        source_detail: 'intent_click_backfill',
-        click_attribution: row.clickSource,
-      },
-    });
-
-    if (up.success && up.signalId && !up.duplicate && !up.skipped) inserted++;
-    else if (up.duplicate) duplicates++;
-    else if (up.skipped) skipped++;
-    else {
-      errors++;
-      console.warn('upsert başarısız', row.id);
+    const hasClick = Boolean(row.gclid || row.wbraid || row.gbraid);
+    if (!hasClick) {
+      skipped++;
+      continue;
     }
 
-    if (up.success && !up.skipped) {
-      const parity = await ensureMarketingSignalQueueParity({
-        siteId: site.id,
-        callId: row.id,
-        stage: 'contacted',
-        occurredAt: signalDate,
-        leadScore: Number.isFinite(row.lead_score as number) ? Number(row.lead_score) : 0,
-        currency: economics.currencyCode,
-        gclid: row.gclid,
-        wbraid: row.wbraid,
-        gbraid: row.gbraid,
-        source: 'intent_contacted_backfill',
-        consentState: 'unknown',
-        traceId: null,
-      });
-      if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') parityQueueEnqueued++;
-      else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') parityQueueDuplicates++;
-      else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') parityQueueConsentMissing++;
-      else parityQueueErrors++;
+    const parity = await ensureOciQueueEnqueue({
+      siteId: site.id,
+      callId: row.id,
+      stage: 'contacted',
+      occurredAt: signalDate,
+      leadScore: Number.isFinite(row.lead_score as number) ? Number(row.lead_score) : 0,
+      currency: economics.currencyCode,
+      gclid: row.gclid,
+      wbraid: row.wbraid,
+      gbraid: row.gbraid,
+      source: 'intent_contacted_backfill',
+      consentState: 'unknown',
+      traceId: null,
+    });
+    if (parity.reasonCode === 'PARITY_QUEUE_ENQUEUED') {
+      queueEnqueued++;
+      parityQueueEnqueued++;
+    } else if (parity.reasonCode === 'PARITY_QUEUE_DUPLICATE') {
+      duplicates++;
+      parityQueueDuplicates++;
+    } else if (parity.reasonCode === 'PARITY_CONSENT_MISSING') {
+      parityQueueConsentMissing++;
+      skipped++;
+    } else {
+      errors++;
+      parityQueueErrors++;
     }
   }
 
   console.log('Sonuç:', {
-    inserted,
+    queueEnqueued,
     duplicates,
     skipped,
     errors,
@@ -577,7 +557,7 @@ async function main() {
     parityQueueErrors,
   });
   if (!dryRun) {
-    console.log('marketing_signals PENDING: audit tablosu (Script GET batch değil). Journal export: oci-export-send-preview.mjs.');
+    console.log('Journal export: oci-export-send-preview.mjs.');
   }
 }
 

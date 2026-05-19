@@ -96,7 +96,7 @@ export type BuiltExportData = {
   currencyDiagnostics: QueueCurrencyDiagnostics;
 };
 
-/** Journal-only export: no legacy marketing_signals stream. */
+/** Journal-only export. */
 export async function buildExportItems(ctx: ExportAuthContext, fetched: FetchedExportData): Promise<BuiltExportData> {
   const { rawList } = fetched;
 

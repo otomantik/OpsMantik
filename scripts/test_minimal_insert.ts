@@ -1,9 +1,9 @@
 /**
- * NON_PROD_ONLY diagnostic script.
- * Guarded to fail-closed in production-like environments.
+ * NON_PROD_ONLY diagnostic script — journal queue smoke insert.
  */
 import { adminClient } from '../lib/supabase/admin';
 import { getDbNowIso } from '../lib/time/db-now';
+import { OPSMANTIK_CONVERSION_NAMES } from '../lib/oci/conversion-names';
 
 function assertDiagnosticWriteAllowed(): void {
   const isProdLike =
@@ -17,31 +17,35 @@ function assertDiagnosticWriteAllowed(): void {
 
 async function testMinimalInsert() {
   assertDiagnosticWriteAllowed();
-  const siteId = '28cf0aefaa074f5bb29e818a9d53b488';
+  const siteId = process.env.DIAGNOSTIC_SITE_ID ?? '28cf0aefaa074f5bb29e818a9d53b488';
+  const callId = process.env.DIAGNOSTIC_CALL_ID ?? '36713837-143f-4e19-9524-811c05d7b5bf';
   const nowIso = await getDbNowIso();
-  
-  console.log('Test 1: Only signal_type and google_conversion_name');
-  const t1 = await adminClient.from('marketing_signals').insert({
-    site_id: siteId,
-    signal_type: 'V3_TEST',
-    google_conversion_name: 'TEST_NAME',
-    google_conversion_time: nowIso,
-  }).select('id');
-  console.log('T1 Result:', JSON.stringify(t1, null, 2));
 
-  if (t1.error) {
-    console.log('T1 Failed. If error mentions numeric, then google_conversion_name might be misaligned.');
+  const { data, error } = await adminClient
+    .from('offline_conversion_queue')
+    .insert({
+      site_id: siteId,
+      call_id: callId,
+      action: OPSMANTIK_CONVERSION_NAMES.contacted,
+      status: 'QUEUED',
+      value_cents: 1000,
+      currency_code: 'TRY',
+      value_source: 'stage_model',
+      value_policy_version: 'oci_conversion_value_policy_v1',
+      value_policy_reason: 'diagnostic_script',
+      value_fallback_used: false,
+      gclid: 'test_schema_gclid_min_len_xxxxxxxx',
+      occurred_at: nowIso,
+      conversion_time: nowIso,
+    })
+    .select('id')
+    .single();
+
+  console.log('Queue insert:', error ? error.message : data?.id);
+  if (data?.id) {
+    await adminClient.from('offline_conversion_queue').delete().eq('id', data.id);
+    console.log('Cleanup done.');
   }
-
-  console.log('Test 2: Adding conversion_value');
-  const t2 = await adminClient.from('marketing_signals').insert({
-    site_id: siteId,
-    signal_type: 'V3_TEST',
-    google_conversion_name: 'TEST_NAME_2',
-    conversion_value: 0.01,
-    google_conversion_time: nowIso,
-  }).select('id');
-  console.log('T2 Result:', JSON.stringify(t2, null, 2));
 }
 
 testMinimalInsert();

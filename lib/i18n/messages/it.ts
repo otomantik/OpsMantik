@@ -86,7 +86,7 @@ export const it = {
   "ociControl.loading": "Caricamento",
   "ociControl.loadMore": "Load more",
   "ociControl.unifiedExportBacklog": "Coda unificata esportazione (attiva)",
-  "ociControl.marketingSignalsExportActive": "Segnali PENDING + PROCESSING",
+  "ociControl.journalExportActive": "Coda PENDING + PROCESSING",
   "ociControl.wonQueueBacklogActive": "Coda Won in backlog (prima di UPLOADED)",
   "ociControl.wonQueueInFlightUploaded": "Won UPLOADED (ACK in attesa)",
   "ociControl.ociSyncMethod.script": "Esportazione: Script (pull)",

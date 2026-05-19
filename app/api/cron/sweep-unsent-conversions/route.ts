@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/sweep-unsent-conversions
  *
  * Self-healing sweeper: finds calls that are sale-terminal (oci_status='sealed'

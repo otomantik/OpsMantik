@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/reconcile-usage`
+ */
+/**
  * Revenue Kernel PR-4: Run reconciliation worker.
  * POST /api/cron/reconcile-usage/run — claims jobs with FOR UPDATE SKIP LOCKED, runs reconcile, updates status.
  */

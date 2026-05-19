@@ -1,6 +1,6 @@
 /**
  * Promote offline_conversion_queue rows from BLOCKED_PRECEDING_SIGNALS → QUEUED when
- * precursor exports (legacy marketing_signals and/or journal micro rows) are no longer blocking.
+ * precursor journal micro rows are no longer blocking.
  *
  * Rows with no gclid/wbraid/gbraid (e.g. block_reason MISSING_CLICK_ID) are never promoted —
  * claim/export still requires a click id; enqueue only records the row for SSOT.

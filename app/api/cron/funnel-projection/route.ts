@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `manual only (OUT_OF_CORE)`
+ */
+/**
  * GET/POST /api/cron/funnel-projection
  *
  * Funnel Kernel: processes call_funnel_ledger events and updates call_funnel_projection.

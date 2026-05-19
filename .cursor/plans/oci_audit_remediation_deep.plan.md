@@ -8,7 +8,7 @@
 
 | Katman | Ne | Risk örnekleri |
 |--------|-----|----------------|
-| L0 Veri | `calls`, `sessions`, `outbox_events`, `marketing_signals`, `oci_reconciliation_events` | RPC dönüşü DB ile drift; merge alanı yok |
+| L0 Veri | `calls`, `sessions`, `outbox_events`, `__RETIRED_AUDIT_TABLE_DROPPED__`, `oci_reconciliation_events` | RPC dönüşü DB ile drift; merge alanı yok |
 | L0.5 Kısıt | Unique indexler, CHECK, dedupe hash | `oci_reconciliation_events_dedupe_uidx` aynı olayı yutar; “yazıldı” sanılır |
 | L1 Üretici | Panel/seal → `enqueuePanelStageOciOutbox` | Insert false ama HTTP “queued” |
 | L1.5 Bildirim | `notifyOutboxPending` / QStash | Publish swallow; cron gecikmesi |
@@ -47,7 +47,7 @@ flowchart TB
     Calls[(calls)]
     Sess[(sessions)]
     Obx[(outbox_events)]
-    Msig[(marketing_signals)]
+    Msig[(__RETIRED_AUDIT_TABLE_DROPPED__)]
     Rec[(oci_reconciliation_events)]
   end
   subgraph transport [Transport]
@@ -87,7 +87,7 @@ flowchart TB
 
 **Outbox:** [`outbox_events`](supabase/migrations/20261113000000_outbox_events_table_claim_finalize.sql) — `site_id`, `call_id` index; **çoklu PENDING** aynı call için teorik (ürün kararı: insert öncesi “aynı call + aynı payload.stage PENDING” var mı” kontrolü opsiyonel derinleştirme).
 
-**marketing_signals:** Unique `(site_id, call_id, google_conversion_name, adjustment_sequence)` — worker duplicate 23505 collapse; producer’ın çoklu outbox’u yine **işçi tarafında** sıkıştırılabilir ama outbox kuyruğu şişer.
+**__RETIRED_AUDIT_TABLE_DROPPED__:** Unique `(site_id, call_id, google_conversion_name, adjustment_sequence)` — worker duplicate 23505 collapse; producer’ın çoklu outbox’u yine **işçi tarafında** sıkıştırılabilir ama outbox kuyruğu şişer.
 
 **merged_into_call_id:** Child satırda panel aksiyonu **RLS / ürün kuralları** ile engellenmeli; yine de DB’den okunan savunma (Faz 1 önceki planda) **son çare doğruluk**.
 
@@ -177,7 +177,7 @@ Tüm mutasyonlar `service_role` / server route üzerinden; panel kullanıcısı 
 
 - **Reconciliation `payload`:** Bugün `call_status`, `merged_into_call_id`, insert hata metni gibi alanlar gidebilir. **Kural:** telefon, ham IP, tam URL gibi **PII/log** alanlarını payload’a koyma; hash veya kısaltılmış token.
 - **GDPR erase / freeze:** [tests/unit/compliance-freeze.test.ts](tests/unit/compliance-freeze.test.ts) bağlamında `calls`/`sessions` silinmez; OCI satırları **ne zaman** temizlenir / anonimleştirilir — runbook’ta “export sonrası saklama süresi” ile hizala.
-- **Denetçi sorusu:** “Bu `marketing_signals` satırını hangi panel aksiyonu üretti?” — `causal_dna` / `outbox_events.id` zinciri; producer `payload`’a `source_surface` eklenmesi (opsiyonel derin iz) düşünülebilir.
+- **Denetçi sorusu:** “Bu `__RETIRED_AUDIT_TABLE_DROPPED__` satırını hangi panel aksiyonu üretti?” — `causal_dna` / `outbox_events.id` zinciri; producer `payload`’a `source_surface` eklenmesi (opsiyonel derin iz) düşünülebilir.
 
 ---
 
@@ -214,7 +214,7 @@ Aşağıdakiler **hedef özellikler**; her biri için birim veya entegrasyon tes
 
 ## L10 — Google Ads tarafı (daha derin, uygulama dışı ama sistem sınırı)
 
-- **Conversion action drift:** Müşteri hesabında aksiyon adı değişti → upload 400; **sistem cevabı:** `marketing_signals` FAILED / retry; runbook’ta “Ads UI kontrol listesi”.
+- **Conversion action drift:** Müşteri hesabında aksiyon adı değişti → upload 400; **sistem cevabı:** `__RETIRED_AUDIT_TABLE_DROPPED__` FAILED / retry; runbook’ta “Ads UI kontrol listesi”.
 - **Para birimi / değer:** `currency` payload ile site config uyumu; seal path farklıysa dokümante.
 - **ACK çift gönderim:** Script aynı batch’i iki kez yüklerse Google idempotency; bizim tarafta `dispatch_status` geçişleri tutarlı mı — export worker incelemesi (ayrı dosya).
 
@@ -222,7 +222,7 @@ Aşağıdakiler **hedef özellikler**; her biri için birim veya entegrasyon tes
 
 ## L11 — Zaman ve tutarlılık (daha derin)
 
-- **conversion_time vs `occurred_at`:** `upsertMarketingSignal` / outbox payload `confirmed_at` zinciri; yaz saati TZ kayması.
+- **conversion_time vs `occurred_at`:** `upsertRetiredOciSignal` / outbox payload `confirmed_at` zinciri; yaz saati TZ kayması.
 - **Geçmişe dönük conversion:** Google politikasına aykırı upload → worker FAILED; operatör geri alamaz mı — panel “geri al” OCI etkisi (invalidate zaten junk’ta var).
 
 ---
@@ -238,7 +238,7 @@ Aşağıdakiler **hedef özellikler**; her biri için birim veya entegrasyon tes
 ## L13 — İnsan ve operasyonel model (en derin “yumuşak” katman)
 
 - **Yanlış kart:** Aynı `call_id`’ye değil komşu karta tıklama; UI’de `oci_outbox_inserted` göstermek hata ayıklamayı hızlandırır.
-- **Eğitim:** “RPC 200 = Google’a gitti” değil; üç kutucuk: **RPC**, **outbox**, **marketing_signals PENDING**.
+- **Eğitim:** “RPC 200 = Google’a gitti” değil; üç kutucuk: **RPC**, **outbox**, **__RETIRED_AUDIT_TABLE_DROPPED__ PENDING**.
 - **Vardiya devir:** PENDING outbox yaşını günlük kontrol listesine ekle (NOC runbook).
 
 ---
@@ -310,7 +310,7 @@ Aşağıdakiler **hedef özellikler**; her biri için birim veya entegrasyon tes
 - **Ledger coverage:** Canlı sayımda queue satırlarının anlamlı bir kısmı `oci_queue_transitions` kaydı olmadan göründü. Bunlar için `ledger_coverage_audit` yapılmalı: legacy/baseline mı, migration öncesi satır mı, yoksa gerçekten journal boşluğu mu ayrıştırılmalı. Gerekirse güvenli `SYSTEM_BACKFILL` baseline transition üretilmeli veya açıkça `legacy_unjournaled` sınıfına alınmalı.
 - **`schema.sql` / `schema_utf8.sql` drift:** Root dump dosyaları PR-9J migration gerçekliğini taşımıyor; `BLOCKED_PRECEDING_SIGNALS`, grant posture, FK davranışı, snapshot priority ve yeni RPC/table objeleri drift durumda. Plan kuralı: security/schema review için **yalnız `supabase/migrations/` ordered chain** SSOT; dump dosyaları ya yeniden üretilecek ya da “non-authoritative” olarak işaretlenecek.
 - **FSM split:** `enforce_offline_conversion_queue_state_machine` eski Phase 21 matrisiyle `BLOCKED_PRECEDING_SIGNALS -> QUEUED` yolunu anlatmıyor. Ya bu trigger migration ile güncellenecek ya da superseded/drop edilip tek FSM contract kalacak.
-- **`marketing_signals` topology:** Migration zinciri `marketing_signals` drop ederken app ve sonraki `ALTER IF EXISTS`/parity yolları hâlâ bu tabloyu varsayabiliyor. Queue-only SSOT kararı tekrar netleştirilmeli: tablo yoksa parity trigger yok; varsa exposure/constraint yeniden tanımlanmalı.
+- **`__RETIRED_AUDIT_TABLE_DROPPED__` topology:** Migration zinciri `__RETIRED_AUDIT_TABLE_DROPPED__` drop ederken app ve sonraki `ALTER IF EXISTS`/parity yolları hâlâ bu tabloyu varsayabiliyor. Queue-only SSOT kararı tekrar netleştirilmeli: tablo yoksa parity trigger yok; varsa exposure/constraint yeniden tanımlanmalı.
 - **Click-id DB invariant:** Upload policy `gclid > wbraid > gbraid` app/script seviyesinde; DB mutual-exclusion yok. DB row çoklu click-id taşıyabilir, upload katmanı exactly-one üretmeli ve test edilmeli.
 - **Outbox lineage FK:** `source_outbox_event_id` FK `NOT VALID`; validate planı ve historical orphan audit eklenmeli.
 - **Action/value/time/currency:** `action` conversion-name setine DB FK/CHECK ile bağlı değil; currency ISO/TRY policy kısmen app/doküman. T10 için en azından health SQL + release gate coverage olmalı.
@@ -441,7 +441,7 @@ Aşağıdakiler **hedef özellikler**; her biri için birim veya entegrasyon tes
 **Hedef:** `scripts/db` ile service_role arka kapısı plan dışı queue mutasyonu yapamasın.
 
 - **Critical mutators:** `scripts/db/_archive/site-specific/reset-muratcan-queue.mjs`, `simulate-script-flow.mjs`, `oci-cleanup-junk-and-backfill-intent-contacted.ts` quarantine.
-- **High mutators:** `oci-clone-completed-ms.ts`, `oci-requeue-all-failed.mjs`, `oci-repair-marketing-signal-queue-parity.ts`, `oci-pipeline-fill-and-report.mjs` approval + dry-run default + RPC-only standardına taşınmalı.
+- **High mutators:** `oci-clone-completed-ms.ts`, `oci-requeue-all-failed.mjs`, `oci-repair-retired-oci-signal-queue-parity.ts`, `oci-pipeline-fill-and-report.mjs` approval + dry-run default + RPC-only standardına taşınmalı.
 - **Direct queue updates:** GCLID/currency/value/fix scripts direct `.update` yerine canonical RPC veya explicit forensic transition ile çalışmalı.
 - **Default safety:** Tüm mutating scripts default dry-run; live için `--apply` + typed approval token + target site + output plan + no-localhost check.
 - **Credential leak:** Hardcoded API key/prod URL içeren scriptler temizlenmeli, secrets repo dışına taşınmalı.

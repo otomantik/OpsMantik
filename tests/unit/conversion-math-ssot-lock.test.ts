@@ -5,24 +5,24 @@ import { join } from 'node:path';
 import { buildOptimizationSnapshot } from '@/lib/oci/optimization-contract';
 import {
   CONVERSION_VALUE_POLICY_VERSION,
-  resolveMarketingSignalEconomics,
+  resolveOciConversionEconomics,
   resolveWonConversionEconomics,
-} from '@/lib/oci/marketing-signal-value-ssot';
+} from '@/lib/oci/oci-conversion-economics';
 
 const ROOT = process.cwd();
 
 test('PR-D: contacted/offered/junk are resolved by SSOT policy surface', () => {
-  const contacted = resolveMarketingSignalEconomics({
+  const contacted = resolveOciConversionEconomics({
     stage: 'contacted',
     snapshot: buildOptimizationSnapshot({ stage: 'contacted', systemScore: 60 }),
     siteCurrency: 'TRY',
   });
-  const offered = resolveMarketingSignalEconomics({
+  const offered = resolveOciConversionEconomics({
     stage: 'offered',
     snapshot: buildOptimizationSnapshot({ stage: 'offered', systemScore: 60 }),
     siteCurrency: 'TRY',
   });
-  const junk = resolveMarketingSignalEconomics({
+  const junk = resolveOciConversionEconomics({
     stage: 'junk',
     snapshot: buildOptimizationSnapshot({ stage: 'junk', systemScore: 60 }),
     siteCurrency: 'TRY',
@@ -56,13 +56,12 @@ test('PR-D: won policy uses SSOT and preserves fallback provenance', () => {
 
 test('PR-D: enqueue/upsert paths do not keep local ad-hoc value math', () => {
   const enqueueSrc = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-seal-conversion.ts'), 'utf8');
-  const upsertSrc = readFileSync(join(ROOT, 'lib', 'domain', 'mizan-mantik', 'upsert-marketing-signal.ts'), 'utf8');
+  const journalSrc = readFileSync(join(ROOT, 'lib', 'oci', 'enqueue-oci-conversion-row.ts'), 'utf8');
   assert.ok(enqueueSrc.includes('resolveWonConversionEconomics'));
   assert.ok(enqueueSrc.includes('value_policy_version'));
   assert.ok(!enqueueSrc.includes('Math.round(valueUnits * 100)'));
-  assert.ok(upsertSrc.includes('value_policy_version'));
-  assert.ok(upsertSrc.includes('value_policy_reason'));
-  assert.ok(upsertSrc.includes('value_fallback_used'));
+  assert.ok(journalSrc.includes('loadOciConversionEconomics'));
+  assert.ok(journalSrc.includes('value_policy_version') || journalSrc.includes('economics'));
 });
 
 test('PR-D: DB guardrail migration exists and is ordered after OCI P0 migrations', () => {

@@ -29,7 +29,7 @@ Current required set:
 
 - **Grants:** After migration, `anon` must not gain new broad table grants on `oci_queue_transitions`; ledger RPCs remain `service_role`-gated inside function bodies.
 - **Pre-dedupe:** `SELECT count(*) FROM outbox_events WHERE status='PENDING' GROUP BY site_id, call_id, payload->>'stage' HAVING count(*)>1` should return **0 rows**.
-- **Merged child:** For `calls.merged_into_call_id IS NOT NULL`, confirm no new `outbox_events` / `marketing_signals` / `offline_conversion_queue` rows in test window (site-scoped).
+- **Merged child:** For `calls.merged_into_call_id IS NOT NULL`, confirm no new `outbox_events` / `offline_conversion_queue` / `offline_conversion_queue` rows in test window (site-scoped).
 - **DB Guard: OCI conversion time zero-tolerance (fail-closed):** confirm trigger/functions exist and overwrite conversion timestamps from `calls.created_at`.
 
 ```sql
@@ -171,7 +171,7 @@ Latest hardening verification (via `list_migrations` + `execute_sql`):
 - `idx_outbox_events_pending_site_call_stage_uq` exists in `public.outbox_events`.
 - transition RPC EXECUTE privileges limited to `service_role` (plus `postgres` owner role).
 - `oci_queue_transitions` and `oci_payload_validation_events` grants include `service_role`; no `anon/authenticated` table grants.
-- conversion-time DB guard migration present remotely as `oci_conversion_time_zero_tolerance_db_guard` (trigger overwrites `offline_conversion_queue` + `marketing_signals` timestamps from `calls.created_at`).
+- conversion-time DB guard migration present remotely as `oci_conversion_time_zero_tolerance_db_guard` (trigger overwrites `offline_conversion_queue` + `offline_conversion_queue` timestamps from `calls.created_at`).
 - blocked-metadata snapshot migration present remotely as `oci_snapshot_batch_blocked_metadata_and_assert` (`apply_snapshot_batch` once again applies `clear_fields` / explicit `BLOCKED_PRECEEDING_SIGNALS` → `QUEUED` clearing for `block_reason` + `blocked_at`).
 - transition RPC grant re-assert migration present remotely as `oci_transition_rpc_grants_service_role_only` (see `20261226022000_oci_transition_rpc_grants_service_role_only.sql`).
 

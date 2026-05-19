@@ -91,7 +91,7 @@ export const en = {
   'ociControl.loading': 'Preparing list',
   'ociControl.loadMore': 'Load more',
   'ociControl.unifiedExportBacklog': 'Unified export backlog (active)',
-  'ociControl.marketingSignalsExportActive': 'Signals PENDING + PROCESSING',
+  'ociControl.journalExportActive': 'Queue PENDING + PROCESSING',
   'ociControl.wonQueueBacklogActive': 'Won queue backlog (before UPLOADED)',
   'ociControl.wonQueueInFlightUploaded': 'Won UPLOADED (ACK pending)',
   'ociControl.ociSyncMethod.script': 'Export path: Script (pull)',

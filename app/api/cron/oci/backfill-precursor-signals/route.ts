@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/oci/backfill-precursor-signals?siteId=...&limit=50&dry_run=1
  * Backfills missing OpsMantik_Contacted / OpsMantik_Offered rows for qualified/real/confirmed calls with click IDs.
  */

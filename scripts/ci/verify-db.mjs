@@ -96,7 +96,6 @@ const tableChecks = [
   'site_usage_monthly',
   'usage_counters',
   'call_funnel_ledger',
-  'marketing_signals',
   'offline_conversion_queue',
 ];
 

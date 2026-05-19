@@ -51,17 +51,6 @@ function queueReason(action: string, actualRevenue: number | null): string {
   return 'stage_model';
 }
 
-function signalSource(name: string): string {
-  return name === 'OpsMantik_Junk_Exclusion' ? 'fixed_junk_exclusion' : 'stage_model';
-}
-
-function signalReason(name: string): string {
-  if (name === 'OpsMantik_Junk_Exclusion') return 'junk_exclusion_nominal_fixed_10c';
-  if (name === 'OpsMantik_Contacted') return 'stage_model_contacted';
-  if (name === 'OpsMantik_Offered') return 'stage_model_offered';
-  return 'stage_model';
-}
-
 async function resolveSiteId(raw: string): Promise<string> {
   if (/^[0-9a-f-]{36}$/i.test(raw)) return raw;
   const { data, error } = await supabase
@@ -85,9 +74,7 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
   const siteResult = {
     siteId,
     queueNeedsUpdate: 0,
-    signalNeedsUpdate: 0,
     queueUpdated: 0,
-    signalUpdated: 0,
   };
 
   const { data: queueRows, error: queueErr } = await supabase
@@ -128,33 +115,6 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
     });
   siteResult.queueNeedsUpdate = queuePatches.length;
 
-  const { data: signalRows, error: signalErr } = await supabase
-    .from('marketing_signals')
-    .select('id,google_conversion_name,expected_value_cents,conversion_value')
-    .eq('site_id', siteId)
-    .in('google_conversion_name', Object.keys(TARGET_CENTS));
-  if (signalErr) throw signalErr;
-
-  const signalPatches = (signalRows ?? []).flatMap((row) => {
-      const target = TARGET_CENTS[row.google_conversion_name as keyof typeof TARGET_CENTS];
-      if (!target) return [];
-      const targetMajor = target / 100;
-      const needsUpdate = Number(row.expected_value_cents) !== target || Number(row.conversion_value) !== targetMajor;
-      if (!needsUpdate) return [];
-      return [{
-        id: row.id,
-        patch: {
-          expected_value_cents: target,
-          conversion_value: targetMajor,
-          value_policy_version: POLICY_VERSION,
-          value_source: signalSource(row.google_conversion_name),
-          value_policy_reason: signalReason(row.google_conversion_name),
-          updated_at: nowIso,
-        },
-      }];
-    });
-  siteResult.signalNeedsUpdate = signalPatches.length;
-
   if (dryRun) return siteResult;
 
   for (const row of queuePatches) {
@@ -165,15 +125,6 @@ async function runForSite(params: { siteId: string; dryRun: boolean; nowIso: str
     }
     siteResult.queueUpdated += 1;
   }
-  for (const row of signalPatches) {
-    const { error } = await supabase.from('marketing_signals').update(row.patch).eq('id', row.id);
-    if (error) {
-      console.error(`signal update failed ${row.id}: ${error.message}`);
-      continue;
-    }
-    siteResult.signalUpdated += 1;
-  }
-
   return siteResult;
 }
 
@@ -193,9 +144,7 @@ async function main() {
     mode: dryRun ? 'dry-run' : 'apply',
     sitesProcessed: results.length,
     queueNeedsUpdateTotal: results.reduce((acc, row) => acc + row.queueNeedsUpdate, 0),
-    signalNeedsUpdateTotal: results.reduce((acc, row) => acc + row.signalNeedsUpdate, 0),
     queueUpdatedTotal: results.reduce((acc, row) => acc + row.queueUpdated, 0),
-    signalUpdatedTotal: results.reduce((acc, row) => acc + row.signalUpdated, 0),
   };
   console.log(JSON.stringify(summary, null, 2));
 }

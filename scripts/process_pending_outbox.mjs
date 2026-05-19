@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import { resolve } from 'path';
 
 // Bu script outbox_events tablosundaki PENDING kayıtları işleyip 
-// marketing_signals ve offline_conversion_queue tablolarına basar.
+// offline_conversion_queue journal'a basar.
 // Normalde bu işi API worker'ı yapar ama local server kapalı olduğu için direkt yapıyoruz.
 
 dotenv.config({ path: resolve(process.cwd(), '.env.local') });
@@ -47,7 +47,7 @@ async function processOutbox() {
     // Outbox worker'ı çalıştırmak için veritabanında rpc veya manuel insert yapmalıyız.
     
     // Aslında outbox worker'ını tetiklemek en doğrusu ama server kapalı.
-    // Manuel olarak marketing_signals ve offline_conversion_queue kayıtlarını oluşturabiliriz.
+    // Manuel olarak offline_conversion_queue kayıtlarını oluşturabiliriz.
   }
 }
 

@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `manual only (provider ops)`
+ */
+/**
  * POST /api/cron/providers/seed-credentials — upsert provider_credentials for a site (staging/testing only).
  * Auth: requireCronAuth. Body: { site_id: string, provider_key: string, credentials: object }.
  * Encrypts credentials with vault and upserts. Runbook: lock or remove in production.

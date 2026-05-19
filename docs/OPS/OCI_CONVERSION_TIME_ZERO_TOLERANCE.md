@@ -13,7 +13,7 @@ For Google Ads OCI exports, conversion time is the first intent creation timesta
 
 All write paths that produce OCI artifacts must preserve the same primary timestamp:
 
-- `marketing_signals.google_conversion_time` must resolve from first intent creation time.
+- `offline_conversion_queue.google_conversion_time` must resolve from first intent creation time.
 - `offline_conversion_queue.occurred_at` and `offline_conversion_queue.conversion_time` must resolve from first intent creation time.
 - `conversion_time_source` must be explicit and auditable (for example `intent_created_at`).
 

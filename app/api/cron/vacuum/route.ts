@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `manual only (product hygiene)`
+ */
+/**
  * Phase 20: Vacuum cron — PENDING > 15m → STALLED_FOR_HUMAN_AUDIT.
  * Düsseldorf kill-switch: no gclid + non-TR geo → purge.
  * Run every 5–15 minutes.

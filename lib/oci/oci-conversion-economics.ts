@@ -1,43 +1,32 @@
 /**
- * Single resolver for `marketing_signals` row economics (four-conversions plan; not the Google GET export batch).
+ * OCI journal conversion economics (`offline_conversion_queue` value fields).
  * Upper-funnel rows must not rely on export-runtime NOW() for business time — see occurred-at +
  * conversion_time_source stamped at insert.
- *
- * **`loadMarketingSignalEconomics`** is the single async entry (one `sites.currency` read).
- * **`resolveMarketingSignalEconomics`** is pure (tests + callers that already know currency).
- *
- * CLOSED-SYSTEM SCORE CONTRACT: cents here come from `OptimizationValueSnapshot.optimizationValue`
- * (stage economics via `buildOptimizationSnapshot` / `resolveOptimizationValue`). Do not use audit
- * closure health or operator quality inputs as Google conversion amount — see
- * `docs/architecture/CLOSED_SYSTEM_SCORE_CONTRACT.md`.
  */
 
 import type { PipelineStage } from '@/lib/oci/signal-types';
 import type { OptimizationValueSnapshot } from '@/lib/oci/optimization-contract';
 import { normalizeCurrencyOrNeutral } from '@/lib/i18n/site-locale';
-import { toExpectedValueCents } from '@/lib/oci/marketing-signal-hash';
 import { adminClient } from '@/lib/supabase/admin';
 import { logWarn } from '@/lib/logging/logger';
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';
 
-/** Provenance for expected_value_cents / conversion_value at insert. */
 export const CONVERSION_VALUE_POLICY_VERSION = 'oci_conversion_value_policy_v1';
 
-export type MarketingSignalValueSource =
+export type OciConversionValueSource =
   | 'stage_model'
   | 'fixed_junk_exclusion'
   | 'won_stage_model_fallback'
   | 'won_stage_model_with_actual_revenue';
 
-export type MarketingSignalConversionTimeSource = 'ledger_stage_event';
+export type OciConversionTimeSource = 'ledger_stage_event';
 
-export interface MarketingSignalEconomics {
+export interface OciConversionEconomics {
   expectedValueCents: number;
-  /** Major units for conversion_value / optimization_value display fields on the row. */
   conversionValueMajor: number;
   conversionName: string;
-  valueSource: MarketingSignalValueSource;
-  conversionTimeSource: MarketingSignalConversionTimeSource;
+  valueSource: OciConversionValueSource;
+  conversionTimeSource: OciConversionTimeSource;
   currencyCode: string;
   policyVersion: string;
   policyReason: string;
@@ -49,14 +38,15 @@ export interface MarketingSignalEconomics {
 const JUNK_NOMINAL_CENTS = 10;
 const JUNK_NOMINAL_MAJOR = 0.1;
 
-/**
- * Resolves cents, currency, and provenance. Junk uses fixed 10¢ nominal (0.10 major) per product rule.
- */
-export function resolveMarketingSignalEconomics(params: {
+export function toExpectedValueCents(optimizationValue: number): number {
+  return Math.max(Math.round(optimizationValue * 100), 1);
+}
+
+export function resolveOciConversionEconomics(params: {
   stage: Exclude<PipelineStage, 'won'>;
   snapshot: OptimizationValueSnapshot;
   siteCurrency: string | null | undefined;
-}): MarketingSignalEconomics {
+}): OciConversionEconomics {
   const currencyCode = normalizeCurrencyOrNeutral(params.siteCurrency);
   if (params.stage === 'junk') {
     return {
@@ -91,7 +81,7 @@ export function resolveMarketingSignalEconomics(params: {
 export function resolveWonConversionEconomics(params: {
   snapshot: OptimizationValueSnapshot;
   siteCurrency: string | null | undefined;
-}): MarketingSignalEconomics {
+}): OciConversionEconomics {
   const currencyCode = normalizeCurrencyOrNeutral(params.siteCurrency);
   const hasActualRevenue =
     params.snapshot.actualRevenue != null &&
@@ -112,14 +102,11 @@ export function resolveWonConversionEconomics(params: {
   };
 }
 
-/**
- * Canonical async load: reads `sites.currency` once then resolves economics.
- */
-export async function loadMarketingSignalEconomics(params: {
+export async function loadOciConversionEconomics(params: {
   siteId: string;
   stage: Exclude<PipelineStage, 'won'>;
   snapshot: OptimizationValueSnapshot;
-}): Promise<MarketingSignalEconomics> {
+}): Promise<OciConversionEconomics> {
   const { data: siteRow } = await adminClient
     .from('sites')
     .select('currency')
@@ -127,13 +114,13 @@ export async function loadMarketingSignalEconomics(params: {
     .maybeSingle();
 
   if (!siteRow) {
-    logWarn('MARKETING_SIGNAL_SITE_ROW_MISSING_FOR_CURRENCY', {
+    logWarn('OCI_CONVERSION_SITE_ROW_MISSING_FOR_CURRENCY', {
       site_id: params.siteId,
       stage: params.stage,
     });
   }
 
-  return resolveMarketingSignalEconomics({
+  return resolveOciConversionEconomics({
     stage: params.stage,
     snapshot: params.snapshot,
     siteCurrency: (siteRow as { currency?: string | null } | null)?.currency,

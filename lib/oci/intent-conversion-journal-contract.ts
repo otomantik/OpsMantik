@@ -1,6 +1,6 @@
 /**
  * PR-9H.6 — Unified intent → offline_conversion_queue journal contract.
- * marketing_signals remains audit-only; this module describes the queue SSOT only.
+ * Journal-only OCI contract (`offline_conversion_queue` SSOT).
  */
 
 import { OPSMANTIK_CONVERSION_NAMES } from '@/lib/oci/conversion-names';

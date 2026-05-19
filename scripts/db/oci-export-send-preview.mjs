@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Google Ads script GET export ile aynı filtre: yalnızca offline_conversion_queue QUEUED|RETRY.
- * (marketing_signals artık export partisine dahil edilmez — ayrı tablo/ops.)
+ * Export partisi yalnızca offline_conversion_queue (journal-only).
  *
  *   node scripts/db/oci-export-send-preview.mjs 7eb8f5c0-...
  *   node scripts/db/oci-export-send-preview.mjs Muratcan

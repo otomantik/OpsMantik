@@ -2,24 +2,16 @@
 -- @contract_version: v1
 -- @db_required: true
 -- @red_green_criteria: GREEN when drifted_rows = 0 for active sites.
--- Value integrity health (read-only)
+-- Value integrity health (read-only, queue journal only).
 -- PR-D policy: oci_conversion_value_policy_v1
--- Note: `marketing_signals` rows here are value/audit evidence; Google upload authority is queue journal.
---
--- GREEN: drifted_rows = 0 for active sites
--- RED: any non-waived drifted_rows > 0
 
-WITH table_presence AS (
-  SELECT to_regclass('public.marketing_signals') IS NOT NULL AS marketing_signals_exists
-),
-policy AS (
+WITH policy AS (
   SELECT * FROM (
     VALUES
       ('offline_conversion_queue'::text, 'OpsMantik_Won'::text, 6000::bigint, 12000::bigint, NULL::bigint),
-      ('marketing_signals'::text, 'OpsMantik_Contacted'::text, 600::bigint, 1200::bigint, NULL::bigint),
-      ('marketing_signals'::text, 'OpsMantik_Offered'::text, 3000::bigint, 6000::bigint, NULL::bigint),
-      ('marketing_signals'::text, 'OpsMantik_Junk_Exclusion'::text, 10::bigint, 10::bigint, 10::bigint),
-      ('marketing_signals'::text, 'OpsMantik_Won'::text, 6000::bigint, 12000::bigint, NULL::bigint)
+      ('offline_conversion_queue'::text, 'OpsMantik_Contacted'::text, 600::bigint, 1200::bigint, NULL::bigint),
+      ('offline_conversion_queue'::text, 'OpsMantik_Offered'::text, 3000::bigint, 6000::bigint, NULL::bigint),
+      ('offline_conversion_queue'::text, 'OpsMantik_Junk_Exclusion'::text, 10::bigint, 10::bigint, 10::bigint)
   ) AS t(source_table, conversion_name, min_cents, max_cents, fixed_cents)
 ),
 queue_rows AS (
@@ -36,10 +28,12 @@ queue_rows AS (
     q.updated_at,
     q.status AS lifecycle_status
   FROM public.offline_conversion_queue q
-  WHERE q.action = 'OpsMantik_Won'
-),
-rows_union AS (
-  SELECT * FROM queue_rows
+  WHERE q.action IN (
+    'OpsMantik_Won',
+    'OpsMantik_Contacted',
+    'OpsMantik_Offered',
+    'OpsMantik_Junk_Exclusion'
+  )
 ),
 evaluated AS (
   SELECT
@@ -56,7 +50,7 @@ evaluated AS (
       WHEN COALESCE(r.value_source, '') = '' THEN 'missing_value_source'
       ELSE 'ok'
     END AS contract_status
-  FROM rows_union r
+  FROM queue_rows r
   LEFT JOIN policy p
     ON p.source_table = r.source_table
    AND p.conversion_name = r.conversion_name
@@ -79,10 +73,7 @@ agg AS (
 )
 SELECT
   a.policy_version,
-  CASE
-    WHEN a.drifted_rows = 0 THEN 'GREEN'
-    ELSE 'RED'
-  END AS contract_status,
+  CASE WHEN a.drifted_rows = 0 THEN 'GREEN' ELSE 'RED' END AS contract_status,
   a.source_table,
   a.site_id,
   s.name AS site_name,
@@ -96,36 +87,17 @@ SELECT
     ELSE EXTRACT(EPOCH FROM (now() - a.oldest_drift_at))::bigint
   END AS oldest_drift_age_seconds
 FROM agg a
-LEFT JOIN public.sites s
-  ON s.id = a.site_id
+LEFT JOIN public.sites s ON s.id = a.site_id
 ORDER BY a.drifted_rows DESC, a.conversion_name, a.site_id;
-
--- Queue-only doctrine: marketing_signals can be absent in target DB.
-WITH table_presence AS (
-  SELECT to_regclass('public.marketing_signals') IS NOT NULL AS marketing_signals_exists
-)
-SELECT
-  'queue_health_contract_v1'::text AS policy_version,
-  CASE
-    WHEN tp.marketing_signals_exists THEN 'OPTIONAL_LEGACY_CHECK_SKIPPED'
-    ELSE 'LEGACY_RESIDUE_ABSENT'
-  END AS contract_status,
-  'marketing_signals'::text AS source_table,
-  NULL::uuid AS site_id,
-  NULL::text AS site_name,
-  'legacy_audit_surface'::text AS conversion_name,
-  0::int AS total_rows,
-  0::int AS drifted_rows,
-  0::numeric AS drift_ratio,
-  NULL::timestamptz AS oldest_drift_at,
-  NULL::bigint AS oldest_drift_age_seconds
-FROM table_presence tp;
 
 -- Sample offending rows (actionable triage)
 WITH policy AS (
   SELECT * FROM (
     VALUES
-      ('offline_conversion_queue'::text, 'OpsMantik_Won'::text, 6000::bigint, 12000::bigint, NULL::bigint)
+      ('offline_conversion_queue'::text, 'OpsMantik_Won'::text, 6000::bigint, 12000::bigint, NULL::bigint),
+      ('offline_conversion_queue'::text, 'OpsMantik_Contacted'::text, 600::bigint, 1200::bigint, NULL::bigint),
+      ('offline_conversion_queue'::text, 'OpsMantik_Offered'::text, 3000::bigint, 6000::bigint, NULL::bigint),
+      ('offline_conversion_queue'::text, 'OpsMantik_Junk_Exclusion'::text, 10::bigint, 10::bigint, 10::bigint)
   ) AS t(source_table, conversion_name, min_cents, max_cents, fixed_cents)
 ),
 queue_rows AS (
@@ -142,7 +114,12 @@ queue_rows AS (
     q.updated_at,
     q.status AS lifecycle_status
   FROM public.offline_conversion_queue q
-  WHERE q.action = 'OpsMantik_Won'
+  WHERE q.action IN (
+    'OpsMantik_Won',
+    'OpsMantik_Contacted',
+    'OpsMantik_Offered',
+    'OpsMantik_Junk_Exclusion'
+  )
 ),
 evaluated AS (
   SELECT
@@ -176,8 +153,7 @@ SELECT
   e.updated_at,
   e.lifecycle_status
 FROM evaluated e
-LEFT JOIN public.sites s
-  ON s.id = e.site_id
+LEFT JOIN public.sites s ON s.id = e.site_id
 WHERE e.contract_status <> 'ok'
 ORDER BY e.created_at DESC
 LIMIT 200;

@@ -9,13 +9,14 @@
  *
  * Behavioural parity with the legacy routes:
  *
- *   1. `sweep-zombies`             → outbox + journal queue + marketing_signals PROCESSING rescue +
+ *   1. `sweep-zombies`             → outbox + journal queue rescue +
  *                                    stale UPLOADED close-out (GET export reads journal only).
- *   2. `recover-stuck-signals`     → re-PENDING marketing_signals stuck > 4h (ops; not script GET).
+ *   2. `recover-stuck-signals`     → queue-only compatibility route (legacy name).
  *   3. `attempt-cap`               → mark rows with attempt_count >= MAX_ATTEMPTS as FAILED.
  *   4. `sweep-unsent-conversions`  → re-enqueue sealed calls missing from OCI queue.
  *   5. `pulse-recovery`            → identity-stitcher backoff retries (MODULE 2).
  *   6. `providers/recover-processing` → requeue PROCESSING offline_conversion_jobs.
+ *   7. `ack-receipt-ttl` (CUT-02C) → `sweep_stale_ack_receipts_v1` TTL sweep.
  *
  * The Ouroboros predictive-degradation watchdog is intentionally left in the
  * standalone sweep-zombies route; it is a circuit-breaker that should NOT be
@@ -63,6 +64,7 @@ export interface OciMaintenanceStats {
   orphans_enqueued: number;
   orphan_skipped_reasons: Record<string, number>;
   stale_jobs_recovered: number;
+  ack_receipts_stale_swept: number;
   processing_recovery_mode?: string;
   processing_classifier_shadow_count?: number;
   processing_safe_retry_candidate_count?: number;
@@ -86,6 +88,7 @@ function newStats(): OciMaintenanceStats {
     orphans_enqueued: 0,
     orphan_skipped_reasons: {},
     stale_jobs_recovered: 0,
+    ack_receipts_stale_swept: 0,
     processing_recovery_mode: 'off',
     processing_classifier_shadow_count: 0,
     processing_safe_retry_candidate_count: 0,
@@ -201,6 +204,25 @@ async function step_sweepOrphans(stats: OciMaintenanceStats): Promise<void> {
     }
   } catch (err) {
     capture(stats, 'sweep_orphans', err);
+  }
+}
+
+const ACK_RECEIPT_MIN_AGE_MINUTES = 60;
+const ACK_RECEIPT_SWEEP_LIMIT = 500;
+
+async function step_ackReceiptStaleSweep(stats: OciMaintenanceStats): Promise<void> {
+  try {
+    const { data, error } = await adminClient.rpc('sweep_stale_ack_receipts_v1', {
+      p_min_age_minutes: ACK_RECEIPT_MIN_AGE_MINUTES,
+      p_limit: ACK_RECEIPT_SWEEP_LIMIT,
+    });
+    if (error) throw new Error(error.message);
+    stats.ack_receipts_stale_swept = typeof data === 'number' ? data : 0;
+    if (stats.ack_receipts_stale_swept > 0) {
+      logInfo('OCI_MAINTENANCE_ACK_RECEIPT_SWEEP', { stale_count: stats.ack_receipts_stale_swept });
+    }
+  } catch (err) {
+    capture(stats, 'ack_receipt_stale_sweep', err);
   }
 }
 
@@ -330,6 +352,7 @@ export async function runOciMaintenance(): Promise<OciMaintenanceStats> {
   // provider recover last to avoid fighting with attempt-cap in same cycle.
   await step_sweepZombies(stats);
   await step_attemptCap(stats);
+  await step_ackReceiptStaleSweep(stats);
   await step_providerRecoverProcessing(stats);
   await step_sweepOrphans(stats);
 
@@ -341,6 +364,7 @@ export async function runOciMaintenance(): Promise<OciMaintenanceStats> {
     attempt_cap_marked: stats.attempt_cap_marked,
     dlq_escalated: stats.dlq_escalated,
     stale_jobs_recovered: stats.stale_jobs_recovered,
+    ack_receipts_stale_swept: stats.ack_receipts_stale_swept,
     orphans_found: stats.orphans_found,
     orphans_enqueued: stats.orphans_enqueued,
     errors: stats.errors.length,

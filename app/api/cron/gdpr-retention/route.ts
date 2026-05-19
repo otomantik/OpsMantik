@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/night-maintenance`
+ */
+/**
  * GET/POST /api/cron/gdpr-retention — Batch anonymize consent-less sessions/events (PR-B2).
  */
 import { NextRequest, NextResponse } from 'next/server';

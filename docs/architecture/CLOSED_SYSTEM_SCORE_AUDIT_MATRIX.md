@@ -17,9 +17,9 @@ Classifications: **LEAD_QUALITY_SCORE** | **STAGE_ECONOMIC_BASE** | **TRUTH_CLOS
 | `OPTIMIZATION_STAGE_BASES`, `won: 100` | `lib/oci/optimization-contract.ts` | STAGE_ECONOMIC_BASE | — | Canonical only; duplicate maps forbidden (see `conversion-policy-literal-guard.test.ts`). |
 | `resolveOptimizationValue`, `systemScore = 0` | `lib/oci/optimization-contract.ts` | STAGE_ECONOMIC_BASE | — | Intentional: no lead multiplier on production value path. |
 | `buildOptimizationSnapshot` | `lib/oci/optimization-contract.ts` | STAGE_ECONOMIC_BASE | — | Feeds SSOT snapshot majors. |
-| `toExpectedValueCents(optimizationValue)` | `lib/oci/marketing-signal-hash.ts` | STAGE_ECONOMIC_BASE | — | Minor units from stage-based majors × 100 (floor ≥ 1). |
-| `expected_value_cents` / `value_cents` | `lib/oci/marketing-signal-value-ssot.ts` | STAGE_ECONOMIC_BASE | — | Policy + snapshot only; no `lead_score` field here. |
-| `resolveMarketingSignalEconomics` / `resolveWonConversionEconomics` | `lib/oci/marketing-signal-value-ssot.ts` | STAGE_ECONOMIC_BASE | — | Entry points for row economics. |
+| `toExpectedValueCents(optimizationValue)` | `lib/oci/retired-audit-hash.ts` | STAGE_ECONOMIC_BASE | — | Minor units from stage-based majors × 100 (floor ≥ 1). |
+| `expected_value_cents` / `value_cents` | `lib/oci/retired-audit-value-ssot.ts` | STAGE_ECONOMIC_BASE | — | Policy + snapshot only; no `lead_score` field here. |
+| `resolveRetiredAuditEconomics` / `resolveWonConversionEconomics` | `lib/oci/retired-audit-value-ssot.ts` | STAGE_ECONOMIC_BASE | — | Entry points for row economics. |
 | `960`, `10000` (×100 majors→cents) | Tests / hash `optimizationValue * 100` | STAGE_ECONOMIC_BASE | Low | Numeric examples only. |
 | `25`, `60`, `100` literals in tests | `tests/unit/oci-value-math.test.ts` (clamp) | LEAD_QUALITY_SCORE / DISPLAY_ONLY | Low | Bounds for `clampSystemScore`; not export value. |
 | `truth` / `closure` (audit health) | `scripts/sql/oci_time_ssot_health.sql`, release gates | TRUTH_CLOSURE_SCORE | — | Never assign to Google conversion amount. |

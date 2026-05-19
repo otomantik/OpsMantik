@@ -49,7 +49,7 @@ test('stage-router enqueues contacted/offered/junk into queue journal', () => {
     'utf8'
   );
   assert.ok(
-    src.includes('ensureMarketingSignalQueueParity'),
+    src.includes('ensureOciQueueEnqueue'),
     'stage router must route fired micro stages into offline_conversion_queue journal'
   );
   assert.ok(

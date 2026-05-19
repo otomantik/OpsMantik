@@ -2,7 +2,7 @@
 
 This document is the **R1 (öz)** contract for the kapalı export journal: **one** upload truth surface — [`offline_conversion_queue`](../../supabase/migrations/20260502120000_ensure_oci_queue_and_signals.sql) — plus four canonical conversion names in [`lib/oci/conversion-names.ts`](../../lib/oci/conversion-names.ts).
 `offline_conversion_queue` is the only runtime Google upload journal.
-The Google Ads **script/API export route does not read `marketing_signals`**. **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
+The Google Ads **script/API export route reads `offline_conversion_queue` only**. **R2** = code links; **R3** = tests + SQL + `npm run test:release-gates` + [`scripts/release/evidence-contracts.mjs`](../../scripts/release/evidence-contracts.mjs) health packs.
 
 ## PR-9H.6 — Unified intent → queue journal + full Google signal readiness
 
@@ -55,22 +55,21 @@ The Google Ads **script/API export route does not read `marketing_signals`**. **
 - Count-only preview diagnostics include `currency_missing_count`, `currency_unexpected_count`, `currency_defaulted_count`.
 - Repair/sweeper enqueue paths should pass `calls.sale_currency` where available and rely on site currency fallback inside enqueue SSOT instead of empty-string neutralization.
 
-## PR-9H.6.1 — Producer wiring completion + parity guard
+## PR-9H.6.1 — Producer wiring (queue journal only)
 
-- **Won / seal** now shares the same SSOT insert as micro-stages: [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) delegates to [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts) with a **precomputed disposition** (precursor gate, consent, Script v1 vs wbraid/gbraid) plus legacy **fast-track** dedupe (`oci-v5-fasttrack-${queue_id}`) when `oci_sync_method=api` and status is `QUEUED`.
-- **`marketing_signals`** remains **audit-only**. Any live write through [`lib/oci/upsert-marketing-signal.ts`](../../lib/oci/upsert-marketing-signal.ts) / domain twin **best-effort invokes** [`ensureMarketingSignalQueueParity`](../../lib/oci/marketing-signal-queue-parity.ts) so every hash/audit row gets a matching journal attempt (idempotent on `source_idempotency_key`).
-- **Parity diagnostics (read-only):** [`lib/oci/intent-queue-parity-guard.ts`](../../lib/oci/intent-queue-parity-guard.ts) — `QUEUE_ROW_*` outcomes for audits/tests; **no DB writes**.
-- **Exact-site backfill (APPLY):** `node scripts/db/pr9h6-backfill-intents-to-oci-queue.mjs` delegates to [`scripts/db/pr9h6-backfill-queue-apply.ts`](../../scripts/db/pr9h6-backfill-queue-apply.ts) when `APPLY=1` + **`STAGE_ALLOWLIST`** + **`MAX_ROWS`** + approval token match. Tags rows with `source_type=pr9h6_backfill_queue_apply` (no upload / no ACK from the tool).
+- **Won / seal** shares the same SSOT insert as micro-stages: [`enqueueSealConversion`](../../lib/oci/enqueue-seal-conversion.ts) → [`enqueueIntentConversionJournalRow`](../../lib/oci/enqueue-intent-conversion-journal-row.ts) with disposition + optional API fast-track (`oci-v5-fasttrack-${queue_id}`).
+- **Stage router** calls [`ensureOciQueueEnqueue`](../../lib/oci/ensure-oci-queue-enqueue.ts) for contacted / offered / junk (idempotent on `source_idempotency_key`).
+- **Parity diagnostics (read-only):** [`lib/oci/intent-queue-parity-guard.ts`](../../lib/oci/intent-queue-parity-guard.ts) — `QUEUE_ROW_*` outcomes; **no DB writes**.
+- **Exact-site backfill (APPLY):** `node scripts/db/pr9h6-backfill-intents-to-oci-queue.mjs` → [`pr9h6-backfill-queue-apply.ts`](../../scripts/db/pr9h6-backfill-queue-apply.ts) when `APPLY=1` + `STAGE_ALLOWLIST` + `MAX_ROWS` + approval token.
 
-### Producer map (first-class intent → journal)
+### Producer map (intent → journal)
 
 | Source | Stage(s) | Queue path | Notes |
 |--------|-----------|------------|--------|
-| [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts) | contacted / offered / junk | `enqueueOciConversionRow` → journal | Outbox is primary panel/cron fan-in |
-| [`stage-router.ts`](../../lib/domain/mizan-mantik/stages/stage-router.ts) | contacted / offered / junk (sync) | `ensureMarketingSignalQueueParity` | Won **dropped here** by design (seal-owned) |
-| [`enqueue-seal-conversion.ts`](../../lib/oci/enqueue-seal-conversion.ts) | won | Seal → **journal** (`OpsMantik_Won`) | Fast-track only on API + `QUEUED` |
+| [`process-outbox.ts`](../../lib/oci/outbox/process-outbox.ts) | contacted / offered / junk | `enqueueOciConversionRow` → journal | Primary panel/cron fan-in |
+| [`stage-router.ts`](../../lib/domain/mizan-mantik/stages/stage-router.ts) | contacted / offered / junk | `ensureOciQueueEnqueue` | Won seal-owned elsewhere |
+| [`enqueue-seal-conversion.ts`](../../lib/oci/enqueue-seal-conversion.ts) | won | journal (`OpsMantik_Won`) | API fast-track when `QUEUED` |
 | [`sweep-unsent-conversions`](../../app/api/cron/sweep-unsent-conversions/route.ts) | won | `enqueueSealConversion` | Repair / orphan fill |
-| [`lib/oci/upsert-marketing-signal.ts`](../../lib/oci/upsert-marketing-signal.ts) + domain twin | non-won audit | `marketing_signals` INSERT + **parity enqueue** | Audit residue, not export authority |
 
 ## Single export surface (journal SSOT)
 
@@ -79,8 +78,7 @@ The Google Ads **script/API export route does not read `marketing_signals`**. **
 | Script batch | [`GET .../google-ads-export`](../../app/api/oci/google-ads-export/route.ts) → [`fetchExportData`](../../app/api/oci/google-ads-export/export-fetch.ts) (**`fetch_oci_google_ads_export_jit_v1`**) → `buildExportItems` → highest-gear dedupe within journal |
 | API worker lane | Same journal rows uploaded by worker/kernel; fast-track via QStash when `oci_sync_method=api` |
 
-**Legacy `marketing_signals`:** It is an **ACTIVE_RUNTIME_RESIDUE** that still receives writes for non-won stages, but it is **not** combined into the Google export batch. It is not an upload authority and must be treated as an audit-only shadow trail. Stranded PENDING rows are an operational cleanup topic (pulse/recovery), not a second upload authority.
-Parity hardening rule: for Google-eligible `marketing_signals` writes, a matching `offline_conversion_queue` row is required (`marketing_signals_queue_parity_gap_count` must remain `0` in health/evidence). DB trigger lane now records violations into `parity_audit_log` / `parity_violation_dlq`; enforcement mode is controlled by `app.settings.oci_marketing_signal_queue_parity_enforcement` (`observe` default, `enforce` optional).
+**Journal SSOT:** `offline_conversion_queue` is the only Google upload surface. Export reads `QUEUED`/`RETRY` via `fetch_oci_google_ads_export_jit_v1`. Stranded rows are ops cleanup (maintenance/night), not a second upload path.
 
 ## Four conversion matrix (lifecycle → journal)
 
@@ -97,12 +95,12 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 
 | Conversion | Current producer | Current table | Current upload path | Should be queue? | Double-path risk | Class | Action |
 |---|---|---|---|---|---|---|---|
-| contacted | `runProcessOutbox` / stage-router fire | `offline_conversion_queue` (plus legacy `marketing_signals` audit writes) | `google-ads-export` reads queue only | yes | legacy audit write can confuse ops if treated as upload | `QUEUE_CANONICAL` + `AUDIT_ONLY` | keep queue as authority; treat `marketing_signals` as non-upload lane |
-| offered | `runProcessOutbox` / stage-router fire | `offline_conversion_queue` (plus legacy `marketing_signals`) | queue-only fetch | yes | same as contacted | `QUEUE_CANONICAL` + `AUDIT_ONLY` | same |
+| contacted | `runProcessOutbox` / stage-router fire | `offline_conversion_queue` (plus legacy `offline_conversion_queue` audit writes) | `google-ads-export` reads queue only | yes | legacy audit write can confuse ops if treated as upload | `QUEUE_CANONICAL` + `AUDIT_ONLY` | keep queue as authority; treat `offline_conversion_queue` as non-upload lane |
+| offered | `runProcessOutbox` / stage-router fire | `offline_conversion_queue` (plus legacy `offline_conversion_queue`) | queue-only fetch | yes | same as contacted | `QUEUE_CANONICAL` + `AUDIT_ONLY` | same |
 | won | seal/outbox/sweep enqueue | `offline_conversion_queue` | queue-only fetch | yes | low (won already queue authority) | `QUEUE_CANONICAL` | keep helper-only writes |
 | junk exclusion | `runProcessOutbox` micro-stage path (with optional retraction adj records) | `offline_conversion_queue` | queue-only fetch | yes | medium if old signal-only assumptions linger | `QUEUE_CANONICAL` | keep queue authority; preserve explicit blocked/skip semantics |
 
-`marketing_signals` classification in this contract: **`ACTIVE_RUNTIME_RESIDUE`** / **`AUDIT_ONLY`** (legacy/hash/recovery/evidence), **not** an independent Google upload source.
+`offline_conversion_queue` classification in this contract: **`ACTIVE_RUNTIME_RESIDUE`** / **`AUDIT_ONLY`** (legacy/hash/recovery/evidence), **not** an independent Google upload source.
 
 ## Formal invariant index (I1–I13)
 
@@ -122,7 +120,7 @@ Parity hardening rule: for Google-eligible `marketing_signals` writes, a matchin
 | ID | Rule | Implementation note |
 |----|------|----------------------|
 | **D1** | Identity path pure | `computeOfflineConversionExternalId` — no random/time in tuple hash ([`external-id.ts`](../../lib/oci/external-id.ts)) |
-| **D2** | Economics SSOT | [`marketing-signal-value-ssot.ts`](../../lib/oci/marketing-signal-value-ssot.ts) |
+| **D2** | Economics SSOT | [`retired-audit-value-ssot.ts`](../../lib/oci/retired-audit-value-ssot.ts) |
 | **D3** | Transition timestamps | ACK routes use [`getDbNowIso`](../../lib/time/db-now.ts); drift → [`oci_time_ssot_health.sql`](../../scripts/sql/oci_time_ssot_health.sql) |
 | **D4** | Replay / idempotency | Partial unique on `(site_id, provider_key, source_idempotency_key)` + `23505` collapsed in [`enqueue-intent-conversion-journal-row.ts`](../../lib/oci/enqueue-intent-conversion-journal-row.ts); seal/micro routes delegate there |
 | **D5** | Stable ordering | Export + worker queries use explicit `ORDER BY` + tie-break columns |
@@ -202,7 +200,7 @@ Implementation: [`lib/cron/process-offline-conversions.ts`](../../lib/cron/proce
 - **Gap / staleness / shape:** [`scripts/sql/export_closure_gap_audit.sql`](../../scripts/sql/export_closure_gap_audit.sql).
 - **Stage ↔ journal (best-effort, 30d lookback):** [`scripts/sql/export_closure_stage_journal_gap.sql`](../../scripts/sql/export_closure_stage_journal_gap.sql) — G1 lead with `calls.status` in the four-tuple vs matching `offline_conversion_queue.action` (false positives possible when status lags outbox).
 - Operational queue health: [`scripts/sql/queue_health.sql`](../../scripts/sql/queue_health.sql).
-- Queue-only compatibility rule: export-closure health packs must not depend on `public.marketing_signals` existence and must never crash when legacy audit residue tables are absent.
+- Queue-only compatibility rule: export-closure health packs must not depend on `public.offline_conversion_queue` existence and must never crash when legacy audit residue tables are absent.
 - Orphan won repair rule: discovery is read-only first (`scripts/sql/orphan_won_backfill.sql`), repair is site-scoped only and must flow through canonical enqueue (`enqueueSealConversion`), not ad-hoc SQL inserts/updates.
 - Sweep lock rule: `sweep-unsent-conversions` lock scope is global by default, but `site_id` requests use `sweep-unsent-conversions:site:<site_id>` so site-scoped manual repairs do not wait on unrelated global sweep overlaps.
 - Schema-compat rule: `calls.currency` is optional metadata for sweep repair. Canonical orphan-won repair must remain operational when that column is absent; value/currency policy remains owned by enqueue SSOT, not by sweep query schema assumptions.

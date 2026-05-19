@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/providers/recover-processing — requeue jobs stuck in PROCESSING (e.g. worker crash).
  * Auth: requireCronAuth. Query: min_age_minutes=15 (default).
  * Vercel Cron sends GET; POST kept for manual/Bearer calls.
