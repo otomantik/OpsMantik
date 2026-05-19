@@ -67,7 +67,7 @@ Must **not** appear in `app/panel/**` or panel-only components:
 
 ## Landing
 
-Operators should land on `/panel` ([`resolveLandingRoute`](../../../lib/auth/landing-route.ts) — PR-OM-SEAL-03).
+Operators land on `/panel` ([`resolveLandingRoute`](../../../lib/auth/landing-route.ts) — **SEAL-03 ✅**). OCI full UI: [`/panel/oci`](../../../app/panel/oci/page.tsx).
 
 ## ACK copy rule
 

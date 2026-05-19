@@ -1,12 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
-import { headers, cookies } from 'next/headers';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
-import { resolveLocale } from '@/lib/i18n/locale';
-import { isAdmin } from '@/lib/auth/is-admin';
-import { panelSitePath } from '@/lib/auth/site-operational-route';
+import { panelOciPath, panelSitePath } from '@/lib/auth/site-operational-route';
 import { validateSiteAccess } from '@/lib/security/validate-site-access';
-import { OciControlPanel } from '@/components/dashboard/oci-control/oci-control-panel';
 import { hasCapability } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -16,47 +11,18 @@ interface PageProps {
   params: Promise<{ siteId: string }>;
 }
 
-export default async function OciControlPage({ params }: PageProps) {
+/** Legacy Komuta Merkezi OCI URL — canonical surface is `/panel/oci` (SEAL-03). */
+export default async function OciControlRedirect({ params }: PageProps) {
   const { siteId } = await params;
-
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-
-  const userIsAdmin = await isAdmin();
-  if (!userIsAdmin) {
-    redirect(panelSitePath(siteId));
-  }
-
-  const { data: site } = await supabase
-    .from('sites')
-    .select('id, name, domain, currency, timezone, locale')
-    .eq('id', siteId)
-    .single();
-
-  if (!site) notFound();
 
   const access = await validateSiteAccess(siteId, user.id, supabase);
   if (!access.allowed) notFound();
 
-  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
-  const acceptLanguage = headersList.get('accept-language') ?? null;
-  const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value ?? null;
-  const resolvedLocale = resolveLocale(site, user?.user_metadata, acceptLanguage, cookieLocale);
-
-  return (
-    <I18nProvider
-      locale={resolvedLocale}
-      siteConfig={{
-        currency: site.currency ?? undefined,
-        timezone: site.timezone ?? undefined,
-      }}
-    >
-      <OciControlPanel
-        siteId={siteId}
-        siteName={site.name || site.domain || undefined}
-        canOperate={Boolean(access.role && hasCapability(access.role, 'queue:operate'))}
-      />
-    </I18nProvider>
-  );
+  const canOperate = Boolean(access.role && hasCapability(access.role, 'queue:operate'));
+  redirect(canOperate ? panelOciPath(siteId) : panelSitePath(siteId));
 }
