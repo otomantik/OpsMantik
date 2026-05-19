@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertOutOfCoreSurfaceAllowed } from '@/lib/api/out-of-core-surface';
 import { createClient } from '@/lib/supabase/server';
 import { getBuildInfoHeaders } from '@/lib/build-info';
 import { isValidUuid, mapConversationRpcError } from '@/lib/api/conversations/http';
@@ -6,6 +7,9 @@ import { isValidUuid, mapConversationRpcError } from '@/lib/api/conversations/ht
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  const retired = assertOutOfCoreSurfaceAllowed('conversations_note');
+  if (retired) return retired;
+
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {

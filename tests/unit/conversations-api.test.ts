@@ -113,6 +113,30 @@ test('conversation phase2 kernel: inbox/detail/mutation RPCs are wired in API ro
   assert.ok(linkSrc.includes("rpc('conversation_link_entity_v1'"), 'link route uses link RPC');
 });
 
+test('conversation HTTP routes use out-of-core PROD_OFF guard before auth', () => {
+  const routePaths = [
+    createPath,
+    detailPath,
+    linkPath,
+    resolvePath,
+    assignPath,
+    followUpPath,
+    notePath,
+    stagePath,
+    reopenPath,
+  ];
+  for (const routePath of routePaths) {
+    const src = readFileSync(routePath, 'utf8');
+    assert.ok(
+      src.includes('assertOutOfCoreSurfaceAllowed'),
+      `${routePath} must call assertOutOfCoreSurfaceAllowed`,
+    );
+    const guardIdx = src.indexOf('assertOutOfCoreSurfaceAllowed');
+    const clientIdx = src.indexOf('createClient');
+    assert.ok(guardIdx >= 0 && clientIdx >= 0 && guardIdx < clientIdx, `${routePath} guard must precede createClient`);
+  }
+});
+
 test('conversation mutation routes are thin wrappers over RPCs', () => {
   const assignSrc = readFileSync(assignPath, 'utf8');
   const followUpSrc = readFileSync(followUpPath, 'utf8');
