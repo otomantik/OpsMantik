@@ -25,7 +25,9 @@
     "lib/oci/pulse-recovery-worker.ts",
     "lib/security/hmac-verification.ts",
     "lib/services/audit-logger.ts",
-    "lib/providers/google-ads-api/conversion-upload-adapter.ts"
+    "lib/providers/google-ads-api/conversion-upload-adapter.ts",
+    "lib/attribution/session-shadow.ts",
+    "lib/attribution/shadow-evaluator.ts"
   ],
   "ignoreBinaries": ["k6", "wrangler"],
   "ignoreDependencies": ["tailwindcss"],
