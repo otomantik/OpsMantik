@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/oci/attempt-cap — mark rows with attempt_count >= MAX_ATTEMPTS as FAILED.
  * Auth: requireCronAuth. Query: max_attempts=5, min_age_minutes=0 (optional).
  */

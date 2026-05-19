@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/process-offline-conversions — claim and upload queued conversions (all or filtered providers).
  *
  * Uses single OCI runner (PR-C4): list groups → health gate → claim → upload → metrics + record_provider_outcome.

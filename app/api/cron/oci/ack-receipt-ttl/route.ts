@@ -1,3 +1,7 @@
+/**
+ * @deprecated CUT-02C — Scheduled via `/api/cron/oci-maintenance` (`sweep_stale_ack_receipts_v1` step).
+ * Break-glass only: manual GET/POST with `CRON_SECRET` or `x-vercel-cron`.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getBuildInfoHeaders } from '@/lib/build-info';

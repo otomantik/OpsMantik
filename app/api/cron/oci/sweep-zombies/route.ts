@@ -1,3 +1,7 @@
+/**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';

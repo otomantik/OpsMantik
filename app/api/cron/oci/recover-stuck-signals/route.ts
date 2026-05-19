@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/oci/recover-stuck-signals
  * Legacy route kept for backward compatibility.
  * Queue-only model: rescues stuck `offline_conversion_queue` PROCESSING rows.

@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/oci-maintenance`
+ */
+/**
  * GET/POST /api/cron/oci/promote-blocked-queue
  * Promotes BLOCKED_PRECEDING_SIGNALS → QUEUED when precursor signals are ready.
  */

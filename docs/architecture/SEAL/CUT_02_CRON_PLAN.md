@@ -1,8 +1,8 @@
 # PR-OM-CUT-02A — Cron Kemik Implementation Plan
 
-**Status:** **CUT-02A ✅** (`19 → 10` schedules) · **CUT-02B ✅** (`cleanup` → night-maintenance; **7** schedules).  
+**Status:** **CUT-02A ✅** · **CUT-02B ✅** (**7** schedules) · **CUT-02C ✅** (ack TTL → oci-maintenance) · **CUT-02D ✅** (break-glass docs + `@deprecated`).  
 **Prerequisite:** CUT-01 family complete on `master` (`510e36c`).  
-**Scope ladder:** 02A ✅ → 02B ✅ → 02C (OCI maintenance) → 02D (break-glass docs).
+**Scope ladder:** 02A ✅ → 02B ✅ → 02C ✅ → 02D ✅ — cron kemik complete.
 
 **CUT-02A result:** No handler files edited. No route deletes. No migrations. Rollback = revert `vercel.json`.
 
@@ -144,15 +144,16 @@
 - Tests: `night-maintenance-cut-02b.test.ts`, updated `cron-schedule-contract.test.ts`
 - Retired audit table cleanup N/A (table dropped)
 
-### CUT-02C — OCI Maintenance Consolidation Hardening
+### CUT-02C — OCI Maintenance Consolidation Hardening ✅
 
-- Optional: fold `sweep_stale_ack_receipts_v1` into `runOciMaintenance`
-- Regression tests: queue FSM, export/ack untouched
+- `step_ackReceiptStaleSweep` in `run-maintenance.ts` (`sweep_stale_ack_receipts_v1`, 60m / 500 limit)
+- `ack-receipt-ttl` route `@deprecated`; tests: `oci-maintenance-cut-02c.test.ts`
 
-### CUT-02D — Break-glass Docs + Manual Routes
+### CUT-02D — Break-glass Docs + Manual Routes ✅
 
-- `CRON_CONTRACT.md` manual invocation appendix (Bearer `CRON_SECRET`, `?apply=true`, approval env)
-- `@deprecated` comment headers on unscheduled routes (no deletes)
+- `CRON_CONTRACT.md` break-glass appendix (Bearer `CRON_SECRET`, `?apply=true`, approval env)
+- `@deprecated` on all unscheduled routes; test: `cron-break-glass-deprecation.test.ts`
+- Stamp helper: `scripts/ci/stamp-break-glass-deprecation.mjs` (idempotent)
 
 ---
 

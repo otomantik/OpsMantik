@@ -1,8 +1,8 @@
 /**
  * GET/POST /api/cron/oci-maintenance — Single-entry OCI self-healing cron.
  *
- * Replaces six legacy crons (sweep-zombies, recover-stuck-signals, attempt-cap,
- * sweep-unsent-conversions, pulse-recovery, providers/recover-processing). The
+ * Replaces legacy OCI sweeps (sweep-zombies, recover-stuck-signals, attempt-cap,
+ * sweep-unsent-conversions, providers/recover-processing, ack-receipt-ttl CUT-02C). The
  * individual routes remain available for manual invocation / debugging but are
  * removed from `vercel.json`'s schedule list; only this route runs on a timer.
  *
@@ -90,7 +90,8 @@ async function handle() {
         stats.attempt_cap_marked +
         stats.dlq_escalated +
         stats.orphans_enqueued +
-        stats.stale_jobs_recovered,
+        stats.stale_jobs_recovered +
+        stats.ack_receipts_stale_swept,
       errorCode: ok ? null : 'PARTIAL_FAILURE',
       errorMessage: ok ? null : 'Maintenance completed with partial failures',
     });

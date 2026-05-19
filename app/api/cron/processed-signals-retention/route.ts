@@ -1,4 +1,8 @@
 /**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `/api/cron/night-maintenance`
+ */
+/**
  * GET/POST /api/cron/processed-signals-retention — stale fail + terminal delete (PR-C1).
  */
 import { NextRequest, NextResponse } from 'next/server';

@@ -1,3 +1,7 @@
+/**
+ * @deprecated CUT-02D — Unscheduled (break-glass). See docs/architecture/SEAL/CRON_CONTRACT.md.
+ * Replacement: `manual only (OUT_OF_CORE)`
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron/require-cron-auth';
 import { tryAcquireCronLock, releaseCronLock, startCronLockHeartbeat } from '@/lib/cron/with-cron-lock';
