@@ -3,21 +3,11 @@
     {"path": "/api/cron/watchtower", "schedule": "*/15 * * * *"},
     {"path": "/api/cron/reconcile-usage", "schedule": "8,23,38,53 * * * *"},
     {"path": "/api/cron/night-maintenance", "schedule": "0 3 * * *"},
-    {"path": "/api/cron/idempotency-cleanup", "schedule": "10 3 * * *"},
-    {"path": "/api/cron/oci/outbox-cleanup", "schedule": "25 3 * * *"},
-    {"path": "/api/cron/processed-signals-retention", "schedule": "40 3 * * *"},
     {"path": "/api/cron/marketing-signals-cleanup", "schedule": "55 3 * * *"},
     {"path": "/api/cron/invoice-freeze", "schedule": "0 0 1 * *"},
     {"path": "/api/cron/oci-maintenance", "schedule": "*/10 * * * *"},
-    {"path": "/api/cron/oci-recovery", "schedule": "*/30 * * * *"},
-    {"path": "/api/cron/vacuum", "schedule": "4-59/10 * * * *"},
     {"path": "/api/cron/oci/process-outbox-events", "schedule": "1-56/5 * * * *"},
-    {"path": "/api/cron/oci/ack-receipt-ttl", "schedule": "0 */6 * * *"},
-    {"path": "/api/cron/truth-parity-repair", "schedule": "3-58/10 * * * *"},
-    {"path": "/api/cron/funnel-projection", "schedule": "2-57/5 * * * *"},
     {"path": "/api/cron/auto-junk", "schedule": "0 2 * * *"},
-    {"path": "/api/cron/oci/enqueue-from-sales", "schedule": "0 * * * *"},
-    {"path": "/api/cron/cleanup", "schedule": "0 4 * * *"},
-    {"path": "/api/cron/gdpr-retention", "schedule": "30 5 * * *"}
+    {"path": "/api/cron/cleanup", "schedule": "0 4 * * *"}
   ]
 }
