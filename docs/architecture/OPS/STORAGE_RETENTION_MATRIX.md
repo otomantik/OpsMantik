@@ -13,8 +13,8 @@ Fill after `npm run db:storage-audit` and `scripts/sql/storage_audit.sql` in SQL
 | `oci_queue_transitions` | cascade with queue | — | — | — | no |
 | `sessions` / `events` PII | 90d consent-less | `anonymize_consent_less_data_batch` | 5000 | yes | anonymize only |
 | `sessions` / `events` row DELETE | TBD | **Not automated** | — | — | **legal required** |
-| `calls` intent junk | product | `auto-junk` (`expires_at`) | 500 sites | no | no |
-| `calls` stale recovery | fallback | `cleanup_auto_junk_stale_intents` | 5000 | `recovery_junk=1` only | no |
+| `calls` intent junk | product | `auto-junk` (`expires_at` **90d**, `reviewed_at` null) | 500 sites | no | no |
+| `calls` stale recovery | fallback | `cleanup_auto_junk_stale_intents` (default **90d**, untouched) | 5000 | `recovery_junk=1` only | no |
 | `truth_evidence_ledger` | 90–180d (TBD) | `delete_truth_evidence_batch` | 5000 | yes | flag gated |
 
 ## Audit thresholds (PR-E1 partition)

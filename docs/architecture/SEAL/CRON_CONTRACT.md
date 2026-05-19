@@ -14,7 +14,7 @@
 | `/api/cron/oci/process-outbox-events` | `1-56/5 * * * *` | OCI | Outbox safety-net worker |
 | `/api/cron/oci-maintenance` | `*/10 * * * *` | OCI | `runOciMaintenance` + bounded upload |
 | `/api/cron/night-maintenance` | `0 3 * * *` | Storage | Idempotency → outbox → GDPR → processed_signals → truth_evidence → **archive_failed** → **oci_queue** |
-| `/api/cron/auto-junk` | `0 2 * * *` | Product | Intent `expires_at` junk |
+| `/api/cron/auto-junk` | `0 2 * * *` | Product | Untouched `intent` after **90d** (`expires_at`; skips `reviewed_at`) |
 | `/api/cron/watchtower` | `*/15 * * * *` | Ops | Ingest/OCI/billing diagnostics |
 | `/api/cron/reconcile-usage` | `8,23,38,53 * * * *` | Billing | Enqueue + process |
 | `/api/cron/invoice-freeze` | `0 0 1 * *` | Billing | Monthly freeze |
