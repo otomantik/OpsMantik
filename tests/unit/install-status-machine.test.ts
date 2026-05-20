@@ -26,6 +26,19 @@ test('install status: installed_no_events', () => {
   );
 });
 
+test('install status: installed_no_events when origin registered, verification unknown', () => {
+  assert.equal(
+    deriveInstallReadiness({
+      ...base,
+      originCount: 1,
+      originVerified: null,
+      lastEventAt: null,
+      hasIntentCalls: false,
+    }),
+    'installed_no_events'
+  );
+});
+
 test('install status: events_received', () => {
   assert.equal(
     deriveInstallReadiness({
@@ -67,7 +80,7 @@ test('install status: conversion_ready', () => {
   );
 });
 
-test('install status: no_heartbeat when only non-heartbeat events', () => {
+test('install status: events_received when only non-heartbeat events', () => {
   assert.equal(
     deriveInstallReadiness({
       ...base,
@@ -81,15 +94,63 @@ test('install status: no_heartbeat when only non-heartbeat events', () => {
   );
 });
 
-test('install status: unknown when no signals', () => {
+test('install status: no_heartbeat when only heartbeat action without heartbeat timestamp', () => {
   assert.equal(
     deriveInstallReadiness({
       ...base,
       originCount: 1,
-      originVerified: null,
-      lastEventAt: null,
-      hasIntentCalls: false,
+      originVerified: true,
+      lastEventAt: new Date().toISOString(),
+      lastEventAction: 'heartbeat',
+      lastHeartbeatAt: null,
     }),
-    'unknown'
+    'no_heartbeat'
   );
+});
+
+test('install status: origin_mismatch', () => {
+  assert.equal(
+    deriveInstallReadiness({
+      ...base,
+      originCount: 1,
+      originVerified: false,
+    }),
+    'origin_mismatch'
+  );
+});
+
+test('install status: consent_missing', () => {
+  assert.equal(
+    deriveInstallReadiness({
+      ...base,
+      originCount: 1,
+      originVerified: true,
+      consentAnalyticsPresent: false,
+    }),
+    'consent_missing'
+  );
+});
+
+test('install status: script_outdated', () => {
+  assert.equal(
+    deriveInstallReadiness({
+      ...base,
+      originCount: 1,
+      originVerified: true,
+      scriptVersion: '7',
+      liveScriptVersion: '6',
+    }),
+    'script_outdated'
+  );
+});
+
+test('install status: deriveInstallReadiness does not emit unknown for registered origin without events', () => {
+  const state = deriveInstallReadiness({
+    ...base,
+    originCount: 1,
+    originVerified: null,
+    lastEventAt: null,
+  });
+  assert.notEqual(state, 'unknown');
+  assert.equal(state, 'installed_no_events');
 });
