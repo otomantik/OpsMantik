@@ -20,6 +20,7 @@ import { dedupeLatestByIntentKey } from '@/lib/queue/dedupe-latest-by-intent-key
 import { OciStatusStrip } from '@/components/panel/oci-status-strip';
 import { InstallHealthStrip } from '@/components/panel/install-health-strip';
 import { hasCapability } from '@/lib/auth/rbac';
+import { panelInstallPath } from '@/lib/auth/site-operational-route';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -113,6 +114,11 @@ export default async function PanelRoute({ searchParams }: PanelRouteProps) {
     if (readableSite?.id) {
       targetSiteId = readableSite.id;
     }
+  }
+
+  const viewRaw = Array.isArray(sp.view) ? sp.view[0] : sp.view;
+  if (viewRaw === 'install' && targetSiteId) {
+    redirect(panelInstallPath(targetSiteId));
   }
 
   if (!targetSiteId) {

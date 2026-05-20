@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useTranslation } from '@/lib/i18n/useTranslation';
+import { panelInstallPath } from '@/lib/auth/site-operational-route';
 
 type OriginRow = {
   origin: string;
@@ -60,7 +62,11 @@ export function InstallHealthStrip({ siteId }: { siteId: string }) {
         {t('panel.installStrip.title')}
       </h2>
       <p className="text-xs font-semibold text-slate-800">{stateMessage}</p>
-      <p className="text-[10px] text-slate-500 mt-1">{t('panel.installStrip.hint')}</p>
+      <p className="text-[10px] text-slate-500 mt-1">
+        <Link href={panelInstallPath(siteId)} className="underline underline-offset-2 hover:text-slate-700">
+          {t('panel.installStrip.hint')}
+        </Link>
+      </p>
     </section>
   );
 }

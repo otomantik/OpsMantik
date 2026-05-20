@@ -1,7 +1,7 @@
 import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { translate } from '@/lib/i18n/t';
-import { panelSitePath, panelOciPath } from '@/lib/auth/site-operational-route';
+import { panelSitePath, panelOciPath, panelInstallPath } from '@/lib/auth/site-operational-route';
 export function PanelChrome({
   siteId,
   siteName,
@@ -14,11 +14,12 @@ export function PanelChrome({
   siteName: string;
   locale: string;
   isReadOnlyPreview?: boolean;
-  active: 'desk' | 'oci';
+  active: 'desk' | 'oci' | 'install';
   children: React.ReactNode;
 }) {
   const deskHref = panelSitePath(siteId);
   const ociHref = panelOciPath(siteId);
+  const installHref = panelInstallPath(siteId);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -33,7 +34,9 @@ export function PanelChrome({
             <div>
               <p className="text-sm font-black text-slate-900 leading-none">{siteName}</p>
               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mt-1">
-                {translate(locale, 'panel.focusDeck')}
+                {active === 'install'
+                  ? translate(locale, 'panel.install.title')
+                  : translate(locale, 'panel.focusDeck')}
               </p>
             </div>
           </div>
@@ -57,6 +60,16 @@ export function PanelChrome({
               }
             >
               {translate(locale, 'panel.nav.oci')}
+            </Link>
+            <Link
+              href={installHref}
+              className={
+                active === 'install'
+                  ? 'px-2 py-1 rounded-md bg-slate-900 text-white text-[10px] font-black uppercase'
+                  : 'px-2 py-1 text-[10px] font-black uppercase text-slate-600'
+              }
+            >
+              {translate(locale, 'panel.nav.install')}
             </Link>
             <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 rounded-full border border-emerald-100 text-[9px] font-black text-emerald-700 uppercase">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
