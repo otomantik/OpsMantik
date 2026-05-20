@@ -11,3 +11,7 @@ export function panelOciPath(siteId: string): string {
   const q = new URLSearchParams({ siteId });
   return `/panel/oci?${q.toString()}`;
 }
+
+export function panelInstallPath(siteId: string): string {
+  return `/panel/sites/${encodeURIComponent(siteId)}/install`;
+}
